@@ -12,6 +12,9 @@ name: Nightly slow tests
 #    — the audit is doing its job, not flaking.
 #  - ManifoldAuditSabotageSuiteTests — SABOTAGE=1 audit tripwire proof
 #  - ManifoldMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
+#  - GlassBoxScenarioLiveE2ETests — live-backend Glass Box scenario gate (#1576),
+#    in its own `glassbox-live-e2e` job (installs Ollama + pulls a small model);
+#    distinct failure notification so a flaky live model never blocks PRs.
 # The perf suites are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
 # job leaves that unset so they skip there. Local `swift test` runs them
 # unconditionally (CI is also unset locally). The sabotage suite is separately
@@ -232,6 +235,125 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "${title}" \
               --body "$(printf '## Nightly slow tests failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi
+
+  # Live-backend Glass Box scenario gate (issue #1576). Runs the same
+  # RuntimeScenarioRegistry entries the hermetic scripted gate
+  # (RuntimeScenarioRunnerTests.test_allRegisteredScenarios_passInScriptedMode)
+  # covers, but against a REAL local Ollama backend, asserting only the
+  # structural [ConversationEventKind] subsequence — token content is
+  # nondeterministic live. The suite
+  # (GlassBoxScenarioLiveE2ETests.test_allRegisteredScenarios_passInLiveMode)
+  # filters to the live-eligible subset (no forced errors / tool calls /
+  # mid-stream cancel) and self-skips when Ollama is unreachable.
+  #
+  # This is a SEPARATE job with its own distinct failure notification (issue
+  # title "Nightly live Glass Box E2E failed") so a flaky live model produces a
+  # nightly-only signal that never blocks PRs — the per-PR `swift test` lane
+  # skips this suite entirely (no Ollama server present). Ollama is installed
+  # and a small model pulled inline; OLLAMA_TEST_MODEL pins it so the suite's
+  # model-selection is deterministic.
+  glassbox-live-e2e:
+    runs-on: macos-15
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: write
+    env:
+      # Pin the model the suite picks via HardwareRequirements.findOllamaModel,
+      # so the structural assertions run against a known small, fast model.
+      OLLAMA_TEST_MODEL: "llama3.2:1b"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+
+      - name: Install and start Ollama
+        run: |
+          set -euo pipefail
+          # Homebrew ships an ollama formula on the macos-15 runner image.
+          brew install ollama || brew upgrade ollama || true
+          # Start the server in the background and wait for /api/tags to answer.
+          ollama serve > "${{ github.workspace }}/ollama-serve.log" 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
+              echo "Ollama is up after ${i}s."
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
+            echo "::error::Ollama server did not become reachable at localhost:11434."
+            cat "${{ github.workspace }}/ollama-serve.log" || true
+            exit 1
+          fi
+
+      - name: Pull model
+        run: |
+          set -euo pipefail
+          ollama pull "${OLLAMA_TEST_MODEL}"
+          ollama list
+
+      - name: Test — live Glass Box scenarios
+        id: test-glassbox-live
+        env:
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-glassbox-live.log
+        run: |
+          scripts/test.sh \
+            --filter "ManifoldE2ETests.GlassBoxScenarioLiveE2ETests" \
+            --skip-update --min-passed 1
+
+      - name: Stage test diagnostics
+        if: failure()
+        run: |
+          mkdir -p test-diagnostics
+          {
+            echo "run-id=${{ github.run_id }}"
+            echo "run-attempt=${{ github.run_attempt }}"
+            echo "job=glassbox-live-e2e"
+            echo "glassbox-live-failed=${{ steps.test-glassbox-live.outcome == 'failure' }}"
+          } > test-diagnostics/failed-steps.txt
+          cp "${{ github.workspace }}/ollama-serve.log" test-diagnostics/ 2>/dev/null || true
+
+      - name: Upload test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-glassbox-live-diagnostics-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: test-diagnostics/
+
+      - name: Open GitHub issue on failure
+        # Distinct title from the `slow` job's notification so a flaky live
+        # model is filed and de-duplicated independently — it never masks or is
+        # masked by the slow-test signal.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="Nightly live Glass Box E2E failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url}). Live backend may be flaky — does not block PRs."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## Nightly live Glass Box E2E failed\n\n**Run:** [%s](%s)\n\nThe live-backend Glass Box scenario gate (#1576) failed against Ollama. This is a nightly-only live tier and does NOT block PRs — a flaky model can cause this. Check the run logs and close once resolved.' "${{ github.run_id }}" "${run_url}")"
           fi
 
   # Cold-start conformance gates (tier 1/2/3 + specialised MCP/Voice/

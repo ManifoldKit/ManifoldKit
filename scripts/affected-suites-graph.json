@@ -426,6 +426,7 @@
       "path": "Tests/ManifoldE2ETests",
       "deps": [
         "ManifoldBackends",
+        "ManifoldContractTestSupport",
         "ManifoldHuggingFace",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
