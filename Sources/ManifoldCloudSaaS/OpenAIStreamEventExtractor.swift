@@ -64,6 +64,19 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
     ///   6. `usage` → `.usage`
     ///   7. `finish_reason` → finalise buffered tool calls (`.toolCall` × N)
     public func consume(payload: String) -> [GenerationEvent] {
+        guard let json = JSONValue.parse(string: payload) else { return [] }
+        return consume(json: json)
+    }
+
+    /// Parse-once entry point. Reads the already-parsed frame; the
+    /// stringly-typed ``consume(payload:)`` is a thin wrapper retained for
+    /// legacy callers and per-payload tests.
+    public func consume(frame: ParsedFrame) -> [GenerationEvent] {
+        guard let json = frame.json else { return [] }
+        return consume(json: json)
+    }
+
+    private func consume(json payload: JSONValue) -> [GenerationEvent] {
         var out: [GenerationEvent] = []
 
         if let progress = OpenAIChatCompletionsPayloadParsing.parsePrefillProgress(from: payload) {

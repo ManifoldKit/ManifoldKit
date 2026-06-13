@@ -39,6 +39,22 @@ public protocol StreamFinalizer: Sendable {
     ///     shape). Callers treat `nil` as "no termination signal" and let
     ///     framing decide whether to surface the frame.
     func finalize(frame: Data) -> StreamTermination?
+
+    /// Inspect one already-parsed frame and report whether it terminates the
+    /// stream. Real finalizers override this to read off `frame.json`
+    /// instead of re-parsing the payload bytes (the parse-once path). The
+    /// default re-encodes and delegates to ``finalize(frame:)-(Data)`` so
+    /// un-migrated finalizers keep working.
+    func finalize(frame: ParsedFrame) -> StreamTermination?
+}
+
+public extension StreamFinalizer {
+    /// Default: fall back to the `Data` surface. Only hit by finalizers that
+    /// haven't migrated to the parsed shape.
+    func finalize(frame: ParsedFrame) -> StreamTermination? {
+        guard let data = frame.raw.data(using: .utf8) else { return nil }
+        return finalize(frame: data)
+    }
 }
 
 /// Result type returned by ``StreamFinalizer/finalize(frame:)``.
@@ -91,6 +107,34 @@ public struct OpenAIDoneSentinelFinalizer: StreamFinalizer {
             return .streamComplete(usage: usage, stopReason: stopReason)
         }
         return .streamContinue
+    }
+
+    public func finalize(frame: ParsedFrame) -> StreamTermination? {
+        guard let parsed = frame.json else { return nil }
+        let usage = Self.extractUsage(parsed)
+        let stopReason = Self.extractStopReason(parsed)
+        if usage != nil || stopReason != nil {
+            return .streamComplete(usage: usage, stopReason: stopReason)
+        }
+        return .streamContinue
+    }
+
+    private static func extractUsage(_ parsed: JSONValue) -> StreamTermination.TokenUsage? {
+        guard let usage = parsed["usage"]?.objectValue else { return nil }
+        let prompt = usage["prompt_tokens"]?.intValue
+        let completion = usage["completion_tokens"]?.intValue
+        guard prompt != nil || completion != nil else { return nil }
+        return .init(promptTokens: prompt, completionTokens: completion)
+    }
+
+    private static func extractStopReason(_ parsed: JSONValue) -> String? {
+        guard let choices = parsed["choices"]?.objectArrayValue,
+              let first = choices.first,
+              let reason = first["finish_reason"]?.stringValue,
+              !reason.isEmpty else {
+            return nil
+        }
+        return reason
     }
 
     private static func extractUsage(_ parsed: [String: Any]) -> StreamTermination.TokenUsage? {
@@ -171,6 +215,47 @@ public struct OpenAIResponsesEventFinalizer: StreamFinalizer {
 
         return .streamContinue
     }
+
+    public func finalize(frame: ParsedFrame) -> StreamTermination? {
+        // On the wrapped path require the event name to be the terminal one,
+        // otherwise an intermediate event whose body happens to embed a
+        // `response` object would spuriously terminate the stream. Plain
+        // (un-wrapped) callers fall through to the structural usage check.
+        let body: JSONValue
+        if let named = frame.namedEvent {
+            if named.name != "response.completed" {
+                return .streamContinue
+            }
+            guard let dataJSON = named.dataJSON else { return nil }
+            body = dataJSON
+        } else {
+            guard let json = frame.json else { return nil }
+            body = json
+        }
+
+        if let response = body["response"]?.objectValue,
+           let usage = response["usage"]?.objectValue {
+            let prompt = usage["input_tokens"]?.intValue
+            let completion = usage["output_tokens"]?.intValue
+            return .streamComplete(
+                usage: .init(promptTokens: prompt, completionTokens: completion),
+                stopReason: response["status"]?.stringValue
+            )
+        }
+
+        if let usage = body["usage"]?.objectValue {
+            let prompt = usage["input_tokens"]?.intValue ?? usage["prompt_tokens"]?.intValue
+            let completion = usage["output_tokens"]?.intValue ?? usage["completion_tokens"]?.intValue
+            if prompt != nil || completion != nil {
+                return .streamComplete(
+                    usage: .init(promptTokens: prompt, completionTokens: completion),
+                    stopReason: nil
+                )
+            }
+        }
+
+        return .streamContinue
+    }
 }
 
 /// Finalizer for Anthropic Claude Messages API streams.
@@ -206,6 +291,22 @@ public struct ClaudeMessageStopFinalizer: StreamFinalizer {
             return .streamContinue
         }
     }
+
+    public func finalize(frame: ParsedFrame) -> StreamTermination? {
+        guard let parsed = frame.json,
+              let type = parsed["type"]?.stringValue else {
+            return nil
+        }
+        switch type {
+        case "message_stop":
+            let stopReason = parsed["message"]?.objectValue?["stop_reason"]?.stringValue
+            return .streamComplete(usage: nil, stopReason: stopReason)
+        case "message_delta":
+            return .streamContinue
+        default:
+            return .streamContinue
+        }
+    }
 }
 
 /// Finalizer for Ollama `/api/chat` and `/api/generate` NDJSON streams.
@@ -226,6 +327,19 @@ public struct OllamaDoneFlagFinalizer: StreamFinalizer {
         let prompt = parsed["prompt_eval_count"] as? Int
         let completion = parsed["eval_count"] as? Int
         let stopReason = parsed["done_reason"] as? String
+        return .streamComplete(
+            usage: .init(promptTokens: prompt, completionTokens: completion),
+            stopReason: stopReason
+        )
+    }
+
+    public func finalize(frame: ParsedFrame) -> StreamTermination? {
+        guard let parsed = frame.json else { return nil }
+        let done = parsed["done"]?.boolValue ?? false
+        guard done else { return .streamContinue }
+        let prompt = parsed["prompt_eval_count"]?.intValue
+        let completion = parsed["eval_count"]?.intValue
+        let stopReason = parsed["done_reason"]?.stringValue
         return .streamComplete(
             usage: .init(promptTokens: prompt, completionTokens: completion),
             stopReason: stopReason

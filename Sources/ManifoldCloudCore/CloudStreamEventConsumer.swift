@@ -26,10 +26,26 @@ public protocol CloudStreamEventConsumer: AnyObject, Sendable {
     /// chunks).
     func consume(payload: String) -> [GenerationEvent]
 
+    /// Returns the event sequence to emit for one already-parsed frame.
+    ///
+    /// Real extractors override this to read off `frame.json` /
+    /// `frame.namedEvent` instead of re-parsing the payload string 8–12×.
+    /// The default delegates to ``consume(payload:)`` so conformers that
+    /// haven't migrated keep working.
+    func consume(frame: ParsedFrame) -> [GenerationEvent]
+
     /// Flushes pending state at stream end. Implementations yield any
     /// open-thinking close (`.thinkingCompleted`) and any buffered tool
     /// calls the upstream never accompanied with an explicit
     /// `finish_reason`. Pass `cancelled: true` to suppress phantom tool
     /// emissions when the consumer is being dropped mid-stream.
     func finish(cancelled: Bool) -> [GenerationEvent]
+}
+
+public extension CloudStreamEventConsumer {
+    /// Default: delegate to the string surface so un-migrated consumers
+    /// keep compiling. The three real cloud extractors override this.
+    func consume(frame: ParsedFrame) -> [GenerationEvent] {
+        consume(payload: frame.raw)
+    }
 }
