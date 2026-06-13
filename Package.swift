@@ -873,6 +873,8 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // RuntimeScenarioRunner (live-mode Glass Box gate, #1576) lives here.
+                "ManifoldContractTestSupport",
                 "ManifoldTools",
                 "ManifoldHuggingFace",
             ]
