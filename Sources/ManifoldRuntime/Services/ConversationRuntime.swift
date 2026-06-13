@@ -221,7 +221,8 @@ public final class ConversationRuntime: Sendable {
         hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
-        hookRegistry: HookRegistry? = nil
+        hookRegistry: HookRegistry? = nil,
+        runStore: (any RunStore)? = nil
     ) {
         self.init(
             messageStore: messageStore,
@@ -242,7 +243,8 @@ public final class ConversationRuntime: Sendable {
             turnContextProvider: turnContextProvider,
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry,
-            turnDriver: nil
+            turnDriver: nil,
+            runStore: runStore
         )
     }
 
@@ -325,7 +327,8 @@ public final class ConversationRuntime: Sendable {
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        turnDriver: (any TurnDriver)?
+        turnDriver: (any TurnDriver)?,
+        runStore: (any RunStore)? = nil
     ) {
         self.inferenceService = inferenceService
         self.auxiliaryInferenceService = auxiliaryInferenceService
@@ -365,9 +368,19 @@ public final class ConversationRuntime: Sendable {
             turnContextProvider: turnContextProvider,
             bindings: bindings
         )
-        // Default to SingleTurnDriver to preserve pre-P3 linear behavior.
-        // Callers that need resumable runs inject ResumableRunDriver here.
-        self.turnDriver = turnDriver ?? SingleTurnDriver()
+        // Driver selection (P3b #1784):
+        //   1. An explicit `turnDriver` override always wins (test/power-user seam).
+        //   2. Otherwise, if a `runStore` was supplied, wrap it in a
+        //      ResumableRunDriver so the runtime gains durable startRun/resumeRun.
+        //   3. Otherwise fall back to SingleTurnDriver to preserve pre-P3 linear
+        //      behaviour — every caller that omits both keeps the old behaviour.
+        if let turnDriver {
+            self.turnDriver = turnDriver
+        } else if let runStore {
+            self.turnDriver = ResumableRunDriver(runStore: runStore)
+        } else {
+            self.turnDriver = SingleTurnDriver()
+        }
     }
 
     // MARK: Host-mutable bindings
@@ -534,6 +547,63 @@ public final class ConversationRuntime: Sendable {
             executor: executor,
             taskRegistry: turnTasks
         )
+    }
+
+    /// Resumes a previously-checkpointed ``ConversationRun`` from the
+    /// ``RunStore`` and continues it from the first not-yet-completed step.
+    ///
+    /// Available only when the runtime was initialised with a
+    /// ``ResumableRunDriver``. Unlike ``ResumableRunDriver/resumeRun()`` (which
+    /// flips an in-memory pause flag on the live run), this reloads the run and
+    /// its steps from the store, making it a durable cross-process resume.
+    ///
+    /// Calling this method when the runtime uses the default
+    /// ``SingleTurnDriver`` logs a warning and returns an immediately-finishing
+    /// stream.
+    ///
+    /// - Parameters:
+    ///   - runID:  The id of the persisted run to resume.
+    ///   - using:  The input provider that drives step synthesis. Must satisfy
+    ///             the idempotency contract on
+    ///             ``RunInputProvider/nextInput(for:stepIndex:prior:)``.
+    /// - Returns: A stream of ``RunEvent`` values.
+    public func resumeRun(
+        _ runID: UUID,
+        using provider: any RunInputProvider = FixedGoalRunInputProvider()
+    ) -> AsyncStream<RunEvent> {
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else {
+            Log.inference.warning(
+                "ConversationRuntime.resumeRun: runtime was not configured with a ResumableRunDriver; ignoring."
+            )
+            return AsyncStream { $0.finish() }
+        }
+        return resumableDriver.resume(
+            runID: runID,
+            using: provider,
+            executor: executor,
+            taskRegistry: turnTasks
+        )
+    }
+
+    /// Requests that the active run pause after its current step (P3b #1784).
+    ///
+    /// No-op when the runtime uses the default ``SingleTurnDriver``. The run
+    /// emits ``RunEvent/runPaused`` once it suspends; the persisted run status
+    /// transitions to ``RunStatus/paused`` so a later ``resumeRun(_:using:)``
+    /// can pick it up — even across a process restart.
+    public func pauseActiveRun() async {
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else { return }
+        await resumableDriver.pauseRun()
+    }
+
+    /// Requests that the active run cancel (P3b #1784).
+    ///
+    /// No-op when the runtime uses the default ``SingleTurnDriver``. The run
+    /// emits ``RunEvent/runCancelled`` and its persisted status becomes
+    /// ``RunStatus/cancelled`` (terminal).
+    public func cancelActiveRun() async {
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else { return }
+        await resumableDriver.cancelRun()
     }
 
     // MARK: Secondary event taps
