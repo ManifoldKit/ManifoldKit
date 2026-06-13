@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.50.0](https://github.com/roryford/ManifoldKit/compare/v0.49.1...v0.50.0) (2026-06-13)
+
+### Highlights
+
+**Zero-config RAG.** ManifoldKit now bundles an on-device `NLEmbedding` default embedder ([#1822](https://github.com/roryford/ManifoldKit/issues/1822)), so retrieval-augmented chat works with no model download and no setup. The Glass Box research-session demo is wired end-to-end against the real retrieval stack ([#1814](https://github.com/roryford/ManifoldKit/issues/1814)) — context assembly, citation provenance, and pre-turn compression across a real context window.
+
+```swift
+// RAG just works — NLEmbedding is the default embedder, no extra config.
+let kit = try await ManifoldKit.quickStart(backends: [LlamaBackends.self])
+```
+
+**The right model on first launch** ([#1805](https://github.com/roryford/ManifoldKit/issues/1805)) — `quickStart()` now seeds a device-appropriate model instead of a hardcoded 0.6B. A 64 GB Mac and a base iPhone get different picks, scored on real hardware via `ModelFitScorer`, and the bundled model-management UI surfaces the recommendation.
+
+**Watch images form** ([#1815](https://github.com/roryford/ManifoldKit/issues/1815)) — a new `ImageGenerationEvent.preview(step:total:image:)` case plus opt-in `ImageGenerationConfig.previewStride` give apps a live denoising-preview channel. The emit side ships next in `manifold-mlx`.
+
+**Structured history for Apple Foundation Models** ([#1803](https://github.com/roryford/ManifoldKit/issues/1803)) — `FoundationBackend` adopts `StructuredHistoryReceiver`, reading unflattened message parts like the other backends — the groundwork for multimodal.
+
+### Features
+
+**Fuzz-harness completeness** ([#1808](https://github.com/roryford/ManifoldKit/issues/1808)) — the memory-growth-budget and context-exhaustion-guard detectors are now wired and active.
+
+**Ollama `.loading` phase** ([#1819](https://github.com/roryford/ManifoldKit/issues/1819)) — the pre-first-token model-load stall surfaces as `GenerationStream` `.loading` instead of misreporting `.streaming`. Opt-in per backend; cloud backends are unchanged.
+
+### Fixes & Performance
+
+**RepetitionDetector** ([#1802](https://github.com/roryford/ManifoldKit/issues/1802)) — the per-token loop scan is now O(n) in accumulated output instead of O(n²).
+
+**Phase-sampler test determinism** ([#1820](https://github.com/roryford/ManifoldKit/issues/1820)) — the flaky `.loading` phase-sampler race is replaced with a deterministic await.
+
+### Documentation & CI
+
+**DocC** — fixed unresolved symbol links across the contract kernel and chat UI ([#1816](https://github.com/roryford/ManifoldKit/issues/1816)); redesigned the layer-cake hero and corrected stale pre-companion-split references ([#1818](https://github.com/roryford/ManifoldKit/issues/1818)).
+
+**Nightly live-backend Glass Box gate** ([#1817](https://github.com/roryford/ManifoldKit/issues/1817)) — the registered scenarios run against a real backend nightly, asserting the structural event subsequence.
+
+Also: ManifoldVoice surface scoping note ([#1810](https://github.com/roryford/ManifoldKit/issues/1810)), a GGUF Jinja chat-template spike ([#1821](https://github.com/roryford/ManifoldKit/issues/1821)), recon-findings capture ([#1809](https://github.com/roryford/ManifoldKit/issues/1809)), and traffic-audit triage ([#1807](https://github.com/roryford/ManifoldKit/issues/1807)).
+
 ## [0.49.1](https://github.com/roryford/ManifoldKit/compare/v0.49.0...v0.49.1) (2026-06-13)
 
 
