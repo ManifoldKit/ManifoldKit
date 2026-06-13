@@ -20,6 +20,11 @@ final class NLEmbeddingRAGIntegrationTests: XCTestCase {
 
     private var container: ModelContainer!
     private var vectorURL: URL!
+    /// Per-test-run unique scratch directory under TMPDIR. Every file this test
+    /// writes lives inside it, so the clean `\(title).txt` filenames the parser
+    /// reads as document titles never collide across tests, ingests, or with
+    /// leftovers from a prior `--parallel` run (NSCocoaError 516, #1822/#1812).
+    private var scratchDir: URL!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -30,14 +35,17 @@ final class NLEmbeddingRAGIntegrationTests: XCTestCase {
             "No English sentence-embedding model on this host."
         )
         container = try ModelContainerFactory.makeInMemoryContainer()
-        vectorURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + ".bin")
+        scratchDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: scratchDir, withIntermediateDirectories: true)
+        vectorURL = scratchDir.appendingPathComponent(UUID().uuidString + ".bin")
     }
 
     override func tearDown() {
-        if let vectorURL { try? FileManager.default.removeItem(at: vectorURL) }
+        if let scratchDir { try? FileManager.default.removeItem(at: scratchDir) }
         container = nil
         vectorURL = nil
+        scratchDir = nil
         super.tearDown()
     }
 
@@ -121,16 +129,15 @@ final class NLEmbeddingRAGIntegrationTests: XCTestCase {
     // MARK: - Helpers
 
     private func ingest(_ rag: RAGService, title: String, text: String) async throws {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(title)-\(UUID().uuidString).txt")
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
-        // The parser derives the title from the file's last path component; we
-        // assert on the human title above, so name the file accordingly.
-        let titledURL = url.deletingLastPathComponent().appendingPathComponent("\(title).txt")
-        try? FileManager.default.removeItem(at: titledURL)
-        try FileManager.default.moveItem(at: url, to: titledURL)
-        defer { try? FileManager.default.removeItem(at: titledURL) }
+        // The parser derives the document title from the file's last path
+        // component, and the semantic-ranking assertions key on that title, so
+        // the file must be named exactly `\(title).txt`. To keep that clean name
+        // collision-free even when the same title is ingested more than once, put
+        // each ingest in its own unique subdirectory of the per-test scratch dir.
+        let dir = scratchDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let titledURL = dir.appendingPathComponent("\(title).txt")
+        try text.write(to: titledURL, atomically: true, encoding: .utf8)
         try await rag.ingest(url: titledURL)
     }
 }
