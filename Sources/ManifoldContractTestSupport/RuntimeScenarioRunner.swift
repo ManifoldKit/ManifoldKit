@@ -139,7 +139,16 @@ public enum RuntimeScenarioRunner {
         let trace = await ConversationEventTrace(recorder: recorder)
         let (passed, reason) = checkSubsequence(trace.kinds, against: scenario.expectedSubsequence)
 
-        let producedMessages = (try? await store.fetchMessages(for: sessionID)) ?? []
+        let producedMessages: [ChatMessage]
+        do {
+            producedMessages = try await store.fetchMessages(for: sessionID)
+        } catch {
+            // Surface store-read failures instead of silently swallowing them —
+            // a failed fetch would otherwise mask citation/compression assertions
+            // in live runs (SilentCatchAuditTest).
+            XCTFail("RuntimeScenarioRunner: failed to fetch produced messages: \(error)")
+            producedMessages = []
+        }
 
         return Result(
             scenario: scenario,
