@@ -8,15 +8,15 @@ platforms.
 
 Most AI-chat libraries hand you a single layer — a UI kit, an engine wrapper, or
 a thin cloud client — and leave the rest as an exercise. `ManifoldKit` ships the
-assembled product: import one umbrella module and you get a SwiftUI ``ChatView``,
-the ``ConversationRuntime`` turn loop (send / regenerate / edit / cancel /
+assembled product: import one umbrella module and you get a SwiftUI `ChatView`,
+the `ConversationRuntime` turn loop (send / regenerate / edit / cancel /
 branch), SwiftData persistence, model download & management UI, and inference
 backends spanning on-device (MLX, llama.cpp, Apple Foundation Models) and cloud
-(OpenAI, Anthropic, Ollama, LAN) — all behind one ``InferenceBackend`` protocol.
+(OpenAI, Anthropic, Ollama, LAN) — all behind one `InferenceBackend` protocol.
 Swapping engines is a config change, not a rewrite.
 
 `import ManifoldKit` re-exports the 80%-case modules — the inference surface,
-``ConversationRuntime``, persistence, the backends, and the chat UI. Specialised
+`ConversationRuntime`, persistence, the backends, and the chat UI. Specialised
 modules stay explicit imports: `ManifoldMCP` (Model Context Protocol),
 `ManifoldVoice` (speech I/O), `ManifoldUIModelManagement` (the model browser),
 and `ManifoldAppIntents`.
@@ -25,8 +25,8 @@ and `ManifoldAppIntents`.
 
 Add the package, then drop this into your app entry point.
 ``ManifoldKit/quickStart(configuration:)`` builds the SwiftData container,
-registers the compiled-in backends, and wires up a ``ChatViewModel`` in one call.
-Errors surface as ``ManifoldKitError``.
+registers the compiled-in backends, and wires up a `ChatViewModel` in one call.
+Errors surface as `ManifoldKitError`.
 
 ```swift
 import SwiftUI
@@ -68,7 +68,7 @@ struct MyChatApp: App {
 > Warning: **The no-backend cliff.** With no backend registered — no companion
 > backend package linked (`manifold-mlx`, `manifold-llama`, …) and no registrar
 > passed via `quickStart(backends:)` — `quickStart()` compiles but throws
-> ``ManifoldKitError`` `.noBackendsRegistered` at runtime: there is nothing to
+> `ManifoldKitError` `.noBackendsRegistered` at runtime: there is nothing to
 > generate with. Add a companion package and inject its registrar (e.g.
 > `quickStart(backends: [LlamaBackends.self])`). The cloud and Foundation
 > families compile in unconditionally, so a cloud-only setup with no configured
@@ -84,40 +84,31 @@ install to first token, follow the loose-markdown front door:
 - **Branch points:** [CLI / server](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-CLI.md) · [Bring your own UI](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-BRING-YOUR-OWN-UI.md)
 - **Add a capability:** [Tools](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-TOOLS.md) · [App Intents](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-APPINTENTS.md) · [RAG](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-RAG.md) · [Voice](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-VOICE.md) · [Image & video gen (manifold-mlx)](https://github.com/roryford/manifold-mlx)
 
+### The assembled surface
+
+`import ManifoldKit` re-exports these types from their home modules. DocC
+resolves symbol links only within the target it builds, so this umbrella page
+links the entry points it *owns* (see Topics below) and names the re-exports
+inline — follow each home-module catalog for the full reference:
+
+- **Chat UI** (`ManifoldUI`): `ChatView`, `ChatViewModel`.
+- **Bring your own UI** (`ManifoldInference` / `ManifoldRuntime`):
+  `InferenceService`, `ConversationRuntime`, `ModelRegistry`.
+- **Backends** (`ManifoldContract` + families): every engine sits behind one
+  `InferenceBackend` protocol. The cloud (OpenAI, Anthropic, Ollama, LAN) and
+  Apple `FoundationBackend` families compile in unconditionally; the on-device
+  MLX and llama.cpp families ship as companion packages (`manifold-mlx`,
+  `manifold-llama`) since v0.48 and are wired in by passing their registrars to
+  ``ManifoldKit/quickStart(backends:configuration:seed:)``.
+- **Persistence & bootstrap** (`ManifoldPersistenceSwiftData`):
+  `ManifoldBootstrap`, configured by `ManifoldConfiguration`.
+
 ## Topics
 
 ### Get Started
 
 - ``ManifoldKit/quickStart(configuration:)``
+- ``ManifoldKit/quickStart(configuration:seed:)``
+- ``ManifoldKit/quickStart(backends:configuration:seed:)``
 - ``QuickStartResult``
-- ``ManifoldConfiguration``
-- ``ManifoldKitError``
-
-### Build a Chat UI
-
-- ``ChatView``
-- ``ChatViewModel``
-
-### Bring Your Own UI
-
-- ``InferenceService``
-- ``ConversationRuntime``
-- ``ModelRegistry``
-
-### Backends
-
-Every engine sits behind one ``InferenceBackend`` protocol; ``DefaultBackends``
-registers the ones compiled in for the active traits. The on-device families are
-re-exported here. Cloud backends (OpenAI, Anthropic, Ollama, LAN) live in
-`ManifoldOllama` / `ManifoldCloudSaaS` and are always compiled in since v0.48
-(the `CloudSaaS` / `Ollama` traits were retired).
-
-- ``InferenceBackend``
-- ``DefaultBackends``
-- ``MLXBackend``
-- ``LlamaBackend``
-- ``FoundationBackend``
-
-### Persistence & Bootstrap
-
-- ``ManifoldBootstrap``
+- ``QuickStartSeed``

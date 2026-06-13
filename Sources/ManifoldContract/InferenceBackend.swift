@@ -99,8 +99,8 @@ public struct GenerationConfig: Sendable, Codable {
     ///
     /// An alternative to top-p that filters tokens by probability ratio rather than
     /// cumulative mass. `nil` (the default) lets each backend apply its own value.
-    /// Mirrors `GenerateParameters.minP` in `mlx-swift-lm`. Honoured by ``MLXBackend``
-    /// and ``LlamaBackend``; backends that do not expose a min-p sampler ignore it.
+    /// Mirrors `GenerateParameters.minP` in `mlx-swift-lm`. Honoured by `MLXBackend`
+    /// and `LlamaBackend`; backends that do not expose a min-p sampler ignore it.
     public var minP: Float?
 
     /// Repetition penalty applied to recently-generated tokens (1.0 = no penalty).
@@ -109,13 +109,13 @@ public struct GenerationConfig: Sendable, Codable {
     /// callers can leave it `nil` and inherit the backend's default behaviour. When
     /// non-`nil` this value takes precedence over ``repeatPenalty`` for backends that
     /// support an explicit knob (MLX, llama.cpp). Backends that do not expose a
-    /// repetition penalty (e.g. ``FoundationBackend``) ignore it.
+    /// repetition penalty (e.g. `FoundationBackend`) ignore it.
     public var repetitionPenalty: Float?
 
     /// Window size (in recent tokens) over which ``repetitionPenalty`` applies.
     ///
     /// `nil` lets each backend use its own default — llama.cpp uses 64, mlx-swift-lm
-    /// uses 20. Honoured by ``MLXBackend`` and ``LlamaBackend``; other backends ignore.
+    /// uses 20. Honoured by `MLXBackend` and `LlamaBackend`; other backends ignore.
     public var repetitionContextSize: Int?
 
     /// Additive penalty for tokens that already appeared in the recent window
@@ -123,8 +123,8 @@ public struct GenerationConfig: Sendable, Codable {
     /// ``repetitionPenalty``).
     ///
     /// `nil` (the default) lets each backend apply no presence penalty. Honoured by
-    /// ``MLXBackend`` (mapped to `GenerateParameters.presencePenalty`) and
-    /// ``LlamaBackend`` (mapped to the third arg of `llama_sampler_init_penalties`).
+    /// `MLXBackend` (mapped to `GenerateParameters.presencePenalty`) and
+    /// `LlamaBackend` (mapped to the third arg of `llama_sampler_init_penalties`).
     /// Other backends ignore it.
     public var presencePenalty: Float?
 
@@ -140,7 +140,7 @@ public struct GenerationConfig: Sendable, Codable {
     /// appeared in the recent window (OpenAI-style "frequency" penalty).
     ///
     /// `nil` (the default) lets each backend apply no frequency penalty. Honoured by
-    /// ``MLXBackend`` and ``LlamaBackend``; other backends ignore.
+    /// `MLXBackend` and `LlamaBackend`; other backends ignore.
     public var frequencyPenalty: Float?
 
     /// Window size (in recent tokens) over which ``frequencyPenalty`` applies.
@@ -152,30 +152,30 @@ public struct GenerationConfig: Sendable, Codable {
     /// llama.cpp DRY repetition sampler options.
     ///
     /// `nil` (the default) preserves the backend's existing sampler chain. When
-    /// set, ``LlamaBackend`` inserts `llama_sampler_init_dry` after penalties
+    /// set, `LlamaBackend` inserts `llama_sampler_init_dry` after penalties
     /// and grammar, before probability filters. Other backends ignore it.
     public var llamaDRY: LlamaDRYSamplerOptions?
 
     /// llama.cpp XTC sampler options.
     ///
     /// `nil` (the default) preserves the backend's existing sampler chain. When
-    /// set, ``LlamaBackend`` inserts `llama_sampler_init_xtc` immediately after
+    /// set, `LlamaBackend` inserts `llama_sampler_init_xtc` immediately after
     /// the temperature step. Other backends ignore it.
     public var llamaXTC: LlamaXTCSamplerOptions?
 
     /// llama.cpp Mirostat v2 sampler options.
     ///
     /// `nil` (the default) preserves the backend's existing sampler chain. When
-    /// set, ``LlamaBackend`` **replaces** the temperature + dist sampler tail
+    /// set, `LlamaBackend` **replaces** the temperature + dist sampler tail
     /// with `llama_sampler_init_mirostat_v2`. Other backends ignore it.
     public var llamaMirostatV2: LlamaMirostatV2SamplerOptions?
 
     /// Deterministic sampling seed.
     ///
-    /// When set, backends that expose a sampler seed (``MLXBackend``,
-    /// ``LlamaBackend``) initialise their RNG from this value so two runs with the
+    /// When set, backends that expose a sampler seed (`MLXBackend`,
+    /// `LlamaBackend`) initialise their RNG from this value so two runs with the
     /// same prompt and config produce the same token stream. Backends that do not
-    /// expose a seed (``FoundationBackend``, cloud backends without a `seed` API
+    /// expose a seed (`FoundationBackend`, cloud backends without a `seed` API
     /// parameter) silently ignore it — a missing seed is never an error.
     /// Stored as `UInt64` for parity with mlx-swift-lm; backends with smaller seed
     /// types (e.g. llama.cpp's `uint32_t`) truncate.
@@ -298,7 +298,7 @@ public struct GenerationConfig: Sendable, Codable {
     /// Number of tokens between brief cooperative yields during MLX generation.
     ///
     /// Sustained MLX inference on Mac can starve WindowServer's GPU command
-    /// queue and cause hitches in other apps. To mitigate this, ``MLXBackend``
+    /// queue and cause hitches in other apps. To mitigate this, `MLXBackend`
     /// inserts a cooperative `Task.yield()` every `yieldEveryNTokens` tokens.
     ///
     /// - Defaults to `8` (one yield per ~8 tokens).
@@ -309,7 +309,7 @@ public struct GenerationConfig: Sendable, Codable {
     /// Capabilities the backend serving this request must provide.
     ///
     /// Empty (the default) means any wired backend may serve the request —
-    /// preserves the existing zero-config behaviour. When non-empty, ``RouterBackend``
+    /// preserves the existing zero-config behaviour. When non-empty, `RouterBackend`
     /// dispatches to the first child whose ``BackendCapabilities`` satisfy every
     /// requirement; backends used directly may use this for fail-fast validation.
     /// Independent of ``tools`` / ``grammar`` / ``jsonMode`` — those are
@@ -505,7 +505,7 @@ public struct GenerationConfig: Sendable, Codable {
 /// Custom conformers should follow the same pattern.
 ///
 /// New backends adopt this protocol; conformance is verified by the
-/// contract harness in ``BackendContractChecks`` and the per-capability
+/// contract harness in `BackendContractChecks` and the per-capability
 /// meta-contract. See `Tests/README.md` for the conformance walkthrough.
 public protocol InferenceBackend: AnyObject, Sendable {
     var isModelLoaded: Bool { get }
@@ -524,7 +524,7 @@ public protocol InferenceBackend: AnyObject, Sendable {
     ///
     /// The default implementation returns `nil`. Backends that have not yet
     /// adopted the manifest source-of-truth pattern compile against this
-    /// default; consumers (``ContextWindowManager``, request builders) fall
+    /// default; consumers (`ContextWindowManager`, request builders) fall
     /// back to ``BackendCapabilities`` when the manifest is absent. This
     /// keeps the addition non-breaking for adopters of `InferenceBackend`.
     var manifest: ModelManifest? { get }
@@ -587,7 +587,7 @@ public protocol InferenceBackend: AnyObject, Sendable {
     /// calls on this backend.
     ///
     /// The default implementation is a no-op. Backends that hold hot KV state
-    /// between turns (``LlamaBackend``, ``MLXBackend``) override this to
+    /// between turns (`LlamaBackend`, `MLXBackend`) override this to
     /// scrub the residue as best the underlying runtime allows.
     ///
     /// Call this:

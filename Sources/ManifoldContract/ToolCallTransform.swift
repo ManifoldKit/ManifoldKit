@@ -43,7 +43,7 @@ public struct ToolCallMarker: Sendable {
 ///   emits `.toolCall`, and `nil` silently drops the call (matching both
 ///   legacy parsers).
 /// - Partial open/close markers straddling a chunk boundary are held back via
-///   the shared ``overlap`` primitives — the open-tag holdback is the max
+///   the shared `overlap` primitives — the open-tag holdback is the max
 ///   overlap across *all* candidate opens.
 ///
 /// As a ``StreamTransform`` it re-scans only `.token` payloads; all other event

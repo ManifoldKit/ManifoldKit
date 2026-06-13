@@ -3,19 +3,19 @@ import Foundation
 /// A discrete piece of content within a chat message.
 ///
 /// Messages can contain multiple parts to support multimodal input (images
-/// and audio) alongside plain text, model reasoning (``thinking``), and tool
-/// calling (``toolCall`` / ``toolResult``). Each part is independently typed
+/// and audio) alongside plain text, model reasoning (``thinking(_:signature:)``), and tool
+/// calling (``toolCall(_:)`` / ``toolResult(_:)``). Each part is independently typed
 /// so the UI can render appropriate controls (e.g., inline images, playable
 /// audio, collapsible reasoning blocks) and backends can map parts to their
 /// native message formats.
 ///
 /// ## Persistence compatibility
 ///
-/// ``ManifoldSchemaV4/ChatMessage/decode(_:)`` falls back to a `.text` part
+/// `ManifoldSchemaV4.ChatMessage.decode(_:)` falls back to a `.text` part
 /// when JSON decoding fails. Historically this meant pre-removal rows that
-/// contained ``toolCall`` / ``toolResult`` discriminators degraded gracefully
+/// contained ``toolCall(_:)`` / ``toolResult(_:)`` discriminators degraded gracefully
 /// to text bubbles.  Those discriminators are now first-class cases again
-/// (see ``ManifoldSchemaV4``), so such rows decode correctly as their actual
+/// (see `ManifoldSchemaV4`), so such rows decode correctly as their actual
 /// cases. The `.text` fallback remains as a safety net for genuinely
 /// malformed JSON until V5.
 public enum MessagePart: Hashable, Sendable {
@@ -24,19 +24,19 @@ public enum MessagePart: Hashable, Sendable {
     ///
     /// Distinct from ``generatedImage(_:)`` — this case carries inline
     /// bytes the model is asked to look at; that case carries a file URL
-    /// pointing at an image the model produced. ``placeholderHash`` is optional
+    /// pointing at an image the model produced. The `placeholderHash` is optional
     /// so legacy persisted images and callers that do not need placeholder
     /// rendering can continue to omit it.
     case image(data: Data, mimeType: String, placeholderHash: ImagePlaceholderHash? = nil)
     /// A sandbox-local audio file rendered as an inline player.
     ///
-    /// ``url`` should point at a file inside the host app's container.
-    /// ``waveform`` stores precomputed normalized amplitude buckets so chat
+    /// The `url` should point at a file inside the host app's container.
+    /// The `waveform` stores precomputed normalized amplitude buckets so chat
     /// history can render without re-reading the audio file.
     case audio(url: URL, duration: TimeInterval, waveform: [Float]?)
     /// Accumulated model reasoning. Excluded from context window (textContent returns nil).
     ///
-    /// ``signature`` carries the provider-supplied opaque token that some
+    /// The `signature` carries the provider-supplied opaque token that some
     /// reasoning APIs (notably Anthropic's extended thinking) require verbatim
     /// when the block is replayed in a multi-turn request. It is `nil` for
     /// providers that don't issue one or for legacy persisted rows that
@@ -61,7 +61,7 @@ public enum MessagePart: Hashable, Sendable {
     /// from ``textContent`` (the payload's prompt is metadata, not visible chat
     /// text).
     case generatedImage(ImageMessagePayload)
-    /// A video produced by a ``VideoGenerationBackend`` and attached to
+    /// A video produced by a `VideoGenerationBackend` and attached to
     /// a saved message.
     ///
     /// References a local file URL whose binary is the backend's *output*.

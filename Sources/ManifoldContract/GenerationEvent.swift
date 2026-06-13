@@ -90,7 +90,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// the signature verbatim on multi-turn replay.
     ///
     /// Fired between the block's `content_block_start` and the first
-    /// `content_block_delta`, before any ``thinkingToken`` events for the
+    /// `content_block_delta`, before any `thinkingToken` events for the
     /// same block. Consumers attach the signature to the in-flight
     /// reasoning accumulator so it lands on the persisted
     /// ``MessagePart/thinking(_:signature:)`` part once
@@ -111,7 +111,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// ``toolCall(_:)`` event.
     ///
     /// Emitted after the coordinator has routed a ``ToolCall`` through the
-    /// registered ``ToolRegistry`` and produced a ``ToolResult``. Downstream
+    /// registered `ToolRegistry` and produced a ``ToolResult``. Downstream
     /// consumers (chat UIs, transcripts) use this to append the tool result to
     /// the assistant turn before the next generation round begins.
     case toolResult(ToolResult)
@@ -155,7 +155,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// boundary they can pin a spinner / start timer to without scraping
     /// logs. This lifecycle covers the coordinator's full handling path for
     /// the call, not only successful routing through the registered
-    /// ``ToolRegistry``: approval gating, registry execution, and synthesized
+    /// `ToolRegistry`: approval gating, registry execution, and synthesized
     /// non-dispatch outcomes (for example approval denial, identical-call
     /// short-circuiting, or byte-budget exhaustion) are all included.
     /// `callId` matches ``ToolCall/id``; `name` is the tool name; `attempt`
@@ -169,7 +169,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// Fires after ``toolDispatchStarted(callId:name:attempt:)`` and before the
     /// matching ``toolResult(_:)``, but ONLY on paths where the call is
     /// genuinely approved: auto-approval (the tool does not require approval)
-    /// or an explicit `.approved` verdict from the ``ToolApprovalGate``. It is
+    /// or an explicit `.approved` verdict from the `ToolApprovalGate`. It is
     /// deliberately NOT emitted for non-approval outcomes —
     /// approval-gate denial, pre-tool-use-hook block, identical-call
     /// short-circuiting, or byte-budget exhaustion — so consumers can treat
@@ -187,7 +187,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// monotonic clock so wall-clock adjustments (NTP, user time changes) do
     /// not skew the value. It covers the full orchestrator-managed lifecycle
     /// for the call, including any approval-gate wait time and paths that do
-    /// not invoke the registered ``ToolRegistry`` because the coordinator
+    /// not invoke the registered `ToolRegistry` because the coordinator
     /// synthesized the result. `errorKind` carries the failure classification
     /// when handling produced an error result and `nil` on success — its
     /// value matches the ``ToolResult/errorKind`` of the `.toolResult` event
@@ -200,7 +200,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// short-circuits regular tool dispatch and lets the runtime swap the
     /// active agent and inject a boundary message into the next turn.
     ///
-    /// Only emitted by ``GenerationToolDispatchLoop`` when it has been
+    /// Only emitted by `GenerationToolDispatchLoop` when it has been
     /// configured with a session-aware handoff detector; backends never emit
     /// this case directly.
     case handoffRequested(AgentHandoff)

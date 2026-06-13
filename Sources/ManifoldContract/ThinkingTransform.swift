@@ -4,7 +4,7 @@
 /// open/close marker pair (`ThinkingMarkers`) and re-routes text inside a
 /// thinking block to `.thinkingToken`, firing `.thinkingCompleted` exactly on
 /// the depth 1→0 transition. Partial markers straddling a chunk boundary are
-/// held back via the shared ``overlap(_:_:)`` primitive.
+/// held back via the shared `overlap(_:_:)` primitive.
 ///
 /// As a ``StreamTransform`` it re-scans only `.token` payloads; `.thinkingToken`,
 /// `.thinkingCompleted`, `.toolCall`, and every other event case pass through

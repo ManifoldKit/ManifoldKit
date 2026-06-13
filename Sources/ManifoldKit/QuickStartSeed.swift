@@ -27,7 +27,7 @@ import ManifoldInference
 
 // MARK: - QuickStartSeed
 
-/// Configures an opt-in model seed for ``ManifoldKit/ManifoldKit/quickStart(seed:)``.
+/// Configures an opt-in model seed for ``ManifoldKit/quickStart(configuration:seed:)``.
 ///
 /// When a ``QuickStartSeed`` is supplied, `quickStart` downloads a curated
 /// small model **before** the selection policy runs — so on first launch the
@@ -37,9 +37,9 @@ import ManifoldInference
 ///
 /// Seeding requires a *registered* backend capable of loading the seed's
 /// model type. The check is made against the live
-/// ``ManifoldInference/InferenceService`` registration state — not compile-time
+/// `InferenceService` registration state — not compile-time
 /// traits — so a Llama-capable backend injected at runtime via
-/// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)``
+/// ``ManifoldKit/quickStart(backends:configuration:seed:)``
 /// (from the manifold-llama companion package) enables the GGUF seed.
 ///
 /// ### Skip conditions

@@ -37,7 +37,7 @@ import ManifoldHuggingFace
 
 /// The umbrella namespace for ManifoldKit's high-level entry points.
 ///
-/// Today this hosts ``ManifoldKit/ManifoldKit/quickStart(configuration:)``;
+/// Today this hosts ``quickStart(configuration:)``;
 /// future top-level conveniences will land here so adopters have one
 /// well-known place to look.
 @MainActor
@@ -46,14 +46,13 @@ public enum ManifoldKit {
     /// Bootstraps a working chat runtime with sensible defaults in one call.
     ///
     /// Internally this:
-    /// 1. Drives ``ManifoldBootstrap/build(configuration:inferenceService:imageGenerationService:diagnostics:makeModelContainer:)``
-    ///    to completion (consuming its progress milestones).
-    /// 2. Registers the compiled-in default backends via
-    ///    ``DefaultBackends/register(with:)``.
-    /// 3. Constructs a ``ChatViewModel`` wired to the bootstrap's shared
-    ///    ``InferenceService``, persistence stores, and ``ConversationRuntime``.
+    /// 1. Drives `ManifoldBootstrap.build(...)` to completion (consuming its
+    ///    progress milestones).
+    /// 2. Registers the compiled-in default backends.
+    /// 3. Constructs a `ChatViewModel` wired to the bootstrap's shared
+    ///    `InferenceService`, persistence stores, and `ConversationRuntime`.
     ///
-    /// Errors thrown by any step are reduced through ``ManifoldKitError/from(_:)``
+    /// Errors thrown by any step are reduced through `ManifoldKitError.from(_:)`
     /// so callers always see the unified error rim instead of raw
     /// `URLError` / SwiftData errors.
     ///
@@ -65,7 +64,7 @@ public enum ManifoldKit {
     /// ```
     ///
     /// - Parameter configuration: The framework configuration. Defaults to
-    ///   ``ManifoldInference/ManifoldConfiguration/default`` — fine for
+    ///   `ManifoldConfiguration.default` — fine for
     ///   demos and tests, but production apps should pass an explicit
     ///   configuration with their own bundle identifier.
     /// - Returns: A ``QuickStartResult`` carrying the bootstrap, the chat view
@@ -100,7 +99,7 @@ public enum ManifoldKit {
     /// of the following is true:
     /// - A model is already available (Foundation or local disk).
     /// - No *registered* backend can load the seed's model type — checked
-    ///   against the live ``InferenceService`` registration state, so backends
+    ///   against the live `InferenceService` registration state, so backends
     ///   injected via ``quickStart(backends:configuration:seed:)`` count.
     ///   The curated GGUF seed therefore requires the manifold-llama companion
     ///   package's `LlamaBackends` registrar (see ``QuickStartSeed``).
@@ -119,7 +118,7 @@ public enum ManifoldKit {
     ///
     /// - Parameters:
     ///   - configuration: Framework configuration. Defaults to
-    ///     ``ManifoldInference/ManifoldConfiguration/default``.
+    ///     `ManifoldConfiguration.default`.
     ///   - seed: Opt-in seed configuration. Use
     ///     ``QuickStartSeed/recommended(useCase:device:foundationAvailable:onProgress:)``
     ///     to seed a *device-aware* starter model — a 64 GB M-series machine gets a
@@ -144,7 +143,7 @@ public enum ManifoldKit {
     ///
     /// This is the migration path for backends that live outside this package
     /// (the `manifold-mlx` / `manifold-llama` companion packages, #1749).
-    /// The compiled-in defaults (``DefaultBackends/registrars``) are registered
+    /// The compiled-in defaults are registered
     /// first, then every entry in `backends` — **before** the model registry
     /// refresh, the optional starter-model seed, and the model-selection
     /// policy run. Registering a backend only after `quickStart` returns is
@@ -164,7 +163,7 @@ public enum ManifoldKit {
     ///     defaults. Order follows array order; registering the same family
     ///     twice is harmless (last registration wins per model type).
     ///   - configuration: Framework configuration. Defaults to
-    ///     ``ManifoldInference/ManifoldConfiguration/default``.
+    ///     `ManifoldConfiguration.default`.
     ///   - seed: Optional starter-model seed, as in
     ///     ``quickStart(configuration:seed:)``. The seed sees the injected
     ///     backends: a GGUF seed downloads when any registered backend —
@@ -428,7 +427,7 @@ public enum ManifoldKit {
     /// decision table without driving a full bootstrap.
     enum BackendAvailabilityDiagnostic: Equatable {
         /// Nothing is registered at all — the service can never generate.
-        /// `quickStart` throws ``ManifoldKitError/noBackendsRegistered``.
+        /// `quickStart` throws `ManifoldKitError.noBackendsRegistered`.
         case noBackends
         /// Cloud providers are registered but no local backend is, and no
         /// endpoint has been configured — the service is degraded until the
@@ -511,17 +510,17 @@ public enum ManifoldKit {
     }
 }
 
-/// The result returned by ``ManifoldKit/ManifoldKit/quickStart(configuration:)``.
+/// The result returned by ``ManifoldKit/quickStart(configuration:)``.
 ///
 /// `bootstrap` owns the inference service, SwiftData container, persistence
-/// adapters, and ``ConversationRuntime``. Retain it for the lifetime of the
+/// adapters, and `ConversationRuntime`. Retain it for the lifetime of the
 /// chat runtime — releasing it tears down the underlying services.
 ///
-/// `viewModel` is the ``ChatViewModel`` wired against `bootstrap`. Pass it to
+/// `viewModel` is the `ChatViewModel` wired against `bootstrap`. Pass it to
 /// `ChatView` (or your own SwiftUI surface) as you would a manually
 /// constructed view model.
 ///
-/// `sessionManager` is a ``SessionManagerViewModel`` configured against the
+/// `sessionManager` is a `SessionManagerViewModel` configured against the
 /// same bootstrap and with its initial session page already loaded (#1425).
 /// Pass it to a sidebar or session-list surface alongside `viewModel` — no
 /// additional `configure` or `loadSessions` call is required.

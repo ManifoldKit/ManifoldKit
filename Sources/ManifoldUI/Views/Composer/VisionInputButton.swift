@@ -9,10 +9,10 @@ import ManifoldInference
 /// On iOS presents the Photos picker; on macOS opens a file-chooser panel
 /// restricted to image UTTypes. Stages the selected image via
 /// ``ChatViewModel/stageAttachment(_:)`` as a
-/// ``MessagePart/image(data:mimeType:placeholderHash:)`` part.
+/// `MessagePart.image(data:mimeType:placeholderHash:)` part.
 ///
-/// Only shown when the active backend's ``BackendCapabilities`` indicate
-/// vision support (``BackendCapabilities/supportsVision``). When vision is
+/// Only shown when the active backend's `BackendCapabilities` indicate
+/// vision support (`BackendCapabilities.supportsVision`). When vision is
 /// unsupported the button is hidden.
 ///
 /// ```swift
@@ -21,7 +21,8 @@ import ManifoldInference
 /// })
 /// ```
 ///
-/// Combine with ``VoiceComposerAccessory`` when your app supports both modalities:
+/// Combine with `VoiceComposerAccessory` (from `ManifoldVoice`) when your app
+/// supports both modalities:
 ///
 /// ```swift
 /// ChatView(showModelManagement: $show, composerAccessory: {
@@ -32,7 +33,7 @@ import ManifoldInference
 /// })
 /// ```
 ///
-/// > Note: On iOS, ``PhotoAttachmentButton`` provides equivalent functionality
+/// > Note: On iOS, `PhotoAttachmentButton` provides equivalent functionality
 /// > but is restricted to that platform. Prefer ``VisionInputButton`` for
 /// > cross-platform codebases.
 public struct VisionInputButton: View {

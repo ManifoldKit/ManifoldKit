@@ -1,7 +1,7 @@
 import Foundation
 
-/// A typed conversation message used by ``InferenceService/enqueue(messages:...)``
-/// (the typed overload) and ``InferenceService/generate(messages:...)``.
+/// A typed conversation message used by `InferenceService.enqueue(messages:...)`
+/// (the typed overload) and `InferenceService.generate(messages:...)`.
 ///
 /// **Not the same as `ChatMessage` / `ChatMessage`.** Those types live
 /// further down the stack:

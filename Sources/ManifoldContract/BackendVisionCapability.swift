@@ -6,7 +6,7 @@
 /// `ManifoldFoundation`, `ManifoldCloud`) share a single source of truth.
 /// Returning `true` means the backend has both a model family known to
 /// accept images and an implemented request/generation path that preserves
-/// ``MessagePart/image`` payloads.
+/// `MessagePart.image(data:mimeType:placeholderHash:)` payloads.
 public enum BackendVisionCapability {
     public static var llamaSupportsImageInput: Bool { false }
 
