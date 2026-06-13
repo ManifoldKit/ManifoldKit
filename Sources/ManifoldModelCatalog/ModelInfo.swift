@@ -42,6 +42,19 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     /// Best-effort KV-cache bytes-per-token estimate derived from GGUF metadata.
     public var estimatedKVBytesPerToken: UInt64?
 
+    /// Approximate quantized bytes streamed per decode token-pass — the active
+    /// experts plus always-on weights. For dense models this equals the total
+    /// weight size; `nil` means dense-or-unknown, and callers fall back to total
+    /// size. Used only to rank MoE decode speed, never for memory-fit (all
+    /// experts must be resident).
+    ///
+    // Left `nil` on every GGUF path for now: the header-only GGUFMetadataReader
+    // never sums per-tensor bytes (it deliberately skips the tensor section), so
+    // a sound active-byte estimate from expert_count/feed_forward_length alone is
+    // not derivable here without inventing numbers. Reserved for curated/manifest
+    // population, which carries trustworthy active-weight sizes.
+    public var activeParameterBytes: UInt64?
+
     // MARK: - Capability
 
     /// Static capability tier for this model, derived from file size at init time.
@@ -357,6 +370,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         modelArchitecture: String? = nil,
         chatTemplateRaw: String? = nil,
         estimatedKVBytesPerToken: UInt64? = nil,
+        activeParameterBytes: UInt64? = nil,
         capabilityTier: ModelCapabilityTier? = nil,
         benchmarkResult: ModelBenchmarkResult? = nil,
         huggingFaceRepoID: String? = nil
@@ -373,6 +387,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         self.modelArchitecture = modelArchitecture
         self.chatTemplateRaw = chatTemplateRaw
         self.estimatedKVBytesPerToken = estimatedKVBytesPerToken
+        self.activeParameterBytes = activeParameterBytes
         self.capabilityTier = capabilityTier
         self.benchmarkResult = benchmarkResult
         self.huggingFaceRepoID = huggingFaceRepoID
