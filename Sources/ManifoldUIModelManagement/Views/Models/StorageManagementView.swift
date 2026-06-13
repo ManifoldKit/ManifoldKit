@@ -57,6 +57,16 @@ public struct StorageManagementView: View {
                 downloadedModelsSection(modelRegistry: modelRegistry)
             }
             .navigationTitle("Storage")
+            // Populate the cached storage snapshot off-main on appear, not on every
+            // body eval (#1787). Single-flight inside the view model.
+            .task {
+                managementViewModel.refreshDiscoveredModels()
+            }
+            // A finished download adds a file on disk; refresh the cached snapshot
+            // so totalStorageUsed updates without an app restart.
+            .onChange(of: managementViewModel.completedDownloadCount) { _, _ in
+                managementViewModel.forceRefreshDiscoveredModels()
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
@@ -98,8 +108,15 @@ public struct StorageManagementView: View {
             HStack {
                 Label("Total Used", systemImage: "externaldrive.fill")
                 Spacer()
-                Text(managementViewModel.totalStorageUsed)
-                    .foregroundStyle(.secondary)
+                // Show a placeholder during the first scan rather than a false
+                // "0 KB" before the cache is populated (#1787).
+                if managementViewModel.isRefreshingModels && !managementViewModel.hasLoadedModelsOnce {
+                    Text("Calculating…")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(managementViewModel.totalStorageUsed)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
