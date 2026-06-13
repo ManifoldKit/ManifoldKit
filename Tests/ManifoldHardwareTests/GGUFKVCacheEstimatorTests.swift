@@ -219,4 +219,23 @@ final class GGUFKVCacheEstimatorTests: XCTestCase {
             "scaling a near-ceiling product by bytesPerElement must guard overflow and yield nil"
         )
     }
+
+    /// `gqaWidth`'s Int multiply (`explicitHeadLength * kvHeadCount`) is itself
+    /// reachable with crafted values and a trapping `*` would crash the process
+    /// before the UInt64 guards run. A huge head length paired with a huge KV
+    /// head count must return nil, not abort. (5e9 × 5e9 ≈ 2.5e19 > Int.max.)
+    func test_estimateBytesPerToken_gqaWidthIntOverflow_returnsNil() {
+        let parameters = GGUFKVCacheParameters(
+            blockCount: 1,
+            attentionHeadCount: 5_000_000_000,
+            attentionHeadCountKV: 5_000_000_000,
+            attentionKeyLength: 5_000_000_000,
+            attentionValueLength: 5_000_000_000
+        )
+
+        XCTAssertNil(
+            GGUFKVCacheEstimator.estimateBytesPerToken(from: parameters),
+            "gqaWidth Int multiply overflowing must yield nil, not trap the process"
+        )
+    }
 }

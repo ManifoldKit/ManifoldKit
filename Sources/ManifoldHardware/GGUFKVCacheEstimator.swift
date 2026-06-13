@@ -74,8 +74,13 @@ public enum GGUFKVCacheEstimator {
         // unchecked UInt64 multiply would wrap to a tiny per-token estimate, so
         // ModelLoadPlan would report `.allow` and then OOM at inference. On any
         // overflow, return nil so the caller's conservative no-estimate fallback
-        // (legacyFallbackBytesPerToken) engages instead.
-        let widthSum = keyWidth + valueWidth
+        // (legacyFallbackBytesPerToken) engages instead. The Int sum below is
+        // also overflow-checked: a trapping `+` would crash the process on a
+        // crafted file rather than route to the fallback (gqaWidth itself is
+        // overflow-hardened for the same reason).
+        let (widthSum, sumOverflow) = keyWidth.addingReportingOverflow(valueWidth)
+        guard !sumOverflow else { return nil }
+
         let (perTokenElements, widthOverflow) = UInt64(blockCount)
             .multipliedReportingOverflow(by: UInt64(widthSum))
         guard !widthOverflow else { return nil }
@@ -103,8 +108,12 @@ public enum GGUFKVCacheEstimator {
         headCount: Int?,
         kvHeadCount: Int
     ) -> Int? {
+        // Overflow-checked Int multiplies: a crafted GGUF can pair a huge head
+        // length with a huge kvHeadCount; a trapping `*` would crash the process
+        // instead of routing to the conservative fallback. Return nil on overflow.
         if let explicitHeadLength = positive(explicitHeadLength) {
-            return explicitHeadLength * kvHeadCount
+            let (width, overflow) = explicitHeadLength.multipliedReportingOverflow(by: kvHeadCount)
+            return overflow ? nil : width
         }
 
         guard let embeddingLength = positive(embeddingLength),
@@ -113,7 +122,8 @@ public enum GGUFKVCacheEstimator {
             return nil
         }
 
-        return (embeddingLength / headCount) * kvHeadCount
+        let (width, overflow) = (embeddingLength / headCount).multipliedReportingOverflow(by: kvHeadCount)
+        return overflow ? nil : width
     }
 
     private static func positive(_ value: Int?) -> Int? {
