@@ -368,6 +368,230 @@ final class ConversationRunStateTests: XCTestCase {
         XCTAssertEqual(stored.status, .cancelled, "Persisted run must reflect cancelled status")
     }
 
+    // MARK: - Resume from store (M1 replay-from-provider)
+
+    /// Records the step indices a provider was asked for. An actor keeps the
+    /// recorder safe under the driver's off-main-actor step loop.
+    private actor IndexRecorder {
+        private(set) var requested: [Int] = []
+        func record(_ index: Int) { requested.append(index) }
+    }
+
+    /// Counting provider that records which step indices it was asked for, so
+    /// resume tests can assert the loop skipped already-completed steps.
+    /// Idempotent: keys only on `stepIndex` and `run.goal` (satisfies the
+    /// M1 ``RunInputProvider`` contract).
+    private struct RecordingCountingProvider: RunInputProvider {
+        let stepCount: Int
+        let recorder: IndexRecorder
+        func nextInput(
+            for run: ConversationRun,
+            stepIndex: Int,
+            prior: RunStep?
+        ) async -> TurnInput? {
+            await recorder.record(stepIndex)
+            guard stepIndex < stepCount else { return nil }
+            return TurnInput(
+                sessionID: run.sessionID,
+                kind: .send(text: "step-\(stepIndex)"),
+                config: TurnConfig()
+            )
+        }
+    }
+
+    func test_resume_continuesFromCheckpoint() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let service = InferenceService(backend: backend, name: "ResumeTest")
+
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+
+        // Pre-seed: a running run (maxSteps 3) with step 0 already completed.
+        let runID = UUID()
+        let sessionID = UUID()
+        let now = Date()
+        let seededRun = ConversationRun(
+            id: runID, sessionID: sessionID, goal: "resume me",
+            status: .running, stepCount: 1, maxSteps: 3,
+            createdAt: now, updatedAt: now
+        )
+        try await runStore.insertRun(seededRun)
+        let step0 = RunStep(
+            id: UUID(), runID: runID, stepIndex: 0,
+            turnInput: TurnInput(sessionID: sessionID, kind: .send(text: "step-0")),
+            messageID: nil, isCompleted: true, isFailed: false, failureReason: nil,
+            createdAt: now, updatedAt: now
+        )
+        try await runStore.insertStep(step0)
+
+        let recorder = IndexRecorder()
+        let provider = RecordingCountingProvider(stepCount: 3, recorder: recorder)
+        var events: [RunEvent] = []
+        let end = ContinuousClock.now.advanced(by: .seconds(15))
+        for await event in runtime.resumeRun(runID, using: provider) {
+            events.append(event)
+            if case .runCompleted = event { break }
+            if case .runFailed = event { break }
+            if ContinuousClock.now > end { break }
+        }
+
+        // The provider was asked for indices 1 and 2 (not 0 — already done),
+        // then 3 (which returns nil → completion is the maxSteps guard anyway).
+        let requested = await recorder.requested
+        XCTAssertEqual(requested, [1, 2],
+                       "Resume must re-drive only the not-yet-completed indices")
+
+        // Resume announces itself, then runs steps 1 and 2.
+        XCTAssertTrue(events.contains { if case .runResumed = $0 { return true }; return false },
+                      "Expected a .runResumed event on resume")
+        let startedIndices: [Int] = events.compactMap {
+            if case let .stepStarted(_, idx, _) = $0 { return idx }
+            return nil
+        }
+        XCTAssertEqual(startedIndices, [1, 2], "Resume should start steps 1 and 2 only")
+        XCTAssertTrue(events.contains { if case .runCompleted = $0 { return true }; return false },
+                      "Run should complete after reaching maxSteps")
+
+        let fetchedForAssert = try await runStore.fetchRun(runID)
+        let stored = try XCTUnwrap(fetchedForAssert)
+        XCTAssertEqual(stored.status, .completed)
+        XCTAssertEqual(stored.stepCount, 3, "stepCount = 1 seeded + 2 resumed")
+
+        // The completed steps in the store are 0 (seeded), 1, 2.
+        let completed = try await runStore.fetchSteps(for: runID).filter(\.isCompleted)
+        XCTAssertEqual(completed.map(\.stepIndex), [0, 1, 2])
+    }
+
+    func test_resume_unknownRunID_failsWithoutExecution() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let service = InferenceService(backend: backend, name: "ResumeUnknownTest")
+
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+
+        let unknownID = UUID()
+        let recorder = IndexRecorder()
+        let provider = RecordingCountingProvider(stepCount: 3, recorder: recorder)
+        var events: [RunEvent] = []
+        for await event in runtime.resumeRun(unknownID, using: provider) {
+            events.append(event)
+        }
+
+        XCTAssertEqual(events.count, 1, "Unknown run should emit exactly one terminal event")
+        guard case let .runFailed(failedID, reason) = events.first else {
+            return XCTFail("Expected .runFailed for an unknown run id")
+        }
+        XCTAssertEqual(failedID, unknownID)
+        XCTAssertTrue(reason.contains(unknownID.uuidString), "Reason should name the missing run id")
+        let requested = await recorder.requested
+        XCTAssertTrue(requested.isEmpty, "No steps should be driven for an unknown run")
+    }
+
+    func test_resume_alreadyCompletedRun_emitsTerminalWithoutExecution() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let service = InferenceService(backend: backend, name: "ResumeCompletedTest")
+
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+
+        let runID = UUID()
+        let now = Date()
+        let completedRun = ConversationRun(
+            id: runID, sessionID: UUID(), goal: "done",
+            status: .completed, stepCount: 2, maxSteps: nil,
+            createdAt: now, updatedAt: now
+        )
+        try await runStore.insertRun(completedRun)
+
+        let recorder = IndexRecorder()
+        let provider = RecordingCountingProvider(stepCount: 3, recorder: recorder)
+        var events: [RunEvent] = []
+        for await event in runtime.resumeRun(runID, using: provider) {
+            events.append(event)
+        }
+
+        XCTAssertEqual(events.count, 1, "A finished run should emit one terminal event only")
+        guard case let .runCompleted(id, stepCount) = events.first else {
+            return XCTFail("Expected .runCompleted terminal event for an already-completed run")
+        }
+        XCTAssertEqual(id, runID)
+        XCTAssertEqual(stepCount, 2)
+        let requested = await recorder.requested
+        XCTAssertTrue(requested.isEmpty, "No steps should be driven for a finished run")
+    }
+
+    func test_startRun_unchanged_startsAtIndexZero() async throws {
+        // Regression guard: after extracting the shared loop, a fresh startRun
+        // must still begin at index 0 (priorStep nil) and run all provider steps.
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let service = InferenceService(backend: backend, name: "StartRunRegressionTest")
+
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+
+        let recorder = IndexRecorder()
+        let provider = RecordingCountingProvider(stepCount: 2, recorder: recorder)
+        let run = ConversationRun(sessionID: UUID(), goal: "fresh")
+        var events: [RunEvent] = []
+        let end = ContinuousClock.now.advanced(by: .seconds(15))
+        for await event in runtime.startRun(run, using: provider) {
+            events.append(event)
+            if case .runCompleted = event { break }
+            if case .runFailed = event { break }
+            if ContinuousClock.now > end { break }
+        }
+
+        let requested = await recorder.requested
+        XCTAssertEqual(requested.first, 0, "Fresh startRun must begin at index 0")
+        XCTAssertTrue(events.contains { if case .runStarted = $0 { return true }; return false },
+                      "Fresh startRun must emit .runStarted, not .runResumed")
+        XCTAssertFalse(events.contains { if case .runResumed = $0 { return true }; return false },
+                       "Fresh startRun must not emit .runResumed")
+        let startedIndices: [Int] = events.compactMap {
+            if case let .stepStarted(_, idx, _) = $0 { return idx }
+            return nil
+        }
+        XCTAssertEqual(startedIndices, [0, 1])
+    }
+
     // MARK: - startRun on non-ResumableRunDriver runtime
 
     func test_startRun_withoutResumableDriver_returnsEmptyStream() async throws {

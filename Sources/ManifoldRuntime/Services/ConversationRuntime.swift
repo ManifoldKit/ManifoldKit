@@ -536,6 +536,42 @@ public final class ConversationRuntime: Sendable {
         )
     }
 
+    /// Resumes a previously-checkpointed ``ConversationRun`` from the
+    /// ``RunStore`` and continues it from the first not-yet-completed step.
+    ///
+    /// Available only when the runtime was initialised with a
+    /// ``ResumableRunDriver``. Unlike ``ResumableRunDriver/resumeRun()`` (which
+    /// flips an in-memory pause flag on the live run), this reloads the run and
+    /// its steps from the store, making it a durable cross-process resume.
+    ///
+    /// Calling this method when the runtime uses the default
+    /// ``SingleTurnDriver`` logs a warning and returns an immediately-finishing
+    /// stream.
+    ///
+    /// - Parameters:
+    ///   - runID:  The id of the persisted run to resume.
+    ///   - using:  The input provider that drives step synthesis. Must satisfy
+    ///             the idempotency contract on
+    ///             ``RunInputProvider/nextInput(for:stepIndex:prior:)``.
+    /// - Returns: A stream of ``RunEvent`` values.
+    public func resumeRun(
+        _ runID: UUID,
+        using provider: any RunInputProvider = FixedGoalRunInputProvider()
+    ) -> AsyncStream<RunEvent> {
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else {
+            Log.inference.warning(
+                "ConversationRuntime.resumeRun: runtime was not configured with a ResumableRunDriver; ignoring."
+            )
+            return AsyncStream { $0.finish() }
+        }
+        return resumableDriver.resume(
+            runID: runID,
+            using: provider,
+            executor: executor,
+            taskRegistry: turnTasks
+        )
+    }
+
     // MARK: Secondary event taps
 
     /// Installs a secondary multicast tap on this runtime's event flow.

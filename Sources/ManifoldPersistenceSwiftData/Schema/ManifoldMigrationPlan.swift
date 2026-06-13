@@ -10,6 +10,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV7.self,
             ManifoldSchemaV8.self,
             ManifoldSchemaV9.self,
+            ManifoldSchemaV10.self,
         ]
     }
 
@@ -27,6 +28,10 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             // agentID to ChatMessage, and a new Agent @Model. All new fields default
             // to nil/empty so no data motion is required.
             .lightweight(fromVersion: ManifoldSchemaV8.self, toVersion: ManifoldSchemaV9.self),
+            // V10 adds ConversationRunModel + RunStepModel for resumable runs
+            // (P3b #1784). Two new @Model types, purely additive — no existing
+            // column changes, no data motion.
+            .lightweight(fromVersion: ManifoldSchemaV9.self, toVersion: ManifoldSchemaV10.self),
         ]
     }
 }

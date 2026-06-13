@@ -15,7 +15,7 @@ import ManifoldInference
 ///
 /// Identical for `send`, `regenerate`, `edit`, and `branch`. The runtime reads
 /// these once per turn and forwards them to ``InferenceService/enqueueAsync(...)``.
-public struct TurnConfig: Sendable, Equatable {
+public struct TurnConfig: Sendable, Equatable, Codable {
     public let systemPrompt: String?
     public let temperature: Float
     public let topP: Float
@@ -64,7 +64,7 @@ public struct TurnConfig: Sendable, Equatable {
 /// turn; `edit` rewrites a message and re-runs trailing generation;
 /// `branch` forks a session at a chosen message and optionally generates on
 /// the new fork.
-public enum TurnKind: Sendable {
+public enum TurnKind: Sendable, Codable {
     /// New user message — persists `text` (and any image/file attachments) as
     /// a `.user` record before generation begins.
     ///
@@ -110,7 +110,7 @@ public enum TurnKind: Sendable {
 /// ``ConversationRuntime/regenerate(_:)`` etc.) are kept as thin wrappers
 /// that build a `TurnInput` for callers still passing the legacy `*Input`
 /// structs.
-public struct TurnInput: Sendable {
+public struct TurnInput: Sendable, Codable {
     /// The session this turn targets. For `.branch`, this is the **source**
     /// session — the new session ID lives on the kind payload.
     public let sessionID: UUID
