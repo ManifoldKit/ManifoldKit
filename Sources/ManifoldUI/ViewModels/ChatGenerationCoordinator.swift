@@ -106,6 +106,14 @@ final class ChatGenerationCoordinator {
     /// Handle to the in-flight ConversationRuntime stream.
     var activeConversationStreamHandle: ConversationStreamHandle?
 
+    /// Continuations parked by ``awaitStreamCompletion()`` while a stream is
+    /// in flight. why: replaces a 1ms busy-poll with an event-driven seam —
+    /// each terminal handler resumes these once the handle clears. Because the
+    /// coordinator is `@MainActor`, every append/drain runs on the same actor,
+    /// so the array needs no lock to be race-free.
+    @ObservationIgnored
+    private var streamCompletionWaiters: [CheckedContinuation<Void, Never>] = []
+
     /// The assistant `messageID` from the most-recent `streamStarted` event.
     /// Terminal events for prior turns (post-switch) carry a different ID and
     /// must not clobber the new turn's handle.
@@ -160,6 +168,9 @@ final class ChatGenerationCoordinator {
         if let handle = activeConversationStreamHandle {
             await conversationRuntime.cancel(handle)
             activeConversationStreamHandle = nil
+            // why: teardown clears the handle outside the event drain, so wake
+            // any caller parked in awaitStreamCompletion() here too.
+            resumeStreamCompletionWaiters()
         }
     }
 
@@ -226,21 +237,24 @@ final class ChatGenerationCoordinator {
 
     /// Suspends until `activeConversationStreamHandle` becomes `nil`.
     func awaitStreamCompletion() async {
-        // Yield once before entering the sleep loop so the runtime event drain
-        // task gets an immediate scheduling opportunity on the same actor.
+        // Yield once so the runtime event drain task gets an immediate
+        // scheduling opportunity on the same actor before we park.
         await Task.yield()
-        while activeConversationStreamHandle != nil {
-            // TODO: replace busy-poll with a continuation-based seam signaled
-            // from the `streamFinished` handler. Safe today thanks to the 2s
-            // timeout in the awaitStreamCompletion test.
-            // Sleep rather than yield so concurrent callers don't starve the
-            // runtime event drain task that clears the handle.
-            do {
-                try await Task.sleep(for: .milliseconds(1))
-            } catch {
-                break
-            }
-        }
+        // why: park on a continuation instead of polling. The terminal handlers
+        // clear the handle and call `resumeStreamCompletionWaiters()`, which
+        // wakes every parked caller. @MainActor serialization guarantees the
+        // nil check and the append cannot interleave with a resume.
+        guard activeConversationStreamHandle != nil else { return }
+        await withCheckedContinuation { streamCompletionWaiters.append($0) }
+    }
+
+    /// Wakes every caller parked in ``awaitStreamCompletion()`` once the active
+    /// stream handle has been cleared. No-op while a stream is still in flight.
+    private func resumeStreamCompletionWaiters() {
+        guard activeConversationStreamHandle == nil else { return }
+        let waiters = streamCompletionWaiters
+        streamCompletionWaiters = []
+        for waiter in waiters { waiter.resume() }
     }
 
     // MARK: - Post-Generation Tasks
@@ -356,6 +370,7 @@ final class ChatGenerationCoordinator {
             activeConversationMessageID = nil
 
             activeConversationStreamHandle = nil
+            resumeStreamCompletionWaiters()
             transitionPhase(to: .idle)
             updateContextEstimate()
 
@@ -405,6 +420,7 @@ final class ChatGenerationCoordinator {
             }
             activeConversationStreamHandle = nil
             activeConversationMessageID = nil
+            resumeStreamCompletionWaiters()
             transitionPhase(to: .idle)
 
         // MARK: Thinking-block disclosure
@@ -518,6 +534,7 @@ final class ChatGenerationCoordinator {
 
     private func applyTerminalOutcome(_ outcome: ConversationTurnOutcome) {
         activeConversationStreamHandle = nil
+        resumeStreamCompletionWaiters()
         activeConversationMessageID = nil
         transitionPhase(to: .idle)
 
