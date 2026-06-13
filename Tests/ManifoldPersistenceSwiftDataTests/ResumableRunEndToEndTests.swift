@@ -103,13 +103,14 @@ final class ResumableRunEndToEndTests: XCTestCase {
         let storeURL = try makeStoreURL()
         let sessionID = UUID()
         let recorder = IndexRecorder()
-        let totalSteps = 3
+        let totalSteps = 4
 
         // ── Phase 1: start a run, let it checkpoint at least one step, then
         // simulate process death by dropping the bootstrap mid-flight. We cap
         // consumption after the first completed step so step 0 is durably
         // checkpointed but the run never reaches a terminal state.
         let runID: UUID
+        let completedAtCrash: Int
         do {
             let bootstrap = try makeResumableBootstrap(storeURL: storeURL)
             let store = try XCTUnwrap(bootstrap.runStore, "enableResumableRuns must expose a runStore")
@@ -122,34 +123,52 @@ final class ResumableRunEndToEndTests: XCTestCase {
 
             let provider = RecordingProvider(totalSteps: totalSteps, recorder: recorder)
             var sawFirstStepCompleted = false
-            var sawPaused = false
+            var loopFinished = false
             for await event in bootstrap.conversationRuntime.startRun(run, using: provider) {
                 switch event {
                 case .stepCompleted(_, 0, _, _):
                     sawFirstStepCompleted = true
-                    // Request a pause: the loop parks after the current step
-                    // without driving step 1 to completion.
-                    await bootstrap.conversationRuntime.pauseActiveRun()
-                case .runPaused:
-                    sawPaused = true
-                    // The loop is now parked in its pause-poll. Stop consuming
-                    // and drop the bootstrap — "process death" while paused.
+                    // Stop the loop *cleanly* once a step is durably checkpointed.
+                    // We must not abandon a still-running loop: it would keep a
+                    // second SwiftData ModelContainer live over this same on-disk
+                    // store while phase 2 opens a fresh one, and two containers on
+                    // one file in one process corrupts CoreData (intermittent
+                    // SIGSEGV in sibling suites under the parallel gate). Cancelling
+                    // lets the loop terminate and release its container; we then
+                    // rewrite the persisted status back to a non-terminal value to
+                    // model the real crash state — a process killed mid-run, before
+                    // any terminal transition, with its completed prefix intact.
+                    await bootstrap.conversationRuntime.cancelActiveRun()
+                case .runCancelled, .runCompleted, .runFailed:
+                    loopFinished = true
                 default:
                     break
                 }
-                if sawPaused { break }
+                if loopFinished { break }
             }
             XCTAssertTrue(sawFirstStepCompleted, "Run did not checkpoint its first step")
-            XCTAssertTrue(sawPaused, "Run did not reach a durable paused checkpoint")
+            XCTAssertTrue(loopFinished, "Run loop did not terminate")
 
-            // The store must hold a non-terminal run with exactly one completed step.
-            let fetched = try await store.fetchRun(runID)
-            let persisted = try XCTUnwrap(fetched)
-            XCTAssertNotEqual(persisted.status, .completed, "Run should not be terminal yet")
-            let steps = try await store.fetchSteps(for: runID)
-            let completed = steps.filter(\.isCompleted)
-            XCTAssertEqual(completed.count, 1, "Expected exactly one completed step at crash time")
-            XCTAssertEqual(completed.first?.stepIndex, 0)
+            // The completed steps must form a contiguous prefix from 0. Exactly how
+            // many completed before the cancel took effect is timing-dependent (the
+            // loop may finish the in-flight step first), so we capture the actual
+            // count and drive every downstream assertion off it — testing the real
+            // durability contract (resume from wherever it checkpointed) rather than
+            // a fragile exact count.
+            let completedIndices = try await store.fetchSteps(for: runID)
+                .filter(\.isCompleted).map(\.stepIndex).sorted()
+            XCTAssertGreaterThanOrEqual(completedIndices.count, 1, "Run did not durably checkpoint a step")
+            XCTAssertLessThan(completedIndices.count, totalSteps, "Run finished before it could be resumed")
+            XCTAssertEqual(completedIndices, Array(0..<completedIndices.count),
+                           "Completed steps must form a contiguous prefix from 0")
+            completedAtCrash = completedIndices.count
+
+            // Restore the non-terminal state a kill would have left (the cancel was
+            // only our in-test mechanism for stopping the loop deterministically).
+            let fetchedMidRun = try await store.fetchRun(runID)
+            var midRun = try XCTUnwrap(fetchedMidRun)
+            midRun.status = .running
+            try await store.updateRun(midRun)
         }
 
         let indicesBeforeResume = await recorder.snapshot()
@@ -177,10 +196,11 @@ final class ResumableRunEndToEndTests: XCTestCase {
             }
         }
 
-        // Resume started from the persisted checkpoint (1 completed step).
-        XCTAssertEqual(resumedAtStepCount, 1, "Resume did not start from the persisted checkpoint")
-        // The first step re-driven on resume is index 1 — step 0 was NOT re-run.
-        XCTAssertEqual(firstStepStartedIndex, 1, "Resume re-ran an already-completed step")
+        // Resume started from the persisted checkpoint (the completed-step count).
+        XCTAssertEqual(resumedAtStepCount, completedAtCrash, "Resume did not start from the persisted checkpoint")
+        // The first step re-driven on resume is the first incomplete index — the
+        // already-completed prefix was NOT re-run.
+        XCTAssertEqual(firstStepStartedIndex, completedAtCrash, "Resume re-ran an already-completed step")
         // The run reached completion with the full step count.
         XCTAssertEqual(finalStepCount, totalSteps)
 
@@ -188,8 +208,9 @@ final class ResumableRunEndToEndTests: XCTestCase {
         // resume — completed step 0 was never re-driven.
         let indicesAfterResume = await recorder.snapshot()
         let resumeOnlyIndices = Array(indicesAfterResume.dropFirst(indicesBeforeResume.count))
-        XCTAssertFalse(resumeOnlyIndices.contains(0), "Resume re-drove the completed step 0")
-        XCTAssertEqual(resumeOnlyIndices.min(), 1, "Resume should begin at the first incomplete index")
+        XCTAssertFalse(resumeOnlyIndices.contains(where: { $0 < completedAtCrash }),
+                       "Resume re-drove an already-completed step")
+        XCTAssertEqual(resumeOnlyIndices.min(), completedAtCrash, "Resume should begin at the first incomplete index")
 
         // The durable record is terminal-completed with the expected step count.
         let finalFetched = try await resumeStore.fetchRun(runID)
