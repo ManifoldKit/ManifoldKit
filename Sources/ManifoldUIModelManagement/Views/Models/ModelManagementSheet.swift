@@ -142,7 +142,14 @@ public struct ModelManagementSheet: View {
             } catch {
                 Log.download.warning("ModelManagementSheet: registry refresh on appear failed: \(error)")
             }
-            managementViewModel.invalidateModelCache()
+            // why: do NOT blanket-invalidate the discovery cache here. The old
+            // unconditional invalidateModelCache() forced a full synchronous GGUF
+            // rescan on every sheet open (~2s main-thread stall, #1774). The cache
+            // is now invalidated only on real mutations — download completion
+            // (startDownloadSync), delete (deleteModel), and import (importModel) —
+            // so a re-appear with no change keeps the cache. Deferred follow-up:
+            // move discoverModels() off the main thread so even the first scan
+            // doesn't stall.
         }
     }
 

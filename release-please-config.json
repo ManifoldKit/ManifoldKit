@@ -14,7 +14,15 @@
     },
     {
       "type": "generic",
+      "path": "docs/QUICKSTART-APPINTENTS.md"
+    },
+    {
+      "type": "generic",
       "path": "docs/QUICKSTART-CLI.md"
+    },
+    {
+      "type": "generic",
+      "path": "docs/QUICKSTART-RAG.md"
     },
     {
       "type": "generic",

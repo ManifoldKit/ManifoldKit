@@ -410,6 +410,9 @@ public final class ModelManagementViewModel {
             // Timestamps of when each download first reached a terminal state.
             // Used to enforce a short display window before removal.
             var terminalSince: [String: Date] = [:]
+            // IDs already counted as completed, so the discovery cache is
+            // invalidated exactly once per finished download (#1774).
+            var invalidatedForCompletion: Set<String> = []
 
             while !Task.isCancelled {
                 guard let self, let manager = self.downloadManager else { break }
@@ -418,6 +421,14 @@ public final class ModelManagementViewModel {
                 let managerDownloads = manager.activeDownloads
                 for (id, state) in managerDownloads {
                     self.trackedDownloads[id] = state
+                    // why: a finished download adds a new file on disk. Invalidate
+                    // the discovery cache here (the single completion observation
+                    // point) so every download path stays fresh without the old
+                    // blanket onAppear rescan.
+                    if case .completed = state.status, !invalidatedForCompletion.contains(id) {
+                        invalidatedForCompletion.insert(id)
+                        self.invalidateModelCache()
+                    }
                 }
 
                 // Record when each download first reaches a terminal state.
@@ -501,6 +512,10 @@ public final class ModelManagementViewModel {
     /// Deletes a downloaded model from disk.
     public func deleteModel(_ model: ModelInfo) throws {
         try modelStorage.deleteModel(model)
+        // why: a delete changes what's on disk, so the discovery cache must be
+        // refreshed. Previously the sheet's onAppear blanket-invalidated on every
+        // open; now invalidation happens at the mutation point (#1774).
+        invalidateModelCache()
         Log.download.info("Deleted model: \(model.name)")
     }
 

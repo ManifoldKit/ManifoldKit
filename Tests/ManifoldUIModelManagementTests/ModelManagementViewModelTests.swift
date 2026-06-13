@@ -255,6 +255,58 @@ final class ModelManagementViewModelTests: XCTestCase {
         )
     }
 
+    /// Regression for #1774: the discovery cache must be RETAINED across a
+    /// simulated sheet re-appear when nothing changed. The old
+    /// `ModelManagementSheet.onAppear` blanket-called `invalidateModelCache()`,
+    /// forcing a full synchronous GGUF rescan (~2s main-thread stall) every open.
+    /// We prove retention by populating the cache, then mutating the filesystem
+    /// out-of-band: a retained cache keeps reporting the pre-mutation answer
+    /// (a rescan would pick up the new file). An explicit invalidation then
+    /// re-syncs, confirming the cache is a real cache, not a no-op.
+    func test_discoveryCache_retainedAcrossReappear_whenNothingChanged() throws {
+        let isolated = makeIsolatedModelStorage()
+        let vm = ModelManagementViewModel(modelStorage: isolated.service)
+        defer {
+            try? FileManager.default.removeItem(atPath: vm.modelsDirectoryPath)
+            try? FileManager.default.removeItem(at: isolated.directory)
+        }
+
+        let fileName = "cached-\(UUID().uuidString).gguf"
+        let model = DownloadableModel(
+            repoID: "test/cached",
+            fileName: fileName,
+            displayName: "Cached Model",
+            modelType: .gguf,
+            sizeBytes: 1_000_000
+        )
+
+        // Populate the cache while the file is absent.
+        XCTAssertFalse(vm.isModelDownloaded(model), "Precondition: file not yet on disk")
+
+        // Write the file directly to the models directory, simulating a change
+        // that a blanket re-discovery would observe but a retained cache must not.
+        let modelsDir = URL(fileURLWithPath: vm.modelsDirectoryPath)
+        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        let onDisk = modelsDir.appendingPathComponent(fileName)
+        var fixture = Data([0x47, 0x47, 0x55, 0x46]) // GGUF magic
+        fixture.append(Data(repeating: 0xAB, count: 4096 - 4))
+        try fixture.write(to: onDisk)
+
+        // A sheet re-appear no longer invalidates, so the cache is retained and
+        // still reports the pre-write answer (no synchronous rescan happened).
+        XCTAssertFalse(
+            vm.isModelDownloaded(model),
+            "Discovery cache should be retained across a no-change re-appear (#1774)"
+        )
+
+        // An explicit invalidation (real state change) re-syncs from disk.
+        vm.invalidateModelCache()
+        XCTAssertTrue(
+            vm.isModelDownloaded(model),
+            "invalidateModelCache should force a fresh scan that finds the new file"
+        )
+    }
+
     // MARK: - Downloads
 
     func test_startDownload_withNoDownloadManager_setsError() {
