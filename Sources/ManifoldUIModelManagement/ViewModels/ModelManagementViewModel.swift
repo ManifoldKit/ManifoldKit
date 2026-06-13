@@ -149,6 +149,26 @@ public final class ModelManagementViewModel {
     /// Cached set of file names from `discoverModels()` to avoid N+1 filesystem scans.
     private var discoveredModelFileNames: Set<String>?
 
+    /// Cached snapshot of models discovered on disk.
+    ///
+    /// Stored `@Observable` state — NOT a computed property — so SwiftUI reads it
+    /// from a cache instead of triggering a ~2s synchronous disk scan on every
+    /// `body` evaluation (#1787). Populated by ``refreshDiscoveredModels()``,
+    /// which hops the scan off the main actor.
+    public private(set) var discoveredModels: [ModelInfo] = []
+
+    /// `true` while an off-main model discovery scan is in flight.
+    public private(set) var isRefreshingModels = false
+
+    /// `true` once the first discovery scan has completed (regardless of result).
+    ///
+    /// Lets the UI distinguish "scan in progress, no data yet" from "scanned,
+    /// genuinely zero models" so it never paints a false "0 GB" on first render.
+    public private(set) var hasLoadedModelsOnce = false
+
+    /// The in-flight discovery task, used for single-flight de-duplication.
+    private var refreshTask: Task<Void, Never>?
+
     // MARK: - Initialisation
 
     public init(
@@ -211,8 +231,13 @@ public final class ModelManagementViewModel {
     }
 
     /// Human-readable total storage used by downloaded models.
+    ///
+    /// Derived PURELY from the cached ``discoveredModels`` snapshot — it never
+    /// touches disk, so reading it from a SwiftUI `body` is free (#1787). The
+    /// cache is refreshed off-main by ``refreshDiscoveredModels()``.
     public var totalStorageUsed: String {
-        modelStorage.storageUsedFormatted
+        let total = discoveredModels.reduce(UInt64(0)) { $0 + $1.fileSize }
+        return ByteCountFormatter.string(fromByteCount: Int64(total), countStyle: .file)
     }
 
     /// All currently active downloads, keyed by model ID.
@@ -249,9 +274,49 @@ public final class ModelManagementViewModel {
         modelStorage.modelsDirectory.path
     }
 
-    /// Models currently on disk.
-    public var discoveredModels: [ModelInfo] {
-        modelStorage.discoverModels()
+    // MARK: - Model Discovery (cached, off-main)
+
+    /// Refreshes ``discoveredModels`` from disk, off the main actor, single-flight.
+    ///
+    /// Reads from disk exactly once per call; concurrent calls collapse into the
+    /// in-flight task (`refreshTask != nil` short-circuit). The scan hops off the
+    /// main actor inside ``ModelStorageService/discoverModelsOffMain()`` (the
+    /// sanctioned `Task.detached` site) — this method itself uses a plain `Task`
+    /// so it inherits `@MainActor` (CLAUDE.md Swift-6 gotcha #5).
+    public func refreshDiscoveredModels() {
+        if refreshTask != nil { return }
+        isRefreshingModels = true
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performDiscoveryScan()
+        }
+    }
+
+    /// Forces a fresh discovery scan, cancelling any in-flight scan and ignoring
+    /// the single-flight guard. Use after a disk mutation (download/delete/import)
+    /// or an explicit user pull-to-refresh, where the cached snapshot is known stale.
+    public func forceRefreshDiscoveredModels() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        isRefreshingModels = true
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performDiscoveryScan()
+        }
+    }
+
+    /// Shared scan body for the refresh entry points. Runs the off-main scan,
+    /// then assigns the cached state on the main actor.
+    private func performDiscoveryScan() async {
+        defer {
+            isRefreshingModels = false
+            refreshTask = nil
+        }
+        let result = await modelStorage.discoverModelsOffMain()
+        guard !Task.isCancelled else { return }
+        discoveredModels = result.models
+        discoveredModelFileNames = Set(result.models.map(\.fileName))
+        hasLoadedModelsOnce = true
     }
 
     // MARK: - Recommendations
@@ -736,6 +801,12 @@ public final class ModelManagementViewModel {
             default: return true
             }
         }
+        // why: invalidation signals a disk mutation (download finished, delete,
+        // cancel). Drive a fresh off-main scan so the cached discoveredModels /
+        // totalStorageUsed snapshot reflects the new on-disk state without a
+        // render-path scan (#1787). Force-refresh because the cached snapshot is
+        // known stale and a coincidentally in-flight scan may predate the mutation.
+        forceRefreshDiscoveredModels()
     }
 
     /// Returns the active download state for a model, if any.

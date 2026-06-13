@@ -49,7 +49,7 @@ plan from reality at a glance. Where the prose below still reads as future tense
 | **P0** prerequisites | Decisions + `SessionToolSource` fix | **COMPLETE** | migration doc P0 closed |
 | **P1** kernel leaves | Extract `ManifoldHardware`, `ManifoldModelCatalog`, `ManifoldNetworking`, `ManifoldSecrets` as zero-dep leaves | **SHIPPED** | all four dirs exist under `Sources/` (#1608–#1611) |
 | **P2** engine carve | Extract the Contract kernel downward as `ManifoldContract`; `ManifoldInference` `@_exported import`s it | **SHIPPED** | `Sources/ManifoldContract/` exists (P2a #1719); engine de-tangle landed P2c #1724. `ManifoldContractTestSupport` is the contract-test mixin product, also present. |
-| **P3** TurnDriver / Run / RunStore | Pluggable `TurnDriver` seam over a resumable `ConversationRun`, with a `RunStore` checkpoint port | **SHIPPED (v0.48, #1744)** | `Sources/ManifoldRuntime/Protocols/TurnDriver.swift`, `…/Protocols/RunStore.swift`, `…/Models/ConversationRun.swift`, `…/Services/SingleTurnDriver.swift`, `…/Services/ResumableRunDriver.swift` all exist. **`RunStore` is a PORT only** — no SwiftData adapter ships in `Sources/ManifoldPersistenceSwiftData/` yet; persistence of run checkpoints is the next P3 increment. |
+| **P3** TurnDriver / Run / RunStore | Pluggable `TurnDriver` seam over a resumable `ConversationRun`, with a `RunStore` checkpoint port | **SHIPPED (v0.48, #1744)** | `Sources/ManifoldRuntime/Protocols/TurnDriver.swift`, `…/Protocols/RunStore.swift`, `…/Models/ConversationRun.swift`, `…/Services/SingleTurnDriver.swift`, `…/Services/ResumableRunDriver.swift` all exist. **Persistence + reachability shipped (P3b, #1795):** a SwiftData `RunStore` adapter + V9→V10 migration in `Sources/ManifoldPersistenceSwiftData/`, opt-in bootstrap wiring (`ManifoldBootstrap(enableResumableRuns:)`), and `ResumableRunDriver.resume(runID:)`, so a run survives process death and resumes from its checkpoint. |
 | **P4** modality generify | Single `MediaGeneration<Output>` seam replacing per-modality clones | **DEFERRED (post-WWDC)** | no `MediaGeneration` generic exists in `Sources/`; the image/video records live in `ManifoldModelCatalog` and the per-modality backends remain concrete. |
 | **P5** trait → product | Retire product-selection traits; ship the gated modules as library products | **SHIPPED** | trait roster in `Package.swift` is down to `Server`, `Macros`, and the two WWDC stubs; MCP/Voice/Tools/AppIntents/Skills/Ollama/CloudSaaS/AnyLanguageModel/HuggingFace/Fuzz/Llama/MLX traits retired (#1764–#1769, C2 #1771). |
 | **P6** usability | One-call `quickStart`, registrar-injectable backends, clean error rim | **PARTIAL** | `quickStart(configuration:)`, `quickStart(configuration:seed:)`, and `quickStart(backends:configuration:seed:)` all exist in `Sources/ManifoldKit/QuickStart.swift`; the backend-availability diagnostic + selection policy ship. Remaining usability polish (progress-aware facade variants, richer empty-state UX) is ongoing. |
@@ -127,12 +127,13 @@ tools/data and a bottom port for persistence.
   `MessagePart.generatedImage` / `.generatedVideo` remain distinct cases in `ManifoldContract`.
   The `MediaGeneration<Output>` collapse (P4) is **deferred post-WWDC** — WWDC 2026 added no new
   modality to force it; sequence it just before the 1.0 vocabulary freeze (in-repo).
-- `†` **Resumable Run / RUN checkpoints** — the **seam** shipped (P3 #1744: `TurnDriver`,
-  `ConversationRun`/`RunStep`, `ResumableRunDriver`, `RunStore` port), but it is **PORT ONLY**:
-  no SwiftData adapter, no bootstrap wiring, and `ResumableRunDriver` is test-only. So runs are
-  **not durably persisted** and resumable runs are not yet reachable by hosts — the default and
-  only production path is `SingleTurnDriver`. Completing this (adapter + V9→V10 migration +
-  wiring) is the deferred **P3b** sub-phase, tracked in **#1784**.
+- `†` **Resumable Run / RUN checkpoints** — **COMPLETE.** The seam shipped in P3 (#1744:
+  `TurnDriver`, `ConversationRun`/`RunStep`, `ResumableRunDriver`, `RunStore` port) and the
+  persistence + reachability sub-phase shipped in P3b (#1795): a SwiftData `RunStore` adapter,
+  the V9→V10 schema migration, opt-in bootstrap wiring (`ManifoldBootstrap(enableResumableRuns:)`),
+  and `ResumableRunDriver.resume(runID:)`. Runs are now durably checkpointed and a host can resume
+  one from its persisted state after process death. `SingleTurnDriver` stays the default;
+  resumable runs are opt-in.
 
 A rendered diagram exists (manifold cross-section: colour-coded inlets converging to one
 white stream, nested CONTRACT-inside-ENGINE core, chromed multi-branch outlet header, top
@@ -256,14 +257,15 @@ Detailed as **three** components, because the leverage lives in separating them.
 - **Evolution:** this seam is MK's lightweight, MK-shaped answer to SK's orchestration
   layers — ship `SingleTurnDriver` (refactor-in-place) then `ResumableRunDriver`.
 
-#### 1c — Run model + ports  ·  *(shipped v0.48, #1744; persistence adapter still pending)*
+#### 1c — Run model + ports  ·  *(shipped v0.48, #1744; persistence + wiring shipped P3b, #1795)*
 - **Responsibility:** represent a `ConversationRun` (a multi-step unit above a turn) with
   persisted, resumable state and checkpoints.
 - **Owns:** `ConversationRun`/`RunStep` value types **(shipped** —
   `Sources/ManifoldRuntime/Models/ConversationRun.swift)**, run-level events (started/step/
   paused/resumed/completed), and the **`RunStore` port (shipped** —
-  `Sources/ManifoldRuntime/Protocols/RunStore.swift**; PORT ONLY — no SwiftData adapter ships
-  in `ManifoldPersistenceSwiftData` yet, so run checkpoints are not yet durably persisted).
+  `Sources/ManifoldRuntime/Protocols/RunStore.swift**; the SwiftData adapter `SwiftDataRunStore`
+  + V9→V10 migration ship in `ManifoldPersistenceSwiftData`, so run checkpoints are now durably
+  persisted (P3b, #1795)).
 - **Public surface:** the run API on `ConversationRuntime` (start/pause/resume/cancel a run);
   `RunStore` for hosts.
 - **Edges:** persistence ports (Ring 2 SwiftData implements `RunStore`); the driver executes a
@@ -401,8 +403,8 @@ Each depends down on the Contract (and Engine ports where relevant), never on ea
 3. **Tool-dispatch layer split** (Inference vs Runtime) must be reconciled by the driver seam.
 4. **`SessionToolSource.resolve` dead path** — live bug; wire or redesign.
 5. **`APIProvider` exhaustive-switch sprawl** — make descriptor-driven.
-6. **Run/checkpoint persistence** — new `RunStore` + schema migration; resumable state needs
-   injected clock/IDs to be deterministically testable.
+6. **Run/checkpoint persistence** — **RESOLVED (P3b, #1795):** `SwiftDataRunStore` + V9→V10
+   migration ship; the run value types take injected clock/IDs for deterministic tests.
 7. **Ollama/CloudSaaS `#if` extraction** before those traits can retire.
 8. **Module naming** — `ManifoldEngine`, `ManifoldNetworking`, `ManifoldSecrets`,
    `ConversationRun`; whether the App layer is one `ManifoldAppKit` or stays separate products.

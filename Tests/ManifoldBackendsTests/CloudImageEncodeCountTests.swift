@@ -20,7 +20,7 @@ import ManifoldTestSupport
 /// assertion atomically.
 ///
 /// The encoder is observed via a per-test hook
-/// (``CloudImageEncoding/encodeHook``) installed in `setUp` and torn down in
+/// (``CloudImageEncoding/setEncodeHook(_:)``) installed in `setUp` and torn down in
 /// `tearDown`. The hook fires exactly once per `base64String` call, so
 /// counting hook invocations equals counting encode calls — without having
 /// to instrument every backend's request-builder by hand.
@@ -56,14 +56,14 @@ final class CloudImageEncodeCountTests: XCTestCase {
         DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
         counter = EncodeCounter()
         let counter = counter!
-        CloudImageEncoding.encodeHook = { counter.increment() }
+        CloudImageEncoding.setEncodeHook { counter.increment() }
     }
 
     override func tearDown() {
         DNSRebindingGuard._resolverForTesting = nil
         // Reset before nilling out the local ref so a leftover hook from a
         // prior failure cannot leak into the next test in the same process.
-        CloudImageEncoding.encodeHook = nil
+        CloudImageEncoding.setEncodeHook(nil)
         counter = nil
         super.tearDown()
     }

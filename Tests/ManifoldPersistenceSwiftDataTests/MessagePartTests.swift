@@ -187,6 +187,21 @@ final class MessagePartTests: XCTestCase {
         XCTAssertEqual(message.content, "hello world")
     }
 
+    // MARK: - Encode failure is visible, not silent
+
+    // The encode() failure path must not collapse to "[]" — that is indistinguishable from a
+    // legitimately empty message and would silently drop content. The sentinel placeholder is
+    // intentionally non-JSON so decode() surfaces it as a visible .text part. This locks that
+    // contract: a persisted encode-failure row renders as visible text, never as empty content.
+    func test_chatMessage_encodeFailurePlaceholder_decodesToVisibleText() {
+        let placeholder = ManifoldSchemaV9.ChatMessage.encodeFailurePlaceholder
+        XCTAssertFalse(placeholder.isEmpty)
+
+        let parts = ManifoldSchemaV9.ChatMessage.decode(placeholder)
+        XCTAssertEqual(parts, [.text(placeholder)])
+        XCTAssertNotEqual(parts, [], "encode-failure placeholder must not decode to empty content")
+    }
+
     // MARK: - V1 -> V2 migration safety
 
     func test_chatMessage_v2Model_preservesContentColumn() throws {

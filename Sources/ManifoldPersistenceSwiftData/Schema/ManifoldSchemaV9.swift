@@ -243,12 +243,20 @@ public enum ManifoldSchemaV9: VersionedSchema {
                 if let json = String(data: data, encoding: .utf8) {
                     return json
                 }
-                Log.persistence.warning("Failed to convert encoded MessagePart data to UTF-8 string")
+                Log.persistence.error("Failed to convert encoded MessagePart data to UTF-8 string; substituting visible placeholder")
             } catch {
                 Log.persistence.error("Failed to encode MessagePart array: \(error)")
             }
-            return "[]"
+            // Returning "[]" here would be indistinguishable from a legitimately empty
+            // message and would silently lose the content. A non-JSON sentinel makes the
+            // failure visible: decode() falls back to .text(...) for non-JSON input, so the
+            // user sees the placeholder instead of a vanished message.
+            return Self.encodeFailurePlaceholder
         }
+
+        /// Sentinel persisted when MessagePart encoding fails. Intentionally not valid JSON so
+        /// decode() surfaces it as visible text rather than swallowing it as empty content.
+        static let encodeFailurePlaceholder = "[message content could not be encoded]"
 
         static func decode(_ json: String) -> [MessagePart] {
             guard let data = json.data(using: .utf8) else {

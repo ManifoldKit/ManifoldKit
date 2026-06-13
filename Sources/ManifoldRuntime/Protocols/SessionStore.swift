@@ -118,6 +118,19 @@ public protocol SessionStore: AnyObject, Sendable {
     /// - Throws: Storage errors from the underlying store.
     func fetchSessions() async throws -> [ChatSession]
 
+    /// Fetches the single session matching `id`, or `nil` when none matches.
+    ///
+    /// The turn loop reads one session's multi-agent state per send/regenerate/
+    /// edit/branch. Routing that through ``fetchSessions()`` loads the entire
+    /// table and faults every session's relationships only to discard all but
+    /// one row. Storage-backed adapters MUST override this with a predicate
+    /// pushdown so only the matched row (and its faults) is materialized; the
+    /// protocol-extension default below falls back to the full scan so
+    /// in-memory test doubles keep compiling unchanged.
+    ///
+    /// - Throws: Storage errors from the underlying store.
+    func fetchSession(id: UUID) async throws -> ChatSession?
+
     /// Fetches a page of chat sessions sorted by most-recently-updated.
     ///
     /// Use to paginate large session lists so the sidebar stays responsive at
@@ -156,6 +169,17 @@ extension SessionStore {
     /// hooks inherit this and silently drop the registration. Provisional —
     /// see ``addPostWriteHook(_:)`` doc.
     public func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+
+    /// Default: scans the full list returned by ``fetchSessions()`` and
+    /// returns the first id match. Strictly equivalent to a predicate fetch
+    /// for correctness (callers discard ordering, and deletes are hard — there
+    /// is no soft-delete tombstone to filter), but O(N) and faults every row's
+    /// relationships. Storage-backed adapters MUST override with a predicate
+    /// pushdown; provided so in-memory test doubles keep compiling unchanged.
+    public func fetchSession(id: UUID) async throws -> ChatSession? {
+        let sessions = try await fetchSessions()
+        return sessions.first(where: { $0.id == id })
+    }
 
     /// Default: read-modify-write fallback for stores that don't push the
     /// narrow update into the engine. **Not** atomic against a concurrent

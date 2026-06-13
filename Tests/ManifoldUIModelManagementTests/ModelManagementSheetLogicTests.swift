@@ -273,6 +273,93 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         XCTAssertFalse(vm.modelsDirectoryPath.isEmpty, "Models directory path should never be empty")
     }
 
+    // MARK: - Cached discovery state (#1787)
+
+    func test_discoveredModels_cachedAndOffMain_noScanOnRead() async throws {
+        let counter = ScanCountingFileManager()
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = ModelStorageService(
+            fileManager: counter,
+            baseDirectory: scratch,
+            includeUserDocumentsFallback: false
+        )
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        try storage.ensureModelsDirectory()
+
+        // Two fixture GGUFs on disk.
+        for i in 0..<2 {
+            var data = Data([0x47, 0x47, 0x55, 0x46])
+            data.append(Data(repeating: 0xAA, count: 1020))
+            try data.write(to: storage.modelsDirectory.appendingPathComponent("m-\(i).gguf"))
+        }
+
+        let vm = ModelManagementViewModel(modelStorage: storage)
+
+        // Pre-refresh: cache is empty, totalStorageUsed derives "0 bytes" without
+        // touching disk, and hasLoadedModelsOnce is false.
+        XCTAssertTrue(vm.discoveredModels.isEmpty, "Cache must be empty before any refresh")
+        XCTAssertFalse(vm.hasLoadedModelsOnce)
+
+        // Reading the render-path properties must NOT trigger a disk scan.
+        counter.scanCount = 0
+        _ = vm.discoveredModels
+        _ = vm.totalStorageUsed
+        _ = vm.discoveredModels
+        _ = vm.totalStorageUsed
+        XCTAssertEqual(counter.scanCount, 0, "Reading discoveredModels/totalStorageUsed must never scan disk (#1787)")
+
+        // After an awaited refresh the cache is populated.
+        vm.refreshDiscoveredModels()
+        try await waitForRefresh(vm)
+
+        XCTAssertEqual(vm.discoveredModels.count, 2, "Refresh must populate the cache from disk")
+        XCTAssertTrue(vm.hasLoadedModelsOnce)
+        XCTAssertFalse(vm.totalStorageUsed.isEmpty)
+
+        // Reading again post-refresh still triggers zero additional scans.
+        let afterRefreshCount = counter.scanCount
+        _ = vm.discoveredModels
+        _ = vm.totalStorageUsed
+        XCTAssertEqual(counter.scanCount, afterRefreshCount, "Post-refresh reads must stay cache-only")
+    }
+
+    func test_refreshDiscoveredModels_isSingleFlight() async throws {
+        let counter = ScanCountingFileManager()
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let storage = ModelStorageService(
+            fileManager: counter,
+            baseDirectory: scratch,
+            includeUserDocumentsFallback: false
+        )
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        try storage.ensureModelsDirectory()
+        var data = Data([0x47, 0x47, 0x55, 0x46])
+        data.append(Data(repeating: 0xAA, count: 1020))
+        try data.write(to: storage.modelsDirectory.appendingPathComponent("only.gguf"))
+
+        let vm = ModelManagementViewModel(modelStorage: storage)
+        counter.scanCount = 0
+
+        // Fire N concurrent refreshes synchronously on the main actor — the
+        // single-flight guard collapses them into ONE in-flight scan.
+        for _ in 0..<8 {
+            vm.refreshDiscoveredModels()
+        }
+        try await waitForRefresh(vm)
+
+        XCTAssertEqual(counter.scanCount, 1, "Concurrent refresh calls must collapse into a single scan")
+        XCTAssertEqual(vm.discoveredModels.count, 1)
+    }
+
+    /// Polls until the view model's in-flight refresh has settled, with a tight deadline.
+    private func waitForRefresh(_ vm: ModelManagementViewModel) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while vm.isRefreshingModels && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertFalse(vm.isRefreshingModels, "Refresh should settle within the deadline")
+    }
+
     // MARK: - Download model grouping
 
     func test_downloadableModelGroup_singleVariant() {
@@ -472,4 +559,26 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         return controller.view.fittingSize
     }
     #endif
+}
+
+// MARK: - Scan-counting FileManager
+
+/// A `FileManager` subclass that counts directory enumerations so a test can
+/// prove the view model scans disk only when it intends to (#1787).
+///
+/// `@unchecked Sendable`: the discovery scan runs on a detached task thread, but
+/// the test only reads `scanCount` after awaiting the refresh to completion, so
+/// the read is ordered after every write via the `@MainActor` hop that publishes
+/// `isRefreshingModels = false`.
+private final class ScanCountingFileManager: FileManager, @unchecked Sendable {
+    var scanCount = 0
+
+    override func contentsOfDirectory(
+        at url: URL,
+        includingPropertiesForKeys keys: [URLResourceKey]?,
+        options mask: FileManager.DirectoryEnumerationOptions = []
+    ) throws -> [URL] {
+        scanCount += 1
+        return try super.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: mask)
+    }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import ManifoldInference
 
 /// Shared image-encoding helpers for cloud backends that send images as
@@ -31,11 +32,14 @@ package enum CloudImageEncoding {
     /// no padding tweaks).
     package static func base64String(from data: Data) -> String {
         let encoded = data.base64EncodedString()
-        encodeHook?()
+        // Read the hook under the lock so a concurrent `setEncodeHook` from a
+        // test cannot race the optional-closure pointer (a Swift 6
+        // memory-safety violation). The closure itself runs outside the lock.
+        _encodeHook.withLock { $0 }?()
         return encoded
     }
 
-    /// Test-only hook fired once per ``base64String(from:)`` call.
+    /// Lock-guarded storage for the test-injection hook.
     ///
     /// Mirrors `GenerationQueue.toolDispatchLogHook`: production callers
     /// never set this; it exists so tests can count how many times a cloud
@@ -44,7 +48,21 @@ package enum CloudImageEncoding {
     /// `tearDown` to avoid cross-test leakage. See
     /// `CloudImageEncodeCountTests` for the invariant the perf-audit plan
     /// (PR-α work unit α-3) is grounding on.
-    package nonisolated(unsafe) static var encodeHook: (@Sendable () -> Void)?
+    ///
+    /// The previous `nonisolated(unsafe) static var` raced when cloud backends
+    /// encoded images on concurrent threads while a test mutated the hook. An
+    /// `OSAllocatedUnfairLock` (available below the macOS 15 / iOS 18 floor)
+    /// makes every read/write atomic without an actor hop on the hot path.
+    private static let _encodeHook =
+        OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+
+    /// Installs (or clears, with `nil`) the test-injection hook race-free.
+    ///
+    /// Keeps the readable `CloudImageEncoding.setEncodeHook { ... }` call shape
+    /// at test sites while routing the write through the lock.
+    package static func setEncodeHook(_ hook: (@Sendable () -> Void)?) {
+        _encodeHook.withLock { $0 = hook }
+    }
 
     /// Returns a `data:` URI (RFC 2397) suitable for OpenAI's
     /// `image_url.url` field — `data:<mime>;base64,<payload>`. OpenAI also

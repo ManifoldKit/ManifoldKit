@@ -22,6 +22,10 @@ package enum OpenAIChatCompletionsPayloadParsing {
         parseToken(from: payload)
     }
 
+    package static func extractToken(from json: JSONValue) -> String? {
+        parseToken(from: json)
+    }
+
     /// Stateless event extraction. The full event vocabulary
     /// (tool calls, reasoning handoff, usage, prefill progress) lives on
     /// ``OpenAIStreamEventExtractor`` because it requires cross-frame state.
@@ -39,6 +43,11 @@ package enum OpenAIChatCompletionsPayloadParsing {
         return (promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)
     }
 
+    package static func extractUsage(from json: JSONValue) -> (promptTokens: Int?, completionTokens: Int?)? {
+        guard let usage = parseUsage(from: json) else { return nil }
+        return (promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)
+    }
+
     // MARK: - Field-level parsers
 
     /// Extracts the content token from an OpenAI streaming response chunk.
@@ -48,12 +57,15 @@ package enum OpenAIChatCompletionsPayloadParsing {
     /// {"choices":[{"delta":{"content":"token"}}]}
     /// ```
     package static func parseToken(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseToken(from: parsed)
+    }
+
+    package static func parseToken(from json: JSONValue) -> String? {
+        guard let choices = json["choices"]?.objectArrayValue,
               let firstChoice = choices.first,
-              let delta = firstChoice["delta"] as? [String: Any],
-              let content = delta["content"] as? String else {
+              let delta = firstChoice["delta"]?.objectValue,
+              let content = delta["content"]?.stringValue else {
             return nil
         }
         return content
@@ -72,17 +84,20 @@ package enum OpenAIChatCompletionsPayloadParsing {
     /// `content` — returns `nil` so the caller can fall back to the standard
     /// token extractor.
     package static func parseReasoningDelta(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseReasoningDelta(from: parsed)
+    }
+
+    package static func parseReasoningDelta(from json: JSONValue) -> String? {
+        guard let choices = json["choices"]?.objectArrayValue,
               let firstChoice = choices.first,
-              let delta = firstChoice["delta"] as? [String: Any] else {
+              let delta = firstChoice["delta"]?.objectValue else {
             return nil
         }
-        if let content = delta["reasoning_content"] as? String, !content.isEmpty {
+        if let content = delta["reasoning_content"]?.stringValue, !content.isEmpty {
             return content
         }
-        if let content = delta["reasoning"] as? String, !content.isEmpty {
+        if let content = delta["reasoning"]?.stringValue, !content.isEmpty {
             return content
         }
         return nil
@@ -114,22 +129,25 @@ package enum OpenAIChatCompletionsPayloadParsing {
     /// Compat servers vary on whether `id` is repeated; the accumulator
     /// handles that by stickying the first non-empty value seen per index.
     package static func parseToolCallDeltas(from json: String) -> [ToolCallDelta] {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
+        guard let parsed = JSONValue.parse(string: json) else { return [] }
+        return parseToolCallDeltas(from: parsed)
+    }
+
+    package static func parseToolCallDeltas(from json: JSONValue) -> [ToolCallDelta] {
+        guard let choices = json["choices"]?.objectArrayValue,
               let firstChoice = choices.first,
-              let delta = firstChoice["delta"] as? [String: Any],
-              let rawCalls = delta["tool_calls"] as? [[String: Any]] else {
+              let delta = firstChoice["delta"]?.objectValue,
+              let rawCalls = delta["tool_calls"]?.objectArrayValue else {
             return []
         }
 
         var result: [ToolCallDelta] = []
         for raw in rawCalls {
-            guard let index = raw["index"] as? Int else { continue }
-            let id = raw["id"] as? String
-            let function = raw["function"] as? [String: Any]
-            let name = function?["name"] as? String
-            let argumentsDelta = function?["arguments"] as? String
+            guard let index = raw["index"]?.intValue else { continue }
+            let id = raw["id"]?.stringValue
+            let function = raw["function"]?.objectValue
+            let name = function?["name"]?.stringValue
+            let argumentsDelta = function?["arguments"]?.stringValue
             result.append(ToolCallDelta(
                 index: index,
                 id: id,
@@ -143,23 +161,26 @@ package enum OpenAIChatCompletionsPayloadParsing {
     /// Parses a whole `choices[0].message.tool_calls[]` array from a
     /// non-streaming response chunk.
     package static func parseWholeToolCalls(from json: String) -> [WholeToolCall] {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
+        guard let parsed = JSONValue.parse(string: json) else { return [] }
+        return parseWholeToolCalls(from: parsed)
+    }
+
+    package static func parseWholeToolCalls(from json: JSONValue) -> [WholeToolCall] {
+        guard let choices = json["choices"]?.objectArrayValue,
               let firstChoice = choices.first,
-              let message = firstChoice["message"] as? [String: Any],
-              let rawCalls = message["tool_calls"] as? [[String: Any]] else {
+              let message = firstChoice["message"]?.objectValue,
+              let rawCalls = message["tool_calls"]?.objectArrayValue else {
             return []
         }
         var result: [WholeToolCall] = []
         for raw in rawCalls {
-            guard let function = raw["function"] as? [String: Any],
-                  let name = function["name"] as? String,
+            guard let function = raw["function"]?.objectValue,
+                  let name = function["name"]?.stringValue,
                   !name.isEmpty else {
                 continue
             }
-            let id = (raw["id"] as? String) ?? ""
-            let arguments = (function["arguments"] as? String) ?? "{}"
+            let id = raw["id"]?.stringValue ?? ""
+            let arguments = function["arguments"]?.stringValue ?? "{}"
             result.append(WholeToolCall(id: id, name: name, arguments: arguments))
         }
         return result
@@ -167,11 +188,14 @@ package enum OpenAIChatCompletionsPayloadParsing {
 
     /// Parses `choices[0].finish_reason` (e.g. `"stop"`, `"tool_calls"`).
     package static func parseFinishReason(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseFinishReason(from: parsed)
+    }
+
+    package static func parseFinishReason(from json: JSONValue) -> String? {
+        guard let choices = json["choices"]?.objectArrayValue,
               let firstChoice = choices.first,
-              let reason = firstChoice["finish_reason"] as? String,
+              let reason = firstChoice["finish_reason"]?.stringValue,
               !reason.isEmpty else {
             return nil
         }
@@ -185,11 +209,14 @@ package enum OpenAIChatCompletionsPayloadParsing {
     /// {"choices":[...],"usage":{"prompt_tokens":25,"completion_tokens":100,"total_tokens":125}}
     /// ```
     package static func parseUsage(from json: String) -> (promptTokens: Int, completionTokens: Int)? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let usage = parsed["usage"] as? [String: Any],
-              let prompt = usage["prompt_tokens"] as? Int,
-              let completion = usage["completion_tokens"] as? Int else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseUsage(from: parsed)
+    }
+
+    package static func parseUsage(from json: JSONValue) -> (promptTokens: Int, completionTokens: Int)? {
+        guard let usage = json["usage"]?.objectValue,
+              let prompt = usage["prompt_tokens"]?.intValue,
+              let completion = usage["completion_tokens"]?.intValue else {
             return nil
         }
         return (prompt, completion)
@@ -204,28 +231,16 @@ package enum OpenAIChatCompletionsPayloadParsing {
     }
 
     package static func parsePrefillProgress(from json: String) -> PrefillProgress? {
-        guard let data = json.data(using: .utf8) else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parsePrefillProgress(from: parsed)
+    }
+
+    package static func parsePrefillProgress(from json: JSONValue) -> PrefillProgress? {
+        guard let nPast = json["n_past"]?.intValue,
+              let nTotal = json["n_total"]?.intValue else {
             return nil
         }
-        let parsed: [String: Any]
-        do {
-            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
-            }
-            parsed = object
-        } catch {
-            return nil
-        }
-        guard let nPast = parsed["n_past"] as? Int,
-              let nTotal = parsed["n_total"] as? Int else {
-            return nil
-        }
-        let tokensPerSecond: Double
-        if let value = parsed["tokens_per_second"] as? Double {
-            tokensPerSecond = value
-        } else if let value = parsed["tokens_per_second"] as? Int {
-            tokensPerSecond = Double(value)
-        } else {
+        guard let tokensPerSecond = json["tokens_per_second"]?.doubleValue else {
             return nil
         }
         return PrefillProgress(
