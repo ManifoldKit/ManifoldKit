@@ -146,6 +146,10 @@ The schema and adapters are deliberately split so non-chat use cases can opt in 
 - ``SwiftDataBenchmarkCache`` persists model-capability tier results — useful for any app that benchmarks local models, not just chat.
 - ``SwiftDataDocumentStore`` is the RAG document index; image-generation and agent flows that ingest user files re-use it.
 
+### Zero-dependency RAG out of the box
+
+RAG no longer needs a host-supplied embedder. When ``RAGConfiguration/embeddingBackend`` is `nil`, ``ManifoldBootstrap`` resolves the bundled on-device `NLEmbeddingBackend` (Apple's `NaturalLanguage` framework — 512-dim sentence embeddings, no model download, no heavy dependency), so semantic retrieval works with zero configuration. `quickStart()` enables this by default. A host-supplied ``EmbeddingBackend`` (e.g. MLXEmbedders from the manifold-mlx companion, or a Llama embedder) always overrides the default; if no sentence-embedding model is available for the OS locale, retrieval degrades gracefully to keyword search.
+
 ## Topics
 
 ### Bootstrap
