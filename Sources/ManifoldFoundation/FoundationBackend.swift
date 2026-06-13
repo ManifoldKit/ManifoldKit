@@ -195,6 +195,22 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// real Apple Intelligence entitlement. Production uses the system default.
     private let availabilityResolver: @Sendable () -> SystemLanguageModel.Availability
 
+    /// Structured conversation history installed by ``GenerationHistoryInstaller``
+    /// through the ``StructuredHistoryReceiver`` opt-in.
+    ///
+    /// FoundationBackend's `LanguageModelSession` accumulates turns internally
+    /// (each `respond`/`streamResponse` call appends to the session transcript),
+    /// so the *text* of prior turns is already replayed by the SDK — the backend
+    /// does not need to re-inject flattened `(role, content)` strings into the
+    /// prompt. We retain the **structured** form anyway because it preserves
+    /// per-part metadata — image attachments in particular — that the flattened
+    /// ``ConversationHistoryReceiver`` shape collapses away. When Apple ships a
+    /// `CGImage`/`Attachment` ingress (see ``installImageAttachments(from:)`` and
+    /// #1710) the backend will read prior-turn ``MessagePart/image`` parts from
+    /// this history to reconstruct a multimodal transcript. Until then image
+    /// parts are a documented NO-OP on the current toolchain.
+    private var _structuredHistory: [StructuredMessage]?
+
     private func withStateLock<T>(_ body: () throws -> T) rethrows -> T {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -224,6 +240,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// Exposes the system prompt that was used to create the current session, so tests
     /// can assert that the tracking variable is updated correctly without inference.
     var _currentSystemPrompt: String? { withStateLock { currentSystemPrompt } }
+
+    /// Exposes the installed structured history so the ``StructuredHistoryReceiver``
+    /// conformance test can assert round-trip retention without running inference.
+    var _installedStructuredHistory: [StructuredMessage]? { withStateLock { _structuredHistory } }
 
     /// Forces `_isModelLoaded = true` without calling `loadModel()`.
     /// Lets unit tests exercise the session-creation branch inside `generate()` on CI
@@ -342,6 +362,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             _isModelLoaded = false
             _isGenerating = false
             _sessionIsClean = true
+            _structuredHistory = nil
         }
         Self.logger.info("Foundation backend unloaded")
     }
@@ -746,6 +767,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             session = nil
             currentSystemPrompt = nil
             _sessionIsClean = true
+            _structuredHistory = nil
         }
         Self.logger.info("Foundation conversation reset")
     }
@@ -768,6 +790,58 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         task?.cancel()
     }
 
+}
+
+// MARK: - StructuredHistoryReceiver
+
+@available(iOS 26, macOS 26, *)
+extension FoundationBackend: StructuredHistoryReceiver {
+    /// Receives the full structured conversation history from
+    /// ``GenerationHistoryInstaller``.
+    ///
+    /// Unlike the cloud backends — which serialize this history into the request
+    /// body on every turn — FoundationBackend relies on `LanguageModelSession`'s
+    /// internal transcript accumulation for text replay, so installing history
+    /// here is *additive*: it captures the unflattened ``MessagePart`` shape
+    /// (including image parts) that the legacy ``ConversationHistoryReceiver``
+    /// flattening discards. The structured form is the substrate the future
+    /// multimodal path reads from. See ``installImageAttachments(from:)``.
+    public func setStructuredHistory(_ messages: [StructuredMessage]) {
+        withStateLock { _structuredHistory = messages }
+        // FUTURE (#1710): once an image ingress exists, reconstruct the
+        // multimodal transcript from `messages`' image parts here / at session
+        // creation. NO-OP on the current toolchain.
+        installImageAttachments(from: messages)
+    }
+
+    /// Image-attachment seam for prior-turn ``MessagePart/image`` parts.
+    ///
+    /// This is a deliberate NO-OP on the current toolchain (Xcode 26.x /
+    /// Swift 6.2.x). Apple's public FoundationModels SDK exposes no `Data` /
+    /// `CGImage` / `Attachment` ingress for the model — see the
+    /// ``FoundationBackend`` type-level doc comment for the full audit. We do
+    /// NOT reference any 27.0-only symbol (`Attachment`, image-bearing
+    /// `Prompt` initialisers, etc.) so this compiles cleanly today.
+    ///
+    /// When the multimodal SDK lands (WWDC 2026 AFM 3, tracked by #1710), the
+    /// flag flip is a small, localized change:
+    ///   1. Gate the body on the real availability, e.g.
+    ///      `if #available(iOS 26.4, macOS 26.4, *) { … }`.
+    ///   2. For each ``StructuredMessage`` whose ``StructuredMessage/parts``
+    ///      contain a ``MessagePart/image(data:mimeType:)``, build an
+    ///      `Attachment` from the image bytes and thread it into the prompt /
+    ///      session transcript.
+    ///   3. Flip ``BackendCapabilities/supportsVision`` to the runtime-conditional
+    ///      `true` (see the OUTSTANDING note on `capabilities`).
+    /// The structured history this reads from is already wired (above), so the
+    /// only change at that point is replacing this NO-OP body.
+    private func installImageAttachments(from messages: [StructuredMessage]) {
+        // Intentionally empty on the current toolchain. The presence of image
+        // parts is detected by the runtime's GenerationQueue pre-flight, which
+        // rejects image-bearing turns while `supportsVision == false`; this
+        // backend therefore never receives images to install today.
+        _ = messages
+    }
 }
 
 // MARK: - TokenizerVendor
