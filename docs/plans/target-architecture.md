@@ -37,6 +37,32 @@
 > the engine row. Everything else in this document — the manifold metaphor, ring model, invariants,
 > moat thesis, expansion axes, and trait disposition — remains accurate.
 
+## Implementation Status (as of v0.48.1, 2026-06-13)
+
+This document describes a **target**. Most of it has shipped. The table below maps each
+migration phase to its verified state in `Sources/` and the merged PRs, so a reader can tell
+plan from reality at a glance. Where the prose below still reads as future tense, the inline
+`(shipped)` / `(in progress)` / `(deferred)` / `(not started)` markers are authoritative.
+
+| Phase | What it is | State | Evidence |
+|---|---|---|---|
+| **P0** prerequisites | Decisions + `SessionToolSource` fix | **COMPLETE** | migration doc P0 closed |
+| **P1** kernel leaves | Extract `ManifoldHardware`, `ManifoldModelCatalog`, `ManifoldNetworking`, `ManifoldSecrets` as zero-dep leaves | **SHIPPED** | all four dirs exist under `Sources/` (#1608–#1611) |
+| **P2** engine carve | Extract the Contract kernel downward as `ManifoldContract`; `ManifoldInference` `@_exported import`s it | **SHIPPED** | `Sources/ManifoldContract/` exists (P2a #1719); engine de-tangle landed P2c #1724. `ManifoldContractTestSupport` is the contract-test mixin product, also present. |
+| **P3** TurnDriver / Run / RunStore | Pluggable `TurnDriver` seam over a resumable `ConversationRun`, with a `RunStore` checkpoint port | **SHIPPED (v0.48, #1744)** | `Sources/ManifoldRuntime/Protocols/TurnDriver.swift`, `…/Protocols/RunStore.swift`, `…/Models/ConversationRun.swift`, `…/Services/SingleTurnDriver.swift`, `…/Services/ResumableRunDriver.swift` all exist. **`RunStore` is a PORT only** — no SwiftData adapter ships in `Sources/ManifoldPersistenceSwiftData/` yet; persistence of run checkpoints is the next P3 increment. |
+| **P4** modality generify | Single `MediaGeneration<Output>` seam replacing per-modality clones | **DEFERRED (post-WWDC)** | no `MediaGeneration` generic exists in `Sources/`; the image/video records live in `ManifoldModelCatalog` and the per-modality backends remain concrete. |
+| **P5** trait → product | Retire product-selection traits; ship the gated modules as library products | **SHIPPED** | trait roster in `Package.swift` is down to `Server`, `Macros`, and the two WWDC stubs; MCP/Voice/Tools/AppIntents/Skills/Ollama/CloudSaaS/AnyLanguageModel/HuggingFace/Fuzz/Llama/MLX traits retired (#1764–#1769, C2 #1771). |
+| **P6** usability | One-call `quickStart`, registrar-injectable backends, clean error rim | **PARTIAL** | `quickStart(configuration:)`, `quickStart(configuration:seed:)`, and `quickStart(backends:configuration:seed:)` all exist in `Sources/ManifoldKit/QuickStart.swift`; the backend-availability diagnostic + selection policy ship. Remaining usability polish (progress-aware facade variants, richer empty-state UX) is ongoing. |
+| **P7** retire shims | Remove the `ManifoldBackends` / `ManifoldCloud` / `DefaultBackends.register` deprecated shims | **NOT STARTED** | the shims still ship and compile (deprecated) for one release; removal is a future major. See `docs/MIGRATION-0.48.md` → "product 'ManifoldBackends' not found". |
+
+> **Companion-package split is DONE, not in progress.** The heavy MLX and llama.cpp
+> backend families left core in v0.48 (C2 / #1771). `Sources/ManifoldMLX` and
+> `Sources/ManifoldLlama` no longer exist in this repo — they live in
+> [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) and
+> [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama). Module names are
+> unchanged (`import ManifoldMLX` / `import ManifoldLlama` still compile). The RING 2 prose
+> below lists them as adapter products — they remain so, just sourced from companion packages.
+
 This is a **planning artifact**, not user-facing documentation and not an implementation
 plan. It captures the agreed *end state* for ManifoldKit's module architecture so a
 subsequent migration plan can be argued against a fixed target. When the structure
@@ -194,12 +220,14 @@ Detailed as **three** components, because the leverage lives in separating them.
 - **Evolution:** shrink `ConversationTurnExecutor` from a monolith to a thin per-turn executor
   the **driver** calls.
 
-#### 1b — Turn-Driver seam  ·  *NEW first-class component (the enabler)*
+#### 1b — Turn-Driver seam  ·  *(shipped v0.48, #1744 — `ManifoldRuntime`)*
 - **Responsibility:** decide *how* a goal becomes turns/steps. The pluggable strategy.
 - **Owns:** a `TurnDriver` protocol + conformers:
-  - `SingleTurnDriver` — today's linear behavior (default, always available). **Committed.**
-  - `ResumableRunDriver` — long-running, checkpointed, resumable runs. **Committed** (the
-    on-device-shaped agentic bet).
+  - `SingleTurnDriver` — today's linear behavior (default, always available). **(shipped)** —
+    `Sources/ManifoldRuntime/Services/SingleTurnDriver.swift`.
+  - `ResumableRunDriver` — long-running, checkpointed, resumable runs. **(shipped)** —
+    `Sources/ManifoldRuntime/Services/ResumableRunDriver.swift` (the on-device-shaped agentic
+    bet).
   - `MultiAgentDriver`, `PlanExecuteDriver` — **seam-enabled but NOT committed.** Built only
     on explicit adopter demand. The seam guarantees they can be added as EDGE conformers.
 - **Public surface:** `TurnDriver` (conform to add a strategy); driver selection on the
@@ -213,11 +241,14 @@ Detailed as **three** components, because the leverage lives in separating them.
 - **Evolution:** this seam is MK's lightweight, MK-shaped answer to SK's orchestration
   layers — ship `SingleTurnDriver` (refactor-in-place) then `ResumableRunDriver`.
 
-#### 1c — Run model + ports  ·  *NEW, the committed stateful/resumable capability*
+#### 1c — Run model + ports  ·  *(shipped v0.48, #1744; persistence adapter still pending)*
 - **Responsibility:** represent a `ConversationRun` (a multi-step unit above a turn) with
   persisted, resumable state and checkpoints.
-- **Owns:** `ConversationRun`/`RunStep` value types, run-level events (started/step/paused/
-  resumed/completed), and the **`RunStore` port** + checkpoint records.
+- **Owns:** `ConversationRun`/`RunStep` value types **(shipped** —
+  `Sources/ManifoldRuntime/Models/ConversationRun.swift)**, run-level events (started/step/
+  paused/resumed/completed), and the **`RunStore` port (shipped** —
+  `Sources/ManifoldRuntime/Protocols/RunStore.swift**; PORT ONLY — no SwiftData adapter ships
+  in `ManifoldPersistenceSwiftData` yet, so run checkpoints are not yet durably persisted).
 - **Public surface:** the run API on `ConversationRuntime` (start/pause/resume/cancel a run);
   `RunStore` for hosts.
 - **Edges:** persistence ports (Ring 2 SwiftData implements `RunStore`); the driver executes a
@@ -242,8 +273,10 @@ Also in the Engine tier: **ports** (`MessageStore`, `SessionStore`, `EndpointSto
 Each depends down on the Contract (and Engine ports where relevant), never on each other.
 
 #### Inference backends (inlets)
-- **Products:** `ManifoldMLX`, `ManifoldLlama`, `ManifoldFoundation`, `ManifoldCloud`
-  (+ `ManifoldCloudCore`).
+- **Products:** `ManifoldFoundation`, `ManifoldOllama`, `ManifoldCloudSaaS` (+ `ManifoldCloudCore`;
+  `ManifoldCloud` survives as a deprecated re-export shim) — all in this repo, plus
+  `ManifoldMLX` and `ManifoldLlama` **(shipped, now in companion packages** —
+  `manifold-mlx` / `manifold-llama`, C2 #1771; module names unchanged).
 - **Absorbs:** new engine/provider = conform + register (EDGE).
 - **Amplifies (to fix):** `APIProvider` enum behind ~14 exhaustive switches.
   **Evolution / acceptance metric:** make provider selection registry/descriptor-driven so
@@ -251,7 +284,10 @@ Each depends down on the Contract (and Engine ports where relevant), never on ea
 - **Invariants:** never import Runtime/Engine or each other; never import UI. Heavy deps
   trait-gated.
 
-#### Media-generation backends (generic seam) — *decided refactor*
+#### Media-generation backends (generic seam) — *decided refactor · (deferred, post-WWDC)*
+- **Status:** **(deferred)** — no `MediaGeneration<Output>` generic seam exists in `Sources/`
+  yet. Image/video records live in `ManifoldModelCatalog` and the media backends remain
+  concrete per-modality. This is P4; sequencing is gated on the WWDC 2026 on-device-media surface.
 - **Responsibility:** image / video / **audio (incl. realtime)** behind ONE generic seam.
 - **Owns (target):** `MediaGeneration<Output>` + `MediaGenerationService<Output>` +
   `MediaGenerationRuntime<Output>` over a `GeneratedMediaPayload` protocol, with a shared media

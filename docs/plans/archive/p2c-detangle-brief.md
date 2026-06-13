@@ -1,3 +1,5 @@
+> ARCHIVED 2026-06-13 — superseded, kept for history
+
 # P2c — De-tangle `ConversationTurnExecutor` (dispatch-ready brief)
 
 Issue: #1721. Parent: #1605. Plan: `docs/plans/p2-engine-carve-split.md`.
