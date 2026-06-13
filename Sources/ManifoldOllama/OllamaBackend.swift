@@ -629,11 +629,20 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     // parameters by design, so this is how Ollama's per-call thinking and
     // visible caps reach the extractor.
     //
-    // TODO: (#189) Detect Ollama model-loading state and set GenerationStream
-    // phase to .loading. The pre-first-token stall is no longer killed by a
-    // short HTTP timeout (see `defaultRequestIdleTimeout`), but the phase
-    // still shows as .streaming during the load window. Requires a monitoring
-    // task that detects the stall and surfaces it as .loading.
+    // (#189) The pre-first-token stall — Ollama holding an open `200 OK`
+    // connection for minutes while it loads the model into VRAM and prefills
+    // the prompt — is surfaced as `GenerationStream.Phase.loading` via the
+    // `signalsLoadingUntilFirstToken` override below. The shared
+    // `SSEGenerationTaskRunner` holds `.loading` from connect until the first
+    // event is yielded, then transitions to `.streaming`. The generous
+    // `defaultRequestIdleTimeout` keeps the HTTP layer from killing the load
+    // window in the first place.
+
+    /// Ollama can stall on an open connection for minutes during model load /
+    /// prompt prefill before the first token arrives — surface that window as
+    /// `.loading` rather than lying about `.streaming`. See
+    /// ``SSECloudBackend/signalsLoadingUntilFirstToken``.
+    public override var signalsLoadingUntilFirstToken: Bool { true }
 
     public override func parseResponseStream(
         bytes: URLSession.AsyncBytes,
