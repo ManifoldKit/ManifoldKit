@@ -632,6 +632,11 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // Runs the shared SessionStore protocol contract against the
+                // SwiftData adapter so its fetchSession(id:) predicate-pushdown
+                // override is exercised by the same assertions as the in-memory
+                // default-impl adopter in ManifoldRuntimeTests.
+                "ManifoldContractTestSupport",
             ]
         ),
         // Tests for the shared test-helper module itself (e.g. `withTimeout`).

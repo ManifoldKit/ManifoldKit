@@ -237,6 +237,17 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return try modelContext.fetch(descriptor).map { $0.toRecord() }
     }
 
+    /// Predicate pushdown for the per-turn single-session read. Overrides the
+    /// protocol default's full-table scan so only the matched row is fetched
+    /// and only its `agents` relationship faults — the turn loop reads agents,
+    /// so that one fault is the correct floor; this kills the (N-1) other
+    /// faults plus the scan. `ChatSession.id` is a plain `UUID` column (not
+    /// `@Attribute(.unique)`); adding a unique index is a future V10 migration,
+    /// not required for this read's correctness.
+    public func fetchSession(id: UUID) async throws -> ManifoldInference.ChatSession? {
+        try fetchSwiftDataSession(id: id)?.toRecord()
+    }
+
     // MARK: - Search
 
     public func searchMessages(query: String, limit: Int) async throws -> [MessageSearchHit] {

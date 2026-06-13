@@ -49,6 +49,10 @@ final class InMemorySessionStoreContractTests: XCTestCase, SessionStoreContract 
         try await assertSessionStore_insertThenFetchReturnsRecord()
     }
 
+    func test_fetchByID_returnsMatchOrNil() async throws {
+        try await assertSessionStore_fetchByIDReturnsMatchOrNil()
+    }
+
     func test_fetch_ordersByMostRecentlyUpdatedFirst() async throws {
         try await assertSessionStore_fetchOrdersByMostRecentlyUpdatedFirst()
     }

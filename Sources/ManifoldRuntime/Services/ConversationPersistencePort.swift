@@ -92,8 +92,7 @@ struct ConversationPersistencePort: Sendable {
     func fetchSession(sessionID: UUID) async -> ChatSession? {
         guard let sessionStore else { return nil }
         do {
-            let sessions = try await sessionStore.fetchSessions()
-            return sessions.first(where: { $0.id == sessionID })
+            return try await sessionStore.fetchSession(id: sessionID)
         } catch {
             Log.persistence.warning(
                 "ConversationRuntime: fetchSession failed: \(error.localizedDescription)"
@@ -122,8 +121,7 @@ struct ConversationPersistencePort: Sendable {
     func sessionTitle(sessionID: UUID, fallback: String) async -> String {
         guard let sessionStore else { return fallback }
         do {
-            let sessions = try await sessionStore.fetchSessions()
-            return sessions.first(where: { $0.id == sessionID })?.title ?? fallback
+            return try await sessionStore.fetchSession(id: sessionID)?.title ?? fallback
         } catch {
             Log.persistence.warning(
                 "ConversationRuntime.branch: title lookup failed: \(error.localizedDescription); using fallback title"

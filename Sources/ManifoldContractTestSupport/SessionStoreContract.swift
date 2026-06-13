@@ -64,6 +64,33 @@ extension SessionStoreContract where Self: XCTestCase {
         XCTAssertEqual(fetched.first?.id, session.id, file: file, line: line)
     }
 
+    // MARK: - Fetch by id
+
+    /// Asserts that ``fetchSession(id:)`` returns the matching record and `nil`
+    /// for an absent id. Exercises both the protocol-extension default (scan)
+    /// and any storage-backed override (predicate pushdown) so they agree.
+    public func assertSessionStore_fetchByIDReturnsMatchOrNil(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let store = makeSessionStore()
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let first = makeSession(title: "First", updatedAt: base)
+        let second = makeSession(title: "Second", updatedAt: base.addingTimeInterval(10))
+        try await store.insertSession(first)
+        try await store.insertSession(second)
+
+        let fetchedFirst = try await store.fetchSession(id: first.id)
+        XCTAssertEqual(fetchedFirst?.id, first.id, file: file, line: line)
+        XCTAssertEqual(fetchedFirst?.title, "First", file: file, line: line)
+
+        let fetchedSecond = try await store.fetchSession(id: second.id)
+        XCTAssertEqual(fetchedSecond?.id, second.id, file: file, line: line)
+
+        let absent = try await store.fetchSession(id: UUID())
+        XCTAssertNil(absent, "fetchSession(id:) must return nil for an absent id", file: file, line: line)
+    }
+
     // MARK: - Most-recently-updated ordering
 
     /// Asserts that ``fetchSessions()`` orders sessions most-recently-updated
