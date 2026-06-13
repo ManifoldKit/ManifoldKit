@@ -68,6 +68,13 @@ for (model, score) in ranked {
 - Keep size and quantization visible — they are the ground truth a power user reasons about.
 - The authoritative will-it-run gate stays `ModelLoadPlan`; ``ModelFitScore/willRun`` mirrors its verdict, and a non-runnable model is always ``FitQuality/notRecommended``.
 
+### Apple Foundation Models as Tier 0, and MoE decode speed
+
+Two refinements let the ranking reflect how models actually behave on-device:
+
+- **Apple Foundation Models is an instant "Tier 0."** Wrap candidates as ``ModelSelectionCandidate`` and an OS-resident model (Apple FM, a zero-download `ModelSelectionProfile`) ranks head-to-head against downloadable upgrades in one list via `ModelFitScorer.rank(candidates:useCase:device:foundationAvailable:)`. When the provider is unavailable (`foundationAvailable: false`) it collapses to the bottom exactly like a model that won't load — no separate code path.
+- **Mixture-of-experts models decode fast despite being large.** Decode throughput is bound by the bytes streamed per token-pass, which for MoE is only the active experts, not the full resident weight set. When a model declares `activeParameterBytes`, the speed dimension uses it — so an MoE that is *big in RAM* (the memory-fit dimension still counts every expert, because all must be resident) is scored as *fast in decode*. Dense or unknown models fall back to total size, so nothing regresses.
+
 ## When recommendations do nothing
 
 Recommendations require models to be *surfaced* in the first place. They have nothing to rank for:

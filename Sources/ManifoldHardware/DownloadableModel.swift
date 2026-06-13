@@ -54,6 +54,13 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
     /// UI as unverified.
     public let expectedSHA256: String?
 
+    /// Approximate quantized bytes streamed per decode token-pass — the active
+    /// experts plus always-on weights. For dense models this equals the total
+    /// weight size; `nil` means dense-or-unknown, and callers fall back to total
+    /// size. Used only to rank MoE decode speed, never for memory-fit (all
+    /// experts must be resident).
+    public let activeParameterBytes: UInt64?
+
     /// Human-readable size (e.g., "4.1 GB").
     public var sizeFormatted: String {
         ByteCountFormatter.string(fromByteCount: Int64(sizeBytes), countStyle: .file)
@@ -92,6 +99,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.mmprojFileName = curated.mmprojFileName
         self.packageKind = nil
         self.expectedSHA256 = curated.expectedSHA256
+        self.activeParameterBytes = curated.activeParameterBytes
     }
 
     // MARK: - Memberwise
@@ -108,7 +116,8 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         description: String? = nil,
         mmprojFileName: String? = nil,
         packageKind: ModelPackageKind? = nil,
-        expectedSHA256: String? = nil
+        expectedSHA256: String? = nil,
+        activeParameterBytes: UInt64? = nil
     ) {
         self.id = "\(repoID)/\(fileName)"
         self.repoID = repoID
@@ -123,6 +132,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.mmprojFileName = mmprojFileName
         self.packageKind = packageKind
         self.expectedSHA256 = expectedSHA256
+        self.activeParameterBytes = activeParameterBytes
     }
 }
 
