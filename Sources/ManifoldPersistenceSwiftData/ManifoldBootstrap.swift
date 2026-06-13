@@ -130,6 +130,25 @@ public final class ManifoldBootstrap {
     public var isInMemory: Bool { _isInMemory }
     private let _isInMemory: Bool
 
+    /// The SwiftData-backed ``RunStore`` for durable, resumable multi-step runs
+    /// (P3b #1784), or `nil` when the host did not opt in via
+    /// `enableResumableRuns: true`.
+    ///
+    /// When non-`nil`, ``conversationRuntime`` was built with a
+    /// `ResumableRunDriver` over this store, so you can:
+    ///
+    /// ```swift
+    /// let bootstrap = try ManifoldBootstrap(configuration: config, enableResumableRuns: true)
+    /// let run = ConversationRun(sessionID: sessionID, goal: "Plan the launch", maxSteps: 4)
+    /// for await event in bootstrap.conversationRuntime.startRun(run) { /* observe */ }
+    /// // After a relaunch over the same store:
+    /// for await event in bootstrap.conversationRuntime.resumeRun(run.id) { /* observe */ }
+    /// ```
+    ///
+    /// Query persisted runs directly through this store
+    /// (`fetchRuns(for:)` / `fetchRun(_:)`).
+    public let runStore: SwiftDataRunStore?
+
     /// The shared turn-loop runtime, pre-wired against ``persistence`` and
     /// ``inferenceService``. Apps that bootstrap through this type should pass
     /// this instance to ``ChatViewModel/configure(conversationRuntime:)`` (or
@@ -203,6 +222,7 @@ public final class ManifoldBootstrap {
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
+        enableResumableRuns: Bool = false,
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         isInMemory: Bool = false
     ) throws {
@@ -236,6 +256,20 @@ public final class ManifoldBootstrap {
             )
             self.ragService = resolvedRAGService
 
+            // Opt-in durable resumable runs (P3b #1784): construct a
+            // SwiftData-backed RunStore over the main context and thread it
+            // into the runtime options so makeConversationRuntime wires a
+            // ResumableRunDriver. When `enableResumableRuns` is false the store
+            // stays nil and the runtime keeps SingleTurnDriver — unchanged.
+            let resolvedRunStore = enableResumableRuns
+                ? SwiftDataRunStore(modelContext: mainContext)
+                : nil
+            self.runStore = resolvedRunStore
+            var resolvedRuntimeOptions = runtimeOptions
+            if let resolvedRunStore {
+                resolvedRuntimeOptions.runStore = resolvedRunStore
+            }
+
             // ManifoldPersistenceSwiftData does not depend on ManifoldFoundation,
             // so FoundationBackend cannot be instantiated here directly. Host apps
             // that run on iOS 26+ / macOS 26+ can wire their own auxiliary service
@@ -246,7 +280,7 @@ public final class ManifoldBootstrap {
                 inferenceService: resolvedInferenceService,
                 ragService: resolvedRAGService,
                 usageStore: resolvedUsageStore,
-                runtimeOptions: runtimeOptions,
+                runtimeOptions: resolvedRuntimeOptions,
                 sessionToolSources: sessionToolSources,
                 hookRegistry: hookRegistry
             )
@@ -287,6 +321,7 @@ public final class ManifoldBootstrap {
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
+        runStore: SwiftDataRunStore? = nil,
         isInMemory: Bool = false
     ) {
         self.inferenceService = inferenceService
@@ -298,13 +333,18 @@ public final class ManifoldBootstrap {
         self.endpointStore = endpointStore
         self.usageStore = usageStore
         self.ragService = ragService
+        self.runStore = runStore
         self._isInMemory = isInMemory
+        var resolvedRuntimeOptions = runtimeOptions
+        if let runStore {
+            resolvedRuntimeOptions.runStore = runStore
+        }
         self.conversationRuntime = Self.makeConversationRuntime(
             persistence: persistence,
             inferenceService: inferenceService,
             ragService: ragService,
             usageStore: usageStore,
-            runtimeOptions: runtimeOptions,
+            runtimeOptions: resolvedRuntimeOptions,
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry
         )
@@ -366,7 +406,8 @@ public final class ManifoldBootstrap {
             hostTurnContextProvider: runtimeOptions.hostTurnContextProvider,
             turnContextProvider: runtimeOptions.turnContextProvider,
             sessionToolSources: sessionToolSources,
-            hookRegistry: hookRegistry
+            hookRegistry: hookRegistry,
+            runStore: runtimeOptions.runStore
         )
     }
 
@@ -425,6 +466,7 @@ public final class ManifoldBootstrap {
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
+        enableResumableRuns: Bool = false,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
@@ -460,6 +502,9 @@ public final class ManifoldBootstrap {
                     ragConfiguration: ragConfiguration,
                     modelContext: mainContext
                 )
+                let runStore = enableResumableRuns
+                    ? SwiftDataRunStore(modelContext: mainContext)
+                    : nil
                 await Task.yield()
 
                 continuation.yield(.complete)
@@ -479,7 +524,8 @@ public final class ManifoldBootstrap {
                     ragService: ragService,
                     runtimeOptions: runtimeOptions,
                     sessionToolSources: sessionToolSources,
-                    hookRegistry: hookRegistry
+                    hookRegistry: hookRegistry,
+                    runStore: runStore
                 )
             } catch {
                 ManifoldConfiguration.shared = previousConfiguration

@@ -64,6 +64,17 @@ public struct ConversationRuntimeOptions {
     /// runtime falls back to the primary ``InferenceService``.
     public var auxiliaryInferenceService: InferenceService?
 
+    /// Optional ``RunStore`` that opts the runtime into durable, resumable
+    /// multi-step runs (P3b #1784).
+    ///
+    /// When set — and no explicit `turnDriver` override is supplied — the
+    /// runtime constructs a ``ResumableRunDriver`` over this store instead of
+    /// the default ``SingleTurnDriver``, enabling
+    /// ``ConversationRuntime/startRun(_:using:)`` /
+    /// ``ConversationRuntime/resumeRun(_:using:)``. Leaving it `nil` (the
+    /// default) reproduces pre-P3 single-turn behaviour exactly.
+    public var runStore: (any RunStore)?
+
     public init(
         pipeline: PromptContextPipeline? = nil,
         budgetPlanner: ContextBudgetPlanner? = nil,
@@ -74,7 +85,8 @@ public struct ConversationRuntimeOptions {
         historyProviders: [any HistoryProvider] = [],
         hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
-        auxiliaryInferenceService: InferenceService? = nil
+        auxiliaryInferenceService: InferenceService? = nil,
+        runStore: (any RunStore)? = nil
     ) {
         self.pipeline = pipeline
         self.budgetPlanner = budgetPlanner
@@ -86,5 +98,6 @@ public struct ConversationRuntimeOptions {
         self.hostTurnContextProvider = hostTurnContextProvider
         self.turnContextProvider = turnContextProvider
         self.auxiliaryInferenceService = auxiliaryInferenceService
+        self.runStore = runStore
     }
 }
