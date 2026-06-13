@@ -121,8 +121,12 @@ public enum ManifoldKit {
     ///   - configuration: Framework configuration. Defaults to
     ///     ``ManifoldInference/ManifoldConfiguration/default``.
     ///   - seed: Opt-in seed configuration. Use
-    ///     ``QuickStartSeed/recommendedSmallModel(onProgress:)`` for the
-    ///     curated default. Pass `nil` for the original behavior.
+    ///     ``QuickStartSeed/recommended(useCase:device:foundationAvailable:onProgress:)``
+    ///     to seed a *device-aware* starter model — a 64 GB M-series machine gets a
+    ///     larger, more capable model than a base iPhone, with the Qwen3-0.6B floor
+    ///     as the guaranteed fallback. Use
+    ///     ``QuickStartSeed/recommendedSmallModel(onProgress:)`` to always seed the
+    ///     fixed 0.6B floor. Pass `nil` for the original (no-seed) behavior.
     /// - Returns: A ``QuickStartResult`` as in ``quickStart(configuration:)``.
     public static func quickStart(
         configuration: ManifoldConfiguration = .default,

@@ -738,6 +738,41 @@ public final class ModelManagementViewModel {
         return ModelFitScorer().rank(searchResults, useCase: useCase ?? selectedUseCase, device: resolvedDevice)
     }
 
+    /// The single highest-fit model for this device under the current selection,
+    /// or `nil` when there is nothing to rank yet.
+    ///
+    /// Highlights one model in the browser as "recommended for your device": it is
+    /// the top of ``rankedVariants(useCase:device:)`` restricted to candidates that
+    /// will actually run (`willRun`). Additive and read-only — it does not reorder
+    /// or filter `searchResults`; the row UI simply badges the returned model.
+    ///
+    /// Ranks `searchResults` when a search is active, otherwise the device-tier
+    /// `recommendedModels` (curated) list, so a fresh browser with no query still
+    /// surfaces a pick. Returns `nil` if neither list has a runnable candidate.
+    ///
+    /// - Parameters:
+    ///   - useCase: Use case to weight dimensions for. Defaults to `selectedUseCase`.
+    ///   - device: Device profile for scoring. Defaults to the real host profile;
+    ///     tests inject a fixed profile for deterministic ranking.
+    public func recommendedModel(
+        useCase: ModelUseCase? = nil,
+        device: DeviceProfile? = nil
+    ) -> DownloadableModel? {
+        let resolvedDevice = device ?? DeviceProfile(
+            physicalMemoryBytes: deviceCapability.physicalMemory,
+            usableMemoryBytes: DeviceCapabilityService.queryAvailableMemory(),
+            memoryBandwidthGBs: AppleSiliconBandwidth.estimatedBandwidthGBs()
+        )
+        let pool = searchResults.isEmpty ? recommendedModels : searchResults
+        guard !pool.isEmpty else { return nil }
+        let ranked = ModelFitScorer().rank(
+            pool,
+            useCase: useCase ?? selectedUseCase,
+            device: resolvedDevice
+        )
+        return ranked.first(where: { $0.1.willRun })?.0
+    }
+
     /// The fit score for a single downloadable model under the current selection.
     ///
     /// Lets the row UI show a `SpeedClass` badge / `rationale` without re-ranking the
