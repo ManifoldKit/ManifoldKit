@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.49.0](https://github.com/roryford/ManifoldKit/compare/v0.48.2...v0.49.0) (2026-06-13)
+
+
+### Features
+
+* **catalog/hardware:** selection-time model profile + MoE-aware recommender inputs (Apple FM Tier 0) ([#1783](https://github.com/roryford/ManifoldKit/issues/1783)) ([7dfe6fa](https://github.com/roryford/ManifoldKit/commit/7dfe6fa3b1e585b8640c159f893e84cec5f44943))
+* **inference:** per-request Deep-backend routing seam ([#799](https://github.com/roryford/ManifoldKit/issues/799) P0) ([#1799](https://github.com/roryford/ManifoldKit/issues/1799)) ([030ccef](https://github.com/roryford/ManifoldKit/commit/030ccef899a2f344917af70ad12a6d36ec68ce67))
+* **persistence:** P3b — resumable ConversationRun persistence + resume-from-store + wiring ([#1795](https://github.com/roryford/ManifoldKit/issues/1795)) ([56d9cef](https://github.com/roryford/ManifoldKit/commit/56d9cefb439f7302209b548c758fbe269806f2ff))
+
+
+### Bug Fixes
+
+* branch flow uses transactional copy with rollback ([#1792](https://github.com/roryford/ManifoldKit/issues/1792)) ([49a3dfd](https://github.com/roryford/ManifoldKit/commit/49a3dfd3bbd64529c75f877d2d1b28a2f10ebe0c))
+* harden HuggingFace download path + delegate handling ([#1793](https://github.com/roryford/ManifoldKit/issues/1793)) ([d2ab4dc](https://github.com/roryford/ManifoldKit/commit/d2ab4dc36f04cf5f58c1b45a478ae1b2c20d7126))
+* harden model-load memory budgeting ([#1794](https://github.com/roryford/ManifoldKit/issues/1794)) ([a356ce5](https://github.com/roryford/ManifoldKit/commit/a356ce5365672cc070a56a0ae050f0ded4e15de1))
+* make CloudImageEncoding encodeHook access race-free ([#1791](https://github.com/roryford/ManifoldKit/issues/1791)) ([bdc1ab4](https://github.com/roryford/ManifoldKit/commit/bdc1ab4bb9f7b4540db69136f98895a68dc52915))
+* move model discovery off main thread to end ModelManagementSheet stall ([#1780](https://github.com/roryford/ManifoldKit/issues/1780)) ([39bdda8](https://github.com/roryford/ManifoldKit/commit/39bdda838a6bae09f860980c54957161ded24bed)), closes [#1774](https://github.com/roryford/ManifoldKit/issues/1774)
+* surface swallowed error details in MCP OAuth and SwiftData encoding ([#1790](https://github.com/roryford/ManifoldKit/issues/1790)) ([e70d274](https://github.com/roryford/ManifoldKit/commit/e70d2749255f8a3d95ad1ec1765f17875592a456))
+
+
+### Performance Improvements
+
+* eliminate O(n²) work in UI streaming path ([#1788](https://github.com/roryford/ManifoldKit/issues/1788)) ([9cddf29](https://github.com/roryford/ManifoldKit/commit/9cddf29dca2ce46a1a5626267aec289e3b2979f2)), closes [#1786](https://github.com/roryford/ManifoldKit/issues/1786)
+* fetch sessions by id instead of scanning the whole table per turn ([#1789](https://github.com/roryford/ManifoldKit/issues/1789)) ([4dd7a92](https://github.com/roryford/ManifoldKit/commit/4dd7a922857746e3f26d30273012e7f26607a25c))
+* parse each cloud stream frame once instead of 8-12 times ([#1800](https://github.com/roryford/ManifoldKit/issues/1800)) ([bdb65a5](https://github.com/roryford/ManifoldKit/commit/bdb65a56a1d849a75cb80cd95670d169c6fc61e3))
+* stop full disk scan + GGUF syscall storm on model-management render ([#1798](https://github.com/roryford/ManifoldKit/issues/1798)) ([b3860da](https://github.com/roryford/ManifoldKit/commit/b3860da984c022acb6a2a82fa4e925f23c5b0221))
+
+
+### Documentation
+
+* **ManifoldFoundation:** capture [#1710](https://github.com/roryford/ManifoldKit/issues/1710) multimodal plan as code comment ([#1778](https://github.com/roryford/ManifoldKit/issues/1778)) ([2aa84cc](https://github.com/roryford/ManifoldKit/commit/2aa84cc3940883ef79d6453fe0a4ac2863b6a397))
+* mark v0.48 packaging release complete + fix stale no-backend warning ([#1781](https://github.com/roryford/ManifoldKit/issues/1781)) ([0b7a216](https://github.com/roryford/ManifoldKit/commit/0b7a216e6a52377d44c186fd7ff0edb30b60014a))
+* **target-architecture:** fold verified findings into the manifold diagram ([#1785](https://github.com/roryford/ManifoldKit/issues/1785)) ([93ac0a8](https://github.com/roryford/ManifoldKit/commit/93ac0a8e16c33518de665466b264fbed754a4339))
+* **target-architecture:** mark P3 resumable runs complete (P3b [#1795](https://github.com/roryford/ManifoldKit/issues/1795)) ([#1797](https://github.com/roryford/ManifoldKit/issues/1797)) ([ac1e988](https://github.com/roryford/ManifoldKit/commit/ac1e98879570eb0783c756c7169de3834e9dbc45))
+
 ## [0.48.2](https://github.com/roryford/ManifoldKit/compare/v0.48.1...v0.48.2) (2026-06-13)
 
 ### Highlights
