@@ -441,10 +441,14 @@ struct OllamaBackendTests {
         for try await event in stream.events {
             if case .token(let t) = event { tokens.append(t) }
         }
-        // Give the sampler a beat to observe the terminal `.done` the runner
-        // sets after the parser returns, then stop it.
-        try? await Task.sleep(for: .milliseconds(20))
-        sampler.cancel()
+        // Await the sampler to completion rather than racing a fixed sleep.
+        // The runner sets `.done` before `continuation.finish()`, so by the time
+        // the events loop above has drained the phase is already terminal; the
+        // sampler self-terminates on observing `.done`/`.failed` (see its loop),
+        // so `await` here deterministically captures the terminal phase instead
+        // of depending on a 20ms window that the serial-suite scheduler can miss
+        // under load (flake surfaced on main, not on the isolated-PR run).
+        _ = await sampler.value
 
         let phases = recorder.phases
         #expect(tokens == ["Hi"])
