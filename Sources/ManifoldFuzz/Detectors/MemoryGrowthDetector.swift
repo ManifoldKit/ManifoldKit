@@ -5,10 +5,10 @@ import Foundation
 ///
 /// 1. A memory-related error string (`memory`, `OOM`, `jetsam`, etc.) fires
 ///    during generation. This path is always enabled.
-/// 2. Peak resident bytes exceed `beforeBytes` by more than a model-declared
-///    budget by a factor of `growthFactor`. This path is behind a TODO —
-///    the record carries `MemorySnapshot.beforeBytes`/`peakBytes` today but
-///    there is no `declaredBudget` field yet.
+/// 2. Peak resident bytes exceed the model-declared budget
+///    (`ModelSnapshot.memoryBudgetBytes`). The record carries
+///    `MemorySnapshot.peakBytes` and, when capture supplies it, the per-model
+///    budget; both must be present for this branch to fire.
 ///
 /// Ships at `.flaky` severity. Promotion to `.confirmed` requires the
 /// calibration corpus + FP/TP gating planned in W2.C phase 2.
@@ -46,13 +46,21 @@ public struct MemoryGrowthDetector: Detector {
             }
         }
 
-        // 2. Growth-budget path.
-        // TODO: wire memory capture in a follow-up. The declared-budget
-        // comparison requires a per-model memory budget field on
-        // `ModelSnapshot` / `ConfigSnapshot` that doesn't exist yet. Until
-        // then, this branch stays disabled to avoid speculative thresholds.
-        _ = r.memory.beforeBytes
-        _ = r.memory.peakBytes
+        // 2. Growth-budget path. Fires only when both the captured peak and the
+        // per-model budget are present — absent data is a no-op, never a
+        // speculative threshold.
+        if let peak = r.memory.peakBytes,
+           let budget = r.model.memoryBudgetBytes,
+           budget > 0,
+           peak > budget {
+            findings.append(.init(
+                detectorId: id,
+                subCheck: "budget-exceeded",
+                severity: .flaky,
+                trigger: "peak>\(budget)",
+                modelId: r.model.id
+            ))
+        }
 
         return findings
     }

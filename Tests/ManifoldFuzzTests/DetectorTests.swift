@@ -288,6 +288,65 @@ final class DetectorTests: XCTestCase {
 
     // MARK: - ThinkingClassificationDetector — stopReason gating
 
+    // MARK: - MemoryGrowthDetector — growth-budget branch
+
+    func test_memoryGrowth_budgetExceeded_fires() {
+        var r = makeRecord()
+        r.model.memoryBudgetBytes = 1_000
+        r.memory.peakBytes = 2_000
+        let findings = MemoryGrowthDetector().inspect(r)
+        XCTAssertTrue(findings.contains { $0.subCheck == "budget-exceeded" })
+    }
+
+    func test_memoryGrowth_withinBudget_doesNotFire() {
+        var r = makeRecord()
+        r.model.memoryBudgetBytes = 4_000
+        r.memory.peakBytes = 2_000
+        let findings = MemoryGrowthDetector().inspect(r)
+        XCTAssertFalse(findings.contains { $0.subCheck == "budget-exceeded" })
+    }
+
+    func test_memoryGrowth_noBudgetData_doesNotFireBudgetBranch() {
+        // Capture path that supplies a peak but no budget must no-op, not fire
+        // on missing data.
+        var r = makeRecord()
+        r.model.memoryBudgetBytes = nil
+        r.memory.peakBytes = 9_999_999
+        let findings = MemoryGrowthDetector().inspect(r)
+        XCTAssertFalse(findings.contains { $0.subCheck == "budget-exceeded" })
+    }
+
+    // MARK: - ContextExhaustionSilentDetector — false-trigger guard
+
+    private let exhaustedError =
+        "Prompt plus requested output exceeds context window (8192 tokens)."
+
+    func test_contextExhaustion_promptWellUnderLimit_fires() {
+        var r = makeRecord(error: exhaustedError)
+        r.prompt.estimatedPromptTokens = 100
+        r.config.contextLimit = 8_192
+        let findings = ContextExhaustionSilentDetector().inspect(r)
+        XCTAssertTrue(findings.contains { $0.subCheck == "context-exhausted-fired" })
+    }
+
+    func test_contextExhaustion_promptNearLimit_doesNotFire() {
+        // Legitimate exhaustion: prompt is at/above half the window, so the
+        // refusal is expected and must be suppressed.
+        var r = makeRecord(error: exhaustedError)
+        r.prompt.estimatedPromptTokens = 5_000
+        r.config.contextLimit = 8_192
+        let findings = ContextExhaustionSilentDetector().inspect(r)
+        XCTAssertFalse(findings.contains { $0.subCheck == "context-exhausted-fired" })
+    }
+
+    func test_contextExhaustion_noTokenData_stillFires() {
+        // Without the estimate/limit the guard no-ops and every exhaustion is
+        // flagged (acceptable at .flaky severity).
+        let r = makeRecord(error: exhaustedError)
+        let findings = ContextExhaustionSilentDetector().inspect(r)
+        XCTAssertTrue(findings.contains { $0.subCheck == "context-exhausted-fired" })
+    }
+
     func test_thinkingClassification_unbalancedEvents_skipsWhenMaxTokensTruncation() {
         // 64-token cap routinely truncates mid-`<think>` on reasoning models;
         // the lack of a `thinkingCompleted` event is the cap's fault, not a parser bug.
