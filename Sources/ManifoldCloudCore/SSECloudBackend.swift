@@ -234,6 +234,19 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// Human-readable backend name for logging (e.g. "OpenAI", "Claude").
     open var backendName: String { "SSECloud" }
 
+    /// Whether the stream should report ``GenerationStream/Phase/loading``
+    /// during the pre-first-token window instead of jumping straight to
+    /// ``GenerationStream/Phase/streaming`` once the HTTP connection succeeds.
+    ///
+    /// Cloud SaaS endpoints respond within milliseconds of connecting, so the
+    /// base implementation returns `false` and the runner sets `.streaming`
+    /// immediately after the headers arrive. LAN backends like Ollama can stall
+    /// for minutes after `200 OK` while the server pulls the model into VRAM and
+    /// prefills the prompt — the connection is open but no token has arrived. For
+    /// those backends, override this to `true` so the phase reads `.loading`
+    /// until the first event is yielded, then transitions to `.streaming`.
+    open var signalsLoadingUntilFirstToken: Bool { false }
+
     /// The backend's capability declaration.
     ///
     /// Subclasses must override this property and return appropriate capabilities.
@@ -620,7 +633,8 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             },
             currentBackendName: { [weak self] in
                 self?.backendName ?? "SSECloud"
-            }
+            },
+            signalsLoadingUntilFirstToken: signalsLoadingUntilFirstToken
         )
     }
 

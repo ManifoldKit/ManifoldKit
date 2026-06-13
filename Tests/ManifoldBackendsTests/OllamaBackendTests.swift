@@ -27,6 +27,24 @@ private func ndjsonLine(_ json: String) -> Data {
     Data("\(json)\n".utf8)
 }
 
+/// Thread-safe recorder of distinct, consecutive `GenerationStream.Phase`
+/// values sampled from a concurrent task. Collapses repeats so the recorded
+/// sequence is the ordered set of phase transitions the stream passed through.
+private final class PhaseRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _phases: [GenerationStream.Phase] = []
+
+    func record(_ phase: GenerationStream.Phase) {
+        lock.lock(); defer { lock.unlock() }
+        if _phases.last != phase { _phases.append(phase) }
+    }
+
+    var phases: [GenerationStream.Phase] {
+        lock.lock(); defer { lock.unlock() }
+        return _phases
+    }
+}
+
 // MARK: - OllamaBackend Tests
 
 @Suite("OllamaBackend", .serialized)
@@ -364,6 +382,81 @@ struct OllamaBackendTests {
         }
 
         #expect(tokens == ["Hello"], "mid-line split must be reassembled before JSON parse")
+    }
+
+    // MARK: - Loading Phase (#189)
+
+    /// The Ollama backend opts into the load-stall phase contract: a stalled
+    /// connection (open `200 OK`, no token yet) must read `.loading`, not
+    /// `.streaming`. This pins the opt-in flag so a regression that drops the
+    /// override is caught even if the runner-level integration test below is
+    /// timing-sensitive. Closes #189.
+    @Test func backend_signalsLoadingUntilFirstToken_isEnabled() {
+        let backend = OllamaBackend()
+        #expect(backend.signalsLoadingUntilFirstToken)
+    }
+
+    /// Ollama can hold an open `200 OK` connection for minutes while it loads
+    /// the model into VRAM and prefills the prompt — no token has arrived yet.
+    /// During that pre-first-token window the `GenerationStream.phase` must read
+    /// `.loading`, not `.streaming`; it transitions to `.streaming` only when
+    /// the first event is yielded, then `.done` at completion. Closes #189.
+    @Test func streaming_phaseIsLoadingBeforeFirstToken_thenStreaming() async throws {
+        let (backend, chatURL) = makeConfiguredBackend()
+        try await loadBackend(backend)
+
+        // `asyncSSE` delivers chunks on a background thread with `chunkDelay`
+        // BEFORE each chunk — including the first. That first-chunk delay is the
+        // Ollama model-load stall (connection open, no byte yet). Spacing the
+        // chunks keeps the stream in `.streaming` long enough to observe before
+        // it finishes. A separate content chunk precedes the done chunk so the
+        // stream is still live when the first token is observed.
+        let chunks: [Data] = [
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"Hi"},"done":false}"#),
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true}"#),
+        ]
+        MockURLProtocol.stub(
+            url: chatURL,
+            response: .asyncSSE(chunks: chunks, chunkDelay: 0.12, statusCode: 200)
+        )
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: .init())
+
+        // Sample the observable phase continuously on a concurrent task and
+        // record every distinct value, in order, until the stream finishes.
+        // This captures the `.loading → .streaming → .done` progression without
+        // racing a single point-in-time read against the producer.
+        let recorder = PhaseRecorder()
+        let sampler = Task {
+            while !Task.isCancelled {
+                let phase = await MainActor.run { stream.phase }
+                recorder.record(phase)
+                if phase == .done || phase == .failed("") { break }
+                try? await Task.sleep(for: .milliseconds(3))
+            }
+        }
+
+        var tokens: [String] = []
+        for try await event in stream.events {
+            if case .token(let t) = event { tokens.append(t) }
+        }
+        // Give the sampler a beat to observe the terminal `.done` the runner
+        // sets after the parser returns, then stop it.
+        try? await Task.sleep(for: .milliseconds(20))
+        sampler.cancel()
+
+        let phases = recorder.phases
+        #expect(tokens == ["Hi"])
+        #expect(phases.contains(.loading), "phase must be .loading during the pre-first-token stall (saw \(phases))")
+        #expect(phases.contains(.streaming), "phase must reach .streaming once tokens arrive (saw \(phases))")
+        #expect(phases.last == .done, "phase must end at .done (saw \(phases))")
+
+        // Ordering: .loading must appear before .streaming.
+        if let loadingIdx = phases.firstIndex(of: .loading),
+           let streamingIdx = phases.firstIndex(of: .streaming) {
+            #expect(loadingIdx < streamingIdx, "phase must be .loading before .streaming (saw \(phases))")
+        }
     }
 
     @Test func streaming_malformedLine_skipped() async throws {

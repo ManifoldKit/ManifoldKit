@@ -22,6 +22,11 @@ struct SSEGenerationTaskContext {
     let storeTask: @Sendable (Task<Void, Never>) -> Void
     let finishGeneration: @Sendable () -> Void
     let currentBackendName: @Sendable () -> String
+    /// When `true`, the runner holds the stream phase at
+    /// ``GenerationStream/Phase/loading`` after the connection succeeds and only
+    /// transitions to ``GenerationStream/Phase/streaming`` once the first event
+    /// is yielded by the parser. See ``SSECloudBackend/signalsLoadingUntilFirstToken``.
+    let signalsLoadingUntilFirstToken: Bool
 }
 
 struct SSEGenerationTaskRunner {
@@ -63,8 +68,22 @@ struct SSEGenerationTaskRunner {
             let (bytes, connectionGuard) = try await openConnection(streamBox: streamBox)
             connectionGuardBox.value = connectionGuard
 
-            await MainActor.run { streamBox.value?.setPhase(.streaming) }
-            try await context.streamParser(bytes, continuation)
+            if context.signalsLoadingUntilFirstToken {
+                // LAN backends (Ollama) can sit on an open `200 OK` connection
+                // for minutes while the server loads the model into VRAM and
+                // prefills the prompt — no token has arrived yet, so reporting
+                // `.streaming` here is a lie. Hold `.loading` and let the parser
+                // flip to `.streaming` on the first yielded event below.
+                await MainActor.run { streamBox.value?.setPhase(.loading) }
+                try await parseAndSignalFirstToken(
+                    bytes: bytes,
+                    streamBox: streamBox,
+                    continuation: continuation
+                )
+            } else {
+                await MainActor.run { streamBox.value?.setPhase(.streaming) }
+                try await context.streamParser(bytes, continuation)
+            }
 
             await MainActor.run { streamBox.value?.setPhase(.done) }
             continuation.finish()
@@ -99,6 +118,50 @@ struct SSEGenerationTaskRunner {
                 usage: context.readUsage(),
                 errorClass: streamError.map { SSECloudBackend.classifyError($0) }
             )
+        }
+    }
+
+    /// Drives the parser while holding the stream at `.loading`, flipping to
+    /// `.streaming` the moment the first event is yielded.
+    ///
+    /// The parser yields into an intermediate stream that this method drains and
+    /// forwards to the real `continuation`. The drain loop is the same async
+    /// context as the parser (`async let` + awaited below), so no side task is
+    /// leaked: when the parser finishes, throws, or the downstream consumer
+    /// terminates the outer stream (cancelling this whole `run` task), the
+    /// intermediate stream finishes and the loop exits. Cancellation propagates
+    /// because the parser task is the cancelled `run` task itself.
+    private func parseAndSignalFirstToken(
+        bytes: URLSession.AsyncBytes,
+        streamBox: WeakBox<GenerationStream>,
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
+    ) async throws {
+        let inner = AsyncThrowingStream<GenerationEvent, Error> { innerContinuation in
+            let parseTask = Task {
+                do {
+                    try await context.streamParser(bytes, innerContinuation)
+                    innerContinuation.finish()
+                } catch {
+                    innerContinuation.finish(throwing: error)
+                }
+            }
+            innerContinuation.onTermination = { @Sendable _ in parseTask.cancel() }
+        }
+
+        var sawFirstEvent = false
+        do {
+            for try await event in inner {
+                if !sawFirstEvent {
+                    sawFirstEvent = true
+                    await MainActor.run { streamBox.value?.setPhase(.streaming) }
+                }
+                continuation.yield(event)
+            }
+        } catch {
+            // If the connection produced zero events (pure load-stall that then
+            // failed), the phase is still `.loading`; let the caller's catch set
+            // `.failed`. Re-throw so retry/error handling in `run` runs.
+            throw error
         }
     }
 
