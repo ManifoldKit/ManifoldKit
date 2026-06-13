@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.48.2](https://github.com/roryford/ManifoldKit/compare/v0.48.1...v0.48.2) (2026-06-13)
+
+### Highlights
+
+**The Model Management sheet opens instantly again** ([#1775](https://github.com/roryford/ManifoldKit/issues/1775)) — Opening the model browser re-scanned the on-disk GGUF catalog synchronously on the main thread *every* time the sheet appeared, stalling the UI for ~2 seconds behind a spinner. The blanket per-open rescan is gone: `ModelManagementSheet.onAppear` no longer calls `invalidateModelCache()`, and the discovery cache is instead invalidated only on the events that actually change it — download completion, delete, and import. Reopening the sheet is now immediate, with regression coverage asserting the cache survives a re-appear when nothing changed. No API change.
+
+### Documentation
+
+* **Architecture plan reflects shipped v0.48 reality** ([#1776](https://github.com/roryford/ManifoldKit/issues/1776)) — `docs/plans/target-architecture.md` gains an Implementation Status table mapping each migration phase (P0–P7) to its verified state in `Sources/`, and the superseded P2c de-tangle brief is archived.
+
 ## [0.48.1](https://github.com/roryford/ManifoldKit/compare/v0.48.0...v0.48.1) (2026-06-13)
 
 ### Highlights
