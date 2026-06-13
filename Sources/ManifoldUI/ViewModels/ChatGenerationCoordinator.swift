@@ -133,6 +133,20 @@ final class ChatGenerationCoordinator {
     @ObservationIgnored
     private var streamingThinkingIDs: Set<UUID> = []
 
+    /// Accumulator for the in-flight assistant message's trailing visible-text
+    /// run. why: appending each token delta straight into the message's last
+    /// `.text` part did `existing + batch` — an O(N) string copy per batch and
+    /// O(N²) over the turn. Instead we `append` to this buffer (amortized O(1))
+    /// and write the whole buffer into the message. `contentParts` stays
+    /// authoritative — the buffer is purely a copy-avoidance cache.
+    @ObservationIgnored
+    private var streamingTailBuffer: String = ""
+
+    /// The assistant message id the ``streamingTailBuffer`` is keyed to. Cleared
+    /// on every terminal path so a stale buffer can never leak into a later turn.
+    @ObservationIgnored
+    private var streamingTailMessageID: UUID?
+
     // MARK: - Init
 
     init(conversationRuntime: ConversationRuntime, ownsDefaultRuntime: Bool) {
@@ -283,6 +297,11 @@ final class ChatGenerationCoordinator {
     // MARK: - Content-part Mutation Helpers
 
     /// Appends streamed visible-token text without clobbering sibling parts.
+    ///
+    /// Pure, buffer-free helper retained for tests and non-hot-path callers
+    /// (`ChatViewModel.appendVisibleText` forwards here). The streaming hot path
+    /// goes through ``appendStreamingDelta(_:to:)`` instead, which avoids the
+    /// O(N) `existing + batch` copy this helper performs.
     static func appendVisibleText(_ batch: String, into msg: inout ChatMessage) {
         if let lastIdx = msg.contentParts.indices.reversed().first(where: {
             if case .text = msg.contentParts[$0] { return true } else { return false }
@@ -291,6 +310,57 @@ final class ChatGenerationCoordinator {
         } else {
             msg.contentParts.append(.text(batch))
         }
+    }
+
+    /// Streaming-path text append. Accumulates into ``streamingTailBuffer``
+    /// (amortized O(1)) and writes the whole buffer into the message's trailing
+    /// `.text` run, killing the O(N²) per-batch string concat.
+    ///
+    /// The buffer is keyed to a single trailing text run. If a non-text part
+    /// (tool result, thinking) has started a NEW trailing text run since the
+    /// last delta, the buffer is reset so we never append the second run's
+    /// tokens onto the first run's text.
+    private func appendStreamingDelta(_ delta: String, to messageID: UUID) {
+        // Detect a fresh trailing text run: either we switched messages, or the
+        // current message's last text part no longer matches our buffer (a
+        // sibling part was appended, opening a new run).
+        let trailingText = currentTrailingTextRun(of: messageID)
+        if streamingTailMessageID != messageID || trailingText != streamingTailBuffer {
+            streamingTailMessageID = messageID
+            streamingTailBuffer = trailingText ?? ""
+        }
+
+        streamingTailBuffer.append(delta)
+        let whole = streamingTailBuffer
+        _ = mutateMessage(messageID) { msg in
+            Self.writeTrailingText(whole, into: &msg)
+        }
+    }
+
+    /// Returns the text of the current trailing `.text` run of the message, or
+    /// `nil` when the message has no parts / does not end in a text run.
+    private func currentTrailingTextRun(of messageID: UUID) -> String? {
+        guard let msg = currentMessages().first(where: { $0.id == messageID }) else { return nil }
+        guard case .text(let existing)? = msg.contentParts.last else { return nil }
+        return existing
+    }
+
+    /// Replaces the message's trailing `.text` run with `whole`, or appends a
+    /// new `.text` part when the trailing part is not text.
+    private static func writeTrailingText(_ whole: String, into msg: inout ChatMessage) {
+        if case .text? = msg.contentParts.last {
+            msg.contentParts[msg.contentParts.count - 1] = .text(whole)
+        } else {
+            msg.contentParts.append(.text(whole))
+        }
+    }
+
+    /// Clears the streaming text accumulator. Called on every terminal path
+    /// (finish / cancel / error / empty) so a stale buffer cannot bleed into a
+    /// later turn.
+    private func clearStreamingTailBuffer() {
+        streamingTailBuffer = ""
+        streamingTailMessageID = nil
     }
 
     /// Writes `partial` into the last in-flight `.thinking` part for live preview.
@@ -344,6 +414,8 @@ final class ChatGenerationCoordinator {
             onSetLastTurnState(.generating)
             transitionPhase(to: .waitingForFirstToken)
             activeConversationMessageID = messageID
+            // Fresh turn — drop any leftover accumulator and re-key on demand.
+            clearStreamingTailBuffer()
             if let activeSessionID = currentActiveSessionID(),
                !currentMessages().contains(where: { $0.id == messageID }) {
                 let placeholder = ChatMessage(
@@ -357,7 +429,7 @@ final class ChatGenerationCoordinator {
 
         case .tokenEmitted(let messageID, let delta):
             transitionPhase(to: .streaming)
-            _ = mutateMessage(messageID) { Self.appendVisibleText(delta, into: &$0) }
+            appendStreamingDelta(delta, to: messageID)
 
         case .tokenUsageRecorded(let messageID, let promptTokens, let completionTokens):
             _ = mutateMessage(messageID) {
@@ -368,6 +440,7 @@ final class ChatGenerationCoordinator {
         case .streamFinished(let messageID, let reason):
             guard messageID == activeConversationMessageID else { break }
             activeConversationMessageID = nil
+            clearStreamingTailBuffer()
 
             activeConversationStreamHandle = nil
             resumeStreamCompletionWaiters()
@@ -420,6 +493,7 @@ final class ChatGenerationCoordinator {
             }
             activeConversationStreamHandle = nil
             activeConversationMessageID = nil
+            clearStreamingTailBuffer()
             resumeStreamCompletionWaiters()
             transitionPhase(to: .idle)
 
@@ -536,6 +610,7 @@ final class ChatGenerationCoordinator {
         activeConversationStreamHandle = nil
         resumeStreamCompletionWaiters()
         activeConversationMessageID = nil
+        clearStreamingTailBuffer()
         transitionPhase(to: .idle)
 
         if let error = outcome.error {

@@ -99,11 +99,18 @@ public struct MessageBubbleView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(Self.accessibilityLabel(for: message))
 
-                LinkPreviewAttachmentView(
-                    text: message.content,
-                    provider: linkPreviewProvider
-                )
-                .frame(maxWidth: 700, alignment: alignment)
+                // why: gate on `!isStreaming` so NSDataDetector runs once at
+                // stream end, not on every streaming batch (~30/sec). The
+                // detector re-scans the whole accumulated text each pass — O(N²)
+                // over a turn — and the preview is only meaningful once the URL
+                // is fully streamed anyway.
+                if !isStreaming {
+                    LinkPreviewAttachmentView(
+                        text: message.content,
+                        provider: linkPreviewProvider
+                    )
+                    .frame(maxWidth: 700, alignment: alignment)
+                }
             }
 
             if message.role == .assistant { Spacer(minLength: spacerMinLength) }
