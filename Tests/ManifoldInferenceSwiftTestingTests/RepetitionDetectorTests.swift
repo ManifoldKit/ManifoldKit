@@ -109,6 +109,47 @@ struct RepetitionDetectorTests {
         #expect(!RepetitionDetector.looksLikeLooping(list))
     }
 
+    // MARK: - Tail-bound performance fix
+
+    @Test("Tail 3x-repeat is detected even behind a long non-repeating prefix")
+    func test_tailTripleRepeat_behindLongPrefix_detected() {
+        // A long, non-repeating prefix that exceeds the 500-char tail bound, followed
+        // by a 3x-repeated tail unit. Proves bounding the work to the tail did not
+        // break detection: the loop lives entirely within the final 500 characters.
+        let prefix = (0..<200).map { "word\($0) " }.joined() // ~1200 chars, no repeats
+        #expect(prefix.count > 600)
+        let unit = "the model is stuck here " // 24 chars
+        let tail = String(repeating: unit, count: 3) // 72 chars, 3x repeat
+        #expect(RepetitionDetector.looksLikeLooping(prefix + tail))
+    }
+
+    @Test("Tail 2x-repeat is detected even behind a long non-repeating prefix")
+    func test_tailDoubleRepeat_behindLongPrefix_detected() {
+        let prefix = (0..<200).map { "token\($0) " }.joined()
+        #expect(prefix.count > 600)
+        let unit = "The world was dark and full of ancient forgotten mystery" // 56 chars
+        let tail = unit + unit // 2x repeat of 56-char unit
+        #expect(RepetitionDetector.looksLikeLooping(prefix + tail))
+    }
+
+    @Test("Long unique text with no tail repeat is not detected (no regression)")
+    func test_longUniqueText_noTailRepeat_notDetected() {
+        // Far longer than the 500-char tail bound, but no repeated unit anywhere in
+        // the tail. Confirms bounding introduces no false positives.
+        let text = (0..<400).map { "phrase\($0) " }.joined() // ~3000 unique chars
+        #expect(text.count > 2000)
+        #expect(!RepetitionDetector.looksLikeLooping(text))
+    }
+
+    @Test("Bound matches unbounded behaviour: repeat starting before the bound still fires via tail")
+    func test_boundedResult_matchesFullScan_forRepeatStraddlingBound() {
+        // A long repeated block whose tail (within 500 chars) is itself a clean 3x
+        // repeat. Both the old full-scan and the new tail-bounded path detect it.
+        let unit = "Repeating sentence that keeps going and going. " // 47 chars
+        let text = String(repeating: unit, count: 50) // ~2350 chars, heavily repeated
+        #expect(RepetitionDetector.looksLikeLooping(text))
+    }
+
     // MARK: - Repetition rate metric
 
     @Test("Repetition rate of empty string is 0.0")

@@ -15,7 +15,15 @@ public enum RepetitionDetector {
     ///
     /// Requires at least 100 characters for 2x detection and 48 for 3x detection.
     public static func looksLikeLooping(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The algorithm only ever inspects the tail: 2x detection compares the last
+        // 200-char unit against the preceding 200 (≤400 chars), and 3x detection the
+        // last three 120-char units (≤360 chars). Bounding the input to the final 500
+        // characters keeps each call O(1) in accumulated length instead of O(n) — this
+        // detector is called once per streamed token over the whole accumulated text.
+        // Behaviour is preserved exactly: detection is purely tail-local, and the
+        // `count >= 100` / `count >= 48` thresholds saturate immediately past the bound.
+        let tail = text.suffix(500)
+        let trimmed = tail.trimmingCharacters(in: .whitespacesAndNewlines)
         let characters = Array(trimmed)
 
         // 2x detection for longer units (50+ chars repeated twice).
