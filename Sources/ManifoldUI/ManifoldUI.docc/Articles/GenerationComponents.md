@@ -91,7 +91,7 @@ Once registered, the model will call `generate_image` or `generate_video` autono
 
 ``WebSearchToolSource`` delegates to ``ChatViewModel/searchWeb(query:)`` when the model calls `search_web`. Unlike image and video — which insert a placeholder message and surface results asynchronously — web search is request/response: ``WebSearchToolSource/resolve(toolName:arguments:session:)`` awaits the search and returns the result text directly to the model inside the same conversation turn.
 
-Like the image/video tool sources, ``WebSearchToolSource`` is a thin forwarder with no network or cloud dependency. The actual HTTP call lives in the concrete ``WebSearchRuntime`` implementation (`DefaultWebSearchRuntime`, in `ManifoldCloud`), which the host wires via ``ChatViewModel/configure(webSearchRuntime:)``. This keeps `ManifoldUI` free of `URLSession` and backend-family imports.
+Like the image/video tool sources, ``WebSearchToolSource`` is a thin forwarder with no network or cloud dependency. The actual HTTP call lives in the concrete ``WebSearchRuntime`` implementation (`DefaultWebSearchRuntime`, in `ManifoldCloudCore`), which the host wires via ``ChatViewModel/configure(webSearchRuntime:)``. This keeps `ManifoldUI` free of `URLSession` and backend-family imports.
 
 ## Registering tool sources
 
@@ -121,7 +121,7 @@ Each tool source requires its corresponding generation runtime to be wired into 
 
 - ``ImageGenerationToolSource`` — requires an ``ImageGenerationRuntime`` wired via `ManifoldBootstrap.build(imageGenerationService:)`.
 - ``VideoGenerationToolSource`` — requires a ``VideoGenerationRuntime`` wired into ``ChatViewModel``.
-- ``WebSearchToolSource`` — requires a ``WebSearchRuntime`` (e.g. `DefaultWebSearchRuntime` from `ManifoldCloud`) wired via `ManifoldBootstrap(webSearchRuntime:)` or ``ChatViewModel/configure(webSearchRuntime:)``.
+- ``WebSearchToolSource`` — requires a ``WebSearchRuntime`` (e.g. `DefaultWebSearchRuntime` from `ManifoldCloudCore`) wired via `ManifoldBootstrap(webSearchRuntime:)` or ``ChatViewModel/configure(webSearchRuntime:)``.
 
 `addGenerationToolSources(viewModel:)` silently skips sources whose corresponding service is absent, so it is safe to call unconditionally — no conditional check required at the call site.
 

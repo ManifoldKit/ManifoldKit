@@ -93,14 +93,16 @@
       "type": "regular",
       "path": "Sources/ManifoldCloudCore",
       "deps": [
-        "ManifoldInference"
+        "ManifoldInference",
+        "ManifoldRuntime"
       ]
     },
     "ManifoldFoundation": {
       "type": "regular",
       "path": "Sources/ManifoldFoundation",
       "deps": [
-        "ManifoldContract"
+        "ManifoldContract",
+        "ManifoldInference"
       ]
     },
     "ManifoldOllama": {
@@ -117,28 +119,6 @@
       "deps": [
         "ManifoldCloudCore",
         "ManifoldContract"
-      ]
-    },
-    "ManifoldCloud": {
-      "type": "regular",
-      "path": "Sources/ManifoldCloud",
-      "deps": [
-        "ManifoldCloudCore",
-        "ManifoldCloudSaaS",
-        "ManifoldOllama",
-        "ManifoldRuntime"
-      ]
-    },
-    "ManifoldBackends": {
-      "type": "regular",
-      "path": "Sources/ManifoldBackendsUmbrella",
-      "deps": [
-        "ManifoldCloud",
-        "ManifoldCloudCore",
-        "ManifoldCloudSaaS",
-        "ManifoldFoundation",
-        "ManifoldInference",
-        "ManifoldOllama"
       ]
     },
     "ManifoldAnyLanguageModel": {
@@ -177,9 +157,12 @@
       "type": "regular",
       "path": "Sources/ManifoldKit",
       "deps": [
-        "ManifoldBackends",
+        "ManifoldCloudCore",
+        "ManifoldCloudSaaS",
+        "ManifoldFoundation",
         "ManifoldHuggingFace",
         "ManifoldInference",
+        "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldSkills",
@@ -350,8 +333,6 @@
       "deps": [
         "ManifoldAnyLanguageModel",
         "ManifoldBackendTestKit",
-        "ManifoldBackends",
-        "ManifoldCloud",
         "ManifoldCloudCore",
         "ManifoldCloudSaaS",
         "ManifoldFoundation",
@@ -408,8 +389,9 @@
       "type": "executable",
       "path": "Sources/ManifoldServer",
       "deps": [
-        "ManifoldBackends",
-        "ManifoldInference"
+        "ManifoldFoundation",
+        "ManifoldInference",
+        "ManifoldOllama"
       ]
     },
     "ManifoldServerTests": {
@@ -425,10 +407,13 @@
       "type": "test",
       "path": "Tests/ManifoldE2ETests",
       "deps": [
-        "ManifoldBackends",
+        "ManifoldCloudCore",
+        "ManifoldCloudSaaS",
         "ManifoldContractTestSupport",
+        "ManifoldFoundation",
         "ManifoldHuggingFace",
         "ManifoldInference",
+        "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldTestSupport",
@@ -469,9 +454,11 @@
       "type": "regular",
       "path": "Sources/ManifoldFuzzBackends",
       "deps": [
-        "ManifoldBackends",
+        "ManifoldCloudSaaS",
+        "ManifoldFoundation",
         "ManifoldFuzz",
-        "ManifoldInference"
+        "ManifoldInference",
+        "ManifoldOllama"
       ]
     },
     "fuzz-chat": {
@@ -488,10 +475,12 @@
       "type": "test",
       "path": "Tests/ManifoldFuzzTests",
       "deps": [
-        "ManifoldBackends",
+        "ManifoldCloudSaaS",
+        "ManifoldFoundation",
         "ManifoldFuzz",
         "ManifoldFuzzBackends",
         "ManifoldInference",
+        "ManifoldOllama",
         "ManifoldTestSupport"
       ]
     },

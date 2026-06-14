@@ -61,7 +61,8 @@ rules must hold for every PR; the
 [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
 suite fails CI if any of them is violated.
 
-1. **`ManifoldUI` never imports `ManifoldBackends`.** UI is a consumer-facing
+1. **`ManifoldUI` never imports a backend family** (`ManifoldFoundation` /
+   `ManifoldOllama` / `ManifoldCloudSaaS`). UI is a consumer-facing
    chat surface. Backend code carries cloud-SDK weight, MLX/llama.cpp binary
    xcframeworks, and SwiftData adapters (transitively) that have no business
    in the view layer. Inference reaches UI through `ManifoldInference`'s
@@ -74,8 +75,9 @@ suite fails CI if any of them is violated.
    [Building a Chat UI](Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md)
    for the canonical wiring.
 
-3. **`ManifoldBackends` and `ManifoldMCP` depend on `ManifoldInference`
-   directly, not on `ManifoldRuntime`.** That keeps both modules free of
+3. **The backend families (`ManifoldFoundation` / `ManifoldOllama` /
+   `ManifoldCloudSaaS`) and `ManifoldMCP` depend on `ManifoldInference`
+   directly, not on `ManifoldRuntime`.** That keeps them free of
    SwiftData and free of runtime-port adapters, so host apps can wire backends
    or MCP into a non-SwiftData runtime without dragging the persistence layer
    in transitively.
@@ -141,10 +143,12 @@ A backend is anything that conforms to `InferenceBackend` and gets registered wi
    `Sources/ManifoldCloudCore`) — and compile unconditionally; consumers
    exclude them by not linking the products.
 
-2. **Register via `DefaultBackends.register(with:)`** rather than calling backend
-   constructors from app code. The registration helper handles trait gating and
-   default-backend wiring; direct constructor calls bypass that and emit
-   deprecation warnings.
+2. **Register via the family registrar** — `OllamaBackends` /
+   `CloudSaaSBackends` / `FoundationBackends` `.register(with:)`, or pass them
+   to `ManifoldKit.quickStart(backends:)` — rather than calling backend
+   constructors from app code. The registrar handles default-backend wiring;
+   direct constructor calls bypass that. (The old `DefaultBackends` fold was
+   retired in P7 — see docs/MIGRATION-shims-retired.md.)
 
 3. **Update `APIProvider.availableInBuild`** (via `BackendDescriptorRegistry`)
    so the UI provider picker lists the new provider in documented order.
@@ -177,7 +181,8 @@ for the security context.
 
 UI lives in `ManifoldUI` and (for model-management surfaces) `ManifoldUIModelManagement`.
 
-1. **Don't `import ManifoldBackends` from UI.** This is enforced by
+1. **Don't import a backend family (`ManifoldFoundation` / `ManifoldOllama` /
+   `ManifoldCloudSaaS`) from UI.** This is enforced by
    `TrafficBoundaryAuditTest` Rule 6 (import-graph layering) — the back-edge
    would close a dependency cycle. UI consumes inference via
    `ManifoldInference`'s service protocols.
