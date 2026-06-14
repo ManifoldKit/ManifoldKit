@@ -155,6 +155,11 @@ public struct EventRecorder: Sendable {
                     // executor; deterministic fuzz replays never observe
                     // them but the case stays exhaustive for growth.
                     events.append(.init(t: t, kind: "handoffRequested", v: handoff.targetAgentID.uuidString))
+                case .generationCompleted(let completion):
+                    // Terminal "response finished" signal from the
+                    // orchestrator. Record the reason in the trace so fuzz
+                    // scenarios can pin exactly-once terminal emission.
+                    events.append(.init(t: t, kind: "generationCompleted", v: "\(completion.reason)"))
                 }
                 memoryTick()
             }

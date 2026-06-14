@@ -176,6 +176,12 @@ for try await event in stream {
         // The queue re-prompts automatically; you only need to observe.
     case .usage(let usage):
         updateTokenCounter(prompt: usage.promptTokens, completion: usage.completionTokens)
+    case .generationCompleted(let completion):
+        // Terminal "response finished" signal, emitted exactly once as the
+        // last event. UI / accessibility layers post a single completion
+        // announcement here instead of racing the stream's finish against
+        // `phase == .done`. `completion.reason` says why the turn ended.
+        announceResponseFinished(reason: completion.reason)
     default:
         break
     }
@@ -185,6 +191,13 @@ for try await event in stream {
 Pattern-match consumers must handle or default-case every case — the enum is
 exhaustive and new cases are source-breaking. Use `default:` when you only care
 about a subset.
+
+The orchestrator emits ``GenerationEvent/generationCompleted(_:)`` exactly once
+as the **last** event before the stream finishes, carrying a
+``GenerationCompletion`` whose ``GenerationCompletion/reason`` classifies the
+ending (`.stop`, `.length`, `.toolIterationLimit`, `.cancelled`, `.error`). It
+gives accessibility consumers a single in-band "finished" signal so they need
+not race the `AsyncThrowingStream` finishing against `phase == .done`.
 
 ### `ImageGenerationConfig` and `ImageGenerationEvent` — image pipelines
 

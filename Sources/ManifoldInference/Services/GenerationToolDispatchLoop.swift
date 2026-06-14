@@ -50,12 +50,43 @@ struct GenerationToolDispatchLoop {
     }
 
     /// Drives the backend through an entire tool-dispatch loop for one queued request.
+    ///
+    /// Emits exactly one terminal ``GenerationEvent/generationCompleted(_:)`` as
+    /// the last event before returning, classifying why the turn ended. On a
+    /// thrown error the completion is emitted (`.error`) before the error
+    /// propagates so consumers still see a single in-band "finished" signal
+    /// ahead of the stream's throwing finish.
     func run(
         token: GenerationRequestToken,
         messages: [StructuredMessage],
         systemPrompt: String?,
         config: GenerationConfig
     ) async throws {
+        do {
+            let reason = try await runLoop(
+                token: token,
+                messages: messages,
+                systemPrompt: systemPrompt,
+                config: config
+            )
+            yieldEvent(.generationCompleted(GenerationCompletion(reason: reason)))
+        } catch is CancellationError {
+            yieldEvent(.generationCompleted(GenerationCompletion(reason: .cancelled)))
+            throw CancellationError()
+        } catch {
+            yieldEvent(.generationCompleted(GenerationCompletion(reason: .error)))
+            throw error
+        }
+    }
+
+    /// Runs the dispatch loop and returns the reason the turn ended. Throwing
+    /// paths are classified by the caller (``run(token:messages:systemPrompt:config:)``).
+    private func runLoop(
+        token: GenerationRequestToken,
+        messages: [StructuredMessage],
+        systemPrompt: String?,
+        config: GenerationConfig
+    ) async throws -> GenerationCompletion.Reason {
         // First-time-only wiring: make sure the registry has a schema
         // validator installed so tools with non-trivial parameter schemas
         // get argument validation without requiring the host to know about
@@ -82,7 +113,7 @@ struct GenerationToolDispatchLoop {
                     "GenerationQueue: tool-dispatch loop hit maxToolIterations=\(limit, privacy: .public); terminating."
                 )
                 yieldEvent(.toolIterationLimitExceeded(iterations: limit))
-                return
+                return .toolIterationLimit
             }
 
             if let toolAwareHistory,
@@ -96,10 +127,10 @@ struct GenerationToolDispatchLoop {
             var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
 
             for try await event in stream.events {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else { return .cancelled }
 
                 await pauseWhileThermalCritical(token)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else { return .cancelled }
 
                 switch consumer.handle(event) {
                 case .dispatchToolCall(let call):
@@ -119,7 +150,7 @@ struct GenerationToolDispatchLoop {
                         // re-derives the system prompt on the next turn from
                         // session.activeAgentID, so there's nothing left to
                         // do in this turn's tool-dispatch path.
-                        return
+                        return .stop
                     }
                     // No handoff (or detector unset / non-handoff result) —
                     // fall through to regular dispatch when the registry is
@@ -211,11 +242,11 @@ struct GenerationToolDispatchLoop {
                     )
 
                     if result.errorKind == .cancelled {
-                        return
+                        return .cancelled
                     }
 
                     if toolResultByteTotal >= Self.toolResultByteBudget {
-                        return
+                        return .stop
                     }
 
                 // Passthrough actions: the dispatch loop owns only tool-call
@@ -232,13 +263,14 @@ struct GenerationToolDispatchLoop {
                      .appendToolResult,
                      .toolIterationLimitExceeded,
                      .recordHandoff,
+                     .generationCompleted,
                      .ignore:
                     yieldEvent(event)
                 }
             }
 
             if dispatchedInThisTurn.isEmpty {
-                return
+                return .stop
             }
 
             var nextHistory = toolAwareHistory ?? currentMessages.map {
