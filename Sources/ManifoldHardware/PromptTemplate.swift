@@ -59,6 +59,24 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         return result
     }
 
+    /// Whether `format(messages:systemPrompt:tools:)` renders the `tools`
+    /// argument into the prompt itself (a native tool-declaration block).
+    ///
+    /// Only `.gemma4` does — it serialises each tool as a `<|tool>` block in the
+    /// system turn. Every other template silently discards `tools` and produces
+    /// the same output as `format(messages:systemPrompt:)`. Callers driving a
+    /// non-native template are responsible for folding tool descriptions into
+    /// `systemPrompt` (e.g. via `ToolSystemPromptBuilder.preferTools(for:)`);
+    /// `GenerationQueue` does this automatically (#1856). This predicate is the
+    /// signal the queue uses to decide whether that fold is needed — keep it in
+    /// lock-step with the `tools`-consuming branches of `format(…)`.
+    public var rendersToolsNatively: Bool {
+        switch self {
+        case .gemma4: return true
+        case .chatML, .llama3, .mistral, .alpaca, .gemma, .phi: return false
+        }
+    }
+
     /// Thinking markers for this template, or nil if the template does not emit reasoning blocks.
     public var thinkingMarkers: ThinkingMarkers? {
         switch self {
