@@ -35,7 +35,8 @@ The relaunch / restore guarantees in section 5 apply to both.
 ```swift
 import SwiftUI
 import ManifoldKit            // umbrella: ManifoldInference + ManifoldRuntime
-                              // + ManifoldPersistenceSwiftData + ManifoldBackends + ManifoldUI
+                              // + ManifoldPersistenceSwiftData + the backend
+                              // families (Foundation/Ollama/CloudSaaS) + ManifoldUI
 
 @main
 struct MyChatApp: App {
@@ -139,7 +140,13 @@ let (progress, task) = ManifoldBootstrap.build(
 )
 for await _ in progress { /* drain milestones or drive a progress bar */ }
 let bootstrap = try await task.value
-DefaultBackends.register(with: bootstrap.inferenceService)
+// Register the compiled-in default families. (The `ManifoldBackends`
+// umbrella and `DefaultBackends` were retired in 1.0 — see
+// docs/MIGRATION-shims-retired.md.) `quickStart()` folds these for you;
+// the manual path registers them explicitly.
+OllamaBackends.register(with: bootstrap.inferenceService)
+CloudSaaSBackends.register(with: bootstrap.inferenceService)
+FoundationBackends.register(with: bootstrap.inferenceService)
 
 let chatVM = ChatViewModel(
     inferenceService: bootstrap.inferenceService,
@@ -167,7 +174,7 @@ proper.
 
 ### Foundation (on-device, iOS 26 / macOS 26+)
 
-`DefaultBackends.register(with:)` installs `FoundationBackend`
+`FoundationBackends.register(with:)` installs `FoundationBackend`
 automatically when the OS version qualifies, but **Foundation is not
 auto-selected**. Two explicit wiring steps are required before the chat
 view model will treat it as an available model:
@@ -350,7 +357,11 @@ struct MyChatApp: App {
             for await _ in progress { /* drain or drive a progress bar */ }
             let bootstrap = try await task.value
 
-            DefaultBackends.register(with: bootstrap.inferenceService)
+            // The retired `DefaultBackends` fold is now an explicit per-family
+            // registration (see docs/MIGRATION-shims-retired.md).
+            OllamaBackends.register(with: bootstrap.inferenceService)
+            CloudSaaSBackends.register(with: bootstrap.inferenceService)
+            FoundationBackends.register(with: bootstrap.inferenceService)
 
             let chatVM = ChatViewModel(
                 inferenceService: bootstrap.inferenceService,
@@ -479,8 +490,9 @@ Things the host is **still** responsible for:
 - **Wiring persistence late from `.task` on the root view.** Pre-runtime
   hosts did this; the bootstrap path makes it unnecessary. Configure the
   view models once during startup and pass them through `.environment`.
-- **Forgetting `DefaultBackends.register(with: bootstrap.inferenceService)`.**
-  Without it, no backend will satisfy a generation request and the
+- **Forgetting to register backends on the manual path** — i.e. the
+  `OllamaBackends`/`CloudSaaSBackends`/`FoundationBackends` `register(with:)`
+  calls. Without them, no backend will satisfy a generation request and the
   composer's send button will appear inert. `quickStart` registers
   defaults for you.
 

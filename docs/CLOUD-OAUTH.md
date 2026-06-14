@@ -26,11 +26,11 @@ if you put a static key behind a `TokenProvider`, you gain nothing.
 ## 2. Implementing `TokenProvider`
 
 `TokenProvider` is declared in `ManifoldCloudCore` and re-exported through
-`ManifoldCloud` and the `ManifoldKit` umbrella. You only need to import the
-module your target already depends on.
+the `ManifoldKit` umbrella. You only need to import the module your target
+already depends on.
 
 ```swift,no-build
-import ManifoldCloudCore // or ManifoldKit / ManifoldCloud
+import ManifoldCloudCore // or ManifoldKit
 
 public protocol TokenProvider: Sendable {
     /// Returns a valid bearer token. May perform a network round-trip to
@@ -114,7 +114,7 @@ Keychain account — only one credential source is active at a time.
 **Anthropic `ClaudeBackend` example:**
 
 ```swift,no-build
-import ManifoldCloud
+import ManifoldCloudSaaS
 import ManifoldCloudCore
 
 // 1. Build the provider. The actor serialises concurrent refresh calls.
@@ -146,7 +146,7 @@ want token rotation inside the full SwiftData-backed stack:
 
 ```swift,no-build
 import ManifoldKit
-import ManifoldCloud
+import ManifoldCloudSaaS
 import ManifoldCloudCore
 
 let tokenProvider = MyOAuthTokenProvider(...)

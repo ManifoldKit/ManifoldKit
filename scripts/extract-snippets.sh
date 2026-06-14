@@ -34,9 +34,13 @@
 #     a consumer must paste into their own manifest, etc. The Hello World
 #     snippet MUST never carry no-build.
 #   - Snippets whose first non-comment line starts with `.package(` or
-#     `.target(` are heuristically classified as Package.swift fragments and
-#     auto-skipped. These cannot be compiled standalone; their lint coverage
-#     belongs to `scripts/check-readme.sh` (version-pin freshness).
+#     `.target(` (or that lead with `import PackageDescription`) are
+#     heuristically classified as Package.swift fragments and written to
+#     `.skip` files. These cannot be compiled standalone, but they are NOT
+#     trusted blindly: scripts/extract-snippets-test.sh validates every such
+#     fragment against Package.swift (referenced products must exist; a
+#     `.v26` platform requires swift-tools-version >= 6.2). Version-pin
+#     freshness lint additionally lives in scripts/check-readme.sh.
 #
 # Exit codes:
 #   0 — extracted at least one Swift block across all inputs.

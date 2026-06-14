@@ -61,7 +61,7 @@ The smallest possible CLI. No model files to manage, no network calls, no API ke
 **`Package.swift`:**
 
 ```swift
-// swift-tools-version: 6.1
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
@@ -81,7 +81,9 @@ let package = Package(
             name: "ChatCLIFoundation",
             dependencies: [
                 .product(name: "ManifoldInference", package: "ManifoldKit"),
-                .product(name: "ManifoldBackends", package: "ManifoldKit"),
+                .product(name: "ManifoldFoundation", package: "ManifoldKit"),
+                .product(name: "ManifoldOllama", package: "ManifoldKit"),
+                .product(name: "ManifoldCloudSaaS", package: "ManifoldKit"),
             ]
         ),
     ]
@@ -162,7 +164,9 @@ let package = Package(
             name: "ChatCLILlama",
             dependencies: [
                 .product(name: "ManifoldInference", package: "ManifoldKit"),
-                .product(name: "ManifoldBackends", package: "ManifoldKit"),
+                .product(name: "ManifoldFoundation", package: "ManifoldKit"),
+                .product(name: "ManifoldOllama", package: "ManifoldKit"),
+                .product(name: "ManifoldCloudSaaS", package: "ManifoldKit"),
                 .product(name: "ManifoldLlama", package: "manifold-llama"),
             ]
         ),
@@ -401,7 +405,9 @@ let package = Package(
             name: "ChatCLICloud",
             dependencies: [
                 .product(name: "ManifoldInference", package: "ManifoldKit"),
-                .product(name: "ManifoldBackends", package: "ManifoldKit"),
+                .product(name: "ManifoldFoundation", package: "ManifoldKit"),
+                .product(name: "ManifoldOllama", package: "ManifoldKit"),
+                .product(name: "ManifoldCloudSaaS", package: "ManifoldKit"),
             ]
         ),
     ]

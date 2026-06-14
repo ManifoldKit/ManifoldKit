@@ -53,9 +53,18 @@ More examples ship alongside new features — see each example's README for deta
 
 ## Customization
 
-To add your own backends, import `ManifoldBackends` and call `register` with the `InferenceService` from your bootstrap result:
+`quickStart()` already folds in the compiled-in default families (Ollama,
+CloudSaaS, and Foundation on macOS 26 / iOS 26). To register them yourself on a
+manual bootstrap, import the family modules and call each registrar with the
+`InferenceService` from your bootstrap result:
 
 ```swift
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
+
 let result = try await ManifoldKit.quickStart()
-DefaultBackends.register(with: result.bootstrap.inferenceService)
+OllamaBackends.register(with: result.bootstrap.inferenceService)
+CloudSaaSBackends.register(with: result.bootstrap.inferenceService)
+FoundationBackends.register(with: result.bootstrap.inferenceService)
 ```

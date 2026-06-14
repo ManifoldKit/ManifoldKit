@@ -22,14 +22,14 @@ App code should `import ManifoldKit` — the umbrella product re-exports the
 five most-imported modules in one line:
 
 ```swift
-import ManifoldKit   // covers Inference, Runtime, PersistenceSwiftData, Backends, UI
+import ManifoldKit   // covers Inference, Runtime, PersistenceSwiftData, the backend families, UI
 ```
 
 Specialised modules stay opt-in and are imported by name when you need them:
 
 | Product | Import when you need… |
 |---------|------------------------|
-| **`ManifoldKit`** *(umbrella, the default)* | `ChatView`, `ChatViewModel`, `ManifoldBootstrap`, `DefaultBackends`, `InferenceService`, `BackendName` — the 80%-case surface. |
+| **`ManifoldKit`** *(umbrella, the default)* | `ChatView`, `ChatViewModel`, `ManifoldBootstrap`, `quickStart(backends:)`, `InferenceService`, `BackendName` — the 80%-case surface. |
 | `ManifoldUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
 | `ManifoldHuggingFace` *(optional)* | Hub search, browse, background downloads. Compiles unconditionally (the `HuggingFace` trait retired in v0.48). |
 | `ManifoldVoice` *(optional)* | Speech I/O composer accessory. |
@@ -38,12 +38,14 @@ Specialised modules stay opt-in and are imported by name when you need them:
 | `ManifoldMLX` / `ManifoldLlama` *(companion packages)* | MLX / llama.cpp local inference — add `manifold-mlx` / `manifold-llama` as separate package dependencies and pass `MLXBackends.self` / `LlamaBackends.self` to `quickStart(backends:)` (v0.48 split). |
 
 Contributors changing ManifoldKit internals can still import the individual products
-(`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
-`ManifoldBackends`, `ManifoldUI`); the umbrella is the consumer-facing surface.
+(`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the backend
+families `ManifoldFoundation`/`ManifoldOllama`/`ManifoldCloudSaaS`, `ManifoldUI`);
+the umbrella is the consumer-facing surface.
 
 The dependency graph is one-way: UI depends on Runtime depends on Inference;
-backends depend on Inference directly. Never import `ManifoldBackends` from a
-view target — CI lint rejects that edge.
+backends depend on Inference directly. Never import a backend family
+(`ManifoldFoundation`/`ManifoldOllama`/`ManifoldCloudSaaS`) from a view target —
+CI lint rejects that edge.
 
 ## Bootstrap recipe (canonical hello-world)
 
@@ -102,7 +104,13 @@ struct MyChatApp: App {
             for await _ in progress { /* drain milestones or drive a progress bar */ }
             let bootstrap = try await task.value
 
-            DefaultBackends.register(with: bootstrap.inferenceService)
+            // Register the compiled-in default families. The `ManifoldBackends`
+            // umbrella and `DefaultBackends` were retired in 1.0 (see
+            // docs/MIGRATION-shims-retired.md); `quickStart()` folds these for
+            // you, the manual path registers them explicitly.
+            OllamaBackends.register(with: bootstrap.inferenceService)
+            CloudSaaSBackends.register(with: bootstrap.inferenceService)
+            FoundationBackends.register(with: bootstrap.inferenceService)
 
             let vm = ChatViewModel(
                 inferenceService: bootstrap.inferenceService,
