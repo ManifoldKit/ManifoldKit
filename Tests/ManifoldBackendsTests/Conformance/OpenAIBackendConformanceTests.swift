@@ -2,7 +2,10 @@ import XCTest
 import ManifoldInference
 import ManifoldBackendTestKit
 import ManifoldTestSupport
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
+import ManifoldCloudCore
 
 /// OpenAIBackend conformance against the universal BCK backend contract.
 ///

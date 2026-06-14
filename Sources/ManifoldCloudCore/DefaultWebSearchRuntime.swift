@@ -1,7 +1,6 @@
 import Foundation
 import ManifoldInference
 import ManifoldRuntime
-import ManifoldCloudCore
 
 /// Concrete ``WebSearchRuntime`` backed by an OpenAI-Chat-Completions-shaped
 /// search endpoint (e.g. xAI's `grok` search models).
@@ -9,7 +8,8 @@ import ManifoldCloudCore
 /// Performs the actual HTTP call that used to live inside
 /// `WebSearchToolSource`: a POST to `<baseURL>/chat/completions` with a
 /// `search_parameters` field, `Bearer` auth via a ``TokenProvider``, routed
-/// through `URLSessionFactory.ephemeral()`. Lives in `ManifoldCloud` because
+/// through `URLSessionFactory.ephemeral()`. Lives in `ManifoldCloudCore`
+/// (relocated from the retired `ManifoldCloud` shim in P7) because
 /// that is the layer where cloud SDK weight and direct network I/O belong (and
 /// where the ``TrafficBoundaryAuditTest`` network-I/O allowlist covers cloud
 /// backends); the UI and runtime layers depend only on the abstract

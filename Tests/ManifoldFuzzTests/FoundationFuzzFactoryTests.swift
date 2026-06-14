@@ -1,6 +1,9 @@
 #if canImport(FoundationModels)
 import XCTest
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
+import ManifoldCloudCore
 import ManifoldFuzz
 import ManifoldFuzzBackends
 

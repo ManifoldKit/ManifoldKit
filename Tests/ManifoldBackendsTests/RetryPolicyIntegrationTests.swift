@@ -3,7 +3,9 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
 @testable import ManifoldCloudCore
 
 /// Integration tests verifying that `withExponentialBackoff` retries rate-limited

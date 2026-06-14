@@ -2,7 +2,10 @@ import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 /// Contract tests that lock down capability fields on every concrete backend.
 ///

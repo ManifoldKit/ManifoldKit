@@ -99,7 +99,9 @@ struct RAGExample {
         let bootstrap = try await task.value
 
         // 3. Register the compiled-in inference backends.
-        DefaultBackends.register(with: bootstrap.inferenceService)
+        for registrar in ManifoldKit.defaultBackendRegistrars {
+            registrar.register(with: bootstrap.inferenceService)
+        }
 
         // 4. Ingest documents. Parsing, chunking, and indexing happen here;
         //    `ingest` is idempotent per call and returns a DocumentRecord.

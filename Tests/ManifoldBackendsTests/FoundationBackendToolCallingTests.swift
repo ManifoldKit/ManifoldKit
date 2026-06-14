@@ -2,7 +2,9 @@
 import XCTest
 import FoundationModels
 import ManifoldInference
-@testable import ManifoldBackends
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 @testable import ManifoldFoundation
 
 /// Coverage for the GuidedGeneration-backed tool-calling path on

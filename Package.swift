@@ -27,7 +27,8 @@ let package = Package(
     ],
     products: [
         // Umbrella product. Re-exports ManifoldInference + ManifoldRuntime +
-        // ManifoldPersistenceSwiftData + ManifoldBackends + ManifoldUI so a
+        // ManifoldPersistenceSwiftData + the backend families (Foundation,
+        // Ollama, CloudSaaS, CloudCore) + ManifoldUI so a
         // typical app can `import ManifoldKit` and skip the 4–6 import dance.
         // Specialised modules (MCP, Voice, ModelManagement, AppIntents, …) stay
         // explicit imports because not every host wants them in the build graph.
@@ -68,14 +69,11 @@ let package = Package(
         .library(name: "ManifoldMCPHost", targets: ["ManifoldMCPHost"]),
         .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
         .library(name: "ManifoldPersistenceSwiftData", targets: ["ManifoldPersistenceSwiftData"]),
-        // Initiative I7 split ManifoldBackends into 5 trait-gated source
-        // targets. The legacy `ManifoldBackends` target/module is preserved
-        // (renamed only on disk to `Sources/ManifoldBackendsUmbrella` to make
-        // its role visible) so existing `import ManifoldBackends` consumers
-        // keep compiling — the target body is now a thin re-export shim plus
-        // the cross-family registration glue (DefaultBackends and the
-        // BackendRegistrar conformances).
-        .library(name: "ManifoldBackends", targets: ["ManifoldBackends"]),
+        // The `ManifoldBackends` umbrella product and the `ManifoldCloud`
+        // re-export shim were retired in P7 (the 1.0 clean-up). Consumers
+        // import the family products directly (ManifoldCloudCore /
+        // ManifoldOllama / ManifoldCloudSaaS / ManifoldFoundation) or
+        // `import ManifoldKit`. See docs/MIGRATION-shims-retired.md.
         .library(name: "ManifoldCloudCore", targets: ["ManifoldCloudCore"]),
         // ManifoldMLX / ManifoldLlama products removed in v0.48 (PR C2):
         // the families live in the manifold-mlx / manifold-llama companion
@@ -83,12 +81,9 @@ let package = Package(
         .library(name: "ManifoldFoundation", targets: ["ManifoldFoundation"]),
         // v0.48 product split (PR A1): the Ollama and SaaS backend families
         // are real products so consumers can take exactly one provider
-        // family without traits. `ManifoldCloud` below is the deprecated
-        // re-export shim that keeps `import ManifoldCloud` compiling for
-        // one release.
+        // family without traits.
         .library(name: "ManifoldOllama", targets: ["ManifoldOllama"]),
         .library(name: "ManifoldCloudSaaS", targets: ["ManifoldCloudSaaS"]),
-        .library(name: "ManifoldCloud", targets: ["ManifoldCloud"]),
         // v0.48 (PR A5): the AnyLanguageModel bridge graduated from the
         // retired `AnyLanguageModel` trait to a standalone product. The
         // external AnyLanguageModel package was always resolved (traits gate
@@ -344,10 +339,10 @@ let package = Package(
         // depend on the specific products they need instead of the umbrella
         // (link-out, not compile-out; docs/FIPS.md).
         //
-        // The legacy `ManifoldBackends` target/module is preserved as a thin
-        // re-export shim (sources under `Sources/ManifoldBackendsUmbrella/`)
-        // hosting the cross-family glue (`DefaultBackends`) and re-exporting
-        // the surviving Foundation + Cloud families.
+        // The legacy `ManifoldBackends` umbrella and the `ManifoldCloud`
+        // re-export shim were retired in P7 — there is no umbrella target any
+        // more; consumers depend on the family products directly (or the
+        // `ManifoldKit` umbrella, which re-exports them).
         // ─────────────────────────────────────────────────────────────────
 
         // ManifoldCloudCore: shared SSE / TLS-pinning / DNS-rebind / URLSession
@@ -358,21 +353,34 @@ let package = Package(
         // the v0.48 product split removed its `#if Ollama / CloudSaaS` gates.
         .target(
             name: "ManifoldCloudCore",
-            dependencies: ["ManifoldInference"],
+            dependencies: [
+                "ManifoldInference",
+                // DefaultWebSearchRuntime (relocated here in P7 when the
+                // ManifoldCloud shim was retired) conforms to the
+                // WebSearchRuntime port declared in ManifoldRuntime. This is a
+                // library→library edge (not a consumer→family edge) so it stays
+                // un-gated per the trait-gating rule. ManifoldRuntime is
+                // SwiftData-free and does NOT depend on ManifoldCloudCore, so
+                // the edge is acyclic and does not drag SwiftData into the
+                // cloud infrastructure layer.
+                "ManifoldRuntime",
+            ],
             path: "Sources/ManifoldCloudCore"
         ),
 
         // ManifoldFoundation: Apple Foundation Models bridge. No trait —
         // gated by OS availability via `#if canImport(FoundationModels)` and
         // `@available(iOS 26, macOS 26, *)`.
-        // Repointed to ManifoldContract in P2a (#1719): the Foundation Models
-        // bridge compiles against the Contract surface only (InferenceBackend,
-        // GenerationConfig, GenerationEvent, …) — its single GenerationQueue
-        // mention is a docstring, no engine state. Thinning this edge keeps a
-        // FoundationOnly build off the engine's transitive graph where possible.
+        // The Foundation Models bridge (`FoundationBackend`) compiles against
+        // the Contract surface only (InferenceBackend, GenerationConfig,
+        // GenerationEvent, …). The `FoundationBackends` registrar — relocated
+        // here in P7 when the ManifoldBackends umbrella was retired — needs the
+        // engine's `InferenceService`/`BackendRegistrar`, so this target also
+        // links ManifoldInference. (The FoundationOnly trait that motivated the
+        // thinned Contract-only edge was retired in v0.48 PR C2.)
         .target(
             name: "ManifoldFoundation",
-            dependencies: ["ManifoldContract"],
+            dependencies: ["ManifoldContract", "ManifoldInference"],
             path: "Sources/ManifoldFoundation"
         ),
 
@@ -408,55 +416,17 @@ let package = Package(
             path: "Sources/ManifoldCloudSaaS"
         ),
 
-        // ManifoldCloud: deprecated re-export shim (v0.48 product split).
-        // `@_exported import`s ManifoldOllama / ManifoldCloudSaaS so existing
-        // `import ManifoldCloud` consumers keep compiling for one release.
-        // Also still hosts DefaultWebSearchRuntime — the one cloud file that
-        // conforms to a ManifoldRuntime port, an edge neither provider
-        // family target wants.
-        .target(
-            name: "ManifoldCloud",
-            dependencies: [
-                "ManifoldCloudCore",
-                // DefaultWebSearchRuntime conforms to the WebSearchRuntime port
-                // declared in ManifoldRuntime. This is a library→library edge
-                // (not a consumer→family edge) so it stays un-gated per the
-                // trait-gating rule. ManifoldRuntime is SwiftData-free, so this
-                // does not drag SwiftData into the family target.
-                "ManifoldRuntime",
-                "ManifoldOllama",
-                "ManifoldCloudSaaS",
-            ],
-            path: "Sources/ManifoldCloud"
-        ),
+        // ManifoldCloud + ManifoldBackends re-export shims removed in P7
+        // (the 1.0 clean-up): `import ManifoldCloud` / `import ManifoldBackends`
+        // no longer compile. Import the family modules directly
+        // (`ManifoldCloudCore`, `ManifoldOllama`, `ManifoldCloudSaaS`,
+        // `ManifoldFoundation`) or `import ManifoldKit` for the umbrella.
+        // `DefaultWebSearchRuntime` moved into `ManifoldCloudCore`;
+        // `FoundationBackends` into `ManifoldFoundation`;
+        // `CloudBackends`/`DefaultBackends` were dropped in favour of explicit
+        // registrar lists (`OllamaBackends` + `CloudSaaSBackends` +
+        // `FoundationBackends`). See docs/MIGRATION-shims-retired.md.
 
-        // ManifoldBackends: the legacy umbrella module, now a thin re-export
-        // shim over the SURVIVING families only (Foundation + Cloud). Hosts
-        // the cross-family registration glue (`DefaultBackends`,
-        // `FoundationBackends` / `CloudBackends`). The MLX / Llama families
-        // (and their `MLXBackends` / `LlamaBackends` registrars) moved to the
-        // manifold-mlx / manifold-llama companion packages in v0.48 (PR C2,
-        // #1749) — pass their registrars to `quickStart(backends:)`.
-        // The target name stays `ManifoldBackends` (module name follows the
-        // target) so `@testable import ManifoldBackends` is preserved; the
-        // sources live under `Sources/ManifoldBackendsUmbrella/` to make the
-        // role obvious from the directory listing.
-        .target(
-            name: "ManifoldBackends",
-            dependencies: [
-                "ManifoldInference",
-                "ManifoldCloudCore",
-                "ManifoldFoundation",
-                "ManifoldCloud",
-                // Direct edges to the v0.48 family products: CloudBackends
-                // forwards to OllamaBackends / CloudSaaSBackends, and an
-                // explicit `import` requires a declared edge even though the
-                // ManifoldCloud shim re-exports both.
-                "ManifoldOllama",
-                "ManifoldCloudSaaS",
-            ],
-            path: "Sources/ManifoldBackendsUmbrella"
-        ),
         // AnyLanguageModel provider bridge (v0.48, PR A5 — formerly gated by
         // the retired `AnyLanguageModel` trait inside the umbrella target).
         // The dependency on the external AnyLanguageModel package is
@@ -511,9 +481,9 @@ let package = Package(
             path: "Sources/ManifoldHuggingFace"
         ),
         // ManifoldKit: umbrella library. Single-file `Exports.swift`
-        // re-exports the four most-imported modules so app code can write
+        // re-exports the most-imported modules so app code can write
         // `import ManifoldKit` and reach `ChatView`, `ChatViewModel`,
-        // `ManifoldBootstrap`, `DefaultBackends`, and the public Inference
+        // `ManifoldBootstrap`, the backend families, and the public Inference
         // surface from one import. Specialised modules stay opt-in (see
         // `Exports.swift` for the rationale).
         .target(
@@ -526,7 +496,13 @@ let package = Package(
                 // consumers reach ModelInfo, ModelRegistry, etc. transitively.
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
-                "ManifoldBackends",
+                // The ManifoldBackends umbrella was retired in P7; the umbrella
+                // re-exports the surviving backend families directly so
+                // `import ManifoldKit` still exposes the backend surface.
+                "ManifoldFoundation",
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
+                "ManifoldCloudCore",
                 "ManifoldUI",
                 "ManifoldSkills",
                 // Seed-model path: `quickStart(seed:)` drives a background download on
@@ -754,16 +730,16 @@ let package = Package(
         .testTarget(
             name: "ManifoldBackendsTests",
             dependencies: [
-                "ManifoldBackends",
+                // The ManifoldBackends / ManifoldCloud umbrella+shim targets
+                // were retired in P7; the suites now import the family modules
+                // directly. The test-target NAME is retained — CI and docs
+                // reference it.
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
                 "ManifoldSecrets",
                 "ManifoldHardware",
-                "ManifoldCloud",
                 // Direct edges for `@testable import ManifoldOllama` /
-                // `@testable import ManifoldCloudSaaS` — @testable requires a
-                // direct declared edge; the shim's re-export only carries
-                // public symbols.
+                // `@testable import ManifoldCloudSaaS`.
                 "ManifoldOllama",
                 "ManifoldCloudSaaS",
                 "ManifoldUI",
@@ -835,7 +811,10 @@ let package = Package(
             name: "ManifoldServer",
             dependencies: [
                 .target(name: "ManifoldInference", condition: .when(traits: ["Server"])),
-                .target(name: "ManifoldBackends", condition: .when(traits: ["Server"])),
+                // ManifoldBackends umbrella retired in P7 — link the families
+                // the server actually constructs (FoundationBackend / OllamaBackend).
+                .target(name: "ManifoldFoundation", condition: .when(traits: ["Server"])),
+                .target(name: "ManifoldOllama", condition: .when(traits: ["Server"])),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
                 // HTTPTypes is used directly in ServerApp.swift (HTTPFields, HTTPField.Name,
@@ -865,9 +844,12 @@ let package = Package(
         .testTarget(
             name: "ManifoldE2ETests",
             dependencies: [
-                // ManifoldBackends umbrella re-exports Foundation/Cloud so
-                // tests reach the surviving family symbols via this single dep.
-                "ManifoldBackends",
+                // ManifoldBackends umbrella retired in P7 — link the surviving
+                // family modules directly.
+                "ManifoldFoundation",
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
+                "ManifoldCloudCore",
                 "ManifoldUI",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
@@ -930,7 +912,11 @@ let package = Package(
             dependencies: [
                 "ManifoldFuzz",
                 "ManifoldInference",
-                "ManifoldBackends",
+                // ManifoldBackends umbrella retired in P7 — link the families
+                // whose backends the fuzz factories construct.
+                "ManifoldFoundation",
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
             ],
             path: "Sources/ManifoldFuzzBackends"
         ),
@@ -952,7 +938,10 @@ let package = Package(
             dependencies: [
                 "ManifoldFuzz",
                 "ManifoldFuzzBackends",
-                "ManifoldBackends",
+                // ManifoldBackends umbrella retired in P7.
+                "ManifoldFoundation",
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
                 "ManifoldInference",
                 "ManifoldTestSupport",
             ]
