@@ -160,6 +160,10 @@ public struct EventRecorder: Sendable {
                     // orchestrator. Record the reason in the trace so fuzz
                     // scenarios can pin exactly-once terminal emission.
                     events.append(.init(t: t, kind: "generationCompleted", v: "\(completion.reason)"))
+                case .toolCallParseFailed(let rawBody):
+                    events.append(.init(t: t, kind: "toolCallParseFailed", v: rawBody))
+                case .toolCallTruncated(let rawBody):
+                    events.append(.init(t: t, kind: "toolCallTruncated", v: rawBody))
                 }
                 memoryTick()
             }

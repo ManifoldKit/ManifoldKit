@@ -56,6 +56,13 @@ public struct GenerationStreamConsumer: Sendable {
             // upstream instead of going through the action mapping.
             return .ignore
 
+        case .toolCallParseFailed, .toolCallTruncated:
+            // Non-fatal tool-call diagnostics (#1857 / #1858). Advisory
+            // metadata with no chat-message text/tool state to mutate; hosts
+            // that want to recover or surface a "broken/truncated tool call"
+            // hint observe the raw event upstream, mirroring throttleDiagnostic.
+            return .ignore
+
         case .toolCallStart, .toolCallArgumentsDelta:
             // Streaming tool-call deltas are observed by UI surfaces
             // upstream (rendering an in-flight call card). The

@@ -26,6 +26,14 @@ final class OutputParserSessionTests: XCTestCase {
         events.compactMap { if case .toolCall(let c) = $0 { return c } else { return nil } }
     }
 
+    private func parseFailures(_ events: [GenerationEvent]) -> [String] {
+        events.compactMap { if case .toolCallParseFailed(let body) = $0 { return body } else { return nil } }
+    }
+
+    private func truncations(_ events: [GenerationEvent]) -> [String] {
+        events.compactMap { if case .toolCallTruncated(let body) = $0 { return body } else { return nil } }
+    }
+
     // MARK: - Test marker fixtures
 
     /// A simple JSON `<tool_call>` dialect: `{"name":...}` → ToolCall.
@@ -268,5 +276,93 @@ final class OutputParserSessionTests: XCTestCase {
         recovery += transform.finalize()
         XCTAssertEqual(toolCalls(recovery).map(\.toolName), ["f"],
             "Parser must recover and parse a valid call after dropping an oversized body")
+    }
+
+    // MARK: - #1857: malformed-body parse-failure diagnostic
+
+    func test_closedToolBlock_withMalformedBody_emitsParseFailedDiagnostic() {
+        // A well-formed open/close pair surrounds a body the dialect parser
+        // rejects (not valid JSON). Previously this vanished with NO event;
+        // now it surfaces a non-fatal `.toolCallParseFailed` carrying the body.
+        var transform = ToolCallTransform(markers: [jsonMarker()])
+        var events = transform.process([.token("before<tool_call>not json</tool_call>after")])
+        events += transform.finalize()
+
+        XCTAssertTrue(toolCalls(events).isEmpty,
+            "A malformed body produces no ToolCall")
+        XCTAssertEqual(parseFailures(events), ["not json"],
+            "A malformed closed tool body must surface the raw body as a parse-failure diagnostic (#1857)")
+        XCTAssertEqual(visible(events), "beforeafter",
+            "Visible text around the failed block is still emitted")
+
+        // Sabotage: deleting the `.toolCallParseFailed` emission in
+        // ToolCallTransform makes parseFailures empty and this assertion fails —
+        // confirming the diagnostic is load-bearing, not incidental.
+    }
+
+    func test_parseFailure_doesNotBreakSubsequentValidCall() {
+        var transform = ToolCallTransform(markers: [jsonMarker()])
+        var events = transform.process([.token("<tool_call>garbage</tool_call><tool_call>{\"name\":\"ok\"}</tool_call>")])
+        events += transform.finalize()
+
+        XCTAssertEqual(parseFailures(events), ["garbage"])
+        XCTAssertEqual(toolCalls(events).map(\.toolName), ["ok"],
+            "A parse failure must not poison a following well-formed call")
+    }
+
+    // MARK: - #1858: opt-in truncated-body diagnostic at finalize
+
+    func test_finalize_unterminatedToolBlock_default_dropsSilently() {
+        // Default behavior is unchanged: an unterminated block is discarded with
+        // NO new event.
+        var transform = ToolCallTransform(markers: [jsonMarker()])
+        var events = transform.process([.token("text<tool_call>{\"name\":\"f\",\"arg")])
+        events += transform.finalize()
+
+        XCTAssertTrue(toolCalls(events).isEmpty)
+        XCTAssertTrue(truncations(events).isEmpty,
+            "With the opt-in OFF, a truncated tool block must NOT emit a diagnostic (default unchanged)")
+        XCTAssertEqual(visible(events), "text")
+    }
+
+    func test_finalize_unterminatedToolBlock_optIn_surfacesPartialBody() {
+        // With the opt-in ON, the partial body is surfaced as a non-fatal
+        // truncation diagnostic so a mid-tool-call stream cut is observable.
+        var transform = ToolCallTransform(markers: [jsonMarker()], surfaceTruncatedToolBody: true)
+        var events = transform.process([.token("text<tool_call>{\"name\":\"f\",\"arg")])
+        events += transform.finalize()
+
+        XCTAssertTrue(toolCalls(events).isEmpty)
+        XCTAssertEqual(truncations(events), ["{\"name\":\"f\",\"arg"],
+            "With the opt-in ON, finalize must surface the buffered partial body (#1858)")
+        XCTAssertEqual(visible(events), "text")
+
+        // Sabotage: flipping surfaceTruncatedToolBody back to false (or dropping
+        // the finalize branch) makes truncations empty and this fails.
+    }
+
+    func test_finalize_optIn_partialCloseSuffixFoldedIntoTruncatedBody() {
+        // The body ends mid-close-tag; the held-back partial close suffix still
+        // belongs to the body and must be included in the surfaced raw body.
+        var transform = ToolCallTransform(markers: [jsonMarker()], surfaceTruncatedToolBody: true)
+        // "</tool_c" is a partial close suffix held back at the boundary.
+        var events = transform.process([.token("<tool_call>{\"name\":\"f\"}</tool_c")])
+        events += transform.finalize()
+
+        XCTAssertEqual(truncations(events), ["{\"name\":\"f\"}</tool_c"],
+            "Partial close suffix must be folded into the truncated body, not lost")
+    }
+
+    func test_finalize_optIn_noOpenBlock_emitsNoTruncation() {
+        // The opt-in must only fire for a genuinely open block — a clean stream
+        // end emits nothing extra.
+        var transform = ToolCallTransform(markers: [jsonMarker()], surfaceTruncatedToolBody: true)
+        var events = transform.process([.token("<tool_call>{\"name\":\"f\"}</tool_call>tail")])
+        events += transform.finalize()
+
+        XCTAssertEqual(toolCalls(events).map(\.toolName), ["f"])
+        XCTAssertTrue(truncations(events).isEmpty,
+            "A fully-closed block plus trailing text must not emit a truncation diagnostic")
+        XCTAssertEqual(visible(events), "tail")
     }
 }

@@ -97,3 +97,6 @@ API breakage: enumelement MessagePart.generatedVideo has been removed
 API breakage: var GBNFSchemaPreValidator.CVEAuditRecord.fixedAtBuild has been removed
 API breakage: var GBNFSchemaPreValidator.CVEAuditRecord.vendoredBuild has been removed
 API breakage: func ModelLoadCoordinator.dispatchLoad(_:) has been renamed to func dispatchLoad(_:drivesChatSeams:)
+API breakage: enumelement GenerationEvent.toolCallParseFailed has been added as a new enum case
+API breakage: enumelement GenerationEvent.toolCallTruncated has been added as a new enum case
+API breakage: constructor ToolCallTransform.init(markers:) has been removed

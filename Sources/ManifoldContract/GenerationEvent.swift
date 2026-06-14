@@ -14,6 +14,15 @@
 /// a major (`feat!:`) release. Public-facing / cross-module consumers should add
 /// an `@unknown default:` arm to stay resilient to a future major.
 ///
+/// The two non-fatal tool-call diagnostics —
+/// ``toolCallParseFailed(rawBody:)`` and ``toolCallTruncated(rawBody:)`` — are
+/// part of this frozen vocabulary. They were the last pre-1.0 additions
+/// (`feat!:`, #1857 / #1858): a delimited tool-call body that fails to parse,
+/// and an unterminated tool block surfaced at finalize, are now observable
+/// instead of being silently dropped. Both follow the
+/// ``throttleDiagnostic(reason:)`` precedent — advisory metadata with no
+/// chat-message state mutation.
+///
 /// Payloads that are expected to grow are modelled as **associated structs**
 /// rather than bare enum parameters so their fields can grow non-breakingly
 /// after the freeze:
@@ -167,6 +176,32 @@ public enum GenerationEvent: Sendable, Equatable {
     /// throttling — paused" hint while the loop blocks between tokens.
     /// `reason` is a short, human-readable string the UI may display verbatim.
     case throttleDiagnostic(reason: String)
+
+    /// Non-fatal diagnostic: a delimited tool-call block closed, but its body
+    /// failed to parse into a ``ToolCall`` (the dialect's `parseBody` returned
+    /// `nil`).
+    ///
+    /// Emitted by ``ToolCallTransform`` in lieu of a ``toolCall(_:)`` event when
+    /// a well-formed open/close marker pair surrounds a body the dialect parser
+    /// rejects (malformed JSON, unknown shape, empty name). Without this event a
+    /// broken tool call vanishes silently and the host cannot distinguish
+    /// "model emitted a broken tool call" from "model emitted no tool call".
+    /// `rawBody` is the exact buffered body text between the open and close
+    /// markers so hosts can log, surface, or attempt their own recovery. This is
+    /// advisory metadata — like ``throttleDiagnostic(reason:)`` it carries no
+    /// chat-message state mutation and consumers that do not care may ignore it.
+    case toolCallParseFailed(rawBody: String)
+
+    /// Non-fatal diagnostic: the stream ended while a tool-call block was still
+    /// open (no matching close marker arrived before `finalize()`).
+    ///
+    /// Emitted by ``ToolCallTransform/finalize()`` **only when the transform was
+    /// constructed with `surfaceTruncatedToolBody: true`** (the default keeps
+    /// the historical silent-discard behavior). `rawBody` is the partial body
+    /// buffered since the open marker, so a mid-tool-call stream truncation is
+    /// observable rather than lost. Like ``toolCallParseFailed(rawBody:)`` this
+    /// is advisory metadata with no chat-message state mutation.
+    case toolCallTruncated(rawBody: String)
 
     /// Emitted by the orchestrator immediately before it begins handling a
     /// model-emitted ``ToolCall``.

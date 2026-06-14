@@ -40,8 +40,15 @@ public struct ToolCallMarker: Sendable {
 ///   preference), the parser switches into the block.
 /// - Inside a block, body text is buffered and suppressed from `.token`.
 /// - On the matching close, `marker.parseBody(body)` runs; a non-nil result
-///   emits `.toolCall`, and `nil` silently drops the call (matching both
-///   legacy parsers).
+///   emits `.toolCall`. A `nil` result no longer vanishes silently — it emits
+///   a non-fatal `.toolCallParseFailed(rawBody:)` diagnostic carrying the
+///   buffered body so hosts can distinguish a broken tool call from no tool
+///   call (#1857).
+/// - On the body-size cap or an unterminated block at `finalize()`, the partial
+///   body is discarded by default. Constructing the transform with
+///   `surfaceTruncatedToolBody: true` instead emits a non-fatal
+///   `.toolCallTruncated(rawBody:)` diagnostic so a mid-stream truncation is
+///   observable (#1858, opt-in — default behavior is unchanged).
 /// - Partial open/close markers straddling a chunk boundary are held back via
 ///   the shared `overlap` primitives — the open-tag holdback is the max
 ///   overlap across *all* candidate opens.
@@ -60,6 +67,13 @@ public struct ToolCallTransform: StreamTransform {
     /// below a memory-pressure threat.
     private static let maxBodyBytes = 256 * 1024
 
+    /// Opt-in: surface the buffered body of an unterminated tool-call block as a
+    /// non-fatal `.toolCallTruncated(rawBody:)` diagnostic instead of discarding
+    /// it. Defaults to `false` so the historical silent-discard behavior is
+    /// unchanged (#1858). Applies both to the `finalize()` flush of an open
+    /// block and to the body-size-cap drop of a runaway unclosed body.
+    public let surfaceTruncatedToolBody: Bool
+
     private var buffer = ""
     /// Index into `markers` of the dialect whose open tag is currently active,
     /// or `nil` when not inside a tool-call block.
@@ -67,8 +81,9 @@ public struct ToolCallTransform: StreamTransform {
     /// Body text buffered since the active open tag.
     private var bodyBuffer = ""
 
-    public init(markers: [ToolCallMarker]) {
+    public init(markers: [ToolCallMarker], surfaceTruncatedToolBody: Bool = false) {
         self.markers = markers
+        self.surfaceTruncatedToolBody = surfaceTruncatedToolBody
     }
 
     public mutating func process(_ events: [GenerationEvent]) -> [GenerationEvent] {
@@ -98,6 +113,12 @@ public struct ToolCallTransform: StreamTransform {
                     buffer = String(buffer[range.upperBound...])
                     if let call = markers[active].parseBody(bodyBuffer) {
                         events.append(.toolCall(call))
+                    } else {
+                        // A well-formed open/close pair surrounded a body the
+                        // dialect parser rejected. Surface it as a non-fatal
+                        // diagnostic instead of dropping the call silently so
+                        // hosts can recover or report (#1857).
+                        events.append(.toolCallParseFailed(rawBody: bodyBuffer))
                     }
                     bodyBuffer = ""
                     activeMarker = nil
@@ -117,6 +138,9 @@ public struct ToolCallTransform: StreamTransform {
                         Log.inference.warning(
                             "ToolCallTransform: dropping tool-call body exceeding \(Self.maxBodyBytes)-byte cap without a close tag"
                         )
+                        if surfaceTruncatedToolBody {
+                            events.append(.toolCallTruncated(rawBody: bodyBuffer))
+                        }
                         bodyBuffer = ""
                         activeMarker = nil
                         continue
@@ -173,12 +197,26 @@ public struct ToolCallTransform: StreamTransform {
     /// Flush the held-back buffer at stream end.
     ///
     /// Remaining visible text outside a block is emitted as `.token`. An
-    /// incomplete (unclosed) tool-call block is discarded — partial body text
-    /// cannot produce a valid `ToolCall` — matching both legacy parsers.
+    /// incomplete (unclosed) tool-call block is discarded by default — partial
+    /// body text cannot produce a valid `ToolCall` — matching both legacy
+    /// parsers. When the transform was constructed with
+    /// `surfaceTruncatedToolBody: true`, the partial body is instead surfaced as
+    /// a non-fatal `.toolCallTruncated(rawBody:)` diagnostic so a mid-tool-call
+    /// stream truncation is observable (#1858).
     public mutating func finalize() -> [GenerationEvent] {
         var events: [GenerationEvent] = []
-        if activeMarker == nil, !buffer.isEmpty {
-            events.append(.token(buffer))
+        if activeMarker == nil {
+            if !buffer.isEmpty {
+                events.append(.token(buffer))
+            }
+        } else if surfaceTruncatedToolBody {
+            // Inside an unterminated block: the held-back `buffer` is a partial
+            // close suffix that still belongs to the body, so fold it in before
+            // surfacing. Default behavior (flag off) discards silently.
+            let partial = bodyBuffer + buffer
+            if !partial.isEmpty {
+                events.append(.toolCallTruncated(rawBody: partial))
+            }
         }
         buffer = ""
         bodyBuffer = ""
