@@ -272,7 +272,7 @@ public final class VideoGenerationRuntime {
                         generationConfig: snapshot
                     )
                     var finalised = placeholder
-                    finalised.contentParts = [.generatedVideo(payload)]
+                    finalised.contentParts = [.generatedMedia(GeneratedMediaPayload(video: payload))]
                     do {
                         try await messageStore.updateMessage(finalised)
                     } catch {

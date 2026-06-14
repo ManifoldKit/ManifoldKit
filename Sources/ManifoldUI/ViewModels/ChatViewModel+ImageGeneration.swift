@@ -273,7 +273,7 @@ extension ChatViewModel {
                 error: nil
             )
             if let idx = messages.firstIndex(where: { $0.id == messageID }) {
-                messages[idx].contentParts = [.generatedImage(payload)]
+                messages[idx].contentParts = [.generatedMedia(GeneratedMediaPayload(image: payload))]
             }
 
         case .failed(let messageID, let error):

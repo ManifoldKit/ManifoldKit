@@ -1,8 +1,10 @@
 import XCTest
 import ManifoldInference
 
-/// Unit tests for ``MessagePart/generatedImage(_:)`` — Codable round-tripping,
-/// wire-format pinning, accessor behaviour, and `textContent` exclusion.
+/// Unit tests for ``MessagePart/generatedMedia(_:)`` — Codable round-tripping,
+/// wire-format pinning, accessor behaviour, `textContent` exclusion, and the
+/// P4b BACKWARD-COMPATIBLE DECODE of legacy `generatedImage` / `generatedVideo`
+/// rows into the collapsed `.generatedMedia` case.
 ///
 /// Distinct from ``MessagePart/image(data:mimeType:)``: the `.image` case
 /// carries raw bytes the *user* uploaded as multimodal input; this case
@@ -11,21 +13,53 @@ final class MessagePartGeneratedImageTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makePayload(
+    private func makeImageSnapshot() -> ImageGenerationConfigSnapshot {
+        ImageGenerationConfigSnapshot(
+            steps: 8,
+            width: 512,
+            height: 768,
+            seed: 42,
+            guidanceScale: 7.5
+        )
+    }
+
+    private func makeImagePayload(
         prompt: String = "a watercolor of a fox",
-        imageURL: URL = URL(fileURLWithPath: "/tmp/manifoldKitTest/img.png"),
+        url: URL = URL(fileURLWithPath: "/tmp/manifoldKitTest/img.png"),
         modelIdentifier: String = "fake-model-v1"
-    ) -> ImageMessagePayload {
-        ImageMessagePayload(
+    ) -> GeneratedMediaPayload {
+        GeneratedMediaPayload(
+            kind: .image,
             prompt: prompt,
-            imageURL: imageURL,
+            url: url,
             modelIdentifier: modelIdentifier,
-            generationConfig: ImageGenerationConfigSnapshot(
-                steps: 8,
-                width: 512,
-                height: 768,
-                seed: 42,
-                guidanceScale: 7.5
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            width: 512,
+            height: 768,
+            imageConfig: makeImageSnapshot()
+        )
+    }
+
+    private func makeLegacyImagePayload() -> ImageMessagePayload {
+        ImageMessagePayload(
+            prompt: "a sunset",
+            imageURL: URL(string: "file:///tmp/img.png")!,
+            modelIdentifier: "flux-schnell",
+            generationConfig: makeImageSnapshot(),
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+    }
+
+    private func makeLegacyVideoPayload() -> VideoMessagePayload {
+        VideoMessagePayload(
+            prompt: "a drone shot",
+            videoURL: URL(string: "file:///tmp/vid.mp4")!,
+            modelIdentifier: "veo-x",
+            generationConfig: VideoGenerationConfigSnapshot(
+                duration: 5,
+                aspectRatio: "16:9",
+                width: 1280,
+                height: 720
             ),
             generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -33,58 +67,48 @@ final class MessagePartGeneratedImageTests: XCTestCase {
 
     // MARK: - Codable round-trip
 
-    func test_generatedImage_codableRoundtrip() throws {
-        let part: MessagePart = .generatedImage(makePayload())
+    func test_generatedMedia_codableRoundtrip() throws {
+        let part: MessagePart = .generatedMedia(makeImagePayload())
 
         let data = try JSONEncoder().encode([part])
         let decoded = try JSONDecoder().decode([MessagePart].self, from: data)
 
         XCTAssertEqual(decoded, [part],
-            ".generatedImage must survive Codable round-trip with all payload fields preserved")
-
-        // Sabotage check (manual): if MessagePart.encode(to:) encoded
-        // .generatedImage to a different key (e.g. `genImage`), the decoder's
-        // discriminator switch would fail and this assertion would not even
-        // compare equal payloads.
+            ".generatedMedia must survive Codable round-trip with all payload fields preserved")
     }
 
     // MARK: - Wire-format discriminator pinning
 
-    /// Renaming the `.generatedImage` raw key would silently strand every
+    /// Renaming the `.generatedMedia` raw key would silently strand every
     /// persisted row that already wrote it. Pin the literal key here so a
     /// rename surfaces as a test failure rather than a quiet migration.
-    func test_generatedImage_wireFormatDiscriminatorIsPinned() throws {
-        let part: MessagePart = .generatedImage(makePayload())
+    func test_generatedMedia_wireFormatDiscriminatorIsPinned() throws {
+        let part: MessagePart = .generatedMedia(makeImagePayload())
         let data = try JSONEncoder().encode([part])
         let json = String(data: data, encoding: .utf8) ?? ""
 
-        XCTAssertTrue(json.contains(#""generatedImage""#),
-            "Persisted JSON must use the literal discriminator key 'generatedImage'")
+        XCTAssertTrue(json.contains(#""generatedMedia""#),
+            "Persisted JSON must use the literal discriminator key 'generatedMedia'")
+        XCTAssertTrue(json.contains(#""kind""#),
+            "GeneratedMediaPayload.kind discriminator must encode under the literal key 'kind'")
     }
 
-    /// Pin a representative payload field name. If the persistence-layer
-    /// `ImageMessagePayload` is renamed, persisted rows would silently
-    /// fail to round-trip; pinning a stable field catches that earlier.
-    func test_generatedImage_payloadFieldNamesArePinned() throws {
-        let part: MessagePart = .generatedImage(makePayload())
+    /// Pin representative payload field names. If GeneratedMediaPayload field
+    /// names are renamed, persisted rows would silently fail to round-trip.
+    func test_generatedMedia_payloadFieldNamesArePinned() throws {
+        let part: MessagePart = .generatedMedia(makeImagePayload())
         let data = try JSONEncoder().encode([part])
         let json = String(data: data, encoding: .utf8) ?? ""
 
-        XCTAssertTrue(json.contains(#""prompt""#),
-            "ImageMessagePayload.prompt must encode under the literal key 'prompt'")
-        XCTAssertTrue(json.contains(#""imageURL""#),
-            "ImageMessagePayload.imageURL must encode under the literal key 'imageURL'")
-        XCTAssertTrue(json.contains(#""modelIdentifier""#),
-            "ImageMessagePayload.modelIdentifier must encode under the literal key 'modelIdentifier'")
-        XCTAssertTrue(json.contains(#""generationConfig""#),
-            "ImageMessagePayload.generationConfig must encode under the literal key 'generationConfig'")
-        XCTAssertTrue(json.contains(#""generatedAt""#),
-            "ImageMessagePayload.generatedAt must encode under the literal key 'generatedAt'")
+        XCTAssertTrue(json.contains(#""prompt""#))
+        XCTAssertTrue(json.contains(#""url""#))
+        XCTAssertTrue(json.contains(#""modelIdentifier""#))
+        XCTAssertTrue(json.contains(#""generatedAt""#))
     }
 
-    // MARK: - Mixed-array round-trip with all seven cases
+    // MARK: - Mixed-array round-trip with all cases
 
-    func test_allSevenCases_mixedArray_codableRoundtrip() throws {
+    func test_allCases_mixedArray_codableRoundtrip() throws {
         let parts: [MessagePart] = [
             .text("Here is what I generated:"),
             .thinking("Let me think about composition."),
@@ -92,111 +116,117 @@ final class MessagePartGeneratedImageTests: XCTestCase {
             .toolResult(ToolResult(callId: "c1", content: "ok")),
             .image(data: Data([0xFF]), mimeType: "image/jpeg"),
             .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 4, waveform: [0.1, 0.9]),
-            .generatedImage(makePayload()),
+            .generatedMedia(makeImagePayload()),
         ]
 
         let data = try JSONEncoder().encode(parts)
         let decoded = try JSONDecoder().decode([MessagePart].self, from: data)
 
         XCTAssertEqual(decoded, parts,
-            "Mixed array including .generatedImage must round-trip intact, preserving order")
+            "Mixed array including .generatedMedia must round-trip intact, preserving order")
     }
 
     // MARK: - textContent exclusion
 
-    func test_textContent_returnsNil_forGeneratedImage() {
-        let part: MessagePart = .generatedImage(makePayload())
+    func test_textContent_returnsNil_forGeneratedMedia() {
+        let part: MessagePart = .generatedMedia(makeImagePayload())
         XCTAssertNil(part.textContent,
-            ".textContent must be nil for .generatedImage (consistent with .image / .toolCall / .toolResult / .thinking)")
+            ".textContent must be nil for .generatedMedia (consistent with .image / .toolCall / .toolResult / .thinking)")
     }
 
     // MARK: - Accessor
 
-    func test_generatedImageContent_returnsAssociatedValue() {
-        let payload = makePayload(prompt: "a robot reading a book")
-        let part: MessagePart = .generatedImage(payload)
+    func test_generatedMediaContent_returnsAssociatedValue() {
+        let payload = makeImagePayload(prompt: "a robot reading a book")
+        let part: MessagePart = .generatedMedia(payload)
 
-        XCTAssertEqual(part.generatedImageContent, payload)
+        XCTAssertEqual(part.generatedMediaContent, payload)
         XCTAssertNil(part.toolCallContent)
         XCTAssertNil(part.toolResultContent)
         XCTAssertNil(part.thinkingContent)
         XCTAssertNil(part.textContent)
     }
 
-    func test_generatedImageContent_returnsNil_forOtherCases() {
-        XCTAssertNil(MessagePart.text("x").generatedImageContent)
-        XCTAssertNil(MessagePart.thinking("x").generatedImageContent)
-        XCTAssertNil(MessagePart.image(data: Data(), mimeType: "image/png").generatedImageContent)
-        XCTAssertNil(MessagePart.audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 1, waveform: nil).generatedImageContent)
-        XCTAssertNil(MessagePart.toolCall(ToolCall(id: "c", toolName: "t", arguments: "{}")).generatedImageContent)
-        XCTAssertNil(MessagePart.toolResult(ToolResult(callId: "c", content: "x")).generatedImageContent)
+    func test_generatedMediaContent_returnsNil_forOtherCases() {
+        XCTAssertNil(MessagePart.text("x").generatedMediaContent)
+        XCTAssertNil(MessagePart.thinking("x").generatedMediaContent)
+        XCTAssertNil(MessagePart.image(data: Data(), mimeType: "image/png").generatedMediaContent)
+        XCTAssertNil(MessagePart.audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 1, waveform: nil).generatedMediaContent)
+        XCTAssertNil(MessagePart.toolCall(ToolCall(id: "c", toolName: "t", arguments: "{}")).generatedMediaContent)
+        XCTAssertNil(MessagePart.toolResult(ToolResult(callId: "c", content: "x")).generatedMediaContent)
     }
 
-    // MARK: - Canonical JSON fixture (hand-written)
+    // MARK: - P4b BACKWARD-COMPATIBLE DECODE (critical, no data loss)
 
-    /// Decodes a JSON document **hand-written** to match the expected
-    /// on-disk shape. The point is to pin the wire format byte-for-byte —
-    /// using `JSONEncoder` to generate the fixture and then asserting
-    /// against itself would be tautological and would silently shift if
-    /// the encoder ever changed its key strategy.
-    ///
-    /// Only the inner `generationConfig` payload is generated via
-    /// `JSONEncoder` because it's a separate snapshot type whose internals
-    /// we deliberately don't want to hand-craft (and re-encode on every
-    /// drift) here. The outer shape, discriminator, and field names are
-    /// hand-written.
-    ///
-    /// Sets a precedent for fixture-pinning new MessagePart cases. Existing
-    /// cases are not retroactively covered — that would be a separate
-    /// cleanup.
-    func test_generatedImage_decodesCanonicalJSONFixture() throws {
-        // Generate only the nested `generationConfig` snapshot value via
-        // JSONEncoder so we don't have to hand-mirror its own field shape.
-        let snapshot = ImageGenerationConfigSnapshot(
-            steps: 8, width: 512, height: 768, seed: 42, guidanceScale: 7.5
-        )
-        let snapshotData = try JSONEncoder().encode(snapshot)
-        let snapshotJSON = try XCTUnwrap(String(data: snapshotData, encoding: .utf8))
-
-        // Default JSONEncoder encodes Date as timeIntervalSinceReferenceDate.
-        // Pick a fixed value so the fixture stays deterministic.
+    /// A legacy `generatedImage` JSON blob (written before the P4b collapse)
+    /// MUST decode into `.generatedMedia` with `kind == .image`, preserving
+    /// every field. This is the data-safety contract: pre-collapse persisted
+    /// rows never fail to decode and never lose information.
+    func test_legacyGeneratedImageKey_decodesIntoGeneratedMedia_lossless() throws {
+        let snapshot = makeImageSnapshot()
+        let snapshotJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(snapshot), encoding: .utf8))
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let dateValue = date.timeIntervalSinceReferenceDate
 
-        // Hand-written outer shape. Note the literal discriminator
-        // "generatedImage" and the literal field names "prompt",
-        // "imageURL", "modelIdentifier", "generationConfig", "generatedAt".
+        // Hand-written legacy outer shape with the retired discriminator
+        // "generatedImage" and ImageMessagePayload field names.
         let json = """
         {"generatedImage":{"prompt":"a sunset","imageURL":"file:///tmp/img.png","modelIdentifier":"flux-schnell","generationConfig":\(snapshotJSON),"generatedAt":\(dateValue)}}
         """.data(using: .utf8)!
 
         let decoded = try JSONDecoder().decode(MessagePart.self, from: json)
 
-        guard case .generatedImage(let payload) = decoded else {
-            XCTFail("Canonical fixture must decode as .generatedImage, got \(decoded)")
+        guard case .generatedMedia(let media) = decoded else {
+            XCTFail("Legacy generatedImage fixture must decode as .generatedMedia, got \(decoded)")
             return
         }
-        XCTAssertEqual(payload.prompt, "a sunset")
-        XCTAssertEqual(payload.imageURL, URL(string: "file:///tmp/img.png"))
-        XCTAssertEqual(payload.modelIdentifier, "flux-schnell")
-        XCTAssertEqual(payload.generationConfig, snapshot)
-        XCTAssertEqual(payload.generatedAt.timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
+        XCTAssertEqual(media.kind, .image)
+        XCTAssertEqual(media.prompt, "a sunset")
+        XCTAssertEqual(media.url, URL(string: "file:///tmp/img.png"))
+        XCTAssertEqual(media.modelIdentifier, "flux-schnell")
+        XCTAssertEqual(media.imageConfig, snapshot,
+            "Legacy image config snapshot must ride losslessly in .imageConfig")
+        XCTAssertEqual(media.generatedAt.timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
+
+        // Lossless round-back to the legacy payload shape.
+        let rebuilt = try XCTUnwrap(media.asImagePayload)
+        XCTAssertEqual(rebuilt, makeLegacyImagePayload())
+    }
+
+    /// A legacy `generatedVideo` JSON blob MUST decode into `.generatedMedia`
+    /// with `kind == .video`, preserving every field.
+    func test_legacyGeneratedVideoKey_decodesIntoGeneratedMedia_lossless() throws {
+        let legacy = makeLegacyVideoPayload()
+        let legacyJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(legacy), encoding: .utf8))
+
+        let json = """
+        {"generatedVideo":\(legacyJSON)}
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(MessagePart.self, from: json)
+
+        guard case .generatedMedia(let media) = decoded else {
+            XCTFail("Legacy generatedVideo fixture must decode as .generatedMedia, got \(decoded)")
+            return
+        }
+        XCTAssertEqual(media.kind, .video)
+        XCTAssertEqual(media.prompt, legacy.prompt)
+        XCTAssertEqual(media.url, legacy.videoURL)
+        XCTAssertEqual(media.videoConfig, legacy.generationConfig,
+            "Legacy video config snapshot must ride losslessly in .videoConfig")
+
+        let rebuilt = try XCTUnwrap(media.asVideoPayload)
+        XCTAssertEqual(rebuilt, legacy)
     }
 
     // MARK: - Discriminator-error guards
 
-    /// Removing the empty-keys check in ``MessagePart/init(from:)`` would
-    /// silently turn a `{}` row into an undefined behaviour path. Pin the
-    /// throw so a refactor that drops the guard surfaces here.
     func test_messagePart_emptyDiscriminatorContainer_throws() {
         let json = "{}".data(using: .utf8)!
         XCTAssertThrowsError(try JSONDecoder().decode(MessagePart.self, from: json),
             "Empty discriminator container must throw — see MessagePart.init(from:)")
     }
 
-    /// Removing the `keys.count > 1` check would silently pick whichever
-    /// key happens to be `.first` from an unordered set, masking corrupt
-    /// rows that carry two discriminators.
     func test_messagePart_multipleDiscriminatorKeys_throws() {
         let json = #"{"text":"hi","generatedImage":{"prompt":"a","imageURL":"file:///tmp/x.png","modelIdentifier":"m","generationConfig":{"steps":1,"width":1,"height":1},"generatedAt":0}}"#
             .data(using: .utf8)!
@@ -204,25 +234,14 @@ final class MessagePartGeneratedImageTests: XCTestCase {
             "Two discriminator keys present must throw — pinned guard in MessagePart.init(from:)")
     }
 
-    // MARK: - Backwards-compat: legacy-only fixture (no .generatedImage)
+    // MARK: - Backwards-compat: legacy-only fixture (no generated media)
 
-    /// Decodes a hand-written `[MessagePart]` JSON containing only older
-    /// cases (text, thinking, image, toolCall, toolResult) —
-    /// no `.generatedImage`. Proves additive persistence: rows persisted
-    /// before the new case existed still decode through the new build.
-    func test_legacyMessageParts_withoutGeneratedImage_decodeIntact() throws {
-        // Generate only the inner ToolCall/ToolResult JSON via the
-        // encoder; the outer shape and the other discriminators are
-        // hand-written so a renamed key (e.g. `text` → `t`) shows up as a
-        // test failure rather than a silent migration.
+    func test_legacyMessageParts_withoutGeneratedMedia_decodeIntact() throws {
         let toolCall = ToolCall(id: "c1", toolName: "search", arguments: "{\"q\":\"swift\"}")
         let toolResult = ToolResult(callId: "c1", content: "ok")
         let toolCallJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(toolCall), encoding: .utf8))
         let toolResultJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(toolResult), encoding: .utf8))
 
-        // Image bytes: `[0x01, 0x02]` → base64 `AQI=`.
-        // Default encoder serialises Data as base64 strings, which
-        // Base64 decoder then accepts on read.
         let json = """
         [
           {"text":"hello"},
@@ -236,7 +255,6 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         let parts = try JSONDecoder().decode([MessagePart].self, from: json)
         XCTAssertEqual(parts.count, 5)
 
-        // Spot-check each case decoded as the right enum variant.
         guard case .text(let t) = parts[0] else { return XCTFail("0: expected .text") }
         XCTAssertEqual(t, "hello")
 
@@ -255,10 +273,6 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         XCTAssertEqual(result, toolResult)
     }
 
-    /// Legacy bare-string `.thinking` form (pre-#604) must still decode.
-    /// Pinned here as part of the additive-persistence proof so a future
-    /// refactor that drops the type-mismatch fallback in
-    /// ``MessagePart/init(from:)`` surfaces immediately.
     func test_legacyThinkingBareString_decodesAsThinkingWithNilSignature() throws {
         let json = #"{"thinking":"raw legacy reasoning"}"#.data(using: .utf8)!
         let part = try JSONDecoder().decode(MessagePart.self, from: json)
