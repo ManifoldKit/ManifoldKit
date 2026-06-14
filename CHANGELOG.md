@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.51.0](https://github.com/roryford/ManifoldKit/compare/v0.50.0...v0.51.0) (2026-06-14)
+
+### Highlights
+
+**Grammar-constrained tool calling.** Grammar-capable local backends now derive a GBNF grammar from `config.tools` automatically, forcing well-formed tool-call output instead of hoping the model emits valid JSON ([#1863](https://github.com/roryford/ManifoldKit/issues/1863)). Each tool's `arguments` are constrained to its own parameter schema — typed fields, string enums, arrays, required/optional keys — with schema shapes the lowerer can't express degrading gracefully to generic JSON rather than dropping the tool ([#1865](https://github.com/roryford/ManifoldKit/issues/1865)). No caller change is required: when a backend advertises `supportsGrammarConstrainedSampling` and you pass tools without an explicit grammar, the constraint is applied for you.
+
+```swift
+// Tools you already pass are now grammar-constrained on capable local backends.
+// You can also build the grammar explicitly:
+let grammar = ToolGrammarBuilder().buildGrammar(for: [getWeatherTool])
+// → output is forced to {"name":"get_weather","arguments":{…}} matching the tool's schema
+```
+
+**Smarter model selection.** `ModelInfo` gains first-class capability flags — code, multilingual, reasoning — with a curation override so the catalog can correct auto-detection ([#1864](https://github.com/roryford/ManifoldKit/issues/1864)). A `ModelInfo` fit-score bridge plus a service-vended shared load coordinator let model-management surfaces rank and load the right model per device without each call site re-deriving the decision ([#1866](https://github.com/roryford/ManifoldKit/issues/1866)).
+
+### ⚠ Breaking changes (pre-1.0)
+
+**Backend shim modules retired** ([#1837](https://github.com/roryford/ManifoldKit/issues/1837)) — `import ManifoldBackends` and `import ManifoldCloud` no longer compile. Import the family modules (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) or the `ManifoldKit` umbrella, and replace `DefaultBackends.register(...)` with an explicit registrar list. See `docs/MIGRATION-shims-retired.md`.
+
+**Media-generation collapse** ([#1839](https://github.com/roryford/ManifoldKit/issues/1839)) — `MessagePart.generatedImage(_:)` and `.generatedVideo(_:)` are removed in favor of `MessagePart.generatedMedia(GeneratedMediaPayload)`, backed by a generic MediaGeneration seam. Persisted data is unaffected — legacy JSON decodes into `.generatedMedia`.
+
+**Contract wire-type freeze** ([#1836](https://github.com/roryford/ManifoldKit/issues/1836)) — new `JSONSchemaValue.integer(Int64)` and `ToolResult.ErrorKind.unknown` cases are source-breaking for exhaustive switches; downstream switches must add `.integer` / `.unknown` arms. Whole-number JSON now decodes to `.integer` rather than `.number`.
+
+**Persistence type renames** ([#1827](https://github.com/roryford/ManifoldKit/issues/1827)) — `ManifoldPersistenceSwiftData.ChatSession` / `.ChatMessage` are renamed `PersistedChatSession` / `PersistedChatMessage`. Deprecated aliases remain for one window, so this is a soft break — migrate to the `Persisted*` names.
+
+**Streaming readback accessibility** ([#1838](https://github.com/roryford/ManifoldKit/issues/1838)) — a completion event, sentence coalescer, and voice queue + announcer reshape the streaming-readback surface; see the PR for the adopted event flow.
+
+### Features
+
+**ThinkingTransform newline trim + reusable secondary cloud-backend builder** ([#1850](https://github.com/roryford/ManifoldKit/issues/1850)) — trims reasoning-block boundary newlines and exposes a reusable builder for a secondary cloud backend.
+
+**Voice spoken-range progress** ([#1844](https://github.com/roryford/ManifoldKit/issues/1844)) — a spoken-range progress callback plus Reduce Motion gating in the voice/UI surface.
+
+### Fixes
+
+**Family-targeted model discovery** ([#1862](https://github.com/roryford/ManifoldKit/issues/1862)) — `findGGUFModel` / `findMLXModelDirectory` now skip when a `nameContains` fragment matches nothing, instead of silently returning the wrong (smallest) model — making per-family tests trustworthy.
+
+Also: repaired retired-module references across docs, examples, audits, and workflows, with manifest snippets now validated in CI ([#1840](https://github.com/roryford/ManifoldKit/issues/1840), [#1847](https://github.com/roryford/ManifoldKit/issues/1847)).
+
+### Documentation
+
+**Local tool-calling recipe** ([#1860](https://github.com/roryford/ManifoldKit/issues/1860)) — a single end-to-end host guide for tool-calling on local non-Gemma models: manual tool-definition rendering into the system prompt, the exact `<tool_call>{…}</tool_call>` envelope the parsers expect, the optional GBNF-constraint upgrade, and the silent-drop failure modes.
+
+Also: DX walkthrough iterations ([#1851](https://github.com/roryford/ManifoldKit/issues/1851), [#1855](https://github.com/roryford/ManifoldKit/issues/1855)), MLX CLI quickstart ([#1852](https://github.com/roryford/ManifoldKit/issues/1852)), QuickStartResult shape + arg-order fix ([#1861](https://github.com/roryford/ManifoldKit/issues/1861)), and de-staling retired-module prose ([#1849](https://github.com/roryford/ManifoldKit/issues/1849)).
+
 ## [0.50.0](https://github.com/roryford/ManifoldKit/compare/v0.49.1...v0.50.0) (2026-06-13)
 
 ### Highlights
