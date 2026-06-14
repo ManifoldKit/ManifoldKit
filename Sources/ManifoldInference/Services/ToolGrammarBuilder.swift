@@ -72,11 +72,13 @@ import Foundation
 /// ## Pre-validator's role (reconciled)
 ///
 /// ``GBNFSchemaPreValidator`` no longer *rejects* tools. Its `validate` method
-/// is retained for callers that want to know, ahead of time, whether a schema
-/// will lower fully or fall back to generic JSON. This builder does not consult
-/// it on the rejection path anymore — graceful degradation subsumes it. See
-/// that type's docs for the corrected premise (GBNF *can* express alternation;
-/// the limitation is this lowerer's coverage, not the IR).
+/// is retained as a public **pre-flight advisory**: callers that want to know,
+/// ahead of time, whether a schema will lower fully or fall back to generic JSON
+/// can ask. This builder does not consult it on the build path — graceful
+/// degradation subsumes rejection — but exposes it as a diagnostic via
+/// ``loweringReport(for:)`` so the advisory has an in-repo consumer. See that
+/// type's docs for the corrected premise (GBNF *can* express alternation; the
+/// limitation is this lowerer's coverage, not the IR).
 ///
 /// ## GBNF validity
 ///
@@ -148,6 +150,40 @@ public struct ToolGrammarBuilder: Sendable {
         lines.append(contentsOf: Self.genericRuleLines)
 
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: - Diagnostics (pre-flight advisory)
+
+    /// A non-binding prediction of how fully a tool's parameter schema will be
+    /// constrained by the grammar this builder emits.
+    public struct LoweringReport: Sendable, Equatable {
+        /// The tool this report describes.
+        public let toolName: String
+        /// `true` when every node of the parameter schema lowers to a constrained
+        /// GBNF rule; `false` when at least one node degrades to a generic JSON
+        /// `value` (the tool's envelope and name are still constrained either way).
+        public let lowersFully: Bool
+        /// When `lowersFully` is `false`, the first node that degrades — its
+        /// developer-facing reason and JSON-pointer-style path. `nil` otherwise.
+        public let firstDegradation: GBNFSchemaPreValidator.ValidationFailure?
+    }
+
+    /// Predicts, per tool, whether its arguments will be fully grammar-constrained
+    /// or degrade somewhere to a generic JSON value, using ``GBNFSchemaPreValidator``.
+    ///
+    /// This is a pre-flight diagnostic — it does **not** affect ``buildGrammar(for:)``,
+    /// which never drops a tool. Use it to warn when a tool you expect to be
+    /// constrained will in fact only have its envelope constrained.
+    public func loweringReport(for tools: [ToolDefinition]) -> [LoweringReport] {
+        let validator = GBNFSchemaPreValidator()
+        return tools.map { tool in
+            let failure = validator.validate(tool.parameters)
+            return LoweringReport(
+                toolName: tool.name,
+                lowersFully: failure == nil,
+                firstDegradation: failure
+            )
+        }
     }
 
     // MARK: - Lowering
