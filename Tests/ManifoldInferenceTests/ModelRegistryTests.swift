@@ -201,6 +201,60 @@ final class ModelRegistryTests: XCTestCase {
         XCTAssertNil(registry.selectedModel)
     }
 
+    // MARK: - Synchronous selection hook (#1312)
+
+    func test_onSelectionChanged_firesSynchronouslyOnNonNilSelection() {
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        var fireCount = 0
+        var observed: UUID?
+        registry.onSelectionChanged = { model in
+            fireCount += 1
+            observed = model?.id
+        }
+
+        let model = ModelInfo.builtInFoundation
+        registry.selectedModel = model
+
+        // The hook must have fired *before* this assertion runs — i.e. inside the
+        // setter, synchronously, with no Task hop. This is the #1312 collapse.
+        XCTAssertEqual(fireCount, 1)
+        XCTAssertEqual(observed, model.id)
+    }
+
+    func test_onSelectionChanged_doesNotFireOnNilClear() {
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        registry.selectedModel = .builtInFoundation
+        var clearFired = false
+        registry.onSelectionChanged = { model in
+            if model == nil { clearFired = true }
+        }
+
+        registry.selectedModel = nil
+
+        XCTAssertFalse(clearFired, "Clearing the selection should not fire the endpoint-sync hook")
+    }
+
+    func test_selectModel_firesSelectionHookSynchronously() throws {
+        try createFakeGgufFile(named: "hooked.gguf")
+        let registry = ModelRegistry(inferenceService: inferenceService, modelStorage: modelStorage)
+        try registry.refresh()
+        guard let known = registry.availableModels.first(where: { $0.fileName == "hooked.gguf" }) else {
+            return XCTFail("Pre-condition: model file should be discoverable")
+        }
+        var fired = false
+        registry.onSelectionChanged = { _ in fired = true }
+
+        registry.selectModel(known)
+
+        XCTAssertTrue(fired, "selectModel must route through the synchronous selection hook")
+    }
+
     // MARK: - selectModel(_:)
 
     func test_selectModel_acceptsKnownModel_andMutates() throws {

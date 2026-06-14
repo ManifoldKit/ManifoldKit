@@ -4,14 +4,8 @@ import ManifoldRuntime
 import ManifoldInference
 import ManifoldUI
 
-enum ModelSelectionSortOrder: String, CaseIterable, Identifiable {
-    case alphabetical = "Alphabetical"
-    case type = "Type"
-    case size = "Size (Smallest First)"
-    case capability = "Capability / Speed"
-
-    var id: Self { self }
-}
+// `ModelSelectionSortOrder` now lives on `ModelSelection` in ManifoldInference
+// (hoisted so headless consumers can sort the list as data). Imported above.
 
 /// Inline model selection content used by `ModelManagementSheet`.
 struct ModelSelectionTabView: View {
@@ -31,7 +25,7 @@ struct ModelSelectionTabView: View {
     }
 
     var sortedModels: [ModelInfo] {
-        Self.sortModels(modelRegistry.availableModels, by: sortOrder)
+        ModelSelection.sortModels(modelRegistry.availableModels, by: sortOrder)
     }
 
     public var body: some View {
@@ -95,48 +89,6 @@ struct ModelSelectionTabView: View {
         .listStyle(.plain)
         #endif
         .accessibilityLabel("Available models")
-    }
-
-    static func sortModels(_ models: [ModelInfo], by order: ModelSelectionSortOrder) -> [ModelInfo] {
-        models.sorted { lhs, rhs in
-            switch order {
-            case .alphabetical:
-                return compareNames(lhs, rhs)
-
-            case .type:
-                let lhsKey = (typeSortRank(for: lhs.modelType), lhs.name)
-                let rhsKey = (typeSortRank(for: rhs.modelType), rhs.name)
-                if lhsKey.0 != rhsKey.0 {
-                    return lhsKey.0 < rhsKey.0
-                }
-                return lhsKey.1.localizedStandardCompare(rhsKey.1) == .orderedAscending
-
-            case .size:
-                if lhs.fileSize != rhs.fileSize {
-                    return lhs.fileSize < rhs.fileSize
-                }
-                return compareNames(lhs, rhs)
-
-            case .capability:
-                let lhsTier = lhs.effectiveCapabilityTier.rawValue
-                let rhsTier = rhs.effectiveCapabilityTier.rawValue
-                if lhsTier != rhsTier {
-                    return lhsTier > rhsTier
-                }
-                if lhs.fileSize != rhs.fileSize {
-                    return lhs.fileSize < rhs.fileSize
-                }
-                return compareNames(lhs, rhs)
-            }
-        }
-    }
-
-    private static func compareNames(_ lhs: ModelInfo, _ rhs: ModelInfo) -> Bool {
-        lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-    }
-
-    private static func typeSortRank(for type: ModelType) -> Int {
-        BackendDescriptorRegistry.shared.descriptor(for: type)?.sortOrder ?? Int.max
     }
 }
 

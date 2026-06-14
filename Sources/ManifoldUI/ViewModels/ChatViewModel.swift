@@ -187,9 +187,11 @@ public final class ChatViewModel {
     /// The model the user has selected in the sidebar.
     ///
     /// Forwarded onto ``modelRegistry/selectedModel``. Writes here run the
-    /// existing endpoint-clear synchronisation; writes that go directly to
-    /// the registry (from the new model-management explicit-init path) are
-    /// observed by ``installRegistryObservation()`` and run the same sync.
+    /// endpoint-clear synchronisation; writes that go directly to the registry
+    /// (from the model-management explicit-init path or a shared
+    /// `ModelSelection`) run the *same* sync **synchronously** via the registry's
+    /// `onSelectionChanged` hook, wired in ``installRegistrySelectionSync()``
+    /// (#1312 collapse — Correction F).
     public var selectedModel: ModelInfo? {
         get { modelRegistry.selectedModel }
         set {
@@ -892,7 +894,7 @@ public final class ChatViewModel {
             self?.loadPlanEnvironment ?? .current
         }
 
-        installRegistryObservation()
+        installRegistrySelectionSync()
         installSessionManagerClosures()
         installGenerationCoordinatorClosures()
         installPersistenceAdapterClosures()
@@ -905,23 +907,19 @@ public final class ChatViewModel {
         endpointRefreshTask?.cancel()
     }
 
-    /// Re-installs an Observation tracker on ``modelRegistry/selectedModel``
-    /// so direct writes to the registry (e.g. from the new explicit-init
-    /// `ModelSelectionTabView` path) still run the endpoint-clear sync that
-    /// the legacy `chatViewModel.selectedModel` setter performed.
+    /// Wires the registry's **synchronous** selection hook to the endpoint-clear
+    /// sync so a model selected directly through `modelRegistry` (or a shared
+    /// `ModelSelection`) clears any active cloud endpoint *before control returns
+    /// to the caller* — not on a later Task hop.
     ///
-    /// Tracker fires once per change; we re-install it from inside the
-    /// `onChange` callback so subsequent registry writes keep being observed.
-    private func installRegistryObservation() {
-        let registry = modelRegistry
-        withObservationTracking {
-            _ = registry.selectedModel
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.syncEndpointForSelectedModel()
-                self.installRegistryObservation()
-            }
+    /// This replaces the former `withObservationTracking` re-install hack, whose
+    /// async `onChange` callback let `dispatchSelectedLoad` read a stale
+    /// `selectedEndpoint` through `currentLoadIntent` and dispatch the wrong
+    /// `LoadIntent` (#1312, Correction F). The hook fires inside
+    /// `ModelRegistry.selectedModel`'s setter, on this actor, synchronously.
+    private func installRegistrySelectionSync() {
+        modelRegistry.onSelectionChanged = { [weak self] _ in
+            self?.syncEndpointForSelectedModel()
         }
     }
 
