@@ -86,8 +86,6 @@ public final class AccessibilityAnnouncer {
 
     /// Completed sentences awaiting their next rate-limited post.
     private var pending: [String] = []
-    /// Whether the next drain should post at high priority (set by `finish`).
-    private var pendingHighPriority = false
     /// The single in-flight drain loop. Re-armed on each ingest if idle.
     private var drainTask: Task<Void, Never>?
 
@@ -148,7 +146,6 @@ public final class AccessibilityAnnouncer {
         drainTask?.cancel()
         drainTask = nil
         pending.removeAll()
-        pendingHighPriority = false
         coalescer = SentenceCoalescer()
     }
 
