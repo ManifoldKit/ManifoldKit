@@ -68,7 +68,7 @@ final class ImageAttachmentInflationTests: XCTestCase {
         imageBytes: Int
     ) throws -> UInt64 {
         let sessionID = UUID()
-        let session = ChatSession(title: "Vision Inflation")
+        let session = PersistedChatSession(title: "Vision Inflation")
         // ChatSession's id is generated in init; force the field to match the
         // sessionID we use on the messages so the foreign-key relationship
         // mirrors production usage.
@@ -82,7 +82,7 @@ final class ImageAttachmentInflationTests: XCTestCase {
                 .text("attachment-\(index)"),
                 .image(data: imageData, mimeType: "image/jpeg"),
             ]
-            let message = ChatMessage(role: .user, contentParts: parts, sessionID: sessionID)
+            let message = PersistedChatMessage(role: .user, contentParts: parts, sessionID: sessionID)
             context.insert(message)
             rawTotal += UInt64(imageData.count)
         }

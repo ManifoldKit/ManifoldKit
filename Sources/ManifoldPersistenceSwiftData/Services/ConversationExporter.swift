@@ -5,7 +5,7 @@ import ManifoldRuntime
 extension ConversationExporter {
     /// Loads the session's messages via `provider`, then writes the export.
     ///
-    /// Uses the SwiftData ``ChatSession`` directly — `provider.fetchMessages`
+    /// Uses the SwiftData ``PersistedChatSession`` directly — `provider.fetchMessages`
     /// returns the linear chronological history. Apps modelling branches
     /// should call ``ManifoldRuntime/ConversationExporter/export(session:messages:format:directory:)``
     /// with the active path they have already materialised.
@@ -13,7 +13,7 @@ extension ConversationExporter {
     /// `@MainActor` because ``MessageStore`` is `@MainActor`-isolated.
     @MainActor
     public static func export(
-        session: ChatSession,
+        session: PersistedChatSession,
         format: ConversationExportFormat,
         provider: any MessageStore,
         directory: URL? = nil

@@ -5,19 +5,19 @@ import ManifoldInference
 final class ChatSessionTests: XCTestCase {
 
     func test_init_setsDefaults() {
-        let session = ChatSession()
+        let session = PersistedChatSession()
 
         XCTAssertEqual(session.title, "New Chat")
         XCTAssertEqual(session.systemPrompt, "")
     }
 
     func test_init_customTitle() {
-        let session = ChatSession(title: "My Chat")
+        let session = PersistedChatSession(title: "My Chat")
         XCTAssertEqual(session.title, "My Chat")
     }
 
     func test_optionalOverrides_nilByDefault() {
-        let session = ChatSession()
+        let session = PersistedChatSession()
 
         XCTAssertNil(session.temperature)
         XCTAssertNil(session.topP)
@@ -29,7 +29,7 @@ final class ChatSessionTests: XCTestCase {
     }
 
     func test_promptTemplate_roundTrip() {
-        let session = ChatSession()
+        let session = PersistedChatSession()
 
         session.promptTemplate = .llama3
         XCTAssertEqual(session.promptTemplate, .llama3)
@@ -41,7 +41,7 @@ final class ChatSessionTests: XCTestCase {
     }
 
     func test_promptTemplate_allCases() {
-        let session = ChatSession()
+        let session = PersistedChatSession()
 
         for template in PromptTemplate.allCases {
             session.promptTemplate = template
@@ -51,7 +51,7 @@ final class ChatSessionTests: XCTestCase {
     }
 
     func test_generationOverrides_setAndRead() {
-        let session = ChatSession()
+        let session = PersistedChatSession()
 
         session.temperature = 1.5
         session.topP = 0.8
@@ -63,7 +63,7 @@ final class ChatSessionTests: XCTestCase {
     }
 
     func test_record_mapsSessionState() {
-        let session = ChatSession(title: "Bridge")
+        let session = PersistedChatSession(title: "Bridge")
         let selectedModelID = UUID()
         let selectedEndpointID = UUID()
         let firstPinnedID = UUID()

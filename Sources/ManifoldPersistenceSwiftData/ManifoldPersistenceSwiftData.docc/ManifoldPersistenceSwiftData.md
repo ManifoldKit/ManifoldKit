@@ -108,7 +108,7 @@ let bootstrap = try ManifoldBootstrap(
         // includes both your app's models and ManifoldKit's.
         try ModelContainer(
             for: Schema([
-                ChatSession.self, ChatMessage.self, APIEndpoint.self,
+                PersistedChatSession.self, PersistedChatMessage.self, APIEndpoint.self,
                 SamplerPreset.self, PersistedAgent.self,
                 MyAppModel.self
             ]),

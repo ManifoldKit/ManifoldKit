@@ -510,7 +510,7 @@ final class ChatViewModelTests: XCTestCase {
         await vm.sendMessage()
 
         let originalCount = vm.messages.count
-        let fakeMessage = ChatMessage(role: .user, content: "Fake", sessionID: UUID())
+        let fakeMessage = PersistedChatMessage(role: .user, content: "Fake", sessionID: UUID())
 
         await vm.editMessage(fakeMessage.id, newContent: "Edited")
 

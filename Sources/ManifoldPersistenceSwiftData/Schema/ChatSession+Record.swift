@@ -2,9 +2,9 @@ import Foundation
 import ManifoldInference
 
 // Source-compatibility shim: lets callers convert the SwiftData `@Model`
-// `ChatSession` into the storage-agnostic `ManifoldInference.ChatSession` used by
-// ManifoldInference APIs.
-extension ChatSession {
+// `PersistedChatSession` into the storage-agnostic `ManifoldInference.ChatSession`
+// used by ManifoldInference APIs.
+extension PersistedChatSession {
 
     /// Returns a storage-agnostic snapshot of this session suitable for
     /// passing to inference services that don't depend on SwiftData.
