@@ -33,7 +33,36 @@ public final class ModelRegistry {
 
     /// The model the user has selected. Setting this from the UI drives
     /// downstream load coordination through `ChatViewModel`.
-    public var selectedModel: ModelInfo?
+    ///
+    /// Writing a non-`nil` value fires ``onSelectionChanged`` **synchronously**
+    /// inside the setter — every write path (the SwiftUI two-way binding, the
+    /// programmatic ``selectModel(_:)`` entry, and direct assignment) clears the
+    /// mutually-exclusive cloud-endpoint selection before control returns to the
+    /// caller. This is the #1312 collapse: the old async `withObservationTracking`
+    /// re-install hack let `dispatchSelectedLoad` read a stale `selectedEndpoint`
+    /// and dispatch the wrong `LoadIntent`. Keeping the clear synchronous here
+    /// means the load intent is always the just-selected model.
+    public var selectedModel: ModelInfo? {
+        didSet {
+            // Fire only on a genuine change so redundant assignments don't churn
+            // the endpoint-sync hook. `nil` writes (clearing) are intentionally
+            // not synced — clearing the model does not need to touch the endpoint.
+            guard selectedModel?.id != oldValue?.id else { return }
+            if selectedModel != nil {
+                onSelectionChanged?(selectedModel)
+            }
+        }
+    }
+
+    /// Synchronous hook fired from the ``selectedModel`` setter whenever a
+    /// non-`nil` model is selected, on the same actor and before the setter
+    /// returns. The host (`ChatViewModel`) wires this to its endpoint-clear
+    /// synchronisation so the two mutually-exclusive selections never co-exist
+    /// — synchronously, which `dispatchSelectedLoad` depends on (#1312,
+    /// Correction F). `@ObservationIgnored` because it is a side-effect seam,
+    /// not observed state.
+    @ObservationIgnored
+    public var onSelectionChanged: (@MainActor (ModelInfo?) -> Void)?
 
     /// Files that failed to load during the last ``refresh()`` call, surfaced
     /// alongside ``ModelDiscoveryError`` so the model-management UI can show a
@@ -158,11 +187,14 @@ public final class ModelRegistry {
     ///   previous selection is left in place.
     ///
     /// `selectedModel` remains writable so SwiftUI two-way bindings keep
-    /// working; `selectModel(_:)` is the hook site for future logging,
-    /// telemetry, and auto-load wiring.
+    /// working; `selectModel(_:)` is the canonical entry for logging, telemetry,
+    /// and auto-load wiring. Both paths fire ``onSelectionChanged`` synchronously
+    /// via the ``selectedModel`` setter, so a local-model selection clears any
+    /// active cloud endpoint before this call returns (#1312).
     @discardableResult
     public func selectModel(_ model: ModelInfo?) -> Bool {
-        // Hook site for future logging / validation / auto-load wiring.
+        // Hook site for logging / validation / auto-load wiring. The synchronous
+        // endpoint-clear runs in the `selectedModel` setter's `didSet`.
         guard let model else {
             selectedModel = nil
             return true

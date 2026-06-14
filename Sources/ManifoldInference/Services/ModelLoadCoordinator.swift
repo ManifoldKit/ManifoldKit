@@ -136,6 +136,20 @@ public final class ModelLoadCoordinator {
     /// continuations to detect they are no longer current.
     var latestLoadIntentGeneration: UInt64 = 0
 
+    /// Whether the **current** load generation should drive the chat-only
+    /// callback seams (`onTransitionPhase`, `onSurfaceError`, `onClearError`,
+    /// `onSetSelectedPromptTemplate`).
+    ///
+    /// The coordinator is shared per `InferenceService` (one instance for the
+    /// `ChatViewModel` and any headless `ModelSelection`). A headless load must
+    /// NOT push the chat surface into a `.modelLoading` phase or write its
+    /// `errorMessage` — those seams belong to the chat VM's own loads. Headless
+    /// observers watch the shared progress/phase/error path through
+    /// ``statusUpdates()`` instead, which always fans out regardless of this flag.
+    /// Latest-wins cancellation means only the current generation's UI state is
+    /// ever applied, so a single flag tracking the current generation is correct.
+    private var currentLoadDrivesChatSeams: Bool = true
+
     // MARK: - Dependencies (injected by InferenceService)
 
     private let inferenceService: InferenceService
@@ -150,8 +164,18 @@ public final class ModelLoadCoordinator {
 
     /// Dispatches a load for the given intent. The newest dispatch always wins;
     /// any older in-flight coordinated load is cancelled and invalidated.
-    public func dispatchLoad(_ intent: LoadIntent) {
+    ///
+    /// - Parameters:
+    ///   - intent: The load to perform.
+    ///   - drivesChatSeams: When `true` (the chat path) the load drives the
+    ///     chat-only callback seams (phase / error / prompt template). When
+    ///     `false` (a headless ``ModelSelection`` load) those seams are
+    ///     suppressed so a foreign load never pushes the chat surface into a
+    ///     loading phase; headless observers still see the load via
+    ///     ``statusUpdates()``.
+    public func dispatchLoad(_ intent: LoadIntent, drivesChatSeams: Bool = true) {
         let generation = nextLoadIntentGeneration(cancelInFlightTask: true)
+        currentLoadDrivesChatSeams = drivesChatSeams
         coordinatedLoadTask = Task { [weak self] in
             await self?.performLoad(intent, generation: generation)
         }
@@ -221,7 +245,8 @@ public final class ModelLoadCoordinator {
 
         // Auto-detect prompt template from GGUF metadata before loading.
         if let detected = model.detectedPromptTemplate,
-           isCurrentLoadIntentGeneration(generation) {
+           isCurrentLoadIntentGeneration(generation),
+           currentLoadDrivesChatSeams {
             onSetSelectedPromptTemplate(detected)
             Log.inference.info("Auto-detected prompt template: \(detected.rawValue)")
         }
@@ -295,10 +320,12 @@ public final class ModelLoadCoordinator {
 
     private func beginLoadUIState(generation: UInt64?) -> Bool {
         guard isCurrentLoadIntentGeneration(generation) else { return false }
-        onClearError()
-        lastProgressTransitionInstant = nil
         let progress = inferenceService.modelLoadProgress
-        _ = onTransitionPhase(.modelLoading(progress: progress))
+        if currentLoadDrivesChatSeams {
+            onClearError()
+            lastProgressTransitionInstant = nil
+            _ = onTransitionPhase(.modelLoading(progress: progress))
+        }
         publish(.loading(progress: progress))
         return true
     }
@@ -328,8 +355,21 @@ public final class ModelLoadCoordinator {
 
     private func applyModelLoadProgress(generation: UInt64?) {
         guard isCurrentLoadIntentGeneration(generation) else { return }
-        guard case .modelLoading(let current) = currentActivityPhase() else { return }
         let snapshot = inferenceService.modelLoadProgress
+
+        // Headless mirror: fan out in-flight progress to `statusUpdates()`
+        // observers independent of the chat phase. A headless load never sets the
+        // chat `activityPhase`, so this must not be gated on it. `publish` is
+        // idempotent, so a repeated value is dropped.
+        if case .loading = status {
+            publish(.loading(progress: snapshot))
+        }
+
+        // Chat-seam mirror: only when this load drives the chat surface AND the
+        // chat phase is still `.modelLoading` (so a late wake-up after the phase
+        // flipped to `.idle` is a no-op).
+        guard currentLoadDrivesChatSeams else { return }
+        guard case .modelLoading(let current) = currentActivityPhase() else { return }
         guard current != snapshot else { return }
 
         // Terminal progress (>= 1.0) and the first emission after a new load
@@ -345,19 +385,13 @@ public final class ModelLoadCoordinator {
 
         if onTransitionPhase(.modelLoading(progress: snapshot)) {
             lastProgressTransitionInstant = now
-            // Mirror in-flight progress to headless observers. Only while we are
-            // still in a loading cycle — `publish` is idempotent so a repeated
-            // value is dropped.
-            if case .loading = status {
-                publish(.loading(progress: snapshot))
-            }
         }
     }
 
     private func endLoadUIState(generation: UInt64?) {
         guard isCurrentLoadIntentGeneration(generation) else { return }
         lastProgressTransitionInstant = nil
-        if case .modelLoading = currentActivityPhase() {
+        if currentLoadDrivesChatSeams, case .modelLoading = currentActivityPhase() {
             _ = onTransitionPhase(.idle)
         }
         // A load cycle that ended without committing or failing (e.g. a `.deny`
@@ -372,7 +406,9 @@ public final class ModelLoadCoordinator {
 
     private func setLoadErrorIfCurrent(_ message: String, generation: UInt64?) {
         guard isCurrentLoadIntentGeneration(generation) else { return }
-        onSurfaceError(message)
+        if currentLoadDrivesChatSeams {
+            onSurfaceError(message)
+        }
         publish(.failed(reason: message))
     }
 

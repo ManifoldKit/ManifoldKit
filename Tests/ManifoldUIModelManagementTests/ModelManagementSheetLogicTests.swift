@@ -471,7 +471,7 @@ final class ModelManagementSheetLogicTests: XCTestCase {
             modelType: .gguf
         )
 
-        let sorted = ModelSelectionTabView.sortModels([beta, alpha], by: .alphabetical)
+        let sorted = ModelSelection.sortModels([beta, alpha], by: .alphabetical)
 
         XCTAssertEqual(sorted.map(\.name), ["Alpha", "Beta"])
     }
@@ -493,7 +493,7 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         )
         let foundation = ModelInfo.builtInFoundation
 
-        let sorted = ModelSelectionTabView.sortModels([mlx, gguf, foundation], by: .type)
+        let sorted = ModelSelection.sortModels([mlx, gguf, foundation], by: .type)
 
         XCTAssertEqual(sorted.map(\.modelType), [.foundation, .gguf, .mlx])
     }
@@ -514,7 +514,7 @@ final class ModelManagementSheetLogicTests: XCTestCase {
             modelType: .gguf
         )
 
-        let sorted = ModelSelectionTabView.sortModels([large, small], by: .size)
+        let sorted = ModelSelection.sortModels([large, small], by: .size)
 
         XCTAssertEqual(sorted.map(\.name), ["Small", "Large"])
     }
@@ -535,7 +535,7 @@ final class ModelManagementSheetLogicTests: XCTestCase {
             modelType: .gguf
         )
 
-        let sorted = ModelSelectionTabView.sortModels([minimal, capable], by: .capability)
+        let sorted = ModelSelection.sortModels([minimal, capable], by: .capability)
 
         XCTAssertEqual(sorted.map(\.name), ["Capable", "Minimal"])
     }

@@ -96,3 +96,4 @@ API breakage: enumelement MessagePart.generatedImage has been removed
 API breakage: enumelement MessagePart.generatedVideo has been removed
 API breakage: var GBNFSchemaPreValidator.CVEAuditRecord.fixedAtBuild has been removed
 API breakage: var GBNFSchemaPreValidator.CVEAuditRecord.vendoredBuild has been removed
+API breakage: func ModelLoadCoordinator.dispatchLoad(_:) has been renamed to func dispatchLoad(_:drivesChatSeams:)
