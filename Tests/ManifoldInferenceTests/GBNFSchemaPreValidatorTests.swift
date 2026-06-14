@@ -225,15 +225,28 @@ final class GBNFSchemaPreValidatorTests: XCTestCase {
         XCTAssertNil(validator.validate(schema))
     }
 
-    // MARK: - CVE audit record sanity
+    // MARK: - CVE provenance record (honest, no fabricated build tags)
 
-    func test_cveAuditRecord_matchesVendoredPin() {
+    // The earlier record claimed CVE-2026-2069 was "fixed in the current pin"
+    // (build b8774, vendored via mattt/llama.swift 2.9101.0 / b9101). Those tags
+    // were unverifiable: this package vendors NO llama.cpp (the family moved to
+    // manifold-llama in v0.48), and the upstream fix PR (#18993) was unmerged as
+    // of 2026-06-14, so no released build contains it. The record now records
+    // that honestly.
+    func test_cveAuditRecord_isHonestProvenance() {
         let record = GBNFSchemaPreValidator.cveStatus
+        // The CVE id is real; the function name maps to a real upstream issue.
         XCTAssertEqual(record.cveID, "CVE-2026-2069")
-        XCTAssertTrue(record.isFixed,
-                      "Vendored build is past the b8774 fix; if the pin moves back, flip this and re-audit the validator rules.")
-        XCTAssertEqual(record.vendoredBuild, "b9101",
-                       "Bump vendoredBuild whenever mattt/llama.swift is repinned — derive the build tag from the resolved Package.swift's `url:` line.")
-        XCTAssertEqual(record.fixedAtBuild,  "b8774")
+        // This package cannot confirm a fix — it vendors no llama.cpp build and
+        // the upstream fix was unmerged at audit time.
+        XCTAssertFalse(record.isFixed,
+                       "This package vendors no llama.cpp build, so it must not claim the CVE is fixed.")
+        XCTAssertEqual(record.auditedOn, "2026-06-14")
+        // The note must not resurrect fabricated build tags.
+        XCTAssertFalse(record.note.contains("b8774"),
+                       "Do not re-introduce the unverifiable b8774 fix-build tag.")
+        XCTAssertFalse(record.note.contains("b9101"))
+        XCTAssertTrue(record.note.contains("lowerer coverage"),
+                      "The note should state the rules are justified by lowerer coverage, not the CVE.")
     }
 }

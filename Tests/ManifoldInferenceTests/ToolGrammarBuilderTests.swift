@@ -87,6 +87,91 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("get_weather-2"), "get_weather-2")
     }
 
+    // MARK: - Escaping: broadened control-char / multi-byte coverage
+
+    /// Carriage return is escaped to a GBNF-escaped JSON `\r`, like `\n`/`\t`.
+    func test_escaping_carriageReturn() {
+        XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a\rb"), "a\\\\rb")
+    }
+
+    /// A low control char without a named escape (here U+0001) becomes a
+    /// GBNF-escaped JSON `` (lowercase 4-hex). U+001F is the top of the
+    /// `< 0x20` control range and must also take the `\uXXXX` path.
+    func test_escaping_lowControlChars_useUnicodeEscape() {
+        XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a\u{01}b"), "a\\\\u0001b")
+        XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a\u{1F}b"), "a\\\\u001fb")
+    }
+
+    /// A multi-byte / emoji scalar (>= 0x20) passes through verbatim — GBNF
+    /// double-quoted literals are byte-transparent for non-control, non-quote,
+    /// non-backslash bytes, so no escaping is required.
+    func test_escaping_emojiPassesThroughVerbatim() {
+        XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a🚀b"), "a🚀b")
+        // An accented multi-byte BMP scalar likewise passes through.
+        XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("café"), "café")
+    }
+
+    /// A name mixing quote, backslash, several control chars, and a multi-byte
+    /// scalar exercises every branch of the escaper in one shot.
+    func test_escaping_mixedSpecials() {
+        XCTAssertEqual(
+            ToolGrammarBuilder.escapeForGBNFLiteral("\"\\\n\t\r\u{02}🚀"),
+            "\\\\\\\"" + "\\\\\\\\" + "\\\\n" + "\\\\t" + "\\\\r" + "\\\\u0002" + "🚀"
+        )
+    }
+
+    /// Byte-exact: control chars + an emoji inside a *tool name* survive into the
+    /// emitted `toolcall-0` branch literal. No live GBNF compiler in CI, so pin
+    /// the exact bytes.
+    func test_nameWithControlCharsAndEmoji_emitsExactBranch() {
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a\n\t🚀b")]))
+        let branchLine = grammar
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .first { $0.hasPrefix("toolcall-0 ::=") }
+            .map(String.init) ?? ""
+        XCTAssertEqual(
+            branchLine,
+            #"toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"a\\n\\t🚀b\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}""#
+        )
+    }
+
+    /// Byte-exact: control chars + an emoji inside a *string-enum value* are
+    /// escaped exactly like names (same escaper) and pinned in the `args-0-0`
+    /// alternation.
+    func test_enumValueWithControlCharsAndEmoji_emitsExactRule() {
+        let t = tool("e", parameters: objectSchema([
+            ("k", .object([
+                "type": .string("string"),
+                "enum": .array([.string("x\ny"), .string("🚀\tz")])
+            ]))
+        ], required: ["k"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let enumLine = grammar
+            .split(separator: "\n")
+            .first { $0.hasPrefix("args-0-0 ::=") }
+            .map(String.init) ?? ""
+        XCTAssertEqual(enumLine, #"args-0-0 ::= ("\"x\\ny\"" | "\"🚀\\tz\"")"#)
+    }
+
+    // MARK: - Pre-flight lowering advisory (loweringReport)
+
+    func test_loweringReport_fullVsDegraded() {
+        let full = tool("ok", parameters: objectSchema([
+            ("city", .object(["type": .string("string")]))
+        ], required: ["city"]))
+        let degraded = tool("weird", parameters: .object([
+            "anyOf": .array([.object(["type": .string("string")])])
+        ]))
+        let reports = builder.loweringReport(for: [full, degraded])
+        XCTAssertEqual(reports.count, 2)
+        XCTAssertEqual(reports[0].toolName, "ok")
+        XCTAssertTrue(reports[0].lowersFully)
+        XCTAssertNil(reports[0].firstDegradation)
+        XCTAssertEqual(reports[1].toolName, "weird")
+        XCTAssertFalse(reports[1].lowersFully, "anyOf degrades to a generic value")
+        XCTAssertEqual(reports[1].firstDegradation?.path, ["anyOf"])
+    }
+
     /// A name containing a double quote must yield a *balanced* GBNF literal in
     /// the branch's `toolcall-0` rule. There is no live llama.cpp grammar
     /// compiler in this package's CI, so this pins the exact emitted bytes.

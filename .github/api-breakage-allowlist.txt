@@ -94,3 +94,5 @@ API breakage: enumelement GenerationStreamConsumer.StreamAction.generationComple
 API breakage: enumelement MessagePart.generatedMedia has been added as a new enum case
 API breakage: enumelement MessagePart.generatedImage has been removed
 API breakage: enumelement MessagePart.generatedVideo has been removed
+API breakage: var GBNFSchemaPreValidator.CVEAuditRecord.fixedAtBuild has been removed
+API breakage: var GBNFSchemaPreValidator.CVEAuditRecord.vendoredBuild has been removed
