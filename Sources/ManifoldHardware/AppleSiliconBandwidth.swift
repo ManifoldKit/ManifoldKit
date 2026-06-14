@@ -548,9 +548,19 @@ public struct ModelFitScorer: Sendable {
     /// tier from `DownloadableModel.sizeBytes` rather than adding fields to
     /// `ModelCapabilityTier`, which is a pure file-size enum by design.
     private func qualityScore(for model: DownloadableModel) -> Double {
+        Self.qualityScore(sizeBytes: model.sizeBytes, quantization: model.quantization)
+    }
+
+    /// Capability proxy in 0...1 from raw size bytes and a quantization tag.
+    ///
+    /// Exposed at `package` visibility so the `ModelInfo` bridge in
+    /// `ManifoldInference` (which sees `ModelInfo` but not `DownloadableModel`)
+    /// can reuse the *exact* same tier × quant-width curve as the downloadable
+    /// path — keeping a resident model and its downloadable twin on one scale.
+    package static func qualityScore(sizeBytes: UInt64, quantization: String?) -> Double {
         // Reconstruct the tier from size using the same thresholds ModelCapabilityTier
         // applies to on-disk models, then map to a 0...1 capability base.
-        let gb = Double(model.sizeBytes) / 1_073_741_824
+        let gb = Double(sizeBytes) / 1_073_741_824
         let tierBase: Double
         switch gb {
         case ..<2:    tierBase = 0.20  // minimal
@@ -567,23 +577,58 @@ public struct ModelFitScorer: Sendable {
         // factor is gentle (0.90...1.0, diminishing returns past Q6), but below it the
         // penalty steepens so a Q2 (factor ~0.55) cannot ride its larger param count
         // past a Q4/Q5 of the adjacent smaller tier.
-        let bpw = QuantizationBits.bitsPerWeight(for: model.quantization)
+        let bpw = QuantizationBits.bitsPerWeight(for: quantization)
         let quantFactor: Double
         if bpw >= 4.0 {
             // 4 bpw → 0.90, 8.5 bpw → ~1.0.
-            quantFactor = clamp(0.90 + (bpw - 4.0) / 4.5 * 0.10, min: 0.90, max: 1.0)
+            quantFactor = clampStatic(0.90 + (bpw - 4.0) / 4.5 * 0.10, min: 0.90, max: 1.0)
         } else {
             // 4 bpw → 0.90 down to ~2 bpw → 0.50: steep penalty in the sub-Q4 cliff.
-            quantFactor = clamp(0.50 + (bpw - 2.0) / 2.0 * 0.40, min: 0.40, max: 0.90)
+            quantFactor = clampStatic(0.50 + (bpw - 2.0) / 2.0 * 0.40, min: 0.40, max: 0.90)
         }
 
-        return clamp01(tierBase * quantFactor)
+        return clampStatic(tierBase * quantFactor, min: 0.0, max: 1.0)
     }
 
     // MARK: - Math helpers
 
+    /// `package`-visible composite assembler used by both the downloadable path
+    /// and the `ModelInfo` bridge so the four dimensions combine identically.
+    ///
+    /// `willRun == false` collapses the composite into a strictly-lower band
+    /// (× 0.1), matching the in-line gate in `score(_:DownloadableModel...)` —
+    /// a model that won't load must rank below every runnable candidate.
+    package static func composite(
+        quality: Double,
+        speed: Double,
+        fit: Double,
+        context: Double,
+        weights: FitWeights,
+        willRun: Bool
+    ) -> Double {
+        let weightedSum = quality * weights.quality
+            + speed * weights.speed
+            + fit * weights.fit
+            + context * weights.context
+        return willRun ? weightedSum : weightedSum * 0.1
+    }
+
+    /// `package`-visible decode-throughput estimate (tokens/sec) and its
+    /// normalised `speed` dimension, shared with the `ModelInfo` bridge.
+    package func speedDimension(
+        activeBytes: UInt64,
+        device: DeviceProfile
+    ) -> (estimatedTokensPerSecond: Double, speed: Double) {
+        let activeGB = max(Double(activeBytes) / 1_073_741_824, 0.001)
+        let estimatedTPS = (device.memoryBandwidthGBs / activeGB) * efficiencyFactor
+        return (estimatedTPS, clamp01(estimatedTPS / speedSaturationTokensPerSecond))
+    }
+
     private func clamp01(_ x: Double) -> Double { clamp(x, min: 0.0, max: 1.0) }
     private func clamp(_ x: Double, min lo: Double, max hi: Double) -> Double {
+        Swift.max(lo, Swift.min(hi, x))
+    }
+    private static func clampStatic(_ x: Double, min lo: Double, max hi: Double) -> Double {
         Swift.max(lo, Swift.min(hi, x))
     }
 }

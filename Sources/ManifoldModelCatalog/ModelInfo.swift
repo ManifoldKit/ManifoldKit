@@ -84,6 +84,24 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)
     }
 
+    /// Quantization tag parsed from the GGUF filename (e.g. "Q4_K_M", "Q8_0"), or
+    /// `nil` for non-GGUF models and filenames that carry no recognisable tag.
+    ///
+    /// Mirrors ``DownloadableModel/quantization`` so an on-disk model and its
+    /// downloadable twin resolve to the same tag — the fit scorer reads this to
+    /// derive the quality dimension's quantization-width factor.
+    public var quantization: String? {
+        guard modelType == .gguf else { return nil }
+        // Match common GGUF quant patterns: Q4_K_M, Q8_0, IQ2_XS, F16, etc.
+        // The trailing `_SEGMENT` repetition is bounded to {0,5} to prevent
+        // catastrophic backtracking on crafted filenames; input is clipped to
+        // 128 chars (any legitimate HuggingFace filename fits well under that).
+        let pattern = #"[_\-\.]((?:Q|IQ|F|BF)\d+(?:_[A-Z0-9]+){0,5})\."#
+        let boundedName = String(fileName.prefix(128))
+        guard let range = boundedName.range(of: pattern, options: .regularExpression) else { return nil }
+        return String(boundedName[range].dropFirst().dropLast())
+    }
+
     /// Short label for the backend type.
     public var backendLabel: String {
         BackendDescriptorRegistry.shared.descriptor(for: modelType)?.backendLabel

@@ -1,11 +1,9 @@
 import Foundation
-import ManifoldRuntime
-import ManifoldInference
 
 // MARK: - LoadIntent
 
 /// The two kinds of load request that can be dispatched to the coordinator.
-enum LoadIntent {
+public enum LoadIntent: Sendable {
     case localModel(ModelInfo)
     case cloudEndpoint(APIEndpointRecord)
 }
@@ -15,9 +13,17 @@ enum LoadIntent {
 /// Owns the "latest-wins with cancellation" model-load state machine extracted
 /// from `ChatViewModel` (phase 3 of #329).
 ///
+/// Relocated from `ManifoldUI` to `ManifoldInference` so `InferenceService` can
+/// **own and vend a single instance** ("one coordinator per service" is now
+/// structural). Two consumers over one `InferenceService` — the existing
+/// `ChatViewModel` and a future headless `ModelSelection` façade — must share the
+/// same coordinator: two coordinators over one service would cross-talk on the
+/// shared `InferenceService.modelLoadProgress` scalar.
+///
 /// The coordinator is `@MainActor` but NOT `@Observable` — it holds no
-/// SwiftUI-observed state of its own. All observable side-effects are routed
-/// back to `ChatViewModel` through the callback seams set at construction.
+/// SwiftUI-observed state of its own. Chat-specific observable side-effects are
+/// routed through the callback seams set at construction; the multi-observer
+/// progress / phase / error path is published via ``statusUpdates()``.
 ///
 /// ## Race safety
 ///
@@ -29,48 +35,92 @@ enum LoadIntent {
 /// - `InferenceService` suppresses any stale completion that does reach it via its
 ///   own monotonic `LoadRequestToken`.
 @MainActor
-final class ModelLoadCoordinator {
+public final class ModelLoadCoordinator {
 
     // MARK: - Seams (set by ChatViewModel at init)
 
     /// Forwards to `ChatViewModel.transitionPhase(to:)`. Returns `true` if the
     /// transition was accepted (matches `transitionPhase`'s own return value).
-    var onTransitionPhase: @MainActor (BackendActivityPhase) -> Bool = { _ in false }
+    public var onTransitionPhase: @MainActor (BackendActivityPhase) -> Bool = { _ in false }
 
     /// Forwards to setting `ChatViewModel.errorMessage` to a non-nil string.
-    var onSurfaceError: @MainActor (String) -> Void = { _ in }
+    public var onSurfaceError: @MainActor (String) -> Void = { _ in }
 
     /// Clears `ChatViewModel.errorMessage` (sets it to `nil`).
-    var onClearError: @MainActor () -> Void = {}
+    public var onClearError: @MainActor () -> Void = {}
 
     /// Forwards to setting `ChatViewModel.selectedPromptTemplate`.
-    var onSetSelectedPromptTemplate: @MainActor (PromptTemplate) -> Void = { _ in }
+    public var onSetSelectedPromptTemplate: @MainActor (PromptTemplate) -> Void = { _ in }
 
     /// Forwards to `ChatViewModel.invalidateTokenCaches()`.
-    var onInvalidateTokenCaches: @MainActor () -> Void = {}
+    public var onInvalidateTokenCaches: @MainActor () -> Void = {}
 
     /// Returns `ChatViewModel.isRestoringSession`.
-    var isRestoringSession: @MainActor () -> Bool = { false }
+    public var isRestoringSession: @MainActor () -> Bool = { false }
 
     /// Returns `ChatViewModel.activityPhase`.
-    var currentActivityPhase: @MainActor () -> BackendActivityPhase = { .idle }
+    public var currentActivityPhase: @MainActor () -> BackendActivityPhase = { .idle }
 
     /// Returns the `ModelLoadPlan.Environment` to use for local-model load plans.
-    var currentLoadPlanEnvironment: @MainActor () -> ModelLoadPlan.Environment = { .current }
+    public var currentLoadPlanEnvironment: @MainActor () -> ModelLoadPlan.Environment = { .current }
+
+    // MARK: - Multi-observer load-status surface
+
+    /// The most recent published load status. New subscribers receive this as their
+    /// first element so a late observer is not stuck on a stale `.idle`.
+    public private(set) var status: ModelLoadStatus = .idle
+
+    /// Live fan-out continuations, keyed by subscription token. Each observer owns
+    /// one entry; publishing fans out to all of them. Unbounded buffering with the
+    /// newest value winning keeps observers from blocking the load path.
+    private var statusContinuations: [UUID: AsyncStream<ModelLoadStatus>.Continuation] = [:]
+
+    /// Returns a fresh `AsyncStream` of load-status transitions for one observer.
+    ///
+    /// Multiple observers (e.g. `ChatViewModel` AND a headless façade) may each call
+    /// this and watch the *same* load without clobbering each other — this replaces
+    /// the single-owner callback pattern for the progress / phase / error path. The
+    /// stream yields the current ``status`` immediately, then every subsequent
+    /// transition. It finishes when the coordinator is deinitialised.
+    public func statusUpdates() -> AsyncStream<ModelLoadStatus> {
+        let token = UUID()
+        let current = status
+        return AsyncStream { continuation in
+            statusContinuations[token] = continuation
+            continuation.yield(current)
+            continuation.onTermination = { [weak self] _ in
+                // onTermination can fire off-actor; hop back to drop the entry.
+                Task { @MainActor [weak self] in
+                    self?.statusContinuations[token] = nil
+                }
+            }
+        }
+    }
+
+    /// Publishes a new status to every subscribed observer and records it as the
+    /// latest value. Idempotent: re-publishing the same status is a no-op so we
+    /// don't wake observers on redundant transitions.
+    private func publish(_ newStatus: ModelLoadStatus) {
+        guard newStatus != status else { return }
+        status = newStatus
+        for continuation in statusContinuations.values {
+            continuation.yield(newStatus)
+        }
+    }
 
     // MARK: - State
 
     /// Polling interval for the model-load progress bridge task that mirrors
     /// `inferenceService.modelLoadProgress` into the view model's `activityPhase`.
     /// Tests may override this to a small value for deterministic timing.
-    var progressBridgePollInterval: Duration = .milliseconds(50)
+    public var progressBridgePollInterval: Duration = .milliseconds(50)
 
     /// Minimum interval between published phase transitions for in-flight
     /// model-load progress. Keeps steadily-progressing backends from
     /// re-rendering every view observing `activityPhase` on every poll tick.
     /// The first emission in a load cycle and the terminal (≥ 1.0) emission
     /// always publish regardless of this window.
-    var progressBridgeMinTransitionInterval: Duration = .milliseconds(250)
+    public var progressBridgeMinTransitionInterval: Duration = .milliseconds(250)
 
     /// Timestamp of the most recent published phase transition from
     /// `applyModelLoadProgress`. `nil` means the next progress change will
@@ -86,13 +136,13 @@ final class ModelLoadCoordinator {
     /// continuations to detect they are no longer current.
     var latestLoadIntentGeneration: UInt64 = 0
 
-    // MARK: - Dependencies (injected by ChatViewModel)
+    // MARK: - Dependencies (injected by InferenceService)
 
     private let inferenceService: InferenceService
 
     // MARK: - Init
 
-    init(inferenceService: InferenceService) {
+    public init(inferenceService: InferenceService) {
         self.inferenceService = inferenceService
     }
 
@@ -100,7 +150,7 @@ final class ModelLoadCoordinator {
 
     /// Dispatches a load for the given intent. The newest dispatch always wins;
     /// any older in-flight coordinated load is cancelled and invalidated.
-    func dispatchLoad(_ intent: LoadIntent) {
+    public func dispatchLoad(_ intent: LoadIntent) {
         let generation = nextLoadIntentGeneration(cancelInFlightTask: true)
         coordinatedLoadTask = Task { [weak self] in
             await self?.performLoad(intent, generation: generation)
@@ -110,16 +160,19 @@ final class ModelLoadCoordinator {
     /// Cancels any in-flight coordinated load and (optionally) resets the
     /// activity phase back to `.idle`. Called from `unloadModel()` and
     /// `handleMemoryPressure()` on the VM.
-    func invalidatePendingLoadIntent(resetActivityPhase: Bool = false) {
+    public func invalidatePendingLoadIntent(resetActivityPhase: Bool = false) {
         _ = nextLoadIntentGeneration(cancelInFlightTask: true)
         if resetActivityPhase, case .modelLoading = currentActivityPhase() {
             _ = onTransitionPhase(.idle)
         }
+        // A cancelled / invalidated load is no longer in flight: collapse the
+        // headless status to idle so observers don't sit on a stale `.loading`.
+        publish(.idle)
     }
 
     // MARK: - Load Entry Points (called from ChatViewModel for non-dispatch paths)
 
-    func loadLocalModel(_ model: ModelInfo, generation: UInt64?) async {
+    public func loadLocalModel(_ model: ModelInfo, generation: UInt64?) async {
         guard isCurrentLoadIntentGeneration(generation) else { return }
 
         // Clamp the local-model context request. Some headers advertise a huge
@@ -184,6 +237,7 @@ final class ModelLoadCoordinator {
 
         do {
             try await inferenceService.loadModel(from: model, plan: plan)
+            publishLoadedIfCurrent(generation: generation)
         } catch is CancellationError {
             return
         } catch {
@@ -191,7 +245,7 @@ final class ModelLoadCoordinator {
         }
     }
 
-    func loadCloudEndpointInternal(_ endpoint: APIEndpointRecord, generation: UInt64?) async {
+    public func loadCloudEndpointInternal(_ endpoint: APIEndpointRecord, generation: UInt64?) async {
         guard beginLoadUIState(generation: generation) else { return }
         let bridge = Task { @MainActor [weak self] in
             await self?.observeModelLoadProgress(generation: generation)
@@ -203,6 +257,7 @@ final class ModelLoadCoordinator {
 
         do {
             try await inferenceService.loadEndpointBackend(from: endpoint)
+            publishLoadedIfCurrent(generation: generation)
         } catch is CancellationError {
             return
         } catch {
@@ -242,7 +297,9 @@ final class ModelLoadCoordinator {
         guard isCurrentLoadIntentGeneration(generation) else { return false }
         onClearError()
         lastProgressTransitionInstant = nil
-        _ = onTransitionPhase(.modelLoading(progress: inferenceService.modelLoadProgress))
+        let progress = inferenceService.modelLoadProgress
+        _ = onTransitionPhase(.modelLoading(progress: progress))
+        publish(.loading(progress: progress))
         return true
     }
 
@@ -288,6 +345,12 @@ final class ModelLoadCoordinator {
 
         if onTransitionPhase(.modelLoading(progress: snapshot)) {
             lastProgressTransitionInstant = now
+            // Mirror in-flight progress to headless observers. Only while we are
+            // still in a loading cycle — `publish` is idempotent so a repeated
+            // value is dropped.
+            if case .loading = status {
+                publish(.loading(progress: snapshot))
+            }
         }
     }
 
@@ -297,11 +360,25 @@ final class ModelLoadCoordinator {
         if case .modelLoading = currentActivityPhase() {
             _ = onTransitionPhase(.idle)
         }
+        // A load cycle that ended without committing or failing (e.g. a `.deny`
+        // returned before the load began, or a superseded generation) collapses
+        // the headless status back to idle. A successful `.loaded` or a `.failed`
+        // was already published on the relevant path and is preserved here because
+        // `endLoadUIState` only resets a still-`loading` status.
+        if case .loading = status {
+            publish(.idle)
+        }
     }
 
     private func setLoadErrorIfCurrent(_ message: String, generation: UInt64?) {
         guard isCurrentLoadIntentGeneration(generation) else { return }
         onSurfaceError(message)
+        publish(.failed(reason: message))
+    }
+
+    private func publishLoadedIfCurrent(generation: UInt64?) {
+        guard isCurrentLoadIntentGeneration(generation) else { return }
+        publish(.loaded)
     }
 
     /// Translates a denied plan's primary `Reason` into a user-visible message.

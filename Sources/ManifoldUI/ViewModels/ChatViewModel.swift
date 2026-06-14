@@ -861,7 +861,11 @@ public final class ChatViewModel {
         let firstRunKey = "\(ManifoldConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
         self.isFirstRun = !userDefaults.bool(forKey: firstRunKey)
 
-        let coordinator = ModelLoadCoordinator(inferenceService: inferenceService)
+        // Consume the single coordinator the service vends rather than constructing
+        // our own — "one coordinator per service" is structural now (see
+        // `InferenceService.modelLoadCoordinator`). A headless model-selection
+        // surface can share this same instance.
+        let coordinator = inferenceService.modelLoadCoordinator
         self.loadCoordinator = coordinator
         coordinator.onTransitionPhase = { [weak self] phase in
             self?.transitionPhase(to: phase) ?? false
