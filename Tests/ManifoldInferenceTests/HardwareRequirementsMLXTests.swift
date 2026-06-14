@@ -95,7 +95,10 @@ final class HardwareRequirementsMLXTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, nested.standardizedFileURL.path)
     }
 
-    func test_findMLXModelDirectory_overrideFallsBackToFirstSortedCandidate() {
+    func test_findMLXModelDirectory_missingEnvOverride_returnsNilRatherThanFirstCandidate() {
+        // An explicit env name-fragment that matches no candidate is a request
+        // for a specific model. The function must return nil (caller skips)
+        // rather than silently running against an unrelated model.
         let zeta = tempDirectory.appendingPathComponent("zeta-model", isDirectory: true)
         let alpha = tempDirectory.appendingPathComponent("alpha-model", isDirectory: true)
         createValidMLXDirectory(at: zeta)
@@ -105,6 +108,33 @@ final class HardwareRequirementsMLXTests: XCTestCase {
             in: [tempDirectory],
             environment: ["MLX_TEST_MODEL": "missing"]
         )
+
+        XCTAssertNil(result, "Env name-fragment matching nothing must not fall back to another model")
+    }
+
+    func test_findMLXModelDirectory_nameContainsMatchingNothing_returnsNil() {
+        let zeta = tempDirectory.appendingPathComponent("zeta-model", isDirectory: true)
+        let alpha = tempDirectory.appendingPathComponent("alpha-model", isDirectory: true)
+        createValidMLXDirectory(at: zeta)
+        createValidMLXDirectory(at: alpha)
+
+        let result = HardwareRequirements.findMLXModelDirectory(
+            in: [tempDirectory],
+            nameContains: "mistral"
+        )
+
+        XCTAssertNil(result, "nameContains matching nothing must not fall back to another model")
+    }
+
+    func test_findMLXModelDirectory_noSelector_returnsFirstSortedCandidate() {
+        // No env override and no nameContains: the "any model" path is
+        // unchanged — the first sorted candidate wins.
+        let zeta = tempDirectory.appendingPathComponent("zeta-model", isDirectory: true)
+        let alpha = tempDirectory.appendingPathComponent("alpha-model", isDirectory: true)
+        createValidMLXDirectory(at: zeta)
+        createValidMLXDirectory(at: alpha)
+
+        let result = HardwareRequirements.findMLXModelDirectory(in: [tempDirectory])
 
         XCTAssertEqual(result?.standardizedFileURL.path, alpha.standardizedFileURL.path)
     }

@@ -186,8 +186,11 @@ public enum HardwareRequirements {
     ///
     /// When `MLX_TEST_MODEL` is set to a bare name or substring (no `/`),
     /// discovery runs and the first candidate whose path contains the value wins.
-    /// Falls back to `nameContains`, then to the first discovered candidate in
-    /// deterministic path order.
+    /// If that name fragment matches nothing the function returns `nil` (the
+    /// caller skips) rather than falling back to an unrelated model. Falls back
+    /// to `nameContains` only when the env key is absent; if neither name
+    /// selector is supplied and `MANIFOLD_DISCOVER_LOCAL_MODELS=1`, the first
+    /// discovered candidate in deterministic path order wins.
     public static func findMLXModelDirectory(
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -286,8 +289,11 @@ public enum HardwareRequirements {
     ///
     /// When `LLAMA_TEST_MODEL` is set to a bare name or substring (no `/`),
     /// discovery runs and the first candidate whose path contains the value wins.
-    /// Falls back to `nameContains`, then to the smallest discovered candidate
-    /// that satisfies the size bounds.
+    /// If that name fragment matches nothing the function returns `nil` (the
+    /// caller skips) rather than falling back to an unrelated model. Falls back
+    /// to `nameContains` only when the env key is absent; if neither name
+    /// selector is supplied and `MANIFOLD_DISCOVER_LOCAL_MODELS=1`, the smallest
+    /// discovered candidate that satisfies the size bounds wins.
     public static func findGGUFModel(
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -455,14 +461,21 @@ public enum HardwareRequirements {
         let ordered = sortedUniqueURLs(candidates)
         guard !ordered.isEmpty else { return nil }
 
-        if let override = normalizedModelSelector(environment[environmentKey]),
-           let matched = matchingFilesystemModel(override, in: ordered) {
-            return matched
+        // An explicit name selector — supplied via the env key or the
+        // `nameContains` argument — is a request for a *specific* model. If it
+        // matches nothing, return nil so the caller skips rather than silently
+        // running against an unrelated model. Only when no name selector was
+        // provided at all do we fall back to the first candidate (the legit
+        // "any model" discovery path). Mirrors `findOllamaModel(nameContains:)`.
+        let envSelector = normalizedModelSelector(environment[environmentKey])
+        let argSelector = normalizedModelSelector(substring)
+
+        if let envSelector {
+            return matchingFilesystemModel(envSelector, in: ordered)
         }
 
-        if let substring = normalizedModelSelector(substring),
-           let matched = matchingFilesystemModel(substring, in: ordered) {
-            return matched
+        if let argSelector {
+            return matchingFilesystemModel(argSelector, in: ordered)
         }
 
         return ordered.first
@@ -536,14 +549,22 @@ public enum HardwareRequirements {
         let ordered = sortedUniqueGGUFCandidates(candidates).map(\.url)
         guard !ordered.isEmpty else { return nil }
 
-        if let override = normalizedModelSelector(environment[environmentKey]),
-           let matched = matchingFilesystemModel(override, in: ordered) {
-            return matched
+        // An explicit name selector — supplied via the env key or the
+        // `nameContains` argument — is a request for a *specific* model. If it
+        // matches nothing, return nil so the caller skips rather than silently
+        // running against an unrelated (smaller) model. Only when no name
+        // selector was provided at all do we fall back to the smallest
+        // candidate (the legit "any model" discovery path). Mirrors
+        // `findOllamaModel(nameContains:)`.
+        let envSelector = normalizedModelSelector(environment[environmentKey])
+        let argSelector = normalizedModelSelector(substring)
+
+        if let envSelector {
+            return matchingFilesystemModel(envSelector, in: ordered)
         }
 
-        if let substring = normalizedModelSelector(substring),
-           let matched = matchingFilesystemModel(substring, in: ordered) {
-            return matched
+        if let argSelector {
+            return matchingFilesystemModel(argSelector, in: ordered)
         }
 
         return ordered.first

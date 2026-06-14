@@ -49,14 +49,81 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, nested.standardizedFileURL.path)
     }
 
-    func test_findGGUFModel_missingOverrideFallsBackToSmallestValidCandidate() {
+    func test_findGGUFModel_missingEnvOverride_returnsNilRatherThanSmallestCandidate() {
+        // An explicit env name-fragment that matches no candidate is a request
+        // for a specific model. The function must return nil (caller skips)
+        // rather than silently running against an unrelated smaller model.
         _ = createGGUFFile("alpha.gguf", size: 12)
-        let smallest = createGGUFFile("zeta.gguf", size: 4)
+        _ = createGGUFFile("zeta.gguf", size: 4)
         _ = createGGUFFile("tiny.gguf", size: 1)
 
         let result = HardwareRequirements.findGGUFModel(
             in: [tempDirectory],
             environment: ["LLAMA_TEST_MODEL": "missing"],
+            minimumModelSize: 2
+        )
+
+        XCTAssertNil(result, "Env name-fragment matching nothing must not fall back to another model")
+    }
+
+    func test_findGGUFModel_nameContainsMatchingNothing_returnsNil() {
+        // The reported false positive: a family-targeted selector with no match
+        // must yield nil, not the smallest other GGUF.
+        _ = createGGUFFile("alpha.gguf", size: 12)
+        _ = createGGUFFile("zeta.gguf", size: 4)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "mistral",
+            minimumModelSize: 1
+        )
+
+        XCTAssertNil(result, "nameContains matching nothing must not fall back to another model")
+    }
+
+    func test_findGGUFModel_envOverrideMissingWins_evenWhenNameContainsWouldMatch() {
+        // Precedence lock: when the env key is present it pins the model. An
+        // env miss must return nil even if the `nameContains` argument would
+        // have matched — the env override is the higher-priority "pin a
+        // specific model" request, so a miss skips rather than running the
+        // arg-selected model.
+        _ = createGGUFFile("alpha.gguf", size: 12)
+        _ = createGGUFFile("mistral-7b.gguf", size: 4)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "mistral",
+            environment: ["LLAMA_TEST_MODEL": "missing"],
+            minimumModelSize: 1
+        )
+
+        XCTAssertNil(
+            result,
+            "Env override miss must win over a matching nameContains arg (env pins the model)"
+        )
+    }
+
+    func test_findGGUFModel_nameContainsMatching_returnsThatModel() {
+        _ = createGGUFFile("alpha.gguf", size: 12)
+        let mistral = createGGUFFile("mistral-7b.gguf", size: 4)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "mistral",
+            minimumModelSize: 1
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, mistral.standardizedFileURL.path)
+    }
+
+    func test_findGGUFModel_noSelector_returnsSmallestCandidate() {
+        // No env override and no nameContains: the "any model" path is
+        // unchanged — the smallest valid candidate wins.
+        _ = createGGUFFile("alpha.gguf", size: 12)
+        let smallest = createGGUFFile("zeta.gguf", size: 4)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
             minimumModelSize: 2
         )
 
