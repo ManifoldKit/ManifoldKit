@@ -504,6 +504,20 @@ final class GenerationQueue {
             throw InferenceError.inferenceFailure("Tools passed to a backend that does not support tool calling (\(backendType)); set capabilities.supportsToolCalling = true or remove tools from the request.")
         }
 
+        // Derive a tool-call GBNF grammar (#1859) when the backend supports
+        // grammar-constrained sampling, tools are present, and the caller did
+        // NOT supply an explicit grammar. An explicit caller grammar always
+        // wins — we never overwrite a host-authored string. The derived grammar
+        // pins the emitted tool-call envelope's `"name"` to the enum of the
+        // supplied tool names so the model can't drift off-format.
+        var config = config
+        if config.grammar == nil,
+           !config.tools.isEmpty,
+           backend.capabilities.supportsGrammarConstrainedSampling,
+           let derived = ToolGrammarBuilder().buildGrammar(for: config.tools) {
+            config.grammar = derived
+        }
+
         let token = GenerationRequestToken(rawValue: nextGenerationToken.rawValue + 1)
         nextGenerationToken = token
 
