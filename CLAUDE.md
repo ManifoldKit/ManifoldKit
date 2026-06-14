@@ -52,7 +52,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | Target | Role |
 |--------|------|
 | `ManifoldUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here). Depends on `ManifoldRuntime` + `ManifoldInference`. |
-| `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors. Depends on `ManifoldUI`. |
+| `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors. Depends on `ManifoldUI` + `ManifoldRuntime` + `ManifoldInference` + `ManifoldHuggingFace`. |
 | `ManifoldVoice` | Optional speech I/O adapters and voice composer accessory. Depends on `ManifoldUI`. |
 
 ### Discovery + server + fuzz
