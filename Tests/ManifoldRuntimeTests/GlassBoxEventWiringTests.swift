@@ -50,7 +50,7 @@ private final class UsageReportingBackend: InferenceBackend, @unchecked Sendable
                     for try await event in innerStream.events {
                         continuation.yield(event)
                     }
-                    continuation.yield(.usage(prompt: prompt, completion: completion))
+                    continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -86,7 +86,7 @@ private final class FakeEndpointBackend: InferenceBackend, EndpointBackendURLMod
     func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
         GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.yield(.token("hi"))
-            continuation.yield(.usage(prompt: 12, completion: 3))
+            continuation.yield(.usage(TokenUsage(promptTokens: 12, completionTokens: 3)))
             continuation.finish()
         })
     }

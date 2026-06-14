@@ -83,7 +83,7 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
                         for try await event in innerStream.events {
                             continuation.yield(event)
                         }
-                        continuation.yield(.usage(prompt: 50, completion: 10))
+                        continuation.yield(.usage(TokenUsage(promptTokens: 50, completionTokens: 10)))
                         continuation.finish()
                     } catch {
                         continuation.finish(throwing: error)

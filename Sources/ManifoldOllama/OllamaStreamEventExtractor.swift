@@ -467,7 +467,7 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
         guard let prompt = parsed.promptEvalCount, let completion = parsed.evalCount else {
             return
         }
-        out.append(.usage(prompt: prompt, completion: completion))
+        out.append(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
     }
 
     // MARK: - Cap-aware emit helper

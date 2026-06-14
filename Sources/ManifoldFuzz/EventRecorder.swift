@@ -115,10 +115,10 @@ public struct EventRecorder: Sendable {
                         thinkingBuffer = ""
                     }
                     events.append(.init(t: t, kind: "thinkingCompleted", v: nil))
-                case .usage(let p, let c):
-                    promptTokens = p
-                    completionTokens = c
-                    events.append(.init(t: t, kind: "usage", v: "\(p)/\(c)"))
+                case .usage(let usage):
+                    promptTokens = usage.promptTokens
+                    completionTokens = usage.completionTokens
+                    events.append(.init(t: t, kind: "usage", v: "\(usage.promptTokens)/\(usage.completionTokens)"))
                 case .toolCall(let call):
                     toolCalls.append(call)
                     events.append(.init(t: t, kind: "toolCall", v: call.toolName))

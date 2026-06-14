@@ -26,15 +26,15 @@ final class GenerationStreamTests: XCTestCase {
 
     func test_eventsDeliversUsage() async throws {
         let inner = AsyncThrowingStream<GenerationEvent, Error> { continuation in
-            continuation.yield(.usage(prompt: 10, completion: 5))
+            continuation.yield(.usage(TokenUsage(promptTokens: 10, completionTokens: 5)))
             continuation.finish()
         }
         let stream = GenerationStream(inner)
 
         var usages: [(Int, Int)] = []
         for try await event in stream.events {
-            if case .usage(let p, let c) = event {
-                usages.append((p, c))
+            if case .usage(let usage) = event {
+                usages.append((usage.promptTokens, usage.completionTokens))
             }
         }
         // Sabotage check: removing the .usage yield from the inner stream causes count to be 0

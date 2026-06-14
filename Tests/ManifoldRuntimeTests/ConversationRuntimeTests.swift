@@ -54,7 +54,7 @@ private final class RuntimeUsageBackend: InferenceBackend, TokenUsageProvider, @
                     continuation.yield(.token(token))
                 }
                 if let usage = turn.usage, !Task.isCancelled {
-                    continuation.yield(.usage(prompt: usage.promptTokens, completion: usage.completionTokens))
+                    continuation.yield(.usage(TokenUsage(promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)))
                     self.lastUsage = usage
                 }
                 self.isGenerating = false

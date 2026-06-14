@@ -765,9 +765,9 @@ struct SSEHazardTests {
         // Must contain exactly one .usage event, and it must precede termination.
         var sawUsage = false
         for event in events {
-            if case .usage(let prompt, let completion) = event {
-                #expect(prompt == 10)
-                #expect(completion == 5)
+            if case .usage(let u) = event {
+                #expect(u.promptTokens == 10)
+                #expect(u.completionTokens == 5)
                 sawUsage = true
             }
         }

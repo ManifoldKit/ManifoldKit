@@ -30,7 +30,7 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
         XCTAssertEqual(tokens, ["Hello", " world"],
                        "extractor must replay the same token sequence as the legacy OllamaStreamProcessor")
         let usage: (prompt: Int, completion: Int)? = events.lazy.compactMap {
-            if case .usage(let p, let c) = $0 { return (p, c) } else { return nil }
+            if case .usage(let u) = $0 { return (u.promptTokens, u.completionTokens) } else { return nil }
         }.first
         XCTAssertEqual(usage?.prompt, 7)
         XCTAssertEqual(usage?.completion, 2)
@@ -70,9 +70,9 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
             XCTAssertTrue(call.arguments.contains("Paris"))
         } else { XCTFail("expected .toolCall, got \(filtered[2])") }
 
-        if case .usage(let p, let c) = filtered[3] {
-            XCTAssertEqual(p, 42)
-            XCTAssertEqual(c, 18)
+        if case .usage(let u) = filtered[3] {
+            XCTAssertEqual(u.promptTokens, 42)
+            XCTAssertEqual(u.completionTokens, 18)
         } else { XCTFail("expected .usage, got \(filtered[3])") }
     }
 
@@ -81,7 +81,7 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
     func test_extractor_usageBasic_emitsUsageEvent() throws {
         let events = try driveExtractor(scenario: "usage/basic", config: GenerationConfig())
         let usage: (prompt: Int, completion: Int)? = events.lazy.compactMap {
-            if case .usage(let p, let c) = $0 { return (p, c) } else { return nil }
+            if case .usage(let u) = $0 { return (u.promptTokens, u.completionTokens) } else { return nil }
         }.first
         XCTAssertEqual(usage?.prompt, 12)
         XCTAssertEqual(usage?.completion, 48)
@@ -110,9 +110,9 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
         if case .token(let visible) = events[3] { XCTAssertEqual(visible, "Answer.") }
         else { XCTFail("event[3] expected .token, got \(events[3])") }
 
-        if case .usage(let p, let c) = events[4] {
-            XCTAssertEqual(p, 5)
-            XCTAssertEqual(c, 12)
+        if case .usage(let u) = events[4] {
+            XCTAssertEqual(u.promptTokens, 5)
+            XCTAssertEqual(u.completionTokens, 12)
         } else { XCTFail("event[4] expected .usage, got \(events[4])") }
     }
 
@@ -249,7 +249,7 @@ final class OllamaStreamEventExtractorParityTests: XCTestCase {
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
-        case .usage(let p, let c): return "usage(\(p),\(c))"
+        case .usage(let u): return "usage(\(u.promptTokens),\(u.completionTokens))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"

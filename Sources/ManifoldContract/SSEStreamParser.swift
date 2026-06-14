@@ -425,7 +425,7 @@ package struct SSEStreamParser {
                         if let usage = handler.extractUsage(from: payload),
                            let prompt = usage.promptTokens,
                            let completion = usage.completionTokens {
-                            continuation.yield(.usage(prompt: prompt, completion: completion))
+                            continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                         }
 
                         if handler.isStreamEnd(payload) {

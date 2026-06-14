@@ -89,3 +89,7 @@ API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:temp
 API breakage: var CloudImageEncoding.encodeHook has been removed
 API breakage: enumelement ImageRuntimeEvent.preview has been added as a new enum case
 API breakage: enumelement ImageGenerationEvent.preview has been added as a new enum case
+# GenerationEvent 1.0 vocabulary freeze: usage(prompt:completion:) → usage(TokenUsage)
+# so future token-accounting fields (cached/reasoning tokens) can grow as defaulted
+# struct fields without breaking exhaustive consumers. Intentional feat!: breaking change.
+API breakage: enumelement GenerationEvent.usage has declared type change from (ManifoldContract.GenerationEvent.Type) -> (Swift.Int, Swift.Int) -> ManifoldContract.GenerationEvent to (ManifoldContract.GenerationEvent.Type) -> (ManifoldContract.TokenUsage) -> ManifoldContract.GenerationEvent

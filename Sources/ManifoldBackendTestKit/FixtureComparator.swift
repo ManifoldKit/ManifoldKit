@@ -109,10 +109,10 @@ public struct FixtureComparator {
             switch event {
             case .token(let text):
                 return .init(event: "token", fields: ["text": text])
-            case .usage(let prompt, let completion):
+            case .usage(let usage):
                 return .init(event: "usage", fields: [
-                    "prompt": String(prompt),
-                    "completion": String(completion),
+                    "prompt": String(usage.promptTokens),
+                    "completion": String(usage.completionTokens),
                 ])
             case .toolCall(let call):
                 return .init(event: "toolCall", fields: [
@@ -146,6 +146,14 @@ public struct FixtureComparator {
             case .handoffRequested:
                 // Runtime-synthesised handoff event — never emitted by the
                 // backend wire path the fixture comparator validates.
+                return nil
+            @unknown default:
+                // `GenerationEvent`'s vocabulary is frozen at 1.0, but this
+                // comparator ships as a `.library` reused by the companion
+                // backend packages (manifold-mlx / manifold-llama). A future
+                // major that adds a case should not break their fixture
+                // projection — drop unrecognised events from the wire
+                // contract rather than failing to compile downstream.
                 return nil
             }
         }
