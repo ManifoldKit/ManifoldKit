@@ -335,6 +335,8 @@ result = try await ManifoldKit.quickStart(
 )
 ```
 
+> **Argument order:** the combined overload is `quickStart(backends:configuration:seed:)` — `backends:` comes **first**, then the optional `configuration:`. So to pass both, write `quickStart(backends: [...], configuration: myConfig)`. (The no-arg and `configuration:`-only forms shown elsewhere in this guide are separate overloads.)
+
 (Xcode consumers: File ▸ Add Package Dependencies… ▸ enter the companion URL ▸ tick the product for your app target — no manifest editing.)
 
 > [!IMPORTANT]
