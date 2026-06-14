@@ -8,7 +8,7 @@ Consumer audits of ManifoldKit's two known consumers — a private internal app 
 
 | Capability | Internal consumer | ChatbotUI-iOS |
 |---|---|---|
-| `InferenceService` + `DefaultBackends` | transparent-use | transparent-use |
+| `InferenceService` + `quickStart(backends:)` | transparent-use | transparent-use |
 | `ChatViewModel` | ✓ | ✓ |
 | `ChatView` (drop-in) | ✗ | ✓ |
 | `SessionListView` (drop-in) | ✗ | ✓ |

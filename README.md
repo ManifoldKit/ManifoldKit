@@ -194,7 +194,7 @@ Most apps add a single product — the `ManifoldKit` umbrella — which re-expor
 ])
 ```
 
-Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, `ManifoldHuggingFace`, `ManifoldAppIntents`, `ManifoldAnyLanguageModel`) stay opt-in — add them explicitly when you need that surface. `ManifoldVoice` in particular is usable outside chat: it wraps Apple `Speech` / `AVFoundation` behind a chat-agnostic `VoiceConversationController`, so anything from an image-gen prompt field to a CLI dictation tool can drive it. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md) for the standalone STT path; the chat composer accessory is the *other* consumer of the same controller. For finer-grained dependency control (e.g. a UI-only target that doesn't link `ManifoldBackends`), depend on the individual products instead. See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection and the bring-your-own-UI path.
+Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, `ManifoldHuggingFace`, `ManifoldAppIntents`, `ManifoldAnyLanguageModel`) stay opt-in — add them explicitly when you need that surface. `ManifoldVoice` in particular is usable outside chat: it wraps Apple `Speech` / `AVFoundation` behind a chat-agnostic `VoiceConversationController`, so anything from an image-gen prompt field to a CLI dictation tool can drive it. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md) for the standalone STT path; the chat composer accessory is the *other* consumer of the same controller. For finer-grained dependency control (e.g. a UI-only target that doesn't link a backend family), depend on the individual products instead. See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection and the bring-your-own-UI path.
 
 ## Requirements
 
@@ -233,16 +233,17 @@ ManifoldVoice              ManifoldUIModelManagement
                  (Ports, use cases, ConversationRuntime)
                        │
                        ▼
-                ManifoldInference  ◄─── ManifoldBackends
-                (Protocols, services)   (Foundation, Cloud;
-                       ▲                 MLX / llama.cpp via
-                       │                 companion packages)
+                ManifoldInference  ◄─── backend families
+                (Protocols, services)   (ManifoldFoundation,
+                       ▲                 ManifoldOllama,
+                       │                 ManifoldCloudSaaS; MLX /
+                       │                 llama.cpp via companions)
                        │
                 ManifoldMCP
                 (MCP descriptors, client, tool bridge)
 ```
 
-`ManifoldBackends` and `ManifoldMCP` depend on `ManifoldInference` **directly**, not via `ManifoldRuntime` — that keeps both modules free of SwiftData so host apps can wire backends or MCP into a non-SwiftData runtime. The full target list lives in [CLAUDE.md → Targets](CLAUDE.md#targets).
+The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) and `ManifoldMCP` depend on `ManifoldInference` **directly**, not via `ManifoldRuntime` — that keeps them free of SwiftData so host apps can wire backends or MCP into a non-SwiftData runtime. The full target list lives in [CLAUDE.md → Targets](CLAUDE.md#targets).
 
 ### Turn-loop orchestration
 
