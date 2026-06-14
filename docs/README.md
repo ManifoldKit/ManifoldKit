@@ -60,6 +60,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | Capability | Doc |
 |------------|-----|
 | **Tools / function calling** | [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md) — `ToolRegistry`, the local-model tool ceiling, approval gates, streaming results. |
+| **Tool calling on a local model** | [LOCAL-TOOL-CALLING.md](LOCAL-TOOL-CALLING.md) — the Llama/Qwen/Mistral recipe: rendering tools into the system prompt, the `<tool_call>{JSON}</tool_call>` envelope, GBNF constraint, and the silent-drop failure modes. |
 | **Expose an App Intent to the model** | [QUICKSTART-APPINTENTS.md](QUICKSTART-APPINTENTS.md) |
 | **RAG — answer from your documents** | [QUICKSTART-RAG.md](QUICKSTART-RAG.md) — ingestion, semantic + keyword retrieval, reranking, and inline citations. |
 | **Voice (STT / TTS)** | [QUICKSTART-VOICE.md](QUICKSTART-VOICE.md) — usable standalone, not just in chat. |
