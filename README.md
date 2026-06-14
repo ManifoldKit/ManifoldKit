@@ -271,7 +271,7 @@ Discovery additionally surfaces any `.gguf` files (or MLX model directories) in 
 
 | Type | Purpose |
 |------|---------|
-| `ManifoldKit.quickStart` | One-call bootstrap — returns `QuickStartResult { bootstrap, viewModel }`. |
+| `ManifoldKit.quickStart` | One-call bootstrap — returns `QuickStartResult { bootstrap, viewModel, sessionManager }`. |
 | `ManifoldBootstrap` | SwiftData-backed bootstrap — installs configuration, builds persistence adapters, holds shared services. Drop down to this when you need a custom inference service or model container. |
 | `ChatViewModel` | Central chat controller — messages, generation, model loading, settings. |
 | `SessionManagerViewModel` | Chat session CRUD and selection. |
