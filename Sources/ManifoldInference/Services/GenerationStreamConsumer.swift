@@ -22,8 +22,8 @@ public struct GenerationStreamConsumer: Sendable {
         case .token(let text):
             return .appendText(text)
 
-        case .usage(let prompt, let completion):
-            return .recordUsage(prompt: prompt, completion: completion)
+        case .usage(let usage):
+            return .recordUsage(prompt: usage.promptTokens, completion: usage.completionTokens)
 
         case .toolCall(let call):
             return .dispatchToolCall(call)

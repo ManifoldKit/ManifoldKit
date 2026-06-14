@@ -207,9 +207,9 @@ struct SSECloudBackendAdapterRoutingTests {
         for try await event in stream.events {
             switch event {
             case .token(let t): tokens.append(t)
-            case .usage(let p, let c):
-                usagePrompt = p
-                usageCompletion = c
+            case .usage(let u):
+                usagePrompt = u.promptTokens
+                usageCompletion = u.completionTokens
             default: break
             }
         }
@@ -279,7 +279,7 @@ struct SSECloudBackendAdapterRoutingTests {
             case .thinkingToken(let text): events.append("thinking:\(text)")
             case .thinkingCompleted: events.append("thinkingCompleted")
             case .token(let text): events.append("token:\(text)")
-            case .usage(let prompt, let completion): events.append("usage:\(prompt)/\(completion)")
+            case .usage(let u): events.append("usage:\(u.promptTokens)/\(u.completionTokens)")
             default: break
             }
         }

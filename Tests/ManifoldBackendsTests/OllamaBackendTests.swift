@@ -717,8 +717,8 @@ struct OllamaBackendTests {
         let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: .init())
         var usageEvents: [(prompt: Int, completion: Int)] = []
         for try await event in stream.events {
-            if case .usage(let p, let c) = event {
-                usageEvents.append((prompt: p, completion: c))
+            if case .usage(let u) = event {
+                usageEvents.append((prompt: u.promptTokens, completion: u.completionTokens))
             }
         }
 

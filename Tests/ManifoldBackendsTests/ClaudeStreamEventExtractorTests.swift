@@ -130,7 +130,7 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
     func test_extractor_usageBasic_emitsMergedUsageOnce() throws {
         let events = try driveExtractor(scenario: "usage/basic")
         let usages: [(Int, Int)] = events.compactMap { event in
-            if case .usage(let p, let c) = event { return (p, c) } else { return nil }
+            if case .usage(let u) = event { return (u.promptTokens, u.completionTokens) } else { return nil }
         }
         XCTAssertEqual(usages.count, 1, "expected exactly one merged .usage event, saw \(usages)")
         XCTAssertEqual(usages.first?.0, 12, "prompt tokens from message_start")
@@ -316,7 +316,7 @@ final class ClaudeStreamEventExtractorParityTests: XCTestCase {
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
-        case .usage(let p, let c): return "usage(\(p),\(c))"
+        case .usage(let u): return "usage(\(u.promptTokens),\(u.completionTokens))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"

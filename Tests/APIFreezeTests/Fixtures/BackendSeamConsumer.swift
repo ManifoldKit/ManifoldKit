@@ -124,8 +124,8 @@ enum BackendSeamConsumer {
             _ = (tokensProcessed, tokensTotal, tokensPerSecond)
         case .token(let text):
             _ = text
-        case .usage(prompt: let prompt, completion: let completion):
-            _ = (prompt, completion)
+        case .usage(let usage):
+            _ = (usage.promptTokens, usage.completionTokens)
         case .toolCall(let call):
             _ = call
         case .toolCallStart(callId: let callId, name: let name):
