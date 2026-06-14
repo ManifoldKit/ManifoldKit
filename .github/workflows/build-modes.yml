@@ -61,9 +61,7 @@ on:
       # additions and platform floor bumps don't affect the product-scoped
       # builds, and the nightly run catches any gap within 24 hours.
       - "Package.resolved"
-      - "Sources/ManifoldBackendsUmbrella/**"
       - "Sources/ManifoldCloudCore/**"
-      - "Sources/ManifoldCloud/**"
       - "Sources/ManifoldOllama/**"
       - "Sources/ManifoldCloudSaaS/**"
       - "Sources/ManifoldServer/**"
