@@ -68,6 +68,12 @@ public struct ToolDefinition: Sendable, Codable, Equatable, Hashable {
 public indirect enum JSONSchemaValue: Sendable, Codable, Equatable, Hashable {
     /// A JSON string.
     case string(String)
+    /// A whole-number JSON value preserved as `Int64`.
+    ///
+    /// Whole-number JSON literals (e.g. `42`) decode to this case so that
+    /// `int64` magnitudes above 2^53 survive an encode → decode round-trip
+    /// without the precision loss they would suffer going through `Double`.
+    case integer(Int64)
     /// A JSON number (stored as `Double` to cover both int and float cases).
     case number(Double)
     /// A JSON boolean.
@@ -87,6 +93,11 @@ public indirect enum JSONSchemaValue: Sendable, Codable, Equatable, Hashable {
             self = .null
         } else if let b = try? container.decode(Bool.self) {
             self = .bool(b)
+        } else if let i = try? container.decode(Int64.self) {
+            // Whole-number literals decode here BEFORE Double so int64 values
+            // above 2^53 keep full precision. Fractional literals (e.g. 4.2)
+            // fail Int64 decode and fall through to the Double case below.
+            self = .integer(i)
         } else if let n = try? container.decode(Double.self) {
             self = .number(n)
         } else if let s = try? container.decode(String.self) {
@@ -106,6 +117,8 @@ public indirect enum JSONSchemaValue: Sendable, Codable, Equatable, Hashable {
             try container.encodeNil()
         case .bool(let b):
             try container.encode(b)
+        case .integer(let i):
+            try container.encode(i)
         case .number(let n):
             try container.encode(n)
         case .string(let s):
@@ -332,6 +345,23 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
         /// No registered executor matched the call name — dispatch failed before execution.
         /// Distinct from ``notFound``, which fires inside a running executor.
         case unknownTool
+        /// A wire value not recognised by this SDK version.
+        ///
+        /// Forward-compatibility escape hatch: an `errorKind` raw string produced
+        /// by a newer producer that this build doesn't know decodes here instead
+        /// of throwing the whole ``ToolResult`` decode. The raw value `"unknown"`
+        /// is stable; the original unrecognised string is not preserved.
+        case unknown
+
+        /// Forward-compatible tolerant decode.
+        ///
+        /// Unrecognised raw strings map to ``unknown`` rather than throwing, so a
+        /// newer producer's `errorKind` vocabulary never breaks an older reader's
+        /// ``ToolResult`` decode. `encode`/``rawValue`` stay synthesized.
+        public init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = ErrorKind(rawValue: raw) ?? .unknown
+        }
 
         /// User-facing, localizable summary for presentation surfaces.
         ///
@@ -357,6 +387,8 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
                 return String(localized: "tool.error.permanent", defaultValue: "The tool couldn't complete this request.")
             case .unknownTool:
                 return String(localized: "tool.error.unknownTool", defaultValue: "This tool isn't available.")
+            case .unknown:
+                return String(localized: "tool.error.unknown", defaultValue: "The tool reported an unrecognized error.")
             }
         }
     }

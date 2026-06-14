@@ -148,7 +148,7 @@ enum ToolArgumentCoercer {
             // object (homogeneous list) or an array of sub-schemas (tuple
             // form, draft-04 / 2019-09); we handle both.
             return try coerceArray(elements, against: schema, depth: depth)
-        case .number, .bool, .null:
+        case .integer, .number, .bool, .null:
             return value
         }
     }

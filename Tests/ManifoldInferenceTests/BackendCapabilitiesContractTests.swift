@@ -86,4 +86,41 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertTrue(decoded.supportsThinking)
         XCTAssertTrue(decoded.supportsVision)
     }
+
+    // MARK: - Tolerant decode: structural-only blob, ALL boolean flags absent
+
+    func test_codable_structuralKeysOnly_booleanFlagsDecodeToMemberwiseDefaults() throws {
+        // Only the structural keys are present — none of the boolean flags,
+        // including the ones that were originally required (`requiresPromptTemplate`,
+        // `supportsSystemPrompt`, `supportsStreaming`, `supportsToolCalling`,
+        // `supportsStructuredOutput`, `supportsTokenCounting`, `isRemote`). Decode
+        // must succeed and fall back to the memberwise-init defaults.
+        let json = """
+        {
+            "supportedParameters": ["temperature"],
+            "maxContextTokens": 4096,
+            "maxOutputTokens": 2048,
+            "memoryStrategy": "resident",
+            "cancellationStyle": "cooperative"
+        }
+        """.data(using: .utf8)!
+
+        // Sabotage check: revert any of these flags back to plain `try c.decode`
+        // and this decode throws keyNotFound instead of yielding defaults.
+        let decoded = try JSONDecoder().decode(BackendCapabilities.self, from: json)
+
+        XCTAssertFalse(decoded.requiresPromptTemplate)
+        XCTAssertTrue(decoded.supportsSystemPrompt)
+        XCTAssertTrue(decoded.supportsStreaming)
+        XCTAssertFalse(decoded.supportsToolCalling)
+        XCTAssertFalse(decoded.supportsStructuredOutput)
+        XCTAssertFalse(decoded.supportsTokenCounting)
+        XCTAssertFalse(decoded.isRemote)
+
+        // Structural fields still decoded from the blob.
+        XCTAssertEqual(decoded.maxContextTokens, 4096)
+        XCTAssertEqual(decoded.maxOutputTokens, 2048)
+        XCTAssertEqual(decoded.memoryStrategy, .resident)
+        XCTAssertEqual(decoded.cancellationStyle, .cooperative)
+    }
 }

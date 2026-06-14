@@ -159,6 +159,8 @@ public struct JSONSchemaValidator: Sendable {
             return validateString(value: s, schemaObject: schemaObject, path: path)
         case .number(let n):
             return validateNumber(value: n, schemaObject: schemaObject, path: path)
+        case .integer(let i):
+            return validateNumber(value: Double(i), schemaObject: schemaObject, path: path)
         case .bool, .null:
             return nil
         }
@@ -250,13 +252,22 @@ public struct JSONSchemaValidator: Sendable {
     }
 
     private func isNumber(_ value: JSONSchemaValue) -> Bool {
-        if case .number = value { return true }
-        return false
+        // A whole-number `.integer` satisfies the JSON-Schema "number" type too.
+        switch value {
+        case .number, .integer: return true
+        default: return false
+        }
     }
 
     private func isInteger(_ value: JSONSchemaValue) -> Bool {
-        guard case let .number(n) = value else { return false }
-        return n.isFinite && n.rounded() == n
+        switch value {
+        case .integer:
+            return true
+        case let .number(n):
+            return n.isFinite && n.rounded() == n
+        default:
+            return false
+        }
     }
 
     private func validateObject(
@@ -514,6 +525,8 @@ public struct JSONSchemaValidator: Sendable {
             return "'\(s)'"
         case .number(let n):
             return describeNumber(n)
+        case .integer(let i):
+            return String(i)
         case .bool(let b):
             return b ? "true" : "false"
         case .null:
@@ -527,9 +540,10 @@ public struct JSONSchemaValidator: Sendable {
 
     private static func describeActualType(_ value: JSONSchemaValue) -> String {
         switch value {
-        case .string: return "string"
-        case .number: return "number"
-        case .bool:   return "boolean"
+        case .string:  return "string"
+        case .number:  return "number"
+        case .integer: return "integer"
+        case .bool:    return "boolean"
         case .null:   return "null"
         case .array:  return "array"
         case .object: return "object"
