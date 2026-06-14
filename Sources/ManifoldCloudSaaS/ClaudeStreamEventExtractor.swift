@@ -333,7 +333,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
     // stateless `extractUsage` surface returns one half at a time
     // (`(12, nil)` then `(nil, 48)`), so a per-frame gate that requires
     // both halves would never fire. The extractor merges them so it can
-    // emit a single `.usage(prompt, completion)` event on the
+    // emit a single `.usage(TokenUsage)` event on the
     // message_delta frame, matching the inline `parseResponseStream`
     // behaviour the routed path replaces.
     private var pendingPromptTokens: Int?
@@ -462,7 +462,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
         //    `message_start` carries `input_tokens` (the prompt half) and
         //    `message_delta` carries `output_tokens` (the completion half).
         //    `extractUsage` returns each half independently; we merge them
-        //    so consumers see a single `.usage(prompt, completion)` event
+        //    so consumers see a single `.usage(TokenUsage)` event
         //    once both halves have arrived. This mirrors the inline
         //    `ClaudeBackend.parseResponseStream` semantics (which got the
         //    same merge for free via `SSECloudBackend.handleUsage`'s

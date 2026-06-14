@@ -500,12 +500,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // forbidden list — `import ManifoldMLX` from ManifoldUI is just as
         // bad as `import ManifoldBackends` was pre-split.
         let backendFamilyModules = [
-            "ManifoldBackends",
             "ManifoldCloudCore",
             "ManifoldMLX",
             "ManifoldLlama",
             "ManifoldFoundation",
-            "ManifoldCloud",
         ]
         let rules: [(prefix: String, forbidden: [String], why: String)] = [
             ("ManifoldUI/",

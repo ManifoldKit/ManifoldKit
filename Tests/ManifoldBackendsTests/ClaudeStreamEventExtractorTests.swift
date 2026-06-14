@@ -121,8 +121,7 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
     // contract.
     //
     // The extractor merges split usage internally: it stashes the prompt
-    // half from `message_start` and emits a single `.usage(prompt,
-    // completion)` event when the completion half lands on
+    // half from `message_start` and emits a single `.usage(TokenUsage)` event when the completion half lands on
     // `message_delta`. This matches what the inline parser used to do via
     // `SSECloudBackend.handleUsage`'s bookkeeping — the merged value now
     // reaches consumers as an event, not just as `lastUsage` state.
