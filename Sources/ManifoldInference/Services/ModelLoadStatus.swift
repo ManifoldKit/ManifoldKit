@@ -16,8 +16,9 @@ import Foundation
 /// invalidation) stay on the callback seams; only the progress / phase / error
 /// path is mirrored here, because that is the part multiple observers need.
 public enum ModelLoadStatus: Sendable, Equatable {
-    /// No load is in flight (initial state, and the terminal state after a load
-    /// completes, is unloaded, or is invalidated).
+    /// No load is in flight: the initial state, and the terminal state after an
+    /// unload or invalidation. A *successful* load terminates on ``loaded`` —
+    /// status does not fall back to `idle` when a load finishes.
     case idle
     /// A load is in flight. `progress` is `nil` until the backend reports a
     /// fractional value (some backends never do).
