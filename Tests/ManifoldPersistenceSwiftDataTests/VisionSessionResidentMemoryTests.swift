@@ -68,7 +68,7 @@ final class VisionSessionResidentMemoryTests: XCTestCase {
         imageBytes: Int
     ) throws -> UUID {
         let sessionID = UUID()
-        let session = ChatSession(title: withImage ? "vision" : "text-only")
+        let session = PersistedChatSession(title: withImage ? "vision" : "text-only")
         session.id = sessionID
         stack.context.insert(session)
 
@@ -86,7 +86,7 @@ final class VisionSessionResidentMemoryTests: XCTestCase {
             } else {
                 parts = [.text("message-\(index) lorem ipsum")]
             }
-            let message = ChatMessage(role: role, contentParts: parts, sessionID: sessionID)
+            let message = PersistedChatMessage(role: role, contentParts: parts, sessionID: sessionID)
             stack.context.insert(message)
         }
         try stack.context.save()

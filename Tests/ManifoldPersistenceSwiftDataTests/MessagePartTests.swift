@@ -136,7 +136,7 @@ final class MessagePartTests: XCTestCase {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
         let sessionID = UUID()
-        let message = ChatMessage(role: .user, content: "original", sessionID: sessionID)
+        let message = PersistedChatMessage(role: .user, content: "original", sessionID: sessionID)
         context.insert(message)
         try context.save()
 
@@ -170,7 +170,7 @@ final class MessagePartTests: XCTestCase {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
         let sessionID = UUID()
-        let message = ChatMessage(
+        let message = PersistedChatMessage(
             role: .assistant,
             contentParts: [
                 .text("hello "),
@@ -210,7 +210,7 @@ final class MessagePartTests: XCTestCase {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
         let sessionID = UUID()
-        let message = ChatMessage(role: .user, content: "migrated text", sessionID: sessionID)
+        let message = PersistedChatMessage(role: .user, content: "migrated text", sessionID: sessionID)
         context.insert(message)
         try context.save()
 

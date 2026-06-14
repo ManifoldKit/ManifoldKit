@@ -367,7 +367,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
         // Bypass the provider to write a raw CSV value that a buggy migration
         // or corrupt store could produce, then verify the model's getter is
         // tolerant — empty set, no crash.
-        let session = ChatSession(title: "Malformed")
+        let session = PersistedChatSession(title: "Malformed")
         session.pinnedMessageIDsRaw = "not-a-uuid,also-not,@@@"
         context.insert(session)
         try context.save()
@@ -379,7 +379,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
 
     func test_pinnedMessageIDs_parsesTrailingCommaWithoutThrowing() async throws {
         let valid = UUID()
-        let session = ChatSession(title: "Trailing Comma")
+        let session = PersistedChatSession(title: "Trailing Comma")
         session.pinnedMessageIDsRaw = "\(valid.uuidString),"
         context.insert(session)
         try context.save()
@@ -390,7 +390,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
 
     func test_pinnedMessageIDs_filtersNonUUIDTokensMixedWithValid() async throws {
         let valid = UUID()
-        let session = ChatSession(title: "Mixed")
+        let session = PersistedChatSession(title: "Mixed")
         session.pinnedMessageIDsRaw = "garbage,\(valid.uuidString),more-garbage"
         context.insert(session)
         try context.save()
@@ -400,7 +400,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_pinnedMessageIDs_emptyStringProducesEmptySet() async throws {
-        let session = ChatSession(title: "Empty Raw")
+        let session = PersistedChatSession(title: "Empty Raw")
         session.pinnedMessageIDsRaw = ""
         context.insert(session)
         try context.save()

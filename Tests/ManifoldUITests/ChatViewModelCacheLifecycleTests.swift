@@ -48,7 +48,7 @@ final class ChatViewModelCacheLifecycleTests: XCTestCase {
             memoryPressure: handler
         )
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        let session = ChatSession(title: "Cache Lifecycle")
+        let session = PersistedChatSession(title: "Cache Lifecycle")
         context.insert(session)
         try? context.save()
         await vm.switchToSession(session.toRecord())

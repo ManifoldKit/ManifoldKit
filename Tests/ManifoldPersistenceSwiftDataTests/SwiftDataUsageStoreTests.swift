@@ -195,9 +195,9 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         // Insert a V5-era ChatSession and ChatMessage into the current schema
         // container (all V5 types are carried forward in V6).
         let context = container.mainContext
-        let session = ChatSession(title: "Migration test session")
+        let session = PersistedChatSession(title: "Migration test session")
         context.insert(session)
-        let message = ChatMessage(role: .user, content: "Hello", sessionID: session.id)
+        let message = PersistedChatMessage(role: .user, content: "Hello", sessionID: session.id)
         context.insert(message)
         try context.save()
 
@@ -206,11 +206,11 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         try await sut.record(usageRecord)
 
         // Both old and new rows should be retrievable.
-        let sessions = try context.fetch(FetchDescriptor<ChatSession>())
+        let sessions = try context.fetch(FetchDescriptor<PersistedChatSession>())
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions[0].title, "Migration test session")
 
-        let messages = try context.fetch(FetchDescriptor<ChatMessage>())
+        let messages = try context.fetch(FetchDescriptor<PersistedChatMessage>())
         XCTAssertEqual(messages.count, 1)
 
         let usageRows = try context.fetch(FetchDescriptor<TurnUsageModel>())

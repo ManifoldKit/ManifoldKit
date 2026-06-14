@@ -44,7 +44,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     // MARK: - Sessions
 
     public func insertSession(_ record: ManifoldInference.ChatSession) async throws {
-        let session = ChatSession(title: record.title)
+        let session = PersistedChatSession(title: record.title)
         session.id = record.id
         session.createdAt = record.createdAt
         session.updatedAt = record.updatedAt
@@ -106,7 +106,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// `activeAgentID` is written separately on the parent row (and via
     /// ``setActiveAgent(sessionID:agentID:)``), so handoff state is untouched
     /// here — this only owns the agent registry membership.
-    private func reconcileAgents(on session: ChatSession, with agents: [ManifoldInference.Agent]) {
+    private func reconcileAgents(on session: PersistedChatSession, with agents: [ManifoldInference.Agent]) {
         let desiredByID = Dictionary(agents.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         var existingByID: [UUID: PersistedAgent] = [:]
 
@@ -172,7 +172,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // one save closes that window: if the save throws, neither delete
         // reaches the store.
         let messages = try modelContext.fetch(
-            FetchDescriptor<ChatMessage>(predicate: #Predicate { $0.sessionID == sessionID })
+            FetchDescriptor<PersistedChatMessage>(predicate: #Predicate { $0.sessionID == sessionID })
         )
         for message in messages {
             modelContext.delete(message)
@@ -194,11 +194,11 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // no orphaned ChatMessage rows can survive — `sessionID` is a UUID
         // foreign key (no SwiftData relationship), so an implicit cascade is
         // not available today.
-        let messages = try modelContext.fetch(FetchDescriptor<ChatMessage>())
+        let messages = try modelContext.fetch(FetchDescriptor<PersistedChatMessage>())
         for message in messages {
             modelContext.delete(message)
         }
-        let sessions = try modelContext.fetch(FetchDescriptor<ChatSession>())
+        let sessions = try modelContext.fetch(FetchDescriptor<PersistedChatSession>())
         for session in sessions {
             modelContext.delete(session)
         }
@@ -213,7 +213,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // desc — the pre-V8 order. SwiftData applies the secondary keys only
         // when the primary one ties, so within each bucket the intended
         // ordering holds.
-        let descriptor = FetchDescriptor<ChatSession>(
+        let descriptor = FetchDescriptor<PersistedChatSession>(
             sortBy: [
                 SortDescriptor(\.pinnedSortKey, order: .reverse),
                 SortDescriptor(\.updatedAt, order: .reverse),
@@ -223,7 +223,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     }
 
     public func fetchSessions(offset: Int, limit: Int) async throws -> [ManifoldInference.ChatSession] {
-        var descriptor = FetchDescriptor<ChatSession>(
+        var descriptor = FetchDescriptor<PersistedChatSession>(
             sortBy: [
                 SortDescriptor(\.pinnedSortKey, order: .reverse),
                 SortDescriptor(\.updatedAt, order: .reverse),
@@ -318,11 +318,11 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// limits. Bulk-delete paths deliberately do not route through here: capping
     /// a delete would leave orphaned rows, so they own their unbounded fetch.
     private func boundedMessageFetch(
-        predicate: Predicate<ChatMessage>,
-        sortBy: [SortDescriptor<ChatMessage>],
+        predicate: Predicate<PersistedChatMessage>,
+        sortBy: [SortDescriptor<PersistedChatMessage>],
         limit: Int
-    ) -> FetchDescriptor<ChatMessage> {
-        var descriptor = FetchDescriptor<ChatMessage>(predicate: predicate, sortBy: sortBy)
+    ) -> FetchDescriptor<PersistedChatMessage> {
+        var descriptor = FetchDescriptor<PersistedChatMessage>(predicate: predicate, sortBy: sortBy)
         descriptor.fetchLimit = limit
         return descriptor
     }
@@ -395,7 +395,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     }
 
     public func deleteMessages(for sessionID: UUID) async throws {
-        let descriptor = FetchDescriptor<ChatMessage>(
+        let descriptor = FetchDescriptor<PersistedChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID }
         )
         for message in try modelContext.fetch(descriptor) {
@@ -439,7 +439,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
                     }
                     modelContext.delete(message)
                 case let .deleteMessages(sessionID):
-                    let descriptor = FetchDescriptor<ChatMessage>(
+                    let descriptor = FetchDescriptor<PersistedChatMessage>(
                         predicate: #Predicate { $0.sessionID == sessionID }
                     )
                     for message in try modelContext.fetch(descriptor) {
@@ -488,22 +488,22 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
 
     // MARK: - Private
 
-    private func fetchSwiftDataSession(id: UUID) throws -> ChatSession? {
-        let descriptor = FetchDescriptor<ChatSession>(
+    private func fetchSwiftDataSession(id: UUID) throws -> PersistedChatSession? {
+        let descriptor = FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == id }
         )
         return try modelContext.fetch(descriptor).first
     }
 
-    private func fetchSwiftDataMessage(id: UUID) throws -> ChatMessage? {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchSwiftDataMessage(id: UUID) throws -> PersistedChatMessage? {
+        let descriptor = FetchDescriptor<PersistedChatMessage>(
             predicate: #Predicate { $0.id == id }
         )
         return try modelContext.fetch(descriptor).first
     }
 
-    private func makeSwiftDataMessage(from record: ManifoldInference.ChatMessage) -> ChatMessage {
-        let message = ChatMessage(role: record.role, contentParts: record.contentParts, sessionID: record.sessionID)
+    private func makeSwiftDataMessage(from record: ManifoldInference.ChatMessage) -> PersistedChatMessage {
+        let message = PersistedChatMessage(role: record.role, contentParts: record.contentParts, sessionID: record.sessionID)
         message.id = record.id
         message.timestamp = record.timestamp
         message.promptTokens = record.promptTokens
@@ -514,7 +514,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return message
     }
 
-    private func applyMutableMessageFields(from record: ManifoldInference.ChatMessage, to message: ChatMessage) {
+    private func applyMutableMessageFields(from record: ManifoldInference.ChatMessage, to message: PersistedChatMessage) {
         message.contentParts = record.contentParts
         message.promptTokens = record.promptTokens
         message.completionTokens = record.completionTokens
@@ -526,14 +526,14 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
 
 // MARK: - Model <-> Record conversions
 
-extension ChatSession {
+extension PersistedChatSession {
     /// Converts a SwiftData model to a plain record.
     func toRecord() -> ManifoldInference.ChatSession {
         record
     }
 }
 
-extension ChatMessage {
+extension PersistedChatMessage {
     /// Converts a SwiftData model to a plain record.
     func toRecord() -> ManifoldInference.ChatMessage {
         ManifoldInference.ChatMessage(
