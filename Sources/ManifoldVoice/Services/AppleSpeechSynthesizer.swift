@@ -2,7 +2,7 @@
 import Foundation
 
 @MainActor
-public final class AppleSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSynthesizerDelegate {
+public final class AppleSpeechSynthesizer: NSObject, SpeechSynthesizing, SpeechProgressReporting, AVSpeechSynthesizerDelegate {
     private let synthesizer: AVSpeechSynthesizer
 
     // One continuation per in-flight utterance. AVSpeechSynthesizer can queue
@@ -10,6 +10,12 @@ public final class AppleSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeec
     // utterance, so we key continuations by utterance identity rather than
     // holding a single shared one.
     private var continuations: [ObjectIdentifier: CheckedContinuation<Void, Error>] = [:]
+
+    // A stable id per queued utterance, surfaced through `SpeechProgress` so a
+    // host can correlate range callbacks with the utterance being spoken.
+    private var utteranceIDs: [ObjectIdentifier: UUID] = [:]
+
+    public var onSpeechProgress: (@MainActor (SpeechProgress) -> Void)?
 
     public init(synthesizer: AVSpeechSynthesizer = AVSpeechSynthesizer()) {
         self.synthesizer = synthesizer
@@ -32,8 +38,10 @@ public final class AppleSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeec
 
         let utterance = Self.makeUtterance(string: trimmed, options: options)
 
+        let key = ObjectIdentifier(utterance)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.continuations[ObjectIdentifier(utterance)] = continuation
+            self.continuations[key] = continuation
+            self.utteranceIDs[key] = UUID()
             synthesizer.speak(utterance)
         }
     }
@@ -64,8 +72,20 @@ public final class AppleSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeec
         // utterance currently being spoken.
         let pending = continuations
         continuations.removeAll()
+        utteranceIDs.removeAll()
         for continuation in pending.values {
             continuation.resume(throwing: CancellationError())
+        }
+    }
+
+    nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        let key = ObjectIdentifier(utterance)
+        // Read the utterance text synchronously in the delegate callback and hop
+        // to the main actor with only Sendable values (String + NSRange), never
+        // the non-Sendable AVSpeechUtterance.
+        let text = utterance.speechString
+        Task { @MainActor in
+            self.emitProgress(key: key, nsRange: characterRange, text: text)
         }
     }
 
@@ -84,7 +104,23 @@ public final class AppleSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeec
     }
 
     private func resumeContinuation(for key: ObjectIdentifier, with result: Result<Void, Error>) {
+        utteranceIDs.removeValue(forKey: key)
         guard let continuation = continuations.removeValue(forKey: key) else { return }
         continuation.resume(with: result)
+    }
+
+    private func emitProgress(key: ObjectIdentifier, nsRange: NSRange, text: String) {
+        guard let handler = onSpeechProgress, let id = utteranceIDs[key],
+              let progress = Self.makeProgress(utteranceID: id, nsRange: nsRange, text: text) else { return }
+        handler(progress)
+    }
+
+    /// Maps a delegate `(NSRange, text)` callback into a ``SpeechProgress``,
+    /// converting the UTF-16 `NSRange` into Swift `String.Index` range. Returns
+    /// `nil` when the range cannot be located in `text` (e.g. out of bounds).
+    /// Extracted so the conversion is exercised in isolation by tests.
+    static func makeProgress(utteranceID: UUID, nsRange: NSRange, text: String) -> SpeechProgress? {
+        guard let range = Range(nsRange, in: text) else { return nil }
+        return SpeechProgress(utteranceID: utteranceID, text: text, spokenRange: range)
     }
 }
