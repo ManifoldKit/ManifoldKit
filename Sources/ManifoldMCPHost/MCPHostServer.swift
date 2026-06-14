@@ -45,7 +45,7 @@ import os
 /// ## HTTP/SSE transport
 ///
 /// HTTP/SSE server-side transport (for Claude Desktop's streamable-HTTP
-/// configuration) is not yet implemented. Track progress in issue #874.
+/// configuration) is not yet implemented. Track progress in issue #1842.
 ///
 /// ## Concurrency
 ///
@@ -661,7 +661,7 @@ public enum MCPHostError: Error, LocalizedError, Sendable {
 /// The server reads incoming JSON-RPC frames from `incomingMessages` and
 /// writes response frames via `send(_:)`. The built-in implementation is
 /// ``MCPHostStdioTransport`` (macOS only). HTTP/SSE support is tracked in
-/// issue #874.
+/// issue #1842.
 public protocol MCPHostTransport: Sendable {
     /// Inbound frames from the remote MCP client.
     var incomingMessages: AsyncThrowingStream<Data, Error> { get }

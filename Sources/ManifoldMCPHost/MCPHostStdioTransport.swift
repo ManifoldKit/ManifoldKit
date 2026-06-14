@@ -19,7 +19,7 @@ import os
 ///
 /// - macOS only (not available on iOS or Catalyst).
 /// - Single-connection by design — a new process is expected per client.
-/// - HTTP/SSE server-side transport is not yet implemented (see issue #874).
+/// - HTTP/SSE server-side transport is not yet implemented (see issue #1842).
 public actor MCPHostStdioTransport: MCPHostTransport {
 
     // MARK: MCPHostTransport
