@@ -4,7 +4,9 @@ import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldUI
 import ManifoldUIModelManagement
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 import ManifoldTools
 #if canImport(ManifoldHuggingFace)
 import ManifoldHuggingFace
@@ -107,14 +109,18 @@ struct ManifoldDemoApp: App {
                 toolRegistry: registry,
                 toolApprovalGate: approvalGate
             )
-            DefaultBackends.register(with: configuredService)
+            OllamaBackends.register(with: configuredService)
+            CloudSaaSBackends.register(with: configuredService)
+            FoundationBackends.register(with: configuredService)
         }
         #else
         configuredService = InferenceService(
             toolRegistry: registry,
             toolApprovalGate: approvalGate
         )
-        DefaultBackends.register(with: configuredService)
+        OllamaBackends.register(with: configuredService)
+        CloudSaaSBackends.register(with: configuredService)
+        FoundationBackends.register(with: configuredService)
         #endif
         self.inferenceService = configuredService
 

@@ -11,7 +11,9 @@
 		BF0002000000000000000000 /* DemoContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10002000000000000000000 /* DemoContentView.swift */; };
 		BF0003000000000000000000 /* ManifoldPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = F30001000000000000000000 /* ManifoldPersistenceSwiftData */; };
 		BF0004000000000000000000 /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = F30002000000000000000000 /* ManifoldUI */; };
-		BF0005000000000000000000 /* ManifoldBackends in Frameworks */ = {isa = PBXBuildFile; productRef = F30003000000000000000000 /* ManifoldBackends */; };
+		BF0005010000000000000000 /* ManifoldFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F30003010000000000000000 /* ManifoldFoundation */; };
+		BF0005020000000000000000 /* ManifoldOllama in Frameworks */ = {isa = PBXBuildFile; productRef = F30003020000000000000000 /* ManifoldOllama */; };
+		BF0005030000000000000000 /* ManifoldCloudSaaS in Frameworks */ = {isa = PBXBuildFile; productRef = F30003030000000000000000 /* ManifoldCloudSaaS */; };
 		BF0006000000000000000000 /* ManifoldTools in Frameworks */ = {isa = PBXBuildFile; productRef = F30004000000000000000000 /* ManifoldTools */; };
 		BF0020000000000000000000 /* ManifoldMCP in Frameworks */ = {isa = PBXBuildFile; productRef = F30005000000000000000000 /* ManifoldMCP */; };
 		BF0021100000000000000000 /* ManifoldUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = F30006000000000000000000 /* ManifoldUIModelManagement */; };
@@ -144,7 +146,9 @@
 				BF0003000000000000000000 /* ManifoldPersistenceSwiftData in Frameworks */,
 				BF0004000000000000000000 /* ManifoldUI in Frameworks */,
 				BF0021100000000000000000 /* ManifoldUIModelManagement in Frameworks */,
-				BF0005000000000000000000 /* ManifoldBackends in Frameworks */,
+				BF0005010000000000000000 /* ManifoldFoundation in Frameworks */,
+				BF0005020000000000000000 /* ManifoldOllama in Frameworks */,
+				BF0005030000000000000000 /* ManifoldCloudSaaS in Frameworks */,
 				BF0006000000000000000000 /* ManifoldTools in Frameworks */,
 				BF0020000000000000000000 /* ManifoldMCP in Frameworks */,
 				BF0028000000000000000000 /* ManifoldAppIntents in Frameworks */,
@@ -324,7 +328,9 @@
 				F30001000000000000000000 /* ManifoldPersistenceSwiftData */,
 				F30002000000000000000000 /* ManifoldUI */,
 				F30006000000000000000000 /* ManifoldUIModelManagement */,
-				F30003000000000000000000 /* ManifoldBackends */,
+				F30003010000000000000000 /* ManifoldFoundation */,
+				F30003020000000000000000 /* ManifoldOllama */,
+				F30003030000000000000000 /* ManifoldCloudSaaS */,
 				F30004000000000000000000 /* ManifoldTools */,
 				F30005000000000000000000 /* ManifoldMCP */,
 				F30008000000000000000000 /* ManifoldAppIntents */,
@@ -924,10 +930,20 @@
 			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
 			productName = ManifoldUI;
 		};
-		F30003000000000000000000 /* ManifoldBackends */ = {
+		F30003010000000000000000 /* ManifoldFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
-			productName = ManifoldBackends;
+			productName = ManifoldFoundation;
+		};
+		F30003020000000000000000 /* ManifoldOllama */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
+			productName = ManifoldOllama;
+		};
+		F30003030000000000000000 /* ManifoldCloudSaaS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
+			productName = ManifoldCloudSaaS;
 		};
 		F30004000000000000000000 /* ManifoldTools */ = {
 			isa = XCSwiftPackageProductDependency;

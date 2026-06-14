@@ -107,7 +107,7 @@ and fall back to a different backend (or surface a "Foundation Models
 require iOS 26" placeholder) on iOS 18 devices.
 
 ```swift
-import ManifoldBackends
+import ManifoldFoundation
 
 if FoundationBackend.isAvailable {
     vm.loadFoundationModelIfAvailable()

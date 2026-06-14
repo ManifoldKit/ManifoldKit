@@ -127,6 +127,75 @@ EOF
     fi
 done
 
+# 3. Validate Package.swift manifest fragments.
+#
+# extract-snippets.sh writes package-manifest fragments (anything starting
+# `.package(`/`.target(`/`import PackageDescription`) to `.skip` files because
+# they cannot compile as executable sources. But "can't compile" is not "can't
+# rot": a fragment can still name a product that no longer exists or declare a
+# swift-tools-version too old for the platform it targets — exactly the two
+# defects the v0.50.0 DX walkthrough hit in docs/QUICKSTART-CLI.md (a retired
+# `ManifoldBackends` product + `swift-tools-version: 6.1` with `.macOS(.v26)`).
+# Both are pure-text checks, so validate them here instead of skipping blind.
+echo
+echo "==> Package.swift fragment validation"
+
+# Authoritative product list (what a consumer may name in .product(name:)).
+valid_products=$(grep -oE '\.(library|executable)\(name: "[^"]+"' "$REPO_ROOT/Package.swift" \
+    | sed -E 's/.*name: "([^"]+)".*/\1/' | LC_ALL=C sort -u)
+
+# version_lt A B → exit 0 if major.minor A < B.
+version_lt() {
+    local a_major="${1%%.*}" a_minor="${1#*.}"
+    local b_major="${2%%.*}" b_minor="${2#*.}"
+    [[ "$a_major" -lt "$b_major" ]] && return 0
+    [[ "$a_major" -eq "$b_major" && "$a_minor" -lt "$b_minor" ]] && return 0
+    return 1
+}
+
+shopt -s nullglob
+fragments=("$SNIPPETS_DIR"/*.skip)
+shopt -u nullglob
+
+frag_checked=0
+for frag in "${fragments[@]}"; do
+    body=$(sed '1,/^---$/d' "$frag")
+    # Validate any fragment that names a ManifoldKit product or declares a
+    # tools-version — covers both the `.package`/`.target` auto-skips AND
+    # `swift,no-build`-tagged manifests (e.g. the companion-package CLI
+    # examples), which carry the same product/tools-version rot risk.
+    printf '%s\n' "$body" \
+        | grep -qE '\.product\(name: "[^"]+", package: "ManifoldKit"\)|swift-tools-version' \
+        || continue
+    src_location=$(sed -n 's/^# Source: //p' "$frag" | head -n 1)
+    frag_checked=$((frag_checked + 1))
+
+    # 3a. Every .product(name: "X", package: "ManifoldKit") must be a real product.
+    while IFS= read -r prod; do
+        [[ -z "$prod" ]] && continue
+        if ! printf '%s\n' "$valid_products" | grep -qxF "$prod"; then
+            echo "   FAIL — ${src_location}: references product \"$prod\" which is not vended by Package.swift."
+            failed=$((failed + 1))
+            fail_reports+=("manifest product \"$prod\"  from  $src_location")
+        fi
+    done < <(printf '%s\n' "$body" \
+        | grep -oE '\.product\(name: "[^"]+", package: "ManifoldKit"\)' \
+        | sed -E 's/.*name: "([^"]+)".*/\1/')
+
+    # 3b. .macOS(.v26)/.iOS(.v26) require swift-tools-version >= 6.2.
+    if printf '%s\n' "$body" | grep -qE '\.(macOS|iOS)\(\.v26\)'; then
+        tools_ver=$(printf '%s\n' "$body" \
+            | grep -oE 'swift-tools-version:?[[:space:]]*[0-9]+\.[0-9]+' \
+            | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+        if [[ -n "$tools_ver" ]] && version_lt "$tools_ver" "6.2"; then
+            echo "   FAIL — ${src_location}: swift-tools-version $tools_ver but uses .v26 (needs >= 6.2)."
+            failed=$((failed + 1))
+            fail_reports+=("manifest tools-version $tools_ver with .v26  from  $src_location")
+        fi
+    fi
+done
+echo "   Validated ${frag_checked} manifest fragment(s) against Package.swift products + platform/tools-version."
+
 echo
 echo "==================================================================="
 echo "Snippet compile summary: ${passed} passed, ${failed} failed."

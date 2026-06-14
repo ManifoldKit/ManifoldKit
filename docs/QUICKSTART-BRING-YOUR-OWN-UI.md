@@ -11,7 +11,9 @@ Skip the `ManifoldKit` umbrella and depend on `ManifoldInference` plus the backe
 ```swift
 .target(name: "MyApp", dependencies: [
     .product(name: "ManifoldInference", package: "ManifoldKit"),
-    .product(name: "ManifoldBackends", package: "ManifoldKit"),
+    .product(name: "ManifoldFoundation", package: "ManifoldKit"),
+    .product(name: "ManifoldOllama", package: "ManifoldKit"),
+    .product(name: "ManifoldCloudSaaS", package: "ManifoldKit"),
 ])
 ```
 

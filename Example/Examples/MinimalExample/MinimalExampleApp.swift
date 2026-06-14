@@ -5,8 +5,8 @@ import ManifoldKit
 /// The simplest possible ManifoldKit app.
 ///
 /// `ManifoldKit.quickStart()` collapses the historical three-object dance
-/// (`ManifoldBootstrap` + `DefaultBackends.register` + `ChatViewModel`) into
-/// a single async call. Adopters who need a custom inference service, a
+/// (`ManifoldBootstrap` + per-family backend registration + `ChatViewModel`)
+/// into a single async call. Adopters who need a custom inference service, a
 /// custom model container, or non-default backends should drop down to
 /// `ManifoldBootstrap.build` directly — that path is unchanged.
 ///
