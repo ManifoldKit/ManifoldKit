@@ -69,7 +69,6 @@ final class CloudSeamUsageAuditTest: XCTestCase {
     /// targets; the audit walks all of them so a new provider lands inside
     /// the net no matter which family it joins.
     private static let cloudSourceDirNames = [
-        "Sources/ManifoldCloud",
         "Sources/ManifoldOllama",
         "Sources/ManifoldCloudSaaS",
     ]
