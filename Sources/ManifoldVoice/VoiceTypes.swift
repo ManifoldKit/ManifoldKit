@@ -116,12 +116,23 @@ public struct SpeechOptions: Sendable, Equatable {
 }
 
 public protocol SpeechSynthesizing: AnyObject {
+    /// Speak `text` in replace mode with default options — the historical core
+    /// requirement. Custom voice engines that don't need queueing or voice
+    /// control conform by implementing just this method.
+    @MainActor
+    func speak(_ text: String) async throws
+
     /// Speak `text` with the given `options`.
     ///
     /// - Parameter enqueue: when `false` (the historical behaviour) any in-flight
     ///   utterance is cancelled and replaced. When `true` the utterance is appended
     ///   to the queue and plays after the current one finishes — the basis for
     ///   continuous read-aloud of a sequence of items.
+    ///
+    /// A default implementation forwards to ``speak(_:)`` (replace mode, options
+    /// ignored), so engines without queueing/voice support still conform without
+    /// implementing this. Engines that support it (``AppleSpeechSynthesizer``)
+    /// override it.
     @MainActor
     func speak(_ text: String, options: SpeechOptions, enqueue: Bool) async throws
 
@@ -129,7 +140,16 @@ public protocol SpeechSynthesizing: AnyObject {
     func stopSpeaking()
 }
 
+// Both `speak` requirements carry a default that forwards to the other, so a
+// conformer satisfies the protocol by implementing EITHER one — historical
+// engines via `speak(_:)`, queue-aware engines via the options-aware method.
 public extension SpeechSynthesizing {
+    /// Default for the options/queueing API: replace mode, options ignored.
+    @MainActor
+    func speak(_ text: String, options: SpeechOptions, enqueue: Bool) async throws {
+        try await speak(text)
+    }
+
     /// Source-compatible shim for the original single-string API: replace mode,
     /// default options.
     @MainActor
