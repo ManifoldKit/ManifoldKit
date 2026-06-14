@@ -150,4 +150,57 @@ final class ChatViewModelStagedAttachmentsTests: XCTestCase {
             "Staged image must be enriched (placeholder hash) — if equal to raw input, both paths are bypassing generatingImagePlaceholderIfNeeded"
         )
     }
+
+    // MARK: - attachImage convenience (#1298)
+
+    func test_attachImage_stagesImagePart() {
+        let vm = makeViewModel()
+        XCTAssertTrue(vm.stagedAttachments.isEmpty)
+
+        vm.attachImage(Data([1, 2, 3, 4]), mimeType: "image/png")
+
+        XCTAssertEqual(vm.stagedAttachments.count, 1)
+        guard case .image(_, let mime, _)? = vm.stagedAttachments.first else {
+            return XCTFail("attachImage must stage a MessagePart.image")
+        }
+        XCTAssertEqual(mime, "image/png")
+    }
+
+    /// `attachImage(_:mimeType:)` must route through the SAME internal path the
+    /// bundled composer uses (`stageDraftAttachment`), so placeholder-hash
+    /// generation and any future side effects fire identically. We compare a
+    /// decodable PNG through both surfaces.
+    func test_attachImage_matchesInternalChatInputBarBehavior() {
+        let onePixelPNG = Data([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+            0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41,
+            0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+            0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+            0x42, 0x60, 0x82
+        ])
+
+        let viaConvenience = makeViewModel()
+        viaConvenience.attachImage(onePixelPNG, mimeType: "image/png")
+
+        let viaInternal = makeViewModel()
+        viaInternal.stageDraftAttachment(.image(data: onePixelPNG, mimeType: "image/png"))
+
+        XCTAssertEqual(
+            viaConvenience.stagedAttachments,
+            viaInternal.stagedAttachments,
+            "attachImage must route through stageDraftAttachment so it stays in parity with the bundled composer"
+        )
+
+        // And it must actually enrich the part (placeholder hash), not stage the
+        // raw bytes unchanged.
+        XCTAssertNotEqual(
+            viaConvenience.stagedAttachments.first,
+            .image(data: onePixelPNG, mimeType: "image/png", placeholderHash: nil),
+            "attachImage must enrich the staged image; equality with the raw part means the internal path was bypassed"
+        )
+    }
 }

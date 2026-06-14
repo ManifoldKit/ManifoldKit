@@ -298,6 +298,21 @@ public final class SessionManagerViewModel {
         try await service.unpinSession(session)
     }
 
+    /// Toggles a session's pinned state (#1300).
+    ///
+    /// Convenience over ``pinSession(_:)`` / ``unpinSession(_:)`` for the common
+    /// "pin/unpin button" affordance: a pinned session unpins, an unpinned one
+    /// pins. The decision reads `session.isPinned` at call time, so pass the
+    /// freshest record (e.g. the one in ``sessions``) to avoid acting on stale
+    /// state. Both underlying calls are idempotent.
+    public func togglePin(_ session: ChatSession) async throws {
+        if session.isPinned {
+            try await unpinSession(session)
+        } else {
+            try await pinSession(session)
+        }
+    }
+
     /// Currently loaded pinned sessions, in `pinnedAt`-descending order
     /// (most recently pinned first). Derived from ``sessions`` so it
     /// stays in sync with the page state without an extra fetch.

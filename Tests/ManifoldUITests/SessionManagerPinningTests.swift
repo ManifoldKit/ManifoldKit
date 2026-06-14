@@ -118,6 +118,28 @@ final class SessionManagerPinningTests: XCTestCase {
                        "Re-pinning an already-pinned session must not reset its pinnedAt timestamp")
     }
 
+    // MARK: - togglePin convenience (#1300)
+
+    func test_togglePin_pinsThenUnpins() async throws {
+        let vm = SessionManagerViewModel()
+        vm.configure(persistence: stack.provider, autoLoad: false)
+        try await vm.createSession(title: "A")
+        let unpinned = try XCTUnwrap(vm.sessions.first)
+        XCTAssertFalse(unpinned.isPinned)
+
+        // First toggle pins.
+        try await vm.togglePin(unpinned)
+        let pinned = try XCTUnwrap(vm.sessions.first(where: { $0.title == "A" }))
+        XCTAssertTrue(pinned.isPinned)
+        XCTAssertNotNil(pinned.pinnedAt)
+
+        // Second toggle (on the fresh, now-pinned record) unpins.
+        try await vm.togglePin(pinned)
+        let backToUnpinned = try XCTUnwrap(vm.sessions.first(where: { $0.title == "A" }))
+        XCTAssertFalse(backToUnpinned.isPinned)
+        XCTAssertNil(backToUnpinned.pinnedAt)
+    }
+
     // MARK: - Reload preserves pinned state
 
     func test_pinning_survivesReload() async throws {

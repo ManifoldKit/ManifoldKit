@@ -13,3 +13,4 @@ This module also surfaces **device-aware model recommendations** — ranking sur
 ### Articles
 
 - <doc:DeviceAwareModelRecommendations>
+- <doc:ModelPickerSample>
