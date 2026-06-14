@@ -1,9 +1,10 @@
 import Foundation
 
 /// Derives a GBNF grammar that constrains a grammar-capable local backend to
-/// emit a well-formed tool-call envelope: a JSON object whose `"name"` field is
-/// pinned to the *enum of the provided tool names* and whose `"arguments"`
-/// field is a generic well-formed JSON object.
+/// emit a well-formed tool-call envelope as a *discriminated union over the
+/// supplied tools*: each branch pins `"name"` to one tool's literal name and
+/// pins `"arguments"` to a grammar lowered from *that tool's* JSON-Schema
+/// parameters.
 ///
 /// ## Why this exists (#1859)
 ///
@@ -15,130 +16,431 @@ import Foundation
 /// queue can force well-formed tool-call emission whenever the backend
 /// advertises `supportsGrammarConstrainedSampling`.
 ///
-/// ## Scope: implemented vs deferred
+/// ## Envelope shape (discriminated union)
 ///
-/// **Implemented:** the `"name"` field is constrained to the exact set of
-/// supplied tool names (alternation of string literals), and the overall shape
-/// is forced to `{ "name": <enum>, "arguments": <json-object> }`. Tool names
-/// are escaped for safe embedding as GBNF string literals.
+/// ```
+/// root        ::= toolcall-0 | toolcall-1 | ...
+/// toolcall-N  ::= "{" ws "\"name\"" ws ":" ws "\"<name_N>\"" ws ","
+///                     ws "\"arguments\"" ws ":" ws args-N ws "}"
+/// args-N      ::= <lowered from tool N's `parameters` schema>
+/// ```
 ///
-/// **Deferred:** per-tool *parameter-schema* lowering — i.e. making
-/// `"arguments"` match each tool's exact JSON Schema (typed fields, required
-/// keys, enums on values). That is the hard, correctness-sensitive part and is
-/// intentionally out of scope for this PR. `"arguments"` is constrained to a
-/// generic well-formed JSON object instead. The name-enum constraint alone is
-/// the core value of #1859 (guaranteed-parseable envelope + correct tool name).
+/// Rule names use hyphens, never underscores: llama.cpp's GBNF parser
+/// (`is_word_char`) accepts only `[a-zA-Z0-9-]` in a rule name and stops at
+/// `_`, so `args_0` would be misparsed as `args` followed by a syntax error.
 ///
-/// ## Pre-validator gate
+/// Pinning `"name"` *per branch* (rather than to a shared `name`-enum followed
+/// by one shared `arguments`) is what lets each tool's `arguments` be
+/// constrained to its own parameter schema. A single tool collapses to one
+/// branch; `root` is still emitted as `root ::= toolcall-0` for uniformity.
 ///
-/// Each tool's `parameters` schema is run through ``GBNFSchemaPreValidator``
-/// before the tool is included. A tool whose schema the pre-validator rejects
-/// is dropped from the name enum (it cannot be safely grammar-constrained under
-/// the current conservative policy).
+/// ## Lowering: supported shapes vs graceful fallback
 ///
-/// NOTE: the pre-validator's rejection set is *conservative* and its premise is
-/// partly inaccurate — it claims `anyOf`/`oneOf`/`allOf` and nullable unions are
-/// inexpressible in GBNF, but GBNF supports alternation (`|`) and llama.cpp's
-/// own `json_schema_to_grammar` lowers these. Because this builder only emits a
-/// generic JSON object for `"arguments"` (it does not lower the param schema at
-/// all), the pre-validator is used here purely as a defensive safety gate: it
-/// keeps known-crashy schema shapes out of any future per-tool lowering and
-/// documents intent. Fixing the pre-validator's premise is a separate concern
-/// (tracks the "dead validator" note in #1859's review) and is NOT done here.
+/// The lowerer (``lower(_:into:ruleName:)``) handles the common JSON-Schema
+/// shapes used by real tool definitions:
+///
+/// - **object** with `properties` + `required`: required keys are emitted in
+///   declared order (sorted for determinism); optional keys are emitted as
+///   `( "," ws "\"key\"" ws ":" ws <val> )?` *after* the required block.
+///   `additionalProperties` is **not** modeled — the object is closed to the
+///   declared keys. (A tool that needs free-form extra keys should declare them
+///   or accept the closed shape.)
+/// - **string**: generic JSON string; **string enum** lowers to an alternation
+///   of quoted literals (`"\"north\"" | "\"south\""`).
+/// - **integer**: signed integer rule. **number**: signed decimal with optional
+///   fraction/exponent.
+/// - **boolean**: `"true" | "false"`.
+/// - **array** with `items` (single sub-schema): homogeneous list of the lowered
+///   item rule.
+/// - **nullable union** `["string","null"]` (and any `["T","null"]`): lowers to
+///   `( <T> | "null" )`. (The pre-validator no longer rejects this — see
+///   ``GBNFSchemaPreValidator``.)
+/// - nested objects / arrays recurse.
+///
+/// **Graceful degradation.** Any sub-schema shape the lowerer does not model
+/// (combiners `anyOf`/`oneOf`/`allOf`/`not`, `$ref`, `pattern`, `format`,
+/// `patternProperties`, tuple-form `items`, an unrecognised `type`, …) lowers
+/// to the shared generic JSON `value` rule for *that sub-schema only*. The rest
+/// of the tool is still constrained. A whole-tool schema that is itself
+/// unloweliable degrades its `args-N` to `value`, never dropping the tool from
+/// the union. This is strictly better than rejecting the tool: the envelope and
+/// tool name stay constrained even when the arguments can't be.
+///
+/// The shared generic rules (`value`/`object`/`array`/`string`/`number` …) are
+/// always emitted so the fallback has something to reference.
+///
+/// ## Pre-validator's role (reconciled)
+///
+/// ``GBNFSchemaPreValidator`` no longer *rejects* tools. Its `validate` method
+/// is retained for callers that want to know, ahead of time, whether a schema
+/// will lower fully or fall back to generic JSON. This builder does not consult
+/// it on the rejection path anymore — graceful degradation subsumes it. See
+/// that type's docs for the corrected premise (GBNF *can* express alternation;
+/// the limitation is this lowerer's coverage, not the IR).
+///
+/// ## GBNF validity
+///
+/// CI cannot compile GBNF, so the emitted grammar is hand-verified against
+/// llama.cpp's `grammars/README.md`: a single `root`; every nonterminal
+/// defined; no undefined references; no left-recursion; no nullable members
+/// that could form a zero-width loop; correctly escaped quoted literals; `ws`
+/// between structural tokens. Byte-exact golden tests pin the output.
 public struct ToolGrammarBuilder: Sendable {
 
-    private let preValidator: GBNFSchemaPreValidator
-
     public init(preValidator: GBNFSchemaPreValidator = GBNFSchemaPreValidator()) {
-        self.preValidator = preValidator
+        // The pre-validator is no longer consulted on the build path (graceful
+        // degradation replaced rejection). The parameter is retained for source
+        // compatibility with existing call sites.
+        _ = preValidator
     }
 
-    /// Builds a GBNF grammar string constraining output to a tool-call envelope
-    /// over the supplied tools, or `nil` when no grammar can be derived.
-    ///
-    /// Returns `nil` when `tools` is empty or when every tool's parameter schema
-    /// is rejected by the pre-validator — in both cases there is no usable name
-    /// enum, so the caller should fall back to unconstrained sampling.
+    /// Builds a GBNF grammar string constraining output to a tool-call
+    /// discriminated union over the supplied tools, or `nil` when `tools` is
+    /// empty (no envelope to constrain — caller should fall back to
+    /// unconstrained sampling).
     ///
     /// - Parameter tools: the tool definitions for this request.
     public func buildGrammar(for tools: [ToolDefinition]) -> String? {
         guard !tools.isEmpty else { return nil }
 
-        // Drop tools whose parameter schema the (conservative) pre-validator
-        // rejects. De-duplicate names so the enum has no redundant alternatives
-        // and preserve first-seen order for deterministic output.
+        // De-duplicate names, preserving first-seen order, so the union has no
+        // redundant branches and output is deterministic.
         var seen = Set<String>()
-        var acceptedNames: [String] = []
-        for tool in tools {
-            if preValidator.validate(tool.parameters) != nil { continue }
-            if seen.insert(tool.name).inserted {
-                acceptedNames.append(tool.name)
+        var uniqueTools: [ToolDefinition] = []
+        for tool in tools where seen.insert(tool.name).inserted {
+            uniqueTools.append(tool)
+        }
+
+        // Accumulates the per-tool lowered rules in deterministic emission order.
+        var emittedOrder: [String] = []
+        var rules: [String: String] = [:]
+        func emit(_ name: String, _ rhs: String) {
+            if rules[name] == nil { emittedOrder.append(name) }
+            rules[name] = rhs
+        }
+
+        var branchNames: [String] = []
+        for (index, tool) in uniqueTools.enumerated() {
+            let argsRule = "args-\(index)"
+            var ctx = LoweringContext(toolIndex: index, suffix: 0)
+            lower(tool.parameters, into: &ctx, ruleName: argsRule, emit: emit)
+
+            let literalName = "\"\\\"\(Self.escapeForGBNFLiteral(tool.name))\\\"\""
+            let branch = "toolcall-\(index)"
+            branchNames.append(branch)
+            emit(
+                branch,
+                "\"{\" ws \"\\\"name\\\"\" ws \":\" ws \(literalName) ws \",\" ws "
+                    + "\"\\\"arguments\\\"\" ws \":\" ws \(argsRule) ws \"}\""
+            )
+        }
+
+        // root is the alternation of all tool branches (one branch for a single
+        // tool). Emitting `root` first keeps it as the grammar's entry point.
+        let rootRHS = branchNames.joined(separator: " | ")
+
+        var lines: [String] = ["root ::= \(rootRHS)"]
+        for name in emittedOrder {
+            lines.append("\(name) ::= \(rules[name]!)")
+        }
+        // Shared generic JSON value rule set — the fallback target plus the
+        // primitives every lowered rule references (string, number, …).
+        lines.append(contentsOf: Self.genericRuleLines)
+
+        return lines.joined(separator: "\n")
+    }
+
+    // MARK: - Lowering
+
+    /// Mutable state threaded through the recursive lowerer so generated helper
+    /// rules get unique, deterministic names (`args-<tool>-<n>`).
+    private struct LoweringContext {
+        let toolIndex: Int
+        var suffix: Int
+
+        /// Returns a fresh unique rule name and advances the counter.
+        mutating func freshRuleName() -> String {
+            defer { suffix += 1 }
+            // llama.cpp's GBNF parser (`is_word_char`) accepts only
+            // `[a-zA-Z0-9-]` in rule names — NOT underscore. Use hyphens.
+            return "args-\(toolIndex)-\(suffix)"
+        }
+    }
+
+    /// Lowers `schema` into a GBNF rule named `ruleName`, emitting that rule and
+    /// any helper rules it needs via `emit`. Unsupported shapes degrade to the
+    /// shared generic `value` rule.
+    private func lower(
+        _ schema: JSONSchemaValue,
+        into ctx: inout LoweringContext,
+        ruleName: String,
+        emit: (String, String) -> Void
+    ) {
+        guard case let .object(dict) = schema else {
+            // A non-object schema node (bare scalar) carries no structural
+            // information we can constrain — accept any JSON value.
+            emit(ruleName, "value")
+            return
+        }
+
+        // Combiners and other unmodeled keywords → generic value for this node.
+        // (Detect them explicitly so a schema that *also* has a `type` doesn't
+        // get partially — and wrongly — constrained.)
+        for unmodeled in ["anyOf", "oneOf", "allOf", "not", "$ref", "patternProperties"] {
+            if dict[unmodeled] != nil {
+                emit(ruleName, "value")
+                return
             }
         }
 
-        guard !acceptedNames.isEmpty else { return nil }
+        let typeValue = dict["type"]
 
-        let nameAlternation = acceptedNames
-            .map { "\"\\\"\(Self.escapeForGBNFLiteral($0))\\\"\"" }
-            .joined(separator: " | ")
+        // Nullable / multi-type union: `type` as an array.
+        if case let .array(typeArr)? = typeValue {
+            lowerUnion(typeArr, dict: dict, into: &ctx, ruleName: ruleName, emit: emit)
+            return
+        }
 
-        // The grammar forces:
-        //   root      ::= { "name": <one of the tool names>, "arguments": <object> }
-        //   value/object/array/string/number/etc. — a self-contained JSON subset.
-        //
-        // Whitespace ("ws") is permitted between tokens so the model isn't forced
-        // into a single canonical spacing. The JSON value rules are a standard,
-        // self-contained GBNF JSON grammar (no external rule references).
-        return """
-        root      ::= "{" ws "\\"name\\"" ws ":" ws toolname ws "," ws "\\"arguments\\"" ws ":" ws object ws "}"
-        toolname  ::= \(nameAlternation)
-        object    ::= "{" ws ( member ( ws "," ws member )* )? ws "}"
-        member    ::= string ws ":" ws value
-        array     ::= "[" ws ( value ( ws "," ws value )* )? ws "]"
-        value     ::= object | array | string | number | "true" | "false" | "null"
-        string    ::= "\\"" char* "\\""
-        char      ::= [^"\\\\] | "\\\\" escape
-        escape    ::= ["\\\\/bfnrt] | "u" hex hex hex hex
-        hex       ::= [0-9a-fA-F]
-        number    ::= "-"? int frac? exp?
-        int       ::= "0" | [1-9] [0-9]*
-        frac      ::= "." [0-9]+
-        exp       ::= [eE] [+-]? [0-9]+
-        ws        ::= [ \\t\\n]*
-        """
+        guard case let .string(typeName)? = typeValue else {
+            // No usable scalar `type` — accept any JSON value.
+            emit(ruleName, "value")
+            return
+        }
+
+        switch typeName {
+        case "object":
+            lowerObject(dict, into: &ctx, ruleName: ruleName, emit: emit)
+        case "array":
+            lowerArray(dict, into: &ctx, ruleName: ruleName, emit: emit)
+        case "string":
+            lowerString(dict, ruleName: ruleName, emit: emit)
+        case "integer":
+            emit(ruleName, "integer")
+        case "number":
+            emit(ruleName, "number")
+        case "boolean":
+            emit(ruleName, "(\"true\" | \"false\")")
+        case "null":
+            emit(ruleName, "\"null\"")
+        default:
+            emit(ruleName, "value")
+        }
     }
+
+    /// Lowers a `"type": [...]` union. The common case is `["T", "null"]`, which
+    /// becomes `( <T> | "null" )`. Any unmodeled member degrades the whole union
+    /// to generic `value`.
+    private func lowerUnion(
+        _ typeArr: [JSONSchemaValue],
+        dict: [String: JSONSchemaValue],
+        into ctx: inout LoweringContext,
+        ruleName: String,
+        emit: (String, String) -> Void
+    ) {
+        var alternatives: [String] = []
+        for member in typeArr {
+            guard case let .string(name) = member else {
+                emit(ruleName, "value")
+                return
+            }
+            if name == "null" {
+                alternatives.append("\"null\"")
+                continue
+            }
+            // Lower the non-null member by reusing the scalar lowerer with the
+            // surrounding dict (so an enum/items alongside the union still
+            // applies). Give it a helper rule name and reference it.
+            let helper = ctx.freshRuleName()
+            var memberDict = dict
+            memberDict["type"] = .string(name)
+            lower(.object(memberDict), into: &ctx, ruleName: helper, emit: emit)
+            alternatives.append(helper)
+        }
+        guard !alternatives.isEmpty else {
+            emit(ruleName, "value")
+            return
+        }
+        emit(ruleName, "(\(alternatives.joined(separator: " | ")))")
+    }
+
+    /// Lowers an `object` schema with `properties` + `required`.
+    ///
+    /// Required keys (sorted for determinism) are emitted in order; optional
+    /// keys follow, each wrapped in an optional group. An object with no
+    /// declared `properties` accepts the generic JSON object.
+    private func lowerObject(
+        _ dict: [String: JSONSchemaValue],
+        into ctx: inout LoweringContext,
+        ruleName: String,
+        emit: (String, String) -> Void
+    ) {
+        guard case let .object(properties)? = dict["properties"], !properties.isEmpty else {
+            // No property constraints — any JSON object.
+            emit(ruleName, "object")
+            return
+        }
+
+        var requiredKeys = Set<String>()
+        if case let .array(req)? = dict["required"] {
+            for item in req {
+                if case let .string(key) = item { requiredKeys.insert(key) }
+            }
+        }
+
+        // Deterministic order: sort all keys, required ones first.
+        let sortedKeys = properties.keys.sorted()
+        let required = sortedKeys.filter { requiredKeys.contains($0) }
+        let optional = sortedKeys.filter { !requiredKeys.contains($0) }
+
+        // Lower each property's value to its own helper rule.
+        func valueRule(forKey key: String) -> String {
+            let helper = ctx.freshRuleName()
+            lower(properties[key]!, into: &ctx, ruleName: helper, emit: emit)
+            return helper
+        }
+
+        // Emit value helpers first (deterministic order) so member fragments can
+        // reference them.
+        var keyToRule: [String: String] = [:]
+        for key in required + optional {
+            keyToRule[key] = valueRule(forKey: key)
+        }
+
+        func member(_ key: String) -> String {
+            let lit = "\"\\\"\(Self.escapeForGBNFLiteral(key))\\\"\""
+            return "\(lit) ws \":\" ws \(keyToRule[key]!)"
+        }
+
+        var parts: [String] = ["\"{\" ws"]
+
+        // Required members joined by commas.
+        let requiredMembers = required.map(member)
+        for (i, m) in requiredMembers.enumerated() {
+            if i == 0 {
+                parts.append(m)
+            } else {
+                parts.append("ws \",\" ws \(m)")
+            }
+        }
+
+        // Optional members. If there are no required keys, the *first* optional
+        // key carries no leading comma but must itself be optional, and
+        // subsequent optionals each need the leading comma inside their own
+        // optional group. To keep this regular (and avoid a nullable-with-
+        // trailing-comma hazard), when there are no required keys we model the
+        // object as: an optional leading member, then comma-prefixed optionals.
+        if required.isEmpty {
+            if let first = optional.first {
+                parts.append("( \(member(first))")
+                for key in optional.dropFirst() {
+                    parts.append("( ws \",\" ws \(member(key)) )?")
+                }
+                parts.append(")?")
+            }
+        } else {
+            for key in optional {
+                parts.append("( ws \",\" ws \(member(key)) )?")
+            }
+        }
+
+        parts.append("ws \"}\"")
+        emit(ruleName, parts.joined(separator: " "))
+    }
+
+    /// Lowers an `array` schema with a single-sub-schema `items`.
+    private func lowerArray(
+        _ dict: [String: JSONSchemaValue],
+        into ctx: inout LoweringContext,
+        ruleName: String,
+        emit: (String, String) -> Void
+    ) {
+        // Only single-sub-schema `items` is modeled; tuple-form (array of
+        // schemas) or missing `items` degrades to the generic array.
+        guard case let .object? = dict["items"] else {
+            emit(ruleName, "array")
+            return
+        }
+        let itemRule = ctx.freshRuleName()
+        lower(dict["items"]!, into: &ctx, ruleName: itemRule, emit: emit)
+        emit(
+            ruleName,
+            "\"[\" ws ( \(itemRule) ( ws \",\" ws \(itemRule) )* )? ws \"]\""
+        )
+    }
+
+    /// Lowers a `string` schema. A `string` with an `enum` of string literals
+    /// lowers to an alternation of quoted literals; otherwise the generic JSON
+    /// `string` rule.
+    private func lowerString(
+        _ dict: [String: JSONSchemaValue],
+        ruleName: String,
+        emit: (String, String) -> Void
+    ) {
+        if case let .array(cases)? = dict["enum"] {
+            var literals: [String] = []
+            for c in cases {
+                guard case let .string(s) = c else {
+                    // Non-string enum member — not a clean string enum; fall back.
+                    literals = []
+                    break
+                }
+                literals.append("\"\\\"\(Self.escapeForGBNFLiteral(s))\\\"\"")
+            }
+            if !literals.isEmpty {
+                emit(ruleName, "(\(literals.joined(separator: " | ")))")
+                return
+            }
+        }
+        emit(ruleName, "string")
+    }
+
+    // MARK: - Shared generic rules
+
+    /// The shared, self-contained JSON value rule set. Always appended so the
+    /// fallback `value` reference and the primitive rules (`string`, `number`,
+    /// `integer`, `object`, `array`) every lowered rule may reference are
+    /// defined exactly once.
+    static let genericRuleLines: [String] = [
+        #"object ::= "{" ws ( member ( ws "," ws member )* )? ws "}""#,
+        #"member ::= string ws ":" ws value"#,
+        #"array ::= "[" ws ( value ( ws "," ws value )* )? ws "]""#,
+        #"value ::= object | array | string | number | "true" | "false" | "null""#,
+        #"string ::= "\"" char* "\"""#,
+        #"char ::= [^"\\] | "\\" escape"#,
+        #"escape ::= ["\\/bfnrt] | "u" hex hex hex hex"#,
+        "hex ::= [0-9a-fA-F]",
+        #"number ::= "-"? int frac? exp?"#,
+        "integer ::= \"-\"? int",
+        "int ::= \"0\" | [1-9] [0-9]*",
+        #"frac ::= "." [0-9]+"#,
+        "exp ::= [eE] [+-]? [0-9]+",
+        #"ws ::= [ \t\n]*"#,
+    ]
 
     // MARK: - Escaping
 
-    /// Escapes a tool name for embedding inside a GBNF double-quoted string
-    /// literal that itself represents a JSON string literal.
+    /// Escapes a name for embedding inside a GBNF double-quoted string literal
+    /// that itself represents a JSON string literal.
     ///
-    /// The emitted token in the grammar is `"\"<name>\""` — a GBNF literal whose
-    /// *content* is `"<name>"` (the JSON-quoted name). Two layers therefore need
-    /// escaping:
+    /// The emitted token is `"\"<name>\""` — a GBNF literal whose *content* is
+    /// `"<name>"` (the JSON-quoted name). Two layers need escaping:
     ///
-    /// 1. Characters that are special inside the JSON string the model emits
-    ///    (`"` and `\`) must be backslash-escaped so the model is constrained to
-    ///    emit them in escaped form (a literal `"` inside the name would close
-    ///    the JSON string).
+    /// 1. Characters special inside the JSON string the model emits (`"` and
+    ///    `\`) are backslash-escaped so the model emits them in escaped form.
     /// 2. The resulting bytes must survive being written into a GBNF
-    ///    double-quoted literal. GBNF literals use backslash escapes too, so a
-    ///    backslash and a double-quote each need one more backslash.
+    ///    double-quoted literal (which also uses backslash escapes).
     ///
-    /// Concretely each `"` in the name becomes `\\\"` (escaped JSON quote, then
-    /// GBNF-escaped) and each `\` becomes `\\\\`. Control characters (newline,
-    /// tab, etc.) are emitted as JSON `\uXXXX` escapes, themselves GBNF-escaped.
-    /// Tool names are normally `[a-zA-Z0-9_-]`, so this defends the edge cases.
+    /// Each `"` becomes `\\\"` and each `\` becomes `\\\\`. Control characters
+    /// are emitted as JSON `\uXXXX`, GBNF-escaped. Used for both tool names and
+    /// enum/property-key literals.
     static func escapeForGBNFLiteral(_ name: String) -> String {
         var out = ""
         out.reserveCapacity(name.count)
         for scalar in name.unicodeScalars {
             switch scalar {
             case "\"":
-                // JSON-escape (\") then GBNF-escape both chars: \\\"
                 out += "\\\\\\\""
             case "\\":
-                // JSON-escape (\\) then GBNF-escape both: \\\\\\\\
                 out += "\\\\\\\\"
             case "\n":
                 out += "\\\\n"
@@ -148,7 +450,6 @@ public struct ToolGrammarBuilder: Sendable {
                 out += "\\\\t"
             default:
                 if scalar.value < 0x20 {
-                    // Other control chars → JSON \u escape, GBNF-escaped backslash.
                     out += String(format: "\\\\u%04x", scalar.value)
                 } else {
                     out.unicodeScalars.append(scalar)

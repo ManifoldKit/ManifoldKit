@@ -4,6 +4,19 @@ import XCTest
 /// Unit tests for ``GBNFSchemaPreValidator``.
 ///
 /// These tests run without hardware — no llama.cpp symbols are touched.
+///
+/// ## #1859 behavior change (advisory, not a gate)
+///
+/// The validator's role shifted from "reject the tool" to "flag sub-schema
+/// shapes the lowerer can't express (they degrade to generic JSON)." Two
+/// previously-rejected shapes are now *accepted* because the lowerer handles or
+/// safely ignores them:
+///   - **nullable union** `["T","null"]` → lowered to `( <T> | "null" )`.
+///   - **`exclusiveMinimum`/`exclusiveMaximum`** → bound ignored, generic number.
+/// Combiners (`anyOf`/`oneOf`/`allOf`/`not`) are still flagged (the lowerer
+/// doesn't implement them yet — they fall back to generic JSON, the tool is
+/// NOT dropped). `$ref`/`patternProperties` are newly flagged for the same
+/// reason. The tests below were updated accordingly.
 final class GBNFSchemaPreValidatorTests: XCTestCase {
 
     private let validator = GBNFSchemaPreValidator()
@@ -55,7 +68,7 @@ final class GBNFSchemaPreValidatorTests: XCTestCase {
         XCTAssertNil(validator.validate(.null))
     }
 
-    // MARK: - Combiners rejected
+    // MARK: - Combiners flagged (un-lowerable → generic-JSON fallback)
 
     func test_anyOf_isRejected() {
         let schema = JSONSchemaValue.object([
@@ -91,46 +104,44 @@ final class GBNFSchemaPreValidatorTests: XCTestCase {
         XCTAssertNotNil(validator.validate(schema))
     }
 
-    // MARK: - Nullable union rejected
+    // MARK: - Nullable union now ACCEPTED (#1859)
 
-    func test_nullableUnionType_isRejected() {
+    // Behavior change: the lowerer expresses `["T","null"]` as `( <T> | "null" )`,
+    // so a nullable union is no longer flagged.
+    func test_nullableUnionType_nowPasses() {
         let schema = JSONSchemaValue.object([
             "type": .array([.string("string"), .string("null")])
         ])
-        let failure = validator.validate(schema)
-        XCTAssertNotNil(failure)
-        XCTAssertEqual(failure?.path, ["type"])
-        XCTAssertTrue(failure?.reason.lowercased().contains("null") == true)
+        XCTAssertNil(validator.validate(schema))
     }
 
     func test_nonNullableArrayType_passes() {
-        // An array `type` that does NOT contain "null" is safe.
+        // An array `type` that does NOT contain "null" is also fine.
         let schema = JSONSchemaValue.object([
             "type": .array([.string("string"), .string("integer")])
         ])
         XCTAssertNil(validator.validate(schema))
     }
 
-    // MARK: - exclusiveMinimum / exclusiveMaximum rejected
+    // MARK: - exclusiveMinimum / exclusiveMaximum now ACCEPTED (#1859)
 
-    func test_exclusiveMinimum_isRejected() {
+    // Behavior change: GBNF can't enforce arbitrary numeric ranges anyway, so the
+    // lowerer ignores the bound and emits a generic number. Ignoring a bound
+    // beats dropping the tool, so these are no longer flagged.
+    func test_exclusiveMinimum_nowPasses() {
         let schema = JSONSchemaValue.object([
             "type": .string("integer"),
             "exclusiveMinimum": .number(0)
         ])
-        let failure = validator.validate(schema)
-        XCTAssertNotNil(failure)
-        XCTAssertEqual(failure?.path, ["exclusiveMinimum"])
+        XCTAssertNil(validator.validate(schema))
     }
 
-    func test_exclusiveMaximum_isRejected() {
+    func test_exclusiveMaximum_nowPasses() {
         let schema = JSONSchemaValue.object([
             "type": .string("integer"),
             "exclusiveMaximum": .number(100)
         ])
-        let failure = validator.validate(schema)
-        XCTAssertNotNil(failure)
-        XCTAssertEqual(failure?.path, ["exclusiveMaximum"])
+        XCTAssertNil(validator.validate(schema))
     }
 
     // MARK: - Nested rejection (recursive)
@@ -152,16 +163,34 @@ final class GBNFSchemaPreValidatorTests: XCTestCase {
         XCTAssertEqual(failure?.path, ["properties", "address", "anyOf"])
     }
 
-    func test_nullableUnion_inItemsSchema_isRejected() {
+    // Behavior change (#1859): a nullable union nested in `items` is no longer
+    // flagged — the lowerer expresses it.
+    func test_nullableUnion_inItemsSchema_nowPasses() {
         let schema = JSONSchemaValue.object([
             "type": .string("array"),
             "items": .object([
                 "type": .array([.string("string"), .string("null")])
             ])
         ])
+        XCTAssertNil(validator.validate(schema))
+    }
+
+    // `$ref` and `patternProperties` are newly flagged (un-lowerable → generic).
+    func test_ref_isFlagged() {
+        let schema = JSONSchemaValue.object(["$ref": .string("#/defs/X")])
         let failure = validator.validate(schema)
         XCTAssertNotNil(failure)
-        XCTAssertEqual(failure?.path, ["items", "type"])
+        XCTAssertEqual(failure?.path, ["$ref"])
+    }
+
+    func test_patternProperties_isFlagged() {
+        let schema = JSONSchemaValue.object([
+            "type": .string("object"),
+            "patternProperties": .object(["^x": .object(["type": .string("string")])])
+        ])
+        let failure = validator.validate(schema)
+        XCTAssertNotNil(failure)
+        XCTAssertEqual(failure?.path, ["patternProperties"])
     }
 
     func test_anyOf_inTupleItemsArray_isRejected() {

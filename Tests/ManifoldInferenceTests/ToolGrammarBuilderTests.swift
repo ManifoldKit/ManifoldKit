@@ -9,6 +9,25 @@ final class ToolGrammarBuilderTests: XCTestCase {
         ToolDefinition(name: name, description: "d", parameters: parameters)
     }
 
+    /// The shared generic-JSON rule block appended to every grammar. Pulled out
+    /// so the structural goldens below stay focused on the per-tool prologue.
+    private let genericTail = #"""
+    object ::= "{" ws ( member ( ws "," ws member )* )? ws "}"
+    member ::= string ws ":" ws value
+    array ::= "[" ws ( value ( ws "," ws value )* )? ws "]"
+    value ::= object | array | string | number | "true" | "false" | "null"
+    string ::= "\"" char* "\""
+    char ::= [^"\\] | "\\" escape
+    escape ::= ["\\/bfnrt] | "u" hex hex hex hex
+    hex ::= [0-9a-fA-F]
+    number ::= "-"? int frac? exp?
+    integer ::= "-"? int
+    int ::= "0" | [1-9] [0-9]*
+    frac ::= "." [0-9]+
+    exp ::= [eE] [+-]? [0-9]+
+    ws ::= [ \t\n]*
+    """#
+
     // MARK: - Empty / nil cases
 
     func test_emptyTools_returnsNil() {
@@ -19,47 +38,37 @@ final class ToolGrammarBuilderTests: XCTestCase {
 
     func test_singleTool_hasRootRuleAndQuotedName() {
         let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("get_weather")]))
-        XCTAssertTrue(grammar.contains("root"), "grammar must define a root rule")
-        XCTAssertTrue(grammar.contains("toolname"), "grammar must define a toolname rule")
+        XCTAssertTrue(grammar.hasPrefix("root ::="), "grammar must define a root rule first")
+        XCTAssertTrue(grammar.contains("toolcall-0"), "single tool → one toolcall branch")
         // The name appears as a JSON-quoted literal inside a GBNF literal.
         XCTAssertTrue(
-            grammar.contains("\\\"get_weather\\\""),
+            grammar.contains(#""\"get_weather\"""#),
             "tool name must appear as a quoted literal; got:\n\(grammar)"
         )
-        // The envelope constrains the "name" and "arguments" keys.
-        XCTAssertTrue(grammar.contains("\\\"name\\\""))
-        XCTAssertTrue(grammar.contains("\\\"arguments\\\""))
+        XCTAssertTrue(grammar.contains(#""\"name\"""#))
+        XCTAssertTrue(grammar.contains(#""\"arguments\"""#))
     }
 
-    func test_multipleTools_produceAlternationOfNames() {
+    func test_multipleTools_produceUnionOfBranches() {
         let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a"), tool("b"), tool("c")]))
-        XCTAssertTrue(grammar.contains("\\\"a\\\""))
-        XCTAssertTrue(grammar.contains("\\\"b\\\""))
-        XCTAssertTrue(grammar.contains("\\\"c\\\""))
-        // Alternation: the toolname rule must join names with `|`.
-        let toolnameLine = grammar
-            .split(separator: "\n")
-            .first { $0.hasPrefix("toolname") }
-            .map(String.init) ?? ""
-        XCTAssertTrue(toolnameLine.contains("|"), "multiple tools must alternate with `|`; got: \(toolnameLine)")
-        XCTAssertEqual(toolnameLine.components(separatedBy: "|").count, 3, "three tools → two `|` separators")
+        let rootLine = grammar.split(separator: "\n").first.map(String.init) ?? ""
+        // root alternates the per-tool branches.
+        XCTAssertEqual(rootLine, "root ::= toolcall-0 | toolcall-1 | toolcall-2")
+        XCTAssertTrue(grammar.contains(#""\"a\"""#))
+        XCTAssertTrue(grammar.contains(#""\"b\"""#))
+        XCTAssertTrue(grammar.contains(#""\"c\"""#))
     }
 
     func test_duplicateNames_deduplicated() {
         let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("dup"), tool("dup")]))
-        let toolnameLine = grammar
-            .split(separator: "\n")
-            .first { $0.hasPrefix("toolname") }
-            .map(String.init) ?? ""
-        XCTAssertFalse(toolnameLine.contains("|"), "duplicate names collapse to a single alternative")
+        let rootLine = grammar.split(separator: "\n").first.map(String.init) ?? ""
+        XCTAssertEqual(rootLine, "root ::= toolcall-0", "duplicate names collapse to a single branch")
     }
 
     // MARK: - Escaping
 
     func test_escaping_quoteInName() {
-        // A name containing a double quote must not produce an unbalanced literal.
         let escaped = ToolGrammarBuilder.escapeForGBNFLiteral("a\"b")
-        // JSON-escaped quote (\") then GBNF-escaped → backslash-backslash-backslash-quote.
         XCTAssertEqual(escaped, "a\\\\\\\"b")
     }
 
@@ -71,7 +80,6 @@ final class ToolGrammarBuilderTests: XCTestCase {
     func test_escaping_controlCharsAndTab() {
         XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a\tb"), "a\\\\tb")
         XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a\nb"), "a\\\\nb")
-        // A bell (U+0007) is an "other" control char → \u escape.
         XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("a\u{07}b"), "a\\\\u0007b")
     }
 
@@ -79,78 +87,206 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertEqual(ToolGrammarBuilder.escapeForGBNFLiteral("get_weather-2"), "get_weather-2")
     }
 
-    func test_nameWithQuote_appearsEscapedInGrammar_noBareQuote() {
-        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a\"b")]))
-        XCTAssertTrue(grammar.contains("a\\\\\\\"b"), "quoted name must be doubly escaped in the grammar")
-    }
-
-    // A name containing a double quote must yield a *balanced* GBNF literal:
-    // the only place an unescaped `"` may appear on the toolname line is the
-    // literal's own opening/closing delimiters. There is no live llama.cpp
-    // grammar compiler in this package's CI (see ToolGrammarBuilder docs), so
-    // this asserts the exact emitted token byte-for-byte to catch a malformed
-    // literal that would otherwise ship undetected.
+    /// A name containing a double quote must yield a *balanced* GBNF literal in
+    /// the branch's `toolcall-0` rule. There is no live llama.cpp grammar
+    /// compiler in this package's CI, so this pins the exact emitted bytes.
     func test_nameWithQuote_emitsExactBalancedGBNFLiteral() {
         let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a\"b")]))
-        let toolnameLine = grammar
+        let branchLine = grammar
             .split(separator: "\n")
-            .first { $0.hasPrefix("toolname") }
+            .first { $0.hasPrefix("toolcall-0 ::=") }
             .map(String.init) ?? ""
-        // Exact RHS: GBNF literal "\"a\\\"b\"" — content decodes to JSON `"a\"b"`.
-        XCTAssertEqual(toolnameLine, #"toolname  ::= "\"a\\\"b\"""#)
+        // The name literal decodes to JSON `"a\"b"`.
+        XCTAssertEqual(
+            branchLine,
+            #"toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"a\\\"b\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}""#
+        )
     }
 
     func test_nameWithBackslash_emitsExactBalancedGBNFLiteral() {
         let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a\\b")]))
-        let toolnameLine = grammar
+        let branchLine = grammar
             .split(separator: "\n")
-            .first { $0.hasPrefix("toolname") }
+            .first { $0.hasPrefix("toolcall-0 ::=") }
             .map(String.init) ?? ""
-        // Exact RHS: GBNF literal "\"a\\\\b\"" — content decodes to JSON `"a\\b"`.
-        XCTAssertEqual(toolnameLine, #"toolname  ::= "\"a\\\\b\"""#)
+        XCTAssertEqual(
+            branchLine,
+            #"toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"a\\\\b\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}""#
+        )
     }
 
-    // MARK: - Pre-validator fallback
+    // MARK: - Per-param lowering (byte-exact goldens)
 
-    func test_preValidatorRejectedSchema_droppedFromEnum() {
-        // `anyOf` is rejected by the (conservative) pre-validator.
-        let rejected = tool("bad", parameters: .object([
+    private func objectSchema(_ props: [(String, JSONSchemaValue)], required: [String]) -> JSONSchemaValue {
+        var properties: [String: JSONSchemaValue] = [:]
+        for (k, v) in props { properties[k] = v }
+        return .object([
+            "type": .string("object"),
+            "properties": .object(properties),
+            "required": .array(required.map { .string($0) })
+        ])
+    }
+
+    func test_golden_stringEnumParam() {
+        let t = tool("set_direction", parameters: objectSchema([
+            ("direction", .object([
+                "type": .string("string"),
+                "enum": .array([.string("north"), .string("south")])
+            ]))
+        ], required: ["direction"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let expected = #"""
+        root ::= toolcall-0
+        args-0-0 ::= ("\"north\"" | "\"south\"")
+        args-0 ::= "{" ws "\"direction\"" ws ":" ws args-0-0 ws "}"
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"set_direction\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+    }
+
+    func test_golden_typedObjectTwoFields() {
+        let t = tool("get_weather", parameters: objectSchema([
+            ("city", .object(["type": .string("string")])),
+            ("days", .object(["type": .string("integer")]))
+        ], required: ["city", "days"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let expected = #"""
+        root ::= toolcall-0
+        args-0-0 ::= string
+        args-0-1 ::= integer
+        args-0 ::= "{" ws "\"city\"" ws ":" ws args-0-0 ws "," ws "\"days\"" ws ":" ws args-0-1 ws "}"
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"get_weather\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+    }
+
+    func test_golden_arrayParam() {
+        let t = tool("tag", parameters: objectSchema([
+            ("tags", .object([
+                "type": .string("array"),
+                "items": .object(["type": .string("string")])
+            ]))
+        ], required: ["tags"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let expected = #"""
+        root ::= toolcall-0
+        args-0-1 ::= string
+        args-0-0 ::= "[" ws ( args-0-1 ( ws "," ws args-0-1 )* )? ws "]"
+        args-0 ::= "{" ws "\"tags\"" ws ":" ws args-0-0 ws "}"
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"tag\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+    }
+
+    func test_golden_genericFallbackForUnsupportedShape() {
+        // A schema using `anyOf` is not lowerable → args degrades to `value`,
+        // but the tool is NOT dropped from the union (graceful degradation).
+        let t = tool("weird", parameters: .object([
             "anyOf": .array([.object(["type": .string("string")])])
         ]))
-        let ok = tool("good")
-        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [rejected, ok]))
-        XCTAssertTrue(grammar.contains("\\\"good\\\""))
-        XCTAssertFalse(grammar.contains("\\\"bad\\\""), "tool with rejected schema must be dropped")
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let expected = #"""
+        root ::= toolcall-0
+        args-0 ::= value
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"weird\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
     }
 
-    func test_allToolsRejected_returnsNil() {
-        let rejected = tool("bad", parameters: .object([
-            "oneOf": .array([.object(["type": .string("string")])])
+    func test_golden_optionalKeys() {
+        // No `required` → both keys optional. Models the closed object as an
+        // optional leading member followed by comma-prefixed optionals.
+        let t = tool("opt", parameters: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "a": .object(["type": .string("string")]),
+                "b": .object(["type": .string("boolean")])
+            ])
         ]))
-        XCTAssertNil(builder.buildGrammar(for: [rejected]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let expected = #"""
+        root ::= toolcall-0
+        args-0-0 ::= string
+        args-0-1 ::= ("true" | "false")
+        args-0 ::= "{" ws ( "\"a\"" ws ":" ws args-0-0 ( ws "," ws "\"b\"" ws ":" ws args-0-1 )? )? ws "}"
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"opt\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
     }
 
-    // MARK: - Golden snapshot (fixed 2-tool input)
+    func test_golden_nullableUnionParam() {
+        // `["string","null"]` lowers to `( <string> | "null" )` — the
+        // pre-validator no longer rejects this shape.
+        let t = tool("nul", parameters: objectSchema([
+            ("x", .object(["type": .array([.string("string"), .string("null")])]))
+        ], required: ["x"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let expected = #"""
+        root ::= toolcall-0
+        args-0-1 ::= string
+        args-0-0 ::= (args-0-1 | "null")
+        args-0 ::= "{" ws "\"x\"" ws ":" ws args-0-0 ws "}"
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"nul\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+    }
+
+    func test_golden_enumValueWithQuoteAndBackslash_escaped() {
+        // An enum value containing `"` and `\` must be doubly escaped in the
+        // emitted literal, exactly like tool names.
+        let t = tool("e", parameters: objectSchema([
+            ("k", .object([
+                "type": .string("string"),
+                "enum": .array([.string("a\"b"), .string("c\\d")])
+            ]))
+        ], required: ["k"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [t]))
+        let enumLine = grammar
+            .split(separator: "\n")
+            .first { $0.hasPrefix("args-0-0 ::=") }
+            .map(String.init) ?? ""
+        XCTAssertEqual(enumLine, #"args-0-0 ::= ("\"a\\\"b\"" | "\"c\\\\d\"")"#)
+    }
+
+    // MARK: - Multi-tool discriminated union (byte-exact golden)
+
+    func test_golden_multiToolUnion() {
+        let enumTool = tool("set_direction", parameters: objectSchema([
+            ("direction", .object([
+                "type": .string("string"),
+                "enum": .array([.string("north"), .string("south")])
+            ]))
+        ], required: ["direction"]))
+        let objTool = tool("get_weather", parameters: objectSchema([
+            ("city", .object(["type": .string("string")])),
+            ("days", .object(["type": .string("integer")]))
+        ], required: ["city", "days"]))
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [enumTool, objTool]))
+        let expected = #"""
+        root ::= toolcall-0 | toolcall-1
+        args-0-0 ::= ("\"north\"" | "\"south\"")
+        args-0 ::= "{" ws "\"direction\"" ws ":" ws args-0-0 ws "}"
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"set_direction\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        args-1-0 ::= string
+        args-1-1 ::= integer
+        args-1 ::= "{" ws "\"city\"" ws ":" ws args-1-0 ws "," ws "\"days\"" ws ":" ws args-1-1 ws "}"
+        toolcall-1 ::= "{" ws "\"name\"" ws ":" ws "\"get_weather\"" ws "," ws "\"arguments\"" ws ":" ws args-1 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+    }
+
+    // MARK: - Golden snapshot (fixed 2-tool, empty-params input)
 
     func test_goldenSnapshot_twoTools() {
+        // Empty-object params carry no `type` → args degrades to generic `value`.
         let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("alpha"), tool("beta")]))
-        let expected = """
-        root      ::= "{" ws "\\"name\\"" ws ":" ws toolname ws "," ws "\\"arguments\\"" ws ":" ws object ws "}"
-        toolname  ::= "\\"alpha\\"" | "\\"beta\\""
-        object    ::= "{" ws ( member ( ws "," ws member )* )? ws "}"
-        member    ::= string ws ":" ws value
-        array     ::= "[" ws ( value ( ws "," ws value )* )? ws "]"
-        value     ::= object | array | string | number | "true" | "false" | "null"
-        string    ::= "\\"" char* "\\""
-        char      ::= [^"\\\\] | "\\\\" escape
-        escape    ::= ["\\\\/bfnrt] | "u" hex hex hex hex
-        hex       ::= [0-9a-fA-F]
-        number    ::= "-"? int frac? exp?
-        int       ::= "0" | [1-9] [0-9]*
-        frac      ::= "." [0-9]+
-        exp       ::= [eE] [+-]? [0-9]+
-        ws        ::= [ \\t\\n]*
-        """
+        let expected = #"""
+        root ::= toolcall-0 | toolcall-1
+        args-0 ::= value
+        toolcall-0 ::= "{" ws "\"name\"" ws ":" ws "\"alpha\"" ws "," ws "\"arguments\"" ws ":" ws args-0 ws "}"
+        args-1 ::= value
+        toolcall-1 ::= "{" ws "\"name\"" ws ":" ws "\"beta\"" ws "," ws "\"arguments\"" ws ":" ws args-1 ws "}"
+        """# + "\n" + genericTail
         XCTAssertEqual(grammar, expected)
     }
 }

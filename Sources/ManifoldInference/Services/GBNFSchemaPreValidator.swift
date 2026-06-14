@@ -1,45 +1,58 @@
 import Foundation
 
-/// Pre-validates a ``JSONSchemaValue`` tool-parameter schema before
-/// handing it to the GBNF compiler in llama.cpp.
+/// Inspects a ``JSONSchemaValue`` tool-parameter schema and reports which
+/// sub-schema shapes ``ToolGrammarBuilder``'s lowerer cannot express, so the
+/// builder (or a caller) knows those nodes will fall back to a generic JSON
+/// value rather than being constrained.
 ///
 /// ## Why this exists
 ///
-/// llama.cpp's GBNF compiler (`llama_sampler_init_grammar`) can SIGSEGV on
-/// certain JSON Schema constructs:
+/// `ToolGrammarBuilder` lowers a tool's parameter schema to GBNF so a
+/// grammar-capable backend emits well-typed `"arguments"`. The lowerer covers
+/// the common shapes (typed objects, string enums, arrays, scalars, nullable
+/// unions) and **degrades gracefully** to a generic JSON value for anything it
+/// does not model. This type names those un-modeled shapes — it is an advisory,
+/// not a gate.
 ///
-/// - `anyOf` / `oneOf` / `allOf` / `not` — combiners the GBNF IR cannot
-///   express as a regular grammar.
-/// - Nullable union types — `"type": ["string", "null"]` — produce an
-///   unbounded alternation that causes stack overflow in the GBNF compiler.
-/// - `exclusiveMinimum` / `exclusiveMaximum` — numeric bounds expressed as
-///   integers in Draft 2020-12 trigger a type-confusion path in the GBNF
-///   numeric rule builder.
+/// ## Premise correction (#1859 review)
+///
+/// An earlier version of this file claimed `anyOf`/`oneOf`/`allOf`/`not` and
+/// nullable unions are "inexpressible in the GBNF IR." **That is wrong.** GBNF
+/// supports alternation (`|`), and llama.cpp's own `json_schema_to_grammar`
+/// lowers combiners and nullable unions to alternations. The real limitation is
+/// narrower: *this builder's lowerer does not implement those combiners.* The
+/// distinction matters because it sets the correct remedy — extend the lowerer,
+/// not "give up because GBNF can't." Nullable unions, in fact, *are* now lowered
+/// (`( <T> | "null" )`), so they are no longer flagged.
+///
+/// ## What is flagged vs handled now
+///
+/// **Flagged as un-lowerable (the lowerer emits generic `value` for the node):**
+/// - `anyOf` / `oneOf` / `allOf` / `not` — combiners the lowerer does not yet
+///   implement. (Lowering them is future work; generic JSON is the safe interim
+///   behavior — the envelope and tool name stay constrained.)
+/// - `$ref`, `patternProperties` — not modeled.
+///
+/// **No longer flagged (handled or harmlessly ignored):**
+/// - **Nullable union** `["string","null"]` — lowered to `( <string> | "null" )`.
+/// - **`exclusiveMinimum` / `exclusiveMaximum`** — GBNF cannot enforce arbitrary
+///   numeric ranges regardless, so the bound is *ignored* and a generic number
+///   is emitted. Ignoring a bound is strictly safer than rejecting the tool, and
+///   the previous "type-confusion crash" rationale described a llama.cpp bug
+///   that the current pin (see ``cveStatus``) is well past.
 ///
 /// ## CVE-2026-2069 (fixed in the current pin)
 ///
 /// A buffer overflow in `llama_grammar_advance_stack()` was disclosed in
-/// CVE-2026-2069 and fixed in llama.cpp build b8774. The vendored
-/// xcframework (`mattt/llama.swift` 2.9101.0) wraps build b9101, well past
-/// the fix.
-///
-/// The validation rules below are retained because they reject schema
-/// constructs that exceed GBNF's expressiveness independent of the CVE:
-/// `anyOf`/`oneOf`/`allOf`/`not` have no representation in the GBNF IR,
-/// and nullable union types produce unbounded alternation. Removing them
-/// would surface a different class of llama.cpp crashes (parse failure
-/// or runtime grammar-stack errors) rather than make grammar use safer.
-/// See ``GBNFSchemaPreValidator/cveStatus`` for the pinned audit record.
+/// CVE-2026-2069 and fixed in llama.cpp build b8774. The vendored xcframework
+/// (`mattt/llama.swift` 2.9101.0) wraps build b9101, well past the fix. The
+/// audit record below is retained for provenance; this validator's flags encode
+/// *lowerer coverage*, not the CVE's crash shapes.
 public struct GBNFSchemaPreValidator: Sendable {
 
     // MARK: - CVE status
 
     /// Structured audit record for CVE-2026-2069.
-    ///
-    /// When `isFixed` is `true`, the vendored llama.cpp build has been
-    /// confirmed post-patch and callers may reduce the strictness of schema
-    /// rules if desired. Until then, treat `isFixed == false` as "always run
-    /// the full rule set."
     public struct CVEAuditRecord: Sendable {
         /// CVE identifier.
         public let cveID: String
@@ -66,9 +79,6 @@ public struct GBNFSchemaPreValidator: Sendable {
     ///    `vendoredBuild` to the new build tag.
     /// 2. If the new build crosses a future CVE-fix boundary, flip
     ///    `isFixed`/`fixedAtBuild` accordingly.
-    /// 3. The validation rules in `validate(_:path:)` are kept regardless of
-    ///    CVE status — they encode GBNF expressiveness limits, not just the
-    ///    overflow's PoC shapes.
     public static let cveStatus = CVEAuditRecord(
         cveID: "CVE-2026-2069",
         isFixed: true,
@@ -77,17 +87,23 @@ public struct GBNFSchemaPreValidator: Sendable {
         note: """
             Buffer overflow in llama_grammar_advance_stack(), fixed in b8774. \
             mattt/llama.swift 2.9101.0 wraps b9101, so the production binary \
-            contains the fix. GBNFSchemaPreValidator remains mandatory for \
-            tool-schema grammars to keep llama.cpp inside its GBNF \
-            expressiveness envelope.
+            contains the fix. GBNFSchemaPreValidator now reports lowerer \
+            coverage gaps (graceful-degradation advisory) rather than gating \
+            tools out of grammar use.
             """
     )
 
-    // MARK: - Validation failure
+    // MARK: - Coverage report
 
-    /// Describes why a schema is unsafe to compile to GBNF.
+    /// Describes a sub-schema shape the lowerer cannot express, which will
+    /// therefore fall back to a generic JSON value.
+    ///
+    /// Renamed semantics (#1859): this is no longer a hard "validation failure"
+    /// that drops a tool — it flags a node that degrades to generic JSON. The
+    /// type name and shape are retained for source compatibility with existing
+    /// callers and tests; `reason`/`path` keep their meaning.
     public struct ValidationFailure: Sendable, Equatable, Error {
-        /// Short developer-facing description of the rejection reason.
+        /// Short developer-facing description of why the node is un-lowerable.
         public let reason: String
         /// JSON-pointer-style path components to the offending key (e.g.
         /// `["properties", "address", "anyOf"]`). Empty when the issue is at
@@ -104,62 +120,59 @@ public struct GBNFSchemaPreValidator: Sendable {
 
     // MARK: - Public entry point
 
-    /// Returns `nil` when `schema` is safe to compile to GBNF, or a
-    /// ``ValidationFailure`` naming the first unsafe construct when it is not.
+    /// Returns `nil` when every node of `schema` is something the lowerer can
+    /// express, or a ``ValidationFailure`` naming the first un-lowerable node
+    /// (which will fall back to generic JSON) when one exists.
     ///
-    /// Always run this before calling `llama_sampler_init_grammar` with a
-    /// grammar derived from `schema`. See the type-level documentation and
-    /// ``cveStatus`` for the full rationale.
+    /// This is advisory: `ToolGrammarBuilder` degrades gracefully and never
+    /// drops a tool, so a non-`nil` result no longer means "reject." It is
+    /// useful for diagnostics — e.g. logging that a tool's arguments could not
+    /// be fully constrained.
     ///
     /// - Parameters:
-    ///   - schema: The JSON Schema to check (typically `ToolDefinition.parameters`).
+    ///   - schema: The JSON Schema to inspect (typically `ToolDefinition.parameters`).
     ///   - path:   Accumulated path prefix for nested calls — callers should
     ///             use the default empty array.
     public func validate(_ schema: JSONSchemaValue, path: [String] = []) -> ValidationFailure? {
         guard case let .object(dict) = schema else {
-            // Non-object schemas (scalars, arrays-as-values) are safe; skip.
+            // Non-object schema nodes (bare scalars) carry no un-lowerable shape.
             return nil
         }
 
-        // Reject schema combiners — the GBNF IR has no alternation / negation nodes.
+        // Combiners the lowerer does not implement → these nodes degrade to
+        // generic JSON. (GBNF *can* express alternation; the lowerer just
+        // doesn't lower these yet — see the type docs.)
         for combiner in ["anyOf", "oneOf", "allOf", "not"] {
             if dict[combiner] != nil {
                 return ValidationFailure(
-                    reason: "'\(combiner)' is not supported by the GBNF compiler and may cause a crash.",
+                    reason: "'\(combiner)' is not implemented by this builder's lowerer; the node falls back to generic JSON.",
                     path: path + [combiner]
                 )
             }
         }
 
-        // Reject Draft 2020-12 integer-form exclusive bounds — triggers a
-        // type-confusion path in the GBNF numeric rule builder.
-        for bound in ["exclusiveMinimum", "exclusiveMaximum"] {
-            if dict[bound] != nil {
+        // `$ref` / `patternProperties` are likewise un-modeled and fall back.
+        for unmodeled in ["$ref", "patternProperties"] {
+            if dict[unmodeled] != nil {
                 return ValidationFailure(
-                    reason: "'\(bound)' triggers a type-confusion path in the GBNF numeric rule builder.",
-                    path: path + [bound]
+                    reason: "'\(unmodeled)' is not implemented by this builder's lowerer; the node falls back to generic JSON.",
+                    path: path + [unmodeled]
                 )
             }
         }
 
-        // Reject nullable union: `"type": ["string", "null"]` — any array
-        // `type` value containing `"null"` produces unbounded alternation.
-        if let typeValue = dict["type"], case let .array(typeArr) = typeValue {
-            let hasNull = typeArr.contains {
-                if case .string(let s) = $0 { return s == "null" }
-                return false
-            }
-            if hasNull {
-                return ValidationFailure(
-                    reason: "Nullable union type (array containing 'null') produces unbounded alternation in GBNF.",
-                    path: path + ["type"]
-                )
-            }
-        }
+        // NOTE (#1859): `exclusiveMinimum`/`exclusiveMaximum` are NO LONGER
+        // flagged. GBNF cannot enforce arbitrary numeric ranges anyway, so the
+        // lowerer emits a generic number and ignores the bound — safer than
+        // dropping the tool, and the old "type-confusion crash" rationale
+        // described a llama.cpp bug the current pin is past.
+        //
+        // NOTE (#1859): nullable union `["T","null"]` is NO LONGER flagged —
+        // the lowerer expresses it as `( <T> | "null" )`.
 
-        // Recurse into `properties` sub-schemas.
+        // Recurse into `properties` sub-schemas (sorted for deterministic
+        // reporting).
         if let propsValue = dict["properties"], case let .object(properties) = propsValue {
-            // Sort for deterministic failure reporting.
             for (key, subSchema) in properties.sorted(by: { $0.key < $1.key }) {
                 if let failure = validate(subSchema, path: path + ["properties", key]) {
                     return failure
@@ -167,11 +180,7 @@ public struct GBNFSchemaPreValidator: Sendable {
             }
         }
 
-        // Recurse into `items`. JSON Schema permits two shapes:
-        //   - a single sub-schema object (list validation), or
-        //   - an array of sub-schemas (tuple validation, draft-04 / 2019-09).
-        // Without the array branch, unsafe constructs nested inside a tuple-form
-        // `items` would bypass the pre-validator and reach the GBNF compiler.
+        // Recurse into `items` (single sub-schema or tuple-form array).
         if let itemsValue = dict["items"] {
             switch itemsValue {
             case .object:
