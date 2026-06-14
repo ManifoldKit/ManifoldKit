@@ -161,7 +161,9 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // already routes through `URLSessionFactory.ephemeral()` (also on this
         // list). Same network boundary as the sibling cloud backends above —
         // the work relocated to its correct home, no new outbound surface.
-        "ManifoldCloud/WebSearch/DefaultWebSearchRuntime.swift",
+        // Relocated to ManifoldCloudCore in P7 when the ManifoldCloud shim
+        // was retired — same network boundary, new home.
+        "ManifoldCloudCore/DefaultWebSearchRuntime.swift",
 
         // I1 network seam closure (#1140) — centralised redirect-guard
         // delegate, composite delegate, and seam factory live in

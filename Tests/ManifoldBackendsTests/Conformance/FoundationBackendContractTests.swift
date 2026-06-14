@@ -3,7 +3,9 @@ import XCTest
 import ManifoldInference
 import ManifoldBackendTestKit
 import ManifoldTestSupport
-import ManifoldBackends
+import ManifoldOllama
+import ManifoldCloudSaaS
+import ManifoldCloudCore
 @testable import ManifoldFoundation
 
 /// FoundationBackend conformance against the universal backend contract.

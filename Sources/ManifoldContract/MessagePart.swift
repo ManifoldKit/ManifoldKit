@@ -52,22 +52,20 @@ public enum MessagePart: Hashable, Sendable {
     ///
     /// Excluded from ``textContent`` and from the accessibility label.
     case toolResult(ToolResult)
-    /// An image produced by an ``ImageGenerationBackend`` and attached to
-    /// a saved message.
+    /// A media artifact (image, video, or one-shot audio) produced by a
+    /// generation backend and attached to a saved message.
     ///
     /// Distinct from ``image(data:mimeType:placeholderHash:)`` — that case
     /// carries raw bytes the user submitted as multimodal *input*; this case
     /// references a file URL whose binary is the model's *output*. Excluded
     /// from ``textContent`` (the payload's prompt is metadata, not visible chat
     /// text).
-    case generatedImage(ImageMessagePayload)
-    /// A video produced by a `VideoGenerationBackend` and attached to
-    /// a saved message.
     ///
-    /// References a local file URL whose binary is the backend's *output*.
-    /// Excluded from ``textContent`` (the payload's prompt is metadata, not
-    /// visible chat text).
-    case generatedVideo(VideoMessagePayload)
+    /// Collapses the former `generatedImage` / `generatedVideo` cases into a
+    /// single generic ``GeneratedMediaPayload`` carrying a ``MediaKind``
+    /// discriminator (P4b). Legacy `generatedImage` / `generatedVideo` JSON
+    /// rows still decode — see ``init(from:)``.
+    case generatedMedia(GeneratedMediaPayload)
 }
 
 // MARK: - Codable
@@ -79,7 +77,12 @@ extension MessagePart: Codable {
     // assertions in MessagePartToolCasesTests / MessagePartThinkingTests are
     // the sentries that catch such drift.
     private enum CodingKeys: String, CodingKey {
-        case text, image, audio, thinking, toolCall, toolResult, generatedImage, generatedVideo
+        case text, image, audio, thinking, toolCall, toolResult, generatedMedia
+        // Legacy discriminators retained for BACKWARD-COMPATIBLE DECODE only
+        // (P4b collapse). Persisted rows written before the collapse used these
+        // keys; `init(from:)` maps them into `.generatedMedia`. Never emitted by
+        // `encode(to:)` — new rows always write `generatedMedia`.
+        case generatedImage, generatedVideo
     }
 
     private enum ImageKeys: String, CodingKey {
@@ -156,10 +159,18 @@ extension MessagePart: Codable {
             self = .toolCall(try container.decode(ToolCall.self, forKey: .toolCall))
         case .toolResult:
             self = .toolResult(try container.decode(ToolResult.self, forKey: .toolResult))
+        case .generatedMedia:
+            self = .generatedMedia(try container.decode(GeneratedMediaPayload.self, forKey: .generatedMedia))
         case .generatedImage:
-            self = .generatedImage(try container.decode(ImageMessagePayload.self, forKey: .generatedImage))
+            // Back-compat: legacy `generatedImage` rows decode losslessly into
+            // `.generatedMedia` so no persisted data is stranded or lost.
+            let legacy = try container.decode(ImageMessagePayload.self, forKey: .generatedImage)
+            self = .generatedMedia(GeneratedMediaPayload(image: legacy))
         case .generatedVideo:
-            self = .generatedVideo(try container.decode(VideoMessagePayload.self, forKey: .generatedVideo))
+            // Back-compat: legacy `generatedVideo` rows decode losslessly into
+            // `.generatedMedia`.
+            let legacy = try container.decode(VideoMessagePayload.self, forKey: .generatedVideo)
+            self = .generatedMedia(GeneratedMediaPayload(video: legacy))
         }
     }
 
@@ -188,10 +199,8 @@ extension MessagePart: Codable {
             try container.encode(call, forKey: .toolCall)
         case .toolResult(let result):
             try container.encode(result, forKey: .toolResult)
-        case .generatedImage(let payload):
-            try container.encode(payload, forKey: .generatedImage)
-        case .generatedVideo(let payload):
-            try container.encode(payload, forKey: .generatedVideo)
+        case .generatedMedia(let payload):
+            try container.encode(payload, forKey: .generatedMedia)
         }
     }
 }
@@ -237,17 +246,31 @@ extension MessagePart {
         return nil
     }
 
-    /// The ``ImageMessagePayload`` of a `.generatedImage` part, or `nil`
+    /// The ``GeneratedMediaPayload`` of a `.generatedMedia` part, or `nil`
     /// for any other case.
-    public var generatedImageContent: ImageMessagePayload? {
-        if case .generatedImage(let p) = self { return p }
+    public var generatedMediaContent: GeneratedMediaPayload? {
+        if case .generatedMedia(let p) = self { return p }
         return nil
     }
 
-    /// The ``VideoMessagePayload`` of a `.generatedVideo` part, or `nil`
+    /// The ``ImageMessagePayload`` of a `.generatedMedia` image part, or `nil`
+    /// for any other case (including video/audio media parts).
+    ///
+    /// Deprecated shim for the pre-P4b `generatedImage` accessor: pattern-matches
+    /// the collapsed `.generatedMedia` case and reconstructs the legacy payload.
+    @available(*, deprecated, message: "Use generatedMediaContent and check .kind == .image; reconstruct via GeneratedMediaPayload.asImagePayload if needed.")
+    public var generatedImageContent: ImageMessagePayload? {
+        if case .generatedMedia(let p) = self { return p.asImagePayload }
+        return nil
+    }
+
+    /// The ``VideoMessagePayload`` of a `.generatedMedia` video part, or `nil`
     /// for any other case.
+    ///
+    /// Deprecated shim for the pre-P4b `generatedVideo` accessor.
+    @available(*, deprecated, message: "Use generatedMediaContent and check .kind == .video; reconstruct via GeneratedMediaPayload.asVideoPayload if needed.")
     public var generatedVideoContent: VideoMessagePayload? {
-        if case .generatedVideo(let p) = self { return p }
+        if case .generatedMedia(let p) = self { return p.asVideoPayload }
         return nil
     }
 

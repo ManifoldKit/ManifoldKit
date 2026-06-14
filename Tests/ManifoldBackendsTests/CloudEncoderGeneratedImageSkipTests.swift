@@ -1,7 +1,6 @@
 import XCTest
 import ManifoldInference
-@testable import ManifoldBackends
-@testable import ManifoldCloud
+@testable import ManifoldFoundation
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
 @testable import ManifoldOllama
@@ -27,15 +26,17 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
     // MARK: - Fixtures
 
     private func generatedImagePart(prompt: String = "a forest at dusk") -> MessagePart {
-        .generatedImage(
-            ImageMessagePayload(
-                prompt: prompt,
-                imageURL: URL(fileURLWithPath: "/var/tmp/baseChatKitTest/generated.png"),
-                modelIdentifier: "fake-image-model-v1",
-                generationConfig: ImageGenerationConfigSnapshot(
-                    steps: 4, width: 512, height: 512
-                ),
-                generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        .generatedMedia(
+            GeneratedMediaPayload(
+                image: ImageMessagePayload(
+                    prompt: prompt,
+                    imageURL: URL(fileURLWithPath: "/var/tmp/baseChatKitTest/generated.png"),
+                    modelIdentifier: "fake-image-model-v1",
+                    generationConfig: ImageGenerationConfigSnapshot(
+                        steps: 4, width: 512, height: 512
+                    ),
+                    generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+                )
             )
         )
     }

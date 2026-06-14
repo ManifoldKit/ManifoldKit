@@ -91,3 +91,6 @@ API breakage: enumelement ImageRuntimeEvent.preview has been added as a new enum
 API breakage: enumelement ImageGenerationEvent.preview has been added as a new enum case
 API breakage: enumelement GenerationEvent.usage has declared type change from (ManifoldContract.GenerationEvent.Type) -> (Swift.Int, Swift.Int) -> ManifoldContract.GenerationEvent to (ManifoldContract.GenerationEvent.Type) -> (ManifoldContract.TokenUsage) -> ManifoldContract.GenerationEvent
 API breakage: enumelement GenerationStreamConsumer.StreamAction.generationCompleted has been added as a new enum case
+API breakage: enumelement MessagePart.generatedMedia has been added as a new enum case
+API breakage: enumelement MessagePart.generatedImage has been removed
+API breakage: enumelement MessagePart.generatedVideo has been removed

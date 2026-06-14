@@ -284,7 +284,7 @@ public final class ImageGenerationRuntime {
                         generationConfig: snapshot
                     )
                     var finalised = placeholder
-                    finalised.contentParts = [.generatedImage(payload)]
+                    finalised.contentParts = [.generatedMedia(GeneratedMediaPayload(image: payload))]
                     do {
                         try await messageStore.updateMessage(finalised)
                     } catch {

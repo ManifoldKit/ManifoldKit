@@ -2,7 +2,10 @@ import XCTest
 import ManifoldInference
 import ManifoldTools
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 /// True end-to-end coverage of the #754 demo scenario matrix against a real
 /// local Ollama server.

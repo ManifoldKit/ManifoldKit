@@ -343,6 +343,8 @@ private func stringify(_ value: JSONSchemaValue) -> String {
         return "null"
     case .bool(let value):
         return value ? "true" : "false"
+    case .integer(let value):
+        return String(value)
     case .number(let value):
         return String(value)
     case .string(let value):

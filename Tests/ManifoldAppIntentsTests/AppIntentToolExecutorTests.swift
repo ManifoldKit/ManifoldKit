@@ -707,12 +707,12 @@ final class AppIntentToolExecutorTests: XCTestCase {
             .string("World"),
             "string defaults must round-trip through the schema as JSON strings"
         )
-        // Number defaults: JSONSchemaValue stores all numbers as Double, so
-        // `5` arrives as `.number(5.0)`. We don't care about the boxing —
-        // only that the value made it through.
+        // Integer defaults: whole-number JSON now decodes to `.integer` (the
+        // int64-fidelity case), so `5` arrives as `.integer(5)` rather than the
+        // pre-freeze `.number(5.0)`. We care only that the value made it through.
         XCTAssertEqual(
             countField["default"],
-            .number(5),
+            .integer(5),
             "integer defaults must surface in the schema"
         )
     }

@@ -25,14 +25,16 @@ Construct an `InferenceService`, register the compiled-in backends, load a model
 
 ```swift
 import ManifoldInference
-import ManifoldBackends
-
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 @main
 struct BYOExample {
     static func main() async throws {
         let inference = InferenceService()
-        DefaultBackends.register(with: inference)
-
+        OllamaBackends.register(with: inference)
+        CloudSaaSBackends.register(with: inference)
+        FoundationBackends.register(with: inference)
         // `.builtInFoundation` is the zero-file, zero-server choice, but Apple
         // Intelligence only exists on macOS 26 / iOS 26. Guard availability so
         // the demo degrades with a clear message instead of an opaque throw.
@@ -56,7 +58,7 @@ struct BYOExample {
 }
 ```
 
-`InferenceService` is `@MainActor @Observable`. `DefaultBackends.register(with:)` registers every backend compiled into your build and returns the count, so you can fail fast on an empty service. `loadModel(from:plan:)` takes a precomputed `ModelLoadPlan`; `.cloud()` is the factory for endpoint-backed and OS-provided models. `generate(messages:)` returns a `GenerationStream` whose `events` property is an `AsyncThrowingStream<GenerationEvent, Error>`.
+`InferenceService` is `@MainActor @Observable`. The default registrars (`OllamaBackends`, `CloudSaaSBackends`, `FoundationBackends`) register every backend compiled into your build; inspect `inference.registeredBackendSnapshot()` to fail fast on an empty service. `loadModel(from:plan:)` takes a precomputed `ModelLoadPlan`; `.cloud()` is the factory for endpoint-backed and OS-provided models. `generate(messages:)` returns a `GenerationStream` whose `events` property is an `AsyncThrowingStream<GenerationEvent, Error>`.
 
 ## Wiring it into SwiftUI
 
@@ -65,8 +67,9 @@ Hold the `InferenceService` in an `@Observable @MainActor` model and append stre
 ```swift,no-build
 import SwiftUI
 import ManifoldInference
-import ManifoldBackends
-
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 @Observable
 @MainActor
 final class CustomChatModel {
@@ -77,7 +80,9 @@ final class CustomChatModel {
     private let inference = InferenceService()
 
     func bootstrap() async throws {
-        DefaultBackends.register(with: inference)
+        OllamaBackends.register(with: inference)
+        CloudSaaSBackends.register(with: inference)
+        FoundationBackends.register(with: inference)
         try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
     }
 

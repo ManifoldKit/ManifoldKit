@@ -256,16 +256,19 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportedParameters = try c.decode(Set<GenerationParameter>.self, forKey: .supportedParameters)
         maxContextTokens = try c.decode(Int32.self, forKey: .maxContextTokens)
         maxOutputTokens = try c.decode(Int.self, forKey: .maxOutputTokens)
-        requiresPromptTemplate = try c.decode(Bool.self, forKey: .requiresPromptTemplate)
-        supportsSystemPrompt = try c.decode(Bool.self, forKey: .supportsSystemPrompt)
-        supportsStreaming = try c.decode(Bool.self, forKey: .supportsStreaming)
-        supportsToolCalling = try c.decode(Bool.self, forKey: .supportsToolCalling)
-        supportsStructuredOutput = try c.decode(Bool.self, forKey: .supportsStructuredOutput)
+        // Boolean flags decode tolerantly: an older/partial capabilities blob
+        // missing a now-required flag falls back to the memberwise-init default
+        // rather than throwing keyNotFound. Structural keys below stay required.
+        requiresPromptTemplate = (try c.decodeIfPresent(Bool.self, forKey: .requiresPromptTemplate)) ?? false
+        supportsSystemPrompt = (try c.decodeIfPresent(Bool.self, forKey: .supportsSystemPrompt)) ?? true
+        supportsStreaming = (try c.decodeIfPresent(Bool.self, forKey: .supportsStreaming)) ?? true
+        supportsToolCalling = (try c.decodeIfPresent(Bool.self, forKey: .supportsToolCalling)) ?? false
+        supportsStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsStructuredOutput)) ?? false
         supportsNativeJSONMode = (try c.decodeIfPresent(Bool.self, forKey: .supportsNativeJSONMode)) ?? false
         cancellationStyle = try c.decode(CancellationStyle.self, forKey: .cancellationStyle)
-        supportsTokenCounting = try c.decode(Bool.self, forKey: .supportsTokenCounting)
+        supportsTokenCounting = (try c.decodeIfPresent(Bool.self, forKey: .supportsTokenCounting)) ?? false
         memoryStrategy = try c.decode(MemoryStrategy.self, forKey: .memoryStrategy)
-        isRemote = try c.decode(Bool.self, forKey: .isRemote)
+        isRemote = (try c.decodeIfPresent(Bool.self, forKey: .isRemote)) ?? false
         supportsKVCachePersistence = (try c.decodeIfPresent(Bool.self, forKey: .supportsKVCachePersistence)) ?? false
         supportsGrammarConstrainedSampling = (try c.decodeIfPresent(Bool.self, forKey: .supportsGrammarConstrainedSampling)) ?? false
         supportsThinking = (try c.decodeIfPresent(Bool.self, forKey: .supportsThinking)) ?? false

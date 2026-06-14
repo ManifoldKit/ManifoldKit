@@ -3,8 +3,9 @@ import Foundation
 /// A typed conversation message used by `InferenceService.enqueue(messages:...)`
 /// (the typed overload) and `InferenceService.generate(messages:...)`.
 ///
-/// **Not the same as `ChatMessage` / `ChatMessage`.** Those types live
-/// further down the stack:
+/// **Not the same as `ChatMessage` (the SwiftData `@Model`) / `ChatMessage`
+/// (the `ManifoldInference` value type).** Those types live further down the
+/// stack — they share a name but differ by module:
 ///
 /// - `ChatMessage` (a SwiftData `@Model` in `ManifoldPersistenceSwiftData`)
 ///   is the persisted record with a UUID, timestamp, attachments, token-

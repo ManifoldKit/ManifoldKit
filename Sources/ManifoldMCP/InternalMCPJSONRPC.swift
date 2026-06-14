@@ -187,6 +187,8 @@ package struct MCPJSONRPCCodec: Sendable {
             return NSNull()
         case .bool(let value):
             return value
+        case .integer(let value):
+            return value
         case .number(let value):
             return value
         case .string(let value):

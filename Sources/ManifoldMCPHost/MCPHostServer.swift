@@ -582,6 +582,8 @@ public actor ManifoldMCPHost {
             return "null"
         case .bool(let v):
             return v ? "true" : "false"
+        case .integer(let v):
+            return String(v)
         case .number(let v):
             return String(v)
         case .string(let v):

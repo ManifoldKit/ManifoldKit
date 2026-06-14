@@ -1,6 +1,11 @@
 import ManifoldInference
-import ManifoldFoundation
 
+/// Registers the Apple Foundation Models backend with an `InferenceService`.
+///
+/// Relocated into `ManifoldFoundation` in P7 (was in the retired
+/// `ManifoldBackends` umbrella). Pass it to
+/// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)`` or call
+/// `register(with:)` directly.
 public enum FoundationBackends: BackendRegistrar {
     @MainActor
     public static func register(with service: InferenceService) {

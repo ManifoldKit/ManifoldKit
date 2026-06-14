@@ -10,11 +10,12 @@ final class ToolResultErrorKindTests: XCTestCase {
     func test_allErrorKinds_roundTripThroughCodable() throws {
         let allKinds: [ToolResult.ErrorKind] = [
             .invalidArguments, .permissionDenied, .notFound, .timeout,
-            .rateLimited, .cancelled, .transient, .permanent, .unknownTool
+            .rateLimited, .cancelled, .transient, .permanent, .unknownTool,
+            .unknown
         ]
         // Guard against someone adding a new case and forgetting to update the
-        // test exhaustively. 9 cases is the wave 1 contract.
-        XCTAssertEqual(allKinds.count, 9)
+        // test exhaustively. 10 cases after the pre-1.0 `.unknown` escape hatch.
+        XCTAssertEqual(allKinds.count, 10)
 
         for kind in allKinds {
             let result = ToolResult(callId: "c-\(kind.rawValue)", content: "x", errorKind: kind)
@@ -36,9 +37,10 @@ final class ToolResultErrorKindTests: XCTestCase {
             .transient: "The tool hit a temporary problem.",
             .permanent: "The tool couldn't complete this request.",
             .unknownTool: "This tool isn't available.",
+            .unknown: "The tool reported an unrecognized error.",
         ]
 
-        XCTAssertEqual(ToolResult.ErrorKind.allCases.count, 9)
+        XCTAssertEqual(ToolResult.ErrorKind.allCases.count, 10)
         for kind in ToolResult.ErrorKind.allCases {
             XCTAssertEqual(kind.localizedDescription, expected[kind], "missing localized description for \(kind.rawValue)")
             XCTAssertNotEqual(kind.localizedDescription, kind.rawValue)
@@ -96,6 +98,22 @@ final class ToolResultErrorKindTests: XCTestCase {
 
         XCTAssertEqual(decoded.errorKind, .timeout)
         XCTAssertTrue(decoded.isError)
+    }
+
+    func test_forwardCompatDecode_unrecognizedErrorKind_mapsToUnknown() throws {
+        // A newer producer emits an errorKind raw string this build doesn't
+        // know. It must decode to `.unknown` rather than throwing the whole
+        // ToolResult decode.
+        let future = #"{"callId":"x","content":"y","errorKind":"quotaExceeded"}"#.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: future)
+
+        // Sabotage check: reverting ErrorKind's tolerant init(from:) makes the
+        // decode throw instead of yielding `.unknown`.
+        XCTAssertEqual(decoded.errorKind, .unknown)
+        XCTAssertTrue(decoded.isError)
+        XCTAssertEqual(decoded.callId, "x")
+        XCTAssertEqual(decoded.content, "y")
     }
 
     // MARK: - Equatable / Hashable

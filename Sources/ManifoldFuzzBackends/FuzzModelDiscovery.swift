@@ -1,5 +1,5 @@
 import Foundation
-import ManifoldBackends
+import ManifoldOllama
 
 /// Fuzz-local model discovery utilities.
 ///

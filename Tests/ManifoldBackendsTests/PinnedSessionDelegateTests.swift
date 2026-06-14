@@ -2,7 +2,9 @@ import XCTest
 import CommonCrypto
 import Security
 import ManifoldInference
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
 @testable import ManifoldCloudCore
 
 final class PinnedSessionDelegateTests: XCTestCase {

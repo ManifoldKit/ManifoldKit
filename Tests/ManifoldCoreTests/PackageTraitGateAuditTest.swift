@@ -43,7 +43,6 @@ final class PackageTraitGateAuditTest: XCTestCase {
         // build compiles the no-op stub without Hummingbird or the backend
         // graph (PR #946 pattern).
         .init(description: "ManifoldServer → ManifoldInference", module: "ManifoldInference", trait: "Server"),
-        .init(description: "ManifoldServer → ManifoldBackends", module: "ManifoldBackends", trait: "Server"),
         .init(description: "ManifoldServer → Hummingbird", module: "Hummingbird", trait: "Server"),
 
         // Macros: the @ToolSchema plugin is the only thing that pulls

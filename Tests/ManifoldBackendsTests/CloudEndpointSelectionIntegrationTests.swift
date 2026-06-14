@@ -1,6 +1,8 @@
 import XCTest
 import SwiftData
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
 @testable import ManifoldCloudCore
 // ChatViewModel and SessionManagerViewModel live in ManifoldUI; testable import
 // is needed to exercise the endpoint selection → load → generate pipeline that

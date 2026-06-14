@@ -1,7 +1,10 @@
 import XCTest
 import ManifoldInference
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 /// End-to-end tool-calling test against a real local Ollama server.
 ///

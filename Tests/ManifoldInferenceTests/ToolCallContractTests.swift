@@ -335,4 +335,38 @@ final class ToolCallContractTests: XCTestCase {
         let decoded = try JSONDecoder().decode(JSONSchemaValue.self, from: encoded)
         XCTAssertEqual(decoded, value)
     }
+
+    func test_jsonSchemaValue_int64BeyondDoubleMantissa_roundTripsWithoutPrecisionLoss() throws {
+        // 2^53 + 1 == 9007254740993 cannot survive a Double round-trip: it is the
+        // first integer not exactly representable as a Double. Decoding it as
+        // `.integer(Int64)` is what preserves the exact value.
+        let raw = #"{"id": 9007199254740993}"#.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(JSONSchemaValue.self, from: raw)
+        guard case .object(let dict) = decoded, case .integer(let i) = dict["id"] else {
+            return XCTFail("Expected .object containing .integer, got \(decoded)")
+        }
+        XCTAssertEqual(i, 9_007_199_254_740_993)
+
+        // Encode → decode again to prove the value survives a full Codable cycle.
+        let reEncoded = try JSONEncoder().encode(decoded)
+        let reDecoded = try JSONDecoder().decode(JSONSchemaValue.self, from: reEncoded)
+        guard case .object(let dict2) = reDecoded, case .integer(let i2) = dict2["id"] else {
+            return XCTFail("Expected .object containing .integer on re-decode, got \(reDecoded)")
+        }
+        // Sabotage check: route whole numbers through Double (drop the Int64
+        // branch in init(from:)) and this becomes 9007199254740992, failing.
+        XCTAssertEqual(i2, 9_007_199_254_740_993)
+    }
+
+    func test_jsonSchemaValue_fractionalNumberStaysNumber() throws {
+        // Guard the decode ordering: a fractional literal must NOT be captured by
+        // the Int64 branch — it stays `.number`.
+        let raw = #"4.2"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(JSONSchemaValue.self, from: raw)
+        guard case .number(let n) = decoded else {
+            return XCTFail("Expected .number, got \(decoded)")
+        }
+        XCTAssertEqual(n, 4.2, accuracy: 0.0001)
+    }
 }

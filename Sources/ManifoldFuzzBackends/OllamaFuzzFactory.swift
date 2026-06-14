@@ -1,5 +1,5 @@
 import Foundation
-import ManifoldBackends
+import ManifoldOllama
 import ManifoldFuzz
 import ManifoldInference
 

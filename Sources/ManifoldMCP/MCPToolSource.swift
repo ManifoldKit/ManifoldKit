@@ -756,7 +756,7 @@ private func schemaDepthIfCompatible(
             deepest = max(deepest, d)
         }
         return deepest
-    case .string, .number, .bool, .null:
+    case .string, .integer, .number, .bool, .null:
         // Includes `additionalProperties: true`/`false` (the bool form) — a
         // permissive flag, not a nested schema.
         return currentDepth

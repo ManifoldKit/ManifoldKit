@@ -15,7 +15,9 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 import ManifoldUI
 import ManifoldHuggingFace
 
@@ -42,6 +44,24 @@ import ManifoldHuggingFace
 /// well-known place to look.
 @MainActor
 public enum ManifoldKit {
+
+    /// The compiled-in default backend registrars folded by `quickStart()`.
+    ///
+    /// Since v0.48 these are the families that ship in core: the two cloud
+    /// families (Ollama self-hosted + the SaaS providers) and Apple Foundation
+    /// Models. The MLX and llama.cpp families live in the manifold-mlx /
+    /// manifold-llama companion packages (#1749) — pass their registrars to
+    /// ``quickStart(backends:configuration:seed:)``.
+    ///
+    /// Order is significant only for the cloud registrars, which prime
+    /// `PinnedSessionDelegate` before any URLSession factory is built; the
+    /// Foundation registrar is independent.
+    @MainActor
+    public static let defaultBackendRegistrars: [any BackendRegistrar.Type] = [
+        OllamaBackends.self,
+        CloudSaaSBackends.self,
+        FoundationBackends.self,
+    ]
 
     /// Bootstraps a working chat runtime with sensible defaults in one call.
     ///
@@ -243,9 +263,13 @@ public enum ManifoldKit {
             // registrars (companion packages, #1749). Both must run before the
             // registry refresh, the starter seed, and the selection policy —
             // all three consult the live registration state below.
-            // (`_register` is the package-visible twin of the deprecated
-            // public `DefaultBackends.register` — same fold, no warning.)
-            DefaultBackends._register(with: bootstrap.inferenceService)
+            // The compiled-in defaults are the surviving core families:
+            // Ollama + SaaS (cloud) + Foundation. The MLX / llama.cpp
+            // registrars live in the manifold-mlx / manifold-llama companion
+            // packages — pass them via `backends:`.
+            for registrar in ManifoldKit.defaultBackendRegistrars {
+                registrar.register(with: bootstrap.inferenceService)
+            }
             for registrar in backends {
                 registrar.register(with: bootstrap.inferenceService)
             }
