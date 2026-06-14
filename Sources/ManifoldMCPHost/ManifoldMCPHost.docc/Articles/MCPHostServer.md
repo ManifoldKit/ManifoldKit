@@ -39,7 +39,7 @@ let transport = MCPHostStdioTransport()
 #endif
 ```
 
-HTTP/SSE server-side transport is not yet implemented. It is tracked in issue #874.
+HTTP/SSE server-side transport is not yet implemented. It is tracked in issue #1842.
 
 ### 3. Start serving
 
