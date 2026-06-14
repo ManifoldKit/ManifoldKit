@@ -9,10 +9,11 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 > | Foundation Models | macOS 26 / iOS 26             | No       | [§1](#1-foundation-models-macos-26)         |
 > | Local GGUF (Llama)| macOS 15 / iOS 18 (Apple Silicon) | No       | [§2](#2-local-gguf-via-the-llama-backend-macos-15)         |
 > | Ollama / OpenAI / Anthropic | macOS 15 / iOS 18 | Yes      | [§3](#3-cloud--ollama-via-loadcloudbackend)         |
+> | MLX (Apple Silicon) | macOS 15 / iOS 18 — **Xcode `.app` only, not `swift run`** | No | [§4](#4-mlx-via-the-manifold-mlx-companion-apple-silicon) |
 >
 > If you're on macOS 15 and want a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-15). Foundation Models will not load.
 
-Each section below is a complete, compile-tested example: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`.
+Sections §1–§3 are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §4 (MLX) is the exception — it builds and loads under SwiftPM but **cannot generate from `swift run`** (it needs an Xcode `.app` build for its Metal kernels); see the callout in that section.
 
 > **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
 
@@ -476,6 +477,103 @@ The same shape works for every supported HTTP provider. Swap `.ollama` for `.ope
 - `.openAI` / `.openAIResponses` / `.claude` — `requiresAPIKey == true`. Store the key in Keychain under the endpoint's `keychainAccount` (defaults to the endpoint UUID). The bootstrap path in `ManifoldKit.quickStart()` wires Keychain lookup for you; CLI consumers manage their own storage.
 - `.lmStudio` — same shape as `.openAI` against `localhost:1234`, no key required.
 - `.custom` — pass your own `baseURL`. Speaks the OpenAI Chat Completions dialect.
+
+---
+
+## 4. MLX via the `manifold-mlx` companion (Apple Silicon)
+
+MLX is ManifoldKit's fastest local backend on Apple Silicon (and the only one with on-device image generation). It ships in the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package.
+
+> [!IMPORTANT]
+> **MLX cannot generate from a plain `swift run` CLI — it needs an Xcode-built `.app`.** mlx-swift compiles its Metal kernels into a `default.metallib` that is only produced by the Xcode / `xcodebuild` build path; a bare SwiftPM executable never builds or bundles it, so MLX aborts at model load with `MLX error: Failed to load the default metallib`. Discovery, classification, registration, and the load *plan* all work under `swift run` — only the generate step fails.
+>
+> **So:** for a headless / `swift run` CLI, use the **GGUF/Llama backend (§2)** — it runs fine from SwiftPM. Reach for MLX from a **SwiftUI / Xcode app** (see [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends)), or from a CLI target built with `xcodebuild` rather than `swift run`. The recipe below is the wiring that an Xcode-built MLX target uses.
+
+**Get an MLX model first.** MLX loads a *directory* (`config.json` + `*.safetensors`), not a single file — point HuggingFace at an `mlx-community` repo and drop it under the auto-discovered `~/Documents/Models/`:
+
+```sh
+hf download mlx-community/Qwen2.5-0.5B-Instruct-4bit \
+  --local-dir ~/Documents/Models/mlx-community/Qwen2.5-0.5B-Instruct-4bit
+```
+
+**`Package.swift`** (companion-package form — see [§ Package dependency forms](#package-dependency-forms); use the local-path form for both core and companion if evaluating against a local checkout, to avoid SwiftPM's `Conflicting identity for manifoldkit` warning):
+
+```swift,no-build
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+    name: "ChatCLIMLX",
+    platforms: [.macOS(.v15)],
+    products: [
+        .executable(name: "chat-cli-mlx", targets: ["ChatCLIMLX"]),
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/roryford/ManifoldKit.git",
+            from: "0.50.0" // x-release-please-version
+        ),
+        // The MLX backend lives in the manifold-mlx companion package (v0.48).
+        .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"),
+    ],
+    targets: [
+        .executableTarget(
+            name: "ChatCLIMLX",
+            dependencies: [
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldModelCatalog", package: "ManifoldKit"),
+                .product(name: "ManifoldMLX", package: "manifold-mlx"),
+            ]
+        ),
+    ]
+)
+```
+
+**`Sources/ChatCLIMLX/main.swift`:** MLX has no `ModelInfo(mlxURL:)` factory (unlike GGUF's `ModelInfo(ggufURL:)`) — the documented way to turn an on-disk MLX directory into a loadable `ModelInfo` is **storage discovery**, which classifies each model by type:
+
+```swift,no-build
+import Foundation
+import ManifoldInference
+import ManifoldModelCatalog
+import ManifoldMLX // from manifold-mlx
+@main
+@MainActor
+struct ChatCLIMLX {
+    static func main() async throws {
+        let inference = InferenceService()
+        MLXBackends.register(with: inference)
+
+        // No ModelInfo(mlxURL:) — discover the MLX directory under
+        // ~/Documents/Models and pick the first .mlx model. discoverModels()
+        // is synchronous (no await).
+        let models = ModelStorageService().discoverModels()
+        guard let mlxModel = models.first(where: { $0.modelType == .mlx }) else {
+            FileHandle.standardError.write(Data("No MLX model found under ~/Documents/Models. Run the `hf download` above.\n".utf8))
+            return
+        }
+
+        let plan = ModelLoadPlan.compute(
+            for: mlxModel,
+            requestedContextSize: 2048,
+            strategy: .mappable
+        )
+        // NOTE: under plain `swift run` this load throws the metallib error
+        // described in the callout above — build via xcodebuild / an .app to run it.
+        try await inference.loadModel(from: mlxModel, plan: plan)
+
+        let stream = try inference.generate(messages: [("user", "Say hello in five words.")])
+        for try await event in stream.events {
+            if case .token(let text) = event {
+                print(text, terminator: "")
+                fflush(stdout)
+            }
+        }
+        print("")
+    }
+}
+```
+
+`quickStart(backends: [MLXBackends.self])` is the one-liner equivalent of the manual `MLXBackends.register(with:)` above when you're in a SwiftUI / bootstrap context — see [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends).
 
 ---
 
