@@ -392,12 +392,12 @@ public struct ToolGrammarBuilder: Sendable {
     ) {
         // Only single-sub-schema `items` is modeled; tuple-form (array of
         // schemas) or missing `items` degrades to the generic array.
-        guard case let .object? = dict["items"] else {
+        guard case .object(let items)? = dict["items"] else {
             emit(ruleName, "array")
             return
         }
         let itemRule = ctx.freshRuleName()
-        lower(dict["items"]!, into: &ctx, ruleName: itemRule, emit: emit)
+        lower(.object(items), into: &ctx, ruleName: itemRule, emit: emit)
         emit(
             ruleName,
             "\"[\" ws ( \(itemRule) ( ws \",\" ws \(itemRule) )* )? ws \"]\""
