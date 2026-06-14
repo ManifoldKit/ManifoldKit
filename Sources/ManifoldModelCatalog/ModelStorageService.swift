@@ -244,7 +244,13 @@ public final class ModelStorageService: @unchecked Sendable {
                 continue
             }
 
-            if let model = ModelInfo(mlxDirectory: url), seenIDs.insert(model.id).inserted {
+            if var model = ModelInfo(mlxDirectory: url), seenIDs.insert(model.id).inserted {
+                // MLX directories always carry a sibling config.json, so the
+                // capability probe populates detected code/multilingual flags.
+                // GGUF single files have no config.json — see
+                // ModelInfo.detectCapabilities, where configNotFound leaves the
+                // detected flags nil (curated-or-false).
+                model.detectCapabilities(fromModelDirectory: url)
                 models.append(model)
                 continue
             }
@@ -270,10 +276,11 @@ public final class ModelStorageService: @unchecked Sendable {
                 guard fileManager.fileExists(atPath: nestedURL.path, isDirectory: &nestedIsDir),
                       !isImagePackageDirectory(nestedURL),
                       nestedIsDir.boolValue,
-                      let model = ModelInfo(mlxDirectory: nestedURL, namespace: namespace),
+                      var model = ModelInfo(mlxDirectory: nestedURL, namespace: namespace),
                       seenIDs.insert(model.id).inserted else {
                     continue
                 }
+                model.detectCapabilities(fromModelDirectory: nestedURL)
                 models.append(model)
             }
         }
