@@ -417,7 +417,12 @@ final class GenerationQueue {
                 counter: counter,
                 backend: backend,
                 messages: messages,
-                systemPrompt: systemPrompt,
+                systemPrompt: Self.toolAugmentedSystemPrompt(
+                    template: selectedPromptTemplate,
+                    systemPrompt: systemPrompt,
+                    backend: backend,
+                    config: config
+                ),
                 config: config
             )
             GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: result.trimmedMessages)
@@ -439,7 +444,17 @@ final class GenerationQueue {
         if backend.capabilities.requiresPromptTemplate {
             let template = selectedPromptTemplate
             if backend.capabilities.supportsToolCalling && !config.tools.isEmpty {
-                assembledPrompt = template.format(messages: flattened, systemPrompt: systemPrompt, tools: config.tools)
+                // Templates that render `tools` natively (only `.gemma4` today)
+                // consume the array directly. Templates that discard it get the
+                // tool guidance folded into the system prompt instead (#1856) —
+                // see `toolAugmentedSystemPrompt`. Doing both would double-inject.
+                let augmentedSystemPrompt = Self.toolAugmentedSystemPrompt(
+                    template: template,
+                    systemPrompt: systemPrompt,
+                    backend: backend,
+                    config: config
+                )
+                assembledPrompt = template.format(messages: flattened, systemPrompt: augmentedSystemPrompt, tools: config.tools)
             } else {
                 assembledPrompt = template.format(messages: flattened, systemPrompt: systemPrompt)
             }
@@ -456,6 +471,44 @@ final class GenerationQueue {
             systemPrompt: effectiveSystemPrompt,
             config: config
         )
+    }
+
+    /// Folds the canonical tool-preference preamble into `systemPrompt` when the
+    /// selected prompt template does **not** render tools natively (#1856).
+    ///
+    /// `GenerationQueue` passes `config.tools` to `PromptTemplate.format(…:tools:)`
+    /// for every prompt-template backend, but only `.gemma4` consumes them — it
+    /// emits a native `<|tool>` block. Every other template (`.llama3`, `.chatML`,
+    /// `.mistral`, `.phi`, `.gemma`, `.alpaca`) silently discards the array, so a
+    /// local non-Gemma model never sees the tool definitions unless the host
+    /// hand-injects them. That hand-injection was the documented manual recipe
+    /// (docs/LOCAL-TOOL-CALLING.md, Step 1); this folds it in automatically using
+    /// the same `ToolSystemPromptBuilder.preferTools(for:)` preamble.
+    ///
+    /// Returns `systemPrompt` unchanged when: tools are empty, the backend does
+    /// not support tool calling, or the template renders tools natively (no
+    /// double-injection). Otherwise prepends the preamble — matching the
+    /// documented `preamble + "\n\n" + appSystemPrompt` shape.
+    static func toolAugmentedSystemPrompt(
+        template: PromptTemplate,
+        systemPrompt: String?,
+        backend: InferenceBackend,
+        config: GenerationConfig
+    ) -> String? {
+        guard backend.capabilities.supportsToolCalling,
+              !config.tools.isEmpty,
+              !template.rendersToolsNatively else {
+            return systemPrompt
+        }
+
+        let preamble = ToolSystemPromptBuilder.preferTools(for: config.tools)
+        // `preferTools` returns "" only when tools is empty, which is guarded
+        // above — but stay defensive so an empty preamble never strands a stray
+        // separator in front of the host's prompt.
+        guard !preamble.isEmpty else { return systemPrompt }
+
+        guard let systemPrompt, !systemPrompt.isEmpty else { return preamble }
+        return preamble + "\n\n" + systemPrompt
     }
 
     // MARK: - Generation Queue

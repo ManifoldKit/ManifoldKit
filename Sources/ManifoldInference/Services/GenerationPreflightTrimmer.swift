@@ -49,10 +49,18 @@ struct GenerationPreflightTrimmer {
         var workingMessages = messages
         var attempt = 0
 
+        // Tools that the template renders natively (only `.gemma4` today) must be
+        // forwarded so the native tool block is emitted on this path too —
+        // otherwise the local TokenCounting path silently drops them. Templates
+        // that don't render tools natively ignore the argument; their tool
+        // guidance arrives folded into `systemPrompt` by the caller (#1856).
+        let nativeTools = promptTemplate.rendersToolsNatively ? config.tools : []
+
         while true {
             let prompt = promptTemplate.format(
                 messages: GenerationHistoryInstaller.flatten(workingMessages),
-                systemPrompt: systemPrompt
+                systemPrompt: systemPrompt,
+                tools: nativeTools
             )
             let promptTokens = try counter.countTokens(prompt)
 

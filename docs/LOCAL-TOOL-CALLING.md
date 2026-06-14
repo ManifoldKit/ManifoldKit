@@ -30,9 +30,10 @@ llama.cpp envelope parser lives in the companion package
 
 For a local non-Gemma model, a working turn is:
 
-1. **You** render the tool list into the system prompt yourself, using
-   `ToolSystemPromptBuilder.preferTools(for:)`. The queue will *not* do this for
-   you (see "Step 1" — this is the #1 footgun).
+1. The queue renders the tool list into the system prompt for you (#1856), via
+   `ToolSystemPromptBuilder.preferTools(for:)`, whenever the backend supports
+   tool calling and the selected template doesn't render tools natively. You may
+   still fold your own preamble in if you want a non-default style (see "Step 1").
 2. You instruct the model to emit calls in the envelope
    `<tool_call>{"name":"…","arguments":{…}}</tool_call>`.
 3. You pass the same `tools` to `enqueue(…)` so dispatch can match and run them.
@@ -47,14 +48,12 @@ import ManifoldKit
 
 let tools: [ToolDefinition] = [weatherTool]   // your ToolDefinitions
 
-// 1. YOU render the tool list into the system prompt. The queue does not.
-let preamble = ToolSystemPromptBuilder.preferTools(for: tools)   // .standard style
-let systemPrompt = preamble + "\n\n" + "You are a helpful assistant."
-
+// 1. The queue folds the tool preamble into the system prompt for you (#1856).
+//    Just pass your plain app system prompt.
 // 2 + 3. Pass tools to enqueue. Grammar auto-applies on grammar-capable backends.
 let (_, stream) = try inferenceService.enqueue(
     messages: [.user("What's the weather in Paris?")],
-    systemPrompt: systemPrompt,
+    systemPrompt: "You are a helpful assistant.",
     tools: tools,
     toolChoice: .auto,
     maxToolIterations: 10
@@ -72,25 +71,34 @@ for try await event in stream {
 
 ---
 
-## Step 1 — Render tools into the system prompt (you do this; the queue does not)
+## Step 1 — Tools are rendered into the system prompt for you (#1856)
 
-This is the single most important fact in this guide, and the easiest to get
-wrong because it *looks* like the queue handles it.
+This used to be the #1 footgun: the queue passed `tools:` to the template but only
+`.gemma4` consumed them, so on a Llama/Qwen/Mistral model the tool descriptions
+never reached the model. **The queue now folds them in automatically.**
 
-`GenerationQueue` does call `PromptTemplate.format(messages:systemPrompt:tools:)`
-for every prompt-template backend. But **only the `.gemma4` template consumes the
-`tools` argument** — it renders a native `<|tool>` block. Every other template
-(`.llama3`, `.chatML`, `.mistral`, `.phi`, `.gemma`, `.alpaca`) **silently
-discards `tools`** and produces exactly the same prompt it would have produced
-with no tools at all.
+`GenerationQueue` calls `PromptTemplate.format(messages:systemPrompt:tools:)` for
+every prompt-template backend. Only the `.gemma4` template consumes the `tools`
+argument — it renders a native `<|tool>` block. Every other template (`.llama3`,
+`.chatML`, `.mistral`, `.phi`, `.gemma`, `.alpaca`) discards `tools`. For those
+templates the queue now prepends the `ToolSystemPromptBuilder.preferTools(for:)`
+preamble to your system prompt before formatting — so the tool descriptions reach
+the model without any host code. (`.gemma4` keeps its native block and is **not**
+double-injected.)
 
-So on a Llama/Qwen/Mistral model, if you only pass `tools:` to `enqueue(…)`, the
-model **never sees the tool definitions** — it has nothing to call, and the turn
-comes back as plain prose. `tools:` still matters (dispatch uses it to match and
-run calls, and it drives grammar derivation — Step 3), but it does **not** put
-the tool descriptions in front of the model on these templates.
+This happens when **all** of the following hold:
 
-`ManifoldInference` ships the canonical preamble for this:
+- `backend.capabilities.supportsToolCalling == true`,
+- `config.tools` is non-empty, and
+- the selected template does **not** render tools natively
+  (`PromptTemplate.rendersToolsNatively == false`).
+
+`tools:` still matters beyond the preamble: dispatch uses it to match and run
+calls, and it drives grammar derivation (Step 3).
+
+If you want a non-default preamble style (`.strict` / `.minimal`) or your own
+phrasing, you can still fold it in by hand — `ManifoldInference` ships the
+canonical builder:
 
 ```swift,no-build
 public static func preferTools(
@@ -99,10 +107,11 @@ public static func preferTools(
 ) -> String
 ```
 
-Fold it into your system prompt before enqueuing:
+Fold it into your system prompt before enqueuing (only needed for a non-default
+style — the `.standard` preamble is auto-injected):
 
 ```swift,no-build
-let preamble = ToolSystemPromptBuilder.preferTools(for: tools)
+let preamble = ToolSystemPromptBuilder.preferTools(for: tools, style: .strict)
 let systemPrompt = preamble + "\n\n" + appSpecificSystemPrompt
 ```
 
@@ -114,14 +123,16 @@ tools by emitting the appropriate tool_call in your response." In ManifoldKit's
 own product testing this lifted `llama3.1:8b` tool-recall from ~50% (no preamble)
 to 70–85%.
 
-> **Is this auto-injected?** **No — not on `main` today.**
-> `ToolSystemPromptBuilder.preferTools(for:)` has **zero pipeline call sites**;
-> the queue never calls it. Auto-injection is tracked by
-> [#1856](https://github.com/roryford/ManifoldKit/issues/1856) and is **open /
-> unwired**. Until it ships, the host must fold the preamble in by hand as shown
-> above. (Foundation Models, OpenAI, and Anthropic backends render tools
-> natively on the wire and need none of this — the manual step is specific to
-> local prompt-template backends.)
+> **Is this auto-injected?** **Yes, as of [#1856](https://github.com/roryford/ManifoldKit/issues/1856).**
+> The queue calls `ToolSystemPromptBuilder.preferTools(for:)` (`.standard` style)
+> automatically for tool-capable backends whose template doesn't render tools
+> natively, prepending it to your system prompt. You no longer need to fold the
+> preamble in by hand for the default behaviour — supply only your app system
+> prompt. Hand-folding is still supported and is the way to opt into `.strict` /
+> `.minimal` styles or your own phrasing (it stacks on top of, not instead of,
+> your app prompt). (Foundation Models, OpenAI, and Anthropic backends render
+> tools natively on the wire and need none of this — auto-injection is specific
+> to local prompt-template backends.)
 
 The `.strict` style additionally tells the model to say "I don't have a tool for
 that" rather than guessing — use it for agent workflows that branch on tool
@@ -240,10 +251,14 @@ full chat orchestration, `ConversationRuntime.send`) is the entry point. Pass th
 These are the real, observable failure modes on `main`. Several produce **no
 event at all**, which is why "my tool never fires" is hard to debug.
 
-1. **Tools never rendered → model emits prose.** The most common one. You passed
-   `tools:` to `enqueue` but did *not* fold `ToolSystemPromptBuilder.preferTools`
-   into the system prompt. On a non-Gemma template the model never saw the tools,
-   so it answers in plain text. Fix: Step 1.
+1. **Tools never rendered → model emits prose.** *Largely closed by
+   [#1856](https://github.com/roryford/ManifoldKit/issues/1856).* This was the
+   most common failure when the host had to fold the preamble in by hand and
+   forgot. The queue now auto-injects `ToolSystemPromptBuilder.preferTools` for
+   tool-capable backends whose template doesn't render tools natively, so passing
+   `tools:` to `enqueue` is enough. It can still surface if the backend reports
+   `supportsToolCalling == false` (see #5) or you pin a release predating #1856 —
+   in that case fold the preamble in manually (Step 1).
 
 2. **Malformed body → silent drop (no event).** If the body between
    `<tool_call>`…`</tool_call>` isn't valid JSON, or has a missing/empty
