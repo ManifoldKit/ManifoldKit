@@ -374,6 +374,17 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
                 return String(n) as? ID
             }
             return nil
+        case .integer(let i):
+            // Whole-number ids arrive here with full int64 precision intact.
+            if ID.self == Int.self { return Int(exactly: i) as? ID }
+            if ID.self == Int32.self { return Int32(exactly: i) as? ID }
+            if ID.self == Int64.self { return i as? ID }
+            if ID.self == UInt.self { return UInt(exactly: i) as? ID }
+            if ID.self == UInt32.self { return UInt32(exactly: i) as? ID }
+            if ID.self == UInt64.self { return UInt64(exactly: i) as? ID }
+            if ID.self == Double.self { return Double(i) as? ID }
+            if ID.self == String.self { return String(i) as? ID }
+            return nil
         default:
             return nil
         }
@@ -384,6 +395,7 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         switch idValue {
         case .string(let s): "\"\(s)\""
         case .number(let n): String(n)
+        case .integer(let i): String(i)
         case .bool(let b): String(b)
         case .null: "null"
         case .array, .object: String(describing: idValue)
