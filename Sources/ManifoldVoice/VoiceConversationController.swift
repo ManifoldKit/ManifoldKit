@@ -12,6 +12,11 @@ public final class VoiceConversationController {
     public private(set) var errorMessage: String?
     public private(set) var isSpeaking: Bool = false
 
+    /// Voice/rate/pitch/language applied to spoken utterances. Defaults to
+    /// `SpeechOptions()` (system voice, default rate) for source-compatible
+    /// behaviour; set it to control continuous read-aloud.
+    @ObservationIgnored public var speechOptions: SpeechOptions = SpeechOptions()
+
     @ObservationIgnored private let transcriber: any SpeechTranscribing
     @ObservationIgnored private let synthesizer: any SpeechSynthesizing
     @ObservationIgnored private let wakeWordDetector: (any WakeWordDetector)?
@@ -19,6 +24,7 @@ public final class VoiceConversationController {
     @ObservationIgnored private let toastSleeper: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
     @ObservationIgnored private var wakeWordDismissTask: Task<Void, Never>?
+    @ObservationIgnored private var activeUtterances = 0
 
     public init(
         transcriber: (any SpeechTranscribing)? = nil,
@@ -170,32 +176,54 @@ public final class VoiceConversationController {
             return
         }
 
+        startPlayback(of: trimmed, enqueue: false)
+    }
+
+    /// Append `text` to the speech queue for continuous read-aloud of a sequence
+    /// of items. Unlike `togglePlayback`, this does not cancel the in-flight
+    /// utterance — successive calls play in order.
+    public func enqueueReadback(of text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        startPlayback(of: trimmed, enqueue: true)
+    }
+
+    private func startPlayback(of trimmed: String, enqueue: Bool) {
         errorMessage = nil
-        playbackTask?.cancel()
+        if !enqueue {
+            playbackTask?.cancel()
+            activeUtterances = 0
+        }
+        activeUtterances += 1
         isSpeaking = true
 
-        playbackTask = Task { [weak self] in
+        let options = speechOptions
+        // Each utterance owns its own task so an enqueued readback survives the
+        // previous one completing; the most recent task is tracked for cancel.
+        let task = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.synthesizer.speak(trimmed)
+                try await self.synthesizer.speak(trimmed, options: options, enqueue: enqueue)
             } catch is CancellationError {
             } catch {
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                }
+                self.errorMessage = error.localizedDescription
             }
 
-            await MainActor.run {
+            self.activeUtterances = max(0, self.activeUtterances - 1)
+            if self.activeUtterances == 0 {
                 self.isSpeaking = false
                 self.playbackTask = nil
             }
         }
+        playbackTask = task
     }
 
     public func stopSpeaking() {
         synthesizer.stopSpeaking()
         playbackTask?.cancel()
         playbackTask = nil
+        activeUtterances = 0
         isSpeaking = false
     }
 

@@ -185,26 +185,33 @@ private final class MockSpeechTranscriber: SpeechTranscribing {
 }
 
 @MainActor
-private final class MockSpeechSynthesizer: SpeechSynthesizing {
+final class MockSpeechSynthesizer: SpeechSynthesizing {
     var spokenTexts: [String] = []
+    var spokenOptions: [SpeechOptions] = []
+    var spokenEnqueueFlags: [Bool] = []
     var stopCalls = 0
     var shouldSuspend = false
-    private var continuation: CheckedContinuation<Void, Error>?
+    private var continuations: [CheckedContinuation<Void, Error>] = []
 
-    func speak(_ text: String) async throws {
+    func speak(_ text: String, options: SpeechOptions, enqueue: Bool) async throws {
         spokenTexts.append(text)
+        spokenOptions.append(options)
+        spokenEnqueueFlags.append(enqueue)
 
         if shouldSuspend {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                self.continuation = continuation
+                self.continuations.append(continuation)
             }
         }
     }
 
     func stopSpeaking() {
         stopCalls += 1
-        continuation?.resume(throwing: CancellationError())
-        continuation = nil
+        let pending = continuations
+        continuations.removeAll()
+        for continuation in pending {
+            continuation.resume(throwing: CancellationError())
+        }
     }
 }
 
