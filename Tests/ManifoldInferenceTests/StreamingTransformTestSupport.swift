@@ -11,8 +11,11 @@ import ManifoldInference
 struct ThinkingParser {
     private var transform: ThinkingTransform
 
-    init(markers: ThinkingMarkers = .qwen3) {
-        self.transform = ThinkingTransform(markers: markers)
+    init(markers: ThinkingMarkers = .qwen3, trimLeadingNewlineAfterClose: Bool = false) {
+        self.transform = ThinkingTransform(
+            markers: markers,
+            trimLeadingNewlineAfterClose: trimLeadingNewlineAfterClose
+        )
     }
 
     var markers: ThinkingMarkers { transform.markers }
