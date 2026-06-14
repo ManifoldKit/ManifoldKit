@@ -82,12 +82,60 @@ public protocol SpeechTranscribing: AnyObject {
     func cancelTranscribing()
 }
 
+/// Voice/rate/pitch/language controls for a single spoken utterance.
+///
+/// A default-initialised `SpeechOptions()` reproduces the historical behaviour:
+/// system-default voice, default speech rate, no pitch adjustment.
+///
+/// - `rate`: Apple's `AVSpeechUtterance.rate`, valid in the range
+///   `AVSpeechUtteranceMinimumSpeechRate ... AVSpeechUtteranceMaximumSpeechRate`
+///   around `AVSpeechUtteranceDefaultSpeechRate`. `nil` uses the default.
+/// - `pitchMultiplier`: `AVSpeechUtterance.pitchMultiplier`, valid in `0.5 ... 2.0`
+///   (1.0 is normal pitch). `nil` leaves the system default.
+/// - `voiceIdentifier`: an `AVSpeechSynthesisVoice` identifier; `nil` falls back to
+///   `locale` (if set) or the system default.
+/// - `locale`: a BCP-47 language code (for example `"en-US"`) used to pick a voice
+///   when `voiceIdentifier` is `nil`.
+public struct SpeechOptions: Sendable, Equatable {
+    public var voiceIdentifier: String?
+    public var rate: Float?
+    public var pitchMultiplier: Float?
+    public var locale: String?
+
+    public init(
+        voiceIdentifier: String? = nil,
+        rate: Float? = nil,
+        pitchMultiplier: Float? = nil,
+        locale: String? = nil
+    ) {
+        self.voiceIdentifier = voiceIdentifier
+        self.rate = rate
+        self.pitchMultiplier = pitchMultiplier
+        self.locale = locale
+    }
+}
+
 public protocol SpeechSynthesizing: AnyObject {
+    /// Speak `text` with the given `options`.
+    ///
+    /// - Parameter enqueue: when `false` (the historical behaviour) any in-flight
+    ///   utterance is cancelled and replaced. When `true` the utterance is appended
+    ///   to the queue and plays after the current one finishes — the basis for
+    ///   continuous read-aloud of a sequence of items.
     @MainActor
-    func speak(_ text: String) async throws
+    func speak(_ text: String, options: SpeechOptions, enqueue: Bool) async throws
 
     @MainActor
     func stopSpeaking()
+}
+
+public extension SpeechSynthesizing {
+    /// Source-compatible shim for the original single-string API: replace mode,
+    /// default options.
+    @MainActor
+    func speak(_ text: String) async throws {
+        try await speak(text, options: SpeechOptions(), enqueue: false)
+    }
 }
 
 public protocol WakeWordDetector: AnyObject {
