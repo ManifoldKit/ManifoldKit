@@ -1,7 +1,10 @@
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 /// Parameterised smoke test across every `InferenceBackend` conformer the test
 /// can construct. Each backend is invoked through `loadModel(from:plan:)` with

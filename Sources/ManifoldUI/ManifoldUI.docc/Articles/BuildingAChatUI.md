@@ -34,7 +34,9 @@ Hold the bootstrap and view models in `@State` on the App, populate them inside 
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldPersistenceSwiftData
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 import ManifoldUI
 import SwiftData
 import SwiftUI
@@ -87,8 +89,9 @@ struct MyApp: App {
             //    bootstrap's shared InferenceService. `ManifoldBootstrap`
             //    constructs one for you; reuse it so both view models see
             //    the same backend registry.
-            DefaultBackends.register(with: bootstrap.inferenceService)
-
+            OllamaBackends.register(with: bootstrap.inferenceService)
+            CloudSaaSBackends.register(with: bootstrap.inferenceService)
+            FoundationBackends.register(with: bootstrap.inferenceService)
             // 3. Build the two view models. `ManifoldBootstrap` conforms to
             //    `ChatRuntimeBootstrap`, so the same value satisfies both
             //    `configure(bootstrap:)` calls below.
@@ -310,7 +313,9 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 import ManifoldUI
 
 @main
@@ -343,8 +348,9 @@ struct ModernApp: App {
         )
         for await _ in progress { }
         guard let bootstrap = try? await task.value else { return }
-        DefaultBackends.register(with: bootstrap.inferenceService)
-
+        OllamaBackends.register(with: bootstrap.inferenceService)
+        CloudSaaSBackends.register(with: bootstrap.inferenceService)
+        FoundationBackends.register(with: bootstrap.inferenceService)
         let chatVM = ChatViewModel(
             inferenceService: bootstrap.inferenceService,
             conversationRuntime: bootstrap.conversationRuntime

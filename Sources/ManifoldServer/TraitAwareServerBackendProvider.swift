@@ -1,6 +1,7 @@
 #if Server
 import ArgumentParser
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
 import ManifoldInference
 import Foundation
 
@@ -30,7 +31,7 @@ internal struct ServerBackendSelection: Equatable, Sendable {
         self.ollamaBaseURL = ollamaBaseURL
     }
 
-    internal func validate(compiledBackends: CompiledBackends = DefaultBackends.compiledBackends) throws {
+    internal func validate(compiledBackends: CompiledBackends = .current) throws {
         switch backend {
         case .mlx:
             try requireLocal(.mlx, compiledBackends: compiledBackends)
@@ -87,7 +88,7 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
 
     internal init(
         selection: ServerBackendSelection,
-        compiledBackends: CompiledBackends = DefaultBackends.compiledBackends,
+        compiledBackends: CompiledBackends = .current,
         loadedModelID: String? = nil
     ) {
         self.selection = selection

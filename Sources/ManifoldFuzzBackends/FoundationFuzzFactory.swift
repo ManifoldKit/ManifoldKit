@@ -1,6 +1,6 @@
 #if canImport(FoundationModels)
 import Foundation
-import ManifoldBackends
+import ManifoldFoundation
 import ManifoldFuzz
 import ManifoldInference
 

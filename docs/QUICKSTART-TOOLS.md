@@ -53,7 +53,9 @@ Wire the registry into an `InferenceService` at init time:
 
 ```swift,no-build
 let inference = InferenceService(toolRegistry: registry)
-DefaultBackends.register(with: inference)
+OllamaBackends.register(with: inference)
+CloudSaaSBackends.register(with: inference)
+FoundationBackends.register(with: inference)
 ```
 
 The coordinator re-reads the registry on every turn, so you can `register(_:)` more tools later through `inference.toolRegistry` (a get-only accessor returning the same instance). The registry property cannot be reassigned after init — pass the populated registry to the initializer.

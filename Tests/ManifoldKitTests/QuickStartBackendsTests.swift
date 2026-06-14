@@ -65,7 +65,9 @@ final class QuickStartBackendsTests: XCTestCase {
     /// defaults first — skip honestly instead of asserting a vacuous pass.
     private var buildHasCompiledInGGUFBackend: Bool {
         let probe = InferenceService()
-        DefaultBackends._register(with: probe)
+        for registrar in ManifoldKit.defaultBackendRegistrars {
+            registrar.register(with: probe)
+        }
         return probe.registeredBackendSnapshot().supportsGGUF
     }
 

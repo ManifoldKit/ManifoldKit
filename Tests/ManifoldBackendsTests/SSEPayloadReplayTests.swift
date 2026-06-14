@@ -1,6 +1,5 @@
 import XCTest
-@testable import ManifoldBackends
-@testable import ManifoldCloud
+@testable import ManifoldFoundation
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
 @testable import ManifoldOllama

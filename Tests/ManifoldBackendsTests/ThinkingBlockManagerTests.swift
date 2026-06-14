@@ -1,6 +1,8 @@
 import XCTest
 import ManifoldInference
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
 @testable import ManifoldCloudCore
 
 /// Unit tests for `ThinkingBlockManager` — the open/flush primitive that the

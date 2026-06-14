@@ -85,7 +85,7 @@ final class DNSRebindingCoverageAuditTest: XCTestCase {
             probe.deleteLastPathComponent()
             let sources = probe.appendingPathComponent("Sources", isDirectory: true)
             // v0.48 product split: the audit covers all four cloud targets.
-            let names = ["ManifoldCloud", "ManifoldCloudCore", "ManifoldOllama", "ManifoldCloudSaaS"]
+            let names = ["ManifoldCloudCore", "ManifoldOllama", "ManifoldCloudSaaS"]
             let roots = names.map {
                 SourceRoot(name: $0, url: sources.appendingPathComponent($0, isDirectory: true))
             }

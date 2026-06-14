@@ -1,6 +1,9 @@
 import XCTest
 import ManifoldInference
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 final class BackendVisionCapabilityTests: XCTestCase {
     func test_llamaVisionGate_staysFalseUntilImageEmbeddingIsImplemented() {

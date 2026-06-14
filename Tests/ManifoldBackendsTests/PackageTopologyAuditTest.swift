@@ -65,49 +65,49 @@ final class PackageTopologyAuditTest: XCTestCase {
         }
     }
 
-    func test_umbrellaTargetHostsRegistrarsNotBackends() {
+    /// P7 retired the `ManifoldBackends` umbrella and the `ManifoldCloud` shim.
+    /// Their source directories must be gone, and the relocated glue must live
+    /// in the family targets:
+    ///   - `FoundationBackends` → `Sources/ManifoldFoundation/`
+    ///   - `DefaultWebSearchRuntime` → `Sources/ManifoldCloudCore/`
+    /// `DefaultBackends` / `CloudBackends` were dropped entirely (replaced by an
+    /// explicit registrar fold in `ManifoldKit.defaultBackendRegistrars`).
+    func test_retiredShimDirectories_areGone() {
         let fm = FileManager.default
-        let umbrella = sourcesRoot.appendingPathComponent("ManifoldBackendsUmbrella")
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: umbrella.path, isDirectory: &isDir), isDir.boolValue else {
-            XCTFail("Sources/ManifoldBackendsUmbrella/ missing — the umbrella shim was deleted or renamed")
-            return
-        }
-
-        // Files that MUST live in the umbrella (cross-family glue).
-        for name in [
-            "Exports.swift",
-            "DefaultBackends.swift",
-            // MLXBackends.swift / LlamaBackends.swift moved to the
-            // manifold-mlx / manifold-llama companion packages (v0.48, PR C2).
-            "FoundationBackends.swift",
-            "CloudBackends.swift",
-        ] {
-            let path = umbrella.appendingPathComponent(name)
-            XCTAssertTrue(
-                fm.fileExists(atPath: path.path),
-                "Sources/ManifoldBackendsUmbrella/\(name) missing — umbrella glue regressed"
+        for retired in ["ManifoldBackendsUmbrella", "ManifoldCloud"] {
+            let dir = sourcesRoot.appendingPathComponent(retired)
+            XCTAssertFalse(
+                fm.fileExists(atPath: dir.path),
+                "Sources/\(retired)/ reappeared — the P7 shim retirement regressed"
             )
         }
+    }
 
-        // Files that MUST NOT live in the umbrella (they belong in family
-        // targets — or, for MLX/Llama since PR C2, in the companion packages).
-        for forbidden in [
-            "MLXBackend.swift",
-            "LlamaBackend.swift",
-            "MLXBackends.swift",
-            "LlamaBackends.swift",
-            "FoundationBackend.swift",
-            "ClaudeBackend.swift",
-            "OpenAIBackend.swift",
-            "OllamaBackend.swift",
-            "SSECloudBackend.swift",
-            "PinnedSessionDelegate.swift",
-        ] {
-            let path = umbrella.appendingPathComponent(forbidden)
-            XCTAssertFalse(
-                fm.fileExists(atPath: path.path),
-                "Sources/ManifoldBackendsUmbrella/\(forbidden) reappeared — file should live in its family target, not the umbrella"
+    func test_relocatedGlue_livesInFamilyTargets() {
+        let fm = FileManager.default
+
+        let foundationRegistrar = sourcesRoot
+            .appendingPathComponent("ManifoldFoundation")
+            .appendingPathComponent("FoundationBackends.swift")
+        XCTAssertTrue(
+            fm.fileExists(atPath: foundationRegistrar.path),
+            "FoundationBackends.swift must live in Sources/ManifoldFoundation/ after the P7 relocation"
+        )
+
+        let webSearch = sourcesRoot
+            .appendingPathComponent("ManifoldCloudCore")
+            .appendingPathComponent("DefaultWebSearchRuntime.swift")
+        XCTAssertTrue(
+            fm.fileExists(atPath: webSearch.path),
+            "DefaultWebSearchRuntime.swift must live in Sources/ManifoldCloudCore/ after the P7 relocation"
+        )
+
+        // The dropped umbrella registrars must not reappear anywhere.
+        for dropped in ["DefaultBackends.swift", "CloudBackends.swift"] {
+            let hits = recursiveFind(named: dropped, under: sourcesRoot, fileManager: fm)
+            XCTAssertTrue(
+                hits.isEmpty,
+                "\(dropped) reappeared — DefaultBackends/CloudBackends were dropped in P7 in favour of an explicit registrar fold. Found at: \(hits.map(\.path))"
             )
         }
     }
@@ -119,8 +119,8 @@ final class PackageTopologyAuditTest: XCTestCase {
         // ManifoldMLX / ManifoldLlama left for the companion packages
         // (v0.48, PR C2, #1749).
         "ManifoldFoundation",
-        "ManifoldCloud",
-        "ManifoldBackendsUmbrella",
+        "ManifoldOllama",
+        "ManifoldCloudSaaS",
     ]
 
     private func recursiveFind(named filename: String, under root: URL, fileManager fm: FileManager) -> [URL] {
