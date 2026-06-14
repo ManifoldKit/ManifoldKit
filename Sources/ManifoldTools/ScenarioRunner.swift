@@ -111,6 +111,12 @@ public final class ScenarioRunner {
                     // Multi-agent handoffs are runtime-driven; deterministic
                     // single-agent replays never observe them.
                     continue
+                case .generationCompleted:
+                    // Terminal "response finished" marker. ScenarioRunner
+                    // accumulates text directly and detects stable state via
+                    // empty tool-calls below; the completion event is purely
+                    // observational here.
+                    continue
                 }
             }
 

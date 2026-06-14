@@ -80,6 +80,14 @@ public struct GenerationStreamConsumer: Sendable {
             // emission upstream. Surfacing it as a typed action lets the
             // executor pattern-match without re-inspecting raw events.
             return .recordHandoff(handoff)
+
+        case .generationCompleted(let completion):
+            // Terminal "response finished" signal. The consumer has no
+            // text/tool state to mutate — it is surfaced as a typed action
+            // so UI / accessibility executors can post a single "finished"
+            // announcement without racing the stream's finish against phase
+            // observation.
+            return .generationCompleted(completion)
         }
     }
 
@@ -125,6 +133,11 @@ public struct GenerationStreamConsumer: Sendable {
         /// pattern-match exhaustive without forcing the consumer to know
         /// about session state.
         case recordHandoff(AgentHandoff)
+        /// The orchestrator emitted the terminal "response finished" signal.
+        /// Surfaced so UI / accessibility consumers can post a single
+        /// completion announcement in-band without racing the stream's
+        /// finish against `phase == .done`.
+        case generationCompleted(GenerationCompletion)
         /// The backend reused a KV-cache prefix from the previous turn; no UI action needed.
         case ignore
     }

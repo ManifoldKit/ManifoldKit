@@ -77,7 +77,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
              .toolCallStart, .toolCallArgumentsDelta,
              .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved,
              .prefillProgress, .toolProgress,
-             .handoffRequested:
+             .handoffRequested, .generationCompleted:
             return nil
         }
     }

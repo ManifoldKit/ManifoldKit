@@ -156,6 +156,8 @@ enum BackendSeamConsumer {
             _ = (callId, ms, kind)
         case .handoffRequested(let handoff):
             _ = handoff
+        case .generationCompleted(let completion):
+            _ = completion.reason
         }
     }
 

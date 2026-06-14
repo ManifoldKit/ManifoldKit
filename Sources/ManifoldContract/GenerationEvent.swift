@@ -225,6 +225,72 @@ public enum GenerationEvent: Sendable, Equatable {
     /// configured with a session-aware handoff detector; backends never emit
     /// this case directly.
     case handoffRequested(AgentHandoff)
+
+    /// Terminal "response finished" signal, emitted by the orchestrator exactly
+    /// once per turn as the **last** event before the generation stream finishes.
+    ///
+    /// Today completion is observable only by the `AsyncThrowingStream` finishing
+    /// or by polling `phase == .done`, which is awkward to race against the event
+    /// iterator. This case gives UI / accessibility layers a single in-band
+    /// "finished" signal they can drive a "response complete" announcement off of
+    /// without racing the iterator against phase observation.
+    ///
+    /// Emitted by the orchestration layer in `ManifoldInference` (the same layer
+    /// that emits ``toolDispatchStarted(callId:name:attempt:)`` and
+    /// ``toolIterationLimitExceeded(iterations:)``), **not** by individual
+    /// backends — companion backend families (MLX, llama.cpp) never emit it. The
+    /// payload's ``GenerationCompletion/reason`` classifies why the turn ended;
+    /// it is carried as a struct (per the "Vocabulary freeze (1.0)" note above)
+    /// so future completion metadata can grow through defaulted initializer
+    /// parameters without breaking exhaustive consumers.
+    case generationCompleted(GenerationCompletion)
+}
+
+/// Payload for ``GenerationEvent/generationCompleted(_:)``.
+///
+/// Kept as a struct rather than a bare enum parameter so future additive
+/// completion metadata (final token counts, stop-sequence text, finish
+/// timestamps) can grow through defaulted initializer parameters without forcing
+/// every consumer that already handles `.generationCompleted(let completion)` to
+/// rewrite its pattern — see the "Vocabulary freeze (1.0)" note on
+/// ``GenerationEvent``.
+public struct GenerationCompletion: Sendable, Equatable {
+    /// Why the turn ended.
+    ///
+    /// Modelled as a nested enum so the reason vocabulary is closed and
+    /// exhaustively switchable by consumers that want to differentiate, for
+    /// example, a budget hit from an organic stop.
+    public enum Reason: Sendable, Equatable {
+        /// The model reached a natural end of generation (stop token / organic
+        /// completion). This is the default when no more specific reason applies.
+        case stop
+
+        /// Generation stopped because it hit the token / length limit.
+        ///
+        /// Only emitted where the orchestrator genuinely has length-stop
+        /// information; otherwise an organic stop is reported as ``stop``.
+        case length
+
+        /// The orchestrator terminated a tool-dispatch loop because the
+        /// per-request iteration budget (``GenerationConfig/maxToolIterations``)
+        /// was reached. Pairs with the
+        /// ``GenerationEvent/toolIterationLimitExceeded(iterations:)`` event
+        /// emitted earlier in the same turn.
+        case toolIterationLimit
+
+        /// Generation was cancelled (cooperative cancellation of the turn).
+        case cancelled
+
+        /// Generation terminated because an error was thrown during the turn.
+        case error
+    }
+
+    /// Why the turn ended.
+    public let reason: Reason
+
+    public init(reason: Reason = .stop) {
+        self.reason = reason
+    }
 }
 
 /// Payload for ``GenerationEvent/toolProgress(_:)``.
