@@ -247,8 +247,9 @@ public final class ModelStorageService: @unchecked Sendable {
             if var model = ModelInfo(mlxDirectory: url), seenIDs.insert(model.id).inserted {
                 // MLX directories always carry a sibling config.json, so the
                 // capability probe populates detected code/multilingual flags.
-                // GGUF single files have no config.json — see ModelInfo.load,
-                // where the detected flags stay nil (curated-or-false).
+                // GGUF single files have no config.json — see
+                // ModelInfo.detectCapabilities, where configNotFound leaves the
+                // detected flags nil (curated-or-false).
                 model.detectCapabilities(fromModelDirectory: url)
                 models.append(model)
                 continue
