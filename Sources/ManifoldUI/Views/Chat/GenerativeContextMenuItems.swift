@@ -35,8 +35,10 @@ public struct GenerativeContextMenuItems: View {
     private var text: String { message.content }
 
     /// The first generated image in the message's content parts, if any.
-    private var generatedImage: ImageMessagePayload? {
-        message.contentParts.compactMap(\.generatedImageContent).first
+    private var generatedImage: GeneratedMediaPayload? {
+        message.contentParts
+            .compactMap(\.generatedMediaContent)
+            .first { $0.kind == .image }
     }
 
     // MARK: - Body

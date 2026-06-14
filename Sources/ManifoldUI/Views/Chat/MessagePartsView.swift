@@ -100,10 +100,8 @@ struct MessagePartsView: View {
                 key = nextKey(for: "image", in: &ordinals)
             case .audio:
                 key = nextKey(for: "audio", in: &ordinals)
-            case .generatedImage:
-                key = nextKey(for: "generatedImage", in: &ordinals)
-            case .generatedVideo:
-                key = nextKey(for: "generatedVideo", in: &ordinals)
+            case .generatedMedia(let media):
+                key = nextKey(for: "generatedMedia:\(media.kind.rawValue)", in: &ordinals)
             }
             return KeyedPart(key: key, part: part)
         }
@@ -155,11 +153,47 @@ struct MessagePartsView: View {
                 )
             }
 
-        case .generatedImage(let payload):
-            generatedImageView(payload)
+        case .generatedMedia(let media):
+            generatedMediaView(media)
+        }
+    }
 
-        case .generatedVideo(let payload):
-            generatedVideoView(payload)
+    @ViewBuilder
+    private func generatedMediaView(_ media: GeneratedMediaPayload) -> some View {
+        // Dispatch on the collapsed media kind. Image/video reuse the existing
+        // per-modality helpers via the lossless legacy bridges; audio (and any
+        // future modality without a dedicated view) degrades to a labelled
+        // file-presence row.
+        switch media.kind {
+        case .image:
+            if let payload = media.asImagePayload {
+                generatedImageView(payload)
+            } else {
+                generatedMediaFallback(media)
+            }
+        case .video:
+            if let payload = media.asVideoPayload {
+                generatedVideoView(payload)
+            } else {
+                generatedMediaFallback(media)
+            }
+        case .audio:
+            generatedMediaFallback(media)
+        }
+    }
+
+    @ViewBuilder
+    private func generatedMediaFallback(_ media: GeneratedMediaPayload) -> some View {
+        // Hosts that want a richer renderer (e.g. an audio player) should read
+        // `media.url` directly; the runtime ships no first-party player view.
+        if FileManager.default.fileExists(atPath: media.url.path) {
+            Text(media.prompt)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Media file not found")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

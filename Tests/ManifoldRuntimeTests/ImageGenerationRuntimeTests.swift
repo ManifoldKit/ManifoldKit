@@ -271,10 +271,11 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.id, messageID)
         XCTAssertEqual(stored.first?.contentParts.count, 1)
-        guard case .generatedImage(let storedPayload) = stored.first?.contentParts.first else {
-            return XCTFail("Expected stored part to be .generatedImage")
+        guard case .generatedMedia(let storedPayload) = stored.first?.contentParts.first else {
+            return XCTFail("Expected stored part to be .generatedMedia")
         }
-        XCTAssertEqual(storedPayload.imageURL, imageURL)
+        XCTAssertEqual(storedPayload.kind, .image)
+        XCTAssertEqual(storedPayload.url, imageURL)
     }
 
     // MARK: - Test 1b: Preview events round-trip through runtime translation
@@ -352,10 +353,11 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         let stored = try await store.fetchMessages(for: sessionID)
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.contentParts.count, 1)
-        guard case .generatedImage(let storedPayload) = stored.first?.contentParts.first else {
-            return XCTFail("Expected stored part to be .generatedImage")
+        guard case .generatedMedia(let storedPayload) = stored.first?.contentParts.first else {
+            return XCTFail("Expected stored part to be .generatedMedia")
         }
-        XCTAssertEqual(storedPayload.imageURL, imageURL)
+        XCTAssertEqual(storedPayload.kind, .image)
+        XCTAssertEqual(storedPayload.url, imageURL)
     }
 
     // MARK: - Test 2: Generate without loaded model

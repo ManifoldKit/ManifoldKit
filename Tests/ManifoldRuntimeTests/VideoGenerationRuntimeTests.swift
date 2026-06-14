@@ -242,10 +242,11 @@ final class VideoGenerationRuntimeTests: XCTestCase {
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.id, messageID)
         XCTAssertEqual(stored.first?.contentParts.count, 1)
-        guard case .generatedVideo(let storedPayload) = stored.first?.contentParts.first else {
-            return XCTFail("Expected stored part to be .generatedVideo")
+        guard case .generatedMedia(let storedPayload) = stored.first?.contentParts.first else {
+            return XCTFail("Expected stored part to be .generatedMedia")
         }
-        XCTAssertEqual(storedPayload.videoURL, videoURL)
+        XCTAssertEqual(storedPayload.kind, .video)
+        XCTAssertEqual(storedPayload.url, videoURL)
         XCTAssertEqual(storedPayload.modelIdentifier, "test-cloud-model")
     }
 
