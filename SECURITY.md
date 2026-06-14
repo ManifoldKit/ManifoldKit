@@ -71,7 +71,7 @@ resolves them. The build modes map to product graphs (see
 **Guarantees** (enforced by [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
 and the import-graph rule in the same audit):
 
-- No `Sources/ManifoldBackends/Cloud/*` symbols are reachable.
+- No cloud backend symbols (`Sources/ManifoldCloudSaaS/*`, `Sources/ManifoldCloudCore/*`) are reachable.
 - No `OllamaBackend`, `ClaudeBackend`, or `OpenAIBackend` is registered.
 - No hostname literal pointing to `api.openai.com`, `api.anthropic.com`,
   or any third-party SaaS endpoint is reachable from app code.

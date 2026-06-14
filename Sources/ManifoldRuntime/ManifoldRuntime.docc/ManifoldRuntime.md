@@ -12,7 +12,7 @@ Persistence-port protocols and the turn-loop orchestration shell that sits betwe
 - **Session-scoped tool contributors** — ``SessionToolSource``, ``HandoffToolSource``, plus the contract mixins consumers can use to ship their own.
 - **Synchronous hooks** — ``HookRegistry``, ``HookEvent``, ``HookInput``, ``HookOutput`` — the host-mutation seam at `preToolUse` and `preCompact` decision points.
 
-The four backend family targets (`ManifoldMLX`, `ManifoldLlama`, `ManifoldFoundation`, `ManifoldCloud`) and `ManifoldMCP` deliberately do **not** depend on `ManifoldRuntime` — they stay session-free. Persistence-aware orchestration lives here.
+The backend family targets (`ManifoldFoundation`, `ManifoldOllama`, `ManifoldCloudSaaS` in core; `ManifoldMLX` / `ManifoldLlama` in the companion packages) and `ManifoldMCP` deliberately do **not** depend on `ManifoldRuntime` — they stay session-free. (`ManifoldCloudCore` is the one exception: it depends on `ManifoldRuntime` for `DefaultWebSearchRuntime`'s `WebSearchRuntime` port conformance, relocated there when the `ManifoldCloud` shim was retired in P7.) Persistence-aware orchestration lives here.
 
 ## When to use this module
 
@@ -33,7 +33,7 @@ Import `ManifoldRuntime` directly when:
 
 `ConversationRuntime` is named for its most common use case but is best understood as a **session-scoped turn-loop shell**: it persists writes, assembles context, calls an ``InferenceBackend``, streams events, and tears down on cancel. Anything that fits that shape — interactive agents, classification pipelines that need to record prompts, voice-driven flows, image-generation runs (see ``ImageGenerationRuntime``) — can sit on top of these ports without dragging in `ChatView`. The "chat" word in the surface area names is historical; the orchestration shell is general.
 
-Sibling runtime ports cover non-text surfaces: ``ImageGenerationRuntime`` and ``VideoGenerationRuntime`` insert a placeholder message and drive a progress event stream, while ``WebSearchRuntime`` is request/response — it returns search-result text so a tool can hand it straight back to the model. All three are abstractions here in `ManifoldRuntime`; their concrete network-touching implementations live above the UI layer (e.g. `DefaultWebSearchRuntime` in `ManifoldCloud`), keeping `ManifoldUI` free of backend-family and `URLSession` imports.
+Sibling runtime ports cover non-text surfaces: ``ImageGenerationRuntime`` and ``VideoGenerationRuntime`` insert a placeholder message and drive a progress event stream, while ``WebSearchRuntime`` is request/response — it returns search-result text so a tool can hand it straight back to the model. All three are abstractions here in `ManifoldRuntime`; their concrete network-touching implementations live in the backend layer (e.g. `DefaultWebSearchRuntime` in `ManifoldCloudCore`), keeping `ManifoldUI` free of backend-family and `URLSession` imports.
 
 ## The 3–5 most-used types
 
