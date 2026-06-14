@@ -81,6 +81,28 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertNil(result, "nameContains matching nothing must not fall back to another model")
     }
 
+    func test_findGGUFModel_envOverrideMissingWins_evenWhenNameContainsWouldMatch() {
+        // Precedence lock: when the env key is present it pins the model. An
+        // env miss must return nil even if the `nameContains` argument would
+        // have matched — the env override is the higher-priority "pin a
+        // specific model" request, so a miss skips rather than running the
+        // arg-selected model.
+        _ = createGGUFFile("alpha.gguf", size: 12)
+        _ = createGGUFFile("mistral-7b.gguf", size: 4)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "mistral",
+            environment: ["LLAMA_TEST_MODEL": "missing"],
+            minimumModelSize: 1
+        )
+
+        XCTAssertNil(
+            result,
+            "Env override miss must win over a matching nameContains arg (env pins the model)"
+        )
+    }
+
     func test_findGGUFModel_nameContainsMatching_returnsThatModel() {
         _ = createGGUFFile("alpha.gguf", size: 12)
         let mistral = createGGUFFile("mistral-7b.gguf", size: 4)
