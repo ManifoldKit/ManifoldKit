@@ -202,6 +202,10 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     // Cooperative thermal pause — informational only;
                     // raw backend replay neither emits nor projects it.
                     break
+                case .toolCallParseFailed, .toolCallTruncated:
+                    // Tool-call diagnostics surface in the OutputParser layer,
+                    // not raw Ollama replay; ignore for forward-compat.
+                    break
                 case .toolCallStart, .toolCallArgumentsDelta:
                     // Streaming tool-call deltas are projected only by
                     // backends that opt into `streamsToolCallArguments`;

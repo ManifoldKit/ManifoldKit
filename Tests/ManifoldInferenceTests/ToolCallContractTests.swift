@@ -214,6 +214,7 @@ final class ToolCallContractTests: XCTestCase {
             case .throttleDiagnostic: break
             case .toolCallStart, .toolCallArgumentsDelta: break
             case .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved: break
+            case .toolCallParseFailed, .toolCallTruncated: break
             case .handoffRequested: break
             case .generationCompleted: break
             }
@@ -289,6 +290,7 @@ final class ToolCallContractTests: XCTestCase {
             case .throttleDiagnostic: break
             case .toolCallStart, .toolCallArgumentsDelta: break
             case .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved: break
+            case .toolCallParseFailed, .toolCallTruncated: break
             case .handoffRequested: break
             case .generationCompleted: break
             }

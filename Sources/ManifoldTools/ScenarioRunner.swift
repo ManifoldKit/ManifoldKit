@@ -107,6 +107,11 @@ public final class ScenarioRunner {
                     // Dispatch lifecycle markers are observational; tool
                     // accounting flows through `.toolCall` / `.toolResult`.
                     continue
+                case .toolCallParseFailed, .toolCallTruncated:
+                    // Non-fatal tool-call diagnostics (#1857 / #1858); the
+                    // authoritative call still lands on `.toolCall(_:)` when it
+                    // parses. Observational here.
+                    continue
                 case .handoffRequested:
                     // Multi-agent handoffs are runtime-driven; deterministic
                     // single-agent replays never observe them.

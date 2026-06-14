@@ -148,6 +148,10 @@ enum BackendSeamConsumer {
             _ = reused
         case .throttleDiagnostic(reason: let reason):
             _ = reason
+        case .toolCallParseFailed(rawBody: let rawBody):
+            _ = rawBody
+        case .toolCallTruncated(rawBody: let rawBody):
+            _ = rawBody
         case .toolDispatchStarted(callId: let callId, name: let name, attempt: let attempt):
             _ = (callId, name, attempt)
         case .toolCallApproved(callId: let callId):
