@@ -314,6 +314,7 @@ final class OpenAIStreamEventExtractorParityTests: XCTestCase {
         case .kvCacheReuse: return "kvCacheReuse"
         case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
+        case .generationCompleted(let c): return "generationCompleted(\(c.reason))"
         }
     }
 

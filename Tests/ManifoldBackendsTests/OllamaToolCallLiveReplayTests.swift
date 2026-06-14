@@ -217,6 +217,10 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     // Runtime-synthesised handoff event; live raw backend
                     // replays never emit this case.
                     break
+                case .generationCompleted:
+                    // Orchestrator-emitted terminal signal; raw backend
+                    // replays never emit this case.
+                    break
                 }
             }
 

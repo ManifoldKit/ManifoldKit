@@ -857,6 +857,16 @@ package struct ConversationTurnExecutor: Sendable {
                         )
                     }
 
+                case .generationCompleted:
+                    // Terminal "response finished" signal from the
+                    // orchestrator. The executor already finalizes the
+                    // assistant turn (persistence, `.responseCompleted`) when
+                    // the stream loop exits below, so there is no additional
+                    // timeline work to do here — the event exists so UI /
+                    // accessibility consumers that drive announcements off the
+                    // raw event stream get a single in-band "finished" signal.
+                    break
+
                 case .ignore:
                     break
                 }

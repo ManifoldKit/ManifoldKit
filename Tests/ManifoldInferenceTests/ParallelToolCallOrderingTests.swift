@@ -60,7 +60,7 @@ final class ParallelToolCallOrderingTests: XCTestCase {
                  .kvCacheReuse, .throttleDiagnostic,
                  .toolCallStart, .toolCallArgumentsDelta,
                  .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved,
-                 .handoffRequested:
+                 .handoffRequested, .generationCompleted:
                 break
             }
         }

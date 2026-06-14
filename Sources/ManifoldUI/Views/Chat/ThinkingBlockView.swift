@@ -64,7 +64,10 @@ struct ThinkingBlockView: View {
             // asked to hear yet. Expanding the disclosure group exposes the
             // accumulated text via the inner `Text` for assistive reading;
             // the static "Reasoning in progress" label is enough for the
-            // collapsed state.
+            // collapsed state. Hosts that *do* want paced spoken progress
+            // should drive `AccessibilityAnnouncer` (coalesce + rate-limit +
+            // priority) from the token stream — the supported path for
+            // announcing streaming output without flooding assistive tech.
             .accessibilityLabel("Reasoning in progress")
         } else {
             DisclosureGroup(isExpanded: $isExpanded) {

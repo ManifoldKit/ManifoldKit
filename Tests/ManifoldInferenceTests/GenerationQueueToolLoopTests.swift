@@ -429,6 +429,82 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results.first?.callId, "g1")
     }
+
+    // MARK: - Terminal completion event (#1832)
+
+    /// A plain text turn (no tool calls) must end with exactly one
+    /// `.generationCompleted(.stop)` as the LAST event on the stream.
+    func test_generationCompleted_emittedOnceAsTerminalStop_forPlainTurn() async throws {
+        let registry = ToolRegistry()
+        provider.backend.tokensToYieldPerTurn = [["Hello", " world."]]
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueue(
+            messages: [("user", "hi")],
+            maxOutputTokens: 32
+        )
+        let events = try await collectEvents(stream)
+
+        let completions = events.compactMap { event -> GenerationCompletion? in
+            if case .generationCompleted(let c) = event { return c } else { return nil }
+        }
+        // Sabotage check: removing the `yieldEvent(.generationCompleted(...))`
+        // in `GenerationToolDispatchLoop.run` drops this to zero.
+        XCTAssertEqual(completions.count, 1, "exactly one terminal completion event")
+        XCTAssertEqual(completions.first?.reason, .stop)
+
+        // Must be the LAST event before the stream finishes — UI/a11y consumers
+        // rely on it being terminal so a single "finished" announcement is safe.
+        if case .generationCompleted = events.last {
+            // ok
+        } else {
+            XCTFail("`.generationCompleted` must be the last event; got \(String(describing: events.last))")
+        }
+    }
+
+    /// When the tool-dispatch loop stops because the iteration budget was hit,
+    /// the terminal completion event carries `.toolIterationLimit` and lands
+    /// after the `.toolIterationLimitExceeded` diagnostic.
+    func test_generationCompleted_carriesToolIterationLimit_whenCapHit() async throws {
+        let executor = RecordingExecutor(name: "spam") { _ in
+            ToolResult(callId: "", content: "ok", errorKind: nil)
+        }
+        let registry = ToolRegistry()
+        registry.register(executor)
+
+        provider.backend.scriptedToolCallsPerTurn = (0..<20).map { idx in
+            [makeCall(id: "s-\(idx)", name: "spam", arguments: #"{"i":\#(idx)}"#)]
+        }
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueueCustomConfig(
+            messages: [("user", "go")],
+            config: GenerationConfig(maxOutputTokens: 8, maxToolIterations: 3)
+        )
+        let events = try await collectEvents(stream)
+
+        let completions = events.compactMap { event -> GenerationCompletion? in
+            if case .generationCompleted(let c) = event { return c } else { return nil }
+        }
+        // Sabotage check: returning `.stop` instead of `.toolIterationLimit`
+        // from the iteration-limit `return` flips this assertion.
+        XCTAssertEqual(completions.count, 1, "exactly one terminal completion event")
+        XCTAssertEqual(completions.first?.reason, .toolIterationLimit)
+
+        // The completion is terminal and follows the diagnostic event.
+        if case .generationCompleted = events.last {
+            // ok
+        } else {
+            XCTFail("`.generationCompleted` must be the last event; got \(String(describing: events.last))")
+        }
+        let limitIdx = events.firstIndex { if case .toolIterationLimitExceeded = $0 { return true } else { return false } }
+        let completedIdx = events.firstIndex { if case .generationCompleted = $0 { return true } else { return false } }
+        XCTAssertNotNil(limitIdx)
+        XCTAssertNotNil(completedIdx)
+        if let limitIdx, let completedIdx {
+            XCTAssertLessThan(limitIdx, completedIdx, "completion follows the iteration-limit diagnostic")
+        }
+    }
 }
 
 // MARK: - Test helpers
