@@ -12,11 +12,24 @@
 /// original `ThinkingParser.process`.
 public struct ThinkingTransform: StreamTransform {
     public let markers: ThinkingMarkers
+
+    /// When `true`, a single leading newline run (`\r\n` or `\n`, repeated) is
+    /// trimmed from the visible text that immediately follows the closing
+    /// marker on the depth 1→0 transition.
+    ///
+    /// Reasoning models (Qwen3, DeepSeek-R1) emit a trailing newline run right
+    /// after `</think>` before the visible answer begins; left verbatim it shows
+    /// up as blank leading lines in the rendered output. This is opt-in so the
+    /// default keeps emission byte-for-byte identical to the original
+    /// `ThinkingParser.process` for callers that depend on exact passthrough.
+    public let trimLeadingNewlineAfterClose: Bool
+
     private var depth = 0
     private var buffer = ""
 
-    public init(markers: ThinkingMarkers = .qwen3) {
+    public init(markers: ThinkingMarkers = .qwen3, trimLeadingNewlineAfterClose: Bool = false) {
         self.markers = markers
+        self.trimLeadingNewlineAfterClose = trimLeadingNewlineAfterClose
     }
 
     public mutating func process(_ events: [GenerationEvent]) -> [GenerationEvent] {
@@ -47,17 +60,35 @@ public struct ThinkingTransform: StreamTransform {
                 }
 
                 // Transition state.
+                var closedToVisible = false
                 if depth > 0 {
                     depth -= 1
                     if depth == 0 {
                         // Only fire thinkingCompleted on 1→0 transition (not nested closes).
                         events.append(.thinkingCompleted)
+                        closedToVisible = true
                     }
                 } else {
                     depth += 1
                 }
 
                 buffer = String(buffer[range.upperBound...])
+
+                // On the close boundary, optionally drop the leading newline run
+                // (`\r\n`/`\n`) reasoning models emit between `</think>` and the
+                // visible answer. Scoped strictly here so no other emission is
+                // affected; the holdback logic below still runs on the trimmed
+                // buffer unchanged.
+                if closedToVisible && trimLeadingNewlineAfterClose {
+                    // Operate on unicode scalars: "\r\n" is a single Character
+                    // (grapheme cluster) in Swift, so dropping by Character count
+                    // would over-trim. Drop leading CR/LF scalars one at a time.
+                    var scalars = Substring(buffer).unicodeScalars
+                    while let first = scalars.first, first == "\r" || first == "\n" {
+                        scalars = scalars.dropFirst()
+                    }
+                    buffer = String(scalars)
+                }
             } else {
                 break
             }
