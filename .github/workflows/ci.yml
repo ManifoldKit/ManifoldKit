@@ -54,8 +54,19 @@ on:
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
 
+# Collapse concurrent runs, keyed differently per event:
+#   - pull_request → group per PR number, so a force-push cancels the PR's
+#     own in-flight run but never another PR's (force-push collapse, unchanged).
+#   - push to main → `pull_request.number` is empty, so we fall back to
+#     `github.ref` (= refs/heads/main) rather than the per-run `github.run_id`.
+#     That makes a BURST of rapid merges to main collapse to a single CI run on
+#     the newest commit: each new push cancels the previous push's in-flight run.
+#     Tradeoff — intermediate merges in a burst lose their own post-merge CI
+#     signal (coarser `git bisect` granularity on main); nightly-slow-tests.yml
+#     is the 24h backstop, and each PR was already green pre-merge. The
+#     readme-snippets gate already keys its push group on the ref the same way.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
