@@ -158,6 +158,46 @@ public extension SpeechSynthesizing {
     }
 }
 
+/// A "now speaking this range" progress update, emitted as an utterance is
+/// spoken so hosts can do read-along highlighting or resume from a known
+/// position.
+public struct SpeechProgress: Sendable, Equatable {
+    /// Identifies the utterance this update belongs to. The synthesizer can hold
+    /// several queued utterances; the id is stable for one `speak(...)` call and
+    /// changes when the next utterance begins, letting a host tell read-along of
+    /// one item apart from the next.
+    public let utteranceID: UUID
+
+    /// The full text of the utterance currently being spoken.
+    public let text: String
+
+    /// The range within ``text`` currently being spoken. It indexes into the
+    /// `text` carried on this same value, so the pair is always self-consistent
+    /// — safe to use directly for highlighting `Text(text)`.
+    public let spokenRange: Range<String.Index>
+
+    /// The substring currently being spoken — `text[spokenRange]`.
+    public var spokenText: String { String(text[spokenRange]) }
+
+    public init(utteranceID: UUID, text: String, spokenRange: Range<String.Index>) {
+        self.utteranceID = utteranceID
+        self.text = text
+        self.spokenRange = spokenRange
+    }
+}
+
+/// Optional capability for synthesizers that report spoken-range progress as
+/// they speak (Apple's `willSpeakRangeOfSpeechString`). Hosts that want
+/// read-along highlighting or resume-from-position check `as? SpeechProgressReporting`
+/// and set ``onSpeechProgress``. Engines without range reporting simply don't
+/// conform — callers degrade to no highlighting rather than breaking.
+public protocol SpeechProgressReporting: AnyObject {
+    /// Invoked on the main actor for each spoken range as the current utterance
+    /// progresses. `nil` (the default) disables reporting.
+    @MainActor
+    var onSpeechProgress: (@MainActor (SpeechProgress) -> Void)? { get set }
+}
+
 public protocol WakeWordDetector: AnyObject {
     @MainActor
     func ingest(_ update: SpeechTranscriptionUpdate) -> WakeWordDetection?
