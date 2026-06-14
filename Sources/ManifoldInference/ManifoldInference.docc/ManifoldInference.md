@@ -298,3 +298,8 @@ documentation for the high-level vs. direct-backend chooser.
 - ``ImageModelInfo``
 - ``ImageModelFormat``
 - ``PrecisionVariant``
+
+### Model capabilities
+
+- <doc:Capabilities>
+- ``CuratedModelCapabilities``

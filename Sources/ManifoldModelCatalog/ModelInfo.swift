@@ -61,6 +61,103 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     /// When `nil`, ``effectiveCapabilityTier`` falls back to a static estimate.
     public var capabilityTier: ModelCapabilityTier?
 
+    // MARK: - Capability flags (override-over-detected)
+
+    // Each capability flag is modelled as two layers so consumers stop
+    // re-deriving what the catalog can compute *honestly*:
+    //
+    //   • `detected*` — what ManifoldKit inferred from durable signals
+    //     (HF `config.json` + README front-matter via ``ModelCapabilityProbe``,
+    //     or ``CloudModelManifestTable`` for cloud reasoning). `nil` means "no
+    //     detection ran / no signal" — NOT "false". GGUF single files carry no
+    //     `config.json`, so their detected code/multilingual stay `nil`.
+    //
+    //   • `curated*` — an explicit override a host app's ``CuratedModel`` list
+    //     (or any curation seam) can set to assert a capability the probe
+    //     cannot see. Non-nil always wins over detection.
+    //
+    // The public ``supportsCode`` / ``supportsMultilingual`` / ``supportsReasoning``
+    // accessors resolve `curated ?? detected ?? false`, so the default is an
+    // honest `false` with no silent over-reporting and an explicit override seam.
+
+    /// Curation override for code-generation capability. `nil` defers to detection.
+    public var curatedSupportsCode: Bool?
+    /// Auto-detected code-generation capability (HF `config.json` / README).
+    /// `nil` when no probe ran or no signal was found (e.g. GGUF single files).
+    public var detectedSupportsCode: Bool?
+
+    /// Curation override for multilingual capability. `nil` defers to detection.
+    public var curatedSupportsMultilingual: Bool?
+    /// Auto-detected multilingual capability (HF `config.json` / README).
+    /// `nil` when no probe ran or no signal was found (e.g. GGUF single files).
+    public var detectedSupportsMultilingual: Bool?
+
+    /// Curation override for reasoning/extended-thinking capability.
+    /// `nil` defers to detection.
+    public var curatedSupportsReasoning: Bool?
+    /// Auto-detected reasoning capability. Sourced from
+    /// ``CloudModelManifestTable`` for cloud models; `nil` for local models
+    /// (GGUF/MLX/Foundation), which ManifoldKit cannot honestly probe for
+    /// reasoning support — so ``supportsReasoning`` is `false` for local models
+    /// unless curated. See the `Capabilities` DocC article for the routing footgun.
+    public var detectedSupportsReasoning: Bool?
+
+    /// Resolved code-generation capability: `curated ?? detected ?? false`.
+    public var supportsCode: Bool {
+        curatedSupportsCode ?? detectedSupportsCode ?? false
+    }
+
+    /// Resolved multilingual capability: `curated ?? detected ?? false`.
+    public var supportsMultilingual: Bool {
+        curatedSupportsMultilingual ?? detectedSupportsMultilingual ?? false
+    }
+
+    /// Resolved reasoning capability: `curated ?? detected ?? false`.
+    ///
+    /// Honest-`false` for local models unless curated — there is no reliable
+    /// local-model reasoning signal. A routing snippet that branches on this
+    /// silently takes the `false` branch for every uncurated local model.
+    public var supportsReasoning: Bool {
+        curatedSupportsReasoning ?? detectedSupportsReasoning ?? false
+    }
+
+    /// Applies a curation override, copying the three capability flags from a
+    /// ``CuratedModelCapabilities`` value. Only non-nil fields override; `nil`
+    /// leaves the existing detected/curated layer untouched. This is the
+    /// explicit seam for a host's curated list to assert capabilities the probe
+    /// cannot derive — notably for GGUF single files (no `config.json`) and for
+    /// local-model reasoning.
+    public mutating func applyCuratedCapabilities(_ caps: CuratedModelCapabilities) {
+        if let code = caps.supportsCode { curatedSupportsCode = code }
+        if let multilingual = caps.supportsMultilingual { curatedSupportsMultilingual = multilingual }
+        if let reasoning = caps.supportsReasoning { curatedSupportsReasoning = reasoning }
+    }
+
+    /// Populates the detected code/multilingual layers from a HF/MLX model
+    /// directory using ``ModelCapabilityProbe``.
+    ///
+    /// **GGUF limit:** single-file GGUF models have no sibling `config.json`,
+    /// so the probe throws ``ModelCapabilityProbeError/configNotFound``. That is
+    /// treated here as "no detection" (leaves the detected layers `nil`), NOT a
+    /// fatal error — GGUF code/multilingual ship honest-`false` unless a host's
+    /// curated list overrides them via ``applyCuratedCapabilities(_:)``.
+    /// Reasoning is never sourced from a config probe; it stays `nil` for local
+    /// models. See the `Capabilities` DocC article.
+    public mutating func detectCapabilities(fromModelDirectory directory: URL) {
+        do {
+            let caps = try ModelCapabilityProbe.probe(modelDirectory: directory)
+            detectedSupportsCode = caps.supportsCodeGeneration
+            detectedSupportsMultilingual = caps.supportsMultilingual
+        } catch ModelCapabilityProbeError.configNotFound {
+            // Expected for GGUF single files and snapshots that strip config.json.
+            // No signal → leave detected layers nil so resolution falls to
+            // curated-or-false rather than a misleading hard `false`.
+            Log.inference.debug("ModelInfo: no config.json for capability probe at \(directory.lastPathComponent, privacy: .public); code/multilingual stay curated-or-false")
+        } catch {
+            Log.inference.warning("ModelInfo: capability probe failed at \(directory.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// The most recent benchmark result for this model, if one has been run.
     public var benchmarkResult: ModelBenchmarkResult?
 
@@ -407,7 +504,13 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         activeParameterBytes: UInt64? = nil,
         capabilityTier: ModelCapabilityTier? = nil,
         benchmarkResult: ModelBenchmarkResult? = nil,
-        huggingFaceRepoID: String? = nil
+        huggingFaceRepoID: String? = nil,
+        curatedSupportsCode: Bool? = nil,
+        detectedSupportsCode: Bool? = nil,
+        curatedSupportsMultilingual: Bool? = nil,
+        detectedSupportsMultilingual: Bool? = nil,
+        curatedSupportsReasoning: Bool? = nil,
+        detectedSupportsReasoning: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -425,6 +528,12 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         self.capabilityTier = capabilityTier
         self.benchmarkResult = benchmarkResult
         self.huggingFaceRepoID = huggingFaceRepoID
+        self.curatedSupportsCode = curatedSupportsCode
+        self.detectedSupportsCode = detectedSupportsCode
+        self.curatedSupportsMultilingual = curatedSupportsMultilingual
+        self.detectedSupportsMultilingual = detectedSupportsMultilingual
+        self.curatedSupportsReasoning = curatedSupportsReasoning
+        self.detectedSupportsReasoning = detectedSupportsReasoning
     }
 
     // MARK: - Private
@@ -453,6 +562,61 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         name = name.replacingOccurrences(of: "-", with: " ")
         name = name.replacingOccurrences(of: "_", with: " ")
         return name
+    }
+}
+
+// MARK: - Curated capability override
+
+/// A curation override for the three resolvable capability flags on
+/// ``ModelInfo``.
+///
+/// Each field is `Bool?`: a non-nil value asserts (or denies) a capability the
+/// auto-detection path cannot derive, while `nil` defers to detection. This is
+/// the seam a host app's curated list uses to mark, for example, a GGUF coder
+/// model `supportsCode = true` even though its single-file format carries no
+/// `config.json` for ``ModelCapabilityProbe`` to read.
+public struct CuratedModelCapabilities: Sendable, Hashable {
+    public var supportsCode: Bool?
+    public var supportsMultilingual: Bool?
+    public var supportsReasoning: Bool?
+
+    public init(
+        supportsCode: Bool? = nil,
+        supportsMultilingual: Bool? = nil,
+        supportsReasoning: Bool? = nil
+    ) {
+        self.supportsCode = supportsCode
+        self.supportsMultilingual = supportsMultilingual
+        self.supportsReasoning = supportsReasoning
+    }
+}
+
+// MARK: - Cloud reasoning detection
+
+public extension ModelInfo {
+    /// Sets ``detectedSupportsReasoning`` from ``CloudModelManifestTable`` for a
+    /// cloud model identified by `modelName`.
+    ///
+    /// Cloud is the one place ManifoldKit can honestly detect reasoning: the
+    /// vendored manifest table already tracks which families expose extended
+    /// thinking. Pass the producer so the correct table is consulted. Local
+    /// models have no equivalent signal — ``supportsReasoning`` stays `false`
+    /// for them unless curated.
+    mutating func detectCloudReasoning(modelName: String, producer: CloudReasoningProducer) {
+        let manifest: ModelManifest
+        switch producer {
+        case .openAI:
+            manifest = CloudModelManifestTable.openAI(modelName: modelName)
+        case .anthropic:
+            manifest = CloudModelManifestTable.claude(modelName: modelName)
+        }
+        detectedSupportsReasoning = manifest.supportsThinking
+    }
+
+    /// Cloud producer whose manifest table sources reasoning detection.
+    enum CloudReasoningProducer: Sendable {
+        case openAI
+        case anthropic
     }
 }
 

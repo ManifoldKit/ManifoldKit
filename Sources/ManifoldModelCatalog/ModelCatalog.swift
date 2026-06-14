@@ -277,6 +277,17 @@ private struct ModelInfoSnapshot: Codable, Equatable {
     var modelType: StoredModelType
     var mmprojURL: URL?
     var huggingFaceRepoID: String?
+    // Resolved capability flags survive without a re-probe. Both the curated
+    // override and detected layers are persisted so the override-over-detected
+    // resolution round-trips exactly (a re-probe can still refresh `detected*`
+    // without clobbering a host's curation). All optional + decodeIfPresent so
+    // catalogs written before this field shipped decode cleanly (nil = absent).
+    var curatedSupportsCode: Bool?
+    var detectedSupportsCode: Bool?
+    var curatedSupportsMultilingual: Bool?
+    var detectedSupportsMultilingual: Bool?
+    var curatedSupportsReasoning: Bool?
+    var detectedSupportsReasoning: Bool?
 
     init(_ modelInfo: ModelInfo) {
         id = modelInfo.id
@@ -287,6 +298,12 @@ private struct ModelInfoSnapshot: Codable, Equatable {
         modelType = StoredModelType(modelInfo.modelType)
         mmprojURL = modelInfo.mmprojURL
         huggingFaceRepoID = modelInfo.huggingFaceRepoID
+        curatedSupportsCode = modelInfo.curatedSupportsCode
+        detectedSupportsCode = modelInfo.detectedSupportsCode
+        curatedSupportsMultilingual = modelInfo.curatedSupportsMultilingual
+        detectedSupportsMultilingual = modelInfo.detectedSupportsMultilingual
+        curatedSupportsReasoning = modelInfo.curatedSupportsReasoning
+        detectedSupportsReasoning = modelInfo.detectedSupportsReasoning
     }
 
     var modelInfo: ModelInfo {
@@ -298,7 +315,13 @@ private struct ModelInfoSnapshot: Codable, Equatable {
             fileSize: fileSize,
             modelType: modelType.modelType,
             mmprojURL: mmprojURL,
-            huggingFaceRepoID: huggingFaceRepoID
+            huggingFaceRepoID: huggingFaceRepoID,
+            curatedSupportsCode: curatedSupportsCode,
+            detectedSupportsCode: detectedSupportsCode,
+            curatedSupportsMultilingual: curatedSupportsMultilingual,
+            detectedSupportsMultilingual: detectedSupportsMultilingual,
+            curatedSupportsReasoning: curatedSupportsReasoning,
+            detectedSupportsReasoning: detectedSupportsReasoning
         )
     }
 }
