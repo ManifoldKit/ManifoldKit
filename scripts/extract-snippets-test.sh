@@ -4,22 +4,45 @@
 #
 # Companion to scripts/extract-snippets.sh. The extract script writes one
 # .swift per kept snippet into a working directory; this script scaffolds a
-# throwaway SwiftPM consumer per snippet, drops the snippet in, and runs
-# `swift build`. Failures print the source location (file:line) the snippet
-# was lifted from so the docs author can fix the original block.
+# SINGLE SwiftPM consumer package with one executable target per snippet,
+# drops each snippet into its own target, and runs `swift build` ONCE.
+# Failures print the source location (file:line) the snippet was lifted from
+# so the docs author can fix the original block.
 #
-# Why one package per snippet:
-#   - Snippets are independent SwiftUI apps (Hello World variants have `@main`
-#     on `App` types) and cannot coexist in one executable target.
-#   - Per-snippet isolation also lets the next snippet still build when an
-#     earlier one fails, so the report is complete instead of stopping at
-#     the first error.
+# One package, one executable target per snippet:
+#   - The whole package builds with a SINGLE `swift build`. SwiftPM compiles
+#     the ManifoldKit umbrella (the long pole) ONCE and links it into every
+#     target, parallelizing the cheap per-snippet target compiles. This
+#     replaces the previous package-per-snippet loop that re-linked the heavy
+#     umbrella N times serially and cost ~17 min in CI.
+#   - Separate executable TARGETS (not one shared target) are still required:
+#     snippets are independent SwiftUI apps — Hello World variants carry
+#     `@main` on `App` types, and two snippets can declare the same type
+#     names. Each target is its own module, so `@main` and type-name
+#     collisions are impossible across snippets.
+#   - The aggregate `swift build` also *links* each executable, and snippets
+#     that are valid top-level/library code but carry no `@main` entry point
+#     fail at link ("Undefined symbols … _main") despite compiling cleanly.
+#     A non-zero aggregate exit is also triggered by transient parallel-build
+#     module-ordering errors (e.g. `error: no such module 'ManifoldInference'`
+#     when a snippet target compiles before that re-exported module is emitted);
+#     pass 2's serial per-target build resolves these too. This gate validates
+#     COMPILATION, not linking, so a non-zero aggregate exit is not trusted as
+#     a snippet failure. Instead we re-build each target
+#     compile-only (`swift build --target <name>` stops at emit-module, no
+#     link step) to attribute PASS/FAIL per snippet. Already-compiled modules
+#     are cache hits; a module that FAILED in the aggregate pass has no cached
+#     object and is genuinely recompiled here — that recompile is the
+#     authoritative per-snippet signal, so never shortcut pass-2 by trusting
+#     the aggregate exit code. The report also stays complete (one PASS/FAIL
+#     line per snippet) instead of stopping at the first error.
 #
-# Each per-snippet package:
+# The shared package:
 #   - tools-version 6.2 (matches cold-start-conformance.sh)
-#   - platforms macOS .v15 (ManifoldKit's floor)
+#   - platforms macOS .v15 / iOS .v18 (ManifoldKit's floor)
 #   - depends on the local ManifoldKit checkout via .package(name: ..., path: ...)
-#   - links the ManifoldKit umbrella product (covers ManifoldUI / Inference re-exports)
+#   - each target links the ManifoldKit umbrella product (covers ManifoldUI /
+#     Inference re-exports)
 #   - no traits: parameter — since v0.48 PR C2 the core package has no
 #     default traits and the MLX/Llama families live in companion packages,
 #     so a bare dependency is already the lean full-core build.
@@ -65,67 +88,132 @@ passed=0
 failed=0
 fail_reports=()
 
+# Scaffold ONE package with one executable target per snippet. Each target
+# gets a sanitized, collision-proof name; we keep three index-parallel arrays
+# (target name / snippet base / source location) so the report can map a
+# target back to its origin. Index-parallel arrays — NOT `declare -A` — because
+# the macOS CI runners ship Bash 3.2, which has no associative arrays.
+target_names=()
+target_bases=()
+target_srcs=()
+target_decls=""
+
+mkdir -p "$WORK/Sources"
+
 for snippet in "${snippets[@]}"; do
     base="$(basename "$snippet" .swift)"
     # Read source-location header for failure reports.
     src_header=$(head -n 1 "$snippet")
     src_location="${src_header#// Source: }"
 
-    pkg_dir="$WORK/$base"
-    mkdir -p "$pkg_dir/Sources/SnippetApp"
+    # Sanitize the snippet base into a valid Swift target identifier: any char
+    # outside [A-Za-z0-9_] becomes `_`. The `Snippet_` prefix guarantees the
+    # identifier never starts with a digit. Separate targets = separate
+    # modules, so `@main` / type-name collisions across snippets are impossible.
+    sanitized="${base//[^A-Za-z0-9_]/_}"
+    target="Snippet_${sanitized}"
 
-    # SwiftPM derives package identity from the last path component of
-    # .package(path:); explicit name: keeps this worktree-portable.
-    cat > "$pkg_dir/Package.swift" <<EOF
-// swift-tools-version: 6.2
-import PackageDescription
+    # Two distinct snippet bases can sanitize to the same identifier (e.g.
+    # `hello-world` and `hello.world`). Without this guard the second would
+    # silently overwrite the first's source dir and drop it from the gate with
+    # no error. The target's source dir is the collision artifact, so its prior
+    # existence is the cleanest Bash-3.2-safe detector.
+    target_dir="$WORK/Sources/$target"
+    if [[ -d "$target_dir" ]]; then
+        echo "::error::snippet target-name collision: '$target' (sanitized from '$base') already exists." >&2
+        exit 1
+    fi
 
-let package = Package(
-    name: "Snippet_${base//-/_}",
-    platforms: [.macOS(.v15), .iOS(.v18)],
-    products: [
-        .executable(name: "SnippetApp", targets: ["SnippetApp"]),
-    ],
-    dependencies: [
-        .package(name: "ManifoldKit", path: "$REPO_ROOT"),
-    ],
-    targets: [
-        .executableTarget(
-            name: "SnippetApp",
+    target_names+=("$target")
+    target_bases+=("$base")
+    target_srcs+=("$src_location")
+
+    mkdir -p "$target_dir"
+    # Copy the snippet verbatim (including its `// Source:` header). We
+    # deliberately do NOT inject imports — the test is "does the published
+    # snippet compile as-published?".
+    cp "$snippet" "$target_dir/Snippet.swift"
+
+    target_decls+="        .executableTarget(
+            name: \"$target\",
             dependencies: [
-                .product(name: "ManifoldKit", package: "ManifoldKit"),
+                .product(name: \"ManifoldKit\", package: \"ManifoldKit\"),
                 // ManifoldUI is re-exported by the umbrella, but the README
                 // Hello World imports it explicitly. Link it as a direct
                 // product too so the import resolves under both umbrella
                 // and direct-import patterns.
-                .product(name: "ManifoldUI", package: "ManifoldKit"),
+                .product(name: \"ManifoldUI\", package: \"ManifoldKit\"),
             ],
-            path: "Sources/SnippetApp"
+            path: \"Sources/$target\"
         ),
-    ]
+"
+done
+
+# Write the single shared manifest. `products:` is omitted — `swift build`
+# builds all targets in the root package regardless. SwiftPM derives package
+# identity from the last path component of .package(path:); explicit name:
+# keeps this worktree-portable.
+cat > "$WORK/Package.swift" <<EOF
+// swift-tools-version: 6.2
+import PackageDescription
+
+let package = Package(
+    name: "ManifoldKitSnippets",
+    platforms: [.macOS(.v15), .iOS(.v18)],
+    dependencies: [
+        .package(name: "ManifoldKit", path: "$REPO_ROOT"),
+    ],
+    targets: [
+$target_decls    ]
 )
 EOF
 
-    # Drop the snippet in. If it lacks `import Foundation` but uses Foundation
-    # types, the build will catch it — we deliberately do NOT inject imports
-    # because the test is "does the published snippet compile as-published?".
-    cp "$snippet" "$pkg_dir/Sources/SnippetApp/Snippet.swift"
+echo
+echo "── Building ${#target_names[@]} snippet target(s) in one package (single umbrella compile)…"
 
-    echo
-    echo "── ${base}  (from ${src_location})"
+# Pass 1: one aggregate `swift build`. SwiftPM compiles the ManifoldKit
+# umbrella (the long pole) ONCE and the per-snippet target compiles run in
+# parallel against it. We do NOT trust a non-zero exit here as a snippet
+# failure: `swift build` also *links* each executable target, and a doc
+# snippet that is valid library/top-level code but has no `@main` entry point
+# will fail at link ("Undefined symbols … _main") even though it compiled
+# cleanly. Compilation — not linking — is what this gate validates, so the
+# aggregate run exists to warm the umbrella + emit every snippet module; pass 2
+# reads off the authoritative per-snippet result.
+if (cd "$WORK" && swift build) > "$WORK/build.log" 2>&1; then
+    # Linked cleanly too → every snippet compiled; nothing more to check.
+    echo "   PASS — all ${#target_names[@]} snippet(s) compiled."
+    passed=${#target_names[@]}
+    failed=0
+else
+    # Pass 2: attribute PASS/FAIL per snippet with a compile-only per-target
+    # build (`swift build --target` stops at emit-module — no link step, so
+    # no-`@main` snippets are not penalized). Modules that already compiled in
+    # pass 1 are cache hits; a module that FAILED in the aggregate has no
+    # cached object and is genuinely recompiled here — that recompile is the
+    # authoritative per-snippet signal. Never shortcut this pass by trusting
+    # the aggregate exit code.
+    echo "   linking the aggregate build did not complete — verifying each snippet compiles…"
+    for i in "${!target_names[@]}"; do
+        target="${target_names[$i]}"
+        base="${target_bases[$i]}"
+        src_location="${target_srcs[$i]}"
+        echo
+        echo "── ${base}  (from ${src_location})"
 
-    log="$pkg_dir/build.log"
-    if (cd "$pkg_dir" && swift build) > "$log" 2>&1; then
-        echo "   PASS"
-        passed=$((passed + 1))
-    else
-        echo "   FAIL — log:"
-        sed -n '1,80p' "$log" | sed 's/^/     /'
-        echo "   (full log: $log)"
-        failed=$((failed + 1))
-        fail_reports+=("$base  from  $src_location")
-    fi
-done
+        log="$WORK/$target.build.log"
+        if (cd "$WORK" && swift build --target "$target") > "$log" 2>&1; then
+            echo "   PASS"
+            passed=$((passed + 1))
+        else
+            echo "   FAIL — log:"
+            sed -n '1,80p' "$log" | sed 's/^/     /'
+            echo "   (full log: $log)"
+            failed=$((failed + 1))
+            fail_reports+=("$base  from  $src_location")
+        fi
+    done
+fi
 
 # 3. Validate Package.swift manifest fragments.
 #

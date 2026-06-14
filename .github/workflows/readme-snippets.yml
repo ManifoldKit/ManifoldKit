@@ -47,25 +47,6 @@ on:
       - "scripts/extract-snippets.sh"
       - "scripts/extract-snippets-test.sh"
       - ".github/workflows/readme-snippets.yml"
-  push:
-    branches: [main]
-    paths:
-      - "README.md"
-      - "docs/QUICKSTART*.md"
-      - "docs/WHY-MANIFOLDKIT.md"
-      - "Sources/**/*.docc/**/*.md"
-      - "Sources/ManifoldKit/**"
-      - "Sources/ManifoldUI/**"
-      # ManifoldKitError lives in ManifoldModelCatalog; the dropped
-      # QuickStart*.swift glob never existed — the Sources/ManifoldKit/**
-      # glob above already covers the umbrella's Hello World surface.
-      - "Sources/ManifoldModelCatalog/ManifoldKitError.swift"
-      - "Package.swift"
-      - "Package.resolved"
-      - "scripts/check-readme.sh"
-      - "scripts/extract-snippets.sh"
-      - "scripts/extract-snippets-test.sh"
-      - ".github/workflows/readme-snippets.yml"
 
 concurrency:
   group: readme-snippets-${{ github.event_name }}-${{ github.ref }}

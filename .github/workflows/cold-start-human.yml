@@ -30,18 +30,6 @@
 name: cold-start-human
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "README.md"
-      - "Package.swift"
-      - "Package.resolved"
-      - "Sources/ManifoldKit/**"
-      - "Sources/ManifoldInference/**"
-      - "Sources/ManifoldUI/**"
-      - "scripts/cold-start-human.sh"
-      - ".github/workflows/cold-start-human.yml"
-      - ".github/actions/setup-swift-ci/**"
   pull_request:
     branches: [main]
     paths:
