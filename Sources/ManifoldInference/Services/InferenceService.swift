@@ -73,6 +73,30 @@ public final class InferenceService {
     private let lifecycle: ModelLifecycleCoordinator
     private let generation: GenerationQueue
 
+    // MARK: - Shared Model-Load Coordinator
+
+    /// Backing store for the single ``modelLoadCoordinator`` vended per service.
+    private var _modelLoadCoordinator: ModelLoadCoordinator?
+
+    /// The one ``ModelLoadCoordinator`` shared by every consumer of this service.
+    ///
+    /// "One coordinator per service" is structural: both `ChatViewModel` and a
+    /// headless `ModelSelection` façade receive *this* instance rather than each
+    /// constructing their own. Two coordinators over a single service would
+    /// cross-talk on the shared ``modelLoadProgress`` scalar (the progress bridge
+    /// in one would mirror the other's load), so the service owns the single
+    /// instance and lazily creates it on first access.
+    ///
+    /// Multiple observers watch a load without clobbering each other via
+    /// ``ModelLoadCoordinator/statusUpdates()``; chat-only side effects stay on the
+    /// callback seams, which `ChatViewModel` (the load *driver*) installs.
+    public var modelLoadCoordinator: ModelLoadCoordinator {
+        if let existing = _modelLoadCoordinator { return existing }
+        let coordinator = ModelLoadCoordinator(inferenceService: self)
+        _modelLoadCoordinator = coordinator
+        return coordinator
+    }
+
     // MARK: - Memory Pressure Broadcasting
 
     /// Fan-out broadcaster for memory-pressure and model-lifecycle events.
