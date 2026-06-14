@@ -89,11 +89,13 @@ failed=0
 fail_reports=()
 
 # Scaffold ONE package with one executable target per snippet. Each target
-# gets a sanitized, collision-proof name; we keep parallel maps from target
-# name → snippet base and target name → source location for the report.
+# gets a sanitized, collision-proof name; we keep three index-parallel arrays
+# (target name / snippet base / source location) so the report can map a
+# target back to its origin. Index-parallel arrays — NOT `declare -A` — because
+# the macOS CI runners ship Bash 3.2, which has no associative arrays.
 target_names=()
-declare -A src_for_target=()
-declare -A base_for_target=()
+target_bases=()
+target_srcs=()
 target_decls=""
 
 mkdir -p "$WORK/Sources"
@@ -113,19 +115,19 @@ for snippet in "${snippets[@]}"; do
 
     # Two distinct snippet bases can sanitize to the same identifier (e.g.
     # `hello-world` and `hello.world`). Without this guard the second would
-    # silently overwrite the first's source dir + map entries and drop it from
-    # the gate with no error. The `:-` default keeps this composable with
-    # `set -euo pipefail` when the key is unset.
-    if [[ -n "${base_for_target[$target]:-}" ]]; then
-        echo "::error::snippet target-name collision: '$target' from both '${base_for_target[$target]}' and '$base'." >&2
+    # silently overwrite the first's source dir and drop it from the gate with
+    # no error. The target's source dir is the collision artifact, so its prior
+    # existence is the cleanest Bash-3.2-safe detector.
+    target_dir="$WORK/Sources/$target"
+    if [[ -d "$target_dir" ]]; then
+        echo "::error::snippet target-name collision: '$target' (sanitized from '$base') already exists." >&2
         exit 1
     fi
 
     target_names+=("$target")
-    src_for_target["$target"]="$src_location"
-    base_for_target["$target"]="$base"
+    target_bases+=("$base")
+    target_srcs+=("$src_location")
 
-    target_dir="$WORK/Sources/$target"
     mkdir -p "$target_dir"
     # Copy the snippet verbatim (including its `// Source:` header). We
     # deliberately do NOT inject imports — the test is "does the published
@@ -192,9 +194,10 @@ else
     # authoritative per-snippet signal. Never shortcut this pass by trusting
     # the aggregate exit code.
     echo "   linking the aggregate build did not complete — verifying each snippet compiles…"
-    for target in "${target_names[@]}"; do
-        base="${base_for_target[$target]}"
-        src_location="${src_for_target[$target]}"
+    for i in "${!target_names[@]}"; do
+        target="${target_names[$i]}"
+        base="${target_bases[$i]}"
+        src_location="${target_srcs[$i]}"
         echo
         echo "── ${base}  (from ${src_location})"
 
