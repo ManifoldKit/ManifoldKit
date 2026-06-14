@@ -84,6 +84,32 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertTrue(grammar.contains("a\\\\\\\"b"), "quoted name must be doubly escaped in the grammar")
     }
 
+    // A name containing a double quote must yield a *balanced* GBNF literal:
+    // the only place an unescaped `"` may appear on the toolname line is the
+    // literal's own opening/closing delimiters. There is no live llama.cpp
+    // grammar compiler in this package's CI (see ToolGrammarBuilder docs), so
+    // this asserts the exact emitted token byte-for-byte to catch a malformed
+    // literal that would otherwise ship undetected.
+    func test_nameWithQuote_emitsExactBalancedGBNFLiteral() {
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a\"b")]))
+        let toolnameLine = grammar
+            .split(separator: "\n")
+            .first { $0.hasPrefix("toolname") }
+            .map(String.init) ?? ""
+        // Exact RHS: GBNF literal "\"a\\\"b\"" — content decodes to JSON `"a\"b"`.
+        XCTAssertEqual(toolnameLine, #"toolname  ::= "\"a\\\"b\"""#)
+    }
+
+    func test_nameWithBackslash_emitsExactBalancedGBNFLiteral() {
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a\\b")]))
+        let toolnameLine = grammar
+            .split(separator: "\n")
+            .first { $0.hasPrefix("toolname") }
+            .map(String.init) ?? ""
+        // Exact RHS: GBNF literal "\"a\\\\b\"" — content decodes to JSON `"a\\b"`.
+        XCTAssertEqual(toolnameLine, #"toolname  ::= "\"a\\\\b\"""#)
+    }
+
     // MARK: - Pre-validator fallback
 
     func test_preValidatorRejectedSchema_droppedFromEnum() {
