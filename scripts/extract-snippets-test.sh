@@ -23,14 +23,19 @@
 #   - The aggregate `swift build` also *links* each executable, and snippets
 #     that are valid top-level/library code but carry no `@main` entry point
 #     fail at link ("Undefined symbols … _main") despite compiling cleanly.
-#     This gate validates COMPILATION, not linking, so a non-zero aggregate
-#     exit is not trusted as a snippet failure. Instead we re-build each target
+#     A non-zero aggregate exit is also triggered by transient parallel-build
+#     module-ordering errors (e.g. `error: no such module 'ManifoldInference'`
+#     when a snippet target compiles before that re-exported module is emitted);
+#     pass 2's serial per-target build resolves these too. This gate validates
+#     COMPILATION, not linking, so a non-zero aggregate exit is not trusted as
+#     a snippet failure. Instead we re-build each target
 #     compile-only (`swift build --target <name>` stops at emit-module, no
-#     link step) to attribute PASS/FAIL per snippet. The umbrella and every
-#     snippet module are already in .build from the aggregate pass, so those
-#     per-target builds are near-instant cache hits — and the report stays
-#     complete (one PASS/FAIL line per snippet) instead of stopping at the
-#     first error.
+#     link step) to attribute PASS/FAIL per snippet. Already-compiled modules
+#     are cache hits; a module that FAILED in the aggregate pass has no cached
+#     object and is genuinely recompiled here — that recompile is the
+#     authoritative per-snippet signal, so never shortcut pass-2 by trusting
+#     the aggregate exit code. The report also stays complete (one PASS/FAIL
+#     line per snippet) instead of stopping at the first error.
 #
 # The shared package:
 #   - tools-version 6.2 (matches cold-start-conformance.sh)
@@ -106,6 +111,16 @@ for snippet in "${snippets[@]}"; do
     sanitized="${base//[^A-Za-z0-9_]/_}"
     target="Snippet_${sanitized}"
 
+    # Two distinct snippet bases can sanitize to the same identifier (e.g.
+    # `hello-world` and `hello.world`). Without this guard the second would
+    # silently overwrite the first's source dir + map entries and drop it from
+    # the gate with no error. The `:-` default keeps this composable with
+    # `set -euo pipefail` when the key is unset.
+    if [[ -n "${base_for_target[$target]:-}" ]]; then
+        echo "::error::snippet target-name collision: '$target' from both '${base_for_target[$target]}' and '$base'." >&2
+        exit 1
+    fi
+
     target_names+=("$target")
     src_for_target["$target"]="$src_location"
     base_for_target["$target"]="$base"
@@ -171,9 +186,11 @@ if (cd "$WORK" && swift build) > "$WORK/build.log" 2>&1; then
 else
     # Pass 2: attribute PASS/FAIL per snippet with a compile-only per-target
     # build (`swift build --target` stops at emit-module — no link step, so
-    # no-`@main` snippets are not penalized). The umbrella and every snippet
-    # module are already in .build from pass 1, so each of these is a near-
-    # instant cache hit; this is the per-snippet correctness signal.
+    # no-`@main` snippets are not penalized). Modules that already compiled in
+    # pass 1 are cache hits; a module that FAILED in the aggregate has no
+    # cached object and is genuinely recompiled here — that recompile is the
+    # authoritative per-snippet signal. Never shortcut this pass by trusting
+    # the aggregate exit code.
     echo "   linking the aggregate build did not complete — verifying each snippet compiles…"
     for target in "${target_names[@]}"; do
         base="${base_for_target[$target]}"

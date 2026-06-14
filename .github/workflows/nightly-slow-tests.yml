@@ -405,3 +405,33 @@ jobs:
         if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
+
+  # Doc-snippet + human-path cold-start gates — the 24h post-merge backstop.
+  # readme-snippets.yml and cold-start-human.yml run these scripts on PRs (via
+  # their source `paths:` filters), but as of PR #1870 those workflows dropped
+  # their push-to-main triggers. This job restores a real backstop: it runs both
+  # gate scripts on the nightly schedule so a Sources-only change that landed via
+  # a PR whose paths filter didn't fire (or a direct doc edit) is still caught
+  # within 24h. cold-start-human.yml additionally wires a persistent build cache
+  # via MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR, but that is a per-run speed
+  # optimization only — the script runs correctly without it, so it is omitted
+  # here.
+  doc-gates:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+
+      - name: README + QUICKSTART + DocC snippet compile gate
+        timeout-minutes: 20
+        run: scripts/extract-snippets-test.sh
+
+      - name: Cold-start tier 4 — human path (README from line 1)
+        if: success() || failure()
+        timeout-minutes: 10
+        run: bash scripts/cold-start-human.sh
