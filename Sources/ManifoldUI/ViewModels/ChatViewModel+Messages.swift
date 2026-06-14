@@ -464,4 +464,21 @@ extension ChatViewModel {
     public func clearStagedAttachments() {
         clearDraftAttachments()
     }
+
+    /// Stages a raw image for the next user turn (#1298).
+    ///
+    /// Convenience over ``stageAttachment(_:)`` for the common multimodal case:
+    /// hosts pass image bytes + MIME type and MK builds the
+    /// ``MessagePart/image(data:mimeType:placeholderHash:)`` part, routing it
+    /// through the same internal path the bundled `ChatInputBar` uses — so
+    /// placeholder-hash generation (and any future side effects on that path)
+    /// fire identically for host-supplied composers. Callers that already hold a
+    /// constructed ``MessagePart`` should use ``stageAttachment(_:)`` directly.
+    ///
+    /// - Parameters:
+    ///   - data: The raw image bytes the model is asked to look at.
+    ///   - mimeType: The image MIME type, e.g. `"image/png"` or `"image/jpeg"`.
+    public func attachImage(_ data: Data, mimeType: String) {
+        stageDraftAttachment(.image(data: data, mimeType: mimeType))
+    }
 }

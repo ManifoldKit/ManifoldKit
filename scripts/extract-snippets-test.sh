@@ -143,6 +143,12 @@ for snippet in "${snippets[@]}"; do
                 // product too so the import resolves under both umbrella
                 // and direct-import patterns.
                 .product(name: \"ManifoldUI\", package: \"ManifoldKit\"),
+                // ManifoldUIModelManagement is NOT re-exported by the umbrella
+                // (it stays an explicit import — see CLAUDE.md). Link it as a
+                // third direct product so doc snippets for the public
+                // \`ModelPicker\` sample view (and other model-management UI)
+                // compile in the snippet gate. (Decision 6 / Correction G.)
+                .product(name: \"ManifoldUIModelManagement\", package: \"ManifoldKit\"),
             ],
             path: \"Sources/$target\"
         ),

@@ -72,14 +72,14 @@ final class ModelManagementExplicitInitTests: XCTestCase {
         XCTAssertEqual(vm.selectedModel?.id, model.id)
     }
 
-    // MARK: - ModelSelectionTabView
+    // MARK: - ModelPicker
 
-    func test_modelSelectionTabView_explicitInit_readsRegistryAvailableModels() throws {
+    func test_modelPicker_explicitInit_readsRegistryAvailableModels() throws {
         let (registry, _) = try makeRegistry()
         let model = ModelInfo.builtInFoundation
         registry.availableModels = [model]
 
-        let view = ModelSelectionTabView(modelRegistry: registry, onSelect: {})
+        let view = ModelPicker(modelRegistry: registry, onSelect: {})
         XCTAssertEqual(view.sortedModels.count, 1)
         XCTAssertEqual(view.sortedModels.first?.id, model.id)
     }

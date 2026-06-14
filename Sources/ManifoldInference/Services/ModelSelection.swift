@@ -222,17 +222,7 @@ public final class ModelSelection: ModelSelecting {
     public func groupedModels(
         by order: ModelSelectionSortOrder
     ) -> [(group: ModelSelectionGroup, models: [ModelInfo])] {
-        let sorted = sortedModels(by: order)
-        let foundation = sorted.filter { $0.modelType == .foundation }
-        let downloaded = sorted.filter { $0.modelType != .foundation }
-        var groups: [(group: ModelSelectionGroup, models: [ModelInfo])] = []
-        if !foundation.isEmpty {
-            groups.append((.foundation, foundation))
-        }
-        if !downloaded.isEmpty {
-            groups.append((.downloaded, downloaded))
-        }
-        return groups
+        Self.groupModels(registry.availableModels, by: order)
     }
 
     public func scoredModels(useCase: ModelUseCase) -> [ScoredModel] {
@@ -318,6 +308,32 @@ public final class ModelSelection: ModelSelecting {
                 return compareNames(lhs, rhs)
             }
         }
+    }
+
+    /// Splits a model list into foundation / downloaded sections, each sorted
+    /// by `order`. Empty sections are omitted.
+    ///
+    /// Static so the bundled `ModelPicker` sample view can render the same
+    /// grouped data the headless instance method vends, without holding a live
+    /// `ModelSelection` (and therefore a `ModelLoadCoordinator`) — the sample
+    /// view drives selection through a `ModelRegistry` it already owns. The
+    /// instance ``groupedModels(by:)`` forwards here so both paths share one
+    /// grouping implementation.
+    public static func groupModels(
+        _ models: [ModelInfo],
+        by order: ModelSelectionSortOrder
+    ) -> [(group: ModelSelectionGroup, models: [ModelInfo])] {
+        let sorted = sortModels(models, by: order)
+        let foundation = sorted.filter { $0.modelType == .foundation }
+        let downloaded = sorted.filter { $0.modelType != .foundation }
+        var groups: [(group: ModelSelectionGroup, models: [ModelInfo])] = []
+        if !foundation.isEmpty {
+            groups.append((.foundation, foundation))
+        }
+        if !downloaded.isEmpty {
+            groups.append((.downloaded, downloaded))
+        }
+        return groups
     }
 
     private static func compareNames(_ lhs: ModelInfo, _ rhs: ModelInfo) -> Bool {

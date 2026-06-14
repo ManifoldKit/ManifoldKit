@@ -77,7 +77,7 @@ final class ModelAndSettingsControlTests: XCTestCase {
         // (the empty-state branch shows a placeholder instead).
         // ``ModelManagementSheet.onAppear`` calls `chatViewModel.refreshModels()`,
         // which clobbers any test seed by scanning the (empty) on-disk model
-        // directory — so we render `ModelSelectionTabView` directly to bypass
+        // directory — so we render `ModelPicker` directly to bypass
         // the refresh and exercise just the picker mount path.
         //
         // Per the file header, List-rendered text doesn't always appear in
@@ -97,7 +97,7 @@ final class ModelAndSettingsControlTests: XCTestCase {
         ]
 
         let dump = ViewHierarchyDumper.dump(
-            ModelSelectionTabView(modelRegistry: chatVM.modelRegistry, onSelect: {})
+            ModelPicker(modelRegistry: chatVM.modelRegistry, onSelect: {})
                 .environment(chatVM)
         )
 

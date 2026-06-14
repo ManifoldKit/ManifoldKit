@@ -228,7 +228,10 @@ public struct ModelManagementSheet: View {
     private func tabContent(modelRegistry: ModelRegistry) -> some View {
         switch selectedTab {
         case .select:
-            ModelSelectionTabView(modelRegistry: modelRegistry, onSelect: { dismiss() })
+            // Composes the public `ModelPicker` sample (formerly the private
+            // `ModelSelectionTabView`). `grouped: false` preserves the sheet's
+            // historical single flat-list layout — no behavior change.
+            ModelPicker(modelRegistry: modelRegistry, grouped: false, onSelect: { dismiss() })
                 // Lightweight affordance while the first off-main scan lands
                 // (#1774); `availableModels` is @Observable, so the list itself
                 // repaints automatically once the scan resolves.
