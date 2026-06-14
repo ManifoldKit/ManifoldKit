@@ -108,6 +108,53 @@ final class HeadlessModelSelectionTopologyTests: XCTestCase {
         XCTAssertEqual(chatVM.activityPhase, .idle)
     }
 
+    /// The REVERSE interleaving of the no-leak case: a headless load that
+    /// SUPERSEDES an in-flight chat-driving load must not leave the chat surface
+    /// stuck on a `.modelLoading` spinner. The cancelled chat load can't flip its
+    /// own phase back, and the incoming headless load won't touch it
+    /// (`drivesChatSeams == false`) — so `dispatchLoad` resets the orphaned phase
+    /// to `.idle` (#1312 Correction E).
+    func test_headlessLoadSupersedingChatLoad_resetsOrphanedChatPhase() async {
+        let backend = SlowGatedBackend()
+        let service = InferenceService()
+        service.registerBackendFactory { $0 == .gguf ? backend : nil }
+
+        let chatVM = ChatViewModel(
+            inferenceService: service,
+            deviceCapability: DeviceCapabilityService(physicalMemory: 16 * oneGB),
+            modelStorage: ModelStorageService(),
+            memoryPressure: MemoryPressureHandler()
+        )
+        let chatModel = makeModel("chat.gguf", .gguf)
+        chatVM.modelRegistry.availableModels = [chatModel]
+
+        // Chat load goes in-flight → chat surface enters `.modelLoading`.
+        chatVM.modelRegistry.selectModel(chatModel)
+        chatVM.dispatchSelectedLoad()
+        await backend.waitUntilStarted()
+        await waitUntil {
+            if case .modelLoading = chatVM.activityPhase { return true }
+            return false
+        }
+
+        // A headless load over the SAME shared coordinator supersedes the chat load.
+        let selection = ModelSelection(
+            registry: ModelRegistry(inferenceService: service, modelStorage: ModelStorageService()),
+            coordinator: service.modelLoadCoordinator,
+            deviceCapability: DeviceCapabilityService(physicalMemory: 16 * oneGB)
+        )
+        let headlessModel = makeModel("headless.gguf", .gguf)
+        selection.registry.availableModels = [headlessModel]
+        selection.select(headlessModel)
+        selection.loadSelected()
+
+        // The orphaned chat phase must have been reset synchronously by dispatchLoad.
+        XCTAssertEqual(chatVM.activityPhase, .idle,
+                       "Superseded chat load left the chat surface stuck on a spinner")
+
+        await backend.releaseSuccess()
+    }
+
     // MARK: - Synchronous endpoint-clear (Correction F)
 
     /// Selecting a local model via `ModelRegistry.selectModel` clears

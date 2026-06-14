@@ -175,6 +175,16 @@ public final class ModelLoadCoordinator {
     ///     ``statusUpdates()``.
     public func dispatchLoad(_ intent: LoadIntent, drivesChatSeams: Bool = true) {
         let generation = nextLoadIntentGeneration(cancelInFlightTask: true)
+        // If a headless load supersedes a chat-driving load that was mid-flight,
+        // the cancelled chat load never reaches `endLoadUIState` to flip the chat
+        // phase back, and the incoming headless load won't touch it
+        // (`drivesChatSeams == false`). Reset the orphaned `.modelLoading` phase
+        // here so the chat surface isn't left stuck on a spinner — the exact
+        // two-surface interleaving this seam exists to support (#1312 Correction E).
+        if currentLoadDrivesChatSeams, !drivesChatSeams,
+           case .modelLoading = currentActivityPhase() {
+            _ = onTransitionPhase(.idle)
+        }
         currentLoadDrivesChatSeams = drivesChatSeams
         coordinatedLoadTask = Task { [weak self] in
             await self?.performLoad(intent, generation: generation)
