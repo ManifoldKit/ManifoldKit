@@ -2,7 +2,10 @@ import Testing
 import Foundation
 @testable import ManifoldInference
 @testable import ManifoldSecrets
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 // Minimal payload handler for tests that exercise SSECloudBackend state directly.
 private struct NoOpPayloadHandler: SSEPayloadHandler {

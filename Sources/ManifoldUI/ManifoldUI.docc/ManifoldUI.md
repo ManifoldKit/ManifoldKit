@@ -16,7 +16,9 @@ Turn-loop orchestration — send, regenerate, edit, cancel, and branch — lives
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldPersistenceSwiftData
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 import ManifoldUI
 import SwiftData
 import SwiftUI
@@ -54,8 +56,9 @@ struct MyApp: App {
         )
         for await _ in progress { }
         guard let bootstrap = try? await task.value else { return }
-        DefaultBackends.register(with: bootstrap.inferenceService)
-
+        OllamaBackends.register(with: bootstrap.inferenceService)
+        CloudSaaSBackends.register(with: bootstrap.inferenceService)
+        FoundationBackends.register(with: bootstrap.inferenceService)
         // `ManifoldBootstrap` conforms to `ChatRuntimeBootstrap`, so the same
         // value wires both view models.
         let chatVM = ChatViewModel(

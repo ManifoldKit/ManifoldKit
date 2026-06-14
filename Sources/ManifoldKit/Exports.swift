@@ -23,5 +23,12 @@
 @_exported import ManifoldInference
 @_exported import ManifoldRuntime
 @_exported import ManifoldPersistenceSwiftData
-@_exported import ManifoldBackends
+// The ManifoldBackends umbrella shim was retired in P7. Re-export the surviving
+// backend families directly so `import ManifoldKit` still exposes the backend
+// surface (FoundationBackend / OllamaBackend / cloud backends + the shared
+// ManifoldCloudCore infrastructure, including DefaultWebSearchRuntime).
+@_exported import ManifoldFoundation
+@_exported import ManifoldOllama
+@_exported import ManifoldCloudSaaS
+@_exported import ManifoldCloudCore
 @_exported import ManifoldUI

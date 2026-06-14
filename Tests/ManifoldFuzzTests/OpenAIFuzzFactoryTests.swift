@@ -1,7 +1,10 @@
 import XCTest
 import ManifoldFuzz
 import ManifoldInference
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
+import ManifoldCloudCore
 @testable import ManifoldFuzzBackends
 
 /// Unit tests for ``OpenAIFuzzFactory`` — the OpenAI-Chat-Completions-compatible

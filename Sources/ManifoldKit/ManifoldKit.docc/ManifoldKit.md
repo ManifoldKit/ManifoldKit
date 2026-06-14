@@ -128,16 +128,17 @@ inline — follow each home-module catalog for the full reference:
 
 ### Backends
 
-Every engine sits behind one ``InferenceBackend`` protocol; ``DefaultBackends``
-registers the Foundation and cloud backends compiled into core. Cloud backends
-(OpenAI, Anthropic, Ollama, LAN) live in `ManifoldOllama` / `ManifoldCloudSaaS`
-and are always compiled in since v0.48 (the `CloudSaaS` / `Ollama` traits were
-retired). The local MLX and llama.cpp families ship in the `manifold-mlx` /
-`manifold-llama` companion packages since v0.48 — add the package and pass its
-registrar to `quickStart(backends:)`.
+Every engine sits behind one ``InferenceBackend`` protocol; the default
+registrars (`OllamaBackends`, `CloudSaaSBackends`, `FoundationBackends`, exposed
+as `ManifoldKit.defaultBackendRegistrars`) register the Foundation and cloud
+backends compiled into core. Cloud backends (OpenAI, Anthropic, Ollama, LAN)
+live in `ManifoldOllama` / `ManifoldCloudSaaS` and are always compiled in since
+v0.48 (the `CloudSaaS` / `Ollama` traits were retired). The local MLX and
+llama.cpp families ship in the `manifold-mlx` / `manifold-llama` companion
+packages since v0.48 — add the package and pass its registrar to
+`quickStart(backends:)`.
 
 - ``InferenceBackend``
-- ``DefaultBackends``
 - ``FoundationBackend``
 
 ### Persistence & Bootstrap

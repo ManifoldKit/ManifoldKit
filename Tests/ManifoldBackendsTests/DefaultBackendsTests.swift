@@ -3,107 +3,83 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
 @testable import ManifoldCloudCore
 
-// MARK: - Pure Routing Tests (no hardware required)
+// The `DefaultBackends` / `CloudBackends` umbrella registrars were retired in
+// P7 (the 1.0 shim clean-up). The compiled-in default fold is now the explicit
+// list of surviving family registrars: `OllamaBackends`, `CloudSaaSBackends`,
+// and `FoundationBackends`. These tests pin the registration behaviour of that
+// fold directly against the family registrars.
 
-/// Tests the pure routing functions in DefaultBackends.
-/// These run in CI — no hardware, no backend instantiation.
-final class DefaultBackendsRoutingTests: XCTestCase {
+// MARK: - Default fold registration
 
-    func test_routing_gguf_returnsNilPostSplit() {
-        // LlamaBackend lives in the manifold-llama companion package since
-        // v0.48 (PR C2) — core routing must never claim it.
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .gguf))
-    }
-
-    func test_routing_mlx_returnsNilPostSplit() {
-        // MLXBackend lives in the manifold-mlx companion package since
-        // v0.48 (PR C2) — core routing must never claim it.
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .mlx))
-    }
-
-    func test_routing_foundation_mapsToFoundationBackend() {
-        #if canImport(FoundationModels)
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .foundation), "FoundationBackend")
-        #else
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .foundation))
-        #endif
-    }
-
-    func test_routing_openAI_mapsToOpenAIBackend() {
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .openAI), "OpenAIBackend")
-    }
-
-    func test_routing_claude_mapsToClaudeBackend() {
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .claude), "ClaudeBackend")
-    }
-
-    func test_routing_ollama_mapsToOllamaBackend() {
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .ollama), "OllamaBackend")
-    }
-
-    func test_routing_lmStudio_mapsToOpenAIBackend() {
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .lmStudio), "OpenAIBackend")
-    }
-
-    func test_routing_custom_mapsToOpenAIBackend() {
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .custom), "OpenAIBackend")
-    }
-}
-
-// MARK: - Integration Tests (require hardware)
-
-/// Tests that DefaultBackends registration completes without error.
-/// Hardware-free since v0.48 (PR C2): the fold is Foundation + Cloud only;
-/// the LlamaBackend/MLXBackend paths live in the companion packages.
+/// The compiled-in default registrars (Ollama + SaaS + Foundation) register
+/// without crashing and are idempotent. Hardware-free: factory closures are
+/// appended but never executed.
 @MainActor
 final class DefaultBackendsTests: XCTestCase {
 
+    /// Mirrors `ManifoldKit.defaultBackendRegistrars` without taking a
+    /// dependency on the ManifoldKit umbrella from this backend-family suite.
+    private let defaultRegistrars: [any BackendRegistrar.Type] = [
+        OllamaBackends.self,
+        CloudSaaSBackends.self,
+        FoundationBackends.self,
+    ]
+
+    private func registerDefaults(with service: InferenceService) {
+        for registrar in defaultRegistrars {
+            registrar.register(with: service)
+        }
+    }
+
     func test_register_doesNotCrash() {
         let service = InferenceService()
-        DefaultBackends._register(with: service)
-        // If we get here, registration succeeded
+        registerDefaults(with: service)
+        // If we get here, registration succeeded.
     }
 
     func test_register_canBeCalledMultipleTimes() {
         let service = InferenceService()
-        DefaultBackends._register(with: service)
-        DefaultBackends._register(with: service)
-        // Should not crash or corrupt state
+        registerDefaults(with: service)
+        registerDefaults(with: service)
+        // Should not crash or corrupt state.
     }
 }
 
-// MARK: - Registrar Tests (no hardware required)
+// MARK: - Registrar declarations
 
-/// Asserts that each per-backend registrar declares the right `ModelType` /
-/// `APIProvider` support, and that `DefaultBackends._register(with:)` is
-/// equivalent to invoking the surviving registrars (Cloud + Foundation)
-/// explicitly. The MLX / Llama registrars moved to the companion packages
-/// (v0.48, PR C2) — their declaration tests moved with them.
-///
-/// Runs without hardware: factory closures are appended but never executed,
-/// so `registeredBackendSnapshot()` only reflects `declareSupport` calls.
+/// Asserts that each surviving per-family registrar declares the right
+/// `ModelType` / `APIProvider` support, and that the default fold equals an
+/// explicit fold over the same registrars.
 ///
 /// ## Sabotage-verify spec
 ///
-/// To confirm these tests actually catch drift, temporarily edit the production
-/// code as below and re-run — each edit must produce a failure:
-///
 /// 1. **Drop a cloud declareSupport.** In `OllamaBackends.swift` /
-///    `CloudSaaSBackends.swift` comment out the
-///    `for provider in APIProvider.availableInBuild { ... }` loop.
-///    `test_cloudRegistrar_declaresAvailableProviders` must fail in any
-///    build shape (cloud always compiles since v0.48).
-/// 2. **Drop a registrar from the fold.** In `DefaultBackends.swift` remove
-///    `CloudBackends.self` from `_registrars` —
-///    `test_defaultRegister_equalsExplicitFold` must fail on `cloudProviders`
-///    mismatch.
+///    `CloudSaaSBackends.swift` comment out the provider-declaration loop.
+///    `test_cloudRegistrars_declareAvailableProviders` must fail.
+/// 2. **Drop a registrar from the default fold.** Remove `OllamaBackends.self`
+///    from `defaultRegistrars` above — `test_defaultFold_equalsExplicitFold`
+///    must fail on `cloudProviders` mismatch.
 ///
 /// Restore each edit before committing.
 @MainActor
 final class DefaultBackendsRegistrarTests: XCTestCase {
+
+    private let defaultRegistrars: [any BackendRegistrar.Type] = [
+        OllamaBackends.self,
+        CloudSaaSBackends.self,
+        FoundationBackends.self,
+    ]
+
+    private func registerDefaults(with service: InferenceService) {
+        for registrar in defaultRegistrars {
+            registrar.register(with: service)
+        }
+    }
 
     // MARK: - Per-registrar declarations
 
@@ -125,36 +101,39 @@ final class DefaultBackendsRegistrarTests: XCTestCase {
         #endif
     }
 
-    func test_cloudRegistrar_declaresAvailableProviders() {
+    func test_cloudRegistrars_declareAvailableProviders() {
         let service = InferenceService()
-        CloudBackends.register(with: service)
+        OllamaBackends.register(with: service)
+        CloudSaaSBackends.register(with: service)
         let snapshot = service.registeredBackendSnapshot()
         XCTAssertEqual(snapshot.cloudProviders, Set(APIProvider.availableInBuild),
-                       "CloudBackends.register must declare every provider in APIProvider.availableInBuild")
+                       "The cloud registrars must declare every provider in APIProvider.availableInBuild")
     }
 
     // MARK: - Equivalence
 
-    func test_defaultRegister_equalsExplicitFold() {
-        let viaFacade = InferenceService()
-        DefaultBackends._register(with: viaFacade)
+    func test_defaultFold_equalsExplicitFold() {
+        let viaFold = InferenceService()
+        registerDefaults(with: viaFold)
 
         let viaExplicit = InferenceService()
-        // Explicit list — independent of `DefaultBackends._registrars` so a
-        // drop from that list surfaces here as a snapshot mismatch.
-        CloudBackends.register(with: viaExplicit)
+        // Explicit list — independent of `defaultRegistrars` so a drop from
+        // that list surfaces here as a snapshot mismatch.
+        OllamaBackends.register(with: viaExplicit)
+        CloudSaaSBackends.register(with: viaExplicit)
         FoundationBackends.register(with: viaExplicit)
 
         XCTAssertEqual(
-            viaFacade.registeredBackendSnapshot(),
+            viaFold.registeredBackendSnapshot(),
             viaExplicit.registeredBackendSnapshot(),
-            "DefaultBackends.register must match an explicit fold over the surviving BackendRegistrars (Cloud + Foundation)."
+            "The default fold must match an explicit fold over the surviving BackendRegistrars (Ollama + SaaS + Foundation)."
         )
     }
 
     func test_cloudAndFoundationRegistrars_declareDisjointSurfaces() {
         let cloudService = InferenceService()
-        CloudBackends.register(with: cloudService)
+        OllamaBackends.register(with: cloudService)
+        CloudSaaSBackends.register(with: cloudService)
 
         let foundationService = InferenceService()
         FoundationBackends.register(with: foundationService)
@@ -172,12 +151,11 @@ final class DefaultBackendsRegistrarTests: XCTestCase {
 
 // MARK: - Cloud Pin Loading (CloudSaaS only)
 
-/// Verifies `CloudBackends.register(with:)` loads default certificate pins
-/// before any URLSession factory could be exercised. The `_defaultPinsLoaded`
-/// guard makes `loadDefaultPins()` idempotent across multiple calls but the
-/// **first** call must originate from the registrar — not from the lazy
-/// initializer of `URLSessionProvider._pinned`. If a future refactor moves
-/// the call out of `CloudBackends.register`, this asserts surfaces it.
+/// Verifies the cloud registrar loads default certificate pins before any
+/// URLSession factory could be exercised. The `_defaultPinsLoaded` guard makes
+/// `loadDefaultPins()` idempotent across multiple calls but the **first** call
+/// must originate from the registrar — not from the lazy initializer of
+/// `URLSessionProvider._pinned`.
 @MainActor
 final class CloudBackendsPinLoadingTests: XCTestCase {
 
@@ -197,15 +175,15 @@ final class CloudBackendsPinLoadingTests: XCTestCase {
                      "Pre-condition: pins must be cleared")
 
         let service = InferenceService()
-        CloudBackends.register(with: service)
+        CloudSaaSBackends.register(with: service)
 
         // At-least-2 instead of exactly-2: pin rotation procedures legitimately
-        // add backup pins (temporarily during a swap, or permanently). The
-        // invariant we're asserting is "the registrar populated pins for these
-        // hosts before any URLSession could fire", not the bundled pin count.
+        // add backup pins. The invariant we're asserting is "the registrar
+        // populated pins for these hosts before any URLSession could fire", not
+        // the bundled pin count.
         XCTAssertGreaterThanOrEqual(PinnedSessionDelegate.pinnedHosts["api.anthropic.com"]?.count ?? 0, 2,
-                                    "CloudBackends.register must populate Anthropic pins (at minimum: intermediate + root)")
+                                    "CloudSaaSBackends.register must populate Anthropic pins (at minimum: intermediate + root)")
         XCTAssertGreaterThanOrEqual(PinnedSessionDelegate.pinnedHosts["api.openai.com"]?.count ?? 0, 2,
-                                    "CloudBackends.register must populate OpenAI pins (at minimum: intermediate + root)")
+                                    "CloudSaaSBackends.register must populate OpenAI pins (at minimum: intermediate + root)")
     }
 }

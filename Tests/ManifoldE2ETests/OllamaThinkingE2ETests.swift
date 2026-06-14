@@ -3,7 +3,10 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 /// End-to-end tests for thinking/reasoning model behaviour on a real Ollama server.
 ///

@@ -19,7 +19,10 @@
 import XCTest
 import ManifoldInference
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 // MARK: - Shared helpers
 

@@ -97,7 +97,6 @@ final class CloudErrorSanitizerCoverageTest: XCTestCase {
     /// The v0.48 product split spread the cloud backends across three
     /// targets; the audit walks all of them.
     private static let cloudSourceDirNames = [
-        "Sources/ManifoldCloud",
         "Sources/ManifoldOllama",
         "Sources/ManifoldCloudSaaS",
     ]

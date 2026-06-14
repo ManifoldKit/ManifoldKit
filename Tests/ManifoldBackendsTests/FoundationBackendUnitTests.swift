@@ -6,7 +6,9 @@ import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldBackendTestKit
 @testable import ManifoldTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 @testable import ManifoldFoundation
 
 // MARK: - Test doubles

@@ -3,7 +3,10 @@ import ManifoldInference
 import ManifoldRuntime
 @testable import ManifoldTestSupport
 @testable import ManifoldContractTestSupport
-@testable import ManifoldBackends
+@testable import ManifoldFoundation
+@testable import ManifoldOllama
+@testable import ManifoldCloudSaaS
+@testable import ManifoldCloudCore
 
 /// Live-backend counterpart to the hermetic `RuntimeScenarioRunnerTests`
 /// scripted-mode gate (issue #1576).

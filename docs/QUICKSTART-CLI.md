@@ -50,7 +50,7 @@ dependencies: [
 ],
 ```
 
-then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `ManifoldMLX`) to your target and register the backend with `LlamaBackends.register(with: inference)` after `DefaultBackends.register(with:)` — §2 below shows the full shape. See [MIGRATION-0.48.md](MIGRATION-0.48.md) if you're coming from a trait-based 0.47 setup.
+then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `ManifoldMLX`) to your target and register the backend with `LlamaBackends.register(with: inference)` after the default registrars — §2 below shows the full shape. See [MIGRATION-0.48.md](MIGRATION-0.48.md) if you're coming from a trait-based 0.47 setup.
 
 ---
 
@@ -93,15 +93,17 @@ let package = Package(
 ```swift
 import Foundation
 import ManifoldInference
-import ManifoldBackends
-
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 @main
 @MainActor
 struct ChatCLIFoundation {
     static func main() async throws {
         let inference = InferenceService()
-        DefaultBackends.register(with: inference)
-
+        OllamaBackends.register(with: inference)
+        CloudSaaSBackends.register(with: inference)
+        FoundationBackends.register(with: inference)
         // .builtInFoundation is a sentinel ModelInfo that targets Apple's
         // on-device Foundation Models. .cloud() is the matching ModelLoadPlan
         // shape for backends that don't load files off disk.
@@ -173,7 +175,9 @@ let package = Package(
 ```swift,no-build
 import Foundation
 import ManifoldInference
-import ManifoldBackends
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 import ManifoldLlama   // from manifold-llama
 
 @main
@@ -214,11 +218,13 @@ struct ChatCLILlama {
             )
         )
 
-        // 4. Standard service construction. DefaultBackends.register wires
+        // 4. Standard service construction. The default registrars wire
         // the compiled-in core backends (cloud + Foundation); the companion
         // Llama registrar adds GGUF routing on top.
         let inference = InferenceService()
-        DefaultBackends.register(with: inference)
+        OllamaBackends.register(with: inference)
+        CloudSaaSBackends.register(with: inference)
+        FoundationBackends.register(with: inference)
         LlamaBackends.register(with: inference)
 
         try await inference.loadModel(from: model, plan: plan)
@@ -409,15 +415,17 @@ let package = Package(
 ```swift
 import Foundation
 import ManifoldInference
-import ManifoldBackends
-
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
 @main
 @MainActor
 struct ChatCLICloud {
     static func main() async throws {
         let inference = InferenceService()
-        DefaultBackends.register(with: inference)
-
+        OllamaBackends.register(with: inference)
+        CloudSaaSBackends.register(with: inference)
+        FoundationBackends.register(with: inference)
         // Point at a local Ollama instance. baseURL and modelName both default
         // off APIProvider.ollama, but pass them explicitly when you want a
         // non-default model or a non-default host.
