@@ -25,6 +25,14 @@ public final class VoiceConversationController {
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
     @ObservationIgnored private var wakeWordDismissTask: Task<Void, Never>?
     @ObservationIgnored private var activeUtterances = 0
+    /// Monotonic playback-generation token. A replace-mode `startPlayback`
+    /// (or `stopSpeaking`) bumps this so a previously-cancelled utterance task
+    /// — whose continuation resumes *after* the new utterance has already
+    /// started — can detect that it no longer owns the shared `isSpeaking` /
+    /// `activeUtterances` state and skip its teardown. Without this, the stale
+    /// task's tail would decrement the new generation's counter and clear
+    /// `isSpeaking` while a fresh utterance is still speaking.
+    @ObservationIgnored private var playbackGeneration = 0
 
     public init(
         transcriber: (any SpeechTranscribing)? = nil,
@@ -193,8 +201,12 @@ public final class VoiceConversationController {
         errorMessage = nil
         if !enqueue {
             playbackTask?.cancel()
+            // New generation: any in-flight (now-cancelled) task belongs to the
+            // previous generation and must not touch the counter below.
+            playbackGeneration += 1
             activeUtterances = 0
         }
+        let generation = playbackGeneration
         activeUtterances += 1
         isSpeaking = true
 
@@ -207,9 +219,18 @@ public final class VoiceConversationController {
                 try await self.synthesizer.speak(trimmed, options: options, enqueue: enqueue)
             } catch is CancellationError {
             } catch {
-                self.errorMessage = error.localizedDescription
+                // A stale (replaced) task must not clobber the new utterance's
+                // cleared error state; only the current generation reports.
+                if generation == self.playbackGeneration {
+                    self.errorMessage = error.localizedDescription
+                }
             }
 
+            // A cancelled replace-mode predecessor resumes *after* the new
+            // utterance already reset the counter; without this guard its tail
+            // would decrement the new generation's count and falsely clear
+            // `isSpeaking`.
+            guard generation == self.playbackGeneration else { return }
             self.activeUtterances = max(0, self.activeUtterances - 1)
             if self.activeUtterances == 0 {
                 self.isSpeaking = false
@@ -223,6 +244,9 @@ public final class VoiceConversationController {
         synthesizer.stopSpeaking()
         playbackTask?.cancel()
         playbackTask = nil
+        // Bump the generation so any cancelled task's tail no-ops instead of
+        // re-decrementing the (already-zeroed) counter.
+        playbackGeneration += 1
         activeUtterances = 0
         isSpeaking = false
     }
