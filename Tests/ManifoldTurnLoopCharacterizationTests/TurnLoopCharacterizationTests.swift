@@ -578,7 +578,7 @@ final class TurnLoopCharacterizationTests: XCTestCase {
 
     /// Token-usage golden.
     ///
-    /// The backend yields a `.usage(prompt:completion:)` event before its
+    /// The backend yields a `.usage(TokenUsage)` event before its
     /// tokens; the executor records it on the assistant message and emits
     /// `.tokenUsageRecorded`. This pins the token-count fields the happy-path
     /// skeleton drops — a lost token-pinning in the engine de-tangle now diffs.

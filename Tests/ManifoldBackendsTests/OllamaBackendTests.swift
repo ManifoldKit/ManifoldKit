@@ -695,7 +695,7 @@ struct OllamaBackendTests {
     }
 
     /// End-to-end: the done-line's `eval_count` / `prompt_eval_count` must
-    /// surface both as a `.usage(prompt:completion:)` event on the stream and
+    /// surface both as a `.usage(TokenUsage)` event on the stream and
     /// as `lastUsage` on the backend — mirroring `SSECloudBackend`'s SSE path.
     /// This is what actually reaches the UI.
     ///

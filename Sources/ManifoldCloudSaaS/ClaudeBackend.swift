@@ -438,7 +438,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     /// Claude reports usage split across `message_start` (prompt) and
     /// `message_delta` (completion). Two arrival shapes are possible:
     ///   - Routed-consumer path: `ClaudeStreamEventExtractor` merges the
-    ///     two halves and yields a single `.usage(prompt, completion)`
+    ///     two halves and yields a single `.usage(TokenUsage)`
     ///     event, which the envelope mirrors here with BOTH halves
     ///     populated.
     ///   - Legacy non-consumer paths (no streamConsumerFactory installed):
