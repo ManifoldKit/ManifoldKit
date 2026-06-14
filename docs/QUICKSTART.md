@@ -337,6 +337,9 @@ result = try await ManifoldKit.quickStart(
 
 (Xcode consumers: File ▸ Add Package Dependencies… ▸ enter the companion URL ▸ tick the product for your app target — no manifest editing.)
 
+> [!IMPORTANT]
+> **MLX needs an Xcode `.app` build — it will not generate from a plain `swift run` / bare SwiftPM executable.** mlx-swift compiles its Metal kernels into a `default.metallib` that only the Xcode / `xcodebuild` build path produces and bundles; a SwiftPM executable never builds it, so MLX aborts at model load with `MLX error: Failed to load the default metallib`. A normal SwiftUI app target (the path this page describes) is an Xcode build, so it works — but a headless CLI via `swift run` does not. For a `swift run` CLI, use the GGUF/Llama backend instead; see [QUICKSTART-CLI.md → §4 MLX](QUICKSTART-CLI.md#4-mlx-via-the-manifold-mlx-companion-apple-silicon) for the full constraint and recipe. (`manifold-llama` has no such requirement.)
+
 Common profiles:
 
 | Use case | Packages |
