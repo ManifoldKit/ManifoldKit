@@ -6,6 +6,10 @@ import os
 // surface only (InferenceBackend, GenerationConfig, GenerationEvent, …) — no
 // engine state. ManifoldContract re-exports the P1 leaf types it needs.
 import ManifoldContract
+// InferenceMetricSink and InMemoryMetricSink live in ManifoldInference since
+// the observability train relocated them from ManifoldCloudCore so that this
+// backend can reach them without a ManifoldCloudCore dependency.
+import ManifoldInference
 
 /// Apple FoundationModels inference backend for on-device Apple Intelligence models.
 ///
@@ -194,6 +198,12 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// Injected at init so unit tests can drive the unavailable branch without a
     /// real Apple Intelligence entitlement. Production uses the system default.
     private let availabilityResolver: @Sendable () -> SystemLanguageModel.Availability
+
+    /// The sink that receives an ``InferenceMetric`` after every generation call.
+    ///
+    /// Defaults to ``InMemoryMetricSink/shared`` so callers can read recent
+    /// metrics without any configuration. Set to `nil` to disable metric emission.
+    public var metricSink: (any InferenceMetricSink)? = InMemoryMetricSink.shared
 
     /// Structured conversation history installed by ``GenerationHistoryInstaller``
     /// through the ``StructuredHistoryReceiver`` opt-in.
@@ -496,13 +506,33 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // returning and the Task being scheduled by the cooperative executor.
         // The retain cycle (backend → generationTask → backend) is broken in the
         // `defer` block when `generationTask` is nilled out on completion.
+        let metricTracker = GenerationMetricTracker()
+        let capturedMetricSink = withStateLock { metricSink }
         let task = Task { [self, generationStream] in
+            var streamError: Error?
             defer {
                 withStateLock {
                     if generationSequence == generationID {
                         _isGenerating = false
                         generationTask = nil
                     }
+                }
+                // Emit an InferenceMetric after every generation (success or
+                // failure). Cost is zero / approximate because the Foundation
+                // Models framework does not expose token-level billing.
+                if let sink = capturedMetricSink {
+                    SSEGenerationMetrics.record(
+                        to: sink,
+                        tracker: metricTracker,
+                        provider: "FoundationModels",
+                        model: "apple-foundation",
+                        promptTokens: 0,
+                        completionTokens: 0,
+                        estimatedCostUSD: 0,
+                        isCostApproximate: true,
+                        costTableDate: "",
+                        errorClass: streamError.map { String(describing: type(of: $0)) }
+                    )
                 }
                 Self.logger.debug("Foundation generate finished")
             }
@@ -527,6 +557,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 // iterator was dropped before returning nil.
                 withStateLock { _sessionIsClean = false }
 
+                metricTracker.start()
+
                 let result: StreamResult
                 if let toolEnvelope {
                     result = try await runToolAwareStream(
@@ -535,7 +567,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         schema: toolEnvelope,
                         options: options,
                         continuation: continuation,
-                        generationStream: generationStream
+                        generationStream: generationStream,
+                        metricTracker: capturedMetricSink != nil ? metricTracker : nil
                     )
                 } else {
                     result = try await runTextOnlyStream(
@@ -543,7 +576,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         prompt: prompt,
                         options: options,
                         continuation: continuation,
-                        generationStream: generationStream
+                        generationStream: generationStream,
+                        metricTracker: capturedMetricSink != nil ? metricTracker : nil
                     )
                 }
 
@@ -579,6 +613,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
                 await MainActor.run { generationStream.setPhase(.done) }
             } catch {
+                streamError = error
                 if !Task.isCancelled {
                     Self.logger.error("Foundation generation error: \(error)")
                     await MainActor.run { generationStream.setPhase(.failed(error.localizedDescription)) }
@@ -620,7 +655,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         prompt: String,
         options: GenerationOptions,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
-        generationStream: GenerationStream
+        generationStream: GenerationStream,
+        metricTracker: GenerationMetricTracker?
     ) async throws -> StreamResult {
         let responseStream = session.streamResponse(to: prompt, options: options)
 
@@ -641,6 +677,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                     await MainActor.run { generationStream.setPhase(.streaming) }
                     isFirstToken = false
                 }
+                metricTracker?.recordToken()
                 continuation.yield(.token(newContent))
                 eventsEmitted += 1
                 previousCount = currentText.count
@@ -662,7 +699,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         schema: GenerationSchema,
         options: GenerationOptions,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
-        generationStream: GenerationStream
+        generationStream: GenerationStream,
+        metricTracker: GenerationMetricTracker?
     ) async throws -> StreamResult {
         let responseStream = session.streamResponse(
             to: prompt,
@@ -699,6 +737,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         await MainActor.run { generationStream.setPhase(.streaming) }
                         isFirstToken = false
                     }
+                    metricTracker?.recordToken()
                     continuation.yield(.token(delta))
                     eventsEmitted += 1
                     lastTextLength = textSoFar.count
