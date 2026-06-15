@@ -1,11 +1,10 @@
 import Foundation
-import ManifoldInference
 
 /// Accumulates per-token timing data for a single generation call.
 ///
 /// Thread-safety via `NSLock`. Updated from the generation task (arbitrary
 /// thread); read after the task completes to build the final ``InferenceMetric``.
-final class GenerationMetricTracker: @unchecked Sendable {
+package final class GenerationMetricTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var wallStart: ContinuousClock.Instant = ContinuousClock.now
     private var dispatchDate: Date = Date()
@@ -13,7 +12,9 @@ final class GenerationMetricTracker: @unchecked Sendable {
     private var lastTokenInstant: ContinuousClock.Instant?
     private var interTokenGapsNs: [Int64] = []
 
-    func start() {
+    package init() {}
+
+    package func start() {
         lock.lock()
         defer { lock.unlock() }
         wallStart = ContinuousClock.now
@@ -22,7 +23,7 @@ final class GenerationMetricTracker: @unchecked Sendable {
         dispatchDate = Date()
     }
 
-    func recordToken() {
+    package func recordToken() {
         lock.lock()
         defer { lock.unlock() }
         let now = ContinuousClock.now
@@ -37,7 +38,7 @@ final class GenerationMetricTracker: @unchecked Sendable {
         lastTokenInstant = now
     }
 
-    func buildMetric(
+    package func buildMetric(
         provider: String,
         model: String,
         promptTokens: Int,
@@ -88,8 +89,8 @@ final class GenerationMetricTracker: @unchecked Sendable {
     }
 }
 
-enum SSEGenerationMetrics {
-    static func observing(
+package enum SSEGenerationMetrics {
+    package static func observing(
         _ stream: AsyncThrowingStream<GenerationEvent, Error>,
         tracker: GenerationMetricTracker,
         enabled: Bool
@@ -115,31 +116,35 @@ enum SSEGenerationMetrics {
         }
     }
 
-    static func record(
+    /// Records a metric to `sink` using pre-built tracker data.
+    ///
+    /// Cost fields are passed explicitly so this method remains in
+    /// `ManifoldInference` without a dependency on `InferenceCostEstimator`,
+    /// which lives in `ManifoldCloudCore`. Cloud backends compute cost before
+    /// calling this method; local backends (Foundation) pass zero cost with
+    /// `isCostApproximate: true`.
+    package static func record(
         to sink: any InferenceMetricSink,
         tracker: GenerationMetricTracker,
         provider: String,
         model: String,
-        usage: (promptTokens: Int, completionTokens: Int)?,
+        promptTokens: Int,
+        completionTokens: Int,
+        cachedPromptTokens: Int = 0,
+        estimatedCostUSD: Double,
+        isCostApproximate: Bool,
+        costTableDate: String,
         errorClass: String?
     ) {
-        let promptTokens = usage?.promptTokens ?? 0
-        let completionTokens = usage?.completionTokens ?? 0
-        let (costUSD, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: provider,
-            model: model,
-            promptTokens: promptTokens,
-            completionTokens: completionTokens
-        )
         let metric = tracker.buildMetric(
             provider: provider,
             model: model,
             promptTokens: promptTokens,
-            cachedPromptTokens: 0,
+            cachedPromptTokens: cachedPromptTokens,
             completionTokens: completionTokens,
-            estimatedCostUSD: costUSD,
-            isCostApproximate: isApprox,
-            costTableDate: InferenceCostEstimator.costTableDate,
+            estimatedCostUSD: estimatedCostUSD,
+            isCostApproximate: isCostApproximate,
+            costTableDate: costTableDate,
             errorClass: errorClass
         )
         Task { await sink.record(metric) }

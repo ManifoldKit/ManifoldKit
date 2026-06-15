@@ -1,14 +1,14 @@
 import Foundation
 
 /// A snapshot of latency, cost, and token-count data produced after a single
-/// cloud inference call.
+/// inference call.
 ///
-/// Emitted by ``SSECloudBackend`` after every generation (success or failure)
-/// and forwarded to the configured ``InferenceMetricSink``. Consumers use this
-/// to power dashboards, cost alerts, and latency regression detection without
-/// having to instrument individual backends.
+/// Emitted by backends after every generation (success or failure) and forwarded
+/// to the configured ``InferenceMetricSink``. Consumers use this to power
+/// dashboards, cost alerts, and latency regression detection without having to
+/// instrument individual backends.
 public struct InferenceMetric: Sendable {
-    /// Human-readable backend name (e.g. "Claude", "OpenAI").
+    /// Human-readable backend name (e.g. "Claude", "OpenAI", "FoundationModels").
     public let provider: String
     /// Model identifier used for the call (e.g. "claude-sonnet-4-6").
     public let model: String
@@ -75,7 +75,7 @@ public struct InferenceMetric: Sendable {
 
 // MARK: - Sink Protocol
 
-/// A type that receives ``InferenceMetric`` values produced by cloud backends.
+/// A type that receives ``InferenceMetric`` values produced by backends.
 ///
 /// Conform to this protocol to route metrics into observability systems (Datadog,
 /// OpenTelemetry, a local ring buffer, etc.) without coupling the backend layer
@@ -89,7 +89,7 @@ public protocol InferenceMetricSink: AnyObject, Sendable {
 
 /// A thread-safe, bounded ring buffer of ``InferenceMetric`` values.
 ///
-/// The shared singleton is the default sink wired into ``SSECloudBackend``.
+/// The shared singleton is the default sink wired into cloud and local backends.
 /// Tests and host apps can inject their own sink; this actor is useful as a
 /// lightweight diagnostic tool in debug builds.
 ///
@@ -97,8 +97,8 @@ public protocol InferenceMetricSink: AnyObject, Sendable {
 /// appended, so memory usage stays constant regardless of call volume.
 public actor InMemoryMetricSink: InferenceMetricSink {
 
-    /// Shared singleton. ``SSECloudBackend`` defaults to this sink so callers
-    /// can read recent metrics without configuring anything.
+    /// Shared singleton. Backends default to this sink so callers can read
+    /// recent metrics without configuring anything.
     public static let shared = InMemoryMetricSink()
 
     private var metrics: [InferenceMetric] = []
