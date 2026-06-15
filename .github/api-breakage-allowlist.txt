@@ -103,3 +103,4 @@ API breakage: constructor ToolCallTransform.init(markers:) has been removed
 API breakage: struct InferenceMetric has been removed
 API breakage: protocol InferenceMetricSink has been removed
 API breakage: class InMemoryMetricSink has been removed
+API breakage: enumelement UnloadReason.idleTimeout has been added as a new enum case

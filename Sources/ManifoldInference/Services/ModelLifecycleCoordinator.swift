@@ -47,6 +47,39 @@ final class ModelLifecycleCoordinator {
     /// `didSet` so tests and custom gates can swap it before each load.
     var denyPolicy: LoadDenyPolicy = .platformDefault
 
+    // MARK: - Keep-Alive Policy
+
+    /// Policy that controls automatic idle unloading. Defaults to `.never` (disabled).
+    ///
+    /// When set to a non-nil `idleTimeout`, an idle watch task is armed after each
+    /// successful model load. The task polls the generation queue's idle duration
+    /// and calls the facade's `unloadModel(reason:)` with `.idleTimeout` when the
+    /// model has been idle longer than the threshold.
+    ///
+    /// Written by the InferenceService facade's `didSet` so callers interact only
+    /// with the public-facing property.
+    var keepAlivePolicy: KeepAlivePolicy = .never {
+        didSet { applyKeepAlivePolicy() }
+    }
+
+    /// Closure through which the idle watch task requests an unload on the facade.
+    ///
+    /// Injected by ``InferenceService`` after init (the coordinator cannot hold a
+    /// strong reference to the service directly — that would create a retain cycle
+    /// since the service owns the coordinator). The closure is `@Sendable` so the
+    /// watch `Task { }` can capture it safely under Swift 6 strict concurrency.
+    var unloadRequestHandler: (@MainActor @Sendable (UnloadReason) -> Void)?
+
+    /// Closure that returns the current generation queue idle duration.
+    ///
+    /// Injected by ``InferenceService`` after init so the coordinator can poll
+    /// idle time without holding a direct reference to the generation queue.
+    var idleDurationProvider: (@MainActor @Sendable () -> TimeInterval)?
+
+    /// The running idle watch task, if any. Cancelled when a model unloads or
+    /// when `keepAlivePolicy` changes to `.never`.
+    private var idleWatchTask: Task<Void, Never>?
+
     // MARK: - Prompt Template
 
     var selectedPromptTemplate: PromptTemplate = .chatML
@@ -383,6 +416,7 @@ final class ModelLifecycleCoordinator {
     /// Does NOT stop generation — that is the facade's responsibility.
     /// The facade calls `stopGeneration()` before delegating here.
     func unloadModel() {
+        cancelIdleWatchTask()
         invalidateOutstandingLoads()
         backend?.unloadModel()
         backend = nil
@@ -564,6 +598,7 @@ final class ModelLifecycleCoordinator {
         residentFootprintBytes = footprintBytes
         loadPhase = .loaded(request: request)
         logLoadEvent("load.commit", request: request, clearMetadata: true)
+        armIdleWatchTaskIfNeeded()
         return true
     }
 
@@ -631,5 +666,64 @@ final class ModelLifecycleCoordinator {
         case .foundation:
             return "Apple Foundation Models require iOS 26 / macOS 26 or later."
         }
+    }
+
+    // MARK: - Keep-Alive Idle Watch (Private)
+
+    /// Re-evaluates the keep-alive policy whenever it changes.
+    ///
+    /// Called via `keepAlivePolicy.didSet`. If a model is already loaded and
+    /// the new policy has a non-nil timeout, re-arms the watch task. If the
+    /// new policy is `.never`, the current watch task (if any) is cancelled.
+    private func applyKeepAlivePolicy() {
+        guard isModelLoaded else { return }
+        if keepAlivePolicy.idleTimeout != nil {
+            armIdleWatchTaskIfNeeded()
+        } else {
+            cancelIdleWatchTask()
+        }
+    }
+
+    /// Arms the idle watch task when a policy with a non-nil timeout is active.
+    ///
+    /// Any previously running watch task is cancelled first so rearming after a
+    /// new model load or policy change is always clean.
+    private func armIdleWatchTaskIfNeeded() {
+        guard let timeout = keepAlivePolicy.idleTimeout else { return }
+        cancelIdleWatchTask()
+
+        // Poll interval: check no more frequently than once every 10 seconds,
+        // but also no less frequently than once per quarter of the timeout
+        // window so short timeouts (e.g. 0.5 s in tests) still fire promptly.
+        let pollInterval = min(max(timeout / 4, 0.1), 10.0)
+
+        idleWatchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(pollInterval))
+                } catch {
+                    // Sleep was cancelled — exit cleanly.
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+
+                // Check idle duration against the current policy (the policy
+                // may have been updated since the task was armed).
+                guard let currentTimeout = self.keepAlivePolicy.idleTimeout else { return }
+                let idle = self.idleDurationProvider?() ?? TimeInterval.infinity
+                if idle >= currentTimeout {
+                    Log.inference.info("KeepAlivePolicy: idle \(idle, privacy: .public)s >= timeout \(currentTimeout, privacy: .public)s — requesting auto-unload")
+                    self.unloadRequestHandler?(.idleTimeout)
+                    return
+                }
+            }
+        }
+    }
+
+    /// Cancels and nils the idle watch task.
+    private func cancelIdleWatchTask() {
+        idleWatchTask?.cancel()
+        idleWatchTask = nil
     }
 }
