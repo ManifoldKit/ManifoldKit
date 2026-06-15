@@ -139,8 +139,33 @@ The tier-2 script's long header doc-comment is the canonical "why and how" refer
 
 ---
 
+## 5. Local real-model integration + perf sweep
+
+**What.** One script — [`scripts/local-integration-sweep.sh`](../scripts/local-integration-sweep.sh) — that runs the real-model integration and benchmark suites across the whole family on local Apple Silicon, and writes a single timestamped report:
+
+| Lane | Suite | Real backend |
+|---|---|---|
+| `core` | `ManifoldE2ETests` (incl. `DemoScenarioOllamaE2ETests`, `BackendBenchmarkE2ETests`) | Ollama @ `localhost:11434` — core's only in-package real-model path post-companion-split |
+| `llama` | manifold-llama integration + 5-family GBNF grammar/tool conformance + regression fixtures | in-process llama.cpp against GGUF on disk |
+| `mlx` | manifold-mlx text E2E + vision-input + TTFT/TPS benchmark | in-process MLX/Metal against safetensors on disk |
+
+**Why.** CI is macOS-only and mocks every backend; the heavy local families live in companion repos whose integration tiers are `workflow_dispatch`-gated and therefore effectively never run. So real-model behaviour — GBNF conformance across model families, KV-cache reuse correctness, real vision input, decode throughput — is only ever exercised on a developer machine, by hand, if at all. This script makes that a one-command, repeatable sweep instead of ad-hoc `swift test` invocations with easy-to-forget env vars. It is **deliberately not scheduled**: run it the nights you want a sweep (e.g. after adding a model family or a sampler).
+
+**Run it.**
+```bash
+scripts/local-integration-sweep.sh                  # all lanes, auto-discover models
+scripts/local-integration-sweep.sh --lanes llama    # one lane
+COMPANIONS_DIR=~/src scripts/local-integration-sweep.sh   # companion repos elsewhere
+```
+Hours, not seconds — it cold-builds three packages then runs real inference. Lanes run **sequentially** (MLX and llama.cpp contend for GPU/unified memory), each with a unique `TMPDIR` and **no `--parallel`** (matches both repos' process-global-state constraints). The report (`./.local-integration-runs/<stamp>/REPORT.md`, gitignored) leads with a model inventory so a lane that silently `XCTSkip`s for a missing model is visible, not mistaken for a pass.
+
+**Extend.** Add a lane by following the `run_lane` pattern; add a model family by dropping a GGUF whose filename contains the family fragment (`qwen`, `mistral`, `phi`, …) into `~/Documents/Models`, or an MLX snapshot dir for the MLX lane. The inventory block reports what will and won't light up.
+
+---
+
 ## When to use which
 
 - Public API or first-time-user friction → DX walkthrough (slow, high-signal) + cold-start gate (fast, narrow).
 - "This kind of bug keeps coming back" → audit test + sabotage entry.
 - Architecture invariant (module layering, HTTP egress, persistence boundaries) → audit test, cited in [CONTRIBUTING.md § Architecture invariants](../CONTRIBUTING.md#architecture-invariants).
+- Real-model behaviour CI can't see (GBNF conformance per family, KV-cache reuse, vision input, decode throughput) → local integration + perf sweep (slow, hardware + models required, run by hand).

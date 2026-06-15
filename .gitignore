@@ -44,3 +44,4 @@ SECURITY_AUDIT*.md
 # Muter mutation-testing artifacts (see docs/MUTATION-BASELINE-2026-06.md)
 muter_logs/
 *_mutated/
+.local-integration-runs/
