@@ -19,6 +19,16 @@ final class ModelLifecycleCoordinator {
     private(set) var activeModelName: String?
     private(set) var modelLoadProgress: Double?
 
+    /// Timestamp of the moment `isModelLoaded` transitioned to `true` for the
+    /// current resident model. Cleared to `nil` on unload.
+    private(set) var loadedAt: Date?
+
+    /// Best-effort selection-time footprint estimate for the resident model, in
+    /// bytes. Sourced from `ModelLoadPlan.outcome.totalEstimatedBytes` when a
+    /// plan-based load is used. `nil` for cloud endpoints or when no plan was
+    /// computed (e.g. the `#if DEBUG` test init path).
+    private(set) var residentFootprintBytes: UInt64?
+
     /// Identity of the ``APIEndpointRecord`` backing the active endpoint
     /// backend, or `nil` for on-disk model loads (which have no endpoint
     /// record). Threaded through the load commit so usage accounting can
@@ -98,6 +108,7 @@ final class ModelLifecycleCoordinator {
         self.isModelLoaded = true
         self.activeBackendName = name
         self.activeModelName = modelName
+        self.loadedAt = Date()
         let request = LoadRequestToken(rawValue: 1)
         self.nextLoadRequestToken = request
         self.latestRequestedLoadToken = request
@@ -238,12 +249,20 @@ final class ModelLifecycleCoordinator {
         let url = modelInfo.url
         let mmprojURL = modelInfo.mmprojURL
         let dispatchPlan = effectivePlan
+        // Capture the plan's footprint estimate so `commitLoadIfCurrent` can
+        // store it as `residentFootprintBytes`. Only non-zero estimates are
+        // meaningful; zero is the plan's unset default for cloud/system-managed
+        // backends and is stored as `nil` to signal "unknown".
+        let footprint: UInt64? = plan.outcome.totalEstimatedBytes > 0
+            ? plan.outcome.totalEstimatedBytes
+            : nil
         try await runLoad(
             source: "local",
             target: modelTypeLogLabel(modelInfo.modelType),
             backendName: backendName,
             backend: newBackend,
-            modelName: modelInfo.name
+            modelName: modelInfo.name,
+            footprintBytes: footprint
         ) {
             (newBackend as? MultimodalProjectorConfigurable)?.setMmprojURL(mmprojURL)
             try await newBackend.loadModel(from: url, plan: dispatchPlan)
@@ -262,6 +281,7 @@ final class ModelLifecycleCoordinator {
         backend newBackend: any InferenceBackend,
         modelName: String,
         endpointID: UUID? = nil,
+        footprintBytes: UInt64? = nil,
         loadOperation: @escaping @Sendable () async throws -> Void
     ) async throws {
         let request = beginLoadRequest(
@@ -290,7 +310,8 @@ final class ModelLifecycleCoordinator {
             backend: newBackend,
             backendName: backendName,
             modelName: modelName,
-            endpointID: endpointID
+            endpointID: endpointID,
+            footprintBytes: footprintBytes
         ) else {
             newBackend.unloadModel()
             logLoadEvent("load.suppress", request: request, reason: "stale-success", clearMetadata: true)
@@ -369,6 +390,8 @@ final class ModelLifecycleCoordinator {
         activeBackendName = nil
         activeModelName = nil
         activeEndpointID = nil
+        loadedAt = nil
+        residentFootprintBytes = nil
     }
 
     // MARK: - Capability Queries
@@ -527,7 +550,8 @@ final class ModelLifecycleCoordinator {
         backend newBackend: any InferenceBackend,
         backendName: String,
         modelName: String,
-        endpointID: UUID? = nil
+        endpointID: UUID? = nil,
+        footprintBytes: UInt64? = nil
     ) -> Bool {
         guard canCommitLoad(request) else { return false }
         backend = newBackend
@@ -536,6 +560,8 @@ final class ModelLifecycleCoordinator {
         activeBackendName = backendName
         activeModelName = modelName
         activeEndpointID = endpointID
+        loadedAt = Date()
+        residentFootprintBytes = footprintBytes
         loadPhase = .loaded(request: request)
         logLoadEvent("load.commit", request: request, clearMetadata: true)
         return true

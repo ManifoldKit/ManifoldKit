@@ -688,6 +688,31 @@ public final class InferenceService {
         return generation.hasQueuedRequests
     }
 
+    /// Number of requests waiting in the generation queue (not counting the
+    /// request currently being generated). Zero when the queue is idle.
+    public var queuedRequestCount: Int {
+        ensureProviderWired()
+        return generation.queuedRequestCount
+    }
+
+    /// A point-in-time snapshot of the resident model's identity and runtime
+    /// characteristics, or `nil` when no model is loaded.
+    ///
+    /// See ``ResidentModelStatus`` for field documentation.
+    public var residentModelStatus: ResidentModelStatus? {
+        guard lifecycle.isModelLoaded,
+              let modelID = lifecycle.activeModelName,
+              let backend = lifecycle.activeBackendName,
+              let loadedAt = lifecycle.loadedAt else { return nil }
+        return ResidentModelStatus(
+            modelID: modelID,
+            backend: backend,
+            estimatedFootprintBytes: lifecycle.residentFootprintBytes,
+            loadedAt: loadedAt,
+            lastActivityAt: generation.lastActivityAt
+        )
+    }
+
     public func resetConversation() {
         lifecycle.resetConversation()
     }
