@@ -11,6 +11,17 @@ import ManifoldInference
 /// Compression failures are logged and do not abort the turn — the existing
 /// history is preserved.
 ///
+/// ## Per-message pins are not yet threaded through this seam
+///
+/// `compress(history:sessionID:generate:)` passes only a `[ChatMessage]` and
+/// the `sessionID` — **not** the set of user-pinned message IDs. The data
+/// already exists (`ChatSession.pinnedMessageIDsRaw` / `pinnedMessageIDs` on
+/// the session record), but honoring pins inside a policy requires a
+/// protocol-signature change to carry the pinned-ID set (a new parameter or a
+/// session handle). Until that lands, ``DefaultCompressionPolicy`` treats only
+/// `.system`-role and `.memory`-kind records as load-bearing; explicit
+/// per-message pins are not preserved across compression.
+///
 /// ## v0.26.0 Migration
 ///
 /// The `shouldCompress` signature gained a `contextUtilization` parameter in v0.26.0.
