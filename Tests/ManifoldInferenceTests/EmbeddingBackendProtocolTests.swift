@@ -75,4 +75,24 @@ final class EmbeddingBackendProtocolTests: XCTestCase {
         XCTAssertNotNil(desc)
         XCTAssertFalse(desc!.isEmpty)
     }
+
+    // MARK: - EmbeddingCapabilities
+
+    /// A conformer that does not override `capabilities` inherits the
+    /// protocol-extension default — proving the addition is non-breaking.
+    func test_capabilities_defaultsToDefault_whenNotOverridden() {
+        let backend = MockEmbeddingBackend()
+        XCTAssertEqual(backend.capabilities, .default)
+    }
+
+    func test_embeddingCapabilities_codableRoundTrips() throws {
+        let original = EmbeddingCapabilities(
+            maxBatchSize: 32,
+            maxInputLength: 512,
+            producesNormalizedVectors: true
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(EmbeddingCapabilities.self, from: data)
+        XCTAssertEqual(decoded, original)
+    }
 }

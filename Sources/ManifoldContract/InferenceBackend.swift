@@ -88,6 +88,20 @@ public struct LlamaMirostatV2SamplerOptions: Sendable, Codable, Equatable {
 }
 
 /// Sampling and generation parameters shared across all inference backends.
+///
+/// ## Throw vs. silently ignore
+///
+/// Fields fall into two contractual classes, and backends honour them differently:
+///
+/// - **Capability-gated guarantees** (e.g. ``GenerationConfig/grammar``) carry a
+///   *guarantee*: a backend that cannot honour the request MUST throw the matching
+///   ``InferenceError`` (e.g. ``InferenceError/unsupportedGrammar``) rather than
+///   silently degrade. Callers rely on the error to know the constraint was not applied.
+/// - **Advisory hints** (e.g. ``seed``, ``minP``, ``jsonMode``, the sampler penalties,
+///   and the vendor knobs below) are best-effort: backends that do not support a hint
+///   silently ignore it. A missing hint is never an error.
+///
+/// See each field's own documentation for the per-backend specifics.
 public struct GenerationConfig: Sendable, Codable {
     public var temperature: Float
     public var topP: Float
@@ -148,6 +162,11 @@ public struct GenerationConfig: Sendable, Codable {
     /// `nil` lets each backend use its own default. MLX-only — see
     /// ``presenceContextSize`` for why llama.cpp ignores it.
     public var frequencyContextSize: Int?
+
+    // The three `llama*` fields below are backend-specific knobs living on the
+    // shared GenerationConfig type. This is accepted tech debt: relocating them
+    // into the companion llama package is deferred (cross-repo blast radius) and
+    // tracked in #1834.
 
     /// llama.cpp DRY repetition sampler options.
     ///
