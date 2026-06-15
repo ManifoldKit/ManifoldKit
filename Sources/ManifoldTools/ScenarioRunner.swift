@@ -86,7 +86,7 @@ public final class ScenarioRunner {
                 case .toolCall(let call):
                     turnToolCalls.append(call)
                     logger?.append(.toolCall(scenarioId: scenario.id, name: call.toolName, arguments: call.arguments))
-                case .prefillProgress, .usage, .thinkingToken, .thinkingCompleted, .thinkingSignature:
+                case .prefillProgress, .promptRendered, .usage, .thinkingToken, .thinkingCompleted, .thinkingSignature:
                     continue
                 case .toolResult, .toolIterationLimitExceeded:
                     // ScenarioRunner calls backend.generate() directly and owns

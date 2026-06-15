@@ -19,6 +19,14 @@ public struct GenerationStreamConsumer: Sendable {
         case .prefillProgress:
             return .ignore
 
+        case .promptRendered:
+            // Opt-in diagnostic event carrying the assembled prompt text.
+            // The consumer has no chat-message state to mutate — hosts that
+            // want to inspect or log the rendered prompt observe the raw event
+            // upstream, mirroring the `.throttleDiagnostic` and `.kvCacheReuse`
+            // precedents.
+            return .ignore
+
         case .token(let text):
             return .appendText(text)
 

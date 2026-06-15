@@ -215,7 +215,7 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     // Orchestrator-level dispatch lifecycle events; raw
                     // backend replay never emits them.
                     break
-                case .prefillProgress:
+                case .prefillProgress, .promptRendered:
                     break
                 case .handoffRequested:
                     // Runtime-synthesised handoff event; live raw backend

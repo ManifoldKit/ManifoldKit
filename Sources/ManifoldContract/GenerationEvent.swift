@@ -72,6 +72,27 @@ public enum GenerationEvent: Sendable, Equatable {
     /// `tokensPerSecond` is the backend-reported prompt-eval throughput.
     case prefillProgress(tokensProcessed: Int, tokensTotal: Int, tokensPerSecond: Double)
 
+    /// The fully-assembled prompt text that was submitted to the backend for
+    /// this generation turn, including the system prompt, conversation history,
+    /// and any tool definitions that were injected.
+    ///
+    /// **Opt-in only.** Emitted by the orchestration layer immediately before
+    /// the first ``prefillProgress`` or ``token`` event, and only when
+    /// ``GenerationConfig/captureRenderedPrompt`` is `true`. Off by default to
+    /// avoid unintentional retention of sensitive prompt content.
+    ///
+    /// For backends that use a prompt-template (local GGUF, MLX), `text` is
+    /// the formatted string passed to
+    /// ``InferenceBackend/generate(prompt:systemPrompt:config:)``.
+    /// For cloud backends (which receive history as a message array on the wire),
+    /// `text` is the most-recent user message content — the value passed as
+    /// `prompt:`. The full conversation history is encoded on the wire and is
+    /// not available as a single rendered string.
+    ///
+    /// Consumers that do not opt in will never observe this case. This is
+    /// advisory metadata with no chat-message state mutation.
+    case promptRendered(text: String)
+
     /// A fragment of generated text (typically one token).
     case token(String)
 

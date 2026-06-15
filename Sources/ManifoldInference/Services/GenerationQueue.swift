@@ -438,11 +438,15 @@ final class GenerationQueue {
                 config: config
             )
             GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: result.trimmedMessages)
-            return try backend.generateEnforcingCapabilities(
+            let stream = try backend.generateEnforcingCapabilities(
                 prompt: result.prompt,
                 systemPrompt: nil,
                 config: config
             )
+            if config.captureRenderedPrompt {
+                return Self.prependingPromptRendered(text: result.prompt, to: stream)
+            }
+            return stream
         }
 
         // Non-TokenCountingBackend path: assemble prompt and forward.
@@ -478,11 +482,43 @@ final class GenerationQueue {
 
         GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: messages)
 
-        return try backend.generateEnforcingCapabilities(
+        let stream = try backend.generateEnforcingCapabilities(
             prompt: assembledPrompt,
             systemPrompt: effectiveSystemPrompt,
             config: config
         )
+        if config.captureRenderedPrompt {
+            return Self.prependingPromptRendered(text: assembledPrompt, to: stream)
+        }
+        return stream
+    }
+
+    /// Wraps a `GenerationStream` to emit a single `.promptRendered(text:)` event
+    /// before forwarding all events from the upstream stream.
+    ///
+    /// Used only when `GenerationConfig.captureRenderedPrompt` is `true`. The
+    /// wrapper forwards errors faithfully — if the upstream stream throws, the
+    /// wrapped stream re-throws the same error so callers see no difference in
+    /// error handling.
+    private static func prependingPromptRendered(
+        text: String,
+        to upstream: GenerationStream
+    ) -> GenerationStream {
+        let wrapped = AsyncThrowingStream<GenerationEvent, Error> { continuation in
+            let task = Task {
+                continuation.yield(.promptRendered(text: text))
+                do {
+                    for try await event in upstream.events {
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+        return GenerationStream(wrapped)
     }
 
     /// Folds the canonical tool-preference preamble into `systemPrompt` when the

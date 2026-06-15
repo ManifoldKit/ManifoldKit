@@ -316,6 +316,19 @@ public struct GenerationConfig: Sendable, Codable {
     /// per-request payloads; this is a per-request *contract*.
     public var requiredCapabilities: Set<GenerationCapabilityRequirement> = []
 
+    /// When `true`, the orchestration layer emits a
+    /// ``GenerationEvent/promptRendered(text:)`` event as the first event
+    /// in the generation stream, carrying the fully-assembled prompt string.
+    ///
+    /// Off by default (`false`) to avoid unintentional retention of
+    /// sensitive prompt content. Only set this when you need to inspect or
+    /// log the rendered prompt for debugging — do not leave it on in
+    /// production builds that handle private user data.
+    ///
+    /// Runtime-only flag: excluded from `Codable` persistence to match
+    /// other per-request hints like ``thinkingMarkers`` and ``jsonMode``.
+    public var captureRenderedPrompt: Bool = false
+
     public init(
         temperature: Float = 0.7,
         topP: Float = 0.9,
