@@ -10,6 +10,8 @@ public enum UnloadReason: Sendable, Equatable {
     case userRequested
     /// The model was evicted while the app was in the background.
     case backgroundEviction
+    /// The model exceeded the configured idle keep-alive TTL and was automatically unloaded.
+    case idleTimeout
 }
 
 // MARK: - MemoryPressureEvent

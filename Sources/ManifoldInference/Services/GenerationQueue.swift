@@ -197,6 +197,26 @@ final class GenerationQueue {
     private var continuations: [GenerationRequestToken: AsyncThrowingStream<GenerationEvent, Error>.Continuation] = [:]
     private let maxQueueDepth = 8
 
+    // MARK: - Activity Tracking
+
+    /// The wall-clock time of the most recent generation activity.
+    ///
+    /// Updated each time a new request begins draining from the queue.
+    /// The keep-alive policy idle watch reads this to decide whether the
+    /// resident model has been idle long enough to be auto-unloaded.
+    private(set) var lastActivityAt: Date = .distantPast
+
+    /// Seconds elapsed since the most recent generation activity.
+    ///
+    /// Returns `TimeInterval.infinity` when no generation has ever occurred
+    /// (``lastActivityAt`` is `.distantPast`), so a freshly started service
+    /// with a keep-alive policy that has never generated anything is treated
+    /// as maximally idle.
+    var idleDuration: TimeInterval {
+        guard lastActivityAt != .distantPast else { return .infinity }
+        return Date.now.timeIntervalSince(lastActivityAt)
+    }
+
     // MARK: - Computed
 
     var hasQueuedRequests: Bool { !requestQueue.isEmpty }
@@ -769,6 +789,7 @@ final class GenerationQueue {
 
         activeRequest = next
         isGenerating = true
+        lastActivityAt = .now
         next.stream.setPhase(.connecting)
 
         activeTask = Task { [weak self] in

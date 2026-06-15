@@ -100,3 +100,4 @@ API breakage: func ModelLoadCoordinator.dispatchLoad(_:) has been renamed to fun
 API breakage: enumelement GenerationEvent.toolCallParseFailed has been added as a new enum case
 API breakage: enumelement GenerationEvent.toolCallTruncated has been added as a new enum case
 API breakage: constructor ToolCallTransform.init(markers:) has been removed
+API breakage: enumelement UnloadReason.idleTimeout has been added as a new enum case
