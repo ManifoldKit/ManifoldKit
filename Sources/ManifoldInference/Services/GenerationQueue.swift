@@ -197,9 +197,21 @@ final class GenerationQueue {
     private var continuations: [GenerationRequestToken: AsyncThrowingStream<GenerationEvent, Error>.Continuation] = [:]
     private let maxQueueDepth = 8
 
+    /// Timestamp of the most recent queue activity: enqueue, dequeue-to-active, or
+    /// completion. Initialized to `.distantPast` so `idleDuration` is always
+    /// meaningful even before the first request.
+    private var lastActivityTimestamp: Date = .distantPast
+
     // MARK: - Computed
 
     var hasQueuedRequests: Bool { !requestQueue.isEmpty }
+
+    /// Number of requests currently waiting in the queue (not including the
+    /// active request being generated). Exposed publicly via `InferenceService`.
+    var queuedRequestCount: Int { requestQueue.count }
+
+    /// Timestamp of the most recent queue activity.
+    var lastActivityAt: Date { lastActivityTimestamp }
 
     var lastTokenUsage: (promptTokens: Int, completionTokens: Int)? {
         (currentBackend as? TokenUsageProvider)?.lastUsage
@@ -601,6 +613,7 @@ final class GenerationQueue {
             requestQueue.append(request)
         }
 
+        lastActivityTimestamp = Date()
         drainQueue()
         return (token: token, stream: stream)
     }
@@ -769,6 +782,7 @@ final class GenerationQueue {
 
         activeRequest = next
         isGenerating = true
+        lastActivityTimestamp = Date()
         next.stream.setPhase(.connecting)
 
         activeTask = Task { [weak self] in
@@ -795,6 +809,7 @@ final class GenerationQueue {
                     }
                 }
                 if self.activeRequest?.token == next.token {
+                    self.lastActivityTimestamp = Date()
                     self.activeRequest = nil
                     self.activeTask = nil
                     self.isGenerating = false
