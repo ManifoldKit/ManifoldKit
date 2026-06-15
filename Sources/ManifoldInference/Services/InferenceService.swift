@@ -138,6 +138,31 @@ public final class InferenceService {
         set { lifecycle.selectedPromptTemplate = newValue }
     }
 
+    // MARK: - Keep-Alive Policy
+
+    /// Policy controlling automatic idle unloading of the resident model.
+    ///
+    /// Set to a ``KeepAlivePolicy`` with a non-nil `idleTimeout` to enable
+    /// Ollama-style keep-alive behaviour: the model is automatically unloaded
+    /// after the configured period of idle time, emitting
+    /// ``MemoryPressureEvent/willUnload(modelID:reason:)`` and
+    /// ``MemoryPressureEvent/didUnload(modelID:reason:)`` with reason
+    /// ``UnloadReason/idleTimeout``. Any generation activity resets the clock.
+    ///
+    /// Defaults to ``KeepAlivePolicy/never`` (disabled).
+    ///
+    /// ```swift
+    /// // Unload after 5 minutes of silence:
+    /// inferenceService.keepAlivePolicy = KeepAlivePolicy(idleTimeout: 5 * 60)
+    ///
+    /// // Disable auto-unload:
+    /// inferenceService.keepAlivePolicy = .never
+    /// ```
+    public var keepAlivePolicy: KeepAlivePolicy {
+        get { lifecycle.keepAlivePolicy }
+        set { lifecycle.keepAlivePolicy = newValue }
+    }
+
     // MARK: - Computed
 
     public var capabilities: BackendCapabilities? { lifecycle.capabilities }
@@ -998,12 +1023,25 @@ extension InferenceService {
     /// Replaces the former ``GenerationContextProvider`` protocol conformance.
     /// Each closure reads through `lifecycle` so the queue always sees the
     /// current backend / template state — never a cached snapshot.
+    ///
+    /// Also wires the keep-alive policy closures so the ``ModelLifecycleCoordinator``
+    /// can request idle unloads and read the generation queue's idle duration without
+    /// holding strong references that would create retain cycles.
     fileprivate func wireGenerationContext() {
         generation.bindContext(
             currentBackend: { [weak self] in self?.lifecycle.backend },
             isBackendLoaded: { [weak self] in self?.lifecycle.isModelLoaded ?? false },
             selectedPromptTemplate: { [weak self] in self?.lifecycle.selectedPromptTemplate ?? .chatML }
         )
+        // Keep-alive policy seams: inject closures rather than references to
+        // avoid the lifecycle ↔ service retain cycle. These are set once at
+        // wiring time and never need to change — the closures read current state.
+        lifecycle.unloadRequestHandler = { [weak self] reason in
+            self?.unloadModel(reason: reason)
+        }
+        lifecycle.idleDurationProvider = { [weak self] in
+            self?.generation.idleDuration ?? .infinity
+        }
     }
 }
 

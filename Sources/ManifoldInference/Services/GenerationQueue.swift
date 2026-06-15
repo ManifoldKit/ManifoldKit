@@ -202,6 +202,14 @@ final class GenerationQueue {
     /// meaningful even before the first request.
     private var lastActivityTimestamp: Date = .distantPast
 
+    /// Seconds elapsed since the most recent generation activity. Returns `.infinity`
+    /// when no generation has ever occurred so a freshly started service is treated
+    /// as maximally idle by the keep-alive policy.
+    var idleDuration: TimeInterval {
+        guard lastActivityTimestamp != .distantPast else { return .infinity }
+        return Date.now.timeIntervalSince(lastActivityTimestamp)
+    }
+
     // MARK: - Computed
 
     var hasQueuedRequests: Bool { !requestQueue.isEmpty }
