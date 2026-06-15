@@ -1,0 +1,67 @@
+name: Companion compat (pre-release)
+
+# On-demand pre-tag check: build the companion backend packages
+# (manifold-mlx / manifold-llama) against an arbitrary ManifoldKit ref
+# (default: main HEAD) BEFORE cutting a release, so a core seam break — e.g. a
+# new non-frozen Contract enum case like GenerationEvent.promptRendered — is
+# caught in lockstep instead of surfacing only after the tag ships.
+#
+# Why a button and not a required gate: the breaking code lands on main before
+# the release PR exists (that PR only touches CHANGELOG/manifest), so there's
+# nothing on the release PR's diff to gate; and the post-release `core-bump`
+# automation already blocks a broken companion *release* from shipping. This
+# fills the residual "core tag is out while companion main is briefly red" gap
+# for risky minors, on demand. Press it before merging a feat!/minor release PR.
+#
+# All three repos are public, so cross-repo checkout needs no token — the
+# default GITHUB_TOKEN suffices.
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_ref:
+        description: "ManifoldKit ref to build the companions against"
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compat:
+    strategy:
+      # Report both companions even if one breaks.
+      fail-fast: false
+      matrix:
+        companion: [manifold-mlx, manifold-llama]
+    runs-on: macos-15
+    steps:
+      - name: Check out ${{ matrix.companion }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: roryford/${{ matrix.companion }}
+          path: companion
+      - name: Check out ManifoldKit @ ${{ inputs.core_ref }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: roryford/ManifoldKit
+          ref: ${{ inputs.core_ref }}
+          path: core
+      - name: Select newest Xcode 26 toolchain
+        # Match the companions' own CI: the image default mis-resolves the
+        # dependency graph; Swift 6.3 (Xcode 26.3) prunes the trait-disabled
+        # edges correctly.
+        run: |
+          DEVELOPER_DIR="$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)/Contents/Developer"
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          swift --version
+      - name: Build companion against core ref
+        working-directory: companion
+        # `swift package edit` swaps the ManifoldKit dependency to the local
+        # core checkout, bypassing the .upToNextMinor pin (which only resolves
+        # to published tags) and Package.resolved. Build-only — exercising the
+        # compile/source seam is the point; the companions' own CI owns tests.
+        run: |
+          swift package edit manifoldkit --path ../core
+          swift build
