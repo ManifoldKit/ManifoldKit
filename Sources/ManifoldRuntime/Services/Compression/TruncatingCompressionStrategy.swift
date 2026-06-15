@@ -11,12 +11,13 @@ struct TruncatingCompressionStrategy: CompressionStrategy {
     func compress(
         history: [ChatMessage],
         contextSize: Int,
+        reservedTokens: Int,
         tokenizer: (any TokenizerProvider)?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         guard !history.isEmpty else { return [] }
 
-        let budget = historyBudget(contextSize: contextSize, tokenizer: tokenizer)
+        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
         if estimateTokens(history, tokenizer: tokenizer) <= budget {
             return history
         }

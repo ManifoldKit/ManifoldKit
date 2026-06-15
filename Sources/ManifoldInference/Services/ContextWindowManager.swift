@@ -71,6 +71,60 @@ public enum ContextWindowManager {
         return HeuristicTokenizer().tokenCount(text)
     }
 
+    /// Fixed per-part token cost for a non-text modality whose true token
+    /// footprint isn't visible from the `[ChatMessage]` value alone.
+    ///
+    /// `.content` only exposes `.text` parts, so an image/audio part would
+    /// otherwise estimate as **zero** — a multimodal turn could then sail past
+    /// the compression trigger and overflow at generation. These are coarse
+    /// placeholders, not provider-accurate counts (a single image is ~85–1.5k
+    /// tokens depending on resolution / provider), deliberately sized to be
+    /// "clearly non-zero, never catastrophically wrong": they make the budget
+    /// math notice the part exists. A backend that knows its real tiling cost
+    /// should account for that at the wire layer, not here.
+    static let imagePartTokenEstimate = 768
+    static let audioPartTokenEstimate = 384
+    static let generatedMediaPartTokenEstimate = 256
+
+    /// Estimates the token cost of a single `MessagePart`.
+    ///
+    /// - `.text` / `.thinking`: counted via the tokenizer (heuristic when nil).
+    /// - `.image` / `.audio` / `.generatedMedia`: a documented fixed estimate
+    ///   (``imagePartTokenEstimate`` etc.) since the byte payload's true token
+    ///   footprint isn't derivable here.
+    /// - `.toolCall`: the tool name plus its serialized JSON arguments.
+    /// - `.toolResult`: the serialized result payload (content + dialog).
+    public static func estimateTokenCount(_ part: MessagePart, tokenizer: TokenizerProvider? = nil) -> Int {
+        switch part {
+        case .text(let t):
+            return estimateTokenCount(t, tokenizer: tokenizer)
+        case .thinking(let t, _):
+            return estimateTokenCount(t, tokenizer: tokenizer)
+        case .image:
+            return imagePartTokenEstimate
+        case .audio:
+            return audioPartTokenEstimate
+        case .generatedMedia:
+            return generatedMediaPartTokenEstimate
+        case .toolCall(let call):
+            return estimateTokenCount("\(call.toolName) \(call.arguments)", tokenizer: tokenizer)
+        case .toolResult(let result):
+            let payload = [result.content, result.dialog].compactMap { $0 }.joined(separator: " ")
+            return estimateTokenCount(payload, tokenizer: tokenizer)
+        }
+    }
+
+    /// Estimates the token cost of a whole message by summing every content
+    /// part — text, reasoning, multimodal, and tool parts alike.
+    ///
+    /// Prefer this over `estimateTokenCount(message.content, …)`: `.content`
+    /// discards everything but `.text` parts, so the string overload silently
+    /// under-counts (to zero) image/audio/tool-only messages and lets them
+    /// overflow the window. Sums across `contentParts` instead.
+    public static func estimateTokenCount(_ message: ChatMessage, tokenizer: TokenizerProvider? = nil) -> Int {
+        message.contentParts.reduce(0) { $0 + estimateTokenCount($1, tokenizer: tokenizer) }
+    }
+
     /// Resolves the effective context size from available sources.
     ///
     /// Priority: session override > model metadata > backend capabilities > default.
@@ -121,7 +175,8 @@ public enum ContextWindowManager {
         var usedTokens = 0
 
         for i in stride(from: messages.count - 1, through: 0, by: -1) {
-            let messageTokens = estimateTokenCount(messages[i].content, tokenizer: tokenizer)
+            // Sum across all parts — `.content` would miss image/audio/tool parts.
+            let messageTokens = estimateTokenCount(messages[i], tokenizer: tokenizer)
             if usedTokens + messageTokens > available && firstKeptIndex < messages.endIndex {
                 break
             }
@@ -141,7 +196,7 @@ public enum ContextWindowManager {
         tokenizer: TokenizerProvider? = nil
     ) -> ContextBudget {
         let systemTokens = estimateTokenCount(systemPrompt ?? "", tokenizer: tokenizer)
-        let messageTokens = messages.reduce(0) { $0 + estimateTokenCount($1.content, tokenizer: tokenizer) }
+        let messageTokens = messages.reduce(0) { $0 + estimateTokenCount($1, tokenizer: tokenizer) }
         let availableForHistory = maxTokens - systemTokens - responseBuffer
 
         return ContextBudget(

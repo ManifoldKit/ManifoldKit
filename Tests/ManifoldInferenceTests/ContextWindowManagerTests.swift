@@ -32,6 +32,68 @@ final class ContextWindowManagerTests: XCTestCase {
         XCTAssertEqual(ContextWindowManager.estimateTokenCount("a"), 1)
     }
 
+    // MARK: - Per-part / per-message estimation (#1885 finding 9)
+
+    func test_estimateTokenCount_textPart_matchesStringOverload() {
+        let text = String(repeating: "a", count: 100)  // 25 tokens
+        XCTAssertEqual(ContextWindowManager.estimateTokenCount(MessagePart.text(text)),
+                       ContextWindowManager.estimateTokenCount(text))
+    }
+
+    func test_estimateTokenCount_imagePart_isNonZeroFixed() {
+        let part = MessagePart.image(data: Data(repeating: 0, count: 8), mimeType: "image/png")
+        XCTAssertEqual(ContextWindowManager.estimateTokenCount(part),
+                       ContextWindowManager.imagePartTokenEstimate)
+        XCTAssertGreaterThan(ContextWindowManager.estimateTokenCount(part), 0,
+                             "image must not estimate as zero")
+    }
+
+    func test_estimateTokenCount_audioPart_isNonZeroFixed() {
+        let part = MessagePart.audio(url: URL(fileURLWithPath: "/tmp/a.m4a"), duration: 3, waveform: nil)
+        XCTAssertEqual(ContextWindowManager.estimateTokenCount(part),
+                       ContextWindowManager.audioPartTokenEstimate)
+    }
+
+    func test_estimateTokenCount_toolCallPart_countsNameAndArgs() {
+        let part = MessagePart.toolCall(ToolCall(
+            id: "c1", toolName: "get_weather",
+            arguments: String(repeating: "x", count: 80)))
+        XCTAssertGreaterThan(ContextWindowManager.estimateTokenCount(part), 0,
+                             "tool call args must be counted")
+    }
+
+    func test_estimateTokenCount_toolResultPart_countsPayload() {
+        let part = MessagePart.toolResult(ToolResult(
+            callId: "c1", content: String(repeating: "y", count: 120)))
+        XCTAssertGreaterThan(ContextWindowManager.estimateTokenCount(part), 0)
+    }
+
+    /// The crux: a message with ONLY non-text parts used to estimate as zero
+    /// via `.content`. The per-message estimate must be non-zero.
+    func test_estimateTokenCount_imageOnlyMessage_isNonZero() {
+        let msg = ChatMessage(
+            role: .user,
+            contentParts: [.image(data: Data(repeating: 0, count: 8), mimeType: "image/png")],
+            sessionID: UUID())
+        XCTAssertEqual(msg.content, "", "precondition: .content is empty for image-only message")
+        XCTAssertGreaterThan(ContextWindowManager.estimateTokenCount(msg), 0,
+                             "image-only message must not estimate as zero")
+    }
+
+    func test_estimateTokenCount_message_sumsAcrossParts() {
+        let text = String(repeating: "a", count: 100)  // 25 tokens
+        let msg = ChatMessage(
+            role: .user,
+            contentParts: [
+                .text(text),
+                .image(data: Data(repeating: 0, count: 8), mimeType: "image/png"),
+            ],
+            sessionID: UUID())
+        let expected = ContextWindowManager.estimateTokenCount(text)
+            + ContextWindowManager.imagePartTokenEstimate
+        XCTAssertEqual(ContextWindowManager.estimateTokenCount(msg), expected)
+    }
+
     // MARK: - Context Size Resolution
 
     func test_resolveContextSize_sessionOverrideTakesPriority() {

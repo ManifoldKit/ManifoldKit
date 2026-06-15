@@ -11,6 +11,16 @@ import ManifoldInference
 /// chunk-and-fold for over-window input, a minimum-summary floor, and a
 /// cancellation early-return. The summary prompt is passed to `generate` as a
 /// single-message mini-conversation.
+///
+// TODO(#1885, optional P2): collapse/fold a prior `.memory("summary")` record
+// into the new summarisation pass instead of pinning it (as load-bearing) into
+// the tail and prepending a SECOND inline summary each cycle. Across many
+// compression cycles the inline summary blocks stack. Doing this right means
+// detecting the prior summary, excluding it from the verbatim tail, and
+// feeding its text into the summariser input alongside the old messages — a
+// non-trivial change to the tail/old-message partition. Deliberately deferred
+// to keep this fix-round diff bounded; the stack is bounded in practice by the
+// budget enforcement and is correctness-neutral (just less compact).
 struct AnchoredCompressionStrategy: CompressionStrategy {
     let name = "anchored"
 
@@ -23,7 +33,10 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
     /// Minimum tokens reserved for the output brief even when `contextSize` is
     /// tiny — a short brief beats no brief.
     let minSummaryBudget: Int
-    /// Tokens reserved for the summariser's own response when sizing input.
+    /// Tokens reserved for the summariser's own response when sizing the INPUT
+    /// window. This is the SAME reservation knob as the policy's
+    /// `reservedTokens` (the factory threads `reservedTokens` here), so there is
+    /// one source of truth — there is no longer a separate hard-coded buffer.
     let summarizerResponseBuffer: Int
     let summaryTemplate: String
 
@@ -44,9 +57,9 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
 
     init(
         tailBudgetFraction: Double = 0.50,
+        summarizerResponseBuffer: Int = DefaultCompressionPolicy.defaultReservedTokens,
         summarizerInputWindow: Int? = nil,
         minSummaryBudget: Int = 256,
-        summarizerResponseBuffer: Int = 512,
         summaryTemplate: String? = nil
     ) {
         self.tailBudgetFraction = tailBudgetFraction
@@ -59,12 +72,13 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
     func compress(
         history: [ChatMessage],
         contextSize: Int,
+        reservedTokens: Int,
         tokenizer: (any TokenizerProvider)?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         guard !history.isEmpty else { return [] }
 
-        let budget = historyBudget(contextSize: contextSize, tokenizer: tokenizer)
+        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
         let tokens = history.map { estimateTokens($0, tokenizer: tokenizer) }
         let originalTokens = tokens.reduce(0, +)
         if originalTokens <= budget {
@@ -140,14 +154,14 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
             Log.inference.debug("[AnchoredCompression] summarisation failed: \(error); falling back to extractive")
             return try await fallback.compress(
                 history: history, contextSize: contextSize,
-                tokenizer: tokenizer, generate: generate
+                reservedTokens: reservedTokens, tokenizer: tokenizer, generate: generate
             )
         }
 
         guard !summaryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return try await fallback.compress(
                 history: history, contextSize: contextSize,
-                tokenizer: tokenizer, generate: generate
+                reservedTokens: reservedTokens, tokenizer: tokenizer, generate: generate
             )
         }
 
@@ -183,9 +197,33 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
         ChatMessage(role: .system, content: text, sessionID: sessionID, kind: .memory("summary"))
     }
 
+    /// Strips leaked chain-of-thought (`<think>…</think>`, `<thinking>…`)
+    /// before parsing, reusing MK's ``ThinkingTransform`` rather than
+    /// hand-rolling marker logic. A reasoning model can emit its scratchpad
+    /// ahead of the brief; left in, that scratchpad would be parsed as the
+    /// "summary" and injected verbatim into the compressed history. We run the
+    /// two common marker families (Qwen/DeepSeek `<think>`, Mistral/Sky-T1
+    /// `<thinking>`) in sequence and keep only the visible `.token` text.
+    private func stripThinking(_ text: String) -> String {
+        var result = text
+        for markers in [ThinkingMarkers.qwen3, ThinkingMarkers.mistralReasoning] {
+            var transform = ThinkingTransform(markers: markers)
+            var events = transform.process([.token(result)])
+            events += transform.finalize()
+            let visible = events.compactMap { event -> String? in
+                if case .token(let t) = event { return t }
+                return nil
+            }.joined()
+            result = visible
+        }
+        return result
+    }
+
     /// Extracts `FIELD: value` lines and reassembles them; falls back to a
-    /// trimmed raw response when fewer than two fields are present.
-    private func parseSummaryResponse(_ response: String) -> String {
+    /// trimmed raw response when fewer than two fields are present. Strips
+    /// leaked reasoning first so chain-of-thought can't masquerade as a summary.
+    private func parseSummaryResponse(_ rawResponse: String) -> String {
+        let response = stripThinking(rawResponse)
         let pattern = "^([A-Z][A-Z _]*[A-Z]):\\s*(.+)$"
         let regex: NSRegularExpression
         do {

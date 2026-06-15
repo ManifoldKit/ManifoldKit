@@ -20,7 +20,19 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
     let headBudgetFraction: Double
     let recencyWeight: Double
     let lengthWeight: Double
+    /// Weight for capitalized-word density. NOTE: this signal assumes
+    /// English-like prose where proper nouns and sentence starts are
+    /// capitalized. It degrades on all-lowercase text, source code, and
+    /// non-cased scripts (CJK), where density trends to ~0 and the term simply
+    /// drops out. It is the smallest weight (0.2) precisely so it only *nudges*
+    /// selection rather than dominating it.
     let keywordDensityWeight: Double
+
+    /// Combined ceiling for the verbatim head + tail fractions. Past this the
+    /// pinned-verbatim core could equal or exceed the whole budget, leaving no
+    /// room for scored selection and risking an over-budget result before
+    /// scoring even runs.
+    static let maxVerbatimCoreFraction = 0.8
 
     init(
         tailBudgetFraction: Double = 0.40,
@@ -39,12 +51,13 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
     func compress(
         history: [ChatMessage],
         contextSize: Int,
+        reservedTokens: Int,
         tokenizer: (any TokenizerProvider)?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         guard !history.isEmpty else { return [] }
 
-        let budget = historyBudget(contextSize: contextSize, tokenizer: tokenizer)
+        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
         let tokens = history.map { estimateTokens($0, tokenizer: tokenizer) }
         let originalTokens = tokens.reduce(0, +)
 
@@ -63,8 +76,16 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
             used += tokens[i]
         }
 
+        // Clamp the verbatim core (head + tail) so the two reserved bands can't
+        // jointly claim the whole budget and leave nothing for scored selection
+        // (or overflow it before scoring runs). Tail keeps priority; head takes
+        // whatever remains under the ceiling.
+        let coreFraction = min(Self.maxVerbatimCoreFraction, tailBudgetFraction + headBudgetFraction)
+        let effectiveTailFraction = min(tailBudgetFraction, coreFraction)
+        let effectiveHeadFraction = max(0.0, coreFraction - effectiveTailFraction)
+
         // --- Verbatim tail (newest) ---
-        let tailBudget = Int(Double(budget) * tailBudgetFraction)
+        let tailBudget = Int(Double(budget) * effectiveTailFraction)
         var tailUsed = 0
         for i in stride(from: count - 1, through: 0, by: -1) {
             if keep.contains(i) { continue }
@@ -82,8 +103,8 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
         }
 
         // --- Verbatim head (oldest) — anti "lost in the middle" ---
-        if headBudgetFraction > 0 {
-            let headBudget = Int(Double(budget) * headBudgetFraction)
+        if effectiveHeadFraction > 0 {
+            let headBudget = Int(Double(budget) * effectiveHeadFraction)
             var headUsed = 0
             for i in 0..<count {
                 if keep.contains(i) { continue }
@@ -112,6 +133,23 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
             if used + candidate.tokens <= budget {
                 keep.insert(candidate.index)
                 used += candidate.tokens
+            }
+        }
+
+        // Final budget enforcement: the verbatim tail/head admission can push
+        // the union over budget when those bands admit large messages (each
+        // band only checks its own sub-budget). Evict kept non-load-bearing
+        // messages — oldest first, but never the newest — until the union fits.
+        // Load-bearing records are never evicted (they survive regardless of
+        // budget by contract).
+        if used > budget {
+            let newest = count - 1
+            for i in 0..<count where keep.contains(i) {
+                if used <= budget { break }
+                if i == newest { continue }
+                if isLoadBearing(history[i]) { continue }
+                keep.remove(i)
+                used -= tokens[i]
             }
         }
 
