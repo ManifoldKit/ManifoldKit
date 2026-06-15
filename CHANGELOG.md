@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.52.0](https://github.com/roryford/ManifoldKit/compare/v0.51.0...v0.52.0) (2026-06-15)
+
+### Highlights
+
+**See the exact prompt your backend rendered.** A new opt-in `GenerationConfig.captureRenderedPrompt` makes the orchestration layer emit a `.promptRendered(text:)` `GenerationEvent` immediately before the first token — the formatted template string for local backends (GGUF/MLX), or the most-recent user message for cloud backends ([#1879](https://github.com/roryford/ManifoldKit/issues/1879)). It is off by default to avoid retaining sensitive prompt content, and is advisory metadata only — no chat-message state is mutated.
+
+```swift
+var config = GenerationConfig()
+config.captureRenderedPrompt = true   // opt in
+
+for await event in backend.generate(prompt: prompt, systemPrompt: system, config: config) {
+    if case let .promptRendered(text) = event {
+        print("Rendered prompt sent to the model:\n\(text)")
+    }
+}
+```
+
+**Batteries-included context compression.** `DefaultCompressionPolicy` ships three ready-made policies so hosts no longer hand-roll trimming: `.truncating` (drop oldest), `.extractive` (zero-inference scored selection with optional head-pinning to fight "lost in the middle"), and `.anchored` (inference-backed summary of old turns prepended to a verbatim recent tail) ([#1885](https://github.com/roryford/ManifoldKit/issues/1885)). Pass a tokenizer for a guaranteed budget, or omit it for an advisory chars/4 heuristic.
+
+```swift
+// Zero-inference scored compression, pinning the oldest 15% of the budget.
+let policy = DefaultCompressionPolicy.extractive(
+    headBudgetFraction: 0.15,
+    contextSize: 8192,
+    tokenizer: backend.tokenizer   // omit → advisory budget
+)
+```
+
+**Model-lifecycle & inference observability.** A `KeepAlivePolicy` now idle-auto-unloads resident models (`UnloadReason.idleTimeout`) ([5ca06aa](https://github.com/roryford/ManifoldKit/commit/5ca06aa08b7df62885b52b37584b29eb29e5d486)); a `ResidentModelStatus` snapshot exposes what's loaded plus `queuedRequestCount` for backpressure-aware UIs ([#1880](https://github.com/roryford/ManifoldKit/issues/1880)); and `InferenceMetric` moves into `ManifoldInference` with `FoundationBackend` now reporting metrics through it ([072c5dc](https://github.com/roryford/ManifoldKit/commit/072c5dc21d689489563edf4f29794d2432850de4)).
+
+**Headless model selection.** `ModelSelection` is now a headless, UI-free selection surface, and a public `ModelPicker` sample is built directly on it ([#1873](https://github.com/roryford/ManifoldKit/issues/1873), [#1877](https://github.com/roryford/ManifoldKit/issues/1877)). This collapses the long-standing [#1312](https://github.com/roryford/ManifoldKit/issues/1312) dual-write — selecting a model now clears the mutually-exclusive endpoint synchronously, so consumers can drop the binding-mirroring workaround (see breaking changes).
+
+### ⚠ Breaking changes (pre-1.0)
+
+**Synchronous selection dual-write collapse** ([#1873](https://github.com/roryford/ManifoldKit/issues/1873)) — `ModelLoadCoordinator.dispatchLoad(_:)` gains a defaulted `drivesChatSeams:` parameter (source-compatible, allowlisted in the API-break gate). Consumers that hand-mirrored `ChatViewModel.selectedModel` into `ModelRegistry.selectedModel` to work around [#1312](https://github.com/roryford/ManifoldKit/issues/1312) can delete that mirroring — selection clears the mutually-exclusive endpoint synchronously now.
+
+### Features
+
+**Auto-injected tool system prompt** ([#1874](https://github.com/roryford/ManifoldKit/issues/1874)) — templates that don't render tools natively now get a `ToolSystemPromptBuilder` injected automatically, so tool calling works on local non-Gemma models without the host hand-rendering tool definitions into the system prompt (closes [#1856](https://github.com/roryford/ManifoldKit/issues/1856)).
+
+**EmbeddingBackend capabilities + config contract** ([#1887](https://github.com/roryford/ManifoldKit/issues/1887)) — `EmbeddingBackend` gains capability advertisement, and the `GenerationConfig` hint-vs-guarantee rule is now documented on the type (closes [#1834](https://github.com/roryford/ManifoldKit/issues/1834)).
+
+**Public `ModelPicker` sample + UI gap closers** ([#1877](https://github.com/roryford/ManifoldKit/issues/1877)) — a ready-to-adopt picker over `ModelSelection`, plus `attachImage` / `togglePin` parity fixes (closes [#1298](https://github.com/roryford/ManifoldKit/issues/1298), [#1300](https://github.com/roryford/ManifoldKit/issues/1300)).
+
+### Documentation
+
+Recorded the June 2026 CI-cost reductions in the CLAUDE.md hygiene section ([#1872](https://github.com/roryford/ManifoldKit/issues/1872)).
+
+### Continuous Integration
+
+Batched README-snippet compiles into one package and collapsed redundant push-to-main runs within a merge burst ([#1870](https://github.com/roryford/ManifoldKit/issues/1870), [#1871](https://github.com/roryford/ManifoldKit/issues/1871)), and removed the glassbox-live-e2e job from the nightly workflow ([#1878](https://github.com/roryford/ManifoldKit/issues/1878)).
+
 ## [0.51.0](https://github.com/roryford/ManifoldKit/compare/v0.50.0...v0.51.0) (2026-06-14)
 
 ### Highlights
