@@ -49,6 +49,7 @@ CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
 MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
 LANES="core,llama,mlx"
+LANE_TIMEOUT="${LANE_TIMEOUT:-2400}"   # per-lane hard cap (s); a hung xctest must not eat the night
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$CORE_DIR/.local-integration-runs/$STAMP"
 
@@ -72,11 +73,25 @@ have_lane() { case ",$LANES," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 run_lane() {
   local name="$1" logf="$2"; shift 2
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/mk-sweep-$name.XXXXXX")"
-  log "=== [$name] $(date +%H:%M:%S) starting ==="
-  ( export TMPDIR="$tmp"; "$@" ) >"$logf" 2>&1
-  local rc=$?
+  log "=== [$name] $(date +%H:%M:%S) starting (cap ${LANE_TIMEOUT}s) ==="
+  # Run the lane as its own process group (set -m) so the watchdog can kill the
+  # WHOLE tree — a hung xctest grandchild (e.g. MLX xcodebuild) ignores a kill
+  # aimed only at the subshell. Without this a single hang runs forever.
+  set -m
+  ( export TMPDIR="$tmp"; "$@" ) >"$logf" 2>&1 &
+  local pid=$!
+  set +m
+  ( sleep "$LANE_TIMEOUT"; kill -TERM -"$pid" 2>/dev/null; sleep 8; kill -KILL -"$pid" 2>/dev/null ) &
+  local wd=$!
+  wait "$pid"; local rc=$?
+  kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
   rm -rf "$tmp"
   local status detail
+  if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
+    SUMMARY_LANES="${SUMMARY_LANES}${name}: TIMEOUT/killed (rc=$rc, cap ${LANE_TIMEOUT}s) -> $(basename "$logf")\n"
+    log "=== [$name] $(date +%H:%M:%S) KILLED after ${LANE_TIMEOUT}s cap ==="
+    return
+  fi
   if [ $rc -eq 0 ]; then status="pass"; else status="fail(rc=$rc)"; fi
   # A swift-test run that only XCTSkips still exits 0; surface skip counts.
   local skips passes fails
@@ -105,7 +120,7 @@ run_lane() {
     echo "  $f: ${m:-MISSING}"
   done
   echo "MLX dirs:"
-  find "$MODELS_DIR" -maxdepth 2 -name config.json 2>/dev/null | sed 's#/config.json##' | sed 's#^#  #'
+  find "$MODELS_DIR" -maxdepth 3 -name config.json 2>/dev/null | sed 's#/config.json##' | sed 's#^#  #'
   echo "Ollama @ localhost:11434: $(curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1 && echo UP || echo DOWN)"
   echo '```'
   echo
@@ -113,24 +128,40 @@ run_lane() {
 
 # ----- 1. core lane: real-Ollama E2E ----------------------------------------
 if have_lane core; then
+  # Anchor to the Ollama real-inference suites only. The bare ManifoldE2ETests
+  # filter also pulls Foundation (OS-gated), MCP-backed demo scenarios (need
+  # local MCP servers), and GlassBox-live suites — which trap/crash without
+  # that infra and drown the real signal. The `\.Ollama` anchor matches
+  # OllamaE2ETests / OllamaThinkingE2ETests / OllamaToolCallingE2ETests /
+  # OllamaBackendBenchmark (post-v2 swift-test needs the `\.` anchor).
   run_lane core "$OUT/core.log" \
-    bash -c "cd '$CORE_DIR' && swift test --filter ManifoldE2ETests 2>&1"
+    bash -c "cd '$CORE_DIR' && swift test --filter 'ManifoldE2ETests\.Ollama' 2>&1"
 fi
 
 # ----- 2. llama lane: grammar/tool conformance + regression fixtures ---------
 if have_lane llama && [ -d "$LLAMA_DIR" ]; then
+  # NOTE: RUN_SLOW_TESTS deliberately NOT set — the slow contract suites
+  # (LlamaLocalBackendContractTests) need a wired fixture model, not on-disk
+  # discovery, and fail "No model loaded" under bare discovery. Integration +
+  # conformance suites run via MANIFOLD_DISCOVER_LOCAL_MODELS alone. Set
+  # MANIFOLD_EMBEDDING_MODEL_PATH externally to also light up embedding live-fire.
   run_lane llama "$OUT/llama.log" \
-    bash -c "cd '$LLAMA_DIR' && MANIFOLD_DISCOVER_LOCAL_MODELS=1 RUN_SLOW_TESTS=1 swift test --no-parallel 2>&1"
+    bash -c "cd '$LLAMA_DIR' && MANIFOLD_DISCOVER_LOCAL_MODELS=1 swift test --no-parallel 2>&1"
 elif have_lane llama; then
   SUMMARY_LANES="${SUMMARY_LANES}llama: skip (repo absent at $LLAMA_DIR)\n"
 fi
 
 # ----- 3. mlx lane: text E2E + vision input + benchmark ----------------------
 if have_lane mlx && [ -d "$MLX_DIR" ]; then
-  # text + benchmark (smallest text model on disk)
+  # text + benchmark. --rebuild on the first MLX invocation forces
+  # build-for-testing to (re)generate the .xctestrun; without it a missing/stale
+  # derived bundle makes test-without-building fail instantly ("target not found
+  # in xctestrun"). Pass the model NAME as a positional arg — the script injects
+  # MLX_TEST_MODEL into the patched xctestrun (env-prefix does not propagate to
+  # the xctest runner; that is the whole reason the script exists).
   run_lane mlx-text "$OUT/mlx-text.log" \
-    bash -c "cd '$MLX_DIR' && MANIFOLD_DISCOVER_LOCAL_MODELS=1 scripts/test-mlx-integration.sh 2>&1"
-  # vision input path (only lights up with an MLX VLM via MLX_VLM_TEST_MODEL)
+    bash -c "cd '$MLX_DIR' && scripts/test-mlx-integration.sh Qwen2.5-0.5B --rebuild 2>&1"
+  # vision input path — reuses the cached build from the text lane.
   run_lane mlx-vlm "$OUT/mlx-vlm.log" \
     bash -c "cd '$MLX_DIR' && scripts/test-mlx-integration.sh Qwen2-VL --only MLXVLMGateExperimentTests 2>&1"
 elif have_lane mlx; then
