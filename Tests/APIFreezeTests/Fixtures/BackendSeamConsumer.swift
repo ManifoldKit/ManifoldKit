@@ -122,6 +122,8 @@ enum BackendSeamConsumer {
         switch event {
         case .prefillProgress(let tokensProcessed, let tokensTotal, let tokensPerSecond):
             _ = (tokensProcessed, tokensTotal, tokensPerSecond)
+        case .promptRendered(text: let text):
+            _ = text
         case .token(let text):
             _ = text
         case .usage(let usage):

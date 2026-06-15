@@ -99,6 +99,10 @@ public struct EventRecorder: Sendable {
                         kind: "prefillProgress",
                         v: "\(tokensProcessed)/\(tokensTotal)@\(tokensPerSecond)"
                     ))
+                case .promptRendered(let text):
+                    // Opt-in diagnostic; record presence but not the potentially
+                    // large prompt body so fuzz trace files stay compact.
+                    events.append(.init(t: t, kind: "promptRendered", v: "\(text.count)chars"))
                 case .token(let text):
                     if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                     raw += text

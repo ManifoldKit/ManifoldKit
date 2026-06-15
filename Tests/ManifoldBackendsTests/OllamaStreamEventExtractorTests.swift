@@ -250,6 +250,7 @@ final class OllamaStreamEventExtractorParityTests: XCTestCase {
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
         case .usage(let u): return "usage(\(u.promptTokens),\(u.completionTokens))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
+        case .promptRendered: return "promptRendered"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
