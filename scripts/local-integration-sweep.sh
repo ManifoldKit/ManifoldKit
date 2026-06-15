@@ -92,13 +92,14 @@ run_lane() {
     log "=== [$name] $(date +%H:%M:%S) KILLED after ${LANE_TIMEOUT}s cap ==="
     return
   fi
-  if [ $rc -eq 0 ]; then status="pass"; else status="fail(rc=$rc)"; fi
-  # A swift-test run that only XCTSkips still exits 0; surface skip counts.
+  # Count only real xctest verdict lines — NOT raw "error:" greps, which match
+  # CoreData/XPC log noise and deprecation warnings and wildly inflate "failed".
   local skips passes fails
-  skips=$(grep -c "Test Case.*skipped\|XCTSkip\| skipped" "$logf" 2>/dev/null | head -1)
-  passes=$(grep -c "Test Case.*passed" "$logf" 2>/dev/null | head -1)
-  fails=$(grep -c "Test Case.*failed\|error:" "$logf" 2>/dev/null | head -1)
+  passes=$(grep -c "Test Case '.*' passed" "$logf" 2>/dev/null)
+  fails=$(grep -c "Test Case '.*' failed" "$logf" 2>/dev/null)
+  skips=$(grep -c "Test Case '.*' skipped" "$logf" 2>/dev/null)
   detail="passed=$passes failed=$fails skipped=$skips"
+  if [ "$rc" -eq 0 ] && [ "$fails" -eq 0 ]; then status="pass"; else status="fail(rc=$rc)"; fi
   SUMMARY_LANES="${SUMMARY_LANES}${name}: ${status} (${detail}) -> $(basename "$logf")\n"
   log "=== [$name] $(date +%H:%M:%S) done: $status ($detail) ==="
 }
@@ -161,9 +162,12 @@ if have_lane mlx && [ -d "$MLX_DIR" ]; then
   # the xctest runner; that is the whole reason the script exists).
   run_lane mlx-text "$OUT/mlx-text.log" \
     bash -c "cd '$MLX_DIR' && scripts/test-mlx-integration.sh Qwen2.5-0.5B --rebuild 2>&1"
-  # vision input path — reuses the cached build from the text lane.
+  # vision input path — reuses the cached build from the text lane. The VLM gate
+  # test reads MLX_VLM_TEST_MODEL from the ENV (the script forwards it into the
+  # xctestrun); a positional arg only sets MLX_TEST_MODEL, leaving the gate test
+  # to skip. Override MLX_VLM_TEST_MODEL externally to point at a different VLM.
   run_lane mlx-vlm "$OUT/mlx-vlm.log" \
-    bash -c "cd '$MLX_DIR' && scripts/test-mlx-integration.sh Qwen2-VL --only MLXVLMGateExperimentTests 2>&1"
+    bash -c "cd '$MLX_DIR' && MLX_VLM_TEST_MODEL='${MLX_VLM_TEST_MODEL:-Qwen2-VL}' scripts/test-mlx-integration.sh --only MLXVLMGateExperimentTests 2>&1"
 elif have_lane mlx; then
   SUMMARY_LANES="${SUMMARY_LANES}mlx: skip (repo absent at $MLX_DIR)\n"
 fi
