@@ -57,6 +57,25 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         XCTAssertLessThanOrEqual(tokens(out), budget())
     }
 
+    /// When load-bearing records alone exhaust the budget, the greedy backward
+    /// fill cannot admit the newest chat message — only the explicit
+    /// never-drop-newest invariant keeps it. Guards that invariant directly
+    /// (the over-budget-tail path the other truncating tests don't exercise).
+    func testTruncatingKeepsNewestEvenWhenLoadBearingExceedsBudget() async throws {
+        let history = [
+            msg(.system, words: 4_000, kind: .chat),   // load-bearing, alone over budget
+            msg(.user, words: 5),
+            msg(.assistant, words: 5)                    // newest, tiny
+        ]
+        XCTAssertGreaterThan(tokens([history[0]]), budget(), "precondition: load-bearing alone overflows")
+
+        let out = try await TruncatingCompressionStrategy().compress(
+            history: history, contextSize: contextSize, tokenizer: nil, generate: { _ in "" })
+
+        XCTAssertEqual(out.last?.id, history.last?.id, "newest must survive even when load-bearing fills the budget")
+        XCTAssertTrue(out.contains { $0.role == .system }, "load-bearing record retained")
+    }
+
     func testTruncatingPreservesLoadBearingRecords() async throws {
         var history = [msg(.system, words: 10, kind: .chat)]            // system role
         history.append(msg(.assistant, words: 10, kind: .memory("summary")))  // memory kind
