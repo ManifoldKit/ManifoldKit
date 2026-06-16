@@ -37,8 +37,25 @@ Run Ollama locally:
 ```bash
 brew install ollama
 ollama serve &
-ollama pull qwen3.5:4b   # for thinking tests
-ollama pull llama3.2:3b  # for general tests
+ollama pull llama3.1:8b   # general + tool-calling tests
+```
+
+`OllamaE2ETests` / `OllamaThinkingE2ETests` select via
+`HardwareRequirements.findOllamaModel()`, whose default `preferredSizeRange`
+is `6.5...9.0` (B params) — so they pick an **8B-class** model. A 3–4B pull
+(`llama3.2:3b`, `qwen3.5:4b`) is ignored unless it's the only model installed,
+which is why the recommended pull above is 8B-class.
+
+`OllamaToolCallingE2ETests` **auto-discovers a tool-capable model** by probing
+each installed model's `/api/show` `capabilities` for `"tools"` — no fixed
+name list — so any installed native tool-caller (e.g. `llama3.1:8b`,
+`qwen3.5`, `gemma4`) works. It skips cleanly when none advertise `"tools"`.
+
+To pin a specific model across these suites, set `OLLAMA_TEST_MODEL` (it must
+be installed; for the tool-calling suite it must also be tool-capable):
+
+```bash
+OLLAMA_TEST_MODEL=qwen3.5:latest swift test --filter ManifoldE2ETests
 ```
 
 The tests skip automatically when `localhost:11434` is unreachable.

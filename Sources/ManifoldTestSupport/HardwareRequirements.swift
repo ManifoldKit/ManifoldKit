@@ -114,6 +114,86 @@ public enum HardwareRequirements {
         return models.compactMap { $0["name"] as? String }
     }
 
+    /// Returns the name of an installed, tool-calling-capable Ollama model, or
+    /// `nil` if the server is unreachable or no installed model advertises the
+    /// `"tools"` capability.
+    ///
+    /// Capability is probed via Ollama's `/api/show` endpoint, whose
+    /// `capabilities` array carries `"tools"` for models with native tool
+    /// support — so this discovers newer tool-callers (e.g. `qwen3.5`,
+    /// `gemma4`) without hardcoding model names.
+    ///
+    /// Selection order:
+    /// 1. If `OLLAMA_TEST_MODEL` is set, is installed, and is tool-capable, use it.
+    /// 2. Otherwise iterate installed models and return the first whose
+    ///    `/api/show` capabilities contain `"tools"`.
+    public static func findOllamaToolCapableModel(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        guard let names = listOllamaModels() else { return nil }
+        return selectOllamaToolCapableModel(
+            from: names,
+            environment: environment,
+            isToolCapable: { ollamaModelIsToolCapable($0) }
+        )
+    }
+
+    /// Picks a tool-capable model name from a pre-fetched list, given a
+    /// capability probe. Extracted from `findOllamaToolCapableModel` so it can
+    /// be unit-tested without a live server: inject a stub `isToolCapable`.
+    ///
+    /// When `OLLAMA_TEST_MODEL` names an installed *and* tool-capable model it
+    /// wins; otherwise the first installed model that probes tool-capable is
+    /// returned.
+    public static func selectOllamaToolCapableModel(
+        from names: [String],
+        environment: [String: String] = [:],
+        isToolCapable: (String) -> Bool
+    ) -> String? {
+        if let override = environment["OLLAMA_TEST_MODEL"], !override.isEmpty,
+           names.contains(override), isToolCapable(override) {
+            return override
+        }
+        return names.first(where: isToolCapable)
+    }
+
+    /// Probes Ollama's `/api/show` for `name` and reports whether its
+    /// `capabilities` array contains `"tools"`. Returns `false` on any
+    /// transport/decoding failure (treated as "not tool-capable").
+    public static func ollamaModelIsToolCapable(_ name: String) -> Bool {
+        ollamaModelCapabilities(name)?.contains("tools") ?? false
+    }
+
+    /// Fetches the `capabilities` array for a model from `/api/show`
+    /// synchronously. Returns `nil` if the server is unreachable or the
+    /// response is malformed.
+    private static func ollamaModelCapabilities(_ name: String) -> [String]? {
+        guard let url = URL(string: "http://localhost:11434/api/show") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 3
+        guard let body = try? JSONSerialization.data(
+            withJSONObject: ["model": name]
+        ) else { return nil }
+        request.httpBody = body
+
+        let semaphore = DispatchSemaphore(value: 0)
+        final class Box: @unchecked Sendable { var value: [String]? }
+        let box = Box()
+
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            defer { semaphore.signal() }
+            guard let data,
+                  let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let capabilities = json["capabilities"] as? [String] else { return }
+            box.value = capabilities
+        }.resume()
+        let result = semaphore.wait(timeout: .now() + 5)
+        return result == .success ? box.value : nil
+    }
+
     /// Selects the best model from a pre-fetched Ollama model list.
     /// Extracted from `findOllamaModel` for testability.
     ///

@@ -25,14 +25,6 @@ final class OllamaToolCallingE2ETests: XCTestCase {
     private var backend: OllamaBackend!
     private var modelName: String!
 
-    /// Preferred tool-calling-capable model (Llama 3.1 8B has native tool
-    /// support on Ollama). Fallback to a smaller Qwen 2.5 tag that also
-    /// supports tool calling via the `/api/chat` tools envelope.
-    private static let preferredModels: [String] = [
-        "llama3.1:8b",
-        "qwen2.5:7b-instruct",
-    ]
-
     override func setUp() async throws {
         try await super.setUp()
         try XCTSkipUnless(
@@ -40,10 +32,15 @@ final class OllamaToolCallingE2ETests: XCTestCase {
             "Ollama server not running at localhost:11434"
         )
 
-        let available = HardwareRequirements.listOllamaModels() ?? []
-        guard let match = Self.preferredModels.first(where: { available.contains($0) }) else {
+        // Discover a tool-capable model by probing each installed model's
+        // `/api/show` capabilities (the array carries `"tools"` for native
+        // tool-callers) rather than matching a hardcoded name list. This picks
+        // up newer tool-callers (qwen3.5, gemma4, …) the user has installed,
+        // and honours `OLLAMA_TEST_MODEL` when that model is tool-capable.
+        guard let match = HardwareRequirements.findOllamaToolCapableModel() else {
+            let installed = HardwareRequirements.listOllamaModels() ?? []
             throw XCTSkip(
-                "No tool-calling-capable Ollama model installed; need one of \(Self.preferredModels). Installed: \(available)"
+                "No tool-calling-capable Ollama model installed (none advertise the `tools` capability via /api/show). Installed: \(installed)"
             )
         }
         modelName = match
