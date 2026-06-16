@@ -1,50 +1,143 @@
 # WWDC 2026 Pre-emptive Trait Stubs
 
-Added 2026-05-31, 8 days before WWDC 2026 (June 8).
+Added 2026-05-31, 8 days before WWDC 2026 (June 8). **Updated 2026-06-16**
+against the shipped Xcode 27 / macOS 27 beta SDK — the pre-WWDC guesses below
+each section have been resolved against ground truth. Works toward issue #1577.
 
-## What the two traits represent
+Both traits remain pure-manifest stubs in `Package.swift`: no targets, no source
+files, `unlocks: []`. This document records what the beta SDK actually exposes so
+a later real-code PR can act on resolved facts instead of rumour.
 
-**`SystemAIProviderExtension`** — the expected iOS 27 / macOS 27 entrypoint for
-third-party apps to plug into Siri and Writing Tools as AI backends. Apple has
-described a "system AI provider" extension point in pre-release documentation;
-the exact protocol name, entitlement string, and Info.plist key are unconfirmed.
+## `CoreAI` — resolved: DEAD END for this repo
 
-**`CoreAI`** — a rumoured framework that would unify and succeed Core ML,
-Create ML, and the lower layers of Foundation Models. Whether it ships as a
-distinct framework or as an expansion of an existing one is unknown until the
-keynote.
+`CoreAI` is Apple's tensor runtime. It consumes a proprietary `.aimodel` format
+via `AIModel(contentsOf:)` / `InferenceFunction` / `NDArray`. It has **no
+`ModelExecutor`/`LanguageModel` protocol and no GGUF or MLX path** — it is
+orthogonal to `ManifoldMLX` / `ManifoldLlama`, not an integration candidate.
+ManifoldKit cannot adopt it as a backend seam: there is nothing to conform to.
 
-## Why add them pre-WWDC
+**Recommendation (deferred, out of scope here):** the `CoreAI` trait name is now
+misleading — it implies a backend seam that does not exist. A later real-code PR
+should rename or retire it. We are **not** renaming traits in this docs-only
+change; renaming a `Package.swift` trait is a manifest decision for that PR.
 
-SwiftPM trait names are consumed at the manifest level, before any source
-files compile. If a `#if SystemAIProviderExtension` block is committed to
-a source file today, `swift build` will fail until the trait is declared in
-`Package.swift`. By landing the trait declarations now:
+## `SystemAIProviderExtension` — investigation: symbol NOT FOUND in beta SDK
 
-- Feature branches can use `#if SystemAIProviderExtension` and `#if CoreAI`
-  guards today without a blocking manifest change.
-- On June 8, wiring in the real implementation requires only source additions
-  and a `swiftSettings: [.define(...)]` annotation on the new target — no
-  manifest restructuring under time pressure.
+The pre-WWDC stub assumed Apple would ship a "system AI provider" extension point
+letting third-party apps plug into Siri / Writing Tools as AI backends, with an
+unconfirmed protocol name / entitlement / Info.plist key.
 
-## Deferred decision points
+**Finding (evidence-based, macOS 27 beta SDK):** no such symbol exists.
 
-These questions must be resolved after WWDC before the traits become real:
+- `SystemAIProvider` appears **nowhere** in the SDK — zero hits across all 580
+  `*.swiftinterface` files under
+  `/Applications/Xcode-beta.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.sdk/System/Library/Frameworks`,
+  zero hits in framework ObjC `Headers/`, and zero matches among
+  `EXAppExtensionPoint` / `ai-provider` / `model-provider` extension-point
+  identifiers in framework `Info.plist`s.
+- The closest real mechanism is **AppIntents `AssistantSchema`** (e.g.
+  `AssistantSchemaIntent`, `AssistantSchemaEntity`, `AssistantSchemaEnum` in
+  `AppIntents.framework`). But that is the **inverse direction**: it lets an app
+  expose *its own* intents/entities to Siri via Apple's intelligence, not a slot
+  for a third-party app to supply a *language-model backend* to the system.
+- There is no FoundationModels-side provider-registration surface either.
 
-1. **Exact framework/protocol names** — the trait names here are best-guess.
-   Rename to match Apple's official identifiers if they differ.
-2. **Entitlement and capability requirements** — both surfaces will likely
-   require a provisioning entitlement; the consumer-manifest documentation
-   should reference any required `Info.plist` keys.
-3. **OS availability floor** — `SystemAIProviderExtension` is expected iOS 27 /
-   macOS 27+; `CoreAI` availability is unknown. Add `@available` guards and
-   update the platform policy table in `CLAUDE.md` accordingly.
-4. **Associated targets** — add a real `ManifoldSystemAIProvider` or
-   `ManifoldCoreAI` source target only once the API surface is confirmed.
-   The stub traits intentionally have no targets today.
+**Conclusion:** as of the macOS 27 beta SDK, the "third-party app as system AI
+provider" backend slot that this trait anticipated **does not exist as a public
+API**. The trait describes a surface Apple has not shipped. It should stay a
+stub; do not invent a symbol to gate against. If a later beta adds one, re-run
+the sweep and update this section.
 
-## How to activate post-WWDC
+## `LanguageModelExecutor` — the real third-party model seam (confirmed)
 
-1. Add the concrete source target(s) with `.define("SystemAIProviderExtension", .when(traits: ["SystemAIProviderExtension"]))` in `swiftSettings`.
-2. Remove both trait names from `pendingMapping` in `FeatureMatrixTests.swift` and add the real `ManifoldCapability` cases they unlock.
-3. Update this file with the confirmed API surface and availability.
+The genuine public seam for plugging a non-Apple model into FoundationModels is
+the `LanguageModel` / `LanguageModelExecutor` protocol pair, confirmed in:
+
+`.../MacOSX27.sdk/System/Library/Frameworks/FoundationModels.framework/Versions/A/Modules/FoundationModels.swiftmodule/arm64e-apple-macos.swiftinterface`
+
+```swift
+@available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *)
+@available(tvOS, unavailable)
+public protocol LanguageModel : Sendable {
+  associatedtype Executor : LanguageModelExecutor where Self == Self.Executor.Model
+  var capabilities: LanguageModelCapabilities { get }
+  var executorConfiguration: Self.Executor.Configuration { get }
+}
+
+@available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *)
+@available(tvOS, unavailable)
+public protocol LanguageModelExecutor : Sendable {
+  associatedtype Configuration : Hashable, Sendable
+  associatedtype Model : LanguageModel
+  func prewarm(model: Self.Model, transcript: Transcript)
+  init(configuration: Self.Configuration) throws
+  nonisolated(nonsending) func respond(
+    to request: LanguageModelExecutorGenerationRequest,
+    model: Self.Model,
+    streamingInto channel: LanguageModelExecutorGenerationChannel
+  ) async throws
+}
+```
+
+Notes from the swiftinterface:
+
+- This is a genuinely **public, non-privileged** protocol. Apple's own
+  `SystemLanguageModel` and `PrivateCloudComputeLanguageModel` conform via the
+  same pair (each exposes a public `Executor : LanguageModelExecutor`). There is
+  no special-cased Apple path — third parties conform identically. (Anthropic and
+  Google shipped conformances.)
+- `LanguageModelCapabilities` advertises `.vision`, `.guidedGeneration`,
+  `.reasoning`, `.toolCalling`.
+- The streaming channel surfaces `appendText` / reasoning / `toolCall` events —
+  i.e. FoundationModels owns the tool-call *protocol*, not the host app.
+
+### Deferred architectural decision (NOT resolved here)
+
+Adopting `LanguageModelExecutor` for MLX / Llama is *technically* viable, but it
+**forks tool-loop ownership** to FoundationModels. ManifoldKit's
+`GenerationToolDispatchLoop`, the approval gate (`toolCallApproved`),
+`maxToolIterations`, and handoff detection have **no FoundationModels
+equivalent** — conforming would mean ceding the turn loop that `ConversationRuntime`
+owns. This is an unresolved either/or, recorded here as a deferred decision, not
+a recommendation:
+
+- **(a)** Keep MLX/Llama on the existing `InferenceBackend` seam (MK owns the
+  tool loop); FoundationModels stays one backend among several.
+- **(b)** Add `LanguageModel` conformances so MLX/Llama also appear inside the
+  system FoundationModels surface — and accept FM-owned tool orchestration there.
+
+If (b) is ever pursued, that conformance work belongs in the **companion
+`manifold-mlx` / `manifold-llama` repos**, not core — core does not depend on
+those backends.
+
+## OS availability floor
+
+Both real seams are `@available(iOS 27.0, macOS 27.0, visionOS 27.0,
+watchOS 27.0, *)`, `tvOS` unavailable. That is **above** ManifoldKit's n-1 floor
+(macOS 15 / iOS 18), so any real adoption needs `#available(macOS 27, iOS 27, *)`
+guards and cannot ship unguarded until GA (~Sept 2026, when the floor bumps).
+
+**Do not** bump `swift-tools-version` to chase the beta: CI runs Xcode 26.5 /
+Swift 6.3.2; bumping breaks `resolve-check` and `fuzz`. Probe the beta SDK
+compile-only (as this investigation did) until GA.
+
+## Status summary
+
+| Trait | Real surface | Verdict |
+|-------|--------------|---------|
+| `CoreAI` | `.aimodel` tensor runtime, no LM protocol | Dead end; rename/retire in a later PR |
+| `SystemAIProviderExtension` | none found in beta SDK | Symbol does not exist; stay a stub |
+| (the real seam) | `FoundationModels.LanguageModelExecutor` | Viable but forks tool-loop ownership; companion-repo work; macOS 27 floor |
+
+## How to activate post-GA (unchanged guidance)
+
+When a real surface is adopted:
+
+1. Add the concrete source target(s) and a `swiftSettings: [.define(...)]`
+   annotation gated `.when(traits: [...])`.
+2. Remove the relevant trait name from `pendingMapping` in
+   `FeatureMatrixTests.swift` **and** add the real `ManifoldCapability` cases it
+   unlocks (a trait with `unlocks: []` must stay in `pendingMapping` — the matrix
+   invariant requires it).
+3. Add `#available(macOS 27, iOS 27, *)` guards (floor is above n-1 until GA).
+4. Update this file with the confirmed API surface.

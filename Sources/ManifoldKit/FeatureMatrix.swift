@@ -98,23 +98,26 @@ public enum FeatureMatrix {
             unlocks: [.toolCalling]
         ),
         // WWDC 2026 pre-emptive stubs. No targets, no source files — pure
-        // compile-condition placeholders until the frameworks ship on June 8.
-        // See docs/wwdc-2026-trait-stubs.md for deferred decision points.
+        // compile-condition placeholders. Resolved against the macOS 27 beta
+        // SDK 2026-06-16 (#1577); see docs/wwdc-2026-trait-stubs.md.
         ManifoldTrait(
             name: "SystemAIProviderExtension",
-            description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API.",
+            description: "Stub: a third-party \"system AI provider\" backend slot — anticipated pre-WWDC but NOT found in the macOS 27 beta SDK (no SystemAIProvider symbol anywhere). The real third-party model seam is FoundationModels.LanguageModelExecutor (macOS 27/iOS 27). Pure no-op stub.",
             unlocks: []
-            // TODO(dx-matrix): post-WWDC, remove "SystemAIProviderExtension"
-            // from FeatureMatrixTests.pendingMapping and add the concrete
-            // ManifoldCapability cases it unlocks.
+            // The anticipated extension point does not exist in the beta SDK.
+            // The real seam is FoundationModels.LanguageModelExecutor, but
+            // adopting it forks tool-loop ownership to FoundationModels and
+            // belongs in the companion mlx/llama repos — a deferred either/or
+            // (docs/wwdc-2026-trait-stubs.md). Stays in pendingMapping while
+            // unlocks is empty; do NOT remove until a real capability lands.
         ),
         ManifoldTrait(
             name: "CoreAI",
-            description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface.",
+            description: "Stub: Apple's CoreAI tensor runtime — confirmed a DEAD END for ManifoldKit. It consumes a proprietary .aimodel format (AIModel/InferenceFunction/NDArray) with no LanguageModel/ModelExecutor protocol and no GGUF/MLX path, so it is not a backend seam. Name is misleading; rename/retire in a later real-code PR. Pure no-op stub.",
             unlocks: []
-            // TODO(dx-matrix): post-WWDC, remove "CoreAI" from
-            // FeatureMatrixTests.pendingMapping and add the concrete
-            // ManifoldCapability cases it unlocks.
+            // Dead end (see docs/wwdc-2026-trait-stubs.md). Stays in
+            // pendingMapping while unlocks is empty; do NOT remove until a real
+            // capability lands. Trait rename is out of scope for the docs PR.
         ),
     ]
 
