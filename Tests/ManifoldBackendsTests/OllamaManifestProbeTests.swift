@@ -42,6 +42,97 @@ final class OllamaManifestProbeTests: XCTestCase {
         return try! JSONSerialization.data(withJSONObject: obj)
     }
 
+    // MARK: - Vision capability from /api/show
+
+    /// A model whose `/api/show` capabilities list includes `"vision"` must
+    /// flip `supportsVision` on the backend's live capabilities and set the
+    /// probed `isVisionModel` flag. Mirrors the thinking-detection path.
+    func test_capabilities_detectsVisionFromCapabilitiesList() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "qwen2.5vl:3b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(
+                    capabilities: ["completion", "vision"],
+                    modelInfo: ["context_length": 32_768]
+                ),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        XCTAssertFalse(backend.capabilities.supportsVision,
+                       "supportsVision must default to false before any load/probe")
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertTrue(backend.isVisionModel,
+                      "capabilities ['vision'] must set the probed isVisionModel flag")
+        XCTAssertTrue(backend.capabilities.supportsVision,
+                      "capabilities ['vision'] must flip supportsVision on the live capabilities")
+    }
+
+    /// A text-only model (no `"vision"` in capabilities) must leave
+    /// `supportsVision == false`.
+    func test_capabilities_textOnlyModelDoesNotAdvertiseVision() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "llama3.2:3b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(
+                    capabilities: ["completion"],
+                    modelInfo: ["context_length": 8_192]
+                ),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertFalse(backend.isVisionModel,
+                       "a model without 'vision' in capabilities must not be flagged vision-capable")
+        XCTAssertFalse(backend.capabilities.supportsVision,
+                       "text-only model must report supportsVision == false")
+    }
+
+    /// `unloadModel()` must reset the probed vision flag so a subsequent text
+    /// model load on the same instance doesn't inherit a stale `true`.
+    func test_unload_resetsVisionFlag() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "moondream:1.8b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(capabilities: ["completion", "vision"]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+        XCTAssertTrue(backend.isVisionModel)
+
+        backend.unloadModel()
+        XCTAssertFalse(backend.isVisionModel,
+                       "unloadModel must clear the probed vision flag")
+        XCTAssertFalse(backend.capabilities.supportsVision)
+    }
+
     // MARK: - Context window from /api/show
 
     func test_manifest_picksUpContextLengthFromCanonicalKey() async throws {

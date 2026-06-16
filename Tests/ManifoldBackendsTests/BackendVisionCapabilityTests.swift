@@ -27,6 +27,17 @@ final class BackendVisionCapabilityTests: XCTestCase {
         )
     }
 
+    func test_ollamaVisionGate_followsProbedCapabilityOnly() {
+        XCTAssertFalse(
+            BackendVisionCapability.ollamaSupportsImageInput(probedVision: false),
+            "Ollama must not advertise vision for a model whose /api/show capabilities list omits \"vision\"."
+        )
+        XCTAssertTrue(
+            BackendVisionCapability.ollamaSupportsImageInput(probedVision: true),
+            "Ollama must advertise vision once /api/show reports the \"vision\" capability."
+        )
+    }
+
     func test_openAIChatCompletionsVisionGate_allowsOnlyImplementedVisionFamilies() {
         let supported = [
             "gpt-4o-mini",
