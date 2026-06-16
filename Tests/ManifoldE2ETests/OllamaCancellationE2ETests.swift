@@ -141,13 +141,16 @@ final class OllamaCancellationE2ETests: XCTestCase {
             try await drained.value
         }
 
-        // POST-CONDITION 1: backend reports it is no longer generating.
-        // `stopGeneration()` flips this synchronously under the state lock; if
-        // the model completed first, the completion path clears it too. Either
-        // way the contract guarantees `false` once the stream has ended.
+        // POST-CONDITION 1: backend settles to not-generating after the stream
+        // terminates. `stopGeneration()` clears the flag synchronously, but when
+        // the model completes naturally the backend clears it asynchronously in
+        // its `finishGeneration` closure (SSECloudBackend), which can lag the
+        // consumer observing the final event. We poll for the flag to settle
+        // rather than asserting a synchronous flip the contract doesn't promise.
+        try await waitForNotGenerating()
         XCTAssertFalse(
             backend.isGenerating,
-            "Backend should report isGenerating == false after the stream terminates "
+            "Backend should settle to isGenerating == false after the stream terminates "
                 + "(model: \(modelName!), cancelRequested: \(cancelRequested))"
         )
 
@@ -164,10 +167,27 @@ final class OllamaCancellationE2ETests: XCTestCase {
             "Backend should be reusable after cancellation: a fresh generation "
                 + "must produce output (model: \(modelName!))"
         )
+        try await waitForNotGenerating()
         XCTAssertFalse(
             backend.isGenerating,
-            "Backend should not be generating after the follow-up completes (model: \(modelName!))"
+            "Backend should settle to not-generating after the follow-up completes (model: \(modelName!))"
         )
+    }
+
+    /// Polls `isGenerating` until it settles to `false`, up to `timeout`.
+    ///
+    /// Natural stream completion clears the flag asynchronously in the backend's
+    /// `finishGeneration` closure, so it can briefly read `true` immediately
+    /// after the consumer drains the final event. The meaningful guarantee is
+    /// that the backend *does* settle to idle — not that the flag flips in
+    /// lockstep with the last token — so a bounded poll is the correct,
+    /// non-racy check. A backend genuinely stuck generating fails here when the
+    /// deadline elapses.
+    private func waitForNotGenerating(timeout: Double = 5) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while backend.isGenerating && Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)  // 50ms
+        }
     }
 
     // MARK: - Helpers
