@@ -14,6 +14,16 @@ public enum BackendVisionCapability {
         probedCapabilities?.supportsVision ?? false
     }
 
+    /// Ollama advertises image-input support per-model via its `/api/show`
+    /// `capabilities: ["vision", ...]` list (qwen2.5vl, moondream, llava …).
+    /// `OllamaBackend` probes that flag at load time; pass it here. Mirrors
+    /// ``mlxSupportsImageInput(probedCapabilities:)`` — image-input support is
+    /// model-driven, not a fixed family constant. `false` when the model is
+    /// text-only or hasn't been probed yet.
+    public static func ollamaSupportsImageInput(probedVision: Bool) -> Bool {
+        probedVision
+    }
+
     public static func openAIChatCompletionsSupportsImageInput(modelName: String) -> Bool {
         let lowered = modelName.lowercased()
         if OpenAIChatCompletionsVisionModels.substringTokens.contains(where: lowered.contains) {

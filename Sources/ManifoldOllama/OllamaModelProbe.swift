@@ -6,10 +6,11 @@ import ManifoldCloudCore
 /// Decoded subset of Ollama's `/api/show` response we actually consume.
 struct OllamaShowProbe {
     let thinking: Bool
+    let vision: Bool
     let thinkingMarkers: ThinkingMarkers?
     let contextLength: Int?
 
-    static let empty = OllamaShowProbe(thinking: false, thinkingMarkers: nil, contextLength: nil)
+    static let empty = OllamaShowProbe(thinking: false, vision: false, thinkingMarkers: nil, contextLength: nil)
 }
 
 enum OllamaModelProbe {
@@ -68,11 +69,16 @@ enum OllamaModelProbe {
             return .empty
         }
 
-        // Thinking capability — prefer the structured capabilities list.
+        // Thinking + vision capabilities — both surfaced by Ollama's modern
+        // `/api/show` `capabilities: [...]` list (e.g. `["completion",
+        // "vision"]` for qwen2.5vl / moondream / llava). Vision has no template
+        // fallback (unlike thinking markers): a model is multimodal only when
+        // the server advertises it, so we read the flag straight from the list.
         var thinking = false
-        if let caps = json["capabilities"] as? [String],
-           caps.contains(where: { $0.lowercased() == "thinking" }) {
-            thinking = true
+        var vision = false
+        if let caps = json["capabilities"] as? [String] {
+            thinking = caps.contains { $0.lowercased() == "thinking" }
+            vision = caps.contains { $0.lowercased() == "vision" }
         }
 
         // Thinking markers — auto-detect from the Jinja template via the
@@ -112,6 +118,7 @@ enum OllamaModelProbe {
 
         return OllamaShowProbe(
             thinking: thinking,
+            vision: vision,
             thinkingMarkers: detectedMarkers,
             contextLength: contextLength
         )

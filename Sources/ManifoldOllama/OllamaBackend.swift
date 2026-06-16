@@ -20,7 +20,7 @@ import ManifoldCloudCore
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, ToolCallingHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Ollama)
     //
@@ -67,6 +67,23 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
     public var isThinkingModel: Bool {
         withStateLock { _isThinkingModel }
+    }
+
+    /// Backing storage for the loaded model's vision (image-input) capability,
+    /// detected from `/api/show`'s `capabilities: ["vision", ...]` list at load
+    /// time. Guarded by the base class's `stateLock` exactly like
+    /// ``_isThinkingModel`` — written inside the `withStateLock` blocks in
+    /// `loadModel`/`unloadModel`, read from `capabilities` which runs on a
+    /// different actor (an off-lock `var` would be a Swift-6 data race). `false`
+    /// before any load and for text-only models.
+    private var _isVisionModel: Bool = false
+
+    /// Whether the loaded model accepts image input, as advertised by Ollama's
+    /// `/api/show` capabilities list. Drives `capabilities.supportsVision` and
+    /// the central ``BackendVisionCapability/ollamaSupportsImageInput(probedVision:)``
+    /// gate. `false` until a vision-capable model is loaded.
+    public var isVisionModel: Bool {
+        withStateLock { _isVisionModel }
     }
 
     /// Default per-request idle timeout for Ollama connections.
@@ -299,6 +316,10 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         supportsStreaming: true,
         isRemote: true,
         supportsThinking: false,
+        // Pre-probe default: vision is unknown until `/api/show` runs at load
+        // time. The dynamic `capabilities` override flips this on for models
+        // that advertise the `vision` capability.
+        supportsVision: false,
         streamsToolCallArguments: false,
         supportsParallelToolCalls: true
     )
@@ -377,6 +398,13 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             // legacy `isThinkingModel` flag separately. Defaults to the live
             // probe value; the manifest carries the same bit.
             supportsThinking: isThinkingModel,
+            // Reflect the auto-detected vision capability from `/api/show`'s
+            // `capabilities: ["vision", ...]` list. The image *wire* path
+            // (`OllamaImagesField`) has always existed; this advertises it so
+            // consumers can gate image attachment on a real signal instead of
+            // assuming false. `false` until a vision model loads. Routed through
+            // the central gate to match the cloud families' pattern.
+            supportsVision: BackendVisionCapability.ollamaSupportsImageInput(probedVision: isVisionModel),
             // Ollama emits tool calls as whole entries on a single NDJSON
             // line — no incremental `arguments` fragments arrive across
             // multiple lines (some `qwen2.5:7b` configs may stream deltas
@@ -398,6 +426,48 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     /// cleared after use so a subsequent non-tool generation falls back to the
     /// plain string history in `conversationHistory`.
     private var toolAwareHistory: [ToolAwareHistoryEntry]?
+
+    // MARK: - Structured (multimodal) Conversation History
+
+    /// Cached structured history from the most recent `setStructuredHistory(_:)`
+    /// call. Carries `MessagePart.image` payloads that the flattened
+    /// `ConversationHistoryReceiver` projection (text-only) drops on the floor.
+    /// Consumed once by `buildRequest` — when present and any turn carries an
+    /// image, the request emits Ollama's message-level `images: [base64]`
+    /// field. Cleared after use so a subsequent text-only generation on the
+    /// same instance falls back to the plain string `conversationHistory`,
+    /// mirroring `toolAwareHistory`'s snapshot-and-clear contract.
+    ///
+    /// Guarded by `stateLock` like every other load/turn-state field.
+    private var _structuredHistory: [StructuredMessage]?
+
+    public func setStructuredHistory(_ messages: [StructuredMessage]) {
+        withStateLock { _structuredHistory = messages }
+    }
+
+    /// Encodes structured turns into Ollama `/api/chat` message dicts, lifting
+    /// `MessagePart.image` payloads onto the message-level `images: [base64]`
+    /// field that Ollama's multimodal models consume. Ollama takes raw base64
+    /// (no `data:` URI prefix, no MIME) — see ``OllamaImagesField``. Text parts
+    /// concatenate into `content`; non-text/non-image parts (thinking, tool
+    /// call/result) are dropped here because the image path is only taken for
+    /// plain vision turns (the tool loop owns the tool-aware path above).
+    static func encodeOllamaMessagesWithImages(_ history: [StructuredMessage]) -> [[String: Any]] {
+        history.map { message in
+            var entry: [String: Any] = ["role": message.role]
+            entry["content"] = message.textContent
+            var images: [String] = []
+            for part in message.parts {
+                if case let .image(data, _, _) = part {
+                    images.append(CloudImageEncoding.base64String(from: data))
+                }
+            }
+            if !images.isEmpty {
+                entry["images"] = images
+            }
+            return entry
+        }
+    }
 
     // MARK: - Model Lifecycle
 
@@ -463,6 +533,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         )
         withStateLock {
             _isThinkingModel = probed.thinking
+            _isVisionModel = probed.vision
             _autoDetectedThinkingMarkers = probed.thinkingMarkers
             _manifest = manifest
         }
@@ -501,11 +572,24 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         // by the orchestrator loop. If a subsequent non-tool generation runs on
         // the same backend instance, it must fall back to `conversationHistory`
         // rather than replaying stale tool-result messages.
-        let snapshotToolHistory: [ToolAwareHistoryEntry]? = withStateLock {
-            let snapshot = self.toolAwareHistory
+        // Both one-shot payloads are snapshot-and-cleared together so neither
+        // leaks into a later turn on the same instance.
+        let (snapshotToolHistory, snapshotStructuredHistory): ([ToolAwareHistoryEntry]?, [StructuredMessage]?) = withStateLock {
+            let tools = self.toolAwareHistory
+            let structured = self._structuredHistory
             self.toolAwareHistory = nil
-            return snapshot
+            self._structuredHistory = nil
+            return (tools, structured)
         }
+        // Vision turns only take the structured path: a turn carries images
+        // only via `MessagePart.image`, which the text-only `conversationHistory`
+        // projection drops. Falling through to the existing text path when no
+        // image is present preserves every existing OllamaBackend wire-shape
+        // assertion (the structured encoder is image-aware but the plain
+        // string history is what the suite pins).
+        let structuredCarriesImage = snapshotStructuredHistory?.contains { message in
+            message.parts.contains { if case .image = $0 { return true } else { return false } }
+        } ?? false
         if let toolHistory = snapshotToolHistory {
             messages.append(contentsOf: CloudMessageEncoder.ollama.encodeMessages(
                 systemPrompt: nil,
@@ -514,6 +598,8 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
                 toolAwareHistory: toolHistory,
                 plainHistory: nil
             ))
+        } else if structuredCarriesImage, let structured = snapshotStructuredHistory {
+            messages.append(contentsOf: Self.encodeOllamaMessagesWithImages(structured))
         } else if let history = conversationHistory {
             messages.append(contentsOf: history.map { ["role": $0.role, "content": $0.content] })
         } else {
@@ -695,9 +781,11 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     public override func unloadModel() {
         withStateLock {
             _isThinkingModel = false
+            _isVisionModel = false
             _manifest = nil
             _autoDetectedThinkingMarkers = nil
             _pendingStreamConfig = nil
+            _structuredHistory = nil
         }
         super.unloadModel()
     }
