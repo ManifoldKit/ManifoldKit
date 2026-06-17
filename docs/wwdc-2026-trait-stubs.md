@@ -8,16 +8,35 @@ Both traits remain pure-manifest stubs in `Package.swift`: no targets, no source
 files, `unlocks: []`. This document records what the beta SDK actually exposes so
 a later real-code PR can act on resolved facts instead of rumour.
 
-## `CoreAI` — resolved: DEAD END for this repo
+## `CoreAI` — resolved: reachable via the `apple/coreai-models` package + executor seam
 
-`CoreAI` is Apple's tensor runtime. It consumes a proprietary `.aimodel` format
-via `AIModel(contentsOf:)` / `InferenceFunction` / `NDArray`. It has **no
-`ModelExecutor`/`LanguageModel` protocol and no GGUF or MLX path** — it is
-orthogonal to `ManifoldMLX` / `ManifoldLlama`, not an integration candidate.
-ManifoldKit cannot adopt it as a backend seam: there is nothing to conform to.
+The **bare** `CoreAI` framework is Apple's tensor runtime. It consumes a
+proprietary `.aimodel` format via `AIModel(contentsOf:)` / `InferenceFunction` /
+`NDArray`, and at that layer has **no `LanguageModel` protocol and no GGUF or MLX
+path** — nothing to conform to directly.
 
-**Recommendation (deferred, out of scope here):** the `CoreAI` trait name is now
-misleading — it implies a backend seam that does not exist. A later real-code PR
+**But that is not the whole picture (corrected 2026-06-17).** Apple also shipped
+the open-source [`apple/coreai-models`](https://github.com/apple/coreai-models)
+Swift package (macOS/iOS 27, BSD-3) — model export recipes plus a Swift runtime.
+Its `CoreAILM` product provides:
+
+- `struct CoreAILanguageModel: LanguageModel` (`typealias Executor = CoreAIExecutor`),
+  loaded via `init(resourcesAt:) async throws` from an `.aimodel` bundle, and
+- `CoreAIExecutor: LanguageModelExecutor` with the streaming `respond(...)` channel,
+
+so a `.aimodel` runs through `LanguageModelSession(model:)` like any other
+`LanguageModel`. **`.aimodel` is therefore reachable through the exact
+`LanguageModelExecutor` seam documented below** — it is *not* orthogonal after
+all. An MK integration would consume `apple/coreai-models` and adopt that seam,
+carrying the **same** deferred tool-loop-ownership tradeoff (see below), not the
+bare-framework `AIModel`/`NDArray` surface. (These are export *recipes* + a
+runtime, not pre-bundled Apple `.aimodel` downloads — verified against a clone of
+the repo: gallery LLM recipes incl. Qwen3-0.6B/4B, Qwen3-Coder-30B-A3B (MoE),
+Mistral-7B, gpt-oss-20b; constrained generation via the vendored `xgrammar`.)
+
+**Recommendation (deferred, out of scope here):** the `CoreAI` trait name remains
+misleading — it implies a *bare-framework* seam, when the real path is the
+`apple/coreai-models` package via `LanguageModelExecutor`. A later real-code PR
 should rename or retire it. We are **not** renaming traits in this docs-only
 change; renaming a `Package.swift` trait is a manifest decision for that PR.
 
@@ -125,7 +144,7 @@ compile-only (as this investigation did) until GA.
 
 | Trait | Real surface | Verdict |
 |-------|--------------|---------|
-| `CoreAI` | `.aimodel` tensor runtime, no LM protocol | Dead end; rename/retire in a later PR |
+| `CoreAI` | bare framework: no LM protocol — **but `apple/coreai-models` package ships `CoreAILanguageModel`/`CoreAIExecutor`** | `.aimodel` reachable via the executor seam (same tool-loop-fork tradeoff); rename trait later |
 | `SystemAIProviderExtension` | none found in beta SDK | Symbol does not exist; stay a stub |
 | (the real seam) | `FoundationModels.LanguageModelExecutor` | Viable but forks tool-loop ownership; companion-repo work; macOS 27 floor |
 
