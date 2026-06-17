@@ -44,8 +44,17 @@ import os
 ///
 /// ## HTTP/SSE transport
 ///
-/// HTTP/SSE server-side transport (for Claude Desktop's streamable-HTTP
-/// configuration) is not yet implemented. Track progress in issue #1842.
+/// For Claude Desktop's streamable-HTTP configuration and remote MCP clients
+/// that cannot launch the host as a subprocess, use ``MCPHostHTTPTransport``
+/// instead of ``MCPHostStdioTransport`` (#1842):
+///
+/// ```swift
+/// let transport = try MCPHostHTTPTransport(port: 8765)
+/// try await transport.start()
+/// try await host.run(transport: transport)
+/// ```
+///
+/// stdio remains the default for local single-client use.
 ///
 /// ## Concurrency
 ///
@@ -659,9 +668,9 @@ public enum MCPHostError: Error, LocalizedError, Sendable {
 /// Transport abstraction for the server side of an MCP connection.
 ///
 /// The server reads incoming JSON-RPC frames from `incomingMessages` and
-/// writes response frames via `send(_:)`. The built-in implementation is
-/// ``MCPHostStdioTransport`` (macOS only). HTTP/SSE support is tracked in
-/// issue #1842.
+/// writes response frames via `send(_:)`. Two built-in implementations exist
+/// (both macOS only): ``MCPHostStdioTransport`` for local subprocess clients
+/// and ``MCPHostHTTPTransport`` for streamable-HTTP / SSE clients (#1842).
 public protocol MCPHostTransport: Sendable {
     /// Inbound frames from the remote MCP client.
     var incomingMessages: AsyncThrowingStream<Data, Error> { get }
