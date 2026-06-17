@@ -286,6 +286,54 @@ final class DetectorTests: XCTestCase {
         XCTAssertTrue(findings.contains { $0.subCheck == "template-fragment" })
     }
 
+    // MARK: - TemplateTokenLeakDetector — Gemma 4 family coverage
+
+    // Gemma 4 owns a distinct `<|…>` turn family that earlier shipped Gemma 1/2/3
+    // delimiters (`<start_of_turn>` / `<end_of_turn>`) do NOT match. Without these
+    // cases a mis-detected Gemma-4 GGUF could leak its terminal `<|end_of_turn>` (or
+    // the `<|turn>` / `<|tool…>` markers) into visible output and the detector would
+    // stay silent — the exact c9cac45-class regression it exists to catch.
+
+    func test_templateTokenLeak_gemma4EndOfTurn_firesWhenNotInInput() {
+        let r = makeRecord(
+            raw: "The answer is forty-two.<|end_of_turn>",
+            userPrompt: "What is six times seven?"
+        )
+        let findings = TemplateTokenLeakDetector().inspect(r)
+        XCTAssertTrue(
+            findings.contains { $0.subCheck == "template-fragment" && $0.trigger == "<|end_of_turn>" },
+            "A spontaneously-emitted Gemma 4 <|end_of_turn> delimiter must be flagged as a leak"
+        )
+    }
+
+    func test_templateTokenLeak_gemma4TurnAndToolMarkers_fire() {
+        for token in ["<|turn>", "<|tool>", "<|tool_call>", "<|tool_response>"] {
+            let r = makeRecord(
+                raw: "prefix \(token) suffix",
+                userPrompt: "an unrelated prompt with no template tokens"
+            )
+            let findings = TemplateTokenLeakDetector().inspect(r)
+            XCTAssertTrue(
+                findings.contains { $0.subCheck == "template-fragment" && $0.trigger == token },
+                "Gemma 4 token \(token) leaking into output must be flagged"
+            )
+        }
+    }
+
+    func test_templateTokenLeak_gemma4TokenInInput_suppressesFinding() {
+        // Symmetric with the ChatML echo case: if the Gemma 4 token was already in
+        // the user's prompt, echoing it back is expected, not a leak.
+        let r = makeRecord(
+            raw: "The <|end_of_turn> delimiter closes a Gemma 4 turn.",
+            userPrompt: "Explain the <|end_of_turn> Gemma 4 delimiter"
+        )
+        let findings = TemplateTokenLeakDetector().inspect(r)
+        XCTAssertFalse(
+            findings.contains { $0.subCheck == "template-fragment" && $0.trigger == "<|end_of_turn>" },
+            "An echoed-input Gemma 4 token must not fire"
+        )
+    }
+
     // MARK: - ThinkingClassificationDetector — stopReason gating
 
     // MARK: - MemoryGrowthDetector — growth-budget branch

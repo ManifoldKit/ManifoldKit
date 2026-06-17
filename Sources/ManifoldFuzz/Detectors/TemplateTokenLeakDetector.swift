@@ -25,6 +25,19 @@ public struct TemplateTokenLeakDetector: Detector {
         "<|end_header_id|>",
         "<start_of_turn>",
         "<end_of_turn>",
+        // Gemma 4 uses a distinct `<|…>`-delimited turn family (NOT Gemma 1/2/3's
+        // `<…>` form), so the two entries above do not cover it. A Gemma-4 GGUF that
+        // is mis-detected as another family leaks these into visible output — the
+        // exact c9cac45-class regression this detector exists to catch. `<|turn>` is
+        // the role-turn opener (and the prefix of the `<|turn>think` reasoning turn),
+        // `<|end_of_turn>` the terminal delimiter (the most common leak when the close
+        // token isn't treated as EOS), and the `<|tool…>` trio the native tool-call
+        // channel. See PromptTemplate.gemma4 / ThinkingMarkers.gemma4.
+        "<|turn>",
+        "<|end_of_turn>",
+        "<|tool>",
+        "<|tool_call>",
+        "<|tool_response>",
         "[INST]",
         "[/INST]",
     ]
