@@ -1031,7 +1031,8 @@ extension InferenceService {
         generation.bindContext(
             currentBackend: { [weak self] in self?.lifecycle.backend },
             isBackendLoaded: { [weak self] in self?.lifecycle.isModelLoaded ?? false },
-            selectedPromptTemplate: { [weak self] in self?.lifecycle.selectedPromptTemplate ?? .chatML }
+            selectedPromptTemplate: { [weak self] in self?.lifecycle.selectedPromptTemplate ?? .chatML },
+            selectedChatTemplateRaw: { [weak self] in self?.lifecycle.selectedChatTemplateRaw }
         )
         // Keep-alive policy seams: inject closures rather than references to
         // avoid the lifecycle ↔ service retain cycle. These are set once at
