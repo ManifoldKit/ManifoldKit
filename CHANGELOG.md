@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.53.0](https://github.com/roryford/ManifoldKit/compare/v0.52.0...v0.53.0) (2026-06-16)
+
+### Highlights
+
+**Ollama vision capability detection.** `OllamaBackend` now probes the model manifest at load time and advertises `supportsVision` in `BackendCapabilities` when the loaded model exposes a vision encoder ([#1892](https://github.com/roryford/ManifoldKit/issues/1892)). UI layers can reliably gate image-attach controls on `capabilities.supportsVision` without hard-coding model-name patterns — no caller change required.
+
+```swift
+let caps = await backend.capabilities()
+if caps.supportsVision {
+    // safe to attach images
+}
+```
+
+### Documentation
+
+* Resolved WWDC 2026 `LanguageModelExecutor` / `CoreAI` trait-stub descriptions ([#1895](https://github.com/roryford/ManifoldKit/issues/1895)).
+
+### Tests
+
+* Added repeatable local real-model integration and perf sweep ([#1888](https://github.com/roryford/ManifoldKit/issues/1888)).
+* Capability-based tool-call discovery for Ollama E2E with aligned setup docs ([#1890](https://github.com/roryford/ManifoldKit/issues/1890)).
+* Live streaming cancellation E2E with deterministic post-conditions ([#1891](https://github.com/roryford/ManifoldKit/issues/1891)).
+* Made `KeepAlivePolicyTests` robust against CI scheduling starvation ([#1894](https://github.com/roryford/ManifoldKit/issues/1894)).
+
+### Continuous Integration
+
+* Added on-demand companion compat check against an arbitrary core ref ([#1889](https://github.com/roryford/ManifoldKit/issues/1889)).
+
 ## [0.52.0](https://github.com/roryford/ManifoldKit/compare/v0.51.0...v0.52.0) (2026-06-15)
 
 ### Highlights
