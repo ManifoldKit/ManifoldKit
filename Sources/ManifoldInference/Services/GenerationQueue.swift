@@ -33,6 +33,14 @@ final class GenerationQueue {
     var isBackendLoadedProvider: (@MainActor () -> Bool)?
     var selectedPromptTemplateProvider: (@MainActor () -> PromptTemplate)?
 
+    /// Reader onto the active model's embedded Jinja chat-template string, or
+    /// `nil` for templateless models. When present and renderable it drives the
+    /// prompt via the model's *real* template (#1811); otherwise the enum from
+    /// ``selectedPromptTemplateProvider`` is used. Bound after init alongside the
+    /// other context closures; an unbound provider means "no embedded template",
+    /// which preserves the pre-#1811 enum-only behaviour.
+    var selectedChatTemplateRawProvider: (@MainActor () -> String?)?
+
     /// Convenience reader — returns the bound backend or `nil` when unwired.
     var currentBackend: (any InferenceBackend)? { currentBackendProvider?() }
 
@@ -42,17 +50,28 @@ final class GenerationQueue {
     /// Convenience reader — returns the bound template or `.chatML` when unwired.
     var selectedPromptTemplate: PromptTemplate { selectedPromptTemplateProvider?() ?? .chatML }
 
+    /// Convenience reader — returns the bound embedded template, or `nil`.
+    var selectedChatTemplateRaw: String? { selectedChatTemplateRawProvider?() }
+
+    /// The renderer for the active model: prefers the real embedded Jinja
+    /// template, falls back to the detected enum (#1811).
+    var promptRenderer: PromptRenderer {
+        PromptRenderer(template: selectedPromptTemplate, chatTemplateRaw: selectedChatTemplateRaw)
+    }
+
     /// Bind the backend-state closures in one call. Inverts the previous
     /// `coord.provider = self` assignment; the caller decides retain semantics
     /// via the captures it passes in.
     func bindContext(
         currentBackend: @escaping @MainActor () -> (any InferenceBackend)?,
         isBackendLoaded: @escaping @MainActor () -> Bool,
-        selectedPromptTemplate: @escaping @MainActor () -> PromptTemplate
+        selectedPromptTemplate: @escaping @MainActor () -> PromptTemplate,
+        selectedChatTemplateRaw: (@MainActor () -> String?)? = nil
     ) {
         self.currentBackendProvider = currentBackend
         self.isBackendLoadedProvider = isBackendLoaded
         self.selectedPromptTemplateProvider = selectedPromptTemplate
+        self.selectedChatTemplateRawProvider = selectedChatTemplateRaw
     }
 
     /// Whether any context closures have been bound. Mirrors the old
@@ -432,7 +451,7 @@ final class GenerationQueue {
         if let counter = backend as? TokenCountingBackend,
            backend.capabilities.requiresPromptTemplate {
             let result = try GenerationPreflightTrimmer(
-                promptTemplate: selectedPromptTemplate
+                renderer: promptRenderer
             ).exactPreflightAndTrim(
                 counter: counter,
                 backend: backend,
@@ -466,21 +485,24 @@ final class GenerationQueue {
         let effectiveSystemPrompt: String?
 
         if backend.capabilities.requiresPromptTemplate {
-            let template = selectedPromptTemplate
+            // Renders the model's real embedded Jinja chat template when present
+            // and usable, falling back to the detected enum for templateless
+            // models (#1811).
+            let renderer = promptRenderer
             if backend.capabilities.supportsToolCalling && !config.tools.isEmpty {
                 // Templates that render `tools` natively (only `.gemma4` today)
                 // consume the array directly. Templates that discard it get the
                 // tool guidance folded into the system prompt instead (#1856) —
                 // see `toolAugmentedSystemPrompt`. Doing both would double-inject.
                 let augmentedSystemPrompt = Self.toolAugmentedSystemPrompt(
-                    template: template,
+                    template: renderer.template,
                     systemPrompt: systemPrompt,
                     backend: backend,
                     config: config
                 )
-                assembledPrompt = template.format(messages: flattened, systemPrompt: augmentedSystemPrompt, tools: config.tools)
+                assembledPrompt = renderer.render(messages: flattened, systemPrompt: augmentedSystemPrompt, nativeTools: config.tools)
             } else {
-                assembledPrompt = template.format(messages: flattened, systemPrompt: systemPrompt)
+                assembledPrompt = renderer.render(messages: flattened, systemPrompt: systemPrompt)
             }
             effectiveSystemPrompt = nil
         } else {

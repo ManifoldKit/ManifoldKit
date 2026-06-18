@@ -84,6 +84,14 @@ final class ModelLifecycleCoordinator {
 
     var selectedPromptTemplate: PromptTemplate = .chatML
 
+    /// The active model's embedded Jinja chat-template string, captured from
+    /// ``ModelInfo/chatTemplateRaw`` at load time, or `nil` for templateless
+    /// models. When present and renderable, the generation queue renders the
+    /// model's *real* template rather than approximating it with the detected
+    /// ``selectedPromptTemplate`` enum case (#1811). Set on load, cleared on
+    /// unload — never user-editable, so it always reflects the loaded GGUF.
+    private(set) var selectedChatTemplateRaw: String?
+
     // MARK: - Backend Registry
 
     private var backendFactories: [BackendFactory] = []
@@ -289,6 +297,13 @@ final class ModelLifecycleCoordinator {
         let footprint: UInt64? = plan.outcome.totalEstimatedBytes > 0
             ? plan.outcome.totalEstimatedBytes
             : nil
+        // Capture the model's embedded Jinja chat template (if any) so the
+        // generation queue can render the model's *real* template rather than
+        // approximating it with the detected enum case (#1811). Local GGUF loads
+        // are the only path that carries a ModelInfo; cloud/endpoint loads go
+        // through `runLoad` directly and leave this nil (cloud backends do not
+        // use prompt templates).
+        selectedChatTemplateRaw = modelInfo.chatTemplateRaw
         try await runLoad(
             source: "local",
             target: modelTypeLogLabel(modelInfo.modelType),
@@ -426,6 +441,9 @@ final class ModelLifecycleCoordinator {
         activeEndpointID = nil
         loadedAt = nil
         residentFootprintBytes = nil
+        // Drop the embedded template so a subsequent templateless load does not
+        // inherit the previous model's Jinja (#1811).
+        selectedChatTemplateRaw = nil
     }
 
     // MARK: - Capability Queries

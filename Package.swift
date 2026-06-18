@@ -131,6 +131,17 @@ let package = Package(
         // Pin 0.9.0 exactly: this is the verified tag that still exports the
         // `HuggingFace` product consumed by ManifoldHuggingFace and its tests.
         .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.9.0"),
+        // swift-jinja: renders a GGUF model's *real* embedded Jinja chat template
+        // (`tokenizer.chat_template`) rather than approximating it with the
+        // hand-rolled `PromptTemplate` enum (#1811). Consumed by ManifoldInference's
+        // JinjaPromptRenderer at the existing prompt-assembly site, where the raw
+        // template (ModelInfo.chatTemplateRaw) and the message history already meet —
+        // local backends (manifold-mlx / manifold-llama) only ever receive the
+        // finished prompt string, so the renderer must live core-side, not in the
+        // companions. The package's only transitive dep is swift-collections
+        // (OrderedCollections); tools-version 6.0 / macOS 13 / iOS 16 all sit below
+        // this package's floor. Pin to the 2.x line to track swift-transformers 1.x.
+        .package(url: "https://github.com/huggingface/swift-jinja.git", from: "2.0.0"),
         .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
@@ -265,6 +276,9 @@ let package = Package(
                 "ManifoldSecrets",
                 "ManifoldHardware",
                 "ManifoldModelCatalog",
+                // Real GGUF Jinja chat-template rendering (#1811). Library→library
+                // edge: unconditional, matching the other always-linked deps.
+                .product(name: "Jinja", package: "swift-jinja"),
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
             path: "Sources/ManifoldInference",

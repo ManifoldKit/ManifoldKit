@@ -8,12 +8,22 @@ struct GenerationPreflightTrimmer {
         let trimmedMessages: [StructuredMessage]
     }
 
-    let promptTemplate: PromptTemplate
+    let renderer: PromptRenderer
     let maxTrimAttempts: Int
 
-    init(promptTemplate: PromptTemplate, maxTrimAttempts: Int = 20) {
-        self.promptTemplate = promptTemplate
+    init(renderer: PromptRenderer, maxTrimAttempts: Int = 20) {
+        self.renderer = renderer
         self.maxTrimAttempts = maxTrimAttempts
+    }
+
+    /// Convenience initializer for callers that only have a detected enum
+    /// template and no embedded Jinja string (e.g. existing tests). Renders via
+    /// the enum path only — no embedded-template preference.
+    init(promptTemplate: PromptTemplate, maxTrimAttempts: Int = 20) {
+        self.init(
+            renderer: PromptRenderer(template: promptTemplate, chatTemplateRaw: nil),
+            maxTrimAttempts: maxTrimAttempts
+        )
     }
 
     /// Counts tokens on the assembled prompt and trims the oldest non-system
@@ -54,13 +64,17 @@ struct GenerationPreflightTrimmer {
         // otherwise the local TokenCounting path silently drops them. Templates
         // that don't render tools natively ignore the argument; their tool
         // guidance arrives folded into `systemPrompt` by the caller (#1856).
-        let nativeTools = promptTemplate.rendersToolsNatively ? config.tools : []
+        let nativeTools = renderer.template.rendersToolsNatively ? config.tools : []
 
         while true {
-            let prompt = promptTemplate.format(
+            // Renders the model's real embedded Jinja when present, else the
+            // detected enum (#1811). The same renderer feeds the final prompt
+            // sent to the backend, so the token count and the decoded prompt
+            // always agree.
+            let prompt = renderer.render(
                 messages: GenerationHistoryInstaller.flatten(workingMessages),
                 systemPrompt: systemPrompt,
-                tools: nativeTools
+                nativeTools: nativeTools
             )
             let promptTokens = try counter.countTokens(prompt)
 
