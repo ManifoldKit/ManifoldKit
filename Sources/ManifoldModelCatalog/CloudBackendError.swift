@@ -16,6 +16,13 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
     /// Not retryable — the backend no longer exists.
     case backendDeallocated
     /// No events received within the idle timeout duration.
+    ///
+    /// Deprecated: the idle-timeout wrapper (``GenerationStream``) serves local
+    /// backends too, so it now throws the backend-neutral
+    /// `InferenceError.idleTimeout`. This cloud-specific case is no longer
+    /// thrown by the framework and is retained only for source compatibility
+    /// until 1.0.
+    @available(*, deprecated, message: "Idle-timeout failures now surface as InferenceError.idleTimeout")
     case timeout(Duration)
     /// The endpoint's hostname resolved to a private, link-local, or reserved
     /// IP address at connect time, indicating a potential DNS rebinding attack.

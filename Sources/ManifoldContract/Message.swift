@@ -23,6 +23,19 @@ import Foundation
 /// Replaces the typo-prone `[(role: String, content: String)]` tuple
 /// variant. The tuple variant remains as a deprecation shim for one minor
 /// (`enqueue(messages: [(role:content:)])` / `generate(messages:...)`).
+///
+/// ## Scope boundary — text-only by design
+///
+/// Every case carries a single `String` and nothing else. This type
+/// **intentionally cannot represent** tool calls, tool results, image or
+/// audio attachments, or any multi-part turn. That is not a gap to close:
+/// `Message` is the minimal one-shot wire shape for "send these plain turns
+/// and stream a reply." Anything richer — multimodal content, tool-call
+/// loops, persisted identity — flows through the value/`@Model` `ChatMessage`
+/// types described above, which the runtime turn loop (`ConversationRuntime`)
+/// drives. Keeping this enum thin is what lets callers script a quick
+/// generation without constructing those records; widening it would blur the
+/// boundary the two-tier design exists to draw.
 public enum Message: Sendable, Equatable {
     /// A system message, typically setting role/persona/policy.
     case system(String)

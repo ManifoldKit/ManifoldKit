@@ -171,7 +171,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     public var retrySleeper: (@Sendable (Duration) async throws -> Void)?
 
     /// Idle timeout for the generation stream. If no SSE event arrives within
-    /// this duration, the stream throws ``CloudBackendError/timeout(_:)``.
+    /// this duration, the stream throws ``InferenceError/idleTimeout(_:)``.
     /// `nil` disables idle detection (default).
     public var streamIdleTimeout: Duration?
 
@@ -876,10 +876,13 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             case .networkError:         return "networkError"
             case .invalidURL:           return "invalidURL"
             case .backendDeallocated:   return "backendDeallocated"
-            case .timeout:              return "timeout"
             default:                    return "cloudError"
             }
         }
+        // The idle-timeout wrapper now throws the backend-neutral
+        // `InferenceError.idleTimeout`, so classify it explicitly to preserve
+        // the "timeout" metric tag.
+        if case InferenceError.idleTimeout = error { return "timeout" }
         return String(describing: type(of: error))
     }
 }

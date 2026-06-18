@@ -25,6 +25,21 @@ final class BackendCapabilitiesContractTests: XCTestCase {
                       "OllamaBackend makes network calls — isRemote must be true")
     }
 
+    // MARK: - Deprecated alias parity
+
+    @available(*, deprecated)
+    func test_streamsToolCallArgumentDeltas_aliasesCanonicalFlag() {
+        // The deprecated alias must keep mirroring the canonical
+        // `streamsToolCallArguments` until it's removed at 1.0.
+        let streaming = ClaudeBackend().capabilities
+        XCTAssertEqual(streaming.streamsToolCallArgumentDeltas, streaming.streamsToolCallArguments)
+        XCTAssertTrue(streaming.streamsToolCallArgumentDeltas)
+
+        let nonStreaming = OllamaBackend().capabilities
+        XCTAssertEqual(nonStreaming.streamsToolCallArgumentDeltas, nonStreaming.streamsToolCallArguments)
+        XCTAssertFalse(nonStreaming.streamsToolCallArgumentDeltas)
+    }
+
     // MARK: - Tool Calling
 
     func test_cloudBackends_toolCallingCapabilities() {

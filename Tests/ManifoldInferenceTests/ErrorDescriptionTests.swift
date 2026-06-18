@@ -62,6 +62,7 @@ final class ErrorDescriptionTests: XCTestCase {
             .alreadyGenerating,
             .generationError("token limit"),
             .noBackendSatisfiesRequirements([.toolCalling]),
+            .idleTimeout(.seconds(30)),
         ]
 
         for error in cases {
@@ -105,6 +106,20 @@ final class ErrorDescriptionTests: XCTestCase {
 
         XCTAssertTrue(desc.contains("generation") || desc.contains("progress"),
                        "Should mention generation in progress")
+    }
+
+    func test_idleTimeout_isRetryableTransient() {
+        // The backend-neutral idle-timeout error (formerly CloudBackendError.timeout)
+        // is a transient stall — retry may succeed.
+        let error = InferenceError.idleTimeout(.seconds(30))
+        XCTAssertEqual(error.category, .retryableTransient)
+        XCTAssertTrue(error.isRetryable)
+    }
+
+    func test_idleTimeout_subSecondDescription_usesMilliseconds() {
+        let error = InferenceError.idleTimeout(.milliseconds(250))
+        let desc = error.errorDescription!
+        XCTAssertTrue(desc.contains("250ms"), "Sub-second timeout should render ms: \(desc)")
     }
 
     // MARK: - BackendError conformance
