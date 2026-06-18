@@ -46,7 +46,6 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     // MARK: Private
 
     private let port: NWEndpoint.Port
-    private let bindHost: NWEndpoint.Host
     private let maxMessageBytes: Int
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
 
@@ -61,23 +60,23 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
 
     /// Creates a loopback HTTP/SSE transport.
     ///
+    /// The listener always binds `127.0.0.1` (loopback only) via
+    /// `NWParameters.requiredInterfaceType = .loopback`. Network.framework
+    /// enforces this at the OS level — the transport is not reachable from
+    /// other hosts regardless of the machine's network configuration.
+    ///
     /// - Parameters:
     ///   - port: TCP port to bind. `0` binds an OS-assigned ephemeral port
     ///     (read back via ``boundPort``).
-    ///   - host: Bind address. Defaults to loopback (`127.0.0.1`). Binding a
-    ///     non-loopback address exposes the host to other machines — only do so
-    ///     behind TLS + authentication.
     ///   - maxMessageBytes: Hard cap on a single inbound request body.
     public init(
         port: UInt16,
-        host: String = "127.0.0.1",
         maxMessageBytes: Int = 4 * 1024 * 1024
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw MCPHostTransportError.invalidPort(port)
         }
         self.port = nwPort
-        self.bindHost = NWEndpoint.Host(host)
         self.maxMessageBytes = maxMessageBytes
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: Data.self, throwing: Error.self)
         self.incomingMessages = stream

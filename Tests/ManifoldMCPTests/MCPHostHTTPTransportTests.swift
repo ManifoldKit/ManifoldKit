@@ -171,20 +171,24 @@ private actor RawSocketClient {
     }
 
     func connect() async throws {
+        // Capture the NWConnection reference so the stateUpdateHandler closure
+        // can nil it out without hopping back onto the actor (NW delivers state
+        // callbacks on its own queue, not the actor's executor).
+        let conn = connection
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            connection.stateUpdateHandler = { state in
+            conn.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
                     cont.resume()
-                    self.connection.stateUpdateHandler = nil
+                    conn.stateUpdateHandler = nil
                 case .failed(let error):
                     cont.resume(throwing: SocketError.connectFailed(error.localizedDescription))
-                    self.connection.stateUpdateHandler = nil
+                    conn.stateUpdateHandler = nil
                 default:
                     break
                 }
             }
-            connection.start(queue: .global(qos: .userInitiated))
+            conn.start(queue: .global(qos: .userInitiated))
         }
         startReceiving()
     }
