@@ -19,7 +19,8 @@ import os
 ///
 /// - macOS only (not available on iOS or Catalyst).
 /// - Single-connection by design — a new process is expected per client.
-/// - HTTP/SSE server-side transport is not yet implemented (see issue #1842).
+/// - For streamable-HTTP clients that cannot launch the host as a subprocess,
+///   use ``MCPHostHTTPTransport`` (the server-side HTTP/SSE transport, #1842).
 public actor MCPHostStdioTransport: MCPHostTransport {
 
     // MARK: MCPHostTransport
@@ -165,6 +166,8 @@ public enum MCPHostTransportError: Error, LocalizedError, Sendable {
     case invalidHeader
     case missingContentLength
     case invalidContentLength(String)
+    case invalidPort(UInt16)
+    case listenFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -180,6 +183,10 @@ public enum MCPHostTransportError: Error, LocalizedError, Sendable {
             return "Incoming frame is missing the Content-Length header"
         case .invalidContentLength(let raw):
             return "Incoming frame has an invalid Content-Length value: '\(raw)'"
+        case .invalidPort(let port):
+            return "Invalid TCP port for HTTP transport: \(port)"
+        case .listenFailed(let detail):
+            return "HTTP transport failed to start listening: \(detail)"
         }
     }
 }

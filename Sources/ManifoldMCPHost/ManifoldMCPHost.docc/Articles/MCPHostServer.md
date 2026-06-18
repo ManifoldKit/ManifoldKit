@@ -31,7 +31,9 @@ let host = ManifoldMCPHost(
 
 ### 2. Pick a transport
 
-For local clients (Claude Desktop, scripts on the same machine), use the stdio transport:
+Two server-side transports ship, both macOS-only.
+
+**stdio** — for local clients that launch your app as a subprocess (Claude Desktop's default, scripts on the same machine):
 
 ```swift,no-build
 #if os(macOS)
@@ -39,7 +41,16 @@ let transport = MCPHostStdioTransport()
 #endif
 ```
 
-HTTP/SSE server-side transport is not yet implemented. It is tracked in issue #1842.
+**streamable-HTTP / SSE** (``MCPHostHTTPTransport``) — for Claude Desktop's streamable-HTTP configuration and remote MCP clients that connect over a socket rather than a subprocess. A client opens a long-lived SSE `GET` stream and `POST`s JSON-RPC requests to the same endpoint; server responses are delivered back over the SSE stream as `data:`-framed events:
+
+```swift,no-build
+#if os(macOS)
+let transport = try MCPHostHTTPTransport(port: 8765)
+try await transport.start()
+#endif
+```
+
+By default the listener binds `127.0.0.1` (loopback only). It is a local-first surface — front it with TLS and authentication (e.g. a reverse proxy) before exposing it beyond the machine. stdio remains the default for local single-client use.
 
 ### 3. Start serving
 
@@ -97,6 +108,20 @@ Add an entry to your `claude_desktop_config.json`:
 ```
 
 Your app should detect `--mcp-stdio` in its launch arguments and start the stdio transport instead of presenting its normal UI.
+
+For the streamable-HTTP transport, point the client at the bound URL instead:
+
+```json
+{
+  "mcpServers": {
+    "myapp": {
+      "url": "http://127.0.0.1:8765/"
+    }
+  }
+}
+```
+
+Start ``MCPHostHTTPTransport`` when your app launches (keeping its normal UI) so the endpoint is reachable while the app runs.
 
 ## Notes
 
