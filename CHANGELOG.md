@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.54.0](https://github.com/roryford/ManifoldKit/compare/v0.53.0...v0.54.0) (2026-06-18)
+
+### Highlights
+
+**Real GGUF Jinja chat templates.** Local GGUF models now render their embedded Jinja chat template via swift-jinja instead of a hand-rolled approximation, so prompts match each model family's exact turn formatting ([#1898](https://github.com/roryford/ManifoldKit/issues/1898), closes [#1811](https://github.com/roryford/ManifoldKit/issues/1811)). The Gemma 4 control-token leak detector was extended to cover the new render path ([#1897](https://github.com/roryford/ManifoldKit/issues/1897)).
+
+**Server-side HTTP/SSE transport for the MCP host.** `MCPHostServer` can now expose its sessions, messages, and tools to remote MCP clients (such as Claude Desktop's streamable-HTTP configuration) over a socket, not just a stdio subprocess. A client opens a long-lived SSE `GET` stream and `POST`s JSON-RPC requests to the same endpoint ([#1899](https://github.com/roryford/ManifoldKit/issues/1899)).
+
+```swift
+let transport = try MCPHostHTTPTransport(port: 8765)
+try await host.start(transport: transport)
+```
+
+**Pre-1.0 Contract API hardening.** Continued tightening of the Contract surface ahead of the 1.0 freeze ([#1902](https://github.com/roryford/ManifoldKit/issues/1902)). `GenerationStream`'s idle timeout now throws a backend-neutral `InferenceError.idleTimeout(_:)` instead of the cloud-only `CloudBackendError.timeout` (deprecated in place); the duplicate `BackendCapabilities.streamsToolCallArgumentDeltas` alias is deprecated in favour of `streamsToolCallArguments`; and `EmbeddingBackend`'s thread-safety expectations, `dimensions` precondition, and `embed(_:)` postcondition are now documented. All changes are deprecate-in-place — no removals.
+
+### Documentation
+
+* Corrected the CoreAI trait-stub note — `.aimodel` is reachable via the apple/coreai-models package ([#1896](https://github.com/roryford/ManifoldKit/issues/1896)).
+
 ## [0.53.0](https://github.com/roryford/ManifoldKit/compare/v0.52.0...v0.53.0) (2026-06-16)
 
 ### Highlights
