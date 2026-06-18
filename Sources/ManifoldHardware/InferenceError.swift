@@ -29,6 +29,11 @@ public enum InferenceError: LocalizedError, CategorizedError {
     /// value lists the unsatisfied requirements (across all children — i.e. the
     /// requirements no child could meet) so the host can surface a fix-it message.
     case noBackendSatisfiesRequirements([GenerationCapabilityRequirement])
+    /// Thrown by ``GenerationStream`` when no event arrives within the
+    /// configured idle-timeout window. Backend-neutral: the idle-timeout
+    /// wrapper is usable by local backends too, so this lives here rather than
+    /// in the cloud-specific `CloudBackendError`. Retryable transient.
+    case idleTimeout(Duration)
 
     public var errorDescription: String? {
         switch self {
@@ -58,6 +63,12 @@ public enum InferenceError: LocalizedError, CategorizedError {
             }
             let names = unmet.map { String(describing: $0) }.joined(separator: ", ")
             return "No wired backend satisfies the request's required capabilities: \(names)."
+        case .idleTimeout(let duration):
+            let totalMs = duration.components.seconds * 1000 + duration.components.attoseconds / 1_000_000_000_000_000
+            if totalMs < 1000 {
+                return "No response received for \(totalMs)ms."
+            }
+            return "No response received for \(duration.components.seconds)s."
         }
     }
 
@@ -71,7 +82,7 @@ public enum InferenceError: LocalizedError, CategorizedError {
             return .unsupportedRequest
         case .noBackendSatisfiesRequirements:
             return .unsupportedRequest
-        case .alreadyGenerating:
+        case .alreadyGenerating, .idleTimeout:
             return .retryableTransient
         case .modelNotFound, .modelLoadFailed, .inferenceFailure,
              .memoryInsufficient, .generationError:
@@ -81,12 +92,12 @@ public enum InferenceError: LocalizedError, CategorizedError {
 
     /// Whether this error represents a transient condition that may succeed on retry.
     ///
-    /// Currently only ``alreadyGenerating`` is retryable -- the caller can wait for the
-    /// in-flight generation to finish and try again. All other cases indicate permanent
-    /// failures (missing model, OOM, etc.).
+    /// ``alreadyGenerating`` (wait for the in-flight generation to finish) and
+    /// ``idleTimeout`` (the stall may be transient) are retryable. All other
+    /// cases indicate permanent failures (missing model, OOM, etc.).
     public var isRetryable: Bool {
         switch self {
-        case .alreadyGenerating:
+        case .alreadyGenerating, .idleTimeout:
             return true
         case .modelNotFound, .modelLoadFailed, .inferenceFailure,
              .memoryInsufficient, .generationError, .contextExhausted,

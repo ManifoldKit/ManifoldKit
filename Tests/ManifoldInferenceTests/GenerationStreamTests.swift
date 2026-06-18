@@ -133,12 +133,14 @@ final class GenerationStreamTests: XCTestCase {
         do {
             for try await _ in stream.events {}
             XCTFail("Should have thrown timeout error")
-        } catch let error as CloudBackendError {
-            // Sabotage check: removing the idle timeout race in events causes the stream to hang instead of throwing
-            guard case .timeout = error else {
-                XCTFail("Expected .timeout, got \(error)")
+        } catch let error as InferenceError {
+            // Idle timeout now surfaces as the backend-neutral
+            // InferenceError.idleTimeout (was CloudBackendError.timeout).
+            guard case .idleTimeout(let duration) = error else {
+                XCTFail("Expected .idleTimeout, got \(error)")
                 return
             }
+            XCTAssertEqual(duration, .milliseconds(100))
         }
     }
 

@@ -10,7 +10,7 @@ import Observation
 /// cases to ``GenerationEvent``.
 ///
 /// When ``idleTimeout`` is set, iterating ``events`` will throw
-/// ``CloudBackendError/timeout(_:)`` if no event arrives within the timeout.
+/// ``InferenceError/idleTimeout(_:)`` if no event arrives within the timeout.
 /// The phase transitions to `.stalled` before the timeout fires.
 ///
 /// ``setPhase(_:)`` must be called on the `@MainActor`.
@@ -21,7 +21,7 @@ public final class GenerationStream: Sendable {
     /// The content event stream. Iterate this to receive tokens.
     ///
     /// When ``idleTimeout`` is configured, this stream monitors inter-event
-    /// gaps and throws ``CloudBackendError/timeout(_:)`` if the gap exceeds
+    /// gaps and throws ``InferenceError/idleTimeout(_:)`` if the gap exceeds
     /// the timeout. The ``phase`` transitions to `.stalled` at the midpoint
     /// of the timeout to give the UI a chance to show a warning before the
     /// hard timeout fires.
@@ -34,7 +34,7 @@ public final class GenerationStream: Sendable {
     public private(set) var phase: Phase = .connecting
 
     /// Optional idle timeout. When set, ``events`` will throw
-    /// ``CloudBackendError/timeout(_:)`` if no event arrives within this duration.
+    /// ``InferenceError/idleTimeout(_:)`` if no event arrives within this duration.
     public nonisolated let idleTimeout: Duration?
 
     // MARK: - Phase
@@ -141,7 +141,10 @@ public final class GenerationStream: Sendable {
                             onStalled()
                         }
                         if elapsed >= timeout {
-                            continuation.finish(throwing: CloudBackendError.timeout(timeout))
+                            // Backend-neutral error: this wrapper serves local
+                            // backends too, so it must not surface a cloud-only
+                            // error type. See InferenceError.idleTimeout.
+                            continuation.finish(throwing: InferenceError.idleTimeout(timeout))
                             return
                         }
                     }

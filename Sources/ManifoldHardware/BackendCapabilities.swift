@@ -110,13 +110,13 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// set `false`.
     public let streamsToolCallArguments: Bool
 
-    /// Whether the backend streams tool-call argument deltas incrementally.
-    /// Alias for ``streamsToolCallArguments`` with a clearer name.
+    /// Deprecated alias for ``streamsToolCallArguments``.
     ///
-    /// The original name `streamsToolCallArguments` is ambiguous — it could be
-    /// read as "streams the arguments as a whole". This alias makes the
-    /// incremental-delta semantics explicit. Both names refer to the same
-    /// capability and may be used interchangeably.
+    /// One capability should have one public name. ``streamsToolCallArguments``
+    /// is the canonical spelling — it is the stored property, the codable key,
+    /// and the name every backend and consumer already uses. This redundant
+    /// alias is retired before 1.0 to keep the frozen surface minimal.
+    @available(*, deprecated, renamed: "streamsToolCallArguments")
     public var streamsToolCallArgumentDeltas: Bool { streamsToolCallArguments }
 
     /// True when the backend can emit multiple ``GenerationEvent/toolCall(_:)``
