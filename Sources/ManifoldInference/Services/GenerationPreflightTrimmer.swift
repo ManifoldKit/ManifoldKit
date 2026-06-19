@@ -59,22 +59,22 @@ struct GenerationPreflightTrimmer {
         var workingMessages = messages
         var attempt = 0
 
-        // Tools that the template renders natively (only `.gemma4` today) must be
-        // forwarded so the native tool block is emitted on this path too —
-        // otherwise the local TokenCounting path silently drops them. Templates
-        // that don't render tools natively ignore the argument; their tool
-        // guidance arrives folded into `systemPrompt` by the caller (#1856).
-        let nativeTools = renderer.template.rendersToolsNatively ? config.tools : []
-
+        // Forward the live tool definitions on every render so a native tool
+        // template emits its `{% if tools %}` block on this path too (#1909).
+        // The renderer threads them on whichever branch executes; the caller's
+        // `toolAugmentedSystemPrompt` decision (keyed on
+        // `PromptRenderer.rendersToolsNatively`) guarantees the preamble is folded
+        // only when the rendered prompt will *not* carry tools, so there is no
+        // double injection.
         while true {
             // Renders the model's real embedded Jinja when present, else the
             // detected enum (#1811). The same renderer feeds the final prompt
             // sent to the backend, so the token count and the decoded prompt
             // always agree.
             let prompt = renderer.render(
-                messages: GenerationHistoryInstaller.flatten(workingMessages),
+                messages: workingMessages,
                 systemPrompt: systemPrompt,
-                nativeTools: nativeTools
+                tools: config.tools
             )
             let promptTokens = try counter.countTokens(prompt)
 

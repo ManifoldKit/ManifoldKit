@@ -207,6 +207,62 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         XCTAssertEqual(tokens.joined(), "The weather is sunny.")
     }
 
+    /// #1909, Ring 2: a backend that is **not** a `ToolCallingHistoryReceiver`
+    /// (every local prompt-template backend) re-renders its structured history
+    /// each turn. The dispatch loop must thread the prior tool call + result
+    /// back into that structured history, or the local backend re-renders the
+    /// identical original prompt every iteration and never sees the result.
+    ///
+    /// `MockInferenceBackend` is deliberately *not* tool-aware, so it stands in
+    /// for `LlamaBackend` here. We assert the second turn's structured history
+    /// carries the `.toolResult`.
+    func test_toolCall_threadsResultIntoNextTurnStructuredHistory_forNonToolAwareBackend() async throws {
+        let executor = RecordingExecutor(name: "get_weather") { _ in
+            ToolResult(callId: "", content: #"{"summary":"sunny"}"#, errorKind: nil)
+        }
+        let registry = ToolRegistry()
+        registry.register(executor)
+
+        provider.backend.scriptedToolCallsPerTurn = [
+            [makeCall(id: "c-1", name: "get_weather", arguments: #"{"city":"Rome"}"#)],
+            [],
+        ]
+        provider.backend.tokensToYieldPerTurn = [
+            [],
+            ["done"],
+        ]
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueue(
+            messages: [("user", "What's the weather in Rome?")],
+            maxOutputTokens: 128
+        )
+        _ = try await collectEvents(stream)
+
+        // The second (and last) turn's structured history must include both the
+        // assistant tool-call turn and the tool result — the data a native
+        // template needs to render the round-trip.
+        let history = try XCTUnwrap(
+            provider.backend.lastReceivedStructuredHistory,
+            "non-tool-aware backend must receive structured history"
+        )
+        let toolResult = history
+            .flatMap(\.parts)
+            .compactMap { part -> ToolResult? in
+                if case .toolResult(let r) = part { return r }
+                return nil
+            }
+            .first
+        XCTAssertEqual(toolResult?.callId, "c-1", "tool result must be threaded into the next turn's history")
+        XCTAssertEqual(toolResult?.content, #"{"summary":"sunny"}"#)
+
+        let hasToolCall = history.flatMap(\.parts).contains { part in
+            if case .toolCall = part { return true }
+            return false
+        }
+        XCTAssertTrue(hasToolCall, "the assistant tool-call turn must also be threaded in")
+    }
+
     func test_streamingToolProgress_emitsBetweenDispatchStartedAndToolResult() async throws {
         let registry = ToolRegistry()
         registry.register(StreamingProgressExecutor())

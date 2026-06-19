@@ -95,7 +95,15 @@ struct GenerationToolDispatchLoop {
             registry.validator = JSONSchemaValidator()
         }
 
-        let currentMessages = messages
+        // Grows across iterations so each regeneration sees the prior turn's
+        // tool calls and results. Cloud backends receive that history through
+        // the structured `ToolCallingHistoryReceiver` wire (below); local
+        // prompt-template backends — which are *not* tool-aware receivers —
+        // instead need the tool turns threaded back into the structured
+        // messages so `PromptRenderer` re-renders them natively. Without this,
+        // a templated backend re-rendered the *identical* original prompt every
+        // iteration and never saw a single tool result (#1909, Ring 2).
+        var currentMessages = messages
         // `toolAwareHistory` is maintained in parallel for tool-call turns.
         // Seeded lazily on the first tool dispatch so plain-text turns keep
         // using the classic `setConversationHistory` path and existing
@@ -293,6 +301,27 @@ struct GenerationToolDispatchLoop {
                 )
             }
             toolAwareHistory = nextHistory
+
+            // Local prompt-template backends do not consume the tool-aware wire
+            // history — they re-render `currentMessages` through `PromptRenderer`.
+            // Thread the just-dispatched tool turn into that structured history so
+            // the next regeneration shows the model its own call and the result
+            // in the template's native format (#1909, Ring 2). Cloud backends
+            // (tool-aware receivers) already got this via `setToolAwareHistory`,
+            // so skip them to avoid duplicating the turn.
+            if (currentBackend() as? ToolCallingHistoryReceiver) == nil {
+                currentMessages.append(
+                    StructuredMessage(
+                        role: "assistant",
+                        parts: dispatchedInThisTurn.map { MessagePart.toolCall($0.0) }
+                    )
+                )
+                for (_, result) in dispatchedInThisTurn {
+                    currentMessages.append(
+                        StructuredMessage(role: "tool", parts: [.toolResult(result)])
+                    )
+                }
+            }
         }
     }
 
