@@ -263,6 +263,40 @@ final class JinjaPromptRendererTests: XCTestCase {
         )
     }
 
+    /// A bare-substring probe (`chatTemplateRaw.contains("tools")`) marks this
+    /// template native and skips the preamble — but the template renders **no**
+    /// tool block, so the model would get zero tool guidance. The word `tools`
+    /// here lives only in static prose and a literal output token, never inside a
+    /// Jinja control/expression block, so `rendersToolsNatively` must be false and
+    /// the host must fold the preamble in.
+    func test_rendersToolsNatively_falseForProseOnlyMention() {
+        let proseOnly = """
+        {%- for message in messages %}
+        <|tools|>You have access to the following tools, but only via prose.
+        <|{{ message.role }}|>{{ message.content }}
+        {%- endfor %}
+        """
+        XCTAssertFalse(
+            PromptRenderer(template: .chatML, chatTemplateRaw: proseOnly).rendersToolsNatively,
+            "`tools` only in prose / literal output → NOT native; the preamble must still be folded"
+        )
+    }
+
+    /// Word-boundary guard: a template that references `tool_calls` (and prints
+    /// `tools` only as a literal token) but never the `tools` *variable* renders
+    /// no declaration block, so it must not be classified native.
+    func test_rendersToolsNatively_falseForToolCallsButNoToolsVariable() {
+        let toolCallsOnly = """
+        {%- for message in messages %}
+        {%- if message.tool_calls %}<|tool_call|>{% endif %}
+        {%- endfor %}
+        """
+        XCTAssertFalse(
+            PromptRenderer(template: .chatML, chatTemplateRaw: toolCallsOnly).rendersToolsNatively,
+            "`tool_calls` is not the `tools` variable; word-bounded probe must not match"
+        )
+    }
+
     // MARK: - PromptRenderer prefers Jinja, falls back to the enum
 
     func test_promptRenderer_prefersJinjaWhenTemplatePresent() {
