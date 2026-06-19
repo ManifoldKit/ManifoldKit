@@ -690,6 +690,29 @@ public final class ChatViewModel {
     /// generations. Driven by the `VideoGenerationRuntime` event drain.
     public internal(set) var videoGenerationProgress: [UUID: VideoGenerationProgress] = [:]
 
+    // MARK: - AudioGenerationRuntime
+    //
+    // Optional sibling to `_videoRuntime` for the audio-generation (TTS) path.
+    // Hosts that opt in to audio generation install one via
+    // `configure(audioRuntime:)` (typically through `ManifoldBootstrap`);
+    // chat-only hosts leave this nil and the public audio-generation methods
+    // throw `.notConfigured`. Storage lives on the main type because
+    // extensions cannot add stored properties — all behavior lives in
+    // `ChatViewModel+AudioGeneration.swift`.
+
+    /// Backing storage for ``audioRuntime``. Internal so the
+    /// `ChatViewModel+AudioGeneration` extension can mutate it.
+    var _audioRuntime: AudioGenerationRuntime?
+
+    /// Drain task for the audio runtime event stream. Cancelled when the
+    /// runtime is replaced (latest-wins) or the view model is torn down.
+    @ObservationIgnored
+    var audioRuntimeEventDrainTask: Task<Void, Never>?
+
+    /// Per-message-ID progress dictionary for in-flight or completed audio
+    /// generations. Driven by the `AudioGenerationRuntime` event drain.
+    public internal(set) var audioGenerationProgress: [UUID: AudioGenerationProgress] = [:]
+
     // MARK: - WebSearchRuntime
     //
     // Optional sibling to `_imageRuntime` / `_videoRuntime` for the web-search
@@ -904,6 +927,7 @@ public final class ChatViewModel {
     deinit {
         imageRuntimeEventDrainTask?.cancel()
         videoRuntimeEventDrainTask?.cancel()
+        audioRuntimeEventDrainTask?.cancel()
         endpointRefreshTask?.cancel()
     }
 

@@ -179,6 +179,17 @@ public final class ManifoldBootstrap {
     /// `nil` when ``videoGenerationService`` is `nil`.
     public let videoRuntime: VideoGenerationRuntime?
 
+    /// The audio-generation (TTS) service, when the host opted in to audio
+    /// generation. `nil` when ``ManifoldBootstrap`` was constructed without an
+    /// `audioGenerationService` parameter.
+    public let audioGenerationService: AudioGenerationService?
+
+    /// The audio-generation runtime, pre-wired against ``audioGenerationService``
+    /// and ``persistence``. Pass to ``ChatViewModel/configure(audioRuntime:)``
+    /// to enable audio generation in the chat view model.
+    /// `nil` when ``audioGenerationService`` is `nil`.
+    public let audioRuntime: AudioGenerationRuntime?
+
     /// The web-search runtime, when the host opted in to web search.
     ///
     /// Unlike image/video, the concrete implementation
@@ -224,7 +235,11 @@ public final class ManifoldBootstrap {
         hookRegistry: HookRegistry? = nil,
         enableResumableRuns: Bool = false,
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
-        isInMemory: Bool = false
+        isInMemory: Bool = false,
+        // Appended at the tail to keep the existing parameter positions stable
+        // for the API source-compat digester (#1904 UI fast-follow). Grouped
+        // with the other *GenerationService params at the call site by label.
+        audioGenerationService: AudioGenerationService? = nil
     ) throws {
         // Capture the previous configuration before any mutation so a failure
         // partway through bootstrap leaves `ManifoldConfiguration.shared`
@@ -297,6 +312,10 @@ public final class ManifoldBootstrap {
             self.videoRuntime = videoService.map {
                 VideoGenerationRuntime(service: $0, messageStore: resolvedPersistence)
             }
+            self.audioGenerationService = audioGenerationService
+            self.audioRuntime = audioGenerationService.map {
+                AudioGenerationRuntime(service: $0, messageStore: resolvedPersistence)
+            }
             self.webSearchRuntime = webSearchRuntime
             self._isInMemory = isInMemory
         } catch {
@@ -316,6 +335,7 @@ public final class ManifoldBootstrap {
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
         videoGenerationService: VideoGenerationService? = nil,
+        audioGenerationService: AudioGenerationService? = nil,
         webSearchRuntime: (any WebSearchRuntime)? = nil,
         ragService: RAGService? = nil,
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
@@ -365,6 +385,15 @@ public final class ManifoldBootstrap {
             )
         } else {
             self.videoRuntime = nil
+        }
+        self.audioGenerationService = audioGenerationService
+        if let audioGenerationService {
+            self.audioRuntime = AudioGenerationRuntime(
+                service: audioGenerationService,
+                messageStore: persistence
+            )
+        } else {
+            self.audioRuntime = nil
         }
         self.webSearchRuntime = webSearchRuntime
     }
@@ -488,7 +517,10 @@ public final class ManifoldBootstrap {
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
         enableResumableRuns: Bool = false,
-        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
+        // Appended at the tail to keep existing parameter positions stable for
+        // the API source-compat digester (#1904 UI fast-follow).
+        audioGenerationService: AudioGenerationService? = nil
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
             of: RuntimeBootstrapMilestone.self,
@@ -541,6 +573,7 @@ public final class ManifoldBootstrap {
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
                     videoGenerationService: videoGenerationService,
+                    audioGenerationService: audioGenerationService,
                     webSearchRuntime: webSearchRuntime,
                     ragService: ragService,
                     runtimeOptions: runtimeOptions,
@@ -665,5 +698,6 @@ extension ManifoldBootstrap: ChatRuntimeBootstrap {
     public var diagnosticsService: DiagnosticsService { diagnostics }
     public var imageGenerationRuntime: ImageGenerationRuntime? { imageRuntime }
     public var videoGenerationRuntime: VideoGenerationRuntime? { videoRuntime }
+    public var audioGenerationRuntime: AudioGenerationRuntime? { audioRuntime }
     public var webSearchRuntimePort: (any WebSearchRuntime)? { webSearchRuntime }
 }

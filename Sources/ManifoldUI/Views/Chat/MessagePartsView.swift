@@ -178,7 +178,21 @@ struct MessagePartsView: View {
                 generatedMediaFallback(media)
             }
         case .audio:
-            generatedMediaFallback(media)
+            // Bridge the unified payload onto the existing Lane-1 audio player
+            // (`AudioMessageView`, which renders `MessagePart.audio`). It only
+            // needs url/duration/waveform/role, so reuse it rather than ship a
+            // second player. The generated payload carries no waveform samples;
+            // `AudioMessageView` degrades to a flat strip when `waveform` is nil.
+            if FileManager.default.fileExists(atPath: media.url.path) {
+                AudioMessageView(
+                    url: media.url,
+                    duration: media.durationSeconds ?? 0,
+                    waveform: nil,
+                    role: role
+                )
+            } else {
+                generatedMediaFallback(media)
+            }
         }
     }
 
