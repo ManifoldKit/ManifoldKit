@@ -22,6 +22,9 @@ extension ChatViewModel {
         if let videoRuntime = bootstrap.videoGenerationRuntime {
             configure(videoRuntime: videoRuntime)
         }
+        if let audioRuntime = bootstrap.audioGenerationRuntime {
+            configure(audioRuntime: audioRuntime)
+        }
         if let webSearchRuntime = bootstrap.webSearchRuntimePort {
             configure(webSearchRuntime: webSearchRuntime)
         }
