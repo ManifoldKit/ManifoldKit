@@ -434,16 +434,45 @@ public enum ManifoldKit {
                 Log.quickStart.warning("quickStart: model registry refresh failed; no model will be pre-selected: \(error, privacy: .public)")
             }
 
-            let effectivePolicy = selectionPolicy ?? ManifoldKit.defaultSelectionPolicy
-            let chosen = await effectivePolicy(viewModel.modelRegistry)
-            if let chosen {
-                viewModel.modelRegistry.selectModel(chosen)
-            } else {
-                // Neither the built-in policy nor the host-supplied policy found
-                // a model. Leave `selectedModel` nil so the UI can surface an
-                // explicit "No model available — add one to get started" state
-                // rather than a silent blank composer.
-                Log.quickStart.info("quickStart: no model selected — host UI should prompt the user to add a model")
+            // Per-session model/endpoint IDs restored by `switchToSession` must
+            // win over the global Foundation-first policy — otherwise relaunch
+            // would silently swap a persisted Ollama/cloud endpoint for Foundation.
+            if viewModel.selectedModel == nil, viewModel.selectedEndpoint == nil {
+                let effectivePolicy = selectionPolicy ?? ManifoldKit.defaultSelectionPolicy
+                let chosen = await effectivePolicy(viewModel.modelRegistry)
+                if let chosen {
+                    viewModel.modelRegistry.selectModel(chosen)
+                } else {
+                    // Neither the built-in policy nor the host-supplied policy found
+                    // a model. Leave `selectedModel` nil so the UI can surface an
+                    // explicit "No model available — add one to get started" state
+                    // rather than a silent blank composer.
+                    Log.quickStart.info("quickStart: no model selected — host UI should prompt the user to add a model")
+                }
+            }
+
+            // `switchToSession` may have restored a per-session cloud endpoint.
+            // When no local model was chosen, fall back to the first configured
+            // endpoint so cloud-only quickStart consumers are live without a
+            // separate `loadSelectedEndpoint()` call (#1473, DX 02).
+            if viewModel.selectedModel == nil, viewModel.selectedEndpoint == nil {
+                do {
+                    let endpoints = try await bootstrap.endpointStore.fetchEndpoints()
+                    viewModel.setAvailableEndpoints(endpoints)
+                    if let firstEndpoint = viewModel.availableEndpoints.first {
+                        viewModel.selectedEndpoint = firstEndpoint
+                    }
+                } catch {
+                    Log.quickStart.warning("quickStart: endpoint fetch failed during auto-select: \(error, privacy: .public)")
+                }
+            }
+
+            // Selection alone does not load — `ChatViewModel` requires an
+            // explicit dispatch. Mirror the manual-bootstrap recipe in
+            // BuildingAChatUI (dispatch after restore) so the facade path is
+            // generating when it returns.
+            if viewModel.selectedModel != nil || viewModel.selectedEndpoint != nil {
+                viewModel.dispatchSelectedLoad()
             }
 
             return QuickStartResult(bootstrap: bootstrap, viewModel: viewModel, sessionManager: sessionManager)

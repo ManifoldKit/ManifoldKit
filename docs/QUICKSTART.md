@@ -215,7 +215,9 @@ struct MyChatApp: App {
 
 ### Seeding an Ollama endpoint
 
-For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint. If you want a seeded endpoint to be live immediately (single-endpoint apps, scripted demos, kiosk flows), also set `selectedEndpoint` and call `loadSelectedEndpoint()` before exposing the view model.
+For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint.
+
+On **relaunch**, when the endpoint is already in the store, `quickStart()` selects the first configured endpoint and dispatches a load before returning — no extra `loadSelectedEndpoint()` call is required. On **first launch**, when you seed the endpoint *after* `quickStart()` returns (the snippet below), you still need one explicit `loadSelectedEndpoint()` so the first session is live before the view appears.
 
 Ollama support is always compiled in since v0.48 (the `Ollama` trait was retired) — the seeded endpoint is the only configuration step.
 
@@ -246,7 +248,7 @@ struct MyChatApp: App {
                             let ollama = APIEndpointRecord(
                                 name: "Local Ollama",
                                 provider: .ollama,
-                                modelName: "llama3.2:3b"  // any model you've `ollama pull`-ed
+                                modelName: "llama3.1:8b"  // paste a tag from `ollama list`
                             )
                             try await r.bootstrap.endpointStore.insertEndpoint(ollama)
                             r.viewModel.setAvailableEndpoints([ollama])
