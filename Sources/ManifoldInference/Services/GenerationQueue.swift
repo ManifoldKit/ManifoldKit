@@ -457,7 +457,7 @@ final class GenerationQueue {
                 backend: backend,
                 messages: messages,
                 systemPrompt: Self.toolAugmentedSystemPrompt(
-                    template: selectedPromptTemplate,
+                    renderer: promptRenderer,
                     systemPrompt: systemPrompt,
                     backend: backend,
                     config: config
@@ -490,19 +490,21 @@ final class GenerationQueue {
             // models (#1811).
             let renderer = promptRenderer
             if backend.capabilities.supportsToolCalling && !config.tools.isEmpty {
-                // Templates that render `tools` natively (only `.gemma4` today)
-                // consume the array directly. Templates that discard it get the
-                // tool guidance folded into the system prompt instead (#1856) —
-                // see `toolAugmentedSystemPrompt`. Doing both would double-inject.
+                // A native tool template (embedded Jinja that references `tools`,
+                // or the `.gemma4` enum) renders the tool block directly; every
+                // other template gets the guidance folded into the system prompt
+                // instead (#1856). `toolAugmentedSystemPrompt` keys that choice on
+                // `renderer.rendersToolsNatively`, so passing `config.tools`
+                // unconditionally never double-injects (#1909).
                 let augmentedSystemPrompt = Self.toolAugmentedSystemPrompt(
-                    template: renderer.template,
+                    renderer: renderer,
                     systemPrompt: systemPrompt,
                     backend: backend,
                     config: config
                 )
-                assembledPrompt = renderer.render(messages: flattened, systemPrompt: augmentedSystemPrompt, nativeTools: config.tools)
+                assembledPrompt = renderer.render(messages: messages, systemPrompt: augmentedSystemPrompt, tools: config.tools)
             } else {
-                assembledPrompt = renderer.render(messages: flattened, systemPrompt: systemPrompt)
+                assembledPrompt = renderer.render(messages: messages, systemPrompt: systemPrompt)
             }
             effectiveSystemPrompt = nil
         } else {
@@ -564,18 +566,24 @@ final class GenerationQueue {
     /// the same `ToolSystemPromptBuilder.preferTools(for:)` preamble.
     ///
     /// Returns `systemPrompt` unchanged when: tools are empty, the backend does
-    /// not support tool calling, or the template renders tools natively (no
-    /// double-injection). Otherwise prepends the preamble — matching the
-    /// documented `preamble + "\n\n" + appSystemPrompt` shape.
+    /// not support tool calling, or the prompt that will actually be rendered
+    /// carries tools natively (no double-injection). Otherwise prepends the
+    /// preamble — matching the documented `preamble + "\n\n" + appSystemPrompt`
+    /// shape.
+    ///
+    /// The native-vs-fold decision is keyed on ``PromptRenderer/rendersToolsNatively``
+    /// rather than the bare enum flag: once an embedded Jinja template renders
+    /// tools (#1909), the enum's `.gemma4`-only flag is the wrong signal — the
+    /// renderer knows whether the executing path emits a native tool block.
     static func toolAugmentedSystemPrompt(
-        template: PromptTemplate,
+        renderer: PromptRenderer,
         systemPrompt: String?,
         backend: InferenceBackend,
         config: GenerationConfig
     ) -> String? {
         guard backend.capabilities.supportsToolCalling,
               !config.tools.isEmpty,
-              !template.rendersToolsNatively else {
+              !renderer.rendersToolsNatively else {
             return systemPrompt
         }
 

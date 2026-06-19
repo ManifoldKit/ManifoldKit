@@ -26,28 +26,54 @@ struct PromptRenderer {
         self.chatTemplateRaw = chatTemplateRaw
     }
 
+    /// Whether the prompt the executing path will produce renders tool
+    /// definitions *natively* — i.e. the host must **not** also fold the
+    /// ``ToolSystemPromptBuilder`` preamble into the system prompt, or the tools
+    /// would be double-injected (#1856 / #1909).
+    ///
+    /// - When an embedded Jinja template is present, "native" means the template
+    ///   actually references `tools` (a template that branches on it must name
+    ///   it). The cheap textual probe is reliable: a template that renders tools
+    ///   cannot do so without referencing the variable, and a stray mention only
+    ///   costs a skipped preamble on a template that has no real tool block.
+    /// - For templateless models, only the `.gemma4` enum renders tools natively.
+    var rendersToolsNatively: Bool {
+        if let chatTemplateRaw, !chatTemplateRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return chatTemplateRaw.contains("tools")
+        }
+        return template.rendersToolsNatively
+    }
+
     /// Renders `messages` into a single prompt string.
     ///
     /// - Parameters:
-    ///   - messages: ordered `(role, content)` pairs.
+    ///   - messages: the structured conversation history. The Jinja path threads
+    ///     tool-call / tool-result structure into the template; the enum
+    ///     fallback collapses to its text projection.
     ///   - systemPrompt: optional system instruction.
-    ///   - nativeTools: tools to render natively. Only consumed on the enum
-    ///     fallback path (only `.gemma4` renders tools natively today); the
-    ///     Jinja path receives tools via the host-folded system prompt, matching
-    ///     the #1856 fold the queue already applies to non-native templates.
+    ///   - tools: tool definitions to render. The Jinja path exposes them to the
+    ///     template's `{% if tools %}` branch (#1909); the enum fallback consumes
+    ///     them only for `.gemma4`. Callers pass the live `config.tools` array
+    ///     unconditionally — ``rendersToolsNatively`` governs whether the host
+    ///     *also* folds the preamble, so there is never a double injection.
     func render(
-        messages: [(role: String, content: String)],
+        messages: [StructuredMessage],
         systemPrompt: String?,
-        nativeTools: [ToolDefinition] = []
+        tools: [ToolDefinition] = []
     ) -> String {
         if let chatTemplateRaw,
            let rendered = JinjaPromptRenderer.render(
                rawTemplate: chatTemplateRaw,
                messages: messages,
-               systemPrompt: systemPrompt
+               systemPrompt: systemPrompt,
+               tools: tools
            ) {
             return rendered
         }
-        return template.format(messages: messages, systemPrompt: systemPrompt, tools: nativeTools)
+        return template.format(
+            messages: GenerationHistoryInstaller.flatten(messages),
+            systemPrompt: systemPrompt,
+            tools: tools
+        )
     }
 }
