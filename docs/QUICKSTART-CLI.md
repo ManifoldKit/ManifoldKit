@@ -8,12 +8,12 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 > |-------------------|-------------------------------|----------|--------------------|
 > | Foundation Models | macOS 26 / iOS 26             | No       | [§1](#1-foundation-models-macos-26)         |
 > | Local GGUF (Llama)| macOS 15 / iOS 18 (Apple Silicon) | No       | [§2](#2-local-gguf-via-the-llama-backend-macos-15)         |
-> | Ollama / OpenAI / Anthropic | macOS 15 / iOS 18 | Yes      | [§3](#3-cloud--ollama-via-loadcloudbackend)         |
+> | Ollama / OpenAI / Anthropic | macOS 15 / iOS 18 | Yes      | [§3](#3-cloud--ollama-via-loadendpointbackendfrom) / [§3b REPL](#3b-interactive-repl-stdin-loop) |
 > | MLX (Apple Silicon) | macOS 15 / iOS 18 — **Xcode `.app` only, not `swift run`** | No | [§4](#4-mlx-via-the-manifold-mlx-companion-apple-silicon) |
 >
 > If you're on macOS 15 and want a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-15). Foundation Models will not load.
 
-Sections §1–§3 are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §4 (MLX) is the exception — it builds and loads under SwiftPM but **cannot generate from `swift run`** (it needs an Xcode `.app` build for its Metal kernels); see the callout in that section.
+Sections §1–§3b are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §3 is a one-shot smoke test; [§3b](#3b-interactive-repl-stdin-loop) is the multi-turn REPL most CLIs actually want. §4 (MLX) is the exception — it builds and loads under SwiftPM but **cannot generate from `swift run`** (it needs an Xcode `.app` build for its Metal kernels); see the callout in that section.
 
 > **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
 
@@ -52,6 +52,22 @@ dependencies: [
 ```
 
 then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `ManifoldMLX`) to your target and register the backend with `LlamaBackends.register(with: inference)` after the default registrars — §2 below shows the full shape. See [MIGRATION-0.48.md](MIGRATION-0.48.md) if you're coming from a trait-based 0.47 setup.
+
+### Headless imports: granular vs umbrella
+
+The examples below depend on four core products — `ManifoldInference`, `ManifoldFoundation`, `ManifoldOllama`, and `ManifoldCloudSaaS` — and import them individually. That keeps a headless executable from linking `ManifoldUI` and `ManifoldPersistenceSwiftData`, which the `ManifoldKit` umbrella also re-exports.
+
+If you'd rather match the SwiftUI quickstarts and take the umbrella import, swap the target dependencies for a single product and write one import:
+
+```swift,no-build
+// Package.swift target dependencies:
+.product(name: "ManifoldKit", package: "ManifoldKit"),
+
+// main.swift:
+import ManifoldKit   // re-exports Inference + Foundation + Ollama + CloudSaaS
+```
+
+The registrar calls (`OllamaBackends.register(with:)`, etc.) are unchanged — you still register only the backends you intend to use. Trade-off: the umbrella pulls the UI and persistence modules even when your binary never touches them.
 
 ---
 
@@ -415,7 +431,7 @@ let package = Package(
 )
 ```
 
-> **Pick a model that's actually on your Ollama instance.** The snippet below requests `llama3.2`. If you don't already have that pulled, run `ollama list` and substitute one you do have — the cloud backend will surface Ollama's 404 verbatim if the model name is unknown, which reads like a ManifoldKit bug but isn't.
+> **Pick a model that's actually on your Ollama instance.** Run `ollama list` and paste a tag you already have into `modelName:` below — the cloud backend surfaces Ollama's 404 verbatim when the name is unknown, which reads like a ManifoldKit bug but isn't.
 
 **`Sources/ChatCLICloud/main.swift`:**
 
@@ -440,7 +456,7 @@ struct ChatCLICloud {
             name: "Local Ollama",
             provider: .ollama,
             baseURL: "http://localhost:11434",
-            modelName: "llama3.2" // swap for an entry from `ollama list`
+            modelName: "llama3.1:8b" // paste a tag from `ollama list`
         )
 
         try await inference.loadEndpointBackend(from: endpoint)
@@ -477,6 +493,79 @@ The same shape works for every supported HTTP provider. Swap `.ollama` for `.ope
 - `.openAI` / `.openAIResponses` / `.claude` — `requiresAPIKey == true`. Store the key in Keychain under the endpoint's `keychainAccount` (defaults to the endpoint UUID). The bootstrap path in `ManifoldKit.quickStart()` wires Keychain lookup for you; CLI consumers manage their own storage.
 - `.lmStudio` — same shape as `.openAI` against `localhost:1234`, no key required.
 - `.custom` — pass your own `baseURL`. Speaks the OpenAI Chat Completions dialect.
+
+### 3b. Interactive REPL (stdin loop)
+
+§3 above is a one-shot smoke test. Most terminal chat tools need a loop: read a line from stdin, stream the reply, append both sides to history, repeat until Ctrl-D. The snippet below is the §3 Ollama wiring plus the multi-turn loop from [§2](#multi-turn-conversations) — same `Package.swift` as §3, different `main.swift`.
+
+> **Stdout vs stderr in headless apps.** Route generated `.token` text to **stdout** so pipes and scripts capture only model output. Put status lines ("Loading…", "Ready.", prompt labels) and `.thinkingToken` content on **stderr** so they don't pollute `session.log` captures. Run the built binary directly (`.build/debug/chat-cli-cloud`) when you need a clean transcript — `swift run` prefixes build noise.
+
+Reuse the §3 `Package.swift` unchanged (product name `chat-cli-cloud`, target `ChatCLICloud`).
+
+**`Sources/ChatCLICloud/main.swift`:**
+
+```swift
+import Foundation
+import ManifoldInference
+import ManifoldFoundation
+import ManifoldOllama
+import ManifoldCloudSaaS
+
+@main
+@MainActor
+struct ChatCLICloud {
+    static func main() async throws {
+        let inference = InferenceService()
+        OllamaBackends.register(with: inference)
+        CloudSaaSBackends.register(with: inference)
+        FoundationBackends.register(with: inference)
+
+        let endpoint = APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.1:8b" // paste a tag from `ollama list`
+        )
+
+        fputs("Loading Ollama model \(endpoint.modelName)…\n", stderr)
+        try await inference.loadEndpointBackend(from: endpoint)
+        fputs("Ready. Type a prompt and press Enter (Ctrl-D to exit).\n\n", stderr)
+
+        var history: [(String, String)] = []
+
+        while let line = readLine() {
+            let prompt = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prompt.isEmpty else { continue }
+
+            history.append(("user", prompt))
+            fputs("assistant: ", stderr)
+
+            var reply = ""
+            let stream = try inference.generate(messages: history, maxOutputTokens: 256)
+            for try await event in stream.events {
+                switch event {
+                case .token(let text):
+                    print(text, terminator: "")
+                    fflush(stdout)
+                    reply += text
+                case .thinkingToken(let text):
+                    FileHandle.standardError.write(Data(text.utf8))
+                default:
+                    break
+                }
+            }
+            print("")
+            fputs("\n", stderr)
+
+            history.append(("assistant", reply))
+        }
+
+        fputs("Goodbye.\n", stderr)
+    }
+}
+```
+
+The same `readLine()` loop works for §1 (Foundation) and §2 (GGUF) — swap the load call and keep the event-handling `switch` shape.
 
 ---
 
