@@ -51,10 +51,10 @@ extension ChatViewModel {
         Log.ui.info("Switched to session: \(session.title, privacy: .private)")
 
         // Restoring a session re-applies the persisted model/endpoint selection
-        // but does not load it. Dispatch after the restoring flag clears so any
-        // coordinator/session guards see a settled surface (#1473, DX 02).
+        // but does not load it. The `defer` above clears `isRestoringSession`
+        // before the dispatched Task runs, so any coordinator/session guards
+        // see a settled surface when the load fires (#1473, DX 02).
         if teardownResult.resolvedModel != nil || teardownResult.resolvedEndpoint != nil {
-            sessionManager.isRestoringSession = false
             dispatchSelectedLoad()
         }
     }
