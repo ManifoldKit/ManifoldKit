@@ -228,7 +228,6 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         videoGenerationService videoService: VideoGenerationService? = nil,
-        audioGenerationService: AudioGenerationService? = nil,
         webSearchRuntime: (any WebSearchRuntime)? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
@@ -236,7 +235,11 @@ public final class ManifoldBootstrap {
         hookRegistry: HookRegistry? = nil,
         enableResumableRuns: Bool = false,
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
-        isInMemory: Bool = false
+        isInMemory: Bool = false,
+        // Appended at the tail to keep the existing parameter positions stable
+        // for the API source-compat digester (#1904 UI fast-follow). Grouped
+        // with the other *GenerationService params at the call site by label.
+        audioGenerationService: AudioGenerationService? = nil
     ) throws {
         // Capture the previous configuration before any mutation so a failure
         // partway through bootstrap leaves `ManifoldConfiguration.shared`
@@ -508,14 +511,16 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         videoGenerationService: VideoGenerationService? = nil,
-        audioGenerationService: AudioGenerationService? = nil,
         webSearchRuntime: (any WebSearchRuntime)? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
         enableResumableRuns: Bool = false,
-        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
+        // Appended at the tail to keep existing parameter positions stable for
+        // the API source-compat digester (#1904 UI fast-follow).
+        audioGenerationService: AudioGenerationService? = nil
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
             of: RuntimeBootstrapMilestone.self,
