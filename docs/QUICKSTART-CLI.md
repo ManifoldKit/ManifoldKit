@@ -546,7 +546,7 @@ struct ChatCLICloud {
             fputs("assistant: ", stderr)
 
             var reply = ""
-            let stream = try inference.generate(messages: history, maxOutputTokens: 256)
+            let stream = try inference.generate(messages: history, maxOutputTokens: 512)
             for try await event in stream.events {
                 switch event {
                 case .token(let text):
@@ -554,6 +554,7 @@ struct ChatCLICloud {
                     fflush(stdout)
                     reply += text
                 case .thinkingToken(let text):
+                    // thinking tokens are internal reasoning; exclude from conversational history
                     FileHandle.standardError.write(Data(text.utf8))
                 default:
                     break
