@@ -101,7 +101,8 @@ enum PublicSurfaceConsumer {
             streamsToolCallArguments: false,
             supportsParallelToolCalls: false,
             supportsGuidedStructuredOutput: false,
-            sharesMLXProcessResources: false
+            sharesMLXProcessResources: false,
+            rendersFullPrompt: false
         )
 
         // Computed property accessors — host code reads these.

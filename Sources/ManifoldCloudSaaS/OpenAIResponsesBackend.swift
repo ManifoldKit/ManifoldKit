@@ -141,7 +141,10 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         supportsThinking: true,
         supportsVision: false,
         streamsToolCallArguments: true,
-        supportsParallelToolCalls: true
+        supportsParallelToolCalls: true,
+        // Responses API sends structured input items on the wire, so
+        // `.promptRendered` carries only the latest user message — partial (#1905).
+        rendersFullPrompt: false
     )
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
@@ -187,7 +190,9 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             // MessagePart.image as input_image content items.
             supportsVision: BackendVisionCapability.openAIResponsesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
-            supportsParallelToolCalls: true
+            supportsParallelToolCalls: true,
+            // Structured input items on the wire → partial `.promptRendered` (#1905).
+            rendersFullPrompt: false
         )
     }
 

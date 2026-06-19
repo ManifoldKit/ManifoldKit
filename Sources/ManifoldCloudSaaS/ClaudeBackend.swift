@@ -120,7 +120,11 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         supportsThinking: true,
         supportsVision: true,
         streamsToolCallArguments: true,
-        supportsParallelToolCalls: true
+        supportsParallelToolCalls: true,
+        // Cloud Messages API sends a structured message array on the wire, so
+        // `.promptRendered` carries only the latest user message, not the full
+        // post-template prompt — a partial view (#1905).
+        rendersFullPrompt: false
     )
 
     // MARK: - Prompt Cache Policy
@@ -229,7 +233,9 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             supportsThinking: resolvedManifest.supportsThinking,
             supportsVision: BackendVisionCapability.claudeMessagesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
-            supportsParallelToolCalls: true
+            supportsParallelToolCalls: true,
+            // Structured message array on the wire → partial `.promptRendered` (#1905).
+            rendersFullPrompt: false
         )
     }
 

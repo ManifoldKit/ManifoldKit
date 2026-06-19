@@ -161,7 +161,10 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             // from upstream.
             supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
-            supportsParallelToolCalls: true
+            supportsParallelToolCalls: true,
+            // Chat Completions sends a structured message array on the wire, so
+            // `.promptRendered` carries only the latest user message — partial (#1905).
+            rendersFullPrompt: false
         )
     }
 
