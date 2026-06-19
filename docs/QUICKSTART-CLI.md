@@ -59,7 +59,7 @@ The examples below depend on four core products — `ManifoldInference`, `Manifo
 
 If you'd rather match the SwiftUI quickstarts and take the umbrella import, swap the target dependencies for a single product and write one import:
 
-```swift,no-build
+```
 // Package.swift target dependencies:
 .product(name: "ManifoldKit", package: "ManifoldKit"),
 
