@@ -374,6 +374,64 @@ final class BackendCapabilitiesTests: XCTestCase {
         XCTAssertFalse(decoded.supportsNativeJSONMode)
     }
 
+    // MARK: - rendersFullPrompt (#1905)
+
+    func test_rendersFullPrompt_defaultsFalse() {
+        // Conservative default: a backend that doesn't opt in is assumed to
+        // render only a partial `.promptRendered` view.
+        XCTAssertFalse(BackendCapabilities().rendersFullPrompt)
+    }
+
+    func test_rendersFullPrompt_explicitTrue_isHonored() {
+        let caps = BackendCapabilities(
+            supportedParameters: [.temperature],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: true,
+            supportsSystemPrompt: true,
+            rendersFullPrompt: true
+        )
+        XCTAssertTrue(caps.rendersFullPrompt)
+    }
+
+    func test_rendersFullPrompt_codableRoundTrip_true() throws {
+        let original = BackendCapabilities(
+            supportedParameters: [.temperature],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: true,
+            supportsSystemPrompt: true,
+            rendersFullPrompt: true
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(BackendCapabilities.self, from: data)
+        XCTAssertEqual(decoded, original)
+        XCTAssertTrue(decoded.rendersFullPrompt)
+    }
+
+    /// An older capabilities blob that predates the flag must decode without
+    /// throwing and fall back to the conservative `false` default.
+    func test_rendersFullPrompt_missingKey_defaultsFalse() throws {
+        let json = """
+        {
+            "supportedParameters": ["temperature"],
+            "maxContextTokens": 4096,
+            "maxOutputTokens": 2048,
+            "requiresPromptTemplate": false,
+            "supportsSystemPrompt": true,
+            "supportsStreaming": true,
+            "supportsToolCalling": false,
+            "supportsStructuredOutput": false,
+            "cancellationStyle": "cooperative",
+            "supportsTokenCounting": false,
+            "memoryStrategy": "resident",
+            "isRemote": false
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(BackendCapabilities.self, from: json)
+
+        XCTAssertFalse(decoded.rendersFullPrompt)
+    }
+
     // MARK: - PromptAssembler reads contextWindowSize from capabilities
 
     func test_promptAssembler_capabilities_overload_usesContextWindowSize() {

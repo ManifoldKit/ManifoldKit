@@ -321,7 +321,10 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         // that advertise the `vision` capability.
         supportsVision: false,
         streamsToolCallArguments: false,
-        supportsParallelToolCalls: true
+        supportsParallelToolCalls: true,
+        // Ollama's /api/chat takes a structured message array, so the captured
+        // `.promptRendered` is only the latest user message — partial (#1905).
+        rendersFullPrompt: false
     )
 
     /// Reads the snapshot the `parseResponseStream` override stashed
@@ -415,7 +418,9 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             // in a single assistant message — the loop in `parseResponseStream`
             // emits them in array order so the orchestrator's serial dispatch
             // honours the model's intent.
-            supportsParallelToolCalls: true
+            supportsParallelToolCalls: true,
+            // Structured message array on the wire → partial `.promptRendered` (#1905).
+            rendersFullPrompt: false
         )
     }
 

@@ -144,6 +144,26 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// sharing the MLX runtime) sets this to `true`.
     public let sharesMLXProcessResources: Bool
 
+    /// Describes the fidelity of the ``GenerationEvent/promptRendered(text:)``
+    /// event this backend's generations produce (emitted when
+    /// `GenerationConfig.captureRenderedPrompt == true`).
+    ///
+    /// `true` means `.promptRendered` carries the **complete** submitted prompt —
+    /// system prompt + full history + the latest user message, post-template — as
+    /// a single string. This is the case for local/on-device backends that apply
+    /// a chat template to the whole conversation before generation.
+    ///
+    /// `false` means `.promptRendered` carries only a **partial** view (typically
+    /// just the most recent user message), because the full prompt is assembled
+    /// on the wire as a structured message array and is not recoverable as one
+    /// rendered string. This is the case for cloud chat-completion / messages
+    /// backends (Anthropic, OpenAI, Ollama, any SSE cloud backend).
+    ///
+    /// Consumers read this to honestly label a captured rendered prompt as full
+    /// vs partial. Defaults to `false` — a backend that does not opt in is
+    /// conservatively assumed to render only a partial prompt.
+    public let rendersFullPrompt: Bool
+
     /// Hard cap on the number of tools that may be advertised to this backend
     /// in a single generation turn.
     ///
@@ -200,6 +220,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsParallelToolCalls: Bool = false,
         supportsGuidedStructuredOutput: Bool = false,
         sharesMLXProcessResources: Bool = false,
+        rendersFullPrompt: Bool = false,
         maxAdvertisedToolCount: Int? = nil
     ) {
         self.supportedParameters = supportedParameters
@@ -223,6 +244,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.supportsParallelToolCalls = supportsParallelToolCalls
         self.supportsGuidedStructuredOutput = supportsGuidedStructuredOutput
         self.sharesMLXProcessResources = sharesMLXProcessResources
+        self.rendersFullPrompt = rendersFullPrompt
         self.maxAdvertisedToolCount = maxAdvertisedToolCount
     }
 
@@ -248,6 +270,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case supportsParallelToolCalls
         case supportsGuidedStructuredOutput
         case sharesMLXProcessResources
+        case rendersFullPrompt
         case maxAdvertisedToolCount
     }
 
@@ -277,6 +300,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
         supportsGuidedStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsGuidedStructuredOutput)) ?? false
         sharesMLXProcessResources = (try c.decodeIfPresent(Bool.self, forKey: .sharesMLXProcessResources)) ?? false
+        rendersFullPrompt = (try c.decodeIfPresent(Bool.self, forKey: .rendersFullPrompt)) ?? false
         maxAdvertisedToolCount = try c.decodeIfPresent(Int.self, forKey: .maxAdvertisedToolCount)
     }
 
@@ -303,6 +327,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
         try c.encode(supportsGuidedStructuredOutput, forKey: .supportsGuidedStructuredOutput)
         try c.encode(sharesMLXProcessResources, forKey: .sharesMLXProcessResources)
+        try c.encode(rendersFullPrompt, forKey: .rendersFullPrompt)
         try c.encodeIfPresent(maxAdvertisedToolCount, forKey: .maxAdvertisedToolCount)
     }
 }

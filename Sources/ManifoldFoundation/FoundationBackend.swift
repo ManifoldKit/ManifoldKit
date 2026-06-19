@@ -162,6 +162,12 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // deltas as separate events (parity with MLXBackend's inline parser).
         streamsToolCallArguments: false,
         supportsGuidedStructuredOutput: true,
+        // `requiresPromptTemplate` is `false`: the FoundationModels SDK applies
+        // its own chat template internally and we hand it the conversation as a
+        // structured `Transcript`/`Prompt`, never a single templated string.
+        // GenerationQueue therefore captures only the latest user message into
+        // `.promptRendered`, so the rendered prompt is a partial view (#1905).
+        rendersFullPrompt: false,
         // Apple's on-device model degrades sharply once the tool catalogue
         // exceeds ~16 entries — the schema definitions consume an increasing
         // fraction of its fixed context budget. Advertising more than 16 tools

@@ -93,6 +93,34 @@ final class BackendCapabilitiesContractTests: XCTestCase {
                        "OllamaBackend reports thinking only after /api/show probe runs at loadModel time")
     }
 
+    // MARK: - rendersFullPrompt (#1905)
+
+    /// Cloud chat-completion / messages backends assemble the full prompt as a
+    /// structured message array on the wire, so their `.promptRendered` event
+    /// carries only a partial view (the latest user message). They must report
+    /// `rendersFullPrompt == false` so consumers can label the capture honestly.
+    func test_cloudBackends_doNotRenderFullPrompt() {
+        XCTAssertFalse(ClaudeBackend().capabilities.rendersFullPrompt,
+                       "ClaudeBackend sends a structured Messages array — .promptRendered is partial")
+        XCTAssertFalse(OpenAIBackend().capabilities.rendersFullPrompt,
+                       "OpenAIBackend sends a structured Chat Completions array — .promptRendered is partial")
+        XCTAssertFalse(OpenAIResponsesBackend().capabilities.rendersFullPrompt,
+                       "OpenAIResponsesBackend sends structured input items — .promptRendered is partial")
+        XCTAssertFalse(OllamaBackend().capabilities.rendersFullPrompt,
+                       "OllamaBackend sends a structured /api/chat array — .promptRendered is partial")
+    }
+
+#if canImport(FoundationModels)
+    /// FoundationBackend does not template the whole conversation into a single
+    /// string (it hands the SDK a structured Transcript/Prompt), so its
+    /// `.promptRendered` is a partial view → `rendersFullPrompt == false`.
+    @available(iOS 26, macOS 26, *)
+    func test_foundationBackend_doesNotRenderFullPrompt() {
+        XCTAssertFalse(FoundationBackend().capabilities.rendersFullPrompt,
+                       "FoundationBackend applies its own chat template internally — .promptRendered is partial")
+    }
+#endif
+
     // MARK: - Local backends
 
 
