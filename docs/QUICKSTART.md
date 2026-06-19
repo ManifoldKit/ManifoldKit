@@ -29,7 +29,7 @@ Then depend on the `ManifoldKit` umbrella product from your app target:
 ])
 ```
 
-The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, `ManifoldBackends`, `ManifoldUI`, and `ManifoldInference` so one `import ManifoldKit` covers the common surface.
+The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the backend families (`ManifoldFoundation`, `ManifoldOllama`, `ManifoldCloudSaaS`, `ManifoldCloudCore`), `ManifoldUI`, and `ManifoldInference` so one `import ManifoldKit` covers the common surface.
 
 ## Hello World
 

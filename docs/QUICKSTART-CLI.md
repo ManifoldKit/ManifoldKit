@@ -154,7 +154,9 @@ This is the section that closes the "I'm on macOS 15 and want to evaluate Manifo
 - [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, fast, but emits `.thinkingToken` events before its final answer — see ["Reasoning models" below](#reasoning-models-thinking-tokens) before using
 - Any other GGUF you've downloaded via HuggingFace, Ollama, or LM Studio
 
-> **Known issue with Llama-3 family multi-turn**: tracked at [#1398](https://github.com/roryford/ManifoldKit/issues/1398) — long multi-turn conversations may produce ChatML control-token leakage and hallucinated turns. Single-turn use is unaffected.
+> **Llama-3 multi-turn:** Real Jinja chat templates (v0.54+, [#1898](https://github.com/roryford/ManifoldKit/issues/1898)) fixed the ChatML control-token leakage reported in [#1398](https://github.com/roryford/ManifoldKit/issues/1398). Still smoke-test long multi-turn sessions in your CLI — any regression is tracked at #1398.
+
+> **First-run stderr noise (Llama / Metal):** The first generation on a fresh build can emit thousands of `ggml_metal_library_compile_pipeline` lines on stderr while Metal kernels compile. That is llama.cpp logging, not model output — subsequent runs are much quieter. There is no consumer-facing silence knob yet ([#1399](https://github.com/roryford/ManifoldKit/issues/1399)).
 
 **`Package.swift`:**
 
@@ -399,6 +401,8 @@ For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropi
 
 > **No trait required.** Cloud backends (Ollama, OpenAI, Claude, LM Studio, custom endpoints) always compile since v0.48 — the former `Ollama`/`CloudSaaS` traits are retired. See [docs/FeatureMatrix.md](FeatureMatrix.md).
 
+> **Ollama-only evaluators:** The full `Package.swift` below links every compiled-in backend family so the same manifest works when you swap `.ollama` for `.openAI` or `.claude`. If you only need local Ollama, slim the target to `ManifoldInference` + `ManifoldOllama`, import only those two modules, and call `OllamaBackends.register(with:)` — see [`manifold-tools`](../Sources/manifold-tools/main.swift) for the in-repo shape.
+
 **`Package.swift`:**
 
 ```swift
@@ -449,14 +453,12 @@ struct ChatCLICloud {
         OllamaBackends.register(with: inference)
         CloudSaaSBackends.register(with: inference)
         FoundationBackends.register(with: inference)
-        // Point at a local Ollama instance. baseURL and modelName both default
-        // off APIProvider.ollama, but pass them explicitly when you want a
-        // non-default model or a non-default host.
+
+        let modelName = ProcessInfo.processInfo.environment["OLLAMA_MODEL"] ?? "llama3.1:8b"
         let endpoint = APIEndpointRecord(
-            name: "Local Ollama",
             provider: .ollama,
             baseURL: "http://localhost:11434",
-            modelName: "llama3.1:8b" // paste a tag from `ollama list`
+            modelName: modelName // paste a tag from `ollama list`, or set OLLAMA_MODEL
         )
 
         try await inference.loadEndpointBackend(from: endpoint)
@@ -520,11 +522,11 @@ struct ChatCLICloud {
         CloudSaaSBackends.register(with: inference)
         FoundationBackends.register(with: inference)
 
+        let modelName = ProcessInfo.processInfo.environment["OLLAMA_MODEL"] ?? "llama3.1:8b"
         let endpoint = APIEndpointRecord(
-            name: "Local Ollama",
             provider: .ollama,
             baseURL: "http://localhost:11434",
-            modelName: "llama3.1:8b" // paste a tag from `ollama list`
+            modelName: modelName
         )
 
         fputs("Loading Ollama model \(endpoint.modelName)…\n", stderr)
@@ -533,7 +535,10 @@ struct ChatCLICloud {
 
         var history: [(String, String)] = []
 
-        while let line = readLine() {
+        while true {
+            fputs("user: ", stderr)
+            guard let line = readLine() else { break }
+
             let prompt = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !prompt.isEmpty else { continue }
 
@@ -557,6 +562,10 @@ struct ChatCLICloud {
             print("")
             fputs("\n", stderr)
 
+            guard !reply.isEmpty else {
+                history.removeLast()
+                continue
+            }
             history.append(("assistant", reply))
         }
 
