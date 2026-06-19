@@ -106,9 +106,9 @@ public final class AudioGenerationRuntime {
         self.service = service
         self.messageStore = messageStore
         self.modelIdentifierProvider = modelIdentifier ?? { "apple-tts" }
-        var cap: AsyncStream<AudioRuntimeEvent>.Continuation!
-        self.events = AsyncStream(bufferingPolicy: .unbounded) { cap = $0 }
-        self.continuation = cap
+        let (stream, continuation) = AsyncStream<AudioRuntimeEvent>.makeStream(bufferingPolicy: .unbounded)
+        self.events = stream
+        self.continuation = continuation
     }
 
     deinit {
