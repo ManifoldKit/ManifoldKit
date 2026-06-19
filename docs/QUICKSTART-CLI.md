@@ -53,7 +53,7 @@ dependencies: [
 
 then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `ManifoldMLX`) to your target and register the backend with `LlamaBackends.register(with: inference)` after the default registrars — §2 below shows the full shape. See [MIGRATION-0.48.md](MIGRATION-0.48.md) if you're coming from a trait-based 0.47 setup.
 
-### Headless imports: granular vs umbrella
+### Granular vs umbrella imports for CLI targets
 
 The examples below depend on four core products — `ManifoldInference`, `ManifoldFoundation`, `ManifoldOllama`, and `ManifoldCloudSaaS` — and import them individually. That keeps a headless executable from linking `ManifoldUI` and `ManifoldPersistenceSwiftData`, which the `ManifoldKit` umbrella also re-exports.
 
