@@ -1,5 +1,15 @@
 .build/
 .swiftpm/
+
+# Swift compiler intermediates. SwiftPM normally writes these under .build/,
+# but the macro-plugin build invoked by `swift package diagnose-api-breaking-changes`
+# has emitted them to the working-tree root, where `.build/` did not catch them
+# (they leaked into a commit once — see the cleanup that added these lines).
+*.o
+*.d
+*.dia
+*.swiftdeps
+
 # Un-ignore only the shared xcschemes directory so platform-specific
 # test lanes (e.g. iOS Simulator file-protection tests) can be tracked.
 # Each intermediate component must be explicitly un-ignored for git to
