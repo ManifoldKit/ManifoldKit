@@ -18,6 +18,11 @@ struct MessagePartsView: View {
     /// can render an inline preview rather than the static "Thinking…" label.
     /// Optional so unit tests that exercise text/tool rendering can omit it.
     var messageID: UUID? = nil
+    /// Source citations attached to this (assistant) message. When non-empty and
+    /// the answer text contains resolvable inline `[n]` markers, text parts render
+    /// via ``InlineCitationTextView`` so the markers become tappable superscripts.
+    /// Empty (the default) keeps the historical plain-markdown rendering.
+    var citations: [Citation] = []
 
     @Environment(ChatViewModel.self) private var viewModel
 
@@ -322,7 +327,15 @@ struct MessagePartsView: View {
     @ViewBuilder
     private func textView(_ text: String) -> some View {
         if role == .assistant {
-            AssistantMarkdownView(content: text)
+            // Take the inline-citation path only when the answer actually carries
+            // a resolvable `[n]` marker; otherwise keep the existing markdown
+            // renderer so fenced code / lists / streaming behave exactly as before.
+            if !citations.isEmpty,
+               InlineCitationRenderer.hasResolvableMarker(in: text, citations: citations) {
+                InlineCitationTextView(content: text, citations: citations)
+            } else {
+                AssistantMarkdownView(content: text)
+            }
         } else {
             Text(text)
                 .font(.body)
