@@ -68,21 +68,40 @@ enum SkillReferenceResolver {
         // Backstop: after normalisation the path must still be inside the
         // skill directory. Compare path components so `…/skill-foo` does not
         // satisfy the prefix of `…/skill-foobar`.
-        let baseComponents = base.pathComponents
-        let candidateComponents = candidate.pathComponents
-        guard candidateComponents.count > baseComponents.count,
-              Array(candidateComponents.prefix(baseComponents.count)) == baseComponents
-        else {
+        if !isContained(candidate, in: base) {
+            throw SkillReferenceError.pathEscapesSkillDirectory(trimmed)
+        }
+
+        // Symlink backstop: `standardizedFileURL` collapses `.`/`..` and
+        // redundant separators but does NOT follow symlinks. A declared file
+        // that is itself a symlink (or sits under a symlinked subdirectory)
+        // could still resolve outside the skill directory and leak an
+        // arbitrary file (`/etc/passwd`, `~/.ssh/id_rsa`). Resolve symlinks on
+        // BOTH sides — the skill directory may live under a symlinked root
+        // such as macOS's `/tmp` → `/private/tmp` — and re-check containment.
+        let resolvedBase = base.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedCandidate = candidate.resolvingSymlinksInPath().standardizedFileURL
+        if !isContained(resolvedCandidate, in: resolvedBase) {
             throw SkillReferenceError.pathEscapesSkillDirectory(trimmed)
         }
 
         do {
-            return try String(contentsOf: candidate, encoding: .utf8)
+            return try String(contentsOf: resolvedCandidate, encoding: .utf8)
         } catch {
             Log.inference.warning(
                 "ManifoldSkills: cannot read referenced file \(trimmed, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
             throw SkillReferenceError.unreadable(trimmed)
         }
+    }
+
+    /// Whether `candidate` lives strictly under `base`, comparing whole path
+    /// components so `…/skill-foo` does not satisfy the prefix of
+    /// `…/skill-foobar`. Both URLs must already be standardized.
+    private static func isContained(_ candidate: URL, in base: URL) -> Bool {
+        let baseComponents = base.pathComponents
+        let candidateComponents = candidate.pathComponents
+        return candidateComponents.count > baseComponents.count
+            && Array(candidateComponents.prefix(baseComponents.count)) == baseComponents
     }
 }

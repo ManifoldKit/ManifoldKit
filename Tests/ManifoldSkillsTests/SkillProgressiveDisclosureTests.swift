@@ -143,6 +143,36 @@ final class SkillProgressiveDisclosureTests: XCTestCase {
         #endif
     }
 
+    func test_resolveReference_rejectsSymlinkEscape() throws {
+        #if !os(macOS)
+        throw XCTSkip("Discovery is macOS-only in v1")
+        #else
+        let root = try makeTempRoot()
+        let skill = try writeReferencingSkill(in: root)
+        let dir = skill.sourcePath.deletingLastPathComponent()
+
+        // A declared reference that is itself a symlink pointing OUTSIDE the
+        // skill directory. The component-prefix check passes (the link's own
+        // path is inside the dir); only resolving the symlink reveals the
+        // escape. Without the symlink backstop this leaks an arbitrary file.
+        let outsideTarget = root.appendingPathComponent("outside-secret.md")
+        try "OUTSIDE-SECRET".write(to: outsideTarget, atomically: true, encoding: .utf8)
+        let link = dir.appendingPathComponent("leak.md")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outsideTarget)
+
+        let evil = Skill(
+            name: "evil",
+            description: "d",
+            promptTemplate: "body",
+            references: ["leak.md"],
+            sourcePath: skill.sourcePath
+        )
+        XCTAssertThrowsError(try evil.resolveReference("leak.md")) { error in
+            XCTAssertEqual(error as? SkillReferenceError, .pathEscapesSkillDirectory("leak.md"))
+        }
+        #endif
+    }
+
     func test_resolveReference_declaredButMissingFile_throwsUnreadable_notTryQuestion() throws {
         #if !os(macOS)
         throw XCTSkip("Discovery is macOS-only in v1")
