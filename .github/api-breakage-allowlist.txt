@@ -106,3 +106,7 @@ API breakage: class InMemoryMetricSink has been removed
 API breakage: enumelement UnloadReason.idleTimeout has been added as a new enum case
 API breakage: constructor ManifoldBootstrap.init(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:isInMemory:) has been removed
 API breakage: func ManifoldBootstrap.build(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:) has been renamed to func build(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:audioGenerationService:)
+API breakage: func RAGService.retrieve(query:limit:) has parameter 1 type change from Swift.Int to Swift.Int?
+API breakage: func RAGService.retrieveSlots(query:limit:) has parameter 1 type change from Swift.Int to Swift.Int?
+API breakage: constructor RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:) has been removed
+API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkSize:chunkOverlap:topK:vectorStoreURL:) has been removed

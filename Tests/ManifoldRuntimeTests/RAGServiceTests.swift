@@ -586,6 +586,117 @@ final class RAGServiceTests: XCTestCase {
                        "rerank failure must preserve the first-stage cosine ordering")
     }
 
+    // MARK: - #1939 item 6: configurable top-K + similarity threshold
+
+    /// `defaultLimit` (threaded from `RAGConfiguration.topK`) must govern the
+    /// first-stage fetch width when the caller passes no explicit `limit` — the
+    /// production turn loop calls `retrieve(query:)` with no limit.
+    func test_retrieve_defaultLimit_drivesFetchWidthWhenNoExplicitLimit() async throws {
+        let vectorStore = FakeVectorStore()
+        let hit = VectorSearchHit(chunk: DocumentChunk(documentID: UUID(), text: "x", chunkIndex: 0), documentTitle: "Doc", score: 0.9)
+        await vectorStore.setKeywordResults([hit])
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            defaultLimit: 9
+        )
+
+        _ = try await sut.retrieve(query: "anything")
+
+        let requested = await vectorStore.lastKeywordLimit
+        XCTAssertEqual(requested, 9, "configured defaultLimit (topK) must drive the fetch width")
+
+        // Sabotage: the old hardcoded `limit: 5` would have requested 5, not 9.
+        XCTAssertNotEqual(requested, 5)
+    }
+
+    /// An explicit `limit` argument still overrides the configured default.
+    func test_retrieve_explicitLimit_overridesDefaultLimit() async throws {
+        let vectorStore = FakeVectorStore()
+        let hit = VectorSearchHit(chunk: DocumentChunk(documentID: UUID(), text: "x", chunkIndex: 0), documentTitle: "Doc", score: 0.9)
+        await vectorStore.setKeywordResults([hit])
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            defaultLimit: 9
+        )
+
+        _ = try await sut.retrieve(query: "anything", limit: 3)
+
+        let requested = await vectorStore.lastKeywordLimit
+        XCTAssertEqual(requested, 3, "explicit limit must override the configured default")
+    }
+
+    /// The similarity threshold drops hits scoring strictly below the floor from
+    /// both the injected slot and the citation list.
+    func test_retrieve_similarityThreshold_filtersLowScoringHits() async throws {
+        let docID = UUID()
+        let hits = [
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "strong hit", chunkIndex: 0), documentTitle: "Doc", score: 0.80),
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "borderline hit", chunkIndex: 1), documentTitle: "Doc", score: 0.50),
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "weak hit", chunkIndex: 2), documentTitle: "Doc", score: 0.20),
+        ]
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults(hits)
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            similarityThreshold: 0.5
+        )
+
+        let result = try await sut.retrieve(query: "q")
+
+        // Only the two hits at-or-above 0.5 survive; the 0.20 hit is dropped.
+        XCTAssertEqual(result.citations.map(\.chunkIndex), [0, 1],
+                       "hits below the similarity threshold must be filtered out")
+        XCTAssertFalse(result.slots[0].content.contains("weak hit"),
+                       "below-threshold passage must not reach the injected slot")
+
+        // Sabotage: with the default (0) threshold all three would survive.
+        XCTAssertNotEqual(result.citations.map(\.chunkIndex), [0, 1, 2])
+    }
+
+    /// A threshold of 0 (the default) is a no-op: every hit the vector store
+    /// returns flows through, preserving the historical behaviour.
+    func test_retrieve_zeroThreshold_preservesAllHits() async throws {
+        let docID = UUID()
+        let hits = [
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "a", chunkIndex: 0), documentTitle: "Doc", score: 0.80),
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "b", chunkIndex: 1), documentTitle: "Doc", score: 0.10),
+        ]
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults(hits)
+
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        let result = try await sut.retrieve(query: "q")
+        XCTAssertEqual(result.citations.map(\.chunkIndex), [0, 1],
+                       "default (0) threshold must not drop any hit")
+    }
+
+    /// If every hit falls below the threshold, retrieval round-trips as empty
+    /// rather than injecting an empty slot.
+    func test_retrieve_allHitsBelowThreshold_returnsEmpty() async throws {
+        let hits = [
+            VectorSearchHit(chunk: DocumentChunk(documentID: UUID(), text: "weak", chunkIndex: 0), documentTitle: "Doc", score: 0.1),
+        ]
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults(hits)
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            similarityThreshold: 0.9
+        )
+
+        let result = try await sut.retrieve(query: "q")
+        XCTAssertTrue(result.slots.isEmpty)
+        XCTAssertTrue(result.citations.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func writeTempFile(content: String) throws -> URL {
