@@ -230,12 +230,40 @@ public final class FallbackBackend: InferenceBackend, @unchecked Sendable {
             return
         }
 
+        // Per-backend retry must only cover *pre-first-token* failures. Once a
+        // content token has been forwarded, re-running `drain` would re-forward
+        // the already-emitted tokens to the consumer (duplicating output) —
+        // violating the streaming invariant that once a token is forwarded a
+        // mid-stream error is propagated, not routed around. Wrap any post-token
+        // error in a non-retryable `PostTokenStreamError` so `withRetry`
+        // propagates it on the first throw instead of re-running `drain`; the
+        // fallback driver then applies the post-token rule to the underlying
+        // error (propagate, or discard+restart only when
+        // `advanceAfterFirstToken` is set). The default path above (no retries)
+        // never re-runs `drain`, so it needs no guard.
+        let retriableDrain: () async throws -> Void = {
+            do {
+                try await drain()
+            } catch {
+                if tokenSeen.seen {
+                    throw PostTokenStreamError(underlying: error)
+                }
+                throw error
+            }
+        }
+
         do {
             try await withRetry(
                 strategy: ExponentialBackoffStrategy(maxRetries: policy.perBackendRetries),
                 sleeper: retrySleeper,
-                operation: drain
+                operation: retriableDrain
             )
+        } catch let postToken as PostTokenStreamError {
+            // A mid-stream error after the first token was forwarded — never
+            // retried by `withRetry` (the wrapper is non-retryable). Unwrap so
+            // the fallback driver advances/propagates based on the *underlying*
+            // error per the post-token rule.
+            throw postToken.underlying
         } catch let exhausted as RetryExhaustedError {
             // `withRetry` wraps the terminal error in `RetryExhaustedError` once
             // it gives up. Unwrap it so the fallback driver advances based on the
@@ -291,6 +319,21 @@ private final class TokenSeenBox: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         _seen = true
     }
+}
+
+/// Wraps a mid-stream error raised *after* a content token was forwarded so the
+/// per-backend ``withRetry(strategy:sleeper:operation:)`` path treats it as
+/// terminal. Conforming to ``BackendError`` with `isRetryable == false` makes
+/// `withRetry` propagate it on the first throw instead of re-running `drain`
+/// (which would re-forward the already-emitted tokens). `runAttempt` unwraps it
+/// before handing control back to the fallback driver, which applies the
+/// post-token rule to the *underlying* error.
+private struct PostTokenStreamError: BackendError {
+    let underlying: any Error
+
+    var isRetryable: Bool { false }
+
+    var errorDescription: String? { (underlying as? LocalizedError)?.errorDescription }
 }
 
 // MARK: - Ergonomic builder

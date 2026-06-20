@@ -223,6 +223,48 @@ final class FallbackBackendTests: XCTestCase {
         XCTAssertEqual(second.generateCallCount, 1)
     }
 
+    func testPerBackendRetriesDoNotReForwardTokenAfterFirstToken() async throws {
+        // Regression for the token-reforward bug: with perBackendRetries > 0, a
+        // backend that forwards a token and THEN throws a retryable mid-stream
+        // error must NOT be retried (which would re-run the drain closure and
+        // re-emit the already-forwarded token). The consumer must see each token
+        // exactly once, and the error must propagate rather than silently retry.
+        let recorder = RecordingRetrySleeper()
+        let failing = loadedMock(tokens: ["partial"])
+        failing.shouldThrowInsideStream = retryable
+        let second = loadedMock(tokens: ["should-not-reach"])
+
+        let policy = FallbackPolicy(perBackendRetries: 2)
+        let chain = FallbackBackend(
+            backends: [failing, second],
+            policy: policy,
+            retrySleeper: recorder.asSleeper
+        )
+
+        var received: [String] = []
+        do {
+            let stream = try chain.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+            for try await event in stream.events {
+                if case .token(let t) = event { received.append(t) }
+            }
+            XCTFail("Expected the post-token error to propagate")
+        } catch let error as CloudBackendError {
+            guard case .rateLimited = error else {
+                return XCTFail("Expected rateLimited, got \(error)")
+            }
+        }
+
+        // The token reached the consumer exactly once — no re-forward on retry.
+        XCTAssertEqual(received, ["partial"])
+        // The backend's generate() ran exactly once: the post-token error is
+        // terminal, so withRetry must not have re-invoked the drain.
+        XCTAssertEqual(failing.generateCallCount, 1)
+        // No retry delays were requested — the error short-circuited retry.
+        XCTAssertEqual(recorder.recordedSleeps.count, 0)
+        // No fail-over — partial output was already seen by the consumer.
+        XCTAssertEqual(second.generateCallCount, 0)
+    }
+
     // MARK: - Capability union matches RouterBackend
 
     func testCapabilityUnionMatchesRouter() async throws {
