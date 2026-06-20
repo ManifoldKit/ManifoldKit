@@ -365,6 +365,11 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             "top_p": config.topP,
             "max_tokens": config.maxOutputTokens ?? 2048
         ]
+        // User-settable stop sequences (#1944). Emit only when non-empty so
+        // callers that never set stops keep the prior payload shape.
+        if !config.stopSequences.isEmpty {
+            body["stop"] = config.stopSequences
+        }
         // Strict structured output (#1918): an explicit
         // `.jsonSchema(schema)` request, gated on the backend's
         // strict-schema capability, takes precedence over plain `jsonMode`.

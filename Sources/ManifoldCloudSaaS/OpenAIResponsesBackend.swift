@@ -267,6 +267,14 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             "top_p": config.topP,
             "max_output_tokens": config.maxOutputTokens ?? 2048
         ]
+        // User-settable stop sequences (#1944) are deliberately NOT emitted here.
+        // The OpenAI Responses API does not support a stop-sequence parameter:
+        // sending top-level `stop` returns 400 "Unknown parameter: 'stop'. Did you
+        // mean 'store'?" (verified against the OpenAI Responses reference + the
+        // "Does Responses API support `stop` parameter or not?" developer-forum
+        // thread, 2026-06). Chat Completions keeps `stop`; Responses callers that
+        // set GenerationConfig.stopSequences simply get no stop field on the wire
+        // rather than an invalid one that 400s on strict providers.
 
         // Tools — same `[{type:"function", function:{...}}]` envelope as Chat
         // Completions, plus the matching `tool_choice` policy.

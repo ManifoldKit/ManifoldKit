@@ -412,4 +412,57 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(backend.lastConfig?.llamaXTC, LlamaXTCSamplerOptions(probability: 0.3))
         XCTAssertEqual(backend.lastConfig?.llamaMirostatV2, LlamaMirostatV2SamplerOptions(tau: 4.5))
     }
+
+    // MARK: - Stop sequences (#1944)
+
+    func test_defaultInit_stopSequences_isEmpty() {
+        XCTAssertEqual(GenerationConfig().stopSequences, [])
+    }
+
+    func test_customInit_propagatesStopSequences() {
+        let config = GenerationConfig(stopSequences: ["</s>", "STOP"])
+        XCTAssertEqual(config.stopSequences, ["</s>", "STOP"])
+    }
+
+    func test_stopSequences_isMutable() {
+        var config = GenerationConfig()
+        config.stopSequences = ["\n\n"]
+        XCTAssertEqual(config.stopSequences, ["\n\n"])
+    }
+
+    func test_codableRoundtrip_preservesStopSequences() throws {
+        var original = GenerationConfig()
+        original.stopSequences = ["</s>", "User:"]
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
+
+        XCTAssertEqual(decoded.stopSequences, ["</s>", "User:"])
+    }
+
+    func test_codable_omitsStopSequencesWhenEmpty() throws {
+        // Empty means "unset" — keep it out of the wire payload to preserve the
+        // prior on-disk shape for callers that never set stops.
+        let data = try JSONEncoder().encode(GenerationConfig())
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertNil(json["stopSequences"])
+    }
+
+    func test_codableDecode_legacyPayload_omittingStopSequences() throws {
+        let legacyJSON = """
+        {
+            "temperature": 0.7,
+            "topP": 0.9,
+            "repeatPenalty": 1.1,
+            "tools": [],
+            "toolChoice": {"type": "auto"},
+            "maxToolIterations": 10
+        }
+        """
+        let data = try XCTUnwrap(legacyJSON.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
+
+        XCTAssertEqual(decoded.stopSequences, [])
+    }
 }

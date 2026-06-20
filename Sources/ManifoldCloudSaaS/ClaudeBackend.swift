@@ -365,6 +365,12 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             "temperature": config.temperature,
             "top_p": config.topP
         ]
+        // User-settable stop sequences (#1944). Anthropic uses `stop_sequences`;
+        // emit only when non-empty to preserve the prior payload shape for
+        // callers that never set stops.
+        if !config.stopSequences.isEmpty {
+            body["stop_sequences"] = config.stopSequences
+        }
 
         // Snapshot cache policy under the lock once so the rest of the build
         // is consistent even if another thread toggles it concurrently.
