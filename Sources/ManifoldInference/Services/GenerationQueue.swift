@@ -649,12 +649,35 @@ final class GenerationQueue {
         // wins — we never overwrite a host-authored string. The derived grammar
         // pins the emitted tool-call envelope's `"name"` to the enum of the
         // supplied tool names so the model can't drift off-format.
+        //
+        // Injection is `toolChoice`-aware (#1961). A tool-call-only union forces
+        // a structured call (every branch begins with `{`), which is correct for
+        // `.required` / `.tool(name:)` but wrong for `.auto`: it masks every
+        // non-`{` first token, the decoder collapses onto EOS, and generation
+        // stops at zero tokens (manifold-llama#55). So `.auto` gets the
+        // prose-permitting grammar, `.tool(name:)` a single-tool union, and
+        // `.none` no grammar at all.
         var config = config
         if config.grammar == nil,
            !config.tools.isEmpty,
-           backend.capabilities.supportsGrammarConstrainedSampling,
-           let derived = ToolGrammarBuilder().buildGrammar(for: config.tools) {
-            config.grammar = derived
+           backend.capabilities.supportsGrammarConstrainedSampling {
+            let mode: ToolGrammarBuilder.Mode?
+            switch config.toolChoice {
+            case .auto:
+                mode = .permissive
+            case .required:
+                mode = .strict(only: nil)
+            case .tool(let name):
+                mode = .strict(only: name)
+            case .none:
+                // `.none` means "must not call a tool" — injecting a tool-call
+                // grammar would do the opposite. Leave sampling unconstrained.
+                mode = nil
+            }
+            if let mode,
+               let derived = ToolGrammarBuilder().buildGrammar(for: config.tools, mode: mode) {
+                config.grammar = derived
+            }
         }
 
         // Structured-output routing (#1915). When a caller has staged a

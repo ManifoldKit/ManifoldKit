@@ -96,13 +96,49 @@ public struct ToolGrammarBuilder: Sendable {
         _ = preValidator
     }
 
+    /// Selects how strictly the emitted grammar constrains the first sampled
+    /// token, mirroring `GenerationConfig.toolChoice` (#1961).
+    ///
+    /// The default tool-call-only union forces a structured call: every branch
+    /// begins with a literal `{`, so under `toolChoice == .auto` the grammar
+    /// masks every non-`{` first token, the decoder collapses onto EOS, and
+    /// generation stops at zero tokens (manifold-llama#55: gemma-4 produced 0
+    /// completion tokens on 88/88 turns). That forced-call behaviour is correct
+    /// for `.required` / `.tool(name:)` but wrong for `.auto`, which must let the
+    /// model emit prose *or* a tool call. This mode lets the queue pick the right
+    /// shape per request rather than blanket-relaxing the single variant (which
+    /// would silently regress the forced-call guarantee for `.required`).
+    public enum Mode: Sendable, Equatable {
+        /// Tool-call union plus a non-empty prose escape: the first token may be
+        /// prose (never forced to EOS), and a leading `{` still enters the
+        /// fully-constrained tool-call union. For `toolChoice == .auto`.
+        case permissive
+
+        /// Tool-call-only union (no prose escape). When `only` is a tool name,
+        /// the union is limited to that single tool's branch (`.tool(name:)`);
+        /// when `nil`, the full union over all tools is emitted (`.required`).
+        /// A named tool absent from the supplied list falls back to the full
+        /// union — never an empty grammar, which would match nothing.
+        case strict(only: String?)
+    }
+
     /// Builds a GBNF grammar string constraining output to a tool-call
     /// discriminated union over the supplied tools, or `nil` when `tools` is
     /// empty (no envelope to constrain — caller should fall back to
     /// unconstrained sampling).
     ///
-    /// - Parameter tools: the tool definitions for this request.
-    public func buildGrammar(for tools: [ToolDefinition]) -> String? {
+    /// The default `mode` (`.strict(only: nil)`) preserves the historical
+    /// forced-call behaviour for source compatibility; callers select
+    /// `.permissive` (for `toolChoice == .auto`) or `.strict(only:)` (for
+    /// `.tool(name:)`) explicitly. See ``Mode`` for the rationale (#1961).
+    ///
+    /// - Parameters:
+    ///   - tools: the tool definitions for this request.
+    ///   - mode: how strictly to constrain the first token (see ``Mode``).
+    public func buildGrammar(
+        for tools: [ToolDefinition],
+        mode: Mode = .strict(only: nil)
+    ) -> String? {
         guard !tools.isEmpty else { return nil }
 
         // De-duplicate names, preserving first-seen order, so the union has no
@@ -111,6 +147,14 @@ public struct ToolGrammarBuilder: Sendable {
         var uniqueTools: [ToolDefinition] = []
         for tool in tools where seen.insert(tool.name).inserted {
             uniqueTools.append(tool)
+        }
+
+        // `.strict(only:)` limits the union to the named tool's branch — but
+        // only when that name is actually present. An absent name falls back to
+        // the full union rather than an empty (match-nothing) grammar.
+        if case let .strict(only?) = mode,
+           uniqueTools.contains(where: { $0.name == only }) {
+            uniqueTools = uniqueTools.filter { $0.name == only }
         }
 
         // Accumulates the per-tool lowered rules in deterministic emission order.
@@ -139,12 +183,31 @@ public struct ToolGrammarBuilder: Sendable {
 
         // root is the alternation of all tool branches (one branch for a single
         // tool). Emitting `root` first keeps it as the grammar's entry point.
-        let rootRHS = branchNames.joined(separator: " | ")
+        //
+        // In `.permissive` mode (toolChoice == .auto) the root gains a non-empty
+        // `prose` alternative so the first sampled token can be free prose. The
+        // alternation stays unambiguous at the first byte: every tool branch
+        // begins with a literal `{`, and `prose-head` is `[^{]`, so a leading `{`
+        // enters the constrained tool-call union while anything else is prose.
+        // `prose` is non-empty (it has a mandatory head byte), so the root never
+        // matches empty — the first token can never collapse onto EOS (#1961).
+        var branchRHS = branchNames
+        var proseLines: [String] = []
+        if case .permissive = mode {
+            branchRHS.append("prose")
+            proseLines = [
+                "prose ::= prose-head prose-tail*",
+                "prose-head ::= [^{]",
+                #"prose-tail ::= [^\x00]"#,
+            ]
+        }
+        let rootRHS = branchRHS.joined(separator: " | ")
 
         var lines: [String] = ["root ::= \(rootRHS)"]
         for name in emittedOrder {
             lines.append("\(name) ::= \(rules[name]!)")
         }
+        lines.append(contentsOf: proseLines)
         // Shared generic JSON value rule set — the fallback target plus the
         // primitives every lowered rule references (string, number, …).
         lines.append(contentsOf: Self.genericRuleLines)
