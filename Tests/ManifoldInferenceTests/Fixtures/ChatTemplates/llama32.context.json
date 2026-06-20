@@ -1,0 +1,8 @@
+{
+  "description": "Llama-3.2 with no host system prompt — the template always emits a 'Cutting Knowledge Date / Today Date' preamble (hardcoded date, deterministic) that the enum fallback drops.",
+  "systemPrompt": null,
+  "messages": [
+    { "role": "user", "text": "Hi" }
+  ],
+  "tools": []
+}

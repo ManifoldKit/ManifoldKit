@@ -1,0 +1,9 @@
+{
+  "template": "qwen25.jinja",
+  "description": "Qwen2.5 with NO host system prompt — the template injects its mandatory default system turn ('You are Qwen, created by Alibaba Cloud.') that the enum fallback drops.",
+  "systemPrompt": null,
+  "messages": [
+    { "role": "user", "text": "Hi" }
+  ],
+  "tools": []
+}

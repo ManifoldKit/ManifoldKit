@@ -85,7 +85,16 @@ enum JinjaPromptRenderer {
         }
 
         do {
-            let template = try Template(trimmed)
+            // Render with the SAME whitespace semantics Hugging Face
+            // `transformers.apply_chat_template` uses — `trim_blocks=True` and
+            // `lstrip_blocks=True`. swift-jinja defaults both to `false`, so
+            // without this a template that relies on block trimming (the HF
+            // default, and common in real `chat_template` strings) renders with
+            // spurious newlines/indentation the model never saw in training —
+            // a silent fidelity drift the byte-match goldens (#1938) caught.
+            // Templates that already use explicit `{%-`/`-%}` controls (Qwen,
+            // Llama-3.2) are unaffected; this only fixes the ones that don't.
+            let template = try Template(trimmed, with: .init(lstripBlocks: true, trimBlocks: true))
             let context: [String: Value] = [
                 "messages": try Value(any: jinjaMessages),
                 "add_generation_prompt": true,
@@ -100,8 +109,17 @@ enum JinjaPromptRenderer {
             ]
             let rendered = try template.render(context)
             // A template that evaluates to empty output is not usable — treat it
-            // as a miss so the enum fallback produces a real prompt.
-            return rendered.isEmpty ? nil : rendered
+            // as a miss so the enum fallback produces a real prompt. Log it: an
+            // empty render is otherwise a silent capability loss (the caller
+            // degrades to the text-only enum), the same failure class as the
+            // catch branch below.
+            if rendered.isEmpty {
+                Log.inference.warning(
+                    "JinjaPromptRenderer: embedded chat template rendered empty output, falling back to enum."
+                )
+                return nil
+            }
+            return rendered
         } catch {
             // Do not crash generation on a malformed or unsupported embedded
             // template — log and let the caller fall back to the enum. This is a
