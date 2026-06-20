@@ -152,6 +152,42 @@ public struct ToolGrammarBuilder: Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// Builds a GBNF grammar string whose `root` constrains output to a single
+    /// JSON value matching `schema` (no tool-call envelope), or `nil` when the
+    /// schema carries no structural information to constrain (a bare scalar /
+    /// unmodeled node lowers to the generic JSON `value`, which is no
+    /// constraint at all — the caller should fall back rather than ship a
+    /// grammar that accepts anything).
+    ///
+    /// Reuses the same recursive lowerer as ``buildGrammar(for:)`` so a typed
+    /// structured-output request gets exactly the constraint surface a tool's
+    /// `arguments` would. The first production caller is
+    /// `InferenceService.respond(_:to:)` (#1915).
+    public func buildSchemaGrammar(for schema: JSONSchemaValue) -> String? {
+        var emittedOrder: [String] = []
+        var rules: [String: String] = [:]
+        func emit(_ name: String, _ rhs: String) {
+            if rules[name] == nil { emittedOrder.append(name) }
+            rules[name] = rhs
+        }
+
+        // toolIndex 0 keeps helper rule names stable/deterministic.
+        var ctx = LoweringContext(toolIndex: 0, suffix: 0)
+        lower(schema, into: &ctx, ruleName: "root", emit: emit)
+
+        // If `root` lowered straight to the generic `value` rule the schema
+        // constrained nothing — signal "no grammar" so the caller can pick a
+        // weaker-but-honest strategy instead of a vacuous grammar.
+        if rules["root"] == "value" { return nil }
+
+        var lines: [String] = []
+        for name in emittedOrder {
+            lines.append("\(name) ::= \(rules[name]!)")
+        }
+        lines.append(contentsOf: Self.genericRuleLines)
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Diagnostics (pre-flight advisory)
 
     /// A non-binding prediction of how fully a tool's parameter schema will be
