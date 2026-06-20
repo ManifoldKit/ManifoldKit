@@ -537,11 +537,17 @@ package struct ConversationTurnExecutor: Sendable {
         }
 
         var ragCitations: [Citation] = []
+        // Structured retrieved passages for the embedded-Jinja `documents` block
+        // (#1967). A grounding template formats these directly; templates without
+        // a `documents` block still get the same passages via the system-prompt
+        // slots above. Empty when RAG didn't run or returned nothing.
+        var ragDocuments: [RetrievedDocument] = []
         if let ragService, let userPrompt {
             do {
                 let result = try await ragService.retrieve(query: userPrompt)
                 slots.append(contentsOf: result.slots)
                 ragCitations = result.citations
+                ragDocuments = result.documents
             } catch {
                 Log.inference.warning("ConversationRuntime: RAG retrieval failed, continuing without retrieved context: \(error.localizedDescription)")
             }
@@ -719,7 +725,8 @@ package struct ConversationTurnExecutor: Sendable {
                 maxThinkingTokens: config.maxThinkingTokens,
                 tools: advertisedTools,
                 priority: .userInitiated,
-                requestGroupID: sessionID
+                requestGroupID: sessionID,
+                documents: ragDocuments
             )
         } catch {
             await toolDispatch.unregisterSessionToolExecutors(registeredSessionToolNames)

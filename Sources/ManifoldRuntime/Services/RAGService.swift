@@ -177,13 +177,25 @@ public actor RAGService {
     public struct RetrievalResult: Sendable {
         public let slots: [PromptSlot]
         public let citations: [Citation]
+        /// The same retrieved passages as structured ``RetrievedDocument`` values,
+        /// for the embedded-Jinja render path's `documents` context variable
+        /// (#1967). A template that exposes a `{% for document in documents %}`
+        /// block grounds on these; templates without one still receive the same
+        /// passages as system-prompt text via ``slots``. One document per hit, in
+        /// the same order as ``citations``.
+        public let documents: [RetrievedDocument]
 
-        public init(slots: [PromptSlot], citations: [Citation]) {
+        public init(
+            slots: [PromptSlot],
+            citations: [Citation],
+            documents: [RetrievedDocument] = []
+        ) {
             self.slots = slots
             self.citations = citations
+            self.documents = documents
         }
 
-        public static let empty = RetrievalResult(slots: [], citations: [])
+        public static let empty = RetrievalResult(slots: [], citations: [], documents: [])
     }
 
     /// Returns the prompt slot AND citation list for the top `limit` passages
@@ -307,7 +319,15 @@ public actor RAGService {
             )
         }
 
-        return RetrievalResult(slots: [slot], citations: citations)
+        // Structured form for a template's `documents` block (#1967). Carries the
+        // full chunk text (not the citation snippet, which is truncated for the
+        // UI) so a grounding template sees the same passage the system-prompt slot
+        // injects. `doc_id` left to the renderer's positional fallback.
+        let documents = filteredHits.map { hit in
+            RetrievedDocument(title: hit.documentTitle, text: hit.chunk.text)
+        }
+
+        return RetrievalResult(slots: [slot], citations: citations, documents: documents)
     }
 
     /// Full-context path: reads every ingested document's source, estimates the
@@ -379,7 +399,13 @@ public actor RAGService {
             )
         }
 
-        return RetrievalResult(slots: [slot], citations: citations)
+        // Structured form for a template's `documents` block (#1967): the whole
+        // document text per record, mirroring the verbatim slot content.
+        let structuredDocuments = parsed.map { doc in
+            RetrievedDocument(title: doc.record.title, text: doc.text)
+        }
+
+        return RetrievalResult(slots: [slot], citations: citations, documents: structuredDocuments)
     }
 
     /// Returns a ``PromptSlot`` containing the top relevant passages for `query`,

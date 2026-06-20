@@ -1,0 +1,15 @@
+{
+  "description": "Qwen2-VL-style vision template that iterates the per-message content list and emits an image placeholder for each image part — exercises the #1967 image threading. The image-threading gate fires because the template references the bare `image` identifier inside a Jinja block.",
+  "systemPrompt": null,
+  "messages": [
+    {
+      "role": "user",
+      "text": "What is in this image?",
+      "images": [
+        { "mimeType": "image/png", "base64": "iVBORw0KGgo=" }
+      ]
+    }
+  ],
+  "tools": [],
+  "documents": []
+}

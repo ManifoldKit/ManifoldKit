@@ -1,0 +1,12 @@
+{
+  "description": "Command-R-style grounded template with a `{% if documents %}` block iterating `document.doc_id` / `document.title` / `document.text` — exercises the #1967 RAG documents threading. Before #1967 the renderer hard-coded `documents: []`, so this block never fired.",
+  "systemPrompt": null,
+  "messages": [
+    { "role": "user", "text": "What is the capital of France?" }
+  ],
+  "tools": [],
+  "documents": [
+    { "title": "France", "text": "Paris is the capital and most populous city of France." },
+    { "title": "Geography", "text": "France is a country in Western Europe." }
+  ]
+}

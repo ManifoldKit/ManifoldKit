@@ -1,0 +1,9 @@
+<|im_start|>user
+What is the capital of France?<|im_end|>
+<|im_start|>documents
+Document 0: France
+Paris is the capital and most populous city of France.
+Document 1: Geography
+France is a country in Western Europe.
+<|im_end|>
+<|im_start|>assistant
