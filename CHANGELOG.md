@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.55.0](https://github.com/roryford/ManifoldKit/compare/v0.54.0...v0.55.0) (2026-06-20)
+
+### Highlights
+
+**In-core text-to-speech.** `AudioGenerationRuntime` ships as a reference TTS backend that drives any `AudioGenerationBackend` from a live token stream — subscribe to its `events` property to receive `AudioRuntimeEvent` ticks as audio is synthesised and completed ([#1904](https://github.com/roryford/ManifoldKit/issues/1904), [#1908](https://github.com/roryford/ManifoldKit/issues/1908)). `ChatViewModel` wires this automatically when you pass an `audioGenerationService` to `ManifoldBootstrap`, and the message list renders a playback control per assistant turn ([#1911](https://github.com/roryford/ManifoldKit/issues/1911)).
+
+```swift
+let bootstrap = try ManifoldBootstrap(
+    audioGenerationService: MyTTSService()
+)
+// bootstrap.audioRuntime is pre-wired; ChatView picks it up automatically
+for await event in bootstrap.audioRuntime!.events {
+    // AudioRuntimeEvent.progress / .completed / .failed
+}
+```
+
+**Local tool calling through the Jinja render path.** The Jinja prompt renderer now injects tool definitions and tool-call/result turns into the formatted prompt, so backends that use `rendersFullPrompt = true` get correct tool round-trips without falling back to the legacy hand-rolled path ([#1909](https://github.com/roryford/ManifoldKit/issues/1909), [#1912](https://github.com/roryford/ManifoldKit/issues/1912)). No caller changes required — tool calls that previously produced empty completions on Jinja-template models now work.
+
+**`BackendCapabilities.rendersFullPrompt`.** A new boolean capability flag that backends set to `true` when they render the complete formatted prompt server-side (rather than relying on ManifoldKit's client-side template). Cloud backends default to `false`; custom backends that do their own prompt assembly should advertise `true` so consumers can label captured prompts accurately ([#1905](https://github.com/roryford/ManifoldKit/issues/1905), [#1907](https://github.com/roryford/ManifoldKit/issues/1907)).
+
+### Fixes
+
+* Auto-load persisted backends on `quickStart` relaunch — a persisted Ollama endpoint now resumes generating without a manual `loadSelectedEndpoint()` call ([#1914](https://github.com/roryford/ManifoldKit/issues/1914)).
+
+### Documentation
+
+* Added CLI interactive REPL quickstart (§3b) with stdin loop, stdout/stderr routing guidance, and `OLLAMA_MODEL` env override ([#1913](https://github.com/roryford/ManifoldKit/issues/1913)).
+* Documented `GenerationConfig` throw-vs-silent rule and Codable-lossy decoding behaviour ([#1906](https://github.com/roryford/ManifoldKit/issues/1906)).
+
 ## [0.54.0](https://github.com/roryford/ManifoldKit/compare/v0.53.0...v0.54.0) (2026-06-18)
 
 ### Highlights
