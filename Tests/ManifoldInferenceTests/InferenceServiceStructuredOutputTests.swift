@@ -160,4 +160,146 @@ final class InferenceServiceStructuredOutputTests: XCTestCase {
             XCTAssertFalse(underlying.isEmpty, "underlying decode error must be surfaced")
         }
     }
+
+    // MARK: - (#1916) Bounded validation-reask loop
+
+    /// JSON that is schema-valid but violates an enum constraint — exercises the
+    /// validator-failure reask path (not just decode failures).
+    private struct Unit: Decodable, Sendable, SchemaProviding, Equatable {
+        let units: String
+
+        static var jsonSchema: JSONSchemaValue {
+            .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "units": .object([
+                        "type": .string("string"),
+                        "enum": .array([.string("metric"), .string("imperial")]),
+                    ]),
+                ]),
+                "required": .array([.string("units")]),
+            ])
+        }
+    }
+
+    // (a) invalid attempt 1, valid attempt 2 → succeeds in exactly 2 generations.
+    func test_reask_invalidThenValid_succeedsInTwoGenerations() async throws {
+        let backend = MockInferenceBackend(capabilities: weakCapabilities())
+        backend.isModelLoaded = true
+        // Per-turn scripting: turn 1 = garbage (decode fails), turn 2 = valid.
+        backend.tokensToYieldPerTurn = [
+            ["not json"],
+            tokens(#"{"city":"Paris","celsius":21}"#),
+        ]
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        let result = try await service.respond(
+            Weather.self,
+            to: "Weather in Paris?",
+            reask: ReaskPolicy(maxAttempts: 2)
+        )
+
+        XCTAssertEqual(result.value, Weather(city: "Paris", celsius: 21))
+        XCTAssertEqual(backend.generateCallCount, 2, "exactly two generations should have run (one reask)")
+    }
+
+    // (b) always-invalid → throws reaskBudgetExhausted after maxAttempts generations.
+    func test_reask_alwaysInvalid_throwsBudgetExhausted() async throws {
+        let backend = MockInferenceBackend(capabilities: weakCapabilities())
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["never valid json"]
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        do {
+            _ = try await service.respond(
+                Weather.self,
+                to: "Weather?",
+                reask: ReaskPolicy(maxAttempts: 3)
+            )
+            XCTFail("expected reaskBudgetExhausted")
+        } catch let error as StructuredOutputError {
+            guard case .reaskBudgetExhausted(let lastError, let attempts) = error else {
+                return XCTFail("expected .reaskBudgetExhausted, got \(error)")
+            }
+            XCTAssertEqual(attempts, 3, "should report the full budget it burned")
+            XCTAssertFalse(lastError.isEmpty, "must carry the last failure message")
+        }
+        XCTAssertEqual(backend.generateCallCount, 3, "should run exactly maxAttempts generations")
+    }
+
+    // (c) the reask follow-up prompt carries the ValidationFailure message.
+    func test_reask_followUpPromptContainsValidationFailureMessage() async throws {
+        let backend = MockInferenceBackend(capabilities: weakCapabilities())
+        backend.isModelLoaded = true
+        // Turn 1: enum-violating but otherwise schema-valid JSON. Turn 2: valid.
+        backend.tokensToYieldPerTurn = [
+            tokens(#"{"units":"celsius"}"#),
+            tokens(#"{"units":"metric"}"#),
+        ]
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        _ = try await service.respond(
+            Unit.self,
+            to: "Pick units",
+            reask: ReaskPolicy(maxAttempts: 2, includeRawOutput: true)
+        )
+
+        // The second generation's prompt (the assembled conversation) must
+        // contain the validator's model-readable message about the enum.
+        let lastPrompt = try XCTUnwrap(backend.lastPrompt, "no prompt reached the backend")
+        XCTAssertTrue(
+            lastPrompt.contains("must be one of: metric, imperial"),
+            "reask follow-up should embed the validator failure message; got: \(lastPrompt)"
+        )
+        // includeRawOutput echoes the bad output back as an assistant turn.
+        XCTAssertTrue(
+            lastPrompt.contains("celsius"),
+            "includeRawOutput should echo the bad output into the reask conversation"
+        )
+    }
+
+    // (d) schema-valid-but-enum-violating JSON triggers reask via the validator
+    // path (decode would succeed — only the validator catches it).
+    func test_reask_schemaValidButEnumViolating_triggersReask() async throws {
+        let backend = MockInferenceBackend(capabilities: weakCapabilities())
+        backend.isModelLoaded = true
+        backend.tokensToYieldPerTurn = [
+            tokens(#"{"units":"kelvin"}"#),   // decodes fine, violates enum
+            tokens(#"{"units":"imperial"}"#), // valid
+        ]
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        let result = try await service.respond(
+            Unit.self,
+            to: "Pick units",
+            reask: ReaskPolicy(maxAttempts: 2)
+        )
+
+        XCTAssertEqual(result.value, Unit(units: "imperial"))
+        XCTAssertEqual(backend.generateCallCount, 2, "validator failure must trigger a reask, not pass through")
+    }
+
+    // (e) maxAttempts:1 disables reask — a single failed attempt throws immediately
+    // with no retry. Confirms the budget gate is live.
+    func test_reask_maxAttemptsOne_throwsImmediatelyWithoutRetry() async throws {
+        let backend = MockInferenceBackend(capabilities: weakCapabilities())
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["not json"]
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        do {
+            _ = try await service.respond(
+                Weather.self,
+                to: "Weather?",
+                reask: ReaskPolicy(maxAttempts: 1)
+            )
+            XCTFail("expected immediate failure")
+        } catch let error as StructuredOutputError {
+            guard case .reaskBudgetExhausted(_, let attempts) = error else {
+                return XCTFail("expected .reaskBudgetExhausted, got \(error)")
+            }
+            XCTAssertEqual(attempts, 1)
+        }
+        XCTAssertEqual(backend.generateCallCount, 1, "maxAttempts:1 must not retry")
+    }
 }
