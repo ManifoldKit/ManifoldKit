@@ -304,6 +304,19 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         SystemLanguageModel.default.availability == .available
     }
 
+    /// Structured, OS-agnostic reason describing Foundation availability.
+    ///
+    /// Convenience alias for ``FoundationAvailability/reason`` exposed on the
+    /// backend so hosts can read a UI-drivable reason (`.deviceNotEligible` vs
+    /// `.appleIntelligenceNotEnabled` vs `.modelNotReady`, …) without importing
+    /// `FoundationModels` or writing `#available` guards. Reachable here only
+    /// when the SDK and OS are present; prefer ``FoundationAvailability/reason``
+    /// from host code so the call site compiles on any deployment target
+    /// (it collapses to `.unsupportedOS` / `.notBuilt` off-platform).
+    public static var availabilityReason: FoundationAvailabilityReason {
+        FoundationAvailability.reason
+    }
+
     /// Whether the system language model is available according to this backend's
     /// injected availability resolver. Equals `FoundationBackend.isAvailable` in
     /// production; can differ in tests that inject a stub resolver.
