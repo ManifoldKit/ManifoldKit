@@ -9,9 +9,12 @@ import ManifoldTestSupport
 ///
 /// Each cloud SaaS encoder forwards ``GenerationConfig/stopSequences`` to its
 /// provider under the provider's own key — OpenAI Chat Completions `stop`,
-/// OpenAI Responses `stop`, Anthropic `stop_sequences` — and OMITS the key
-/// entirely when the caller left stops unset (empty), so payloads for existing
-/// callers stay byte-identical.
+/// Anthropic `stop_sequences` — and OMITS the key entirely when the caller left
+/// stops unset (empty), so payloads for existing callers stay byte-identical.
+///
+/// The OpenAI **Responses** API is the exception: it does not support a
+/// stop-sequence parameter (sending `stop` returns 400 "Unknown parameter:
+/// 'stop'"), so `OpenAIResponsesBackend` never emits one — verified below.
 ///
 /// We drive `buildRequest(...)` directly: the field insertion is a pure
 /// payload-construction concern, so no live HTTP round-trip is required.
@@ -63,9 +66,13 @@ final class CloudStopSequencesTests: XCTestCase {
         XCTAssertNil(json["stop"], "unset stops must not appear on the wire")
     }
 
-    // MARK: - OpenAI Responses: "stop"
+    // MARK: - OpenAI Responses: stop is UNSUPPORTED — never emitted
 
-    func test_openAIResponses_includesStop_whenSet() throws {
+    /// The Responses API rejects a top-level `stop` parameter (400 "Unknown
+    /// parameter: 'stop'"), so the backend must NOT send one even when the
+    /// caller sets stopSequences — sending an invalid field 400s strict
+    /// providers. See OpenAIResponsesBackend's buildRequest comment.
+    func test_openAIResponses_neverEmitsStop_evenWhenSet() throws {
         let backend = OpenAIResponsesBackend()
         backend.configure(
             baseURL: URL(string: "https://openai-responses.test")!,
@@ -80,7 +87,14 @@ final class CloudStopSequencesTests: XCTestCase {
         )
 
         let json = try jsonBody(from: request)
-        XCTAssertEqual(json["stop"] as? [String], ["END"])
+        XCTAssertNil(
+            json["stop"],
+            "Responses API does not support `stop`; sending it 400s"
+        )
+        XCTAssertNil(
+            json["stop_sequences"],
+            "Responses API has no stop-sequence field under any name"
+        )
     }
 
     func test_openAIResponses_omitsStop_whenEmpty() throws {
