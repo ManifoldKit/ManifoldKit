@@ -65,6 +65,45 @@ final class BM25ScorerTests: XCTestCase {
         XCTAssertEqual(ranked.first?.id, twiceID)
     }
 
+    func testLengthNormalizationFavoursShorterMatchingDocument() {
+        // Both docs contain `alpha` exactly once, but one is padded with filler.
+        // BM25's `b`-driven length normalization must penalize the longer doc:
+        // the same single match is "diluted" across more tokens. The legacy
+        // constant-1.0 keyword scorer ignored length entirely, so this ordering
+        // is only achievable with real BM25 length normalization (b = 0.75).
+        let shortID = UUID()
+        let longID = UUID()
+        let corpus: [(id: UUID, text: String)] = [
+            (shortID, "alpha beta"),
+            (longID, "alpha beta gamma delta epsilon zeta eta theta"),
+        ]
+        let scorer = BM25Scorer(corpus: corpus)
+        let ranked = scorer.score(query: "alpha", limit: 10)
+        XCTAssertEqual(ranked.first?.id, shortID,
+                       "Shorter document with equal term frequency must score higher")
+        let shortScore = ranked.first { $0.id == shortID }?.score ?? 0
+        let longScore = ranked.first { $0.id == longID }?.score ?? 0
+        XCTAssertGreaterThan(shortScore, longScore)
+    }
+
+    func testLengthNormalizationDisabledWhenBIsZero() {
+        // With b = 0 the length term collapses to `k1`, so two docs that match the
+        // query term with equal tf score identically regardless of length —
+        // proving `b` is the live knob behind the length penalty above.
+        let shortID = UUID()
+        let longID = UUID()
+        let corpus: [(id: UUID, text: String)] = [
+            (shortID, "alpha beta"),
+            (longID, "alpha beta gamma delta epsilon zeta eta theta"),
+        ]
+        let scorer = BM25Scorer(corpus: corpus, b: 0)
+        let ranked = scorer.score(query: "alpha", limit: 10)
+        let shortScore = ranked.first { $0.id == shortID }?.score ?? 0
+        let longScore = ranked.first { $0.id == longID }?.score ?? 0
+        XCTAssertEqual(shortScore, longScore, accuracy: 1e-9,
+                       "With b = 0, length must not affect score")
+    }
+
     func testZeroMatchDocumentsAreDropped() {
         let matchID = UUID()
         let corpus: [(id: UUID, text: String)] = [

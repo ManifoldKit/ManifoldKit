@@ -77,9 +77,11 @@ public struct RAGConfiguration: Sendable {
     /// `<Application Support>/<bundleIdentifier>/ragvectors.bin`.
     public var vectorStoreURL: URL?
 
-    /// When `true`, retrieval runs the dense (cosine) and sparse (BM25) legs in
-    /// parallel and fuses them with Reciprocal Rank Fusion before the top-k +
-    /// rerank stages (#1919). Default: `false`, which preserves the historical
+    /// When `true`, retrieval runs the dense (cosine) and sparse (BM25) legs and
+    /// fuses them with Reciprocal Rank Fusion before the top-k + rerank stages
+    /// (#1919). Both legs query the same vector-store actor, so they are issued
+    /// sequentially rather than concurrently — there is no concurrency win behind
+    /// a single serialized actor. Default: `false`, which preserves the historical
     /// dense-or-keyword-fallback behaviour byte-for-byte — hybrid is strictly
     /// opt-in.
     ///
