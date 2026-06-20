@@ -152,6 +152,14 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     /// assert tool-loop reuse is non-decreasing across rounds.
     public var kvCacheReuseToYieldPerTurn: [Int] = []
 
+    /// Per-turn token-usage counts. Each call to `generate()` pops the first
+    /// entry; that `(prompt, completion)` pair is yielded as the terminal
+    /// `.usage(TokenUsage(...))` event for that turn (after tokens/tool calls,
+    /// before the stream finishes) — matching the real-backend contract where
+    /// usage lands at end-of-generation. Empty queue yields no usage event.
+    /// Use to drive run-level token-budget tool-loop coverage (#1939 item 3).
+    public var usageToYieldPerTurn: [(prompt: Int, completion: Int)] = []
+
     // Track calls
     public var loadModelCallCount = 0
     public var generateCallCount = 0
@@ -284,6 +292,16 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
             kvReuseCount = kvCacheReuseToYield
         }
 
+        // Per-turn usage is popped in step with `generate()` so successive
+        // tool-loop iterations report different token counts. `nil` yields no
+        // `.usage` event for this turn.
+        let usageThisTurn: (prompt: Int, completion: Int)?
+        if !usageToYieldPerTurn.isEmpty {
+            usageThisTurn = usageToYieldPerTurn.removeFirst()
+        } else {
+            usageThisTurn = nil
+        }
+
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
             continuationLock.lock()
             self.activeContinuation = continuation
@@ -358,6 +376,15 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
                             continuation.yield(.toolCall(call))
                         }
                     }
+                }
+                // Terminal usage event lands last (real backends report usage
+                // at end-of-generation). Emitted before finish so a consumer
+                // draining the stream folds it in for the turn.
+                if let usageThisTurn, !Task.isCancelled {
+                    continuation.yield(.usage(TokenUsage(
+                        promptTokens: usageThisTurn.prompt,
+                        completionTokens: usageThisTurn.completion
+                    )))
                 }
                 self.isGenerating = false
                 if let streamError = self.shouldThrowInsideStream, !Task.isCancelled {

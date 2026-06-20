@@ -57,6 +57,7 @@ final class ParallelToolCallOrderingTests: XCTestCase {
             case .prefillProgress, .promptRendered, .token, .usage,
                  .thinkingToken, .thinkingCompleted, .thinkingSignature,
                  .toolResult, .toolProgress, .toolIterationLimitExceeded,
+                 .runTokenBudgetExceeded,
                  .kvCacheReuse, .throttleDiagnostic,
                  .toolCallStart, .toolCallArgumentsDelta,
                  .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved,

@@ -829,6 +829,11 @@ package struct ConversationTurnExecutor: Sendable {
                         InferenceError.inferenceFailure("Tool-call loop stopped after \(iterations) iterations.")
                     )))
 
+                case .runTokenBudgetExceeded(let tokensUsed, let limit):
+                    emit(.errorRaised(.inference(
+                        InferenceError.inferenceFailure("Tool-call loop stopped after reaching the run-level token budget (used \(tokensUsed) of \(limit) tokens).")
+                    )))
+
                 case .recordUsage(let prompt, let completion):
                     accumulator.recordUsage(prompt: prompt, completion: completion)
 

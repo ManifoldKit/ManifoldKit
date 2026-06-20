@@ -131,6 +131,8 @@ public struct EventRecorder: Sendable {
                     events.append(.init(t: t, kind: "toolResult", v: result.callId))
                 case .toolIterationLimitExceeded(let iterations):
                     events.append(.init(t: t, kind: "toolIterationLimitExceeded", v: "\(iterations)"))
+                case .runTokenBudgetExceeded(let tokensUsed, let limit):
+                    events.append(.init(t: t, kind: "runTokenBudgetExceeded", v: "\(tokensUsed)/\(limit)"))
                 case .kvCacheReuse(let tokens):
                     events.append(.init(t: t, kind: "kvCacheReuse", v: "\(tokens)"))
                 case .throttleDiagnostic(let reason):

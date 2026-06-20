@@ -210,7 +210,7 @@ final class ToolCallContractTests: XCTestCase {
             case .toolCall(let call): toolCalls.append(call)
             case .usage: break
             case .thinkingToken, .thinkingCompleted, .thinkingSignature: break
-            case .toolResult, .toolProgress, .toolIterationLimitExceeded: break
+            case .toolResult, .toolProgress, .toolIterationLimitExceeded, .runTokenBudgetExceeded: break
             case .kvCacheReuse: break
             case .throttleDiagnostic: break
             case .toolCallStart, .toolCallArgumentsDelta: break
@@ -287,7 +287,7 @@ final class ToolCallContractTests: XCTestCase {
             case .toolCall(let c): toolCalls.append(c)
             case .usage: break
             case .thinkingToken, .thinkingCompleted, .thinkingSignature: break
-            case .toolResult, .toolProgress, .toolIterationLimitExceeded: break
+            case .toolResult, .toolProgress, .toolIterationLimitExceeded, .runTokenBudgetExceeded: break
             case .kvCacheReuse: break
             case .throttleDiagnostic: break
             case .toolCallStart, .toolCallArgumentsDelta: break

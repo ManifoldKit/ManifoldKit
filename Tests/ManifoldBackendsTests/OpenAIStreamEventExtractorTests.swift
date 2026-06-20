@@ -307,6 +307,7 @@ final class OpenAIStreamEventExtractorParityTests: XCTestCase {
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .promptRendered: return "promptRendered"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
+        case .runTokenBudgetExceeded(let used, let limit): return "runTokenBudgetExceeded(\(used)/\(limit))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
