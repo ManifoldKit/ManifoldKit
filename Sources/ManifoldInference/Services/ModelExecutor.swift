@@ -34,13 +34,10 @@ public struct RealWedgeWatchdog: WedgeWatchdog {
 
     public func awaitWedgeBudget() async {
         // Cooperative: if the executor cancels us (an event arrived first),
-        // the sleep throws CancellationError, which we swallow — a cancelled
-        // watchdog simply never reports a wedge.
-        do {
-            try await Task.sleep(for: budget)
-        } catch {
-            // Cancelled before the budget elapsed → healthy turn, no wedge.
-        }
+        // the sleep throws CancellationError — a cancelled watchdog simply
+        // never reports a wedge. `try? await Task.sleep` is the codebase's
+        // sanctioned idiom for this best-effort suspension (SilentCatchAudit).
+        try? await Task.sleep(for: budget)
     }
 }
 
