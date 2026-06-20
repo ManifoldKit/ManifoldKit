@@ -243,7 +243,8 @@ private actor FixtureReplayTransport: MCPTransport {
 
     func start() async throws {}
 
-    func send(_ payload: Data) async throws {
+    func send(_ payload: Data, routing: MCPRouting?) async throws {
+        _ = routing
         let message = try codec.decode(payload)
         guard case .request(let id, let method, _) = message else {
             return
