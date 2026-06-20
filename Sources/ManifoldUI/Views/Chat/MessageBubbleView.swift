@@ -47,6 +47,10 @@ public struct MessageBubbleView: View {
     /// here where they are consumed.
     @ScaledMetric(relativeTo: .body) private var typeScale: CGFloat = 1
 
+    /// Links an inline `[n]` marker tap in the answer text to the matching source
+    /// card. Owned per-bubble so two assistant messages never cross-highlight.
+    @State private var citationHighlight = CitationHighlightCoordinator()
+
     public init(
         message: ChatMessage,
         isStreaming: Bool,
@@ -191,7 +195,12 @@ public struct MessageBubbleView: View {
                     parts: message.contentParts,
                     role: .assistant,
                     isStreaming: isStreaming,
-                    messageID: message.id
+                    messageID: message.id,
+                    // why: only feed citations to the text renderer once streaming
+                    // ends — mid-stream the answer may hold half-formed `[n]`
+                    // tokens, and the source cards (which markers deep-link to)
+                    // are themselves only shown post-stream below.
+                    citations: isStreaming ? [] : (message.citations ?? [])
                 )
             }
 
@@ -203,7 +212,7 @@ public struct MessageBubbleView: View {
             // doesn't pop in/out while the bubble is still filling. Empty
             // citation arrays render an EmptyView via CitationsView.
             if !isStreaming, let citations = message.citations, !citations.isEmpty {
-                CitationsView(citations: citations)
+                CitationsView(citations: citations, highlight: citationHighlight)
                     .padding(.top, 2)
             }
 
@@ -220,6 +229,21 @@ public struct MessageBubbleView: View {
                 }
             }
         }
+        // Intercept inline-marker taps anywhere in this bubble. InlineCitationTextView
+        // encodes each `[n]` superscript as a `citation://<index>` link; route those
+        // to the highlight coordinator (which scrolls + flashes the matching source
+        // card) instead of letting SwiftUI open a URL. Scoped to the whole VStack so
+        // taps on markers in the *answer text* — a sibling of CitationsView — are
+        // caught too. `.handled` suppresses the browser-open fallback.
+        .environment(\.openURL, OpenURLAction { url in
+            if let index = InlineCitationRenderer.citationIndex(from: url),
+               let citations = message.citations,
+               index >= 0, index < citations.count {
+                citationHighlight.highlight(index: index)
+                return .handled
+            }
+            return .systemAction
+        })
     }
 
     /// Wraps inner bubble content in the resolved ``MessageBubbleStyle``. The
