@@ -223,7 +223,10 @@ if [[ -n "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR:-}" ]]; then
 fi
 
 echo "==> swift build (Hello World snippet from README)"
-if ! env "${SWIFT_ENV[@]}" swift build --package-path "${WORK}" "${BUILD_PATH_FLAG[@]}" 2>&1 | tail -60; then
+# Bash 3.2 (the CI runner shell) errors under `set -u` when expanding an empty
+# array as "${arr[@]}". BUILD_PATH_FLAG is empty unless a build cache is set, so
+# guard the expansion with the ${arr[@]+...} portable idiom.
+if ! env "${SWIFT_ENV[@]}" swift build --package-path "${WORK}" ${BUILD_PATH_FLAG[@]+"${BUILD_PATH_FLAG[@]}"} 2>&1 | tail -60; then
     echo "::error file=README.md,line=${first_h2_line}::The Hello World snippet does not compile against the current ManifoldKit public API."
     echo "    Either the snippet drifted (e.g. deleted symbol, renamed type) or"
     echo "    a public symbol it relies on was removed without updating the README."
