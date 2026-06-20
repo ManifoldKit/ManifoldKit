@@ -8,6 +8,27 @@ import Foundation
 /// load path sees the same authoritative context and verdict.
 public struct ModelLoadPlan: Sendable {
 
+    /// Conservative per-token KV-cache cost (bytes) for callers that build ``Inputs``
+    /// directly without GGUF metadata to read.
+    ///
+    /// Most app-side fit checks should prefer the fully-public, canonical pre-download
+    /// entry point ``estimate(for:requestedContextSize:environment:absoluteContextCeiling:headroomFraction:)``,
+    /// which derives the ``MemoryStrategy`` from ``DownloadableModel/modelType`` and applies
+    /// this fallback internally. Reach for this constant only when constructing an ``Inputs``
+    /// value by hand (e.g. a host serving a curated/recommended shelf with only manifest-level
+    /// fields) — it lets callers stay on the public surface instead of importing the
+    /// `@_spi(BackendInternals)` ``GGUFKVCacheEstimator``.
+    ///
+    /// This is the legacy 8 KB/token heuristic: conservative versus real grouped-query-attention
+    /// architectures (which are typically cheaper per token), so a verdict computed with it is at
+    /// least as strict as the post-download `compute(...)` path for the same inputs.
+    ///
+    /// Single source of truth — this aliases the SPI estimator's
+    /// `GGUFKVCacheEstimator.legacyFallbackBytesPerToken` so the public constant and the
+    /// internal heuristic can never drift (a unit test asserts the two stay equal).
+    public static let conservativeFallbackBytesPerToken: UInt64 =
+        GGUFKVCacheEstimator.legacyFallbackBytesPerToken
+
     /// The raw inputs a plan was computed from. Captured on the plan so callers can
     /// log, diff, or re-evaluate with different parameters without re-querying state.
     public struct Inputs: Sendable, Equatable {
@@ -306,6 +327,13 @@ public struct ModelLoadPlan: Sendable {
     }
 
     /// Pre-flight fit verdict for a `DownloadableModel` (browse-time, pre-download).
+    ///
+    /// **This is the canonical public entry point for pre-download memory-fit checks.** It needs
+    /// only manifest-level fields (`sizeBytes`, `modelType`) — no GGUF header — and applies the
+    /// conservative KV fallback internally, so callers never have to construct ``Inputs`` by hand.
+    /// Only when you genuinely must build an ``Inputs`` directly should you reach for the public
+    /// ``conservativeFallbackBytesPerToken`` constant instead of the `@_spi(BackendInternals)`
+    /// estimator.
     ///
     /// Unlike ``compute(for:requestedContextSize:environment:absoluteContextCeiling:headroomFraction:)``
     /// which consumes an on-disk ``ModelInfo`` (with GGUF metadata, detected context length,
