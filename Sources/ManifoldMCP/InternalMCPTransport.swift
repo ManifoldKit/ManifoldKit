@@ -3,11 +3,34 @@ import Foundation
 import Security
 import ManifoldInference
 
+/// Routing metadata threaded alongside a serialized JSON-RPC payload so the HTTP
+/// transport can emit the `Mcp-Method` / `Mcp-Name` headers the MCP spec mandates
+/// from 2026-07-28. The method/tool name are known up in `InternalMCPSession` but
+/// lost once the message is encoded to bytes, so they must travel beside the payload.
+internal struct MCPRouting: Sendable {
+    /// The JSON-RPC method (e.g. `tools/call`, `initialize`), emitted as `Mcp-Method`.
+    let method: String
+    /// The invocation target name — the tool name for `tools/call`, the prompt/resource
+    /// name where applicable — emitted as `Mcp-Name`. `nil` when the method carries none.
+    let name: String?
+
+    init(method: String, name: String? = nil) {
+        self.method = method
+        self.name = name
+    }
+}
+
 internal protocol MCPTransport: Sendable {
     var incomingMessages: AsyncThrowingStream<Data, Error> { get }
     func start() async throws
-    func send(_ payload: Data) async throws
+    func send(_ payload: Data, routing: MCPRouting?) async throws
     func close() async
+}
+
+extension MCPTransport {
+    func send(_ payload: Data) async throws {
+        try await send(payload, routing: nil)
+    }
 }
 
 internal struct MCPTransportConfiguration: Sendable {
@@ -151,11 +174,11 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
         }
     }
 
-    func send(_ payload: Data) async throws {
-        try await send(payload, allowRetry: true)
+    func send(_ payload: Data, routing: MCPRouting?) async throws {
+        try await send(payload, routing: routing, allowRetry: true)
     }
 
-    private func send(_ payload: Data, allowRetry: Bool) async throws {
+    private func send(_ payload: Data, routing: MCPRouting?, allowRetry: Bool) async throws {
         if payload.count > configuration.maxMessageBytes {
             throw MCPError.oversizeMessage(payload.count)
         }
@@ -166,6 +189,14 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
         request.httpBody = payload
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // MCP routing headers (spec-mandated from 2026-07-28). Set before the
+        // caller-supplied custom headers so an explicit override still wins.
+        if let routing {
+            request.setValue(routing.method, forHTTPHeaderField: "Mcp-Method")
+            if let name = routing.name {
+                request.setValue(name, forHTTPHeaderField: "Mcp-Name")
+            }
+        }
         for (name, value) in configuration.headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
@@ -196,7 +227,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
         if http.statusCode == 401 || http.statusCode == 403 {
             switch try await configuration.authorization.handleUnauthorized(statusCode: http.statusCode, body: data) {
             case .retry where allowRetry:
-                return try await send(payload, allowRetry: false)
+                return try await send(payload, routing: routing, allowRetry: false)
             case .retry:
                 throw MCPError.authorizationFailed("unauthorized")
             case .fail(let error):
@@ -323,7 +354,10 @@ internal actor MCPStdioTransport: MCPTransport {
         }
     }
 
-    func send(_ payload: Data) async throws {
+    func send(_ payload: Data, routing: MCPRouting?) async throws {
+        // Routing metadata has no representation in the stdio Content-Length framing;
+        // it exists purely for the HTTP transport's spec-mandated headers.
+        _ = routing
         if payload.count > maxMessageBytes {
             throw MCPError.oversizeMessage(payload.count)
         }

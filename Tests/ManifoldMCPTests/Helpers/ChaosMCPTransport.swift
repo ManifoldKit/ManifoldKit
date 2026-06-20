@@ -146,7 +146,8 @@ final class ChaosMCPTransport: MCPTransport, @unchecked Sendable {
         }
     }
 
-    func send(_ payload: Data) async throws {
+    func send(_ payload: Data, routing: MCPRouting?) async throws {
+        _ = routing
         sendCallCount.wrappingAdd(1, ordering: .relaxed)
         captureSend(payload)
 

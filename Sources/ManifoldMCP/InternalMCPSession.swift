@@ -127,7 +127,7 @@ internal actor MCPSession {
         guard state != .closed else { throw MCPError.transportClosed }
         let message = MCPJSONRPCMessage.notification(method: method, params: params)
         let payload = try codec.encode(message)
-        try await transport.send(payload)
+        try await transport.send(payload, routing: routing(for: message))
         await stateHook.sessionDidSend(message)
     }
 
@@ -143,7 +143,7 @@ internal actor MCPSession {
             return
         }
         do {
-            try await transport.send(payload)
+            try await transport.send(payload, routing: routing(for: message))
         } catch {
             Log.inference.error("MCPSession: failed to send notification '\(method, privacy: .public)': \(error, privacy: .private)")
         }
@@ -263,7 +263,7 @@ internal actor MCPSession {
     ) async {
         pendingRequests[id] = continuation
         do {
-            try await transport.send(payload)
+            try await transport.send(payload, routing: routing(for: request))
             await stateHook.sessionDidSend(request)
         } catch {
             failPendingRequest(id: id, error: error)
@@ -319,6 +319,19 @@ internal actor MCPSession {
                 continuation.resume(throwing: MCPError.requestTimeout)
             }
         }
+    }
+}
+
+/// Derives the `Mcp-Method`/`Mcp-Name` routing metadata for a JSON-RPC message so the
+/// HTTP transport can emit the spec-mandated headers (2026-07-28). The tool name for a
+/// `tools/call` request lives in `params.name`; other methods carry no `Mcp-Name`.
+private func routing(for message: MCPJSONRPCMessage) -> MCPRouting? {
+    switch message {
+    case .request(_, let method, let params), .notification(let method, let params):
+        let name = method == "tools/call" ? stringValue(objectValue(params)?["name"]) : nil
+        return MCPRouting(method: method, name: name)
+    case .result, .error:
+        return nil
     }
 }
 

@@ -110,6 +110,60 @@ final class MCPSessionTests: XCTestCase {
         await session.close()
     }
 
+    func test_sendRequestThreadsMcpRoutingHeadersForToolCall() async throws {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Routing Test",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test"
+        )
+
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 4096, maxJSONNestingDepth: 8)
+        let transport = MockSessionTransport(codec: codec)
+        await transport.setRequestHandler { id, method, _ in
+            switch method {
+            case "initialize":
+                return .result(id: id, result: .object([
+                    "protocolVersion": .string("2025-03-26"),
+                    "serverInfo": .object(["name": .string("Demo"), "version": .string("1")]),
+                    "capabilities": .object([:]),
+                ]))
+            case "tools/call":
+                return .result(id: id, result: .object(["content": .array([])]))
+            default:
+                return nil
+            }
+        }
+
+        let session = MCPSession(
+            descriptor: descriptor,
+            transport: transport,
+            codec: codec,
+            requestTimeout: .seconds(2),
+            maxConcurrentRequests: 4
+        )
+
+        _ = try await session.start()
+        _ = try await session.sendRequest(
+            method: "tools/call",
+            params: .object(["name": .string("search"), "arguments": .object([:])])
+        )
+
+        let routing = await transport.sentRoutingMetadata()
+        // The first send is the `initialized` notification from start(); the tools/call
+        // request is the one carrying a tool name.
+        let toolCallRouting = routing.compactMap { $0 }.first { $0.method == "tools/call" }
+        XCTAssertEqual(toolCallRouting?.method, "tools/call", "Mcp-Method must carry the JSON-RPC method")
+        XCTAssertEqual(toolCallRouting?.name, "search", "Mcp-Name must carry the tools/call tool name")
+
+        // A non-tools/call method carries a method but no name.
+        let initializeRouting = routing.compactMap { $0 }.first { $0.method == "initialize" }
+        XCTAssertEqual(initializeRouting?.method, "initialize")
+        XCTAssertNil(initializeRouting?.name, "Mcp-Name must be absent for methods without an invocation target")
+        // Sabotage: dropping `routing:` from the transport.send call in MCPSession.registerPendingAndSend (passing the no-routing default) makes toolCallRouting nil, failing the method/name assertions above.
+
+        await session.close()
+    }
+
     func test_sendRequestPropagatesJSONRPCError() async throws {
         let descriptor = MCPServerDescriptor(
             displayName: "Session Test",
@@ -331,6 +385,7 @@ private actor MockSessionTransport: MCPTransport {
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
     private var handler: (@Sendable (MCPRequestID, String, JSONSchemaValue?) -> MCPJSONRPCMessage?)?
     private var sent: [MCPJSONRPCMessage] = []
+    private var sentRouting: [MCPRouting?] = []
 
     init(codec: MCPJSONRPCCodec) {
         self.codec = codec
@@ -347,9 +402,10 @@ private actor MockSessionTransport: MCPTransport {
 
     func start() async throws {}
 
-    func send(_ payload: Data) async throws {
+    func send(_ payload: Data, routing: MCPRouting?) async throws {
         let message = try codec.decode(payload)
         sent.append(message)
+        sentRouting.append(routing)
 
         guard case .request(let id, let method, let params) = message,
               let handler else {
@@ -367,5 +423,9 @@ private actor MockSessionTransport: MCPTransport {
 
     func sentMessages() -> [MCPJSONRPCMessage] {
         sent
+    }
+
+    func sentRoutingMetadata() -> [MCPRouting?] {
+        sentRouting
     }
 }
