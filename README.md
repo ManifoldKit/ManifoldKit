@@ -329,7 +329,7 @@ Honest expectations — ManifoldKit's MCP surface is **tool-and-resource first**
 | Capability | Client (consume) | Host (expose) | Notes |
 |---|---|---|---|
 | **Tools** (`tools/list`, `tools/call`) | ✅ | ✅ | `MCPToolSource` / `MCPToolExecutor`; bridged into the `ToolRegistry`. |
-| **Resources** (`resources/list`, `resources/read`) | ✅ | ✅ | Client exposes `supportsResources`; host serves list + read. |
+| **Resources** (`resources/list`, `resources/read`) | ⚠️ partial | ✅ | Host serves list + read; client **detects** `supportsResources` but no outbound `resources/*` call is wired yet (only `tools/*` is consumed). |
 | **Prompts** (`prompts/list`, `prompts/get`) | ⚠️ partial | ❌ | Capability is **detected** (`supportsPrompts`) but not yet consumed — no client call wired. |
 | **OAuth 2.1** | ✅ | — | Authorization-server discovery, token exchange, PKCE, secured token store. |
 | **Sampling** (`sampling/createMessage`) | ❌ | ❌ | Not implemented — the MCP surface is text-passthrough. Tracked in [#1925](https://github.com/roryford/ManifoldKit/issues/1925). |

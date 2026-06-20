@@ -125,8 +125,17 @@ import ManifoldKit
 let getWeather = ToolDefinition(
     name: "get_weather",
     description: "Look up the current weather for a city.",
+    // parameters is a JSONSchemaValue — a typed enum (.object / .string / …),
+    // not a [String: Any]. Build the JSON-Schema document explicitly:
     parameters: .object([
-        "city": .string(description: "City name")
+        "type": .string("object"),
+        "properties": .object([
+            "city": .object([
+                "type": .string("string"),
+                "description": .string("City name")
+            ])
+        ]),
+        "required": .array([.string("city")])
     ])
 )
 ```
