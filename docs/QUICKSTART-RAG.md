@@ -243,6 +243,8 @@ with the shipped `CitationsView`, or read the array directly.
 
 ## Where to go next
 
+- [`docs/RAG-TUNING.md`](RAG-TUNING.md) — tune chunk size/overlap, decide whether
+  reranking earns its latency, and read the citation surface once setup works.
 - [`docs/QUICKSTART.md`](QUICKSTART.md) — the full-stack `quickStart()` and
   `ManifoldBootstrap.build(...)` paths this guide extends.
 - [`docs/SWIFTUI-MULTI-SESSION.md`](SWIFTUI-MULTI-SESSION.md) — pair RAG with a

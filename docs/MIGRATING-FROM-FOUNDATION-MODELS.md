@@ -1,0 +1,216 @@
+# Migrating from Apple Foundation Models / AnyLanguageModel
+
+If you already think in Apple's `LanguageModelSession` / `@Generable` idioms — or
+in HuggingFace **AnyLanguageModel**'s provider abstraction — this guide maps that
+mental model onto ManifoldKit's surface. The translation is mostly a level-up:
+ManifoldKit operates one altitude *above* a model-access library, so the session,
+tool, and structured-output concepts you know become the turn loop, the tool
+registry, and `GenerationConfig`.
+
+> **TL;DR.** A `LanguageModelSession` becomes a `ChatViewModel` (or a
+> `ConversationRuntime` if you want headless control). `session.respond(to:)`
+> becomes `chatVM.sendMessage(_:)`. Tools map onto `ToolDefinition` +
+> `ToolRegistry`. `@Generable` has **no macro equivalent yet** — use the raw
+> structured-output strategies (`GenerationConfig.structuredOutput`) and track
+> the ergonomic sugar in [#1915](https://github.com/roryford/ManifoldKit/issues/1915).
+
+---
+
+## Why migrate (and why not)
+
+Apple's `FoundationModels` framework is a single on-device system model with a
+clean session API. ManifoldKit **wraps that exact model** as one backend
+(`FoundationBackend`, iOS 26 / macOS 26+) and adds: many other backends behind
+one protocol, a persisted multi-session turn loop, drop-in SwiftUI, tool
+approval, RAG, and cloud providers. You migrate when you outgrow "one model, one
+session" and want a product surface; you stay on raw `FoundationModels` if you
+only ever need the system model and no persistence/UI.
+
+ManifoldKit does not *replace* AnyLanguageModel — it **consumes** it. Providers
+without a native ManifoldKit backend (Gemini, xAI, Groq, Mistral, OpenRouter)
+arrive through the [AnyLanguageModel bridge](PROVIDER-BRIDGE.md), so your
+AnyLanguageModel knowledge transfers directly to configuring those providers.
+
+---
+
+## Concept map
+
+| Apple `FoundationModels` / AnyLanguageModel | ManifoldKit equivalent | Notes |
+|---|---|---|
+| `LanguageModelSession` | `ChatViewModel` (UI) or `ConversationRuntime` (headless) | Persisted, multi-turn, multi-backend |
+| `session.respond(to:)` / `streamResponse(to:)` | `chatVM.sendMessage(_:)` | Streaming is built into the turn loop |
+| `SystemLanguageModel` (the model) | `InferenceBackend` (the protocol) + `FoundationBackend` (that model) | One of many backends |
+| AnyLanguageModel `LanguageModel` (provider abstraction) | `InferenceBackend` + the AnyLanguageModel **bridge** | MK consumes AnyLanguageModel as a backend |
+| `Tool` protocol / tool calling | `ToolDefinition` + `ToolRegistry` + `ToolExecutor` | Local **and** cloud, with approval gating |
+| `@Generable` / guided generation | `GenerationConfig.structuredOutput` (`.gbnf` / `.jsonSchema` / `.guided` / `.jsonPrompting`) | **No `@Generable` macro** — see below |
+| `GenerationOptions` (temperature, etc.) | `GenerationConfig` (temperature, topP, topK, …) | Same knobs, one struct |
+| Transcript / conversation history | `MessageStore` + `SessionStore` (SwiftData) | Persisted by default |
+
+---
+
+## 1. Session → ChatViewModel
+
+In `FoundationModels` you create a session and ask it to respond. In ManifoldKit
+the equivalent is `quickStart()`, which hands you a fully wired `ChatViewModel`
+backed by a persisted turn loop:
+
+```swift,no-build
+import ManifoldKit
+
+// FoundationModels:
+//   let session = LanguageModelSession()
+//   let reply = try await session.respond(to: "Summarise this.")
+
+// ManifoldKit:
+let result = try await ManifoldKit.quickStart()
+let chatVM = result.viewModel
+let reply = try await chatVM.sendMessage("Summarise this.")
+```
+
+`quickStart()` returns a `QuickStartResult` carrying the `viewModel`,
+`bootstrap`, and `sessionManager`. Drop the `viewModel` into your SwiftUI
+environment and present the shipped `ChatView`, or call `sendMessage(_:)`
+yourself for a headless flow. Unlike a `LanguageModelSession`, the conversation
+is **persisted** across launches via SwiftData — no transcript bookkeeping.
+
+For full control without the view model, drive `ConversationRuntime` directly —
+it owns `send`/`regenerate`/`edit`/`branch`/`cancel` through a single
+`processTurn(_:)` entry point taking a `TurnInput`. Most apps don't need this;
+`ChatViewModel` is the ergonomic session equivalent.
+
+---
+
+## 2. Picking the model = picking the backend
+
+`FoundationModels` gives you exactly one model. ManifoldKit's `FoundationBackend`
+wraps that same model, but it's one registrar among several:
+
+```swift,no-build
+import ManifoldKit
+import ManifoldFoundation   // FoundationBackends registrar (iOS 26 / macOS 26+)
+
+// Register only Apple's on-device model — closest to staying on FoundationModels:
+let result = try await ManifoldKit.quickStart(backends: [FoundationBackends.self])
+```
+
+`FoundationBackend` is gated `@available(iOS 26, macOS 26, *)`;
+`FoundationBackends.register(with:)` checks availability at call time and no-ops
+on older OSes, so it's safe to list unconditionally. Add other registrars
+(`OllamaBackends`, `CloudSaaSBackends`, the companion `LlamaBackends` /
+`MLXBackends`) to the array to offer more models behind the same `ChatViewModel`.
+
+To reach a provider AnyLanguageModel supports but ManifoldKit doesn't implement
+natively, add the bridge product and configure by URL scheme — see
+[PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md):
+
+```swift,no-build
+import ManifoldAnyLanguageModel
+
+// gemini://gemini-2.0-flash?apiKey=KEY  →  one InferenceBackend, same turn loop.
+let backend = AnyLanguageModelBackend()
+```
+
+---
+
+## 3. Tools
+
+Apple's `Tool` protocol and ManifoldKit's `ToolDefinition` express the same idea:
+a named, described, schema'd capability the model can call. ManifoldKit's version
+works across **every** backend (local and cloud) and adds human-in-the-loop
+approval.
+
+```swift,no-build
+import ManifoldKit
+
+let getWeather = ToolDefinition(
+    name: "get_weather",
+    description: "Look up the current weather for a city.",
+    parameters: .object([
+        "city": .string(description: "City name")
+    ])
+)
+```
+
+Register the definition with an executor in the `ToolRegistry`, and the turn loop
+calls it automatically — the same multi-step tool loop you'd hand-roll around
+`session.respond(to:)`. See [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md) for the
+end-to-end registry + executor wiring, and [LOCAL-TOOL-CALLING.md](LOCAL-TOOL-CALLING.md)
+for how local GGUF/MLX models emit tool calls.
+
+> If you used Apple's `@Generable` purely to *describe a tool's arguments*,
+> ManifoldKit has the `@ToolSchema` macro (opt-in `Macros` trait) that generates
+> a `ToolDefinition`'s parameter schema from a Swift type. That is the **only**
+> `@Generable`-shaped macro in ManifoldKit today.
+
+---
+
+## 4. Structured output: `@Generable`'s honest mapping
+
+This is the one place where the translation is **not** one-to-one, so be precise.
+
+Apple's `@Generable` + guided generation gives you a *decoded Swift instance*
+straight from the model. **ManifoldKit has no `@Generable` macro and no
+`generate(as: MyType.self)` API.** What ships is the raw strategy layer on
+`GenerationConfig.structuredOutput`:
+
+```swift,no-build
+import ManifoldKit
+
+var config = GenerationConfig()
+
+// Constrain output with a JSON Schema document (capability-routed):
+config.structuredOutput = .jsonSchema(#"""
+{ "type": "object",
+  "properties": { "sentiment": { "enum": ["pos", "neg", "neutral"] } },
+  "required": ["sentiment"] }
+"""#)
+
+// Other strategies:
+//   .gbnf("root ::= ...")       — GBNF grammar (llama.cpp-class backends)
+//   .guided(MyType.self)        — Foundation guided-generation target type
+//   .jsonPrompting              — prompt-level JSON instruction fallback
+```
+
+`StructuredOutputRouter` picks the best mechanism the active backend supports
+(grammar-constrained decoding where available, falling back to `.jsonPrompting`).
+You then **decode the returned string yourself** (`JSONDecoder`) — ManifoldKit
+constrains the *generation*, but does not hand you a typed instance.
+
+> The `@Generable`/Codable → decoded-instance ergonomics are tracked in
+> [#1915](https://github.com/roryford/ManifoldKit/issues/1915). Until that
+> ships, do **not** expect `let x: MyType = try await ...generate(...)` — it
+> does not exist. Map `@Generable` onto the raw strategy above.
+
+---
+
+## 5. Generation options
+
+`GenerationOptions` → `GenerationConfig`. The sampling knobs you know
+(`temperature`, `topP`, `topK`, repetition penalties, `maxThinkingTokens`,
+`tools`, `toolChoice`, `maxToolIterations`) all live on the one
+`GenerationConfig` struct, set per turn.
+
+---
+
+## Migration checklist
+
+1. Replace `LanguageModelSession()` with `try await ManifoldKit.quickStart()`;
+   use `result.viewModel`.
+2. Replace `session.respond(to:)` with `chatVM.sendMessage(_:)`.
+3. To stay on Apple's model only, pass `backends: [FoundationBackends.self]`.
+4. Port `Tool`s to `ToolDefinition` + a `ToolRegistry` executor.
+5. Port `@Generable` to `GenerationConfig.structuredOutput` (raw strategy) +
+   manual `JSONDecoder` — no typed-instance API yet ([#1915]).
+6. For a non-native provider AnyLanguageModel supports, add the
+   [AnyLanguageModel bridge](PROVIDER-BRIDGE.md) and configure by URL scheme.
+
+[#1915]: https://github.com/roryford/ManifoldKit/issues/1915
+
+---
+
+## See also
+
+- [`QUICKSTART.md`](QUICKSTART.md) — the `quickStart()` and bootstrap paths.
+- [`PROVIDER-BRIDGE.md`](PROVIDER-BRIDGE.md) — AnyLanguageModel configuration.
+- [`QUICKSTART-TOOLS.md`](QUICKSTART-TOOLS.md) — tool registry + executor.
+- [`POSITIONING.md`](POSITIONING.md) §9 — ManifoldKit vs. AnyLanguageModel.

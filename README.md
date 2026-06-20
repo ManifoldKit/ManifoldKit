@@ -322,6 +322,20 @@ For a complete walkthrough (descriptor setup, lifecycle, and built-in catalog), 
 
 ManifoldKit also supports running as an **MCP server** — exposing your app's live state and tools to external MCP clients such as Claude Desktop, other agents, or any MCP-aware host. Import `ManifoldMCPHost` and follow the setup guide at `Sources/ManifoldMCPHost/ManifoldMCPHost.docc/Articles/MCPHostServer.md`. This is the entry point for agent-platform builders who want to surface their app's capabilities to the broader MCP ecosystem rather than consuming external tools.
 
+### MCP capability coverage
+
+Honest expectations — ManifoldKit's MCP surface is **tool-and-resource first**, with full OAuth 2.1. What ships today, verified against `Sources/ManifoldMCP` / `Sources/ManifoldMCPHost`:
+
+| Capability | Client (consume) | Host (expose) | Notes |
+|---|---|---|---|
+| **Tools** (`tools/list`, `tools/call`) | ✅ | ✅ | `MCPToolSource` / `MCPToolExecutor`; bridged into the `ToolRegistry`. |
+| **Resources** (`resources/list`, `resources/read`) | ✅ | ✅ | Client exposes `supportsResources`; host serves list + read. |
+| **Prompts** (`prompts/list`, `prompts/get`) | ⚠️ partial | ❌ | Capability is **detected** (`supportsPrompts`) but not yet consumed — no client call wired. |
+| **OAuth 2.1** | ✅ | — | Authorization-server discovery, token exchange, PKCE, secured token store. |
+| **Sampling** (`sampling/createMessage`) | ❌ | ❌ | Not implemented — the MCP surface is text-passthrough. Tracked in [#1925](https://github.com/roryford/ManifoldKit/issues/1925). |
+| **Elicitation** | ❌ | ❌ | Not implemented. Tracked in [#1926](https://github.com/roryford/ManifoldKit/issues/1926). |
+| **Transports** | stdio, streamable-HTTP (SSE) | stdio, streamable-HTTP | Both client and host support both transports. |
+
 ## Skills, Handoffs, and Hooks
 
 Three session-scoped extension points complement MCP for non-MCP hosts:
@@ -428,6 +442,8 @@ open Advanced.xcodeproj
 AnyLanguageModel is HuggingFace's Swift package — it mirrors Apple's `FoundationModels` API and exposes many providers behind a single protocol. ManifoldKit and AnyLanguageModel occupy adjacent niches: AnyLanguageModel optimises for provider coverage and API familiarity; ManifoldKit optimises for production reliability and drop-in chat UI (`ChatView` + `SessionListView` + `ModelManagementSheet` on day one). Pick the one whose axis matches the problem you're solving.
 
 ManifoldKit also **consumes** AnyLanguageModel as a backend: the `ManifoldAnyLanguageModel` product (the retired `AnyLanguageModel` trait's replacement since v0.48) is the supported path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint — so they plug into the same `ChatViewModel` and runtime as a native backend. See [docs/PROVIDER-BRIDGE.md](docs/PROVIDER-BRIDGE.md) for the provider list, URL setup, and capability limits.
+
+Coming from Apple's `LanguageModelSession` / `@Generable` or AnyLanguageModel's provider abstraction? [docs/MIGRATING-FROM-FOUNDATION-MODELS.md](docs/MIGRATING-FROM-FOUNDATION-MODELS.md) maps those idioms onto ManifoldKit's `quickStart()` / `ChatViewModel` / `ToolDefinition` surface.
 
 ## Migrating from BaseChatKit
 
