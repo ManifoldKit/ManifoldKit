@@ -54,6 +54,8 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         ) throws -> (ChatViewModel, MockInferenceBackend, ErrorInjectingPersistenceProvider) {
         mock.isModelLoaded = true
         let service = InferenceService(backend: mock, name: "Mock")
+        service.registerBackendFactory { _ in mock }
+        service.registerEndpointBackendFactory { _ in mock }
         let modelsDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ViewModelEdgeCaseTests-\(UUID().uuidString)")
         addTeardownBlock { try? FileManager.default.removeItem(at: modelsDirectory) }
@@ -293,7 +295,8 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     }
 
     func test_switchToSession_restoresSelectedEndpoint_whenEndpointExists() async throws {
-        let (vm, _, _) = try makeViewModelWithPersistence()
+        let (vm, mock, _) = try makeViewModelWithPersistence()
+        mock.isModelLoaded = false
         let endpoint = APIEndpointRecord(name: "OpenAI", provider: .openAI)
         vm.setAvailableEndpoints([endpoint])
         vm.selectedModel = ModelInfo.builtInFoundation
@@ -306,6 +309,30 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
         XCTAssertEqual(vm.selectedEndpoint?.id, endpoint.id)
         XCTAssertNil(vm.selectedModel, "Endpoint restore should not leak prior model selection")
+    }
+
+    func test_switchToSession_dispatchesLoad_whenRestoringLocalModel() async throws {
+        let (vm, mock, _) = try makeViewModelWithPersistence()
+        mock.isModelLoaded = false
+
+        vm.foundationModelProvider = { true }
+        vm.refreshModels()
+        let foundationModel = ModelInfo.builtInFoundation
+
+        var session = ManifoldInference.ChatSession(title: "Load On Restore")
+        session.selectedModelID = foundationModel.id
+
+        await vm.switchToSession(session)
+
+        XCTAssertEqual(vm.selectedModel?.id, foundationModel.id)
+
+        // `dispatchSelectedLoad()` runs the coordinated load on a Task — poll
+        // briefly so the mock backend has time to flip `isModelLoaded`.
+        for _ in 0..<30 where !mock.isModelLoaded {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(mock.isModelLoaded,
+            "switchToSession must dispatch a load when restoring a persisted local model")
     }
 
     func test_switchToSession_clearsSelectedEndpoint_whenEndpointMissing() async throws {

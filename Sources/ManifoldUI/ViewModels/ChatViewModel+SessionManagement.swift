@@ -47,7 +47,16 @@ extension ChatViewModel {
         clearDraftAttachments()
         await loadMessages()
         updateContextEstimate()
+
         Log.ui.info("Switched to session: \(session.title, privacy: .private)")
+
+        // Restoring a session re-applies the persisted model/endpoint selection
+        // but does not load it. The `defer` above clears `isRestoringSession`
+        // before the dispatched Task runs, so any coordinator/session guards
+        // see a settled surface when the load fires (#1473, DX 02).
+        if teardownResult.resolvedModel != nil || teardownResult.resolvedEndpoint != nil {
+            dispatchSelectedLoad()
+        }
     }
 
     /// Saves the current generation settings back to the active session.

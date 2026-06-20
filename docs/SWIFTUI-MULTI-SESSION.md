@@ -101,6 +101,24 @@ mints a fresh one if the store is empty). On every subsequent relaunch the
 sidebar comes back populated and the previously open chat is already
 selected — no host-side wait/restore heuristic required.
 
+**Model loading.** `quickStart()` also dispatches a load for whichever
+backend it selected: the built-in policy's local model (Foundation-first,
+then first on-disk GGUF), a per-session model/endpoint restored by
+``switchToSession(_:)``, or — when no local model is available — the first
+configured cloud endpoint in the endpoint store. You do **not** need a
+separate `loadSelectedEndpoint()` / `dispatchSelectedLoad()` call after
+`quickStart()` returns on relaunch. ``switchToSession(_:)`` performs the
+same dispatch when the user picks a different sidebar row, so the
+`onChange` handler above does not need an extra `dispatchSelectedLoad()`
+either.
+
+> **First-launch Ollama seeding.** If you insert an endpoint *after*
+> `quickStart()` returns (the pattern in [QUICKSTART.md → Seeding an Ollama
+> endpoint](QUICKSTART.md#seeding-an-ollama-endpoint)), you still need one
+> explicit `loadSelectedEndpoint()` on that first run — the endpoint did not
+> exist in the store when `quickStart()` ran. Every subsequent relaunch
+> picks it up automatically.
+
 ## 3. When to use the manual bootstrap path
 
 Drop down to `ManifoldBootstrap.build(...)` when you need:

@@ -144,12 +144,95 @@ final class QuickStartTests: XCTestCase {
             "sessionManager.sessions must reflect persisted sessions on relaunch immediately (#1447)")
     }
 
+    /// When the store already contains a cloud endpoint and no local model is
+    /// selected, `quickStart()` must select the first endpoint and dispatch a
+    /// load before returning — hosts should not need a separate
+    /// `loadSelectedEndpoint()` on every relaunch (DX 02-swiftui-chat).
+    func test_quickStart_selectsFirstEndpoint_whenPolicyReturnsNil() async throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let endpoint = APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.1:8b"
+        )
+
+        // Seed the shared container with an endpoint, then relaunch through
+        // quickStart() the way a consumer app would on second open.
+        let first = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { container },
+            selectionPolicy: { registry in
+                registry.foundationModelProvider = { false }
+                return nil
+            }
+        )
+        try await first.bootstrap.endpointStore.insertEndpoint(endpoint)
+
+        let second = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { container },
+            selectionPolicy: { registry in
+                registry.foundationModelProvider = { false }
+                return nil
+            }
+        )
+
+        XCTAssertEqual(
+            second.viewModel.selectedEndpoint?.id,
+            endpoint.id,
+            "quickStart() must select the first persisted endpoint when no local model is chosen"
+        )
+    }
+
+    /// A session that persisted a cloud endpoint must keep it on relaunch even
+    /// when the default Foundation-first policy would otherwise pre-select a
+    /// local model (DX 02-swiftui-chat).
+    func test_quickStart_preservesSessionEndpoint_overDefaultPolicy() async throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let endpoint = APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.1:8b"
+        )
+
+        let first = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { container }
+        )
+        try await first.bootstrap.endpointStore.insertEndpoint(endpoint)
+
+        var session = try XCTUnwrap(first.viewModel.activeSession)
+        session.selectedEndpointID = endpoint.id
+        try await first.bootstrap.persistence.updateSession(session)
+
+        let second = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { container }
+        )
+
+        XCTAssertEqual(
+            second.viewModel.selectedEndpoint?.id,
+            endpoint.id,
+            "quickStart() must restore the session's persisted endpoint on relaunch"
+        )
+        XCTAssertNil(
+            second.viewModel.selectedModel,
+            "Restored session endpoint must not be replaced by the Foundation-first policy"
+        )
+    }
+
     /// Regression guard for #1473 — the documented quickStart cloud-endpoint
     /// recipe seeds `selectedEndpoint` and then activates it before first send.
     func test_quickStart_seededEndpoint_canLoadViaSelectedEndpoint() async throws {
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { registry in
+                registry.foundationModelProvider = { false }
+                return nil
+            }
         )
         let cloudBackend = QuickStartCloudBackend()
         result.bootstrap.inferenceService.registerEndpointBackendFactory { provider in
