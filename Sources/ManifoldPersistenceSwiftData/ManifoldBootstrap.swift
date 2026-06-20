@@ -58,6 +58,21 @@ public struct RAGConfiguration: Sendable {
     /// to suppress weakly-related passages at the cost of occasionally returning
     /// fewer than ``topK`` chunks.
     public var similarityThreshold: Float
+    /// When `true`, the retriever first tries to inject the *entire* ingested
+    /// corpus verbatim — skipping chunk retrieval — whenever the combined
+    /// document text fits within ``fullContextBudgetTokens``. When the corpus is
+    /// over budget (or the whole-document path fails to read its sources), it
+    /// falls back to normal chunked retrieval. Default: `false`, which preserves
+    /// the historical always-chunk behaviour. Mirrors LM Studio / Open WebUI's
+    /// "full context" toggle (#1939 item 7).
+    public var fullContextMode: Bool
+    /// Token ceiling for ``fullContextMode``. If the whole corpus estimates at or
+    /// below this many tokens it is injected verbatim; otherwise retrieval falls
+    /// back to chunking. Default: 8192 — a conservative slice of a typical local
+    /// context window that still leaves room for the system prompt, history, and
+    /// the response buffer (ties to the compression seam, #1885). Ignored unless
+    /// ``fullContextMode`` is `true`.
+    public var fullContextBudgetTokens: Int
     /// URL for the flat-file vector index. Defaults to
     /// `<Application Support>/<bundleIdentifier>/ragvectors.bin`.
     public var vectorStoreURL: URL?
@@ -69,6 +84,8 @@ public struct RAGConfiguration: Sendable {
         chunkOverlap: Int = 200,
         topK: Int = 5,
         similarityThreshold: Float = 0,
+        fullContextMode: Bool = false,
+        fullContextBudgetTokens: Int = 8192,
         vectorStoreURL: URL? = nil
     ) {
         self.embeddingBackend = embeddingBackend
@@ -77,6 +94,8 @@ public struct RAGConfiguration: Sendable {
         self.chunkOverlap = chunkOverlap
         self.topK = topK
         self.similarityThreshold = similarityThreshold
+        self.fullContextMode = fullContextMode
+        self.fullContextBudgetTokens = fullContextBudgetTokens
         self.vectorStoreURL = vectorStoreURL
     }
 }
@@ -491,7 +510,9 @@ public final class ManifoldBootstrap {
             reranker: ragConfig.reranker,
             chunker: chunker,
             defaultLimit: ragConfig.topK,
-            similarityThreshold: ragConfig.similarityThreshold
+            similarityThreshold: ragConfig.similarityThreshold,
+            fullContextMode: ragConfig.fullContextMode,
+            fullContextBudgetTokens: ragConfig.fullContextBudgetTokens
         )
     }
 
