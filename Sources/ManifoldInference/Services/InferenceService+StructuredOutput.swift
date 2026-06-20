@@ -69,6 +69,41 @@ public enum StructuredOutputError: Error, Sendable {
 
     /// The JSON schema for the requested type could not be encoded to a string.
     case schemaEncodingFailure(String)
+
+    /// The bounded validation-reask loop (#1916) exhausted its retry budget
+    /// without producing output that both decoded into `T` and satisfied the
+    /// schema. Carries the last failure message (decode or validator) and the
+    /// number of generation attempts that ran.
+    case reaskBudgetExhausted(lastError: String, attempts: Int)
+}
+
+// MARK: - Reask policy
+
+/// Budget for the bounded validation-reask loop on structured output (#1916).
+///
+/// When a typed ``InferenceService/respond(_:to:config:reask:)`` round-trip
+/// produces output that fails to decode into `T` **or** fails
+/// ``JSONSchemaValidator`` schema validation, the loop re-prompts the model
+/// with the failure message inside this budget before throwing
+/// ``StructuredOutputError/reaskBudgetExhausted(lastError:attempts:)``.
+///
+/// This is a **distinct** failure class from transport-level retry
+/// (``RetryPolicy``, which handles HTTP transient backoff): a reask is a fresh
+/// generation that carries the conversation of prior failed attempts, asking
+/// the model to correct semantically invalid output. v1 re-runs only the final
+/// structured-output turn, not the full tool loop.
+public struct ReaskPolicy: Sendable {
+    /// Total number of generation attempts, including the first. `1` disables
+    /// reask (one attempt, then throw on failure).
+    public var maxAttempts: Int
+    /// When `true`, the model's bad output is echoed back as an assistant turn
+    /// in the reask conversation so it can see what it produced.
+    public var includeRawOutput: Bool
+
+    public init(maxAttempts: Int = 2, includeRawOutput: Bool = true) {
+        self.maxAttempts = maxAttempts
+        self.includeRawOutput = includeRawOutput
+    }
 }
 
 // MARK: - respond<T>
@@ -108,20 +143,125 @@ extension InferenceService {
         config: GenerationConfig = .init()
     ) async throws -> StructuredOutput<T> {
         let schema = T.jsonSchema
+        let schemaString = try Self.encodeSchema(schema)
+        let (rawText, strategy) = try await runStructuredGeneration(
+            messages: [.user(prompt)],
+            schemaString: schemaString,
+            config: config
+        )
+        return try await Self.decodeAndValidate(
+            T.self,
+            rawText: rawText,
+            strategy: strategy,
+            schema: schema
+        )
+    }
 
-        // Encode the schema to a string. The queue stages this on config and
-        // lowers it to GBNF (for grammar-capable backends) or injects it as a
-        // prompt instruction (weak backends) when the router runs.
-        let schemaString: String
+    /// Bounded validation-reask variant of ``respond(_:to:config:)`` (#1916).
+    ///
+    /// Runs the structured-output round-trip, and when the produced text fails
+    /// to decode into `T` **or** fails ``JSONSchemaValidator`` schema
+    /// validation, re-prompts the model with the failure message inside the
+    /// ``ReaskPolicy`` budget. Each reask carries the conversation of prior
+    /// failed attempts: optionally the model's bad output (when
+    /// ``ReaskPolicy/includeRawOutput``) plus a user turn naming the violation
+    /// and demanding valid JSON.
+    ///
+    /// This reask budget is **distinct** from transport-level retry
+    /// (``RetryPolicy``): it re-runs the final structured-output turn for a
+    /// *semantic* failure (bad decode / schema violation), not an HTTP
+    /// transient. v1 re-runs only that final turn, not the full tool loop.
+    ///
+    /// - Parameters:
+    ///   - type: The type to decode the response into.
+    ///   - prompt: The user prompt.
+    ///   - config: Sampling/generation configuration; `structuredOutput` is
+    ///     overwritten with the schema derived from `T` on every attempt.
+    ///   - reask: The retry budget. `maxAttempts: 1` disables reask.
+    /// - Returns: The decoded, schema-valid value, raw text, and strategy.
+    /// - Throws: ``StructuredOutputError/reaskBudgetExhausted(lastError:attempts:)``
+    ///   when the budget is exhausted without a valid response;
+    ///   ``StructuredOutputError/schemaEncodingFailure(_:)`` when the schema
+    ///   cannot be encoded; or any generation error from the backend.
+    public func respond<T: Decodable & Sendable & SchemaProviding>(
+        _ type: T.Type,
+        to prompt: String,
+        config: GenerationConfig = .init(),
+        reask: ReaskPolicy = .init()
+    ) async throws -> StructuredOutput<T> {
+        let schema = T.jsonSchema
+        let schemaString = try Self.encodeSchema(schema)
+
+        // The conversation grows across attempts: it starts with the user
+        // prompt and, on each failure, gains the model's (bad) output plus a
+        // corrective user turn. A reask is a fresh generation over this
+        // conversation — NOT a transport retry of the same request.
+        var messages: [Message] = [.user(prompt)]
+        let attemptBudget = max(1, reask.maxAttempts)
+        var lastError = "no attempt ran"
+
+        for attempt in 1...attemptBudget {
+            let (rawText, strategy) = try await runStructuredGeneration(
+                messages: messages,
+                schemaString: schemaString,
+                config: config
+            )
+
+            do {
+                return try await Self.decodeAndValidate(
+                    T.self,
+                    rawText: rawText,
+                    strategy: strategy,
+                    schema: schema
+                )
+            } catch let error as StructuredOutputError {
+                lastError = Self.reaskMessage(for: error)
+                Log.inference.warning(
+                    "structured-output attempt \(attempt, privacy: .public)/\(attemptBudget, privacy: .public) failed: \(lastError, privacy: .public)"
+                )
+
+                // Budget exhausted — stop before staging another turn.
+                if attempt >= attemptBudget { break }
+
+                if reask.includeRawOutput {
+                    messages.append(.assistant(rawText))
+                }
+                messages.append(.user(
+                    "Your previous response failed validation: \(lastError). "
+                    + "Return only valid JSON matching the schema."
+                ))
+            }
+        }
+
+        throw StructuredOutputError.reaskBudgetExhausted(
+            lastError: lastError,
+            attempts: attemptBudget
+        )
+    }
+
+    // MARK: - Shared round-trip steps
+
+    /// Encodes a ``JSONSchemaValue`` to a sorted-keys JSON string for staging
+    /// on the generation config. Throws ``StructuredOutputError/schemaEncodingFailure(_:)``.
+    private static func encodeSchema(_ schema: JSONSchemaValue) throws -> String {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let data = try encoder.encode(schema)
-            schemaString = String(decoding: data, as: UTF8.self)
+            return String(decoding: data, as: UTF8.self)
         } catch {
             throw StructuredOutputError.schemaEncodingFailure(String(describing: error))
         }
+    }
 
+    /// Stages the schema on config, enqueues a single generation over
+    /// `messages`, and drains the content tokens to a string. Returns the raw
+    /// text and the router-selected strategy.
+    private func runStructuredGeneration(
+        messages: [Message],
+        schemaString: String,
+        config: GenerationConfig
+    ) async throws -> (rawText: String, strategy: StructuredOutputStrategy) {
         // Stage the schema on config. The queue's router wiring (#1915) reads
         // `structuredOutput`, lowers the schema to GBNF when the active backend
         // supports grammar-constrained sampling, and selects the strongest
@@ -130,10 +270,7 @@ extension InferenceService {
         var routedConfig = config
         routedConfig.structuredOutput = .jsonSchema(schemaString)
 
-        let (_, stream) = try enqueue(
-            messages: [.user(prompt)],
-            config: routedConfig
-        )
+        let (_, stream) = try enqueue(messages: messages, config: routedConfig)
 
         // Drain to a string. Collect only content tokens — thinking and tool
         // events are not part of the structured payload.
@@ -144,14 +281,42 @@ extension InferenceService {
             }
         }
 
-        let rawText = collected
-
         // The strategy the router actually chose for the serving backend, set
         // on the stream by the queue at enqueue time. Reading it back is the
         // single source of truth — no recomputation against a capability set
         // that might differ from the one the queue dispatched to. `nil` means
         // the request carried no resolvable target (treated as prompt-level).
         let strategy = stream.structuredOutputStrategy ?? .jsonPrompting
+        return (collected, strategy)
+    }
+
+    /// Decodes `rawText` into `T` and validates it against `schema`.
+    ///
+    /// A decode failure surfaces ``StructuredOutputError/decodeFailure(rawText:underlying:)``;
+    /// schema-valid-but-rule-violating JSON (enum/required/bounds) surfaces a
+    /// `decodeFailure` carrying the validator's model-readable message. Both
+    /// are the reask triggers for ``respond(_:to:config:reask:)``.
+    private static func decodeAndValidate<T: Decodable & Sendable>(
+        _ type: T.Type,
+        rawText: String,
+        strategy: StructuredOutputStrategy,
+        schema: JSONSchemaValue
+    ) async throws -> StructuredOutput<T> {
+        // Validate the extracted JSON against the schema BEFORE decoding so the
+        // model gets the rich, model-readable violation message (enum/required/
+        // bounds) rather than an opaque Swift decoding error. The validator
+        // fails closed on unsupported keywords; treat that as "skip validation"
+        // and let the decoder be the authority, since refusing here would block
+        // any schema the decoder itself handles fine.
+        let jsonText = extractJSON(from: rawText)
+        let validator = JSONSchemaValidator()
+        if let failure = validator.validate(arguments: jsonText, against: schema),
+           !failure.modelReadableMessage.contains("unsupported schema feature") {
+            throw StructuredOutputError.decodeFailure(
+                rawText: rawText,
+                underlying: failure.modelReadableMessage
+            )
+        }
 
         // Decode off the main actor — small payloads, but no reason to block UI.
         do {
@@ -164,6 +329,19 @@ extension InferenceService {
                 rawText: rawText,
                 underlying: String(describing: error)
             )
+        }
+    }
+
+    /// Extracts a concise, model-readable message from a structured-output
+    /// error for embedding in the reask prompt.
+    private static func reaskMessage(for error: StructuredOutputError) -> String {
+        switch error {
+        case let .decodeFailure(_, underlying):
+            return underlying
+        case let .schemaEncodingFailure(message):
+            return message
+        case let .reaskBudgetExhausted(lastError, _):
+            return lastError
         }
     }
 
