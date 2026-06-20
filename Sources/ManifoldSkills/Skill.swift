@@ -35,8 +35,20 @@ public struct Skill: Sendable, Equatable, Codable, Identifiable {
     /// injected on dispatch.
     public let promptTemplate: String
 
+    /// L3 progressive-disclosure manifest: relative paths (under the skill's
+    /// own directory) the author published via the `references:` frontmatter
+    /// list. These are **not** read at discovery or injected on every
+    /// dispatch — `resolveReference(_:)` reads one on demand, so the body can
+    /// point the model at a 4 KB `reference.md` without spending that budget
+    /// on every invocation.
+    public let references: [String]
+
     /// Source file path. Kept for debugging and last-wins precedence display.
     public let sourcePath: URL
+
+    /// Directory containing this skill's `SKILL.md` — the confinement root for
+    /// L3 reference resolution.
+    public var skillDirectory: URL { sourcePath.deletingLastPathComponent() }
 
     public init(
         name: String,
@@ -47,6 +59,7 @@ public struct Skill: Sendable, Equatable, Codable, Identifiable {
         whenToUse: String? = nil,
         argumentHint: String? = nil,
         promptTemplate: String,
+        references: [String] = [],
         sourcePath: URL
     ) {
         self.name = name
@@ -57,6 +70,21 @@ public struct Skill: Sendable, Equatable, Codable, Identifiable {
         self.whenToUse = whenToUse
         self.argumentHint = argumentHint
         self.promptTemplate = promptTemplate
+        self.references = references
         self.sourcePath = sourcePath
+    }
+
+    /// Reads one declared L3 reference on demand, confined to the skill's own
+    /// directory.
+    ///
+    /// Throws `SkillReferenceError` for undeclared paths, directory escapes
+    /// (`..`, absolute, or post-normalisation), or unreadable files — never
+    /// `try?`-swallowed, so authoring mistakes stay visible.
+    public func resolveReference(_ relativePath: String) throws -> String {
+        try SkillReferenceResolver.read(
+            relativePath: relativePath,
+            declared: references,
+            in: skillDirectory
+        )
     }
 }
