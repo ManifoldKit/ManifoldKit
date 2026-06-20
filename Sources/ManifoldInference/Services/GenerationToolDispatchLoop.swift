@@ -208,7 +208,21 @@ struct GenerationToolDispatchLoop {
                                 content: "Tool call blocked by pre-tool-use hook: \(reason ?? "no reason given")",
                                 errorKind: .permissionDenied
                             )
+                            // Keep the dispatch event stream symmetric: consumers
+                            // pair every `.toolDispatchStarted` with a
+                            // `.toolDispatchCompleted`. A hook-blocked call still
+                            // emits the pair (with the denied error kind) so those
+                            // consumers don't desync waiting for a completion that
+                            // never arrives.
+                            yieldEvent(.toolDispatchStarted(callId: call.id, name: call.toolName, attempt: 1))
                             yieldEvent(.toolResult(denied))
+                            yieldEvent(
+                                .toolDispatchCompleted(
+                                    callId: call.id,
+                                    durationMilliseconds: 0,
+                                    errorKind: .permissionDenied
+                                )
+                            )
                             continue
                         case .proceed(let sanitized):
                             if sanitized != call.arguments {
@@ -246,14 +260,56 @@ struct GenerationToolDispatchLoop {
                         }
                     )
 
-                    toolResultByteTotal += result.content.utf8.count
+                    let dispatchDurationNs = DispatchTime.now().uptimeNanoseconds &- dispatchStart.uptimeNanoseconds
+                    let dispatchDurationMs = Int(dispatchDurationNs / 1_000_000)
+
+                    if result.errorKind == .cancelled {
+                        // Cancellation completes the dispatch pair but is not
+                        // recorded as turn history — the loop unwinds immediately.
+                        yieldEvent(.toolResult(result))
+                        yieldEvent(
+                            .toolDispatchCompleted(
+                                callId: call.id,
+                                durationMilliseconds: dispatchDurationMs,
+                                errorKind: result.errorKind
+                            )
+                        )
+                        return .cancelled
+                    }
+
+                    // Byte-budget guard, checked BEFORE persisting/yielding the
+                    // result as a successful completion. A result that pushes the
+                    // cumulative total over budget must not be recorded as success
+                    // or threaded into the next turn's history — instead substitute
+                    // a synthetic permanent error so the model sees the truncation
+                    // and the loop stops without ever logging the oversized payload
+                    // as a `.toolDispatchCompleted` success.
+                    let prospectiveTotal = toolResultByteTotal + result.content.utf8.count
+                    if prospectiveTotal >= Self.toolResultByteBudget {
+                        Log.inference.warning(
+                            "GenerationQueue: tool-result byte budget (\(Self.toolResultByteBudget, privacy: .public)) exceeded by '\(call.toolName, privacy: .public)' (\(prospectiveTotal, privacy: .public) bytes); dropping oversized result and terminating loop."
+                        )
+                        let overflow = ToolResult(
+                            callId: call.id,
+                            content: "tool result exceeded the cumulative byte budget and was dropped",
+                            errorKind: .permanent
+                        )
+                        yieldEvent(.toolResult(overflow))
+                        yieldEvent(
+                            .toolDispatchCompleted(
+                                callId: call.id,
+                                durationMilliseconds: dispatchDurationMs,
+                                errorKind: .permanent
+                            )
+                        )
+                        return .stop
+                    }
+
+                    toolResultByteTotal = prospectiveTotal
                     lastCallSignature = (toolName: effectiveCall.toolName, arguments: effectiveCall.arguments)
                     dispatchedInThisTurn.append((effectiveCall, result))
 
                     yieldEvent(.toolResult(result))
-
-                    let dispatchDurationNs = DispatchTime.now().uptimeNanoseconds &- dispatchStart.uptimeNanoseconds
-                    let dispatchDurationMs = Int(dispatchDurationNs / 1_000_000)
                     yieldEvent(
                         .toolDispatchCompleted(
                             callId: call.id,
@@ -272,14 +328,6 @@ struct GenerationToolDispatchLoop {
                             "error_kind": result.errorKind?.rawValue ?? "none"
                         ]
                     )
-
-                    if result.errorKind == .cancelled {
-                        return .cancelled
-                    }
-
-                    if toolResultByteTotal >= Self.toolResultByteBudget {
-                        return .stop
-                    }
 
                 // Token usage lands once per generation (terminal `.usage`
                 // event). Fold it into the run-level accumulator so the
