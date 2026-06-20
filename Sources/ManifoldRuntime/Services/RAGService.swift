@@ -29,6 +29,18 @@ public actor RAGService {
     private let chunker: DocumentChunker
     private let parsers: [any DocumentParser]
 
+    /// Default number of passages retrieved per turn when a caller does not pass
+    /// an explicit `limit`. Threaded from ``RAGConfiguration/topK`` at bootstrap;
+    /// the turn loop calls ``retrieve(query:)`` without a `limit`, so this is the
+    /// value that actually governs production retrieval width.
+    private let defaultLimit: Int
+
+    /// Cosine-similarity floor: hits scoring strictly below this are dropped
+    /// before injection. Threaded from ``RAGConfiguration/similarityThreshold``.
+    /// The default of `0` preserves the historical behaviour — the vector store
+    /// already excludes non-positive scores, so a `0` threshold is a no-op.
+    private let similarityThreshold: Float
+
     /// How much wider than `limit` the first-stage candidate set is fetched
     /// when a reranker is active. A 3× pool gives the cross-encoder enough
     /// candidates to recover relevant passages the bi-encoder cosine stage
@@ -43,7 +55,9 @@ public actor RAGService {
         embeddingBackend: (any EmbeddingBackend)? = nil,
         reranker: (any Reranker)? = nil,
         chunker: DocumentChunker = DocumentChunker(),
-        parsers: [any DocumentParser] = [TextDocumentParser(), PDFDocumentParser()]
+        parsers: [any DocumentParser] = [TextDocumentParser(), PDFDocumentParser()],
+        defaultLimit: Int = 5,
+        similarityThreshold: Float = 0
     ) {
         self.documentStore = documentStore
         self.vectorStore = vectorStore
@@ -51,6 +65,11 @@ public actor RAGService {
         self.reranker = reranker
         self.chunker = chunker
         self.parsers = parsers
+        // Clamp at the boundary: a non-positive limit would retrieve nothing
+        // (or trap the vector store's `.prefix`), and a negative threshold is
+        // meaningless for cosine scores in [-1, 1].
+        self.defaultLimit = max(1, defaultLimit)
+        self.similarityThreshold = max(0, similarityThreshold)
     }
 
     // MARK: - Ingestion
@@ -153,10 +172,15 @@ public actor RAGService {
     /// Called by ``ConversationRuntime`` before each generation turn. Empty
     /// results (whitespace-only query, no above-zero scores) round-trip as
     /// ``RetrievalResult/empty``.
-    public func retrieve(query: String, limit: Int = 5) async throws -> RetrievalResult {
+    public func retrieve(query: String, limit: Int? = nil) async throws -> RetrievalResult {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .empty
         }
+
+        // No explicit caller override falls back to the configured top-K
+        // (``RAGConfiguration/topK``). Clamp to a positive width so the
+        // vector-store `.prefix` and reranker pool math stay well-defined.
+        let limit = max(1, limit ?? defaultLimit)
 
         // Embedding models can hang or OOM on very long inputs. Truncate to
         // the configured byte cap before handing off — a shorter query loses
@@ -221,7 +245,17 @@ public actor RAGService {
 
         guard !rankedHits.isEmpty else { return .empty }
 
-        let content = rankedHits.map { hit in
+        // Similarity-threshold cutoff. Applied after reranking so the floor is
+        // checked against the final score the user sees in citations. A `0`
+        // threshold (the default) is a no-op since the vector store already
+        // excludes non-positive scores.
+        let filteredHits = similarityThreshold > 0
+            ? rankedHits.filter { $0.score >= similarityThreshold }
+            : rankedHits
+
+        guard !filteredHits.isEmpty else { return .empty }
+
+        let content = filteredHits.map { hit in
             "[\(hit.documentTitle)]\n\(hit.chunk.text)"
         }.joined(separator: "\n\n---\n\n")
 
@@ -233,7 +267,7 @@ public actor RAGService {
             label: "Retrieved Documents"
         )
 
-        let citations = rankedHits.map { hit in
+        let citations = filteredHits.map { hit in
             Citation(
                 documentID: hit.chunk.documentID,
                 documentTitle: hit.documentTitle,
@@ -251,7 +285,7 @@ public actor RAGService {
     ///
     /// Compatibility shim retained for callers that don't need the citation
     /// metadata — internally just calls ``retrieve(query:limit:)``.
-    public func retrieveSlots(query: String, limit: Int = 5) async throws -> [PromptSlot] {
+    public func retrieveSlots(query: String, limit: Int? = nil) async throws -> [PromptSlot] {
         try await retrieve(query: query, limit: limit).slots
     }
 }

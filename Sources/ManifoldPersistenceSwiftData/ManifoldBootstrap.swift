@@ -51,6 +51,13 @@ public struct RAGConfiguration: Sendable {
     public var chunkOverlap: Int
     /// Number of chunks to retrieve per turn. Default: 5.
     public var topK: Int
+    /// Minimum cosine similarity a retrieved chunk must score to be injected.
+    /// Hits scoring strictly below this are dropped. Range `0...1`; the default
+    /// of `0` disables the floor (preserving the historical behaviour — the
+    /// vector store already excludes non-positive scores). Raise it (e.g. `0.3`)
+    /// to suppress weakly-related passages at the cost of occasionally returning
+    /// fewer than ``topK`` chunks.
+    public var similarityThreshold: Float
     /// URL for the flat-file vector index. Defaults to
     /// `<Application Support>/<bundleIdentifier>/ragvectors.bin`.
     public var vectorStoreURL: URL?
@@ -61,6 +68,7 @@ public struct RAGConfiguration: Sendable {
         chunkSize: Int = 1800,
         chunkOverlap: Int = 200,
         topK: Int = 5,
+        similarityThreshold: Float = 0,
         vectorStoreURL: URL? = nil
     ) {
         self.embeddingBackend = embeddingBackend
@@ -68,6 +76,7 @@ public struct RAGConfiguration: Sendable {
         self.chunkSize = chunkSize
         self.chunkOverlap = chunkOverlap
         self.topK = topK
+        self.similarityThreshold = similarityThreshold
         self.vectorStoreURL = vectorStoreURL
     }
 }
@@ -480,7 +489,9 @@ public final class ManifoldBootstrap {
             vectorStore: vectorStore,
             embeddingBackend: resolveEmbeddingBackend(ragConfig.embeddingBackend),
             reranker: ragConfig.reranker,
-            chunker: chunker
+            chunker: chunker,
+            defaultLimit: ragConfig.topK,
+            similarityThreshold: ragConfig.similarityThreshold
         )
     }
 
