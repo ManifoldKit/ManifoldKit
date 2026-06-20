@@ -285,23 +285,23 @@ public struct ToolCallTransform: StreamTransform {
     /// stream truncation is observable (#1858).
     public mutating func finalize() -> [GenerationEvent] {
         var events: [GenerationEvent] = []
-        if activeMarker == nil {
-            if !buffer.isEmpty {
-                events.append(.token(buffer))
+        if let active = activeMarker {
+            if markers[active].closesAtEnd {
+                // EOS-keyed close: this is the normal terminus for the block, not
+                // a truncation. Fold any held-back buffer into the body and parse.
+                let body = bodyBuffer + buffer
+                events += emitEvents(for: markers[active], body: body)
+            } else if surfaceTruncatedToolBody {
+                // Inside an unterminated block: the held-back `buffer` is a partial
+                // close suffix that still belongs to the body, so fold it in before
+                // surfacing. Default behavior (flag off) discards silently.
+                let partial = bodyBuffer + buffer
+                if !partial.isEmpty {
+                    events.append(.toolCallTruncated(rawBody: partial))
+                }
             }
-        } else if markers[activeMarker!].closesAtEnd {
-            // EOS-keyed close: this is the normal terminus for the block, not a
-            // truncation. Fold any held-back buffer into the body and parse it.
-            let body = bodyBuffer + buffer
-            events += emitEvents(for: markers[activeMarker!], body: body)
-        } else if surfaceTruncatedToolBody {
-            // Inside an unterminated block: the held-back `buffer` is a partial
-            // close suffix that still belongs to the body, so fold it in before
-            // surfacing. Default behavior (flag off) discards silently.
-            let partial = bodyBuffer + buffer
-            if !partial.isEmpty {
-                events.append(.toolCallTruncated(rawBody: partial))
-            }
+        } else if !buffer.isEmpty {
+            events.append(.token(buffer))
         }
         buffer = ""
         bodyBuffer = ""
