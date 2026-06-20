@@ -71,14 +71,31 @@ struct GenerationPreflightTrimmer {
             // detected enum (#1811). The same renderer feeds the final prompt
             // sent to the backend, so the token count and the decoded prompt
             // always agree.
+            // Suppress the capability-loss diagnostics inside the loop: this can
+            // render up to `maxTrimAttempts` times before the prompt fits, and
+            // the tool-drop / multimodal-drop warnings are a property of the turn
+            // shape, not of any one trim attempt — emitting them per iteration
+            // would spam the log. The returned prompt is re-rendered once below
+            // with warnings enabled so the loss is reported exactly once.
             let prompt = renderer.render(
                 messages: workingMessages,
                 systemPrompt: systemPrompt,
-                tools: config.tools
+                tools: config.tools,
+                warnOnCapabilityLoss: false
             )
             let promptTokens = try counter.countTokens(prompt)
 
             if promptTokens + maxOutput <= contextSize {
+                // One warning-enabled render on the accepted message set. Cheap
+                // (runs only on the success iteration) and uses the renderer's
+                // own path detection, so a present-but-unusable embedded template
+                // still correctly reports the tool-drop fallback.
+                _ = renderer.render(
+                    messages: workingMessages,
+                    systemPrompt: systemPrompt,
+                    tools: config.tools,
+                    warnOnCapabilityLoss: true
+                )
                 return Result(prompt: prompt, trimmedMessages: workingMessages)
             }
 

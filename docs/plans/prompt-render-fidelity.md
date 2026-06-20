@@ -42,9 +42,10 @@ Lock the already-shipped #1909 fix and catch future drift. Today
 `JinjaPromptRendererTests` only asserts `rendered.contains(...)` against **synthetic**
 templates; there are zero byte-exact goldens.
 - `Tests/ManifoldInferenceTests/Fixtures/ChatTemplates/`: real embedded `chat_template`
-  strings for 4 in-use families (Qwen2.5, Llama-3.2, a native-tool template, Mistral) +
-  golden rendered outputs for canonical conversations (text; user+assistant+tool turn;
-  tools-declared turn).
+  strings for in-use families — Qwen2.5 (host-system and default-system variants),
+  Llama-3.2, and a native-tool template — plus golden rendered outputs for canonical
+  conversations (text; default-system injection; knowledge-date preamble;
+  user+assistant+tool turn with tools declared).
 - Oracle of record: `transformers.apply_chat_template` output, committed as the golden.
   `regenerate.py` documents/automates regeneration (run via `uv`, no test-time Python dep).
 - Test asserts `XCTAssertEqual(render(...), golden)` exact. Sabotage check perturbs one
@@ -67,8 +68,9 @@ first run.
 ## Explicitly out of scope (deferred, separate issues)
 
 - **Slice C — thread images + RAG `documents` through Jinja.** Renderer feature work that
-  overlaps vision (#1710) and RAG. Slice B leaves `XCTExpectFailure`-wrapped tests (with a
-  `// FIXME:` issue link) documenting the gap; threading lands in its own issue.
+  overlaps vision (#1710) and RAG. Slice A surfaces the gap at runtime via the
+  `.image`/`.audio` capability-loss warning (emitted once per turn); actually threading
+  the parts into the template lands in its own issue.
 - **Slice D — typed `Template` owning formatting + stop sequences (#1944).** Stop sequences
   are modeled nowhere in core today (no `GenerationConfig`/`PromptTemplate` field; backends
   infer them internally). Owning them in a typed `Template` means a contract change honored

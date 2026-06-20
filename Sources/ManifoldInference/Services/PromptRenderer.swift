@@ -131,10 +131,18 @@ struct PromptRenderer {
     ///     them only for `.gemma4`. Callers pass the live `config.tools` array
     ///     unconditionally — ``rendersToolsNatively`` governs whether the host
     ///     *also* folds the preamble, so there is never a double injection.
+    /// - Parameter warnOnCapabilityLoss: emit the one-line tool-drop /
+    ///   multimodal-drop diagnostics (see ``warnIfCapabilityLost``). Defaults to
+    ///   `true`. Callers that invoke `render` repeatedly for the *same* turn —
+    ///   notably ``GenerationPreflightTrimmer``'s trim loop, which can render up
+    ///   to 20 times before the prompt fits — pass `false` and emit the warning
+    ///   exactly once instead, so an over-budget multimodal turn does not spam
+    ///   the log with 20 identical lines.
     func render(
         messages: [StructuredMessage],
         systemPrompt: String?,
-        tools: [ToolDefinition] = []
+        tools: [ToolDefinition] = [],
+        warnOnCapabilityLoss: Bool = true
     ) -> String {
         if let chatTemplateRaw,
            let rendered = JinjaPromptRenderer.render(
@@ -143,31 +151,51 @@ struct PromptRenderer {
                systemPrompt: systemPrompt,
                tools: tools
            ) {
-            Self.warnIfMultimodalPartsDropped(messages, viaEmbeddedTemplate: true)
+            if warnOnCapabilityLoss {
+                warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: true)
+            }
             return rendered
         }
 
-        // Reaching here means either the model is templateless (expected) or an
-        // embedded template was present but unusable and we are degrading to the
-        // text-only enum projection. The enum path renders tools only for
-        // `.gemma4` and never renders image/audio parts — so when the caller
-        // passed real tools (or multimodal parts) and the fallback can't carry
-        // them, that capability is being *silently dropped*. This is the exact
-        // shape behind the recurring "tool-calling rate ~0% on model X" reports
-        // (#1909 / #1961): fail loud so the loss is observable, not a mystery.
-        if chatTemplateRaw != nil, !tools.isEmpty, !template.rendersToolsNatively {
-            let fallbackName = String(describing: template)
-            Log.inference.warning(
-                "PromptRenderer: embedded chat template unusable; falling back to the \(fallbackName) text-only enum — \(tools.count) tool definition(s) will NOT be rendered into the prompt (expect degraded tool calling)."
-            )
+        if warnOnCapabilityLoss {
+            warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: false)
         }
-        Self.warnIfMultimodalPartsDropped(messages, viaEmbeddedTemplate: false)
 
         return template.format(
             messages: GenerationHistoryInstaller.flatten(messages),
             systemPrompt: systemPrompt,
             tools: tools
         )
+    }
+
+    /// Emits the capability-loss diagnostics for the render path that *would*
+    /// run for `messages`/`tools` — the tool-drop warning when an unusable
+    /// embedded template forces the text-only enum fallback, plus the
+    /// multimodal-drop warning. Exposed so a caller that renders repeatedly for
+    /// one turn (``GenerationPreflightTrimmer``) can warn once after the loop
+    /// instead of on every attempt.
+    ///
+    /// `viaEmbeddedTemplate` reflects whether the *embedded Jinja* path produced
+    /// the prompt; when `false` we additionally check for the silently-dropped
+    /// tool definitions, since the enum path renders tools only for `.gemma4`.
+    private func warnIfCapabilityLost(
+        messages: [StructuredMessage],
+        tools: [ToolDefinition],
+        viaEmbeddedTemplate: Bool
+    ) {
+        // The enum fallback renders tools only for `.gemma4` and never renders
+        // image/audio parts — so when the caller passed real tools (or
+        // multimodal parts) and the fallback can't carry them, that capability
+        // is being *silently dropped*. This is the exact shape behind the
+        // recurring "tool-calling rate ~0% on model X" reports (#1909 / #1961):
+        // fail loud so the loss is observable, not a mystery.
+        if !viaEmbeddedTemplate, chatTemplateRaw != nil, !tools.isEmpty, !template.rendersToolsNatively {
+            let fallbackName = String(describing: template)
+            Log.inference.warning(
+                "PromptRenderer: embedded chat template unusable; falling back to the \(fallbackName) text-only enum — \(tools.count) tool definition(s) will NOT be rendered into the prompt (expect degraded tool calling)."
+            )
+        }
+        Self.warnIfMultimodalPartsDropped(messages, viaEmbeddedTemplate: viaEmbeddedTemplate)
     }
 
     /// Emits a one-line warning when the history carries `.image`/`.audio` parts
