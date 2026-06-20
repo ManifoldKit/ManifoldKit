@@ -152,11 +152,21 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
             await setActiveSkill(session.id, skill.name)
         }
 
-        let renderedBody: String
+        var renderedBody: String
         if let args = parsed.args, !args.isEmpty {
             renderedBody = "[skill: \(skill.name)] args: \(args)\n\n\(skill.promptTemplate)"
         } else {
             renderedBody = "[skill: \(skill.name)]\n\n\(skill.promptTemplate)"
+        }
+
+        // L3 progressive disclosure: advertise the names of the author's
+        // published references without inlining their contents. The model
+        // pulls a file's body on demand (via `Skill.resolveReference(_:)`,
+        // surfaced by the host) only when the task needs it, so a multi-KB
+        // `reference.md` does not burn context on every invocation.
+        if !skill.references.isEmpty {
+            renderedBody += "\n\nAvailable reference files (request on demand): "
+            renderedBody += skill.references.joined(separator: ", ")
         }
 
         // Synthetic call-id: dispatch is internal to this turn and never

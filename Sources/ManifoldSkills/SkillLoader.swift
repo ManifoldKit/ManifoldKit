@@ -142,6 +142,16 @@ public struct SkillLoader: Sendable {
         let whenToUse = stringField(parsed.fields, "when-to-use")
         let argumentHint = stringField(parsed.fields, "argument-hint")
 
+        // L3 progressive disclosure: the author's published-references
+        // allow-list. Recorded here but never read at discovery — the win is
+        // resolving on demand, not eagerly inlining the whole tree.
+        let references: [String]
+        switch parsed.fields["references"] {
+        case .list(let items): references = items
+        case .string(let single) where !single.isEmpty: references = [single]
+        default: references = []
+        }
+
         return Skill(
             name: name,
             description: description,
@@ -151,6 +161,7 @@ public struct SkillLoader: Sendable {
             whenToUse: whenToUse,
             argumentHint: argumentHint,
             promptTemplate: parsed.body,
+            references: references,
             sourcePath: url
         )
     }
