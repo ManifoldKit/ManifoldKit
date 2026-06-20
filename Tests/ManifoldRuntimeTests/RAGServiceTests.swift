@@ -697,6 +697,143 @@ final class RAGServiceTests: XCTestCase {
         XCTAssertTrue(result.citations.isEmpty)
     }
 
+    // MARK: - #1939 item 7: full-context mode (whole-doc injection)
+
+    /// With `fullContextMode` on and a corpus that fits the token budget, the
+    /// retriever must inject the *whole* document verbatim — never touching the
+    /// chunk-retrieval path (no vector/keyword search at all).
+    func test_fullContextMode_underBudget_injectsWholeDocumentAndSkipsChunking() async throws {
+        let body = "The complete contents of a short document, injected verbatim."
+        let url = try writeTempFile(content: body)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let docStore = FakeDocumentStore()
+        let docID = UUID()
+        docStore.insertedRecords = [
+            DocumentRecord(id: docID, title: "ShortDoc", sourceURL: url, fileType: "txt", chunkCount: 1)
+        ]
+
+        // The keyword store would return a *different* string if the chunk path
+        // ran — its absence in the output proves the whole-doc branch won.
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults([
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "CHUNK PASSAGE", chunkIndex: 0), documentTitle: "ShortDoc", score: 1.0)
+        ])
+
+        let sut = RAGService(
+            documentStore: docStore,
+            vectorStore: vectorStore,
+            fullContextMode: true,
+            fullContextBudgetTokens: 8192
+        )
+
+        let result = try await sut.retrieve(query: "anything")
+
+        XCTAssertEqual(result.slots.count, 1)
+        XCTAssertTrue(result.slots[0].content.contains(body),
+                      "the whole document body must be injected verbatim")
+        XCTAssertFalse(result.slots[0].content.contains("CHUNK PASSAGE"),
+                       "the chunk-retrieval path must not run under full-context mode when under budget")
+        XCTAssertEqual(result.citations.count, 1)
+        XCTAssertEqual(result.citations[0].documentID, docID)
+
+        // The chunked path was never reached, so the vector store saw no query.
+        let keywordLimit = await vectorStore.lastKeywordLimit
+        XCTAssertNil(keywordLimit, "no keyword/vector search must happen on the under-budget whole-doc path")
+
+        // Sabotage: with full-context mode OFF this would be the CHUNK PASSAGE.
+        XCTAssertNotEqual(result.slots[0].content, "[ShortDoc]\nCHUNK PASSAGE")
+    }
+
+    /// With `fullContextMode` on but a corpus that *exceeds* the token budget,
+    /// the retriever must fall back to normal chunk retrieval.
+    func test_fullContextMode_overBudget_fallsBackToChunkedRetrieval() async throws {
+        // A document far larger than a tiny budget forces the fallback.
+        let body = String(repeating: "word ", count: 4000)
+        let url = try writeTempFile(content: body)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let docStore = FakeDocumentStore()
+        let docID = UUID()
+        docStore.insertedRecords = [
+            DocumentRecord(id: docID, title: "BigDoc", sourceURL: url, fileType: "txt", chunkCount: 10)
+        ]
+
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults([
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "CHUNK PASSAGE", chunkIndex: 0), documentTitle: "BigDoc", score: 1.0)
+        ])
+
+        let sut = RAGService(
+            documentStore: docStore,
+            vectorStore: vectorStore,
+            fullContextMode: true,
+            fullContextBudgetTokens: 16  // far below the ~5000-token corpus
+        )
+
+        let result = try await sut.retrieve(query: "anything")
+
+        XCTAssertEqual(result.slots.count, 1)
+        XCTAssertTrue(result.slots[0].content.contains("CHUNK PASSAGE"),
+                      "over-budget corpus must fall back to the chunk-retrieval path")
+        XCTAssertFalse(result.slots[0].content.contains(body),
+                       "the whole document must NOT be injected when over budget")
+
+        // The fallback chunked path actually ran a keyword search.
+        let keywordLimit = await vectorStore.lastKeywordLimit
+        XCTAssertNotNil(keywordLimit, "over-budget fallback must invoke the chunk-retrieval search")
+    }
+
+    /// The default (`fullContextMode == false`) must preserve the historical
+    /// chunked behaviour even when a corpus would fit a budget.
+    func test_fullContextMode_disabledByDefault_usesChunkedRetrieval() async throws {
+        let url = try writeTempFile(content: "Tiny doc that would fit any budget.")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let docStore = FakeDocumentStore()
+        let docID = UUID()
+        docStore.insertedRecords = [
+            DocumentRecord(id: docID, title: "TinyDoc", sourceURL: url, fileType: "txt", chunkCount: 1)
+        ]
+
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults([
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "CHUNK PASSAGE", chunkIndex: 0), documentTitle: "TinyDoc", score: 1.0)
+        ])
+
+        // No fullContextMode argument → defaults to off.
+        let sut = RAGService(documentStore: docStore, vectorStore: vectorStore)
+
+        let result = try await sut.retrieve(query: "anything")
+
+        XCTAssertTrue(result.slots[0].content.contains("CHUNK PASSAGE"),
+                      "with full-context mode off, retrieval must use chunks")
+        let keywordLimit = await vectorStore.lastKeywordLimit
+        XCTAssertNotNil(keywordLimit, "default mode must run the chunk-retrieval search")
+    }
+
+    /// An empty corpus under full-context mode must fall back to chunked
+    /// retrieval (which then round-trips empty) rather than injecting a blank
+    /// whole-document slot.
+    func test_fullContextMode_emptyCorpus_fallsBackToChunked() async throws {
+        let docStore = FakeDocumentStore()  // no documents
+        let vectorStore = FakeVectorStore()  // no hits
+
+        let sut = RAGService(
+            documentStore: docStore,
+            vectorStore: vectorStore,
+            fullContextMode: true
+        )
+
+        let result = try await sut.retrieve(query: "anything")
+        XCTAssertTrue(result.slots.isEmpty)
+        XCTAssertTrue(result.citations.isEmpty)
+
+        // The fallback chunked path ran (and found nothing).
+        let keywordLimit = await vectorStore.lastKeywordLimit
+        XCTAssertNotNil(keywordLimit, "empty corpus must fall through to the chunk-retrieval search")
+    }
+
     // MARK: - Helpers
 
     private func writeTempFile(content: String) throws -> URL {

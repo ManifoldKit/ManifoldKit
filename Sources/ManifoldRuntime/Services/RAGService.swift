@@ -41,6 +41,19 @@ public actor RAGService {
     /// already excludes non-positive scores, so a `0` threshold is a no-op.
     private let similarityThreshold: Float
 
+    /// When `true`, ``retrieve(query:limit:)`` first tries to inject the whole
+    /// corpus verbatim (skipping chunk retrieval) if it fits
+    /// ``fullContextBudgetTokens``, falling back to chunked retrieval otherwise.
+    /// Threaded from ``RAGConfiguration/fullContextMode``. The default of `false`
+    /// preserves the historical always-chunk behaviour.
+    private let fullContextMode: Bool
+
+    /// Token ceiling for the whole-document path. The corpus is injected verbatim
+    /// only when its estimated token count is at or below this value. Threaded
+    /// from ``RAGConfiguration/fullContextBudgetTokens``; ignored when
+    /// ``fullContextMode`` is `false`.
+    private let fullContextBudgetTokens: Int
+
     /// How much wider than `limit` the first-stage candidate set is fetched
     /// when a reranker is active. A 3× pool gives the cross-encoder enough
     /// candidates to recover relevant passages the bi-encoder cosine stage
@@ -57,7 +70,9 @@ public actor RAGService {
         chunker: DocumentChunker = DocumentChunker(),
         parsers: [any DocumentParser] = [TextDocumentParser(), PDFDocumentParser()],
         defaultLimit: Int = 5,
-        similarityThreshold: Float = 0
+        similarityThreshold: Float = 0,
+        fullContextMode: Bool = false,
+        fullContextBudgetTokens: Int = 8192
     ) {
         self.documentStore = documentStore
         self.vectorStore = vectorStore
@@ -70,6 +85,11 @@ public actor RAGService {
         // meaningless for cosine scores in [-1, 1].
         self.defaultLimit = max(1, defaultLimit)
         self.similarityThreshold = max(0, similarityThreshold)
+        self.fullContextMode = fullContextMode
+        // A non-positive budget would make the whole-doc path unreachable; clamp
+        // so a misconfigured `0` still admits trivially small corpora rather than
+        // silently disabling the feature it was meant to enable.
+        self.fullContextBudgetTokens = max(1, fullContextBudgetTokens)
     }
 
     // MARK: - Ingestion
@@ -177,6 +197,16 @@ public actor RAGService {
             return .empty
         }
 
+        // Full-context pre-retrieval branch. When enabled and the whole corpus
+        // fits the token budget, inject every document verbatim and skip chunk
+        // retrieval entirely — short knowledge bases benefit from the model
+        // seeing complete documents rather than top-K passages. A `nil` return
+        // means the corpus was over budget or unreadable, so we fall through to
+        // the normal chunked path below.
+        if fullContextMode, let wholeDocResult = try await retrieveWholeDocuments() {
+            return wholeDocResult
+        }
+
         // No explicit caller override falls back to the configured top-K
         // (``RAGConfiguration/topK``). Clamp to a positive width so the
         // vector-store `.prefix` and reranker pool math stay well-defined.
@@ -274,6 +304,78 @@ public actor RAGService {
                 chunkIndex: hit.chunk.chunkIndex,
                 fullText: hit.chunk.text,
                 score: hit.score
+            )
+        }
+
+        return RetrievalResult(slots: [slot], citations: citations)
+    }
+
+    /// Full-context path: reads every ingested document's source, estimates the
+    /// combined token cost, and — only if it fits ``fullContextBudgetTokens`` —
+    /// returns a single retrieval slot carrying all documents verbatim plus a
+    /// per-document citation.
+    ///
+    /// Returns `nil` (signalling the caller to fall back to chunked retrieval)
+    /// when there are no documents, when the corpus is over budget, or when no
+    /// document source could be read. Document text is re-parsed from each
+    /// record's `sourceURL` using the same parsers used at ingest, so this needs
+    /// no new vector-store surface.
+    private func retrieveWholeDocuments() async throws -> RetrievalResult? {
+        let documents = try await documentStore.fetchDocuments()
+        guard !documents.isEmpty else { return nil }
+
+        // Re-parse each document from its source. A source that has since moved
+        // or whose type lost its parser is skipped with a warning rather than
+        // failing the turn — partial corpora are still useful, and a fully empty
+        // result correctly falls back to chunking below.
+        var parsed: [(record: DocumentRecord, text: String)] = []
+        for record in documents {
+            let ext = record.fileType.lowercased()
+            guard let parser = parsers.first(where: { $0.supportedExtensions.contains(ext) }) else {
+                Log.inference.warning("RAGService: no parser for full-context document \(record.title, privacy: .public) (.\(ext, privacy: .public)); skipping")
+                continue
+            }
+            do {
+                let text = try await parser.parse(url: record.sourceURL)
+                parsed.append((record, text))
+            } catch {
+                Log.inference.warning("RAGService: failed to read full-context document \(record.title, privacy: .public): \(error.localizedDescription)")
+            }
+        }
+
+        guard !parsed.isEmpty else { return nil }
+
+        // Budget gate: estimate the combined token cost and bail out to chunked
+        // retrieval when the corpus does not fit. The estimate reuses the same
+        // context-budget primitive the trim/compaction path uses, so the
+        // "does this fit?" question is answered consistently across the engine.
+        let totalTokens = parsed.reduce(0) { running, doc in
+            running + ContextWindowManager.estimateTokenCount(doc.text)
+        }
+        guard totalTokens <= fullContextBudgetTokens else {
+            Log.inference.info("RAGService: full-context corpus (\(totalTokens) tokens) exceeds budget (\(self.fullContextBudgetTokens)); falling back to chunked retrieval")
+            return nil
+        }
+
+        let content = parsed.map { doc in
+            "[\(doc.record.title)]\n\(doc.text)"
+        }.joined(separator: "\n\n---\n\n")
+
+        let slot = PromptSlot(
+            id: "rag-retrieval",
+            content: content,
+            position: .contextSetup,
+            role: .retrieval,
+            label: "Full Documents"
+        )
+
+        let citations = parsed.map { doc in
+            Citation(
+                documentID: doc.record.id,
+                documentTitle: doc.record.title,
+                chunkIndex: 0,
+                fullText: doc.text,
+                score: 1.0
             )
         }
 

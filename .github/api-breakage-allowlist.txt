@@ -113,3 +113,5 @@ API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkS
 API breakage: enumelement GenerationCompletion.Reason.runTokenBudget has been added as a new enum case
 API breakage: enumelement GenerationEvent.runTokenBudgetExceeded has been added as a new enum case
 API breakage: enumelement GenerationStreamConsumer.StreamAction.runTokenBudgetExceeded has been added as a new enum case
+API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkSize:chunkOverlap:topK:similarityThreshold:vectorStoreURL:) has been removed
+API breakage: constructor RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:) has been removed
