@@ -266,11 +266,21 @@ public enum ToolResultPart: Sendable, Codable, Equatable, Hashable {
             let text = try container.decodeIfPresent(String.self, forKey: .text)
             self = .resource(uri: uri, text: text)
         case "image":
-            let mimeType = try container.decode(String.self, forKey: .mimeType)
-            self = .image(mimeType: mimeType)
+            // A well-formed MCP image block carries `mimeType`. Without it we
+            // can't type the part, so fall back to forward-compat `.unknown`
+            // rather than throwing — preserving the unknown-type tolerance the
+            // `ToolResultStructuredContentTests` contract pins.
+            if let mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType) {
+                self = .image(mimeType: mimeType)
+            } else {
+                self = .unknown(type: typeString)
+            }
         case "audio":
-            let mimeType = try container.decode(String.self, forKey: .mimeType)
-            self = .audio(mimeType: mimeType)
+            if let mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType) {
+                self = .audio(mimeType: mimeType)
+            } else {
+                self = .unknown(type: typeString)
+            }
         default:
             // Forward-compatible: unknown part types are preserved, not thrown.
             self = .unknown(type: typeString)
