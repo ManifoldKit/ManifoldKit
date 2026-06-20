@@ -127,17 +127,26 @@ public struct ToolGrammarBuilder: Sendable {
     /// empty (no envelope to constrain — caller should fall back to
     /// unconstrained sampling).
     ///
-    /// The default `mode` (`.strict(only: nil)`) preserves the historical
-    /// forced-call behaviour for source compatibility; callers select
-    /// `.permissive` (for `toolChoice == .auto`) or `.strict(only:)` (for
-    /// `.tool(name:)`) explicitly. See ``Mode`` for the rationale (#1961).
+    /// Overload preserving the original `buildGrammar(for:)` public symbol:
+    /// builds the historical strict, forced-call union (`.strict(only: nil)`).
+    /// Kept as a distinct method rather than a defaulted `mode:` parameter so the
+    /// API digester does not see the pre-#1961 signature as renamed (a defaulted
+    /// param is source-compatible but still trips `diagnose-api-breaking-changes`).
+    public func buildGrammar(for tools: [ToolDefinition]) -> String? {
+        buildGrammar(for: tools, mode: .strict(only: nil))
+    }
+
+    /// Builds the grammar in an explicit ``Mode``: callers select `.permissive`
+    /// (for `toolChoice == .auto`) or `.strict(only:)` (for `.tool(name:)`) /
+    /// `.strict(only: nil)` (for `.required`). See ``Mode`` for the rationale
+    /// (#1961).
     ///
     /// - Parameters:
     ///   - tools: the tool definitions for this request.
     ///   - mode: how strictly to constrain the first token (see ``Mode``).
     public func buildGrammar(
         for tools: [ToolDefinition],
-        mode: Mode = .strict(only: nil)
+        mode: Mode
     ) -> String? {
         guard !tools.isEmpty else { return nil }
 
