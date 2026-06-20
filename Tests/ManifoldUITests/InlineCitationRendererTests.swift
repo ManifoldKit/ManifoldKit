@@ -86,6 +86,38 @@ final class InlineCitationRendererTests: XCTestCase {
         )
     }
 
+    // MARK: - Code spans / fenced blocks degrade to plain text
+
+    func test_segments_markerInsideInlineCodeSpanLeftPlain() {
+        // `[1]` inside a backtick span is a code sample, not a citation anchor.
+        let input = "Use `arr[1]` to index, and cite the design [1]."
+        let segments = InlineCitationRenderer.segments(for: input, citations: twoCitations)
+        XCTAssertEqual(segments, [
+            .text("Use `arr[1]` to index, and cite the design "),
+            .marker(displayNumber: 1, citationIndex: 0),
+            .text("."),
+        ])
+    }
+
+    func test_segments_markerInsideFencedCodeBlockLeftPlain() {
+        let input = "```\nlet x = arr[1]\n```\nSee [2]."
+        let segments = InlineCitationRenderer.segments(for: input, citations: twoCitations)
+        XCTAssertEqual(segments, [
+            .text("```\nlet x = arr[1]\n```\nSee "),
+            .marker(displayNumber: 2, citationIndex: 1),
+            .text("."),
+        ])
+    }
+
+    func test_segments_unterminatedCodeSpanLeftPlain() {
+        // No closing backtick: the rest is literal, including any bracketed token.
+        let input = "open `code [1] still open"
+        XCTAssertEqual(
+            InlineCitationRenderer.segments(for: input, citations: twoCitations),
+            [.text(input)]
+        )
+    }
+
     // MARK: - Coalescing / edge inputs
 
     func test_segments_adjacentMarkersCoalesceSurroundingProse() {

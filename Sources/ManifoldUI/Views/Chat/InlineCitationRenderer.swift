@@ -40,6 +40,12 @@ public enum InlineCitationRenderer {
     ///   literal text — only purely-numeric, in-range tokens are treated as
     ///   citation anchors. This intentionally leaves markdown link syntax
     ///   (`[label](url)`) untouched because `[label]` is non-numeric.
+    /// - `[n]` inside a backtick code span (`` `[1]` ``) or fenced code block is
+    ///   left literal: a code sample that happens to contain `[1]` must not become
+    ///   a tappable citation. Backtick runs are matched CommonMark-style — a run of
+    ///   N backticks closes on the next run of exactly N — which also brackets the
+    ///   ` ``` ` fences of a code block, so their contents are passed through as
+    ///   literal text without marker scanning.
     /// - Adjacent literal runs are coalesced so the View renders the minimum number
     ///   of `Text` segments.
     ///
@@ -64,6 +70,40 @@ public enum InlineCitationRenderer {
         var i = 0
         while i < scalars.count {
             let char = scalars[i]
+            if char == "`" {
+                // Enter a code span: a run of N backticks is closed by the next
+                // run of exactly N. Everything in between (including any `[n]`) is
+                // copied verbatim so code samples never sprout citation links.
+                // An unterminated run degrades to literal text (no close found).
+                var fenceLength = 0
+                while i < scalars.count, scalars[i] == "`" {
+                    literal.append(scalars[i])
+                    fenceLength += 1
+                    i += 1
+                }
+                while i < scalars.count {
+                    if scalars[i] == "`" {
+                        var run = 0
+                        var k = i
+                        while k < scalars.count, scalars[k] == "`" {
+                            run += 1
+                            k += 1
+                        }
+                        // Append the whole backtick run as literal regardless.
+                        for _ in 0..<run { literal.append("`") }
+                        i = k
+                        // Closing run of the same length ends the span; otherwise
+                        // an interior run (e.g. a longer/shorter tick group) is just
+                        // more code content and we keep scanning. An unterminated
+                        // span simply runs to end-of-text as literal.
+                        if run == fenceLength { break }
+                    } else {
+                        literal.append(scalars[i])
+                        i += 1
+                    }
+                }
+                continue
+            }
             if char == "[" {
                 // Try to consume a `[<digits>]` token starting here.
                 var j = i + 1
