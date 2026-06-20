@@ -664,6 +664,11 @@ final class GenerationQueue {
         // stages the target; the queue resolves it here because only the queue
         // knows which backend will actually serve the request.
         var systemPrompt = systemPrompt
+        // The strategy the router actually chose for the serving backend, so it
+        // can be surfaced on the returned stream as the single source of truth
+        // (`respond(_:to:)` reads it rather than recomputing against a possibly
+        // different capability set).
+        var selectedStructuredStrategy: StructuredOutputStrategy?
         if let staged = config.structuredOutput,
            let target = Self.structuredOutputTarget(
                from: staged,
@@ -673,6 +678,7 @@ final class GenerationQueue {
                 capabilities: backend.capabilities,
                 target: target
             )
+            selectedStructuredStrategy = strategy
             switch strategy {
             case .gbnf(let grammar):
                 // An explicit caller grammar always wins; only lower when the
@@ -710,6 +716,7 @@ final class GenerationQueue {
         let rawStream = AsyncThrowingStream<GenerationEvent, Error> { continuation = $0 }
         let stream = GenerationStream(rawStream)
         stream.setPhase(.queued)
+        stream.structuredOutputStrategy = selectedStructuredStrategy
         continuations[token] = continuation
 
         Self.warnIfThinkingUnsupported(backend: backend, config: config)

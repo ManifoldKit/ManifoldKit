@@ -37,6 +37,13 @@ public final class GenerationStream: Sendable {
     /// ``InferenceError/idleTimeout(_:)`` if no event arrives within this duration.
     public nonisolated let idleTimeout: Duration?
 
+    /// The structured-output strategy the generation queue selected for the
+    /// serving backend, or `nil` when the request carried no structured-output
+    /// target. Set once by the queue at enqueue time; the single source of
+    /// truth that ``InferenceService/respond(_:to:config:)`` reports back so it
+    /// never recomputes the selection against a different capability set.
+    public package(set) var structuredOutputStrategy: StructuredOutputStrategy?
+
     // MARK: - Phase
 
     /// Lifecycle phases for a generation stream.

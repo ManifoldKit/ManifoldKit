@@ -86,6 +86,12 @@ extension InferenceService {
     /// The macro is optional: any `Decodable & Sendable & SchemaProviding` type
     /// works, so this is usable in default builds where the `Macros` trait is off.
     ///
+    /// This shares the generation queue with chat turns — the request is
+    /// enqueued and serializes behind any in-flight generation rather than
+    /// dispatching out-of-band. The router wiring lives at the queue's enqueue
+    /// chokepoint, which is the only place the serving backend's capabilities
+    /// are known.
+    ///
     /// - Parameters:
     ///   - type: The type to decode the response into.
     ///   - prompt: The user prompt.
@@ -140,20 +146,12 @@ extension InferenceService {
 
         let rawText = collected
 
-        // Report the strategy the router actually chose for the active backend.
-        // The queue runs the same selection internally to lower config; we
-        // recompute it here (read-only, via the same queue helper) purely to
-        // surface it on the result.
-        let strategy: StructuredOutputStrategy
-        if let caps = currentEndpointBackend?.capabilities,
-           let target = GenerationQueue.structuredOutputTarget(
-               from: .jsonSchema(schemaString),
-               capabilities: caps
-           ) {
-            strategy = StructuredOutputRouter.selectStrategy(capabilities: caps, target: target)
-        } else {
-            strategy = .jsonPrompting
-        }
+        // The strategy the router actually chose for the serving backend, set
+        // on the stream by the queue at enqueue time. Reading it back is the
+        // single source of truth — no recomputation against a capability set
+        // that might differ from the one the queue dispatched to. `nil` means
+        // the request carried no resolvable target (treated as prompt-level).
+        let strategy = stream.structuredOutputStrategy ?? .jsonPrompting
 
         // Decode off the main actor — small payloads, but no reason to block UI.
         do {
