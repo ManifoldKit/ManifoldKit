@@ -486,6 +486,190 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         XCTAssertEqual(results.first?.callId, "g1")
     }
 
+    // MARK: - Iteration cap boundary (the (limit+1)th call is not dispatched)
+
+    /// The dispatch loop checks the iteration ceiling BEFORE generating the
+    /// next turn, so the model never gets to emit the (limit+1)th tool call.
+    /// With `maxToolIterations: 2` and a backend that *would* keep calling
+    /// tools forever, the executor runs exactly twice — never a third time.
+    func test_iterationCap_doesNotDispatchOneBeyondLimit() async throws {
+        let executor = RecordingExecutor(name: "spam") { _ in
+            ToolResult(callId: "", content: "ok", errorKind: nil)
+        }
+        let registry = ToolRegistry()
+        registry.register(executor)
+
+        // Distinct args per turn so the repeat-call short-circuit never masks
+        // a real dispatch — every turn would invoke the executor if reached.
+        provider.backend.scriptedToolCallsPerTurn = (0..<10).map { idx in
+            [makeCall(id: "s-\(idx)", name: "spam", arguments: #"{"i":\#(idx)}"#)]
+        }
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueueCustomConfig(
+            messages: [("user", "go")],
+            config: GenerationConfig(maxOutputTokens: 8, maxToolIterations: 2)
+        )
+        let events = try await collectEvents(stream)
+
+        // Exactly `limit` dispatches — the (limit+1)th is never generated.
+        XCTAssertEqual(executor.callCount, 2, "executor must run exactly maxToolIterations times")
+
+        // No dispatch event for a hypothetical third call id ("s-2"): the limit
+        // fires before that turn is generated, so it never reaches dispatch.
+        let dispatchStartedIds = events.compactMap { event -> String? in
+            if case .toolDispatchStarted(let id, _, _) = event { return id } else { return nil }
+        }
+        XCTAssertEqual(dispatchStartedIds, ["s-0", "s-1"])
+        XCTAssertFalse(dispatchStartedIds.contains("s-2"), "the (limit+1)th call must never be dispatched")
+
+        let limits = events.compactMap { event -> Int? in
+            if case .toolIterationLimitExceeded(let n) = event { return n } else { return nil }
+        }
+        XCTAssertEqual(limits, [2])
+    }
+
+    // MARK: - Over-budget result is not recorded as a successful completion
+
+    /// A result that pushes the cumulative tool-result byte total over budget
+    /// must be detected BEFORE it is persisted/yielded as a success. The loop
+    /// substitutes a synthetic `.permanent` overflow result (so the oversized
+    /// content never lands as success or in the next turn's history) and stops.
+    func test_overBudgetResult_notRecordedAsSuccess_loopStops() async throws {
+        // Budget is 512 KiB. First result is small (well under); the second
+        // returns 1 MiB which crosses the budget. The over-budget detection
+        // must fire on the *second* dispatch, replacing it with an overflow
+        // error rather than logging the giant payload as a success.
+        let smallContent = "small-ok"
+        let giantContent = String(repeating: "x", count: 1_048_576)
+        // Two distinct executors so neither closure mutates shared state: the
+        // first dispatch stays under budget, the second crosses it.
+        let smallExecutor = RecordingExecutor(name: "small") { _ in
+            ToolResult(callId: "", content: smallContent, errorKind: nil)
+        }
+        let giantExecutor = RecordingExecutor(name: "giant") { _ in
+            ToolResult(callId: "", content: giantContent, errorKind: nil)
+        }
+        let registry = ToolRegistry()
+        // Opt out of registry-level oversize enforcement so the giant payload
+        // reaches the coordinator's own byte-budget guard (the unit under test).
+        registry.outputPolicy = ToolOutputPolicy(maxBytes: .max, onOversize: .allow)
+        registry.register(smallExecutor)
+        registry.register(giantExecutor)
+
+        provider.backend.scriptedToolCallsPerTurn = [
+            [makeCall(id: "b1", name: "small", arguments: #"{"i":0}"#)],
+            [makeCall(id: "b2", name: "giant", arguments: #"{"i":1}"#)],
+            [makeCall(id: "b3", name: "small", arguments: #"{"i":2}"#)],
+        ]
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueue(
+            messages: [("user", "go")],
+            maxOutputTokens: 8
+        )
+        let events = try await collectEvents(stream)
+
+        let results = events.compactMap { event -> ToolResult? in
+            if case .toolResult(let r) = event { return r } else { return nil }
+        }
+        // Two results: the small success and the over-budget substitute.
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results[0].callId, "b1")
+        XCTAssertEqual(results[0].content, smallContent)
+        XCTAssertNil(results[0].errorKind)
+
+        // The oversized result must NOT be recorded as success — the giant
+        // payload never appears, and the substitute carries `.permanent`.
+        XCTAssertEqual(results[1].callId, "b2")
+        XCTAssertEqual(results[1].errorKind, .permanent)
+        XCTAssertNotEqual(results[1].content, giantContent, "oversized content must not be recorded as a successful result")
+
+        // The paired completion for the over-budget call carries `.permanent`,
+        // not a success (`nil`) error kind.
+        let completedKinds = events.compactMap { event -> (String, ToolResult.ErrorKind?)? in
+            if case .toolDispatchCompleted(let id, _, let kind) = event { return (id, kind) }
+            return nil
+        }
+        let b2Completion = completedKinds.first { $0.0 == "b2" }
+        XCTAssertEqual(b2Completion?.1, .permanent, "over-budget dispatch must not complete as success")
+
+        // The loop stops after the over-budget result — the third call is never
+        // dispatched.
+        XCTAssertFalse(
+            completedKinds.contains { $0.0 == "b3" },
+            "loop must stop after the over-budget result; the third call must not dispatch"
+        )
+
+        // Completion reason is `.stop`.
+        let completions = events.compactMap { event -> GenerationCompletion? in
+            if case .generationCompleted(let c) = event { return c } else { return nil }
+        }
+        XCTAssertEqual(completions.first?.reason, .stop)
+    }
+
+    // MARK: - Hook-blocked call keeps the dispatch event stream symmetric
+
+    /// When a pre-tool-use hook blocks a call, consumers that pair every
+    /// `.toolDispatchStarted` with a `.toolDispatchCompleted` must still see a
+    /// matched pair (plus the denied `.toolResult`) — otherwise they desync
+    /// waiting for a completion that never lands.
+    func test_hookBlockedCall_emitsMatchedDispatchPairAndDeniedResult() async throws {
+        let executor = RecordingExecutor(name: "danger") { _ in
+            ToolResult(callId: "", content: "should-not-run", errorKind: nil)
+        }
+        let registry = ToolRegistry()
+        registry.register(executor)
+
+        provider.backend.scriptedToolCallsPerTurn = [
+            [makeCall(id: "h1", name: "danger", arguments: "{}")],
+            [],
+        ]
+        provider.backend.tokensToYieldPerTurn = [[], ["done"]]
+
+        let coordinator = makeCoordinator(registry: registry)
+        // Block every call before it dispatches.
+        coordinator.preToolUseHook = { @Sendable _, _, _ in .block(reason: "not allowed") }
+
+        let (_, stream) = try coordinator.enqueue(
+            messages: [("user", "go")],
+            maxOutputTokens: 8
+        )
+        let events = try await collectEvents(stream)
+
+        // The blocked tool must never execute.
+        XCTAssertEqual(executor.callCount, 0, "a blocked call must not invoke the executor")
+
+        // Matched dispatch pair for the blocked call.
+        let started = events.compactMap { event -> String? in
+            if case .toolDispatchStarted(let id, _, _) = event { return id } else { return nil }
+        }
+        let completed = events.compactMap { event -> (String, ToolResult.ErrorKind?)? in
+            if case .toolDispatchCompleted(let id, _, let kind) = event { return (id, kind) }
+            return nil
+        }
+        XCTAssertEqual(started, ["h1"], "blocked call must emit toolDispatchStarted")
+        XCTAssertEqual(completed.map(\.0), ["h1"], "blocked call must emit a paired toolDispatchCompleted")
+        XCTAssertEqual(completed.first?.1, .permissionDenied, "the paired completion carries the denied error kind")
+
+        // The denied result is surfaced, and it sits between the started and
+        // completed events (event-stream symmetry).
+        let results = events.compactMap { event -> ToolResult? in
+            if case .toolResult(let r) = event { return r } else { return nil }
+        }
+        let denied = try XCTUnwrap(results.first { $0.callId == "h1" })
+        XCTAssertEqual(denied.errorKind, .permissionDenied)
+        XCTAssertTrue(denied.content.contains("blocked by pre-tool-use hook"))
+
+        let startedIdx = try XCTUnwrap(events.firstIndex { if case .toolDispatchStarted = $0 { return true } else { return false } })
+        let resultIdx = try XCTUnwrap(events.firstIndex { event in
+            if case .toolResult(let r) = event { return r.callId == "h1" } else { return false }
+        })
+        let completedIdx = try XCTUnwrap(events.firstIndex { if case .toolDispatchCompleted = $0 { return true } else { return false } })
+        XCTAssertLessThan(startedIdx, resultIdx)
+        XCTAssertLessThan(resultIdx, completedIdx)
+    }
+
     // MARK: - Terminal completion event (#1832)
 
     /// A plain text turn (no tool calls) must end with exactly one
