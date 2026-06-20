@@ -65,6 +65,64 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertEqual(rootLine, "root ::= toolcall-0", "duplicate names collapse to a single branch")
     }
 
+    // MARK: - toolChoice modes (#1961)
+
+    private func rootLine(_ grammar: String) -> String {
+        grammar.split(separator: "\n").first.map(String.init) ?? ""
+    }
+
+    func test_permissive_rootAdmitsNonEmptyProseAndAllToolBranches() {
+        let grammar = try! XCTUnwrap(
+            builder.buildGrammar(for: [tool("a"), tool("b")], mode: .permissive)
+        )
+        // Root keeps every tool branch AND gains a prose alternative so the
+        // first sampled token is never forced to EOS (#1961).
+        XCTAssertEqual(rootLine(grammar), "root ::= toolcall-0 | toolcall-1 | prose")
+        // prose is non-empty (mandatory head) and its first byte is never `{`,
+        // keeping the alternation unambiguous at the first byte.
+        XCTAssertTrue(grammar.contains("prose ::= prose-head prose-tail*"))
+        XCTAssertTrue(grammar.contains("prose-head ::= [^{]"))
+        XCTAssertTrue(grammar.contains(#"prose-tail ::= [^\x00]"#))
+    }
+
+    func test_strict_rootIsToolCallOnly_noProse() {
+        let grammar = try! XCTUnwrap(
+            builder.buildGrammar(for: [tool("a"), tool("b")], mode: .strict(only: nil))
+        )
+        XCTAssertEqual(rootLine(grammar), "root ::= toolcall-0 | toolcall-1")
+        XCTAssertFalse(grammar.contains("prose"), "strict mode must not admit prose")
+    }
+
+    func test_strictOnly_namedTool_isSingleBranch() {
+        let grammar = try! XCTUnwrap(
+            builder.buildGrammar(
+                for: [tool("a"), tool("b"), tool("c")],
+                mode: .strict(only: "b")
+            )
+        )
+        XCTAssertEqual(rootLine(grammar), "root ::= toolcall-0", "named tool → exactly one branch")
+        XCTAssertTrue(grammar.contains(#""\"b\"""#), "the branch must be the named tool")
+        XCTAssertFalse(grammar.contains(#""\"a\"""#))
+        XCTAssertFalse(grammar.contains(#""\"c\"""#))
+    }
+
+    func test_strictOnly_absentTool_fallsBackToFullUnion() {
+        let grammar = try! XCTUnwrap(
+            builder.buildGrammar(
+                for: [tool("a"), tool("b")],
+                mode: .strict(only: "missing")
+            )
+        )
+        // An absent name must not produce an empty (match-nothing) grammar.
+        XCTAssertEqual(rootLine(grammar), "root ::= toolcall-0 | toolcall-1")
+    }
+
+    func test_defaultMode_isStrict() {
+        // Source-compat: the parameterless default preserves forced-call shape.
+        let grammar = try! XCTUnwrap(builder.buildGrammar(for: [tool("a")]))
+        XCTAssertFalse(grammar.contains("prose"))
+    }
+
     // MARK: - Escaping
 
     func test_escaping_quoteInName() {

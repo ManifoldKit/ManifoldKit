@@ -139,9 +139,14 @@ public struct FixtureComparator {
             case .toolIterationLimitExceeded(let n):
                 return .init(event: "toolIterationLimitExceeded", fields: ["iterations": String(n)])
             case .toolResult, .toolProgress, .toolDispatchStarted, .toolDispatchCompleted,
-                 .toolCallApproved, .kvCacheReuse, .throttleDiagnostic, .prefillProgress:
-                // Queue-emitted lifecycle events and progress signals are
-                // not part of the wire contract — drop from projection.
+                 .toolCallApproved, .kvCacheReuse, .throttleDiagnostic, .prefillProgress,
+                 .toolCallParseFailed, .toolCallTruncated:
+                // Queue-emitted lifecycle events and progress signals — plus the
+                // non-fatal tool-call parse/truncation diagnostics — are not part
+                // of the wire contract the fixture comparator validates; drop them
+                // from projection. (These are *known* cases: they must be matched
+                // explicitly, since `@unknown default` below only covers cases
+                // added in a future major.)
                 return nil
             case .handoffRequested:
                 // Runtime-synthesised handoff event — never emitted by the
