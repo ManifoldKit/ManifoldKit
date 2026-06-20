@@ -210,6 +210,31 @@ public enum ToolResultPart: Sendable, Codable, Equatable, Hashable {
     /// tool produced — equivalent to ``ToolResult/content`` for text-only tools.
     case text(String)
 
+    /// A reference to an external resource a tool surfaced (MCP `resource_link`).
+    ///
+    /// Carries the resource `uri` and an optional `mimeType`. The bytes are not
+    /// inlined — the model-facing ``ToolResult/content`` gets a textual
+    /// placeholder while this typed part preserves the link for hosts that want
+    /// to fetch or render it.
+    case resourceLink(uri: String, mimeType: String?)
+
+    /// An embedded resource a tool inlined (MCP embedded `resource`).
+    ///
+    /// Carries the resource `uri` and, when the embedded resource is itself
+    /// text, its `text` body (otherwise `nil` for binary resources).
+    case resource(uri: String, text: String?)
+
+    /// A binary image part a tool produced (MCP `image`).
+    ///
+    /// The bytes are not carried on the text path; `mimeType` preserves the
+    /// declared media type so a future consumer can fetch/decode it.
+    case image(mimeType: String)
+
+    /// A binary audio part a tool produced (MCP `audio`).
+    ///
+    /// As with ``image(mimeType:)``, only the declared media type is preserved.
+    case audio(mimeType: String)
+
     /// A part whose `type` discriminator is not recognised by this SDK version.
     ///
     /// The raw `type` string is preserved so callers can log or forward it.
@@ -222,7 +247,7 @@ public enum ToolResultPart: Sendable, Codable, Equatable, Hashable {
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
-        case type, text
+        case type, text, uri, mimeType
     }
 
     public init(from decoder: Decoder) throws {
@@ -232,6 +257,20 @@ public enum ToolResultPart: Sendable, Codable, Equatable, Hashable {
         case "text":
             let text = try container.decode(String.self, forKey: .text)
             self = .text(text)
+        case "resource_link":
+            let uri = try container.decode(String.self, forKey: .uri)
+            let mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType)
+            self = .resourceLink(uri: uri, mimeType: mimeType)
+        case "resource":
+            let uri = try container.decode(String.self, forKey: .uri)
+            let text = try container.decodeIfPresent(String.self, forKey: .text)
+            self = .resource(uri: uri, text: text)
+        case "image":
+            let mimeType = try container.decode(String.self, forKey: .mimeType)
+            self = .image(mimeType: mimeType)
+        case "audio":
+            let mimeType = try container.decode(String.self, forKey: .mimeType)
+            self = .audio(mimeType: mimeType)
         default:
             // Forward-compatible: unknown part types are preserved, not thrown.
             self = .unknown(type: typeString)
@@ -244,6 +283,20 @@ public enum ToolResultPart: Sendable, Codable, Equatable, Hashable {
         case .text(let text):
             try container.encode("text", forKey: .type)
             try container.encode(text, forKey: .text)
+        case .resourceLink(let uri, let mimeType):
+            try container.encode("resource_link", forKey: .type)
+            try container.encode(uri, forKey: .uri)
+            try container.encodeIfPresent(mimeType, forKey: .mimeType)
+        case .resource(let uri, let text):
+            try container.encode("resource", forKey: .type)
+            try container.encode(uri, forKey: .uri)
+            try container.encodeIfPresent(text, forKey: .text)
+        case .image(let mimeType):
+            try container.encode("image", forKey: .type)
+            try container.encode(mimeType, forKey: .mimeType)
+        case .audio(let mimeType):
+            try container.encode("audio", forKey: .type)
+            try container.encode(mimeType, forKey: .mimeType)
         case .unknown(let typeString):
             try container.encode(typeString, forKey: .type)
         }
