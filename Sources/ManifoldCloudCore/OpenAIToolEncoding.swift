@@ -25,15 +25,27 @@ package enum OpenAIToolEncoding {
 
     /// Encodes a ``ToolDefinition`` into the `{type:"function", function:{...}}`
     /// envelope used by both Chat Completions and Responses.
-    package static func encodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
+    ///
+    /// When `strict` is `true` (the caller has gated this on the backend's
+    /// ``BackendCapabilities/supportsStrictSchema``), the parameters are
+    /// rewritten via ``StrictSchemaTransform/openAIStrict(_:)`` and the
+    /// `function` object gains `"strict": true`, so OpenAI guarantees the
+    /// emitted arguments validate against the schema.
+    package static func encodeToolDefinition(_ tool: ToolDefinition, strict: Bool = false) -> [String: Any] {
         var function: [String: Any] = [
             "name": tool.name,
             "description": tool.description,
         ]
-        if let parameters = foundationJSON(from: tool.parameters) {
+        let parametersSchema = strict
+            ? StrictSchemaTransform.openAIStrict(tool.parameters)
+            : tool.parameters
+        if let parameters = foundationJSON(from: parametersSchema) {
             function["parameters"] = parameters
         } else {
             function["parameters"] = ["type": "object", "properties": [String: Any]()]
+        }
+        if strict {
+            function["strict"] = true
         }
         return [
             "type": "function",

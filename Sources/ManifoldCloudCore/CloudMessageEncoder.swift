@@ -114,13 +114,18 @@ public enum CloudMessageEncoder: Sendable {
 
     /// Encodes a list of ``ToolDefinition`` into the provider's
     /// `tools[]` envelope. Returns an empty array when `tools` is empty.
-    public func encodeTools(_ tools: [ToolDefinition]) -> [[String: Any]] {
+    ///
+    /// When `strict` is `true` the OpenAI/Claude encoders rewrite each tool's
+    /// schema into the provider strict shape and flag `strict: true`. Callers
+    /// must gate this on ``BackendCapabilities/supportsStrictSchema`` — Ollama
+    /// ignores it (no strict tool mode).
+    public func encodeTools(_ tools: [ToolDefinition], strict: Bool = false) -> [[String: Any]] {
         guard !tools.isEmpty else { return [] }
         switch self {
         case .openAI, .openAIResponses:
-            return tools.map(OpenAIToolEncoding.encodeToolDefinition)
+            return tools.map { OpenAIToolEncoding.encodeToolDefinition($0, strict: strict) }
         case .claude:
-            return tools.map(Self.claudeEncodeToolDefinition)
+            return tools.map { Self.claudeEncodeToolDefinition($0, strict: strict) }
         case .ollama:
             return tools.map(Self.ollamaEncodeToolDefinition)
         }
@@ -369,15 +374,27 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `ClaudeMessageEncoder.encodeToolDefinition`.
-    package static func claudeEncodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
+    ///
+    /// When `strict` is `true` (caller-gated on
+    /// ``BackendCapabilities/supportsStrictSchema``), the `input_schema` is
+    /// rewritten via ``StrictSchemaTransform/anthropicStrict(_:)`` and the tool
+    /// gains `"strict": true` — Anthropic's `structured-outputs-2025-11-13`
+    /// guarantee that tool inputs validate against the schema.
+    package static func claudeEncodeToolDefinition(_ tool: ToolDefinition, strict: Bool = false) -> [String: Any] {
         var entry: [String: Any] = [
             "name": tool.name,
             "description": tool.description,
         ]
-        if let schema = encodeJSONSchemaToFoundation(tool.parameters) {
+        let schemaValue = strict
+            ? StrictSchemaTransform.anthropicStrict(tool.parameters)
+            : tool.parameters
+        if let schema = encodeJSONSchemaToFoundation(schemaValue) {
             entry["input_schema"] = schema
         } else {
             entry["input_schema"] = ["type": "object", "properties": [String: Any]()]
+        }
+        if strict {
+            entry["strict"] = true
         }
         return entry
     }

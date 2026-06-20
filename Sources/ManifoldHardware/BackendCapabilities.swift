@@ -128,6 +128,22 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// Whether the backend supports Foundation-style guided structured output.
     public let supportsGuidedStructuredOutput: Bool
 
+    /// Whether the backend can emit a *strict* JSON-Schema constraint that
+    /// guarantees schema-valid output — OpenAI `strict: true` function tools and
+    /// `response_format: {type: "json_schema", strict: true}`, Anthropic's
+    /// `structured-outputs-2025-11-13` strict tools / `output_format`.
+    ///
+    /// When `true`, callers that pass ``StructuredOutputStrategy/jsonSchema(_:)``
+    /// via ``GenerationConfig/structuredOutput`` get the schema rewritten into
+    /// the provider's strict shape (`additionalProperties: false` on every
+    /// object, all properties required) before it hits the wire. Backends that
+    /// report `false` (the default) reject `additionalProperties: false` and
+    /// keep their legacy structured-output behaviour (e.g. `json_object`).
+    ///
+    /// Defaults to `false` for source compatibility — only OpenAI and Claude
+    /// SaaS backends advertise `true` today.
+    public let supportsStrictSchema: Bool
+
     /// `true` when the backend uses MLX's process-global resources — the GPU
     /// buffer cache (`MLX.Memory.cacheLimit`), the Metal device, and the MLX
     /// runtime singleton — and must coordinate with `MLXResourceArbiter` for
@@ -219,6 +235,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         streamsToolCallArguments: Bool = false,
         supportsParallelToolCalls: Bool = false,
         supportsGuidedStructuredOutput: Bool = false,
+        supportsStrictSchema: Bool = false,
         sharesMLXProcessResources: Bool = false,
         rendersFullPrompt: Bool = false,
         maxAdvertisedToolCount: Int? = nil
@@ -243,6 +260,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.streamsToolCallArguments = streamsToolCallArguments
         self.supportsParallelToolCalls = supportsParallelToolCalls
         self.supportsGuidedStructuredOutput = supportsGuidedStructuredOutput
+        self.supportsStrictSchema = supportsStrictSchema
         self.sharesMLXProcessResources = sharesMLXProcessResources
         self.rendersFullPrompt = rendersFullPrompt
         self.maxAdvertisedToolCount = maxAdvertisedToolCount
@@ -269,6 +287,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case streamsToolCallArguments
         case supportsParallelToolCalls
         case supportsGuidedStructuredOutput
+        case supportsStrictSchema
         case sharesMLXProcessResources
         case rendersFullPrompt
         case maxAdvertisedToolCount
@@ -299,6 +318,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         streamsToolCallArguments = (try c.decodeIfPresent(Bool.self, forKey: .streamsToolCallArguments)) ?? false
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
         supportsGuidedStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsGuidedStructuredOutput)) ?? false
+        supportsStrictSchema = (try c.decodeIfPresent(Bool.self, forKey: .supportsStrictSchema)) ?? false
         sharesMLXProcessResources = (try c.decodeIfPresent(Bool.self, forKey: .sharesMLXProcessResources)) ?? false
         rendersFullPrompt = (try c.decodeIfPresent(Bool.self, forKey: .rendersFullPrompt)) ?? false
         maxAdvertisedToolCount = try c.decodeIfPresent(Int.self, forKey: .maxAdvertisedToolCount)
@@ -326,6 +346,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(streamsToolCallArguments, forKey: .streamsToolCallArguments)
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
         try c.encode(supportsGuidedStructuredOutput, forKey: .supportsGuidedStructuredOutput)
+        try c.encode(supportsStrictSchema, forKey: .supportsStrictSchema)
         try c.encode(sharesMLXProcessResources, forKey: .sharesMLXProcessResources)
         try c.encode(rendersFullPrompt, forKey: .rendersFullPrompt)
         try c.encodeIfPresent(maxAdvertisedToolCount, forKey: .maxAdvertisedToolCount)
