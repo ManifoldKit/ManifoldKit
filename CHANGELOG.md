@@ -2,24 +2,32 @@
 
 ## [0.55.0](https://github.com/roryford/ManifoldKit/compare/v0.54.0...v0.55.0) (2026-06-20)
 
+### Highlights
 
-### Features
+**In-core text-to-speech.** `AudioGenerationRuntime` ships as a reference TTS backend that drives any `AudioGenerationBackend` from a live token stream — subscribe to its `events` property to receive `AudioRuntimeEvent` ticks as audio is synthesised and completed ([#1904](https://github.com/roryford/ManifoldKit/issues/1904), [#1908](https://github.com/roryford/ManifoldKit/issues/1908)). `ChatViewModel` wires this automatically when you pass an `audioGenerationService` to `ManifoldBootstrap`, and the message list renders a playback control per assistant turn ([#1911](https://github.com/roryford/ManifoldKit/issues/1911)).
 
-* **contract:** add BackendCapabilities.rendersFullPrompt for cloud prompt fidelity ([#1905](https://github.com/roryford/ManifoldKit/issues/1905)) ([#1907](https://github.com/roryford/ManifoldKit/issues/1907)) ([84571a4](https://github.com/roryford/ManifoldKit/commit/84571a4b90f4fcdae17755d35b3170446ccca30c))
-* in-core TTS reference backend + AudioGenerationRuntime ([#1904](https://github.com/roryford/ManifoldKit/issues/1904)) ([#1908](https://github.com/roryford/ManifoldKit/issues/1908)) ([3be1a2d](https://github.com/roryford/ManifoldKit/commit/3be1a2d3ee79c8f5146ee61695c078bc13a20a20))
-* **ui:** wire audio generation into ChatViewModel + message rendering ([#1904](https://github.com/roryford/ManifoldKit/issues/1904)) ([#1911](https://github.com/roryford/ManifoldKit/issues/1911)) ([a80343f](https://github.com/roryford/ManifoldKit/commit/a80343f5bbc43ed911b848928241f3e08b338a5d))
+```swift
+let bootstrap = try ManifoldBootstrap(
+    audioGenerationService: MyTTSService()
+)
+// bootstrap.audioRuntime is pre-wired; ChatView picks it up automatically
+for await event in bootstrap.audioRuntime!.events {
+    // AudioRuntimeEvent.progress / .completed / .failed
+}
+```
 
+**Local tool calling through the Jinja render path.** The Jinja prompt renderer now injects tool definitions and tool-call/result turns into the formatted prompt, so backends that use `rendersFullPrompt = true` get correct tool round-trips without falling back to the legacy hand-rolled path ([#1909](https://github.com/roryford/ManifoldKit/issues/1909), [#1912](https://github.com/roryford/ManifoldKit/issues/1912)). No caller changes required — tool calls that previously produced empty completions on Jinja-template models now work.
 
-### Bug Fixes
+**`BackendCapabilities.rendersFullPrompt`.** A new boolean capability flag that backends set to `true` when they render the complete formatted prompt server-side (rather than relying on ManifoldKit's client-side template). Cloud backends default to `false`; custom backends that do their own prompt assembly should advertise `true` so consumers can label captured prompts accurately ([#1905](https://github.com/roryford/ManifoldKit/issues/1905), [#1907](https://github.com/roryford/ManifoldKit/issues/1907)).
 
-* auto-load persisted backends on quickStart relaunch ([#1914](https://github.com/roryford/ManifoldKit/issues/1914)) ([63c8d4d](https://github.com/roryford/ManifoldKit/commit/63c8d4d6dfc91b2665d770faddc4c0ca0b0aefd2))
-* render tools natively through the Jinja prompt path so local tool calling works ([#1909](https://github.com/roryford/ManifoldKit/issues/1909)) ([#1912](https://github.com/roryford/ManifoldKit/issues/1912)) ([9cb182f](https://github.com/roryford/ManifoldKit/commit/9cb182fc6ea1ffc3896ab0962841a94ed756e13a))
+### Fixes
 
+* Auto-load persisted backends on `quickStart` relaunch — a persisted Ollama endpoint now resumes generating without a manual `loadSelectedEndpoint()` call ([#1914](https://github.com/roryford/ManifoldKit/issues/1914)).
 
 ### Documentation
 
-* add CLI interactive REPL quickstart from DX walkthrough ([#1913](https://github.com/roryford/ManifoldKit/issues/1913)) ([eaac3a7](https://github.com/roryford/ManifoldKit/commit/eaac3a7ffe4b218cb8f48a09880602276cd2f0d7))
-* **contract:** state GenerationConfig throw-vs-silent rule + Codable-lossy warning ([#1834](https://github.com/roryford/ManifoldKit/issues/1834)) ([#1906](https://github.com/roryford/ManifoldKit/issues/1906)) ([d762ad8](https://github.com/roryford/ManifoldKit/commit/d762ad882c1a308043f307f9eb43985b9ded731f))
+* Added CLI interactive REPL quickstart (§3b) with stdin loop, stdout/stderr routing guidance, and `OLLAMA_MODEL` env override ([#1913](https://github.com/roryford/ManifoldKit/issues/1913)).
+* Documented `GenerationConfig` throw-vs-silent rule and Codable-lossy decoding behaviour ([#1906](https://github.com/roryford/ManifoldKit/issues/1906)).
 
 ## [0.54.0](https://github.com/roryford/ManifoldKit/compare/v0.53.0...v0.54.0) (2026-06-18)
 
