@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.55.0](https://github.com/roryford/ManifoldKit/compare/v0.54.0...v0.55.0) (2026-06-20)
+
+
+### Features
+
+* **contract:** add BackendCapabilities.rendersFullPrompt for cloud prompt fidelity ([#1905](https://github.com/roryford/ManifoldKit/issues/1905)) ([#1907](https://github.com/roryford/ManifoldKit/issues/1907)) ([84571a4](https://github.com/roryford/ManifoldKit/commit/84571a4b90f4fcdae17755d35b3170446ccca30c))
+* in-core TTS reference backend + AudioGenerationRuntime ([#1904](https://github.com/roryford/ManifoldKit/issues/1904)) ([#1908](https://github.com/roryford/ManifoldKit/issues/1908)) ([3be1a2d](https://github.com/roryford/ManifoldKit/commit/3be1a2d3ee79c8f5146ee61695c078bc13a20a20))
+* **ui:** wire audio generation into ChatViewModel + message rendering ([#1904](https://github.com/roryford/ManifoldKit/issues/1904)) ([#1911](https://github.com/roryford/ManifoldKit/issues/1911)) ([a80343f](https://github.com/roryford/ManifoldKit/commit/a80343f5bbc43ed911b848928241f3e08b338a5d))
+
+
+### Bug Fixes
+
+* auto-load persisted backends on quickStart relaunch ([#1914](https://github.com/roryford/ManifoldKit/issues/1914)) ([63c8d4d](https://github.com/roryford/ManifoldKit/commit/63c8d4d6dfc91b2665d770faddc4c0ca0b0aefd2))
+* render tools natively through the Jinja prompt path so local tool calling works ([#1909](https://github.com/roryford/ManifoldKit/issues/1909)) ([#1912](https://github.com/roryford/ManifoldKit/issues/1912)) ([9cb182f](https://github.com/roryford/ManifoldKit/commit/9cb182fc6ea1ffc3896ab0962841a94ed756e13a))
+
+
+### Documentation
+
+* add CLI interactive REPL quickstart from DX walkthrough ([#1913](https://github.com/roryford/ManifoldKit/issues/1913)) ([eaac3a7](https://github.com/roryford/ManifoldKit/commit/eaac3a7ffe4b218cb8f48a09880602276cd2f0d7))
+* **contract:** state GenerationConfig throw-vs-silent rule + Codable-lossy warning ([#1834](https://github.com/roryford/ManifoldKit/issues/1834)) ([#1906](https://github.com/roryford/ManifoldKit/issues/1906)) ([d762ad8](https://github.com/roryford/ManifoldKit/commit/d762ad882c1a308043f307f9eb43985b9ded731f))
+
 ## [0.54.0](https://github.com/roryford/ManifoldKit/compare/v0.53.0...v0.54.0) (2026-06-18)
 
 ### Highlights
