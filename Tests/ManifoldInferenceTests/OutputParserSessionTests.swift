@@ -365,4 +365,88 @@ final class OutputParserSessionTests: XCTestCase {
             "A fully-closed block plus trailing text must not emit a truncation diagnostic")
         XCTAssertEqual(visible(events), "tail")
     }
+
+    // MARK: - #1982: closesAtEnd (EOS-keyed) + multi-call body (Mistral [TOOL_CALLS])
+
+    /// A Mistral `[TOOL_CALLS]` dialect: a bare JSON array of `{"name", "arguments"}`
+    /// objects emitted right after the literal token, with NO closing tag — the
+    /// block ends at end-of-generation and may carry multiple calls.
+    private func mistralMarker() -> ToolCallMarker {
+        ToolCallMarker(open: "[TOOL_CALLS]", closesAtEnd: true) { body in
+            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let data = trimmed.data(using: .utf8),
+                  let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+            else { return [] }
+            return arr.compactMap { obj in
+                guard let name = obj["name"] as? String, !name.isEmpty else { return nil }
+                let args: String
+                if let argObj = obj["arguments"],
+                   let argData = try? JSONSerialization.data(withJSONObject: argObj),
+                   let argStr = String(data: argData, encoding: .utf8) {
+                    args = argStr
+                } else {
+                    args = "{}"
+                }
+                return ToolCall(id: "mistral-\(name)", toolName: name, arguments: args)
+            }
+        }
+    }
+
+    func test_closesAtEnd_multiCall_parsesArrayAtFinalize_andEmitsTwoCalls() {
+        var transform = ToolCallTransform(markers: [mistralMarker()])
+        var events = transform.process([.token("here you go[TOOL_CALLS]")])
+        events += transform.process([.token("[{\"name\":\"calc\",\"arguments\":{\"x\":1}},")])
+        events += transform.process([.token("{\"name\":\"now\",\"arguments\":{}}]")])
+        events += transform.finalize()
+
+        let calls = toolCalls(events)
+        XCTAssertEqual(calls.map(\.toolName), ["calc", "now"],
+            "A closesAtEnd Mistral block must surface BOTH array elements as separate .toolCall events (#1982)")
+        XCTAssertEqual(calls.first?.arguments, "{\"x\":1}")
+        XCTAssertEqual(visible(events), "here you go",
+            "Text before the [TOOL_CALLS] marker is emitted as a normal token")
+
+        // Sabotage (verified, removed): replacing parseBodyMulti with `{ _ in [] }`
+        // makes calls empty; folding only the first element makes the count 1.
+    }
+
+    func test_closesAtEnd_parsesOnlyAtFinalize_notMidStream() {
+        var transform = ToolCallTransform(markers: [mistralMarker()])
+        var midStream = transform.process([.token("[TOOL_CALLS][{\"name\":\"calc\",\"arguments\":{}}]")])
+
+        XCTAssertTrue(toolCalls(midStream).isEmpty,
+            "A closesAtEnd block must NOT emit any .toolCall before finalize — it has no close tag")
+
+        midStream += transform.finalize()
+        XCTAssertEqual(toolCalls(midStream).map(\.toolName), ["calc"],
+            "The call surfaces only once finalize() runs the EOS-keyed parse")
+
+        // Sabotage (verified, removed): emitting in scan() rather than finalize()
+        // would make the pre-finalize assertion fail.
+    }
+
+    func test_closesAtEnd_emptyArrayBody_emitsParseFailed() {
+        var transform = ToolCallTransform(markers: [mistralMarker()])
+        var events = transform.process([.token("[TOOL_CALLS][]")])
+        events += transform.finalize()
+
+        XCTAssertTrue(toolCalls(events).isEmpty)
+        XCTAssertEqual(parseFailures(events), ["[]"],
+            "A closesAtEnd body that parses to an empty array must surface one .toolCallParseFailed (#1857 preserved)")
+
+        // Sabotage (verified, removed): dropping the isEmpty→parseFailed branch
+        // emits nothing and this assertion fails.
+    }
+
+    func test_closesAtEnd_doesNotAffectSingleCallCloseTagMarker() {
+        // Regression: the original single-call close-tag dialect is untouched.
+        var transform = ToolCallTransform(markers: [jsonMarker()])
+        var events = transform.process([.token("a<tool_call>{\"name\":\"f\"}</tool_call>b")])
+        events += transform.finalize()
+
+        XCTAssertEqual(toolCalls(events).map(\.toolName), ["f"],
+            "A close-tag marker must still emit exactly one .toolCall, unaffected by the #1982 additions")
+        XCTAssertEqual(toolCalls(events).count, 1)
+        XCTAssertEqual(visible(events), "ab")
+    }
 }
