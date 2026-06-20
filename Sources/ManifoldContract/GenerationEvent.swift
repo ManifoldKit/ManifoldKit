@@ -158,6 +158,18 @@ public enum GenerationEvent: Sendable, Equatable {
     /// UI surfaces can differentiate a budget hit from an organic stop.
     case toolIterationLimitExceeded(iterations: Int)
 
+    /// The orchestrator terminated a tool-dispatch loop because the cumulative
+    /// token spend across iterations reached the per-request run-level budget
+    /// (``GenerationConfig/maxRunTokens``).
+    ///
+    /// Emitted at most once per turn, at the tool-iteration boundary (after a
+    /// generation's terminal usage lands, before the next generation is
+    /// dispatched). `tokensUsed` is the running prompt + completion total that
+    /// met or exceeded the ceiling; `limit` is the configured budget. UI
+    /// surfaces can use this to distinguish a budget abort from an organic stop
+    /// or an iteration-count abort (``toolIterationLimitExceeded(iterations:)``).
+    case runTokenBudgetExceeded(tokensUsed: Int, limit: Int)
+
     /// Result of a tool dispatched by the orchestrator in response to a
     /// ``toolCall(_:)`` event.
     ///
@@ -333,6 +345,13 @@ public struct GenerationCompletion: Sendable, Equatable {
         /// ``GenerationEvent/toolIterationLimitExceeded(iterations:)`` event
         /// emitted earlier in the same turn.
         case toolIterationLimit
+
+        /// The orchestrator terminated a tool-dispatch loop because the
+        /// cumulative token spend reached the per-request run-level budget
+        /// (``GenerationConfig/maxRunTokens``). Pairs with the
+        /// ``GenerationEvent/runTokenBudgetExceeded(tokensUsed:limit:)`` event
+        /// emitted earlier in the same turn.
+        case runTokenBudget
 
         /// Generation was cancelled (cooperative cancellation of the turn).
         case cancelled

@@ -326,6 +326,32 @@ public struct GenerationConfig: Sendable, Codable {
         didSet { if maxToolIterations < 1 { maxToolIterations = 1 } }
     }
 
+    /// Optional run-level token ceiling for a single tool-dispatch turn.
+    ///
+    /// Sibling to ``maxToolIterations``: where that bounds the *number* of
+    /// tool round-trips, this bounds the cumulative token spend across them.
+    /// The orchestrator accumulates the prompt + completion tokens reported by
+    /// each generation's terminal ``GenerationEvent/usage(_:)`` and, **at the
+    /// tool-iteration boundary** (after a generation finishes, before the next
+    /// one is dispatched), aborts the turn when the running total reaches this
+    /// ceiling — emitting ``GenerationEvent/runTokenBudgetExceeded(tokensUsed:limit:)``
+    /// and a terminal ``GenerationCompletion/Reason/runTokenBudget``. Mirrors
+    /// OpenAI Agents' `max_turns` budget and LiteLLM's `max_budget`.
+    ///
+    /// - `nil` (the default) — no token ceiling; turns run until iteration
+    ///   limit, organic stop, or another guard fires. Preserves existing
+    ///   zero-config behaviour.
+    /// - non-`nil` — the cumulative token budget. Values `<= 0` disable the
+    ///   ceiling (treated as no limit) since a zero budget would abort before
+    ///   any useful work.
+    ///
+    /// Enforcement is deliberately at the iteration boundary, not mid-stream:
+    /// cloud backends only report usage at end-of-generation, so a mid-single-
+    /// generation hard abort is not reliably checkable and is out of scope. A
+    /// runaway *single* generation is bounded by ``maxOutputTokens``; this
+    /// ceiling bounds runaway *multi-iteration* tool loops.
+    public var maxRunTokens: Int?
+
     /// Number of tokens between brief cooperative yields during MLX generation.
     ///
     /// Sustained MLX inference on Mac can starve WindowServer's GPU command
@@ -385,6 +411,7 @@ public struct GenerationConfig: Sendable, Codable {
         streamPrefillProgress: Bool = false,
         thinkingMarkers: ThinkingMarkers? = nil,
         maxToolIterations: Int = 10,
+        maxRunTokens: Int? = nil,
         grammar: String? = nil,
         structuredOutput: StructuredOutputStrategy? = nil,
         yieldEveryNTokens: Int = 8,
@@ -414,6 +441,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.streamPrefillProgress = streamPrefillProgress
         self.thinkingMarkers = thinkingMarkers
         self.maxToolIterations = max(1, maxToolIterations)
+        self.maxRunTokens = maxRunTokens
         self.grammar = grammar
         self.structuredOutput = structuredOutput
         self.yieldEveryNTokens = yieldEveryNTokens
@@ -457,6 +485,9 @@ public struct GenerationConfig: Sendable, Codable {
         // clamp any persisted zero/negative value to the minimum of 1.
         let decodedIterations = (try c.decodeIfPresent(Int.self, forKey: .maxToolIterations)) ?? 10
         maxToolIterations = max(1, decodedIterations)
+        // maxRunTokens is a per-request runtime hint; it is not persisted (same
+        // policy as thinkingMarkers / structuredOutput).
+        maxRunTokens = nil
         // thinkingMarkers is a per-request runtime hint; it is not persisted.
         thinkingMarkers = nil
         grammar = try c.decodeIfPresent(String.self, forKey: .grammar)

@@ -114,6 +114,18 @@ struct GenerationToolDispatchLoop {
         var iterations = 0
         let limit = max(1, config.maxToolIterations)
 
+        // Run-level token ceiling (sibling to `maxToolIterations`). Accumulates
+        // the prompt + completion tokens each generation reports via its
+        // terminal `.usage` event and aborts at the iteration boundary once the
+        // running total reaches the configured budget. `nil` / `<= 0` disables
+        // the ceiling. Checked at the boundary — not mid-stream — because cloud
+        // backends only report usage at end-of-generation (#1939 item 3).
+        let runTokenBudget: Int? = {
+            guard let max = config.maxRunTokens, max > 0 else { return nil }
+            return max
+        }()
+        var cumulativeRunTokens = 0
+
         while true {
             iterations += 1
             if iterations > limit {
@@ -122,6 +134,18 @@ struct GenerationToolDispatchLoop {
                 )
                 yieldEvent(.toolIterationLimitExceeded(iterations: limit))
                 return .toolIterationLimit
+            }
+
+            // Run-level token ceiling: check at the iteration boundary, before
+            // dispatching another generation. The previous iteration's terminal
+            // `.usage` has already been folded into `cumulativeRunTokens` by the
+            // time we loop back here.
+            if let runTokenBudget, cumulativeRunTokens >= runTokenBudget {
+                Log.inference.warning(
+                    "GenerationQueue: tool-dispatch loop hit maxRunTokens budget (used=\(cumulativeRunTokens, privacy: .public) limit=\(runTokenBudget, privacy: .public)); terminating."
+                )
+                yieldEvent(.runTokenBudgetExceeded(tokensUsed: cumulativeRunTokens, limit: runTokenBudget))
+                return .runTokenBudget
             }
 
             if let toolAwareHistory,
@@ -257,19 +281,27 @@ struct GenerationToolDispatchLoop {
                         return .stop
                     }
 
+                // Token usage lands once per generation (terminal `.usage`
+                // event). Fold it into the run-level accumulator so the
+                // iteration-boundary ceiling can abort the turn, then forward
+                // the raw event verbatim for upstream consumers (metrics, UI).
+                case .recordUsage(let prompt, let completion):
+                    cumulativeRunTokens += prompt + completion
+                    yieldEvent(event)
+
                 // Passthrough actions: the dispatch loop owns only tool-call
                 // dispatch; every other action maps back to its raw event,
                 // forwarded verbatim for upstream consumers to handle. Listed
                 // explicitly (no `default:`) so a new StreamAction case forces
                 // a compile error here instead of silently falling through.
                 case .appendText,
-                     .recordUsage,
                      .recordToolApproval,
                      .appendThinkingText,
                      .finalizeThinking,
                      .recordThinkingSignature,
                      .appendToolResult,
                      .toolIterationLimitExceeded,
+                     .runTokenBudgetExceeded,
                      .recordHandoff,
                      .generationCompleted,
                      .ignore:

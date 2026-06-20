@@ -142,6 +142,8 @@ enum BackendSeamConsumer {
             _ = signature
         case .toolIterationLimitExceeded(iterations: let iterations):
             _ = iterations
+        case .runTokenBudgetExceeded(tokensUsed: let tokensUsed, limit: let limit):
+            _ = (tokensUsed, limit)
         case .toolResult(let result):
             _ = result
         case .toolProgress(let progress):

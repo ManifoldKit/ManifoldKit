@@ -54,6 +54,13 @@ public struct GenerationStreamConsumer: Sendable {
         case .toolIterationLimitExceeded(let iterations):
             return .toolIterationLimitExceeded(iterations: iterations)
 
+        case .runTokenBudgetExceeded(let tokensUsed, let limit):
+            // Run-level token-ceiling diagnostic. Orchestrator-emitted (the
+            // dispatch loop yields it directly); surfaced as a typed action so
+            // the runtime executor can raise a clear termination error, exactly
+            // mirroring the iteration-limit path.
+            return .runTokenBudgetExceeded(tokensUsed: tokensUsed, limit: limit)
+
         case .kvCacheReuse:
             return .ignore
 
@@ -143,6 +150,10 @@ public struct GenerationStreamConsumer: Sendable {
         /// The orchestrator stopped the tool-dispatch loop because the
         /// ``GenerationConfig/maxToolIterations`` budget was exhausted.
         case toolIterationLimitExceeded(iterations: Int)
+        /// The orchestrator stopped the tool-dispatch loop because the
+        /// cumulative token spend reached the ``GenerationConfig/maxRunTokens``
+        /// run-level budget.
+        case runTokenBudgetExceeded(tokensUsed: Int, limit: Int)
         /// The dispatch loop detected an agent handoff. Runtime owns the
         /// resulting session-state swap; surfacing as an action keeps the
         /// pattern-match exhaustive without forcing the consumer to know

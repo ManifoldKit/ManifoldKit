@@ -45,6 +45,7 @@ private func categorise(_ event: GenerationEvent) -> EventCategory? {
     case .toolCall: return nil
     case .toolResult: return nil
     case .toolIterationLimitExceeded: return nil
+    case .runTokenBudgetExceeded: return nil
     case .kvCacheReuse: return nil
     case .throttleDiagnostic: return nil
     case .toolCallParseFailed, .toolCallTruncated: return nil

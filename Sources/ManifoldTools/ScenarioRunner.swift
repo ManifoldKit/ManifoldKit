@@ -88,7 +88,7 @@ public final class ScenarioRunner {
                     logger?.append(.toolCall(scenarioId: scenario.id, name: call.toolName, arguments: call.arguments))
                 case .prefillProgress, .promptRendered, .usage, .thinkingToken, .thinkingCompleted, .thinkingSignature:
                     continue
-                case .toolResult, .toolIterationLimitExceeded:
+                case .toolResult, .toolIterationLimitExceeded, .runTokenBudgetExceeded:
                     // ScenarioRunner calls backend.generate() directly and owns
                     // dispatch below, so it never receives GenerationQueue's
                     // orchestrator events on this path. Stay exhaustive for growth.

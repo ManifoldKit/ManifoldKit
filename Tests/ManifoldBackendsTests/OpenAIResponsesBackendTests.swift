@@ -71,7 +71,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         case .thinkingCompleted: return .thinkingCompleted
         case .token(let t): return .token(t)
         case .usage: return .usage
-        case .toolCall, .toolResult, .toolIterationLimitExceeded, .kvCacheReuse,
+        case .toolCall, .toolResult, .toolIterationLimitExceeded, .runTokenBudgetExceeded, .kvCacheReuse,
              .throttleDiagnostic, .thinkingSignature,
              .toolCallStart, .toolCallArgumentsDelta,
              .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved,

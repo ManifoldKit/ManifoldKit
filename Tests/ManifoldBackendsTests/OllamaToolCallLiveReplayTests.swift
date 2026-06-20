@@ -191,7 +191,7 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     // forward-compat with future thinking-in-tool-call
                     // captures.
                     break
-                case .toolResult, .toolIterationLimitExceeded:
+                case .toolResult, .toolIterationLimitExceeded, .runTokenBudgetExceeded:
                     // Raw backend replay never emits orchestrator-level
                     // events. Exhaustive stub so the switch stays honest as
                     // GenerationEvent grows.
