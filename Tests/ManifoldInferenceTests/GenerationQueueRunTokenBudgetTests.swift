@@ -184,4 +184,41 @@ final class GenerationQueueRunTokenBudgetTests: XCTestCase {
         let budgetEvents = events.filter { if case .runTokenBudgetExceeded = $0 { return true } else { return false } }
         XCTAssertTrue(budgetEvents.isEmpty, "nil ceiling disables the run-token guard entirely")
     }
+
+    /// A `<= 0` ceiling is treated as no limit (a zero budget would abort
+    /// before any useful work). Exercises the `max > 0` guard branch that the
+    /// `nil` test cannot reach.
+    func test_runTokenBudget_nonPositiveCeiling_neverAborts() async throws {
+        let executor = RecordingExecutor(name: "spam")
+        let registry = ToolRegistry()
+        registry.register(executor)
+
+        provider.backend.scriptedToolCallsPerTurn = [
+            [makeCall(id: "s-0", name: "spam", arguments: #"{"i":0}"#)],
+            [],
+        ]
+        provider.backend.tokensToYieldPerTurn = [[], ["done"]]
+        provider.backend.usageToYieldPerTurn = [(prompt: 9_999, completion: 9_999), (prompt: 1, completion: 1)]
+
+        let coordinator = GenerationQueue(toolRegistry: registry)
+        provider.bind(to: coordinator)
+
+        var config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
+        config.maxRunTokens = 0 // non-positive → disabled, same as nil
+
+        let (_, stream) = try coordinator.enqueue(
+            structuredMessages: [StructuredMessage(role: "user", content: "go")],
+            config: config
+        )
+        let events = try await collectEvents(stream)
+
+        let budgetEvents = events.filter { if case .runTokenBudgetExceeded = $0 { return true } else { return false } }
+        XCTAssertTrue(budgetEvents.isEmpty, "non-positive ceiling disables the run-token guard")
+
+        let completions = events.compactMap { event -> GenerationCompletion? in
+            if case .generationCompleted(let c) = event { return c }
+            return nil
+        }
+        XCTAssertEqual(completions.first?.reason, .stop, "organic stop, not a budget abort")
+    }
 }
