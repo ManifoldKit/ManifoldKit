@@ -55,84 +55,10 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
 
     public var capabilities: BackendCapabilities {
         // Union semantics — see type doc-comment for why this surface is the
-        // right answer for "can the runtime as a whole do X?".
-        guard let first = children.first?.capabilities else {
-            return BackendCapabilities()
-        }
-        var supportedParameters = first.supportedParameters
-        var maxContextTokens = first.maxContextTokens
-        var maxOutputTokens = first.maxOutputTokens
-        var requiresPromptTemplate = first.requiresPromptTemplate
-        var supportsSystemPrompt = first.supportsSystemPrompt
-        var supportsStreaming = first.supportsStreaming
-        var supportsToolCalling = first.supportsToolCalling
-        var supportsStructuredOutput = first.supportsStructuredOutput
-        var supportsNativeJSONMode = first.supportsNativeJSONMode
-        var cancellationStyle = first.cancellationStyle
-        var supportsTokenCounting = first.supportsTokenCounting
-        var memoryStrategy = first.memoryStrategy
-        var isRemote = first.isRemote
-        var supportsKVCachePersistence = first.supportsKVCachePersistence
-        var supportsGrammarConstrainedSampling = first.supportsGrammarConstrainedSampling
-        var supportsThinking = first.supportsThinking
-        var supportsVision = first.supportsVision
-        var streamsToolCallArguments = first.streamsToolCallArguments
-        var supportsParallelToolCalls = first.supportsParallelToolCalls
-        var supportsGuidedStructuredOutput = first.supportsGuidedStructuredOutput
-
-        for child in children.dropFirst() {
-            let c = child.capabilities
-            supportedParameters.formUnion(c.supportedParameters)
-            maxContextTokens = max(maxContextTokens, c.maxContextTokens)
-            maxOutputTokens = max(maxOutputTokens, c.maxOutputTokens)
-            // `requiresPromptTemplate` is a per-backend rule. The union answer
-            // is "the runtime can serve at least one backend that *doesn't*
-            // require a template" — false beats true.
-            requiresPromptTemplate = requiresPromptTemplate && c.requiresPromptTemplate
-            supportsSystemPrompt = supportsSystemPrompt || c.supportsSystemPrompt
-            supportsStreaming = supportsStreaming || c.supportsStreaming
-            supportsToolCalling = supportsToolCalling || c.supportsToolCalling
-            supportsStructuredOutput = supportsStructuredOutput || c.supportsStructuredOutput
-            supportsNativeJSONMode = supportsNativeJSONMode || c.supportsNativeJSONMode
-            // Pick the more permissive cancellation style — cooperative beats
-            // explicit because callers can always stop a cooperative backend
-            // by cancelling the Task.
-            if c.cancellationStyle == .cooperative { cancellationStyle = .cooperative }
-            supportsTokenCounting = supportsTokenCounting || c.supportsTokenCounting
-            // Memory strategy: keep `external` if any child is external (cloud
-            // path is available); otherwise prefer `mappable` over `resident`.
-            memoryStrategy = mergedMemoryStrategy(memoryStrategy, c.memoryStrategy)
-            isRemote = isRemote || c.isRemote
-            supportsKVCachePersistence = supportsKVCachePersistence || c.supportsKVCachePersistence
-            supportsGrammarConstrainedSampling = supportsGrammarConstrainedSampling || c.supportsGrammarConstrainedSampling
-            supportsThinking = supportsThinking || c.supportsThinking
-            supportsVision = supportsVision || c.supportsVision
-            streamsToolCallArguments = streamsToolCallArguments || c.streamsToolCallArguments
-            supportsParallelToolCalls = supportsParallelToolCalls || c.supportsParallelToolCalls
-            supportsGuidedStructuredOutput = supportsGuidedStructuredOutput || c.supportsGuidedStructuredOutput
-        }
-        return BackendCapabilities(
-            supportedParameters: supportedParameters,
-            maxContextTokens: maxContextTokens,
-            requiresPromptTemplate: requiresPromptTemplate,
-            supportsSystemPrompt: supportsSystemPrompt,
-            supportsToolCalling: supportsToolCalling,
-            supportsStructuredOutput: supportsStructuredOutput,
-            supportsNativeJSONMode: supportsNativeJSONMode,
-            cancellationStyle: cancellationStyle,
-            supportsTokenCounting: supportsTokenCounting,
-            memoryStrategy: memoryStrategy,
-            maxOutputTokens: maxOutputTokens,
-            supportsStreaming: supportsStreaming,
-            isRemote: isRemote,
-            supportsKVCachePersistence: supportsKVCachePersistence,
-            supportsGrammarConstrainedSampling: supportsGrammarConstrainedSampling,
-            supportsThinking: supportsThinking,
-            supportsVision: supportsVision,
-            streamsToolCallArguments: streamsToolCallArguments,
-            supportsParallelToolCalls: supportsParallelToolCalls,
-            supportsGuidedStructuredOutput: supportsGuidedStructuredOutput
-        )
+        // right answer for "can the runtime as a whole do X?". The merge lives
+        // in `BackendCapabilities.union(_:)` so RouterBackend and FallbackBackend
+        // share one implementation (extracted #1935).
+        BackendCapabilities.union(children.map(\.capabilities))
     }
 
     /// Picks the first child whose capabilities satisfy `requirements`.
@@ -201,13 +127,5 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
 
     public func resetConversation() {
         for child in children { child.resetConversation() }
-    }
-
-    private func mergedMemoryStrategy(_ a: MemoryStrategy, _ b: MemoryStrategy) -> MemoryStrategy {
-        // Preference order for "the most permissive" runtime memory profile:
-        // external (no local footprint) → mappable (paged) → resident (full RAM).
-        if a == .external || b == .external { return .external }
-        if a == .mappable || b == .mappable { return .mappable }
-        return .resident
     }
 }
