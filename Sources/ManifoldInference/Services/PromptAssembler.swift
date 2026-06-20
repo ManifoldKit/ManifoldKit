@@ -224,19 +224,35 @@ public enum PromptAssembler {
     ) -> (messages: [ChatMessage], totalTokens: Int) {
         guard !messages.isEmpty else { return ([], 0) }
 
+        // Count whole messages via ``ContextWindowManager/estimateTokenCount(_:tokenizer:)``
+        // rather than `tokenizer.tokenCount(message.content)`: `.content` is a
+        // text-only projection (`contentParts.compactMap(\.textContent)`), so the
+        // string overload silently counts image/audio/tool parts as zero. A
+        // multimodal turn would then underestimate its cost, sail past this trim
+        // budget, and overflow the context window at generation time.
+        //
+        // Wrapping the tokenizer in ``CachingTokenizer`` memoizes per-text-part
+        // counts for the duration of this trim, so identical message content
+        // re-counted across the budget-zero fallback and the main loop is
+        // tokenized at most once.
+        let memoizingTokenizer = CachingTokenizer(wrapping: tokenizer)
+        func messageTokens(_ message: ChatMessage) -> Int {
+            ContextWindowManager.estimateTokenCount(message, tokenizer: memoizingTokenizer)
+        }
+
         if budget <= 0 {
             if let lastUser = messages.last(where: { $0.role == .user }) {
-                return ([lastUser], tokenizer.tokenCount(lastUser.content))
+                return ([lastUser], messageTokens(lastUser))
             }
             let last = messages.suffix(1)
-            return (Array(last), last.reduce(0) { $0 + tokenizer.tokenCount($1.content) })
+            return (Array(last), last.reduce(0) { $0 + messageTokens($1) })
         }
 
         var kept: [ChatMessage] = []
         var usedTokens = 0
 
         for message in messages.reversed() {
-            let count = tokenizer.tokenCount(message.content)
+            let count = messageTokens(message)
             if usedTokens + count > budget && !kept.isEmpty { break }
             kept.append(message)
             usedTokens += count

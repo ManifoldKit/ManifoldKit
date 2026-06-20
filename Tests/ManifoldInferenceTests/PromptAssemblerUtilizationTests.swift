@@ -108,4 +108,44 @@ final class PromptAssemblerUtilizationTests: XCTestCase {
         let expected = min(1.0, Double(assembled.totalTokens) / Double(caps.contextWindowSize))
         XCTAssertEqual(assembled.contextUtilization, expected, accuracy: 1e-9)
     }
+
+    // MARK: - Test 5: multimodal message counts non-text parts (#1885)
+
+    /// A message carrying an image part must contribute a non-zero token cost.
+    /// Previously `trimMessagesToFit` counted via `tokenizer.tokenCount(message.content)`,
+    /// which is a text-only projection — image/audio/tool parts counted as zero,
+    /// so a multimodal turn would underestimate and overflow the window.
+    func test_imagePart_isCountedWithNonZeroTokens() {
+        // A user message with a trivial text caption plus an image part.
+        let multimodal = ChatMessage(
+            role: .user,
+            contentParts: [
+                .text("look"),
+                .image(data: Data(repeating: 0, count: 8), mimeType: "image/png")
+            ],
+            sessionID: Self.sessionID
+        )
+
+        let assembled = PromptAssembler.assemble(
+            slots: [],
+            messages: [multimodal],
+            systemPrompt: nil,
+            contextSize: 4096
+        )
+
+        // The image part alone contributes ContextWindowManager.imagePartTokenEstimate,
+        // so the history total must exceed what the text caption costs on its own.
+        let textOnlyCost = ContextWindowManager.estimateTokenCount("look")
+        XCTAssertGreaterThan(
+            assembled.budgetBreakdown["history"] ?? 0,
+            textOnlyCost,
+            "Image part must add token cost beyond the text-only projection"
+        )
+        // Concretely, the history must include the fixed image estimate.
+        XCTAssertGreaterThanOrEqual(
+            assembled.budgetBreakdown["history"] ?? 0,
+            ContextWindowManager.imagePartTokenEstimate,
+            "Multimodal history should reserve at least the image-part estimate"
+        )
+    }
 }
