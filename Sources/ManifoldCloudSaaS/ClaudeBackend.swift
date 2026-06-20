@@ -121,6 +121,9 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         supportsVision: true,
         streamsToolCallArguments: true,
         supportsParallelToolCalls: true,
+        // Anthropic `structured-outputs-2025-11-13`: strict tools / output_format
+        // guarantee schema-valid output (#1918).
+        supportsStrictSchema: true,
         // Cloud Messages API sends a structured message array on the wire, so
         // `.promptRendered` carries only the latest user message, not the full
         // post-template prompt — a partial view (#1905).
@@ -234,6 +237,9 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             supportsVision: BackendVisionCapability.claudeMessagesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true,
+            // Anthropic `structured-outputs-2025-11-13`: strict tools / output_format
+            // guarantee schema-valid output (#1918).
+            supportsStrictSchema: true,
             // Structured message array on the wire → partial `.promptRendered` (#1905).
             rendersFullPrompt: false
         )
@@ -401,7 +407,13 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // Anthropic's side; the framework-level `.none` suppresses the
         // tools field entirely so the model has nothing to call.
         if !config.tools.isEmpty, config.toolChoice != .none {
-            var toolEntries = CloudMessageEncoder.claude.encodeTools(config.tools)
+            // Strict structured output (#1918): when the caller passes an
+            // explicit `.jsonSchema(...)` strategy and this backend advertises
+            // strict-schema support, encode each tool's `input_schema` in
+            // Anthropic's strict shape and flag `strict: true`.
+            let strictRequested = capabilities.supportsStrictSchema
+                && StrictSchemaTransform.jsonSchemaString(from: config.structuredOutput) != nil
+            var toolEntries = CloudMessageEncoder.claude.encodeTools(config.tools, strict: strictRequested)
             // Tag the last tool entry with cache_control when automatic so
             // Anthropic caches the entire system+tools prefix. The breakpoint
             // applies to the last block in the tagged sequence — tagging every

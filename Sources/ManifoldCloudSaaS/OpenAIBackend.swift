@@ -162,10 +162,41 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true,
+            // OpenAI honors `strict: true` function tools and
+            // `response_format: {type:"json_schema", strict:true}`, so it can
+            // emit a schema-valid output guarantee (#1918).
+            supportsStrictSchema: true,
             // Chat Completions sends a structured message array on the wire, so
             // `.promptRendered` carries only the latest user message — partial (#1905).
             rendersFullPrompt: false
         )
+    }
+
+    // MARK: - Strict structured-output helpers (#1918)
+
+    /// Parses a JSON Schema string into the strict OpenAI `response_format`
+    /// schema dictionary. Returns `nil` (caller falls back to legacy
+    /// `json_object`/no structured output) when the string is not valid JSON,
+    /// rather than throwing — a malformed caller-supplied schema must not abort
+    /// the whole request build.
+    static func strictResponseFormatSchema(from schemaString: String) -> [String: Any]? {
+        guard let data = schemaString.data(using: .utf8) else {
+            Log.inference.warning("OpenAIBackend strict schema: schema string was not valid UTF-8 — falling back to non-strict output.")
+            return nil
+        }
+        let decoded: JSONSchemaValue
+        do {
+            decoded = try JSONDecoder().decode(JSONSchemaValue.self, from: data)
+        } catch {
+            Log.inference.warning("OpenAIBackend strict schema: could not decode schema string into JSONSchemaValue — falling back to non-strict output. error=\(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        let strict = StrictSchemaTransform.openAIStrict(decoded)
+        guard let foundation = encodeJSONSchemaToFoundation(strict) as? [String: Any] else {
+            Log.inference.warning("OpenAIBackend strict schema: transformed schema was not a JSON object — falling back to non-strict output.")
+            return nil
+        }
+        return foundation
     }
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
@@ -334,7 +365,27 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             "top_p": config.topP,
             "max_tokens": config.maxOutputTokens ?? 2048
         ]
-        if config.jsonMode {
+        // Strict structured output (#1918): an explicit
+        // `.jsonSchema(schema)` request, gated on the backend's
+        // strict-schema capability, takes precedence over plain `jsonMode`.
+        // The schema is rewritten into OpenAI's strict shape
+        // (`additionalProperties:false` + all-required + null-unions) and
+        // emitted under `response_format: {type:"json_schema", strict:true}`,
+        // which guarantees the model's output validates against the schema.
+        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: config.structuredOutput)
+        let strictRequested = capabilities.supportsStrictSchema && strictSchemaString != nil
+        if strictRequested,
+           let schemaString = strictSchemaString,
+           let strictSchema = Self.strictResponseFormatSchema(from: schemaString) {
+            body["response_format"] = [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "response",
+                    "strict": true,
+                    "schema": strictSchema,
+                ] as [String: Any],
+            ]
+        } else if config.jsonMode {
             // OpenAI-native providers accept `response_format`; Ollama's
             // OpenAI-compatible adapter looks for the legacy top-level
             // `format: "json"` switch.
@@ -371,7 +422,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // applied via the shared encoding helper so the same logic powers
         // ``OpenAIResponsesBackend``.
         if !config.tools.isEmpty {
-            body["tools"] = CloudMessageEncoder.openAI.encodeTools(config.tools)
+            body["tools"] = CloudMessageEncoder.openAI.encodeTools(config.tools, strict: strictRequested)
             OpenAIToolEncoding.applyToolChoice(config.toolChoice, into: &body)
         }
 

@@ -115,3 +115,6 @@ API breakage: enumelement GenerationEvent.runTokenBudgetExceeded has been added 
 API breakage: enumelement GenerationStreamConsumer.StreamAction.runTokenBudgetExceeded has been added as a new enum case
 API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkSize:chunkOverlap:topK:similarityThreshold:vectorStoreURL:) has been removed
 API breakage: constructor RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:) has been removed
+API breakage: func CloudMessageEncoder.encodeTools(_:) has been renamed to func encodeTools(_:strict:)
+API breakage: func CloudMessageEncoder.claudeEncodeToolDefinition(_:) has been renamed to func claudeEncodeToolDefinition(_:strict:)
+API breakage: func OpenAIToolEncoding.encodeToolDefinition(_:) has been renamed to func encodeToolDefinition(_:strict:)
