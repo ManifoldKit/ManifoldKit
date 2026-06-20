@@ -1,0 +1,1 @@
+<|tools|><|tool|>get_weather:get_weather<|/tool|><|/tools|><|user|>weather in Paris?<|assistant|><|call|>get_weather<|/call|><|tool|>18C and sunny<|result_for|>call_1<|/result_for|><|assistant|>

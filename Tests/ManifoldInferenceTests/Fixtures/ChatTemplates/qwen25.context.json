@@ -1,0 +1,8 @@
+{
+  "description": "Qwen2.5 with a host system prompt — exercises the messages[0]=='system' branch.",
+  "systemPrompt": "You are a helpful coding assistant.",
+  "messages": [
+    { "role": "user", "text": "What is 2+2?" }
+  ],
+  "tools": []
+}

@@ -131,10 +131,18 @@ struct PromptRenderer {
     ///     them only for `.gemma4`. Callers pass the live `config.tools` array
     ///     unconditionally — ``rendersToolsNatively`` governs whether the host
     ///     *also* folds the preamble, so there is never a double injection.
+    /// - Parameter warnOnCapabilityLoss: emit the one-line tool-drop /
+    ///   multimodal-drop diagnostics (see ``warnIfCapabilityLost``). Defaults to
+    ///   `true`. Callers that invoke `render` repeatedly for the *same* turn —
+    ///   notably ``GenerationPreflightTrimmer``'s trim loop, which can render up
+    ///   to 20 times before the prompt fits — pass `false` and emit the warning
+    ///   exactly once instead, so an over-budget multimodal turn does not spam
+    ///   the log with 20 identical lines.
     func render(
         messages: [StructuredMessage],
         systemPrompt: String?,
-        tools: [ToolDefinition] = []
+        tools: [ToolDefinition] = [],
+        warnOnCapabilityLoss: Bool = true
     ) -> String {
         if let chatTemplateRaw,
            let rendered = JinjaPromptRenderer.render(
@@ -143,12 +151,79 @@ struct PromptRenderer {
                systemPrompt: systemPrompt,
                tools: tools
            ) {
+            if warnOnCapabilityLoss {
+                warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: true)
+            }
             return rendered
         }
+
+        if warnOnCapabilityLoss {
+            warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: false)
+        }
+
         return template.format(
             messages: GenerationHistoryInstaller.flatten(messages),
             systemPrompt: systemPrompt,
             tools: tools
+        )
+    }
+
+    /// Emits the capability-loss diagnostics for the render path that *would*
+    /// run for `messages`/`tools` — the tool-drop warning when an unusable
+    /// embedded template forces the text-only enum fallback, plus the
+    /// multimodal-drop warning. Exposed so a caller that renders repeatedly for
+    /// one turn (``GenerationPreflightTrimmer``) can warn once after the loop
+    /// instead of on every attempt.
+    ///
+    /// `viaEmbeddedTemplate` reflects whether the *embedded Jinja* path produced
+    /// the prompt; when `false` we additionally check for the silently-dropped
+    /// tool definitions, since the enum path renders tools only for `.gemma4`.
+    private func warnIfCapabilityLost(
+        messages: [StructuredMessage],
+        tools: [ToolDefinition],
+        viaEmbeddedTemplate: Bool
+    ) {
+        // The enum fallback renders tools only for `.gemma4` and never renders
+        // image/audio parts — so when the caller passed real tools (or
+        // multimodal parts) and the fallback can't carry them, that capability
+        // is being *silently dropped*. This is the exact shape behind the
+        // recurring "tool-calling rate ~0% on model X" reports (#1909 / #1961):
+        // fail loud so the loss is observable, not a mystery.
+        if !viaEmbeddedTemplate, chatTemplateRaw != nil, !tools.isEmpty, !template.rendersToolsNatively {
+            let fallbackName = String(describing: template)
+            Log.inference.warning(
+                "PromptRenderer: embedded chat template unusable; falling back to the \(fallbackName) text-only enum — \(tools.count) tool definition(s) will NOT be rendered into the prompt (expect degraded tool calling)."
+            )
+        }
+        Self.warnIfMultimodalPartsDropped(messages, viaEmbeddedTemplate: viaEmbeddedTemplate)
+    }
+
+    /// Emits a one-line warning when the history carries `.image`/`.audio` parts
+    /// that the prompt-string render path cannot express. Neither the embedded
+    /// Jinja path (which threads only text / tool structure) nor the enum
+    /// fallback renders multimodal parts into the prompt string; vision/audio
+    /// backends receive those parts through the structured side-channel instead.
+    /// A templated **text** model that is handed image parts will therefore
+    /// silently ignore them — warn so that loss is visible.
+    private static func warnIfMultimodalPartsDropped(
+        _ messages: [StructuredMessage],
+        viaEmbeddedTemplate: Bool
+    ) {
+        var images = 0
+        var audio = 0
+        for message in messages {
+            for part in message.parts {
+                switch part {
+                case .image: images += 1
+                case .audio: audio += 1
+                default: break
+                }
+            }
+        }
+        guard images > 0 || audio > 0 else { return }
+        let path = viaEmbeddedTemplate ? "embedded chat template" : "text-only enum fallback"
+        Log.inference.warning(
+            "PromptRenderer: \(images) image and \(audio) audio part(s) are not rendered into the prompt by the \(path) path; a text-only model will not see them."
         )
     }
 }

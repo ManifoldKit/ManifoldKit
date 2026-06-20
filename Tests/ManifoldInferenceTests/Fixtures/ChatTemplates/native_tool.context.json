@@ -1,0 +1,30 @@
+{
+  "description": "Native tool-calling template with a tools declaration, a prior assistant tool_call, and the paired tool result — the structured fields the text-only projection used to drop (#1909).",
+  "systemPrompt": null,
+  "messages": [
+    { "role": "user", "text": "weather in Paris?" },
+    {
+      "role": "assistant",
+      "text": "",
+      "toolCalls": [
+        { "id": "call_1", "name": "get_weather", "arguments": "{\"city\":\"Paris\"}" }
+      ]
+    },
+    {
+      "role": "tool",
+      "text": "",
+      "toolResult": { "callId": "call_1", "content": "18C and sunny" }
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Look up the weather for a city",
+      "parameters": {
+        "type": "object",
+        "properties": { "city": { "type": "string" } },
+        "required": ["city"]
+      }
+    }
+  ]
+}

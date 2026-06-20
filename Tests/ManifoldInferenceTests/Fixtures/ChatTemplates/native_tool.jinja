@@ -1,0 +1,19 @@
+{%- if tools %}
+<|tools|>
+{%- for tool in tools %}
+<|tool|>{{ tool.name }}:{{ tool.function.name }}<|/tool|>
+{%- endfor %}
+<|/tools|>
+{%- endif %}
+{%- for message in messages %}
+<|{{ message.role }}|>{{ message.content }}
+{%- if message.tool_calls %}
+    {%- for tc in message.tool_calls %}
+<|call|>{{ tc.function.name }}<|/call|>
+    {%- endfor %}
+{%- endif %}
+{%- if message.tool_call_id %}
+<|result_for|>{{ message.tool_call_id }}<|/result_for|>
+{%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}<|assistant|>{% endif %}

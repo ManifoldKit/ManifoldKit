@@ -666,6 +666,10 @@ let package = Package(
             // need to bundle it into the test binary — just tell SwiftPM to
             // ignore it when collecting resources.
             exclude: ["silent_catch_allowlist.txt"],
+            // Chat-template byte-match goldens (#1938): real embedded Jinja
+            // templates + transformers-generated expected output, copied into
+            // the test bundle so ChatTemplateGoldenTests can read them.
+            resources: [.copy("Fixtures/ChatTemplates")],
             swiftSettings: [
                 .define("Macros", .when(traits: ["Macros"])),
             ]
