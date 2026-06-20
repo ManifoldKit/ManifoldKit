@@ -277,7 +277,10 @@ struct HuggingFaceBrowserView: View {
                             : nil
                     )
                     if variant.id == recommended?.id {
-                        bestForDeviceBadge(noVariantFits: noVariantFits)
+                        bestForDeviceBadge(
+                            noVariantFits: noVariantFits,
+                            quantization: variant.quantization
+                        )
                     }
                 }
             }
@@ -286,8 +289,12 @@ struct HuggingFaceBrowserView: View {
         }
     }
 
-    private func bestForDeviceBadge(noVariantFits: Bool) -> some View {
-        Text(bestForDeviceLabel(noVariantFits: noVariantFits))
+    private func bestForDeviceBadge(noVariantFits: Bool, quantization: String?) -> some View {
+        Text(Self.bestForDeviceLabel(
+            noVariantFits: noVariantFits,
+            recommendedQuant: quantization,
+            isRecommendedSort: viewModel.sortMode == .recommended
+        ))
             .font(.caption2)
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
@@ -467,9 +474,20 @@ struct HuggingFaceBrowserView: View {
         }
     }
 
-    private func bestForDeviceLabel(noVariantFits: Bool) -> String {
-        if noVariantFits { return "Smallest available" }
-        return viewModel.sortMode == .recommended ? "Best for your device" : "Recommended"
+    /// Label for the recommended-variant badge, naming the chosen quant tier when the
+    /// listing carries one ("Best for your device: Q4_K_M") so the user knows *which*
+    /// download to pick, not just that a recommendation exists. Static + pure so the
+    /// label contract is unit-testable without a SwiftUI hierarchy.
+    static func bestForDeviceLabel(
+        noVariantFits: Bool,
+        recommendedQuant: String?,
+        isRecommendedSort: Bool
+    ) -> String {
+        let base = noVariantFits
+            ? "Smallest available"
+            : (isRecommendedSort ? "Best for your device" : "Recommended")
+        guard let quant = recommendedQuant, !quant.isEmpty else { return base }
+        return "\(base): \(quant)"
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {

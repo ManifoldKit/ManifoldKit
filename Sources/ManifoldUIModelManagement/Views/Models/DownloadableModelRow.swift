@@ -80,6 +80,7 @@ public struct DownloadableModelRow: View {
                             .accessibilityLabel("Curated model")
                     }
 
+                    fitBadge
                     speedBadge
                 }
 
@@ -135,6 +136,38 @@ public struct DownloadableModelRow: View {
             trailingContent
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Fit Badge
+
+    /// Three-way device-fit verdict badge (Excellent / Good / Marginal / Not recommended)
+    /// rendered green / yellow / red for *this* device, before download.
+    ///
+    /// Shown only when `showFitGuidance` is set and the model has a usable size, alongside
+    /// the `SpeedClass` badge. Uses the `FitQuality` *word* and a tint, never a raw composite
+    /// score — the underlying figure is a coarse estimate and a bare number reads as fact.
+    @ViewBuilder
+    private var fitBadge: some View {
+        if showFitGuidance, model.sizeBytes > 0, let score = viewModel.fitScore(for: model) {
+            let quality = score.fitQuality
+            Text(quality.label)
+                .font(.caption2)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Self.fitTint(quality).opacity(0.15), in: Capsule())
+                .foregroundStyle(Self.fitTint(quality))
+                .accessibilityLabel("Device fit: \(quality.label). Approximate guidance, not a guarantee.")
+        }
+    }
+
+    /// Maps a `FitQuality` verdict to its badge tint. Static + pure so the verdict→color
+    /// contract is unit-testable without standing up a SwiftUI hierarchy.
+    static func fitTint(_ quality: FitQuality) -> Color {
+        switch quality {
+        case .excellent, .good:  return .green
+        case .marginal:          return .yellow
+        case .notRecommended:    return .red
+        }
     }
 
     // MARK: - Speed Badge
