@@ -21,9 +21,11 @@ extension AppleTTSBackend {
     /// - Parameter language: BCP-47 tag (or bare primary subtag like `"en"`)
     ///   to filter by. `nil` returns every installed voice.
     public static func availableVoices(language: String? = nil) -> [VoiceDescriptor] {
-        let descriptors = AVSpeechSynthesisVoice.speechVoices()
+        var descriptors = AVSpeechSynthesisVoice.speechVoices()
             .map(VoiceDescriptor.init)
-            .filter { language == nil || Self.languageMatches($0.language, language!) }
+        if let language {
+            descriptors = descriptors.filter { Self.languageMatches($0.language, language) }
+        }
         return Self.ranked(descriptors)
     }
 
