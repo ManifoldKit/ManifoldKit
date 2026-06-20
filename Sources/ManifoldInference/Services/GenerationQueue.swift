@@ -657,6 +657,52 @@ final class GenerationQueue {
             config.grammar = derived
         }
 
+        // Structured-output routing (#1915). When a caller has staged a
+        // structured-output target on the config, this is where it gets lowered
+        // into the strongest mechanism the *active* backend supports — the
+        // first production caller of `StructuredOutputRouter`. `respond(_:to:)`
+        // stages the target; the queue resolves it here because only the queue
+        // knows which backend will actually serve the request.
+        var systemPrompt = systemPrompt
+        if let staged = config.structuredOutput,
+           let target = Self.structuredOutputTarget(
+               from: staged,
+               capabilities: backend.capabilities
+           ) {
+            let strategy = StructuredOutputRouter.selectStrategy(
+                capabilities: backend.capabilities,
+                target: target
+            )
+            switch strategy {
+            case .gbnf(let grammar):
+                // An explicit caller grammar always wins; only lower when the
+                // slot is free so we never clobber a host-authored string.
+                if config.grammar == nil { config.grammar = grammar }
+                // The grammar is the constraint — drop the strategy hint so a
+                // cloud encoder downstream doesn't also try to apply a schema.
+                config.structuredOutput = nil
+            case .jsonSchema(let schema):
+                // Leave the strategy on config so the cloud strict-schema
+                // encoder (sibling #1918) honors it on the wire.
+                config.structuredOutput = .jsonSchema(schema)
+            case .jsonPrompting:
+                // No backend-level constraint available — fall back to a
+                // prompt-level instruction so weak backends still get steered.
+                if let schema = target.jsonSchema, !schema.isEmpty {
+                    systemPrompt = Self.appendingJSONSchemaInstruction(
+                        to: systemPrompt,
+                        schema: schema
+                    )
+                }
+                config.structuredOutput = nil
+            case .guided:
+                // Foundation guided generation is deferred (#1915 follow-up).
+                // Keep the strategy intact for the guided-capable backend to
+                // pick up; no config lowering happens here yet.
+                break
+            }
+        }
+
         let token = GenerationRequestToken(rawValue: nextGenerationToken.rawValue + 1)
         nextGenerationToken = token
 
@@ -690,6 +736,64 @@ final class GenerationQueue {
         lastActivityTimestamp = Date()
         drainQueue()
         return (token: token, stream: stream)
+    }
+
+    /// Reconstructs a ``StructuredOutputTarget`` from a strategy a caller staged
+    /// on ``GenerationConfig/structuredOutput``.
+    ///
+    /// `respond(_:to:)` stages only the JSON schema (as `.jsonSchema`). When the
+    /// active backend supports grammar-constrained sampling, the schema is
+    /// lowered to GBNF here so the router can upgrade to the strongest
+    /// mechanism. Doing the lowering inside the queue (rather than staging a
+    /// grammar on `config.grammar`) keeps the caller's `config.grammar` slot
+    /// untouched — a schema-only backend never sees a stray grammar it would
+    /// reject. Returns `nil` for `.gbnf` (already a grammar, nothing to
+    /// re-route) and `.jsonPrompting` / `.guided` (no re-routable payload).
+    static func structuredOutputTarget(
+        from strategy: StructuredOutputStrategy,
+        capabilities: BackendCapabilities
+    ) -> StructuredOutputTarget? {
+        switch strategy {
+        case .jsonSchema(let schema):
+            let grammar: String?
+            if capabilities.supportsGrammarConstrainedSampling,
+               let schemaValue = Self.decodeSchema(schema) {
+                grammar = ToolGrammarBuilder().buildSchemaGrammar(for: schemaValue)
+            } else {
+                grammar = nil
+            }
+            return StructuredOutputTarget(gbnfGrammar: grammar, jsonSchema: schema)
+        case .gbnf, .jsonPrompting, .guided:
+            return nil
+        }
+    }
+
+    /// Decodes a staged JSON-schema string back into a ``JSONSchemaValue`` for
+    /// GBNF lowering. Returns `nil` on malformed input so the caller falls back
+    /// to a non-grammar strategy rather than crashing.
+    private static func decodeSchema(_ schema: String) -> JSONSchemaValue? {
+        guard let data = schema.data(using: .utf8) else { return nil }
+        do {
+            return try JSONDecoder().decode(JSONSchemaValue.self, from: data)
+        } catch {
+            Log.inference.warning(
+                "StructuredOutputRouter: failed to decode staged JSON schema for GBNF lowering: \(String(describing: error), privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    /// Appends a JSON-schema instruction to a system prompt for the
+    /// prompt-level structured-output fallback (`.jsonPrompting`).
+    static func appendingJSONSchemaInstruction(to systemPrompt: String?, schema: String) -> String {
+        let instruction = """
+        You must respond with a single JSON object that conforms exactly to this JSON Schema. \
+        Output only the JSON object — no prose, no code fences.
+        JSON Schema:
+        \(schema)
+        """
+        guard let existing = systemPrompt, !existing.isEmpty else { return instruction }
+        return existing + "\n\n" + instruction
     }
 
     /// Assembles a ``GenerationConfig`` from the individual sampling parameters
