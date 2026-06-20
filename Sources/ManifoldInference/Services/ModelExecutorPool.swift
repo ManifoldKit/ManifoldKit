@@ -150,7 +150,9 @@ public final class ModelExecutorPool {
         for (key, exec) in executors {
             if key == activeKey || key == keepKey { continue }
             let at = await exec.lastActivityAtSnapshot
-            if best == nil || at < best!.at {
+            if let current = best {
+                if at < current.at { best = (key, at) }
+            } else {
                 best = (key, at)
             }
         }
