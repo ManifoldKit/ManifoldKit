@@ -165,6 +165,40 @@ extension ChatViewModel {
         )
     }
 
+    /// Installed text-to-speech voices, ranked best-first, for populating a
+    /// voice picker. Thin pass-through to ``AppleTTSBackend/availableVoices(language:)``.
+    ///
+    /// - Parameter language: BCP-47 tag (or bare primary subtag like `"en"`) to
+    ///   filter by; `nil` returns every installed voice.
+    public func availableSpeechVoices(language: String? = nil) -> [VoiceDescriptor] {
+        AppleTTSBackend.availableVoices(language: language)
+    }
+
+    /// Convenience over ``generateSpeech(config:)`` that synthesises `text`
+    /// using ``selectedSpeechVoiceID`` (auto-selecting the best installed voice
+    /// when nil). The entry point used by `GenerativeContextMenuItems`.
+    ///
+    /// - Parameters:
+    ///   - text: The text to synthesise.
+    ///   - rate: Optional speaking-rate multiplier.
+    ///   - pitch: Optional pitch multiplier.
+    /// - Returns: The placeholder ``ChatMessage/ID``.
+    @discardableResult
+    public func generateSpeech(
+        forText text: String,
+        rate: Float? = nil,
+        pitch: Float? = nil
+    ) async throws -> UUID {
+        try await generateSpeech(
+            config: SpeechGenerationConfig(
+                text: text,
+                voice: selectedSpeechVoiceID,
+                rate: rate,
+                pitch: pitch
+            )
+        )
+    }
+
     /// Cancel an in-flight audio generation by its placeholder message ID.
     ///
     /// Idempotent — cancelling an unknown or already-finished generation is
