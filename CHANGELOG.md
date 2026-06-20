@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.56.0](https://github.com/roryford/ManifoldKit/compare/v0.55.0...v0.56.0) (2026-06-20)
+
+### Highlights
+
+**Typed structured output, end to end.** Derive a JSON schema from a Swift type and get a decoded instance back: `respond(_:to:)` returns a validated `StructuredOutput<T>`, `streamObject(_:to:)` streams `PartialSnapshot<T>` values as the object fills in, and a bounded validation-reask loop retries automatically when the model emits malformed or schema-invalid JSON ([#1915](https://github.com/roryford/ManifoldKit/issues/1915), [#1917](https://github.com/roryford/ManifoldKit/issues/1917), [#1916](https://github.com/roryford/ManifoldKit/issues/1916)). Cloud backends emit native strict schemas (OpenAI `response_format`, Anthropic) so the constraint is enforced server-side where supported ([#1918](https://github.com/roryford/ManifoldKit/issues/1918)).
+
+```swift
+struct Recipe: Decodable, Sendable, SchemaProviding { /* @ToolSchema or a hand-written jsonSchema */ }
+
+let result = try await service.respond(Recipe.self, to: "A quick pasta recipe")
+print(result.value)            // a decoded Recipe
+
+for try await snapshot in service.streamObject(Recipe.self, to: "A quick pasta recipe") {
+    update(snapshot.partial)   // PartialSnapshot<Recipe> as fields arrive
+}
+```
+
+**Operational controls: stop sequences, run budgets, and GenAI tracing.** `GenerationConfig.stopSequences` ends a turn on custom strings — honored by OpenAI Chat Completions, Anthropic, and Ollama (OpenAI Responses is excluded because the endpoint rejects the field) ([#1969](https://github.com/roryford/ManifoldKit/issues/1969)). `GenerationConfig.maxRunTokens` caps total tokens across a multi-step tool-dispatch run, alongside the existing iteration limit ([#1949](https://github.com/roryford/ManifoldKit/issues/1949)). And a vendor-neutral `TraceSink`/`GenSpan` surface exports GenAI spans over the existing `InferenceMetricSink` ([#1954](https://github.com/roryford/ManifoldKit/issues/1954)).
+
+```swift
+var config = GenerationConfig()
+config.stopSequences = ["\n\nUser:", "<|end|>"]
+config.maxRunTokens = 8_000
+```
+
+**Correct local prompts.** Tool-call grammar injection now honors `toolChoice`: `.auto` admits prose *or* a tool call (fixing local models that previously stopped at zero completion tokens under a forced-call grammar), `.required`/`.tool(name:)` stay strictly constrained, and `.none` injects no grammar ([#1961](https://github.com/roryford/ManifoldKit/issues/1961)). Embedded GGUF chat templates render with the same `trim_blocks`/`lstrip_blocks` whitespace semantics as `transformers`, with byte-match golden tests locking the output and a fail-loud warning when a fallback would silently drop tool or image parts ([#1966](https://github.com/roryford/ManifoldKit/issues/1966)).
+
+**RAG retrieval controls.** Tune the similarity threshold and top-K from the retrieval UI ([#1947](https://github.com/roryford/ManifoldKit/issues/1947)), or enable full-context mode to inject whole short documents and only chunk when they exceed the budget ([#1955](https://github.com/roryford/ManifoldKit/issues/1955)).
+
+### Features
+
+* MCP transport emits `Mcp-Method`/`Mcp-Name` routing headers ahead of the spec change ([#1952](https://github.com/roryford/ManifoldKit/issues/1952))
+* Quality-aware TTS voice selection with a voice picker ([#1941](https://github.com/roryford/ManifoldKit/issues/1941))
+* SKILL.md L3 lazy progressive disclosure ([#1953](https://github.com/roryford/ManifoldKit/issues/1953))
+* Device-fit verdict badge + recommended quant in the model browser ([#1951](https://github.com/roryford/ManifoldKit/issues/1951))
+
+### Fixes
+
+* Harden the turn loop — multimodal trim budget, tool-dispatch budget + event symmetry, and v1.0 tripwire tests ([#1959](https://github.com/roryford/ManifoldKit/issues/1959))
+* MCP client tool-result rendering preserves `resource_link`/embedded/image/audio content ([#1946](https://github.com/roryford/ManifoldKit/issues/1946))
+
+### Tests
+
+* First-party RAG retrieval-metrics eval harness (recall@k / MRR / hit-rate) ([#1948](https://github.com/roryford/ManifoldKit/issues/1948))
+
 ## [0.55.0](https://github.com/roryford/ManifoldKit/compare/v0.54.0...v0.55.0) (2026-06-20)
 
 ### Highlights
