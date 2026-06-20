@@ -1,0 +1,3 @@
+<|im_start|>user
+What is in this image?<|vision_start|><|image_pad|><|vision_end|><|im_end|>
+<|im_start|>assistant

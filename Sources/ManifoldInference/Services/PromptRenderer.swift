@@ -138,10 +138,15 @@ struct PromptRenderer {
     ///   to 20 times before the prompt fits — pass `false` and emit the warning
     ///   exactly once instead, so an over-budget multimodal turn does not spam
     ///   the log with 20 identical lines.
+    /// - Parameter documents: retrieved RAG passages exposed to an embedded
+    ///   template's `{% for document in documents %}` block. The enum fallback
+    ///   has no `documents` channel, so they are silently absent there — RAG
+    ///   text still reaches that path through the system-prompt slot injection.
     func render(
         messages: [StructuredMessage],
         systemPrompt: String?,
         tools: [ToolDefinition] = [],
+        documents: [RetrievedDocument] = [],
         warnOnCapabilityLoss: Bool = true
     ) -> String {
         if let chatTemplateRaw,
@@ -149,7 +154,8 @@ struct PromptRenderer {
                rawTemplate: chatTemplateRaw,
                messages: messages,
                systemPrompt: systemPrompt,
-               tools: tools
+               tools: tools,
+               documents: documents
            ) {
             if warnOnCapabilityLoss {
                 warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: true)

@@ -237,6 +237,17 @@ public struct GenerationConfig: Sendable, Codable {
     /// calling.  Defaults to ``ToolChoice/auto``.
     public var toolChoice: ToolChoice
 
+    /// Retrieved RAG passages threaded into a chat template's `documents`
+    /// context variable (#1967).
+    ///
+    /// Only honoured by the prompt-template render path (embedded-Jinja): a
+    /// template that exposes a `{% for document in documents %}` block formats
+    /// these passages the way the model was trained to ground on. Empty (the
+    /// default) keeps every `{% if documents %}` branch falsey. A per-request
+    /// runtime hint — not persisted (same policy as ``thinkingMarkers`` /
+    /// ``structuredOutput``).
+    public var documents: [RetrievedDocument]
+
     /// Cap on reasoning (chain-of-thought) tokens for a single generation.
     ///
     /// - `nil` — no client-side cap. Backends reserve a default thinking budget
@@ -415,6 +426,7 @@ public struct GenerationConfig: Sendable, Codable {
         maxOutputTokens: Int? = 2048,
         tools: [ToolDefinition] = [],
         toolChoice: ToolChoice = .auto,
+        documents: [RetrievedDocument] = [],
         maxThinkingTokens: Int? = nil,
         jsonMode: Bool = false,
         streamPrefillProgress: Bool = false,
@@ -446,6 +458,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.maxOutputTokens = maxOutputTokens
         self.tools = tools
         self.toolChoice = toolChoice
+        self.documents = documents
         self.maxThinkingTokens = maxThinkingTokens
         self.jsonMode = jsonMode
         self.streamPrefillProgress = streamPrefillProgress
@@ -487,6 +500,9 @@ public struct GenerationConfig: Sendable, Codable {
         // New fields added after the original shape; absent from older payloads.
         tools = (try c.decodeIfPresent([ToolDefinition].self, forKey: .tools)) ?? []
         toolChoice = (try c.decodeIfPresent(ToolChoice.self, forKey: .toolChoice)) ?? .auto
+        // documents is a per-request RAG hint; it is not persisted (same policy
+        // as maxRunTokens / thinkingMarkers / structuredOutput).
+        documents = []
         maxThinkingTokens = try c.decodeIfPresent(Int.self, forKey: .maxThinkingTokens)
         // jsonMode is a per-request runtime hint; persisted payloads always decode
         // with the canonical default regardless of any legacy on-disk key.

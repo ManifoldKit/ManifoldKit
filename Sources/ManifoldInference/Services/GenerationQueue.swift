@@ -502,9 +502,18 @@ final class GenerationQueue {
                     backend: backend,
                     config: config
                 )
-                assembledPrompt = renderer.render(messages: messages, systemPrompt: augmentedSystemPrompt, tools: config.tools)
+                assembledPrompt = renderer.render(
+                    messages: messages,
+                    systemPrompt: augmentedSystemPrompt,
+                    tools: config.tools,
+                    documents: config.documents
+                )
             } else {
-                assembledPrompt = renderer.render(messages: messages, systemPrompt: systemPrompt)
+                assembledPrompt = renderer.render(
+                    messages: messages,
+                    systemPrompt: systemPrompt,
+                    documents: config.documents
+                )
             }
             effectiveSystemPrompt = nil
         } else {
@@ -845,6 +854,7 @@ final class GenerationQueue {
         grammar: String?,
         tools: [ToolDefinition],
         toolChoice: ToolChoice,
+        documents: [RetrievedDocument] = [],
         maxToolIterations: Int
     ) -> GenerationConfig {
         var config = GenerationConfig(
@@ -859,6 +869,7 @@ final class GenerationQueue {
             maxOutputTokens: maxOutputTokens,
             tools: tools,
             toolChoice: toolChoice,
+            documents: documents,
             jsonMode: jsonMode,
             maxToolIterations: maxToolIterations
         )

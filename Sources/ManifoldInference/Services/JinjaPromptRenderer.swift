@@ -56,6 +56,10 @@ enum JinjaPromptRenderer {
     ///     the flat `name`/`description`/`parameters` shape so templates written
     ///     against either convention (e.g. gemma's `format_parameters` macro vs
     ///     OpenAI's `tool.function.name`) both resolve.
+    ///   - documents: retrieved RAG passages to expose to the template's
+    ///     `{% if documents %}` / `{% for document in documents %}` branch. Empty
+    ///     keeps that branch falsey. Each document is exposed with `title`/`text`
+    ///     (the Command-R / HF RAG convention) plus a `doc_id` alias (#1967).
     /// - Returns: the rendered prompt, or `nil` when the template cannot be
     ///   parsed or evaluated. A `nil` return is the signal for the caller to
     ///   fall back to the ``PromptTemplate`` enum — never a hard failure, since
@@ -64,10 +68,20 @@ enum JinjaPromptRenderer {
         rawTemplate: String,
         messages: [StructuredMessage],
         systemPrompt: String?,
-        tools: [ToolDefinition] = []
+        tools: [ToolDefinition] = [],
+        documents: [RetrievedDocument] = []
     ) -> String? {
         let trimmed = rawTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+
+        // Image parts are only folded into the per-message `content` list when
+        // the template actually references images. Vision templates iterate
+        // `message.content` as a list and branch on `content['type'] == 'image'`;
+        // a text-only template expects `content` to be a plain string and
+        // concatenates it (`+ message.content`), so injecting a content list
+        // there would either break rendering or change the bytes a text model
+        // sees. Probing once up front keeps the text path byte-identical (#1967).
+        let threadImages = Self.templateReferencesImages(trimmed)
 
         var jinjaMessages: [[String: Any]] = []
 
@@ -81,7 +95,7 @@ enum JinjaPromptRenderer {
         }
 
         for message in messages where renderableRoles.contains(message.role) {
-            jinjaMessages.append(jinjaMessage(from: message))
+            jinjaMessages.append(jinjaMessage(from: message, threadImages: threadImages))
         }
 
         do {
@@ -102,10 +116,11 @@ enum JinjaPromptRenderer {
                 // non-empty; supply the real definitions (#1909). An empty array
                 // keeps `{%- if tools %}` falsey for tool-less turns.
                 "tools": try Value(any: toolsContext(tools)),
-                // Many templates also branch on `documents` (RAG retrieval). Pass
-                // an empty array so `{% if documents %}` is falsey rather than
-                // raising an "undefined" error in stricter templates.
-                "documents": try Value(any: [Any]()),
+                // Many templates also branch on `documents` (RAG retrieval).
+                // Thread the retrieved passages through so `{% if documents %}`
+                // fires for RAG turns; an empty array keeps it falsey rather than
+                // raising an "undefined" error in stricter templates (#1967).
+                "documents": try Value(any: documentsContext(documents)),
             ]
             let rendered = try template.render(context)
             // A template that evaluates to empty output is not usable — treat it
@@ -133,11 +148,32 @@ enum JinjaPromptRenderer {
 
     /// Builds the per-message Jinja dictionary, threading the native tool-call /
     /// tool-result structure that the text-only projection used to drop (#1909).
-    private static func jinjaMessage(from message: StructuredMessage) -> [String: Any] {
+    ///
+    /// When `threadImages` is true and the message carries `.image` parts, the
+    /// `content` is emitted as a *list* of typed blocks (the HF/Qwen-VL vision
+    /// convention) instead of a plain string, so a vision template's image
+    /// placeholder branches fire (#1967). Otherwise `content` stays a plain
+    /// string and the text path is byte-identical to the pre-#1967 behaviour.
+    private static func jinjaMessage(
+        from message: StructuredMessage,
+        threadImages: Bool
+    ) -> [String: Any] {
+        let imageParts: [(data: Data, mimeType: String)] = message.parts.compactMap { part in
+            guard case .image(let data, let mimeType, _) = part else { return nil }
+            return (data, mimeType)
+        }
+
         var dict: [String: Any] = [
             "role": message.role,
             "content": message.textContent,
         ]
+
+        // Vision content-list shape. Only when the template references images AND
+        // this turn actually carries image bytes — otherwise leave `content` as
+        // the plain string the text path expects.
+        if threadImages, !imageParts.isEmpty {
+            dict["content"] = imageContentList(text: message.textContent, images: imageParts)
+        }
 
         // Assistant tool calls → the OpenAI-style `tool_calls` array that a
         // native template iterates with `{% for tool_call in message.tool_calls %}`.
@@ -213,6 +249,121 @@ enum JinjaPromptRenderer {
                 "name": tool.name,
                 "description": tool.description,
                 "parameters": parameters,
+            ]
+        }
+    }
+
+    // MARK: - Image threading (#1967)
+
+    /// Builds the multimodal `content` list a vision chat template iterates.
+    ///
+    /// Mirrors the cloud reference path (`CloudMessageEncoder`): a leading text
+    /// block (when the turn has visible text) followed by one block per image.
+    /// Each image block carries both shapes so templates written against either
+    /// convention resolve — `type: "image"` with an `image_url.url` data URI
+    /// (the OpenAI/HF Chat-Completions shape) and a flat `image` alias holding
+    /// the same data URI (gemma/Qwen-VL templates that read `content['image']`).
+    /// The payload itself is the identical base64 `data:` URI cloud backends
+    /// emit (`CloudImageEncoding.dataURI`), so vision producers and the local
+    /// render path agree on the byte shape.
+    private static func imageContentList(
+        text: String,
+        images: [(data: Data, mimeType: String)]
+    ) -> [[String: Any]] {
+        var blocks: [[String: Any]] = []
+        if !text.isEmpty {
+            blocks.append(["type": "text", "text": text])
+        }
+        for image in images {
+            let uri = dataURI(data: image.data, mimeType: image.mimeType)
+            blocks.append([
+                "type": "image",
+                "image_url": ["url": uri] as [String: Any],
+                // Flat alias for templates that read `content['image']` directly.
+                "image": uri,
+            ])
+        }
+        return blocks
+    }
+
+    /// Returns a `data:` URI (RFC 2397) for the image bytes — `data:<mime>;base64,<payload>`.
+    ///
+    /// Reproduces ``CloudImageEncoding/dataURI(data:mimeType:)`` (which lives in
+    /// `ManifoldCloudCore`, a module that depends on this one, so it cannot be
+    /// imported here) so the local Jinja path and the cloud backends shape the
+    /// image payload identically.
+    private static func dataURI(data: Data, mimeType: String) -> String {
+        "data:\(mimeType);base64,\(data.base64EncodedString())"
+    }
+
+    /// Whether `template` references the bare `image` identifier inside a Jinja
+    /// statement/expression block — the only way a template can render an image
+    /// placeholder. Mirrors ``PromptRenderer/templateReferencesToolsVariable(_:)``:
+    /// scan only the delimited regions for the word-bounded identifier so
+    /// `image_url` / `generatedImage` / static prose do not false-positive.
+    static func templateReferencesImages(_ template: String) -> Bool {
+        let scalars = Array(template.unicodeScalars)
+        var i = 0
+        while i < scalars.count - 1 {
+            guard scalars[i] == "{", scalars[i + 1] == "%" || scalars[i + 1] == "{" else {
+                i += 1
+                continue
+            }
+            let closer: Unicode.Scalar = scalars[i + 1] == "%" ? "%" : "}"
+            let blockStart = i + 2
+            var j = blockStart
+            while j < scalars.count - 1, !(scalars[j] == closer && scalars[j + 1] == "}") {
+                j += 1
+            }
+            let blockEnd = min(j, scalars.count)
+            if scalarsContainWord(["i", "m", "a", "g", "e"], in: scalars, from: blockStart, to: blockEnd) {
+                return true
+            }
+            i = j + 2
+        }
+        return false
+    }
+
+    /// Whether `scalars[from..<to]` contains `word` on identifier boundaries
+    /// (`image_url`, `images` do not match the bare `image` probe). Shares the
+    /// boundary rule with ``PromptRenderer``'s tools scan.
+    private static func scalarsContainWord(
+        _ word: [Unicode.Scalar],
+        in scalars: [Unicode.Scalar],
+        from: Int,
+        to: Int
+    ) -> Bool {
+        guard to - from >= word.count else { return false }
+        var k = from
+        while k <= to - word.count {
+            if Array(scalars[k..<k + word.count]) == word {
+                let prevIsIdent = k > from && isIdentifierScalar(scalars[k - 1])
+                let nextIndex = k + word.count
+                let nextIsIdent = nextIndex < to && isIdentifierScalar(scalars[nextIndex])
+                if !prevIsIdent && !nextIsIdent { return true }
+            }
+            k += 1
+        }
+        return false
+    }
+
+    private static func isIdentifierScalar(_ s: Unicode.Scalar) -> Bool {
+        s == "_" || s.properties.isAlphabetic || ("0"..."9").contains(s)
+    }
+
+    // MARK: - RAG documents threading (#1967)
+
+    /// Converts retrieved RAG passages into the template-facing `documents`
+    /// context. Each document carries `title`/`text` — the Command-R / HF RAG
+    /// convention every `{% for document in documents %}` template reads — plus
+    /// a `doc_id` alias (Command-R's grounded-generation templates index by it)
+    /// derived from the document's 1-based position when the source has none.
+    private static func documentsContext(_ documents: [RetrievedDocument]) -> [[String: Any]] {
+        documents.enumerated().map { index, document in
+            [
+                "doc_id": document.docID ?? String(index),
+                "title": document.title,
+                "text": document.text,
             ]
         }
     }

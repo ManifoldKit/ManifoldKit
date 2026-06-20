@@ -42,6 +42,7 @@ final class ChatTemplateGoldenTests: XCTestCase {
         systemPrompt: String?,
         messages: [StructuredMessage],
         tools: [ToolDefinition] = [],
+        documents: [RetrievedDocument] = [],
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
@@ -52,7 +53,8 @@ final class ChatTemplateGoldenTests: XCTestCase {
                 rawTemplate: template,
                 messages: messages,
                 systemPrompt: systemPrompt,
-                tools: tools
+                tools: tools,
+                documents: documents
             ),
             "swift-jinja failed to render \(name).jinja",
             file: file,
@@ -109,6 +111,46 @@ final class ChatTemplateGoldenTests: XCTestCase {
                 ),
             ],
             tools: [Self.weatherTool()]
+        )
+    }
+
+    /// #1967: a vision template's image-placeholder branch fires when an image
+    /// part is threaded into the per-message `content` list. Before #1967 the
+    /// renderer dropped every `.image` part, so the `<|vision_start|>…` block
+    /// never rendered. The golden is the transformers reference for the same
+    /// content-list context the renderer now builds.
+    func test_qwen2vl_threadsImagePlaceholder() throws {
+        // Mirrors qwen2vl.context.json: a one-pixel PNG payload — the bytes are
+        // irrelevant to the placeholder, only that an `.image` part is present.
+        let imageData = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgo="))
+        try assertGolden(
+            "qwen2vl",
+            systemPrompt: nil,
+            messages: [
+                StructuredMessage(
+                    role: "user",
+                    parts: [
+                        .text("What is in this image?"),
+                        .image(data: imageData, mimeType: "image/png"),
+                    ]
+                )
+            ]
+        )
+    }
+
+    /// #1967: a RAG grounding template's `{% if documents %}` block fires when
+    /// retrieved passages are threaded into the `documents` context variable.
+    /// Before #1967 `documents` was hard-coded `[]`, so the block was always
+    /// falsey and retrieved chunks never reached a template that wanted them.
+    func test_ragDocuments_threadsDocumentsBlock() throws {
+        try assertGolden(
+            "rag_documents",
+            systemPrompt: nil,
+            messages: [StructuredMessage(role: "user", content: "What is the capital of France?")],
+            documents: [
+                RetrievedDocument(title: "France", text: "Paris is the capital and most populous city of France."),
+                RetrievedDocument(title: "Geography", text: "France is a country in Western Europe."),
+            ]
         )
     }
 

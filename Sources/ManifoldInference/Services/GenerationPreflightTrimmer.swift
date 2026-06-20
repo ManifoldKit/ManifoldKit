@@ -81,6 +81,7 @@ struct GenerationPreflightTrimmer {
                 messages: workingMessages,
                 systemPrompt: systemPrompt,
                 tools: config.tools,
+                documents: config.documents,
                 warnOnCapabilityLoss: false
             )
             let promptTokens = try counter.countTokens(prompt)
@@ -94,6 +95,7 @@ struct GenerationPreflightTrimmer {
                     messages: workingMessages,
                     systemPrompt: systemPrompt,
                     tools: config.tools,
+                    documents: config.documents,
                     warnOnCapabilityLoss: true
                 )
                 return Result(prompt: prompt, trimmedMessages: workingMessages)

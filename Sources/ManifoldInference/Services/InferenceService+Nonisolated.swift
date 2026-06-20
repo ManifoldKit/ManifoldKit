@@ -69,7 +69,10 @@ extension InferenceService {
         priority: GenerationPriority = .normal,
         requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
-        preToolUseHook: PreToolUseHook? = nil
+        preToolUseHook: PreToolUseHook? = nil,
+        // Appended (not inserted mid-list) so the public parameter positions are
+        // unchanged — keeps the api-digester diff to a single clean rename (#1967).
+        documents: [RetrievedDocument] = []
     ) async throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try await MainActor.run {
             try self.enqueue(
@@ -90,6 +93,7 @@ extension InferenceService {
                     grammar: grammar,
                     tools: tools,
                     toolChoice: toolChoice,
+                    documents: documents,
                     maxToolIterations: maxToolIterations
                 ),
                 priority: priority,
