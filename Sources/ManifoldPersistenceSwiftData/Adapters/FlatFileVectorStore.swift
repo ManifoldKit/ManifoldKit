@@ -113,6 +113,43 @@ public actor FlatFileVectorStore: VectorStore {
             }
     }
 
+    /// Sparse BM25 ranking over the in-memory corpus (#1919).
+    ///
+    /// Builds a `BM25Scorer` from the loaded records on each call. For the
+    /// flat-file store's documented ceiling (~50k chunks, already fully resident)
+    /// this is acceptable: the index is recomputed rather than persisted, which
+    /// avoids a SwiftData schema migration for a postings table while still
+    /// giving real term-frequency · IDF · length-normalized scoring. The legacy
+    /// ``keywordSearch`` stays as the no-embedding fallback; this method powers
+    /// the sparse leg of hybrid retrieval.
+    public func bm25Search(query: String, limit: Int) async throws -> [VectorSearchHit] {
+        let loaded = try ensureLoaded()
+        guard !query.isEmpty, limit > 0 else { return [] }
+
+        let scorer = BM25Scorer(corpus: loaded.map { ($0.chunkID, $0.text) })
+        let ranked = scorer.score(query: query, limit: limit)
+
+        // Map scored chunk IDs back to records. Build a lookup once so the join
+        // is O(n) rather than O(n·k).
+        let byID = Dictionary(loaded.map { ($0.chunkID, $0) }, uniquingKeysWith: { first, _ in first })
+        return ranked.compactMap { result in
+            guard let record = byID[result.id] else { return nil }
+            return VectorSearchHit(
+                chunk: DocumentChunk(
+                    id: record.chunkID,
+                    documentID: record.documentID,
+                    text: record.text,
+                    chunkIndex: Int(record.chunkIndex)
+                ),
+                documentTitle: record.documentTitle,
+                // BM25 scores are unbounded; carry the raw value through so
+                // RRF (which fuses on rank, not magnitude) and any downstream
+                // inspection see the real sparse signal.
+                score: Float(result.score)
+            )
+        }
+    }
+
     public func delete(documentID: UUID) throws {
         var loaded = try ensureLoaded()
         loaded.removeAll { $0.documentID == documentID }

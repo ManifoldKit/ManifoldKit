@@ -77,6 +77,20 @@ public struct RAGConfiguration: Sendable {
     /// `<Application Support>/<bundleIdentifier>/ragvectors.bin`.
     public var vectorStoreURL: URL?
 
+    /// When `true`, retrieval runs the dense (cosine) and sparse (BM25) legs and
+    /// fuses them with Reciprocal Rank Fusion before the top-k + rerank stages
+    /// (#1919). Both legs query the same vector-store actor, so they are issued
+    /// sequentially rather than concurrently — there is no concurrency win behind
+    /// a single serialized actor. Default: `false`, which preserves the historical
+    /// dense-or-keyword-fallback behaviour byte-for-byte — hybrid is strictly
+    /// opt-in.
+    ///
+    /// > Note: The RRF and BM25 tuning constants (`k = 60`, `k1 = 1.2`,
+    /// > `b = 0.75`) are the published defaults but are **PROVISIONAL** for this
+    /// > corpus until the RAG eval harness (#1937) can defend them against
+    /// > recall@k / MRR numbers. Enable for evaluation, not yet as a default.
+    public var hybridRetrieval: Bool
+
     public init(
         embeddingBackend: (any EmbeddingBackend)? = nil,
         reranker: (any Reranker)? = nil,
@@ -86,7 +100,8 @@ public struct RAGConfiguration: Sendable {
         similarityThreshold: Float = 0,
         fullContextMode: Bool = false,
         fullContextBudgetTokens: Int = 8192,
-        vectorStoreURL: URL? = nil
+        vectorStoreURL: URL? = nil,
+        hybridRetrieval: Bool = false
     ) {
         self.embeddingBackend = embeddingBackend
         self.reranker = reranker
@@ -97,6 +112,7 @@ public struct RAGConfiguration: Sendable {
         self.fullContextMode = fullContextMode
         self.fullContextBudgetTokens = fullContextBudgetTokens
         self.vectorStoreURL = vectorStoreURL
+        self.hybridRetrieval = hybridRetrieval
     }
 }
 
@@ -512,7 +528,9 @@ public final class ManifoldBootstrap {
             defaultLimit: ragConfig.topK,
             similarityThreshold: ragConfig.similarityThreshold,
             fullContextMode: ragConfig.fullContextMode,
-            fullContextBudgetTokens: ragConfig.fullContextBudgetTokens
+            fullContextBudgetTokens: ragConfig.fullContextBudgetTokens,
+            // Default-off flag → strategy. Off keeps the legacy dense path.
+            retrievalStrategy: ragConfig.hybridRetrieval ? .hybrid : .dense
         )
     }
 

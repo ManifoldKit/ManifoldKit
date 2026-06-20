@@ -1,6 +1,24 @@
 import Foundation
 import ManifoldInference
 
+// MARK: - RetrievalStrategy
+
+/// Which retriever(s) feed the first-stage candidate pool (#1919).
+///
+/// - ``dense``: cosine over embeddings only, with the legacy keyword fallback
+///   when no embedding model is loaded or the embed call throws. This is the
+///   historical behaviour and the default — selecting it makes retrieval
+///   byte-for-byte identical to the pre-hybrid pipeline.
+/// - ``sparse``: BM25 only. Useful for exact-token / no-embedding corpora.
+/// - ``hybrid``: run dense *and* BM25, then fuse the two rankings with
+///   Reciprocal Rank Fusion before the top-k + rerank stages. Opt in via
+///   `RAGConfiguration.hybridRetrieval`.
+public enum RetrievalStrategy: Sendable {
+    case dense
+    case sparse
+    case hybrid
+}
+
 /// Orchestrates document ingestion and retrieval for RAG-augmented turns.
 ///
 /// Call ``ingest(url:)`` to parse, chunk, embed, and persist a document.
@@ -62,6 +80,11 @@ public actor RAGService {
     /// fetch width is exactly `limit` so behaviour is unchanged.
     static let rerankCandidateMultiplier = 3
 
+    /// First-stage retrieval strategy. Defaults to ``RetrievalStrategy/dense`` so
+    /// existing adopters' behaviour is unchanged; the hybrid BM25+RRF path is
+    /// opt-in (#1919, gated behind `RAGConfiguration.hybridRetrieval`).
+    private let retrievalStrategy: RetrievalStrategy
+
     public init(
         documentStore: any DocumentStore,
         vectorStore: any VectorStore,
@@ -72,8 +95,10 @@ public actor RAGService {
         defaultLimit: Int = 5,
         similarityThreshold: Float = 0,
         fullContextMode: Bool = false,
-        fullContextBudgetTokens: Int = 8192
+        fullContextBudgetTokens: Int = 8192,
+        retrievalStrategy: RetrievalStrategy = .dense
     ) {
+        self.retrievalStrategy = retrievalStrategy
         self.documentStore = documentStore
         self.vectorStore = vectorStore
         self.embeddingBackend = embeddingBackend
@@ -247,25 +272,7 @@ public actor RAGService {
             ? limit * Self.rerankCandidateMultiplier
             : limit
 
-        let hits: [VectorSearchHit]
-        if let backend = embeddingBackend, backend.isModelLoaded {
-            do {
-                // `EmbeddingBackend.embed` does not guarantee output count ==
-                // input count. Subscripting `[0]` on an empty/short return is a
-                // runtime *trap* that the surrounding catch (designed to fall
-                // back to keyword search) cannot intercept — route the empty
-                // case through `throw` so it lands in the keyword fallback.
-                guard let queryEmbedding = try await backend.embed([cappedQuery]).first else {
-                    throw RAGError.embeddingFailed(underlying: InferenceError.inferenceFailure("Embedding backend returned no vectors for query"))
-                }
-                hits = try await vectorStore.search(embedding: queryEmbedding, limit: candidateLimit)
-            } catch {
-                Log.inference.warning("RAGService: embedding query failed, falling back to keyword search: \(error.localizedDescription)")
-                hits = try await vectorStore.keywordSearch(query: cappedQuery, limit: candidateLimit)
-            }
-        } else {
-            hits = try await vectorStore.keywordSearch(query: cappedQuery, limit: candidateLimit)
-        }
+        let hits = try await firstStageHits(query: cappedQuery, candidateLimit: candidateLimit)
 
         guard !hits.isEmpty else { return .empty }
 
@@ -328,6 +335,60 @@ public actor RAGService {
         }
 
         return RetrievalResult(slots: [slot], citations: citations, documents: documents)
+    }
+
+    /// Produces the first-stage candidate pool, dispatching on
+    /// ``retrievalStrategy``.
+    ///
+    /// `.dense` reproduces the historical dense-with-keyword-fallback path
+    /// byte-for-byte. `.sparse` runs BM25 only. `.hybrid` runs *both* the dense
+    /// and BM25 legs and fuses their rankings with RRF before returning the
+    /// fused top-`candidateLimit` — which then flows into the existing rerank +
+    /// threshold + injection stages unchanged.
+    private func firstStageHits(query: String, candidateLimit: Int) async throws -> [VectorSearchHit] {
+        switch retrievalStrategy {
+        case .dense:
+            return try await denseHits(query: query, candidateLimit: candidateLimit)
+
+        case .sparse:
+            return try await vectorStore.bm25Search(query: query, limit: candidateLimit)
+
+        case .hybrid:
+            // Widen each leg to the full candidate pool, fuse, then trim back to
+            // `candidateLimit` so the downstream rerank pool width is identical to
+            // the non-hybrid path. The dense leg keeps its keyword fallback so a
+            // missing/throwing embedding model degrades hybrid → (BM25 ⊕ keyword)
+            // rather than failing the turn.
+            let dense = try await denseHits(query: query, candidateLimit: candidateLimit)
+            let sparse = try await vectorStore.bm25Search(query: query, limit: candidateLimit)
+
+            // If a leg returned nothing the fusion is a no-op pass-through of the
+            // other — RRF over a single non-empty list preserves its order.
+            return ReciprocalRankFusion.fuse([dense, sparse], limit: candidateLimit)
+        }
+    }
+
+    /// Dense cosine retrieval with the legacy keyword fallback for the
+    /// no-embedding / embed-failure case. Extracted so both `.dense` and the
+    /// dense leg of `.hybrid` share one implementation.
+    private func denseHits(query: String, candidateLimit: Int) async throws -> [VectorSearchHit] {
+        guard let backend = embeddingBackend, backend.isModelLoaded else {
+            return try await vectorStore.keywordSearch(query: query, limit: candidateLimit)
+        }
+        do {
+            // `EmbeddingBackend.embed` does not guarantee output count == input
+            // count. Subscripting `[0]` on an empty/short return is a runtime
+            // *trap* the catch (designed to fall back to keyword search) cannot
+            // intercept — route the empty case through `throw` so it lands in the
+            // keyword fallback.
+            guard let queryEmbedding = try await backend.embed([query]).first else {
+                throw RAGError.embeddingFailed(underlying: InferenceError.inferenceFailure("Embedding backend returned no vectors for query"))
+            }
+            return try await vectorStore.search(embedding: queryEmbedding, limit: candidateLimit)
+        } catch {
+            Log.inference.warning("RAGService: embedding query failed, falling back to keyword search: \(error.localizedDescription)")
+            return try await vectorStore.keywordSearch(query: query, limit: candidateLimit)
+        }
     }
 
     /// Full-context path: reads every ingested document's source, estimates the
