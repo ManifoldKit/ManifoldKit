@@ -29,6 +29,64 @@ final class ToolResultStructuredContentTests: XCTestCase {
         XCTAssertEqual(obj["text"] as? String, "hello")
     }
 
+    // MARK: - MCP resource/media part round-trips (#1927)
+
+    func test_resourceLinkPart_roundTrips() throws {
+        let part = ToolResultPart.resourceLink(uri: "file:///tmp/report.pdf", mimeType: "application/pdf")
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(part))
+        // Sabotage check: dropping the "resource_link" decode arm yields
+        // .unknown(type: "resource_link") and fails this equality.
+        XCTAssertEqual(decoded, .resourceLink(uri: "file:///tmp/report.pdf", mimeType: "application/pdf"))
+    }
+
+    func test_resourceLinkPart_roundTripsWithoutMimeType() throws {
+        let part = ToolResultPart.resourceLink(uri: "file:///tmp/x", mimeType: nil)
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(part))
+        XCTAssertEqual(decoded, .resourceLink(uri: "file:///tmp/x", mimeType: nil))
+    }
+
+    func test_embeddedResourcePart_roundTrips() throws {
+        let part = ToolResultPart.resource(uri: "manifold://documents/abc", text: "doc body")
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(part))
+        XCTAssertEqual(decoded, .resource(uri: "manifold://documents/abc", text: "doc body"))
+    }
+
+    func test_embeddedResourcePart_roundTripsBinaryWithNilText() throws {
+        let part = ToolResultPart.resource(uri: "manifold://blob/1", text: nil)
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(part))
+        XCTAssertEqual(decoded, .resource(uri: "manifold://blob/1", text: nil))
+    }
+
+    func test_imagePart_roundTrips() throws {
+        let part = ToolResultPart.image(mimeType: "image/png")
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(part))
+        XCTAssertEqual(decoded, .image(mimeType: "image/png"))
+    }
+
+    func test_audioPart_roundTrips() throws {
+        let part = ToolResultPart.audio(mimeType: "audio/wav")
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(part))
+        XCTAssertEqual(decoded, .audio(mimeType: "audio/wav"))
+    }
+
+    func test_imagePartWithoutMimeType_decodesToUnknown() throws {
+        // A malformed image block (no mimeType) can't be typed, so the decoder
+        // falls back to .unknown rather than throwing — and .unknown re-encodes
+        // stably to {"type":"image"}, so the fallback is self-consistent.
+        let payload = #"{"type":"image","data":"aGVsbG8="}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: payload)
+        XCTAssertEqual(decoded, .unknown(type: "image"))
+
+        let reDecoded = try JSONDecoder().decode(ToolResultPart.self, from: JSONEncoder().encode(decoded))
+        XCTAssertEqual(reDecoded, .unknown(type: "image"))
+    }
+
+    func test_audioPartWithoutMimeType_decodesToUnknown() throws {
+        let payload = #"{"type":"audio","data":"aGVsbG8="}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: payload)
+        XCTAssertEqual(decoded, .unknown(type: "audio"))
+    }
+
     // MARK: - Unknown type decode tolerance
 
     func test_unknownPartType_decodesWithoutThrowing() throws {

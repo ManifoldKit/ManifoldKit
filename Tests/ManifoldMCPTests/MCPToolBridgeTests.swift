@@ -441,6 +441,88 @@ final class MCPToolBridgeTests: XCTestCase {
         XCTAssertFalse(result.content.contains("\u{0000}"))
     }
 
+    // Sabotage: reverting renderContent to the old `compactMap { type == "text" }`
+    // drops every non-text block — the `[resource: …]` placeholder vanishes from
+    // `content` and `structuredContent` stays nil, failing both assertions below.
+    func test_executorPreservesNonTextContentBlocks() async throws {
+        let executor = MCPToolExecutor(
+            definition: ToolDefinition(name: "docs.search", description: "Search", parameters: .object([:])),
+            serverDisplayName: "Docs",
+            remoteToolName: "search",
+            requiresApproval: false,
+            callTool: { _, _ in
+                .object([
+                    "content": .array([
+                        .object([
+                            "type": .string("text"),
+                            "text": .string("here is the file"),
+                        ]),
+                        .object([
+                            "type": .string("resource_link"),
+                            "uri": .string("file:///tmp/report.pdf"),
+                            "mimeType": .string("application/pdf"),
+                        ]),
+                        .object([
+                            "type": .string("image"),
+                            "mimeType": .string("image/png"),
+                            "data": .string("aGVsbG8="),
+                        ]),
+                    ]),
+                ])
+            }
+        )
+
+        let result = try await executor.execute(arguments: .object([:]))
+
+        // The text block still reaches the model...
+        XCTAssertTrue(result.content.contains("here is the file"))
+        // ...and the non-text blocks are no longer silently dropped — they
+        // appear as readable placeholders carrying the uri / media type.
+        XCTAssertTrue(result.content.contains("file:///tmp/report.pdf"),
+                      "resource_link uri must survive into the model-facing content, not be dropped")
+        XCTAssertTrue(result.content.contains("[image]"),
+                      "image block must surface a placeholder rather than being discarded")
+
+        // Full fidelity is preserved in the structured sidecar.
+        let parts = try XCTUnwrap(result.structuredContent)
+        XCTAssertEqual(parts, [
+            .text("here is the file"),
+            .resourceLink(uri: "file:///tmp/report.pdf", mimeType: "application/pdf"),
+            .image(mimeType: "image/png"),
+        ])
+    }
+
+    // Sabotage: the old code fell through to a raw JSON dump for an all-non-text
+    // array. This asserts an embedded text resource is inlined and a resource_link
+    // surfaces a typed placeholder instead.
+    func test_executorRendersAllNonTextContentArray() async throws {
+        let executor = MCPToolExecutor(
+            definition: ToolDefinition(name: "docs.read", description: "Read", parameters: .object([:])),
+            serverDisplayName: "Docs",
+            remoteToolName: "read",
+            requiresApproval: false,
+            callTool: { _, _ in
+                .object([
+                    "content": .array([
+                        .object([
+                            "type": .string("resource"),
+                            "resource": .object([
+                                "uri": .string("manifold://documents/abc"),
+                                "text": .string("doc body text"),
+                            ]),
+                        ]),
+                    ]),
+                ])
+            }
+        )
+
+        let result = try await executor.execute(arguments: .object([:]))
+        XCTAssertTrue(result.content.contains("doc body text"),
+                      "embedded text resource must be inlined into the model-facing content")
+        let parts = try XCTUnwrap(result.structuredContent)
+        XCTAssertEqual(parts, [.resource(uri: "manifold://documents/abc", text: "doc body text")])
+    }
+
     func test_executorMapsMCPErrorKinds() async throws {
         let timeoutExecutor = MCPToolExecutor(
             definition: ToolDefinition(name: "docs.search", description: "Search", parameters: .object([:])),

@@ -85,12 +85,17 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
             await toolApprovalDidSucceed?()
             let response = try await callTool(remoteToolName, arguments)
             try Task.checkCancellation()
-            let parsed = Self.parseResult(response)
+            let parsed = parseResult(response)
             let wrapped = MCPContentSanitizer.wrapForUntrustedSurface(
                 sanitize(parsed.content),
                 serverDisplayName: serverDisplayName
             )
-            return ToolResult(callId: "", content: wrapped, errorKind: parsed.errorKind)
+            return ToolResult(
+                callId: "",
+                content: wrapped,
+                errorKind: parsed.errorKind,
+                structuredContent: parsed.structuredContent
+            )
         } catch is CancellationError {
             return ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
         } catch let error as MCPError {
@@ -111,37 +116,110 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
         Self.sanitize(value, limit: outputByteLimit, toolName: definition.name)
     }
 
-    private static func parseResult(_ value: JSONSchemaValue?) -> (content: String, errorKind: ToolResult.ErrorKind?) {
-        guard let value else { return ("", nil) }
+    private func parseResult(_ value: JSONSchemaValue?) -> (content: String, errorKind: ToolResult.ErrorKind?, structuredContent: [ToolResultPart]?) {
+        guard let value else { return ("", nil, nil) }
         guard case .object(let object) = value else {
-            return (jsonString(from: value), nil)
+            return (Self.jsonString(from: value), nil, nil)
         }
 
-        let content = renderContent(from: object["content"] ?? value)
+        let rendered = renderContent(from: object["content"] ?? value)
         if case .bool(true)? = object["isError"] {
             if case .string(let rawKind)? = object["errorKind"],
                let kind = ToolResult.ErrorKind(rawValue: rawKind) {
-                return (content, kind)
+                return (rendered.content, kind, rendered.structuredContent)
             }
-            return (content, .permanent)
+            return (rendered.content, .permanent, rendered.structuredContent)
         }
-        return (content, nil)
+        return (rendered.content, nil, rendered.structuredContent)
     }
 
-    private static func renderContent(from value: JSONSchemaValue) -> String {
+    /// Renders an MCP `tools/call` `content` value into the model-facing string
+    /// **and** preserves non-text blocks (`resource_link`, embedded `resource`,
+    /// `image`, `audio`) — both as readable placeholders in the returned string
+    /// and as typed ``ToolResultPart`` entries in `structuredContent`.
+    ///
+    /// Non-text blocks were previously dropped by a `compactMap` keeping only
+    /// `type == "text"` (silent data loss, #1927). A non-text block reduced to a
+    /// placeholder now emits a warning, mirroring the byte-truncation warning in
+    /// ``sanitize(_:limit:toolName:)``.
+    private func renderContent(from value: JSONSchemaValue) -> (content: String, structuredContent: [ToolResultPart]?) {
         if case .string(let string) = value {
-            return string
+            return (string, nil)
         }
-        if case .array(let values) = value {
-            let text = values.compactMap { item -> String? in
-                guard case .object(let object) = item else { return nil }
-                guard case .string(let type)? = object["type"], type == "text" else { return nil }
-                guard case .string(let segment)? = object["text"] else { return nil }
-                return segment
-            }.joined(separator: "\n")
-            if text.isEmpty == false { return text }
+        guard case .array(let values) = value else {
+            return (Self.jsonString(from: value), nil)
         }
-        return jsonString(from: value)
+
+        var segments: [String] = []
+        var parts: [ToolResultPart] = []
+        for item in values {
+            guard case .object(let object) = item,
+                  case .string(let type)? = object["type"] else {
+                // A non-object or untyped block can't be rendered as a typed
+                // part; fall back to a JSON dump rather than dropping it.
+                segments.append(Self.jsonString(from: item))
+                continue
+            }
+            switch type {
+            case "text":
+                if case .string(let segment)? = object["text"] {
+                    segments.append(segment)
+                    parts.append(.text(segment))
+                }
+            case "resource_link":
+                let uri = Self.stringValue(object["uri"]) ?? ""
+                let mimeType = Self.stringValue(object["mimeType"])
+                segments.append("[resource: \(uri)\(mimeType.map { " (\($0))" } ?? "")]")
+                parts.append(.resourceLink(uri: uri, mimeType: mimeType))
+                warnReducedToPlaceholder(type)
+            case "resource":
+                let resource: [String: JSONSchemaValue]
+                if case .object(let nested)? = object["resource"] { resource = nested } else { resource = object }
+                let uri = Self.stringValue(resource["uri"]) ?? ""
+                let text = Self.stringValue(resource["text"])
+                if let text {
+                    // Embedded text resources can flow straight into the model path.
+                    segments.append(text)
+                } else {
+                    segments.append("[embedded resource: \(uri)]")
+                    warnReducedToPlaceholder(type)
+                }
+                parts.append(.resource(uri: uri, text: text))
+            case "image":
+                let mimeType = Self.stringValue(object["mimeType"]) ?? "application/octet-stream"
+                segments.append("[image]")
+                parts.append(.image(mimeType: mimeType))
+                warnReducedToPlaceholder(type)
+            case "audio":
+                let mimeType = Self.stringValue(object["mimeType"]) ?? "application/octet-stream"
+                segments.append("[audio]")
+                parts.append(.audio(mimeType: mimeType))
+                warnReducedToPlaceholder(type)
+            default:
+                segments.append("[\(type)]")
+                parts.append(.unknown(type: type))
+                warnReducedToPlaceholder(type)
+            }
+        }
+
+        let joined = segments.joined(separator: "\n")
+        let content = joined.isEmpty ? Self.jsonString(from: value) : joined
+        return (content, parts.isEmpty ? nil : parts)
+    }
+
+    /// Surfaces a non-text content block being reduced to a textual placeholder
+    /// rather than dropping it silently — same convention as the truncation
+    /// warning in ``sanitize(_:limit:toolName:)``.
+    private func warnReducedToPlaceholder(_ type: String) {
+        let toolName = definition.name
+        Log.inference.warning(
+            "MCPToolExecutor: reduced non-text tool-result block '\(type, privacy: .public)' to a placeholder for '\(toolName, privacy: .public)'; full fidelity preserved in structuredContent"
+        )
+    }
+
+    private static func stringValue(_ value: JSONSchemaValue?) -> String? {
+        guard case .string(let string)? = value else { return nil }
+        return string
     }
 
     private static func message(for error: MCPError) -> String {
