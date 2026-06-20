@@ -48,6 +48,23 @@ public struct GenerativeContextMenuItems: View {
         let hasImage = generatedImage != nil
         let hasImageRuntime = viewModel.imageRuntime != nil
         let hasVideoRuntime = viewModel.videoRuntime != nil
+        let hasAudioRuntime = viewModel.audioRuntime != nil
+
+        // "Generate Speech from This" — text message + audio runtime. Uses the
+        // user's selected voice (or the best installed voice when unset).
+        if hasText && hasAudioRuntime {
+            Button {
+                Task {
+                    do {
+                        try await viewModel.generateSpeech(forText: text)
+                    } catch {
+                        Log.ui.warning("GenerativeContextMenuItems: speech generation failed: \(error)")
+                    }
+                }
+            } label: {
+                Label("Generate Speech from This", systemImage: "waveform")
+            }
+        }
 
         // "Generate Image from This" — text message + image runtime
         if hasText && hasImageRuntime {

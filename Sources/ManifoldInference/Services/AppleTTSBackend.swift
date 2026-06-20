@@ -256,6 +256,11 @@ public final class AppleTTSBackend: AudioGenerationBackend, @unchecked Sendable 
 
     /// Maps a ``SpeechGenerationConfig`` onto an `AVSpeechUtterance`. Honours
     /// `voice`, `rate`, and `pitch`; ignores knobs the engine does not expose.
+    ///
+    /// Voice resolution is quality-aware (see ``resolveVoice(config:)``): an
+    /// explicit identifier is used verbatim, while a language tag or a nil voice
+    /// resolves to the *best installed* voice rather than the compact default —
+    /// so a downloaded Enhanced/Premium voice is picked up automatically.
     static func makeUtterance(
         text: String,
         config: SpeechGenerationConfig
@@ -267,16 +272,7 @@ public final class AppleTTSBackend: AudioGenerationBackend, @unchecked Sendable 
         if let pitch = config.pitch {
             utterance.pitchMultiplier = pitch
         }
-        if let voiceID = config.voice {
-            // Try an explicit voice identifier first, then a BCP-47 language
-            // tag (callers commonly pass e.g. "en-US"). Leaving `voice` nil
-            // lets the system pick the default voice.
-            if let voice = AVSpeechSynthesisVoice(identifier: voiceID) {
-                utterance.voice = voice
-            } else if let voice = AVSpeechSynthesisVoice(language: voiceID) {
-                utterance.voice = voice
-            }
-        }
+        utterance.voice = resolveVoice(config: config)
         return utterance
     }
 }

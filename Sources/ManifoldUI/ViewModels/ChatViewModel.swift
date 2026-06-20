@@ -713,6 +713,12 @@ public final class ChatViewModel {
     /// generations. Driven by the `AudioGenerationRuntime` event drain.
     public internal(set) var audioGenerationProgress: [UUID: AudioGenerationProgress] = [:]
 
+    /// Identifier of the voice the user picked for text-to-speech, or `nil` to
+    /// let the backend auto-select the best installed voice. Bound by
+    /// `VoicePickerView` and read by ``generateSpeech(forText:)`` /
+    /// `GenerativeContextMenuItems`. See `ChatViewModel+AudioGeneration`.
+    public var selectedSpeechVoiceID: String?
+
     // MARK: - WebSearchRuntime
     //
     // Optional sibling to `_imageRuntime` / `_videoRuntime` for the web-search
