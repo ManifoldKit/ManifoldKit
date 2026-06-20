@@ -143,4 +143,46 @@ final class FlatFileVectorStoreTests: XCTestCase {
         let keyword = try await store.keywordSearch(query: "delete", limit: 5)
         XCTAssertTrue(keyword.isEmpty, "Deleted chunks must not appear in keyword search")
     }
+
+    // MARK: - BM25 sparse search (#1919)
+
+    func testBM25SearchRanksRareTermFirst() async throws {
+        let store = FlatFileVectorStore(storageURL: storeURL)
+        let docID = UUID()
+        let rare = DocumentChunk(documentID: docID, text: "engine xz9plasma module", chunkIndex: 0)
+        let common = DocumentChunk(documentID: docID, text: "engine engine engine", chunkIndex: 1)
+        let filler = DocumentChunk(documentID: docID, text: "an engine somewhere", chunkIndex: 2)
+        // No embeddings needed — BM25 scores text only.
+        try await store.insert(
+            chunks: [rare, common, filler],
+            documentTitle: "Doc",
+            embeddings: []
+        )
+
+        let hits = try await store.bm25Search(query: "engine xz9plasma", limit: 5)
+        // All three chunks contain "engine" (a positive-IDF term even at df == N),
+        // so BM25 scores all three — proving the concrete BM25 witness runs, not
+        // the substring-keyword default that would match only the literal phrase.
+        XCTAssertEqual(hits.count, 3, "bm25 returned \(hits.map(\.chunk.text))")
+        XCTAssertEqual(hits.first?.chunk.text, "engine xz9plasma module",
+                       "The chunk with the rare query term must rank first under BM25")
+        // Real term-weighted scores: distinct chunks score differently — the
+        // rare-term chunk strictly above the common-only chunks. Under the legacy
+        // constant-1.0 keyword scorer every match tied, so this distinction is
+        // only possible with BM25.
+        let scores = hits.map(\.score)
+        XCTAssertGreaterThan(scores[0], scores[1],
+                             "Rare-term chunk must outscore common-only chunks under BM25")
+    }
+
+    func testBM25SearchEmptyQueryReturnsNothing() async throws {
+        let store = FlatFileVectorStore(storageURL: storeURL)
+        try await store.insert(
+            chunks: [DocumentChunk(documentID: UUID(), text: "some text", chunkIndex: 0)],
+            documentTitle: "Doc",
+            embeddings: []
+        )
+        let hits = try await store.bm25Search(query: "", limit: 5)
+        XCTAssertTrue(hits.isEmpty)
+    }
 }
