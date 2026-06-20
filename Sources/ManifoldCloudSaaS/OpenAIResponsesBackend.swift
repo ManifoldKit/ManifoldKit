@@ -267,6 +267,12 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             "top_p": config.topP,
             "max_output_tokens": config.maxOutputTokens ?? 2048
         ]
+        // User-settable stop sequences (#1944). The Responses API accepts a
+        // top-level `stop` array; emit only when non-empty to preserve the
+        // prior payload shape for callers that never set stops.
+        if !config.stopSequences.isEmpty {
+            body["stop"] = config.stopSequences
+        }
 
         // Tools — same `[{type:"function", function:{...}}]` envelope as Chat
         // Completions, plus the matching `tool_choice` policy.

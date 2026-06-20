@@ -666,6 +666,10 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         if let presence = config.presencePenalty { options["presence_penalty"] = presence }
         if let frequency = config.frequencyPenalty { options["frequency_penalty"] = frequency }
         if let repWindow = config.repetitionContextSize { options["repeat_last_n"] = repWindow }
+        // User-settable stop sequences (#1944). Ollama accepts `options.stop`
+        // (array). Emit only when non-empty to keep wire payloads identical for
+        // callers that never set stops.
+        if !config.stopSequences.isEmpty { options["stop"] = config.stopSequences }
 
         // Ollama's modern `/api/chat` returns `tool_calls` inside
         // `message.tool_calls` on streaming NDJSON lines. Earlier versions

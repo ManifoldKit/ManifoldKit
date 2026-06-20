@@ -253,6 +253,36 @@ struct OllamaBackendTests {
         #expect(json["format"] == nil)
     }
 
+    // MARK: - Stop sequences (#1944)
+
+    @Test func buildRequest_stopSequencesSet_addsOptionsStop() throws {
+        let (backend, _) = makeConfiguredBackend()
+        let request = try backend.buildRequest(
+            prompt: "hello",
+            systemPrompt: nil,
+            config: GenerationConfig(stopSequences: ["</s>", "User:"])
+        )
+
+        let body = try #require(request.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let options = try #require(json["options"] as? [String: Any])
+        #expect((options["stop"] as? [String]) == ["</s>", "User:"])
+    }
+
+    @Test func buildRequest_stopSequencesEmpty_omitsOptionsStop() throws {
+        let (backend, _) = makeConfiguredBackend()
+        let request = try backend.buildRequest(
+            prompt: "hello",
+            systemPrompt: nil,
+            config: GenerationConfig()
+        )
+
+        let body = try #require(request.httpBody)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let options = try #require(json["options"] as? [String: Any])
+        #expect(options["stop"] == nil)
+    }
+
     // MARK: - Streaming
 
     @Test func streaming_yieldsTokens() async throws {

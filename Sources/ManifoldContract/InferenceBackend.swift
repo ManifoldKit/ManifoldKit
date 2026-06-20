@@ -286,6 +286,15 @@ public struct GenerationConfig: Sendable, Codable {
     /// Defaults to `nil` (no grammar constraint).
     public var grammar: String?
 
+    /// User-settable stop sequences: strings that, when generated, end the turn.
+    ///
+    /// Each backend that supports stop strings forwards these to its provider
+    /// (e.g. OpenAI `stop`, Anthropic `stop_sequences`, Ollama `options.stop`).
+    /// Empty (the default) means "use the model/backend defaults" — no stop
+    /// field is sent, preserving existing payload shapes for callers that never
+    /// set it.
+    public var stopSequences: [String] = []
+
     /// Routed structured-output strategy for this generation request.
     ///
     /// Runtime-only hint: callers can use ``StructuredOutputRouter`` to choose a
@@ -413,6 +422,7 @@ public struct GenerationConfig: Sendable, Codable {
         maxToolIterations: Int = 10,
         maxRunTokens: Int? = nil,
         grammar: String? = nil,
+        stopSequences: [String] = [],
         structuredOutput: StructuredOutputStrategy? = nil,
         yieldEveryNTokens: Int = 8,
         requiredCapabilities: Set<GenerationCapabilityRequirement> = []
@@ -443,6 +453,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.maxToolIterations = max(1, maxToolIterations)
         self.maxRunTokens = maxRunTokens
         self.grammar = grammar
+        self.stopSequences = stopSequences
         self.structuredOutput = structuredOutput
         self.yieldEveryNTokens = yieldEveryNTokens
         self.requiredCapabilities = requiredCapabilities
@@ -452,7 +463,7 @@ public struct GenerationConfig: Sendable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case temperature, topP, repeatPenalty, topK, typicalP, maxOutputTokens
-        case tools, toolChoice, maxThinkingTokens, maxToolIterations, grammar
+        case tools, toolChoice, maxThinkingTokens, maxToolIterations, grammar, stopSequences
         case yieldEveryNTokens
         case streamPrefillProgress
         case minP, repetitionPenalty, seed
@@ -491,6 +502,8 @@ public struct GenerationConfig: Sendable, Codable {
         // thinkingMarkers is a per-request runtime hint; it is not persisted.
         thinkingMarkers = nil
         grammar = try c.decodeIfPresent(String.self, forKey: .grammar)
+        // stopSequences landed after the original shape; absent from older payloads.
+        stopSequences = (try c.decodeIfPresent([String].self, forKey: .stopSequences)) ?? []
         // structuredOutput is a per-request runtime hint; it is not persisted.
         structuredOutput = nil
         // yieldEveryNTokens landed after the original shape; default to 8 when absent.
@@ -533,6 +546,10 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encode(streamPrefillProgress, forKey: .streamPrefillProgress)
         try c.encode(maxToolIterations, forKey: .maxToolIterations)
         try c.encodeIfPresent(grammar, forKey: .grammar)
+        // Empty stopSequences means "unset"; omit the key to preserve the prior payload shape.
+        if !stopSequences.isEmpty {
+            try c.encode(stopSequences, forKey: .stopSequences)
+        }
         try c.encode(yieldEveryNTokens, forKey: .yieldEveryNTokens)
         try c.encodeIfPresent(minP, forKey: .minP)
         try c.encodeIfPresent(repetitionPenalty, forKey: .repetitionPenalty)
