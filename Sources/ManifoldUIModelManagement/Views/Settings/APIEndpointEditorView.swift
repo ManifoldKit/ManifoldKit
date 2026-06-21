@@ -202,17 +202,11 @@ public struct APIEndpointEditorView: View {
             } catch {
                 // Roll back the just-written key so a failed record update never
                 // leaves an orphaned Keychain item (mirrors the create path).
-                // Restore the prior key if there was one; otherwise delete.
                 if didWriteKey {
-                    do {
-                        if let priorKey, !priorKey.isEmpty {
-                            try KeychainService.store(key: priorKey, account: updated.keychainAccount)
-                        } else {
-                            try KeychainService.delete(account: updated.keychainAccount)
-                        }
-                    } catch {
-                        Log.security.warning("Keychain rollback failed after endpoint update error: \(error.localizedDescription, privacy: .public)")
-                    }
+                    Self.rollbackKeychainKey(
+                        account: updated.keychainAccount,
+                        priorKey: priorKey
+                    )
                 }
                 validationError = error.localizedDescription.isEmpty
                     ? "Failed to save the endpoint configuration."
@@ -251,6 +245,25 @@ public struct APIEndpointEditorView: View {
                     ? "Failed to save the endpoint configuration."
                     : error.localizedDescription
             }
+        }
+    }
+
+    /// Restores the Keychain key for `account` after a failed record update on the
+    /// edit path: re-stores `priorKey` if there was one, otherwise deletes the
+    /// freshly written (now-orphaned) key. Best-effort — a Keychain failure here
+    /// is logged, not surfaced, since the user is already seeing the save error.
+    ///
+    /// Extracted from `save()` so the rollback contract is unit-testable without
+    /// hosting the SwiftUI view.
+    static func rollbackKeychainKey(account: String, priorKey: String?) {
+        do {
+            if let priorKey, !priorKey.isEmpty {
+                try KeychainService.store(key: priorKey, account: account)
+            } else {
+                try KeychainService.delete(account: account)
+            }
+        } catch {
+            Log.security.warning("Keychain rollback failed after endpoint update error: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
