@@ -281,20 +281,44 @@ public struct ToolGrammarBuilder: Sendable {
     /// than a tool-call union. Returns nil when `schema` is not an object schema
     /// (a bare scalar payload carries nothing to root a grammar on).
     ///
+    /// An object schema is recognised either by an explicit `"type": "object"`
+    /// *or* by the presence of a `properties` map with no conflicting scalar
+    /// `type` — JSON Schema commonly omits `type` when `properties` is declared,
+    /// and extraction payloads (this method's intended caller) routinely do. When
+    /// `type` is absent the schema is lowered *as if* `"type": "object"` were
+    /// present so the payload is genuinely constrained rather than degrading to
+    /// the vacuous generic `value`. A dict whose explicit `type` is a non-object
+    /// scalar (e.g. `"string"`) is still rejected even if it carries `properties`.
+    ///
     /// Mirrors the tail of ``buildGrammar(for:mode:)``: it reuses the same
-    /// recursive ``lower(_:into:ruleName:emit:)`` to lower `schema` into a
+    /// recursive ``lower(_:into:ruleName:emit:)`` to lower the schema into a
     /// `payload-0` root rule, emits `root ::= payload-0` first (the root-first
     /// convention), then the lowered rules in emission order, then the shared
     /// generic JSON rule set. For an object schema it always returns a grammar:
     /// unmodeled nodes degrade gracefully to the generic `value` rule, exactly as
     /// on the envelope path — never returning nil for an object input.
     public func buildObjectGrammar(for schema: JSONSchemaValue) -> String? {
-        // Only an object *schema* (`"type": "object"`) roots a payload grammar.
-        // A bare scalar (or a dict whose `type` is a scalar like "string") would
-        // lower to a primitive/`value` with nothing object-shaped to constrain —
-        // signal "no grammar" so the caller can fall back rather than ship one.
-        guard case let .object(dict) = schema,
-              case .string("object")? = dict["type"] else {
+        // Only an object *schema* roots a payload grammar. A bare scalar (or a
+        // dict whose `type` is a scalar like "string") would lower to a
+        // primitive/`value` with nothing object-shaped to constrain — signal "no
+        // grammar" so the caller can fall back rather than ship one.
+        guard case let .object(dict) = schema else { return nil }
+
+        // Resolve the schema actually lowered. Accept two object shapes:
+        //   1. explicit `"type": "object"`  → lower as-is.
+        //   2. `properties` present, no `type` → synthesise `"type":"object"` so
+        //      the type-omitted object form is constrained instead of degrading
+        //      to vacuous `value` (the lowerer keys object handling off `type`).
+        // Any explicit non-object scalar `type` is rejected even with properties.
+        let objectSchema: JSONSchemaValue
+        switch dict["type"] {
+        case .string("object")?:
+            objectSchema = schema
+        case nil where dict["properties"] != nil:
+            var inferred = dict
+            inferred["type"] = .string("object")
+            objectSchema = .object(inferred)
+        default:
             return nil
         }
 
@@ -308,7 +332,7 @@ public struct ToolGrammarBuilder: Sendable {
         // toolIndex 0 keeps helper rule names stable/deterministic, matching the
         // single-tool envelope path's `args-0-*` naming.
         var ctx = LoweringContext(toolIndex: 0, suffix: 0)
-        lower(schema, into: &ctx, ruleName: "payload-0", emit: emit)
+        lower(objectSchema, into: &ctx, ruleName: "payload-0", emit: emit)
 
         // root first (entry point), then the lowered rules in emission order,
         // then the shared generic JSON rule set the fallback/primitives need.
