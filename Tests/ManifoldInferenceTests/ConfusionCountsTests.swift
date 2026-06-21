@@ -70,6 +70,36 @@ final class ConfusionCountsTests: XCTestCase {
         XCTAssertEqual(macro.f1, 0.75, accuracy: accuracy)
     }
 
+    /// Discriminates a *true* macro-average from a (wrong) micro/pooled average
+    /// and from the common mistake of recomputing macro-F1 from the mean
+    /// precision and mean recall.
+    ///
+    /// Classes chosen so the three results are all distinct:
+    ///   - Class A: tp=1, fp=0, fn=0  → P=1.0,    R=1.0, f1=1.0
+    ///   - Class B: tp=1, fp=9, fn=0  → P=0.1,    R=1.0, f1≈0.1818
+    ///
+    /// True macro:                 P=0.55,   R=1.0, f1≈0.5909
+    /// Micro (pooled tp/fp/fn):    P≈0.1818, R=1.0, f1≈0.3077   ← must NOT match
+    /// macroF1 from mean(P),mean(R): ≈0.7097                    ← must NOT match
+    func testMacroAverageIsTrueMacroNotMicroNorRecomputedF1() {
+        let classA = ConfusionCounts(tp: 1, fp: 0, fn: 0)
+        let classB = ConfusionCounts(tp: 1, fp: 9, fn: 0)
+        let macro = MacroAveragedMetrics(perClass: [classA, classB])
+
+        XCTAssertEqual(macro.precision, 0.55, accuracy: accuracy)
+        XCTAssertEqual(macro.recall, 1.0, accuracy: accuracy)
+
+        // Mean of per-class f1 getters: (1.0 + 2/11) / 2.
+        let expectedMacroF1 = (1.0 + (2.0 / 11.0)) / 2.0
+        XCTAssertEqual(macro.f1, expectedMacroF1, accuracy: accuracy)
+
+        // Guard against the two regressions this test exists to catch.
+        let microF1 = 2.0 * (2.0 / 11.0) / (2.0 / 11.0 + 1.0) // 0.3077
+        XCTAssertNotEqual(macro.f1, microF1, accuracy: accuracy)
+        let recomputedFromMeans = 2 * 0.55 * 1.0 / (0.55 + 1.0) // 0.7097
+        XCTAssertNotEqual(macro.f1, recomputedFromMeans, accuracy: accuracy)
+    }
+
     func testMacroAverageEmptyInputIsAllZero() {
         let macro = MacroAveragedMetrics(perClass: [])
         XCTAssertEqual(macro.precision, 0.0, accuracy: accuracy)
