@@ -45,6 +45,26 @@ public struct ChatTemplate: Sendable {
         self.source = .embeddedJinja(embeddedJinja)
     }
 
+    /// The hand-rolled ``PromptTemplate`` enum case this template wraps, or
+    /// `nil` when it is backed by an embedded Jinja string.
+    ///
+    /// This is the only template channel reachable through the public
+    /// ``InferenceService/selectedPromptTemplate`` /
+    /// `ChatViewModel.selectedPromptTemplate` setters today, so a caller-supplied
+    /// ``ChatTemplate`` can be applied to the live render path **only** for the
+    /// ``Source/builtIn(_:)`` case. The ``Source/embeddedJinja(_:)`` case has no
+    /// public injection seam — `selectedChatTemplateRaw` is set only at model
+    /// load (`private(set)` on `ModelLifecycleCoordinator`). See
+    /// `LLM(from:template:)` (#1942 D2) for the consumer that relies on this.
+    public var builtInPromptTemplate: PromptTemplate? {
+        switch source {
+        case .builtIn(let template):
+            return template
+        case .embeddedJinja:
+            return nil
+        }
+    }
+
     /// The thinking-marker pair this template advertises, or `nil` when the
     /// model does not emit reasoning blocks.
     ///
