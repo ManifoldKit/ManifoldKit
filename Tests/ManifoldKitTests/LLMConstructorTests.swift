@@ -108,6 +108,39 @@ final class LLMConstructorTests: XCTestCase {
         )
     }
 
+    /// Template override survives the async model-load clobber. `quickStart`
+    /// dispatches the model load *after* it returns; a local-GGUF load's
+    /// metadata auto-detect fires `onSetSelectedPromptTemplate` and overwrites
+    /// the override `init` applied. Simulate that post-construction clobber, then
+    /// assert `respond(to:)` re-asserts the caller's built-in template before the
+    /// turn so the renderer sees the override — not the model-detected default.
+    func test_builtInTemplate_survivesPostLoadClobber() async throws {
+        let mock = MockInferenceBackend()
+        mock.isModelLoaded = true
+        mock.tokensToYield = ["ok"]
+
+        let result = try await makeResult(mock: mock)
+        let llm = LLM(result: result, template: ChatTemplate(builtIn: .llama3))
+        XCTAssertEqual(llm.viewModel.selectedPromptTemplate, .llama3)
+
+        // Simulate the async model load completing and clobbering the override
+        // via the coordinator's `onSetSelectedPromptTemplate` seam.
+        result.viewModel.selectedPromptTemplate = .gemma
+        XCTAssertEqual(
+            llm.viewModel.selectedPromptTemplate,
+            .gemma,
+            "Precondition: the simulated load clobbered the override."
+        )
+
+        _ = try await llm.respond(to: "hi")
+
+        XCTAssertEqual(
+            llm.viewModel.selectedPromptTemplate,
+            .llama3,
+            "respond(to:) must re-assert the caller's built-in template on the turn path so the async-load clobber does not win."
+        )
+    }
+
     /// Template wiring (embedded-Jinja path, deferred): passing an embedded
     /// template does not break construction and leaves the prompt template
     /// untouched (the raw channel has no public injection seam yet).

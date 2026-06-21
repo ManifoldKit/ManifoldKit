@@ -57,6 +57,14 @@ import ManifoldUI
 /// wired — the raw-template channel has no public injection seam (it is set only
 /// at model load). Passing one is harmless: construction succeeds and the
 /// model's own embedded template is used.
+///
+/// A built-in override is **re-asserted immediately before each turn** in
+/// ``respond(to:)``. This matters because `quickStart` dispatches the model load
+/// *asynchronously* and returns before it finishes; a local-GGUF load's
+/// metadata auto-detect fires `onSetSelectedPromptTemplate` and would otherwise
+/// silently clobber the caller's override after `init` set it. Re-asserting on
+/// the turn path (after the load has settled — `respond` requires a loaded
+/// model) guarantees the caller's choice is the one the renderer actually sees.
 @MainActor
 public struct LLM {
 
@@ -64,6 +72,13 @@ public struct LLM {
     /// `LLM` owns this for its lifetime; releasing the `LLM` tears down the
     /// underlying services.
     private let result: QuickStartResult
+
+    /// The caller-supplied template override, retained so ``respond(to:)`` can
+    /// re-assert it on the turn path. The async model load `quickStart`
+    /// dispatches can fire `onSetSelectedPromptTemplate` *after* `init` applied
+    /// the override, clobbering it; re-asserting per turn (post-load) is the
+    /// race-free guarantee point. `nil` means "use the model's own template".
+    private let template: ChatTemplate?
 
     /// The wrapped chat view model, exposed for callers that need to drop down
     /// to the full ``ChatViewModel`` surface (model selection, session
@@ -107,6 +122,7 @@ public struct LLM {
         )
         Self.apply(template: template, to: result.viewModel)
         self.result = result
+        self.template = template
     }
 
     /// Test/host seam: wraps a pre-assembled ``QuickStartResult`` (e.g. one
@@ -115,6 +131,7 @@ public struct LLM {
     package init(result: QuickStartResult, template: ChatTemplate? = nil) {
         Self.apply(template: template, to: result.viewModel)
         self.result = result
+        self.template = template
     }
 
     /// Applies a caller-supplied template to the live render path where a public
@@ -138,6 +155,12 @@ public struct LLM {
     /// Throws the same ``SendMessageError`` cases.
     @discardableResult
     public func respond(to text: String) async throws -> String {
-        try await result.respond(to: text)
+        // Re-assert the built-in override on the turn path. `quickStart`'s async
+        // model load can fire `onSetSelectedPromptTemplate` after `init` set it,
+        // so init-time application is best-effort; the turn path (post-load) is
+        // the race-free guarantee point. No-op when no built-in override was
+        // supplied.
+        Self.apply(template: template, to: result.viewModel)
+        return try await result.respond(to: text)
     }
 }
