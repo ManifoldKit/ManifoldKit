@@ -176,9 +176,17 @@ public struct APIEndpointEditorView: View {
             updated.baseURL = trimmedURL.isEmpty ? provider.defaultBaseURL : trimmedURL
             updated.modelName = resolvedModelName
 
+            // Capture the prior key before overwriting so a failed record
+            // update can be rolled back to it (rather than leaving the freshly
+            // written key orphaned).
+            var didWriteKey = false
+            let priorKey: String? = apiKey.isEmpty
+                ? nil
+                : KeychainService.retrieve(account: updated.keychainAccount)
             if !apiKey.isEmpty {
                 do {
                     try KeychainService.store(key: apiKey, account: updated.keychainAccount)
+                    didWriteKey = true
                 } catch {
                     // `KeychainError.localizedDescription` already reads as a
                     // complete sentence (e.g. "Couldn't store the API key in
@@ -192,6 +200,20 @@ public struct APIEndpointEditorView: View {
                 try await endpointStore.updateEndpoint(updated)
                 dismiss()
             } catch {
+                // Roll back the just-written key so a failed record update never
+                // leaves an orphaned Keychain item (mirrors the create path).
+                // Restore the prior key if there was one; otherwise delete.
+                if didWriteKey {
+                    do {
+                        if let priorKey, !priorKey.isEmpty {
+                            try KeychainService.store(key: priorKey, account: updated.keychainAccount)
+                        } else {
+                            try KeychainService.delete(account: updated.keychainAccount)
+                        }
+                    } catch {
+                        Log.security.warning("Keychain rollback failed after endpoint update error: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
                 validationError = error.localizedDescription.isEmpty
                     ? "Failed to save the endpoint configuration."
                     : error.localizedDescription
