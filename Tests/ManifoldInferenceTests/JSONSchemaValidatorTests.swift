@@ -444,4 +444,45 @@ final class JSONSchemaValidatorTests: XCTestCase {
             "minItems failure message should contain 'items'; got: \(aDirectFailure?.modelReadableMessage ?? "nil")"
         )
     }
+
+    /// Companion to the minimum-side test above: verifies that the upper-bound
+    /// constraints (maximum, maxLength, maxItems) also work when decoded via
+    /// `JSONDecoder` and the literal is stored as `.integer(Int64)`.
+    func test_maxNumericConstraints_enforcedWhenDecodedViaJSONDecoder() throws {
+        // maximum: value 10 violates maximum:5
+        let numSchema = try JSONDecoder().decode(
+            JSONSchemaValue.self,
+            from: Data(#"{"type":"number","maximum":5}"#.utf8)
+        )
+        let maxFailure = validator.validate(json("10"), against: numSchema)
+        XCTAssertNotNil(maxFailure, "maximum:5 decoded as .integer must be enforced; 10 should fail")
+        XCTAssertTrue(
+            maxFailure?.modelReadableMessage.contains("<=") ?? false,
+            "maximum failure message should contain '<='; got: \(maxFailure?.modelReadableMessage ?? "nil")"
+        )
+
+        // maxLength: "toolong" (7 chars) violates maxLength:4
+        let strSchema = try JSONDecoder().decode(
+            JSONSchemaValue.self,
+            from: Data(#"{"type":"string","maxLength":4}"#.utf8)
+        )
+        let maxLenFailure = validator.validate(json(#""toolong""#), against: strSchema)
+        XCTAssertNotNil(maxLenFailure, "maxLength:4 decoded as .integer must be enforced; 'toolong' should fail")
+        XCTAssertTrue(
+            maxLenFailure?.modelReadableMessage.contains("characters") ?? false,
+            "maxLength failure message should contain 'characters'; got: \(maxLenFailure?.modelReadableMessage ?? "nil")"
+        )
+
+        // maxItems: [1,2,3] (3 items) violates maxItems:2
+        let arrSchema = try JSONDecoder().decode(
+            JSONSchemaValue.self,
+            from: Data(#"{"type":"array","maxItems":2}"#.utf8)
+        )
+        let maxItemsFailure = validator.validate(json("[1,2,3]"), against: arrSchema)
+        XCTAssertNotNil(maxItemsFailure, "maxItems:2 decoded as .integer must be enforced; [1,2,3] should fail")
+        XCTAssertTrue(
+            maxItemsFailure?.modelReadableMessage.contains("items") ?? false,
+            "maxItems failure message should contain 'items'; got: \(maxItemsFailure?.modelReadableMessage ?? "nil")"
+        )
+    }
 }
