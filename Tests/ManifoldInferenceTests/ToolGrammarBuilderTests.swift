@@ -418,6 +418,324 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertEqual(grammar, expected)
     }
 
+    // MARK: - Bare-object grammar (#1992)
+
+    /// Asserts the grammar is well-formed structurally: every nonterminal it
+    /// references is defined by some `name ::=` rule, and there is exactly one
+    /// `root`. No live GBNF compiler in CI, so this catches dangling refs.
+    private func assertNoDanglingRules(_ grammar: String, file: StaticString = #filePath, line: UInt = #line) {
+        var defined = Set<String>()
+        var referenced = Set<String>()
+        var rootCount = 0
+        for rawLine in grammar.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = String(rawLine)
+            guard let sep = line.range(of: " ::= ") else { continue }
+            let name = String(line[line.startIndex..<sep.lowerBound])
+            defined.insert(name)
+            if name == "root" { rootCount += 1 }
+            // Collect bareword tokens on the RHS that look like rule names
+            // (lowercase/hyphen/digit identifiers, not inside a quoted literal
+            // and not a char-class). Tokenize on whitespace and structural punct.
+            let rhs = String(line[sep.upperBound...])
+            var inLiteral = false
+            var inClass = false
+            var escaped = false
+            var token = ""
+            func flush() {
+                if !token.isEmpty,
+                   token.first!.isLetter,
+                   token.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) {
+                    referenced.insert(token)
+                }
+                token = ""
+            }
+            for ch in rhs {
+                if inLiteral {
+                    // Honor backslash escapes so `\"` inside a literal does not
+                    // prematurely close it (e.g. the literal `"\"city\""`).
+                    if escaped { escaped = false; continue }
+                    if ch == "\\" { escaped = true; continue }
+                    if ch == "\"" { inLiteral = false }
+                    continue
+                }
+                if inClass {
+                    if escaped { escaped = false; continue }
+                    if ch == "\\" { escaped = true; continue }
+                    if ch == "]" { inClass = false }
+                    continue
+                }
+                switch ch {
+                case "\"": flush(); inLiteral = true
+                case "[": flush(); inClass = true
+                case "a"..."z", "A"..."Z", "0"..."9", "-": token.append(ch)
+                default: flush()
+                }
+            }
+            flush()
+        }
+        XCTAssertEqual(rootCount, 1, "grammar must define exactly one root", file: file, line: line)
+        let dangling = referenced.subtracting(defined)
+        XCTAssertTrue(
+            dangling.isEmpty,
+            "every referenced nonterminal must be defined; dangling: \(dangling.sorted())",
+            file: file, line: line
+        )
+    }
+
+    func test_objectGrammar_simpleObject_isExactPayloadGrammar() {
+        let schema = objectSchema([
+            ("city", .object(["type": .string("string")])),
+            ("count", .object(["type": .string("integer")]))
+        ], required: ["city"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-0 ::= string
+        args-0-1 ::= integer
+        payload-0 ::= "{" ws "\"city\"" ws ":" ws args-0-0 ( ws "," ws "\"count\"" ws ":" ws args-0-1 )? ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        // Bare payload: root is payload-first and there is NO tool-call envelope.
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        XCTAssertFalse(grammar.contains("toolcall-"), "no tool-call envelope branches")
+        XCTAssertFalse(grammar.contains(#""\"name\"""#), "no envelope \"name\" key")
+        XCTAssertFalse(grammar.contains(#""\"arguments\"""#), "no envelope \"arguments\" key")
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_stringEnumProperty_lowersToAlternation() {
+        let schema = objectSchema([
+            ("direction", .object([
+                "type": .string("string"),
+                "enum": .array([.string("north"), .string("south")])
+            ]))
+        ], required: ["direction"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let enumLine = grammar
+            .split(separator: "\n")
+            .first { $0.hasPrefix("args-0-0 ::=") }
+            .map(String.init) ?? ""
+        XCTAssertEqual(enumLine, #"args-0-0 ::= ("\"north\"" | "\"south\"")"#)
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_nestedObjectAndArray_recurse() {
+        let schema = objectSchema([
+            ("tags", .object([
+                "type": .string("array"),
+                "items": .object(["type": .string("string")])
+            ])),
+            ("meta", .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "id": .object(["type": .string("integer")])
+                ]),
+                "required": .array([.string("id")])
+            ]))
+        ], required: ["meta", "tags"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        // The nested object's `id` property and the array's item rule both recurse
+        // into their own helper rules — assert their constrained primitives appear.
+        XCTAssertTrue(grammar.contains(#""\"id\""#), "nested object key is constrained")
+        XCTAssertTrue(grammar.contains(#""[" ws"#), "array item list is constrained")
+        XCTAssertFalse(grammar.contains("toolcall-"))
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_propertiesWithoutExplicitType_isConstrained() {
+        // JSON Schema commonly omits `type` when `properties` is declared.
+        // buildObjectGrammar must treat this as an object and constrain it,
+        // NOT return nil or degrade to a vacuous `value`.
+        let schema = JSONSchemaValue.object([
+            "properties": .object([
+                "city": .object(["type": .string("string")])
+            ]),
+            "required": .array([.string("city")])
+        ])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-0 ::= string
+        payload-0 ::= "{" ws "\"city\"" ws ":" ws args-0-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        // Crucially NOT the vacuous degradation `payload-0 ::= value`.
+        XCTAssertFalse(grammar.contains("payload-0 ::= value"), "type-omitted object must be constrained, not vacuous")
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_optionalOnlyObject_nullableLeadingMember() {
+        // No `required` → both keys optional. Exercises lowerObject's
+        // nullable-leading-member branch on the bare-payload path: an optional
+        // leading member followed by comma-prefixed optionals, no zero-width loop.
+        let schema = JSONSchemaValue.object([
+            "type": .string("object"),
+            "properties": .object([
+                "a": .object(["type": .string("string")]),
+                "b": .object(["type": .string("boolean")])
+            ])
+        ])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-0 ::= string
+        args-0-1 ::= ("true" | "false")
+        payload-0 ::= "{" ws ( "\"a\"" ws ":" ws args-0-0 ( ws "," ws "\"b\"" ws ":" ws args-0-1 )? )? ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        XCTAssertFalse(grammar.contains("toolcall-"))
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_emptyObject_emitsGenericObject() {
+        // `{"type":"object"}` with no properties → the generic `object` rule.
+        let grammar = try! XCTUnwrap(
+            builder.buildObjectGrammar(for: .object(["type": .string("object")]))
+        )
+        XCTAssertTrue(grammar.contains("payload-0 ::= object"), "empty object → generic object rule")
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_scalarTypeWithProperties_returnsNil() {
+        // An explicit non-object scalar `type` is honored even alongside
+        // `properties` — it is not an object schema.
+        XCTAssertNil(builder.buildObjectGrammar(for: .object([
+            "type": .string("string"),
+            "properties": .object(["x": .object(["type": .string("string")])])
+        ])))
+    }
+
+    func test_objectGrammar_nonObjectSchema_returnsNil() {
+        // A bare scalar schema string-value (no `type:"object"`) is not an object
+        // schema → nil (nothing object-shaped to root a payload grammar on).
+        XCTAssertNil(builder.buildObjectGrammar(for: .string("string")))
+        // A dict whose `type` is a top-level scalar is likewise not an object.
+        XCTAssertNil(builder.buildObjectGrammar(for: .object(["type": .string("string")])))
+    }
+
+    /// A top-level `type: ["object","null"]` nullable union is NOT recognised as
+    /// a pure object schema by the gate (it is neither `"type":"object"` nor a
+    /// type-omitted `properties` shape) → nil, so the caller falls back to
+    /// unconstrained sampling rather than shipping a grammar that would force a
+    /// non-null object on what the schema declares may be null. Documents the
+    /// gate's deliberate boundary for the second-pass review.
+    func test_objectGrammar_topLevelNullableUnion_returnsNil() {
+        XCTAssertNil(builder.buildObjectGrammar(for: .object([
+            "type": .array([.string("object"), .string("null")]),
+            "properties": .object(["x": .object(["type": .string("string")])])
+        ])))
+    }
+
+    /// Type-omitted schema whose `properties` map is *empty* still counts as an
+    /// object (presence of the `properties` key is the signal), and lowers to the
+    /// generic `object` rule rather than nil or `value`. Guards the empty-map
+    /// corner of the type-omission fix.
+    func test_objectGrammar_emptyPropertiesNoType_emitsGenericObject() {
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: .object([
+            "properties": .object([:])
+        ])))
+        XCTAssertTrue(grammar.contains("payload-0 ::= object"), "empty properties → generic object rule")
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        assertNoDanglingRules(grammar)
+    }
+
+    /// Nested optional object: the sole property is itself an optional-only
+    /// object. Hand-traced GBNF (no live compiler in CI):
+    ///   payload-0 ::= "{" ws ( "\"nested\"" ws ":" ws args-0-0 )? ws "}"
+    ///   args-0-0  ::= "{" ws ( "\"x\"" ws ":" ws args-0-1 )? ws "}"
+    /// Each optional group sits *inside* a mandatory `{`…`}` pair, so neither rule
+    /// is nullable — no zero-width loop can form even though every member is
+    /// optional. Byte-exact to pin the nested-optional shape.
+    func test_objectGrammar_nestedOptionalObject_noZeroWidthLoop() {
+        let schema = JSONSchemaValue.object([
+            "type": .string("object"),
+            "properties": .object([
+                "nested": .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "x": .object(["type": .string("string")])
+                    ])
+                ])
+            ])
+        ])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-1 ::= string
+        args-0-0 ::= "{" ws ( "\"x\"" ws ":" ws args-0-1 )? ws "}"
+        payload-0 ::= "{" ws ( "\"nested\"" ws ":" ws args-0-0 )? ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        assertNoDanglingRules(grammar)
+    }
+
+    /// Array-of-array recurses through nested item helper rules; the inner item
+    /// rule is non-nullable (it pins a primitive), so no zero-width loop.
+    func test_objectGrammar_arrayOfArray_recurses() {
+        let schema = objectSchema([
+            ("matrix", .object([
+                "type": .string("array"),
+                "items": .object([
+                    "type": .string("array"),
+                    "items": .object(["type": .string("string")])
+                ])
+            ]))
+        ], required: ["matrix"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-2 ::= string
+        args-0-1 ::= "[" ws ( args-0-2 ( ws "," ws args-0-2 )* )? ws "]"
+        args-0-0 ::= "[" ws ( args-0-1 ( ws "," ws args-0-1 )* )? ws "]"
+        payload-0 ::= "{" ws "\"matrix\"" ws ":" ws args-0-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        assertNoDanglingRules(grammar)
+    }
+
+    /// `additionalProperties` is documented as not modeled (the object is closed
+    /// to declared keys). Confirm it is *ignored* — the declared property still
+    /// lowers normally and the additionalProperties node does not leak a stray
+    /// rule or mis-lower the object.
+    func test_objectGrammar_additionalProperties_isIgnored() {
+        let schema = JSONSchemaValue.object([
+            "type": .string("object"),
+            "properties": .object([
+                "city": .object(["type": .string("string")])
+            ]),
+            "required": .array([.string("city")]),
+            "additionalProperties": .object(["type": .string("string")])
+        ])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-0 ::= string
+        payload-0 ::= "{" ws "\"city\"" ws ":" ws args-0-0 ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        assertNoDanglingRules(grammar)
+    }
+
+    /// Determinism: building the same schema twice yields byte-identical output
+    /// (sorted keys + deterministic helper numbering — no Set/Dictionary
+    /// iteration-order leak into the emitted grammar). Uses multiple properties
+    /// so any unsorted-key leak would surface as a diff across runs.
+    func test_objectGrammar_isByteStableAcrossRuns() {
+        let schema = objectSchema([
+            ("zeta", .object(["type": .string("string")])),
+            ("alpha", .object(["type": .string("integer")])),
+            ("mu", .object(["type": .string("boolean")]))
+        ], required: ["mu", "alpha", "zeta"])
+        let first = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        for _ in 0..<8 {
+            XCTAssertEqual(builder.buildObjectGrammar(for: schema), first)
+        }
+    }
+
     // MARK: - Golden snapshot (fixed 2-tool, empty-params input)
 
     func test_goldenSnapshot_twoTools() {
