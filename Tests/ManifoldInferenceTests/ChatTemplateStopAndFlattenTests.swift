@@ -37,7 +37,8 @@ final class ChatTemplateStopAndFlattenTests: XCTestCase {
     }
 
     /// Direct unit check of the projection that backs the fix: tool parts fold
-    /// into the textual content rather than disappearing.
+    /// into the textual content rather than disappearing, and the callId is
+    /// included so parallel results can be paired to their originating calls.
     func test_toolAwareProjection_foldsToolParts() {
         let messages: [StructuredMessage] = [
             StructuredMessage(role: "tool", parts: [
@@ -47,6 +48,8 @@ final class ChatTemplateStopAndFlattenTests: XCTestCase {
         let projected = GenerationHistoryInstaller.toolAwareProjection(messages)
         XCTAssertEqual(projected.count, 1)
         XCTAssertTrue(projected[0].content.contains("RESULT-TEXT"))
+        // The callId must be present so the model can pair the result to its call.
+        XCTAssertTrue(projected[0].content.contains("(c)"), "callId must appear in projected content")
 
         // Sabotage-counterpart: the legacy flatten() drops it (proves the two
         // projections genuinely differ on tool parts — the bug was using this).
@@ -55,6 +58,53 @@ final class ChatTemplateStopAndFlattenTests: XCTestCase {
             flattened[0].content.contains("RESULT-TEXT"),
             "flatten() is the lossy string-only seam; it must still drop tool parts"
         )
+    }
+
+    /// Parallel tool results must each carry their callId so the model can pair
+    /// each result back to the originating call. Without the id, N bare result
+    /// lines give the model no way to match result→call when multiple tool calls
+    /// were issued on the same assistant turn.
+    func test_toolAwareProjection_includesCallIdInResult() {
+        let messages: [StructuredMessage] = [
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: "call_weather", content: "18C and sunny")),
+                .toolResult(ToolResult(callId: "call_stocks", content: "AAPL 203.45")),
+            ]),
+        ]
+        let projected = GenerationHistoryInstaller.toolAwareProjection(messages)
+        XCTAssertEqual(projected.count, 1)
+
+        let content = projected[0].content
+        // Both callIds must appear so results are pairable to their calls.
+        XCTAssertTrue(content.contains("(call_weather)"), "first callId must be present")
+        XCTAssertTrue(content.contains("(call_stocks)"), "second callId must be present")
+        // Content values survive.
+        XCTAssertTrue(content.contains("18C and sunny"), "first result content must be present")
+        XCTAssertTrue(content.contains("AAPL 203.45"), "second result content must be present")
+
+        // Sabotage: without the fix the ids would be absent; calling flatten()
+        // confirms the lossy baseline still drops everything, making it a valid
+        // discriminant for the toolAwareProjection assertions above.
+        let flattened = GenerationHistoryInstaller.flatten(messages)
+        XCTAssertFalse(
+            flattened[0].content.contains("call_weather"),
+            "flatten() drops tool parts — proving callId presence above is genuine"
+        )
+    }
+
+    /// Error results must use the `[tool_error]` prefix so the model knows the
+    /// tool invocation failed — and must still include the callId for pairing.
+    func test_toolAwareProjection_errorResultUsesErrorPrefix() {
+        let messages: [StructuredMessage] = [
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: "call_fail", content: "timeout", errorKind: .timeout)),
+            ]),
+        ]
+        let projected = GenerationHistoryInstaller.toolAwareProjection(messages)
+        let content = projected[0].content
+        XCTAssertTrue(content.contains("[tool_error]"), "error results must use [tool_error] prefix")
+        XCTAssertTrue(content.contains("(call_fail)"), "error result must still carry callId for pairing")
+        XCTAssertFalse(content.contains("[tool_result]"), "error must NOT use success prefix")
     }
 
     // MARK: - stop-sequence merge policy

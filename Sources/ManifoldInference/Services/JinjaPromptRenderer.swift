@@ -201,9 +201,17 @@ enum JinjaPromptRenderer {
             dict["tool_call_id"] = result.callId
             // The text projection only carries `.text` parts; a tool turn whose
             // payload lives in the `.toolResult` carries no text, so fold the
-            // result content in as the message content when text is empty.
-            if (dict["content"] as? String)?.isEmpty ?? true {
+            // result content in as the message content when text is absent or
+            // empty. Guard against clobbering an already-set content-list
+            // (e.g. images threaded above): only overwrite when `content` is
+            // literally an empty string or nil, not when it is already a list.
+            switch dict["content"] {
+            case nil:
                 dict["content"] = result.content
+            case let s as String where s.isEmpty:
+                dict["content"] = result.content
+            default:
+                break
             }
         }
 

@@ -12,7 +12,7 @@ enum GenerationHistoryInstaller {
     /// non-Anthropic providers that don't accept replayed thinking; tool-call /
     /// tool-result / image parts are dropped because the string seam cannot
     /// represent them. That drop is *intentional redundancy*, not the
-    /// tool-rendering bug fixed in #1944: backends that need the structured
+    /// tool-rendering bug fixed in #1909: backends that need the structured
     /// shape adopt ``StructuredHistoryReceiver`` and receive the unflattened
     /// form *first* (see ``installHistory(on:structuredMessages:)``), so the
     /// flattened form is only a fallback for backends that inspect strings.
@@ -26,16 +26,20 @@ enum GenerationHistoryInstaller {
 
     /// Projects ``StructuredMessage`` to `(role, content)` for the enum-fallback
     /// *prompt-render* path, folding tool-call / tool-result parts into the text
-    /// so they are NOT dropped (#1944).
+    /// so they are NOT dropped (#1909).
     ///
     /// The hand-rolled ``PromptTemplate`` formatters only consume the textual
     /// `content`, so a templateless (or unrenderable-template) model that drove
     /// the fallback through ``flatten(_:)`` lost every tool call and tool result
-    /// — exactly the silent tool-drop #1944 fixes. This projection renders those
+    /// — exactly the silent tool-drop #1909 fixes. This projection renders those
     /// parts into a compact textual form the model can read:
     ///
     /// - `.toolCall` → `[tool_call] <name>(<arguments JSON>)`
-    /// - `.toolResult` → `[tool_result] <name>: <content>` (errors flagged)
+    /// - `.toolResult` → `[tool_result] (<callId>) <content>` (errors flagged as `[tool_error]`)
+    ///
+    /// The `callId` is included so that parallel tool results can be paired
+    /// back to their originating calls — without it a model receiving N bare
+    /// result lines has no identifier to match each result to its call.
     ///
     /// Text parts are preserved verbatim; thinking and image/audio parts are
     /// still dropped (a text prompt cannot carry them — image gating happens
@@ -54,9 +58,11 @@ enum GenerationHistoryInstaller {
                     pieces.append("[tool_call] \(call.toolName)(\(call.arguments))")
                 case .toolResult(let result):
                     let prefix = result.errorKind != nil ? "[tool_error]" : "[tool_result]"
-                    pieces.append("\(prefix) \(result.content)")
+                    // Include the callId so parallel results can be paired back
+                    // to their originating tool calls (#1909).
+                    pieces.append("\(prefix) (\(result.callId)) \(result.content)")
                 case .thinking, .image, .audio, .generatedMedia:
-                    // Not representable in a text prompt; dropped (see #1944 doc).
+                    // Not representable in a text prompt; dropped (see #1909 doc).
                     break
                 }
             }
