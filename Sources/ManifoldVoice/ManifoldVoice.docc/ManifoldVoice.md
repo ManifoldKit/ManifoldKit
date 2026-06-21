@@ -1,14 +1,14 @@
 # ``ManifoldVoice``
 
-Speech-to-text, text-to-speech, and wake-word detection for Swift apps.
+Speech-to-text and text-to-speech for Swift apps.
 
 ## Overview
 
 `ManifoldVoice` is a thin, testable wrapper over Apple's `Speech` and `AVFoundation`
 frameworks. It exposes a small set of protocols (``SpeechTranscribing``,
-``SpeechSynthesizing``, ``WakeWordDetector``) and a default `@MainActor`
+``SpeechSynthesizing``) and a default `@MainActor`
 ``VoiceConversationController`` that coordinates microphone permission,
-streaming transcripts, wake-word detection, and TTS playback.
+streaming transcripts, and TTS playback.
 
 **The module is not chat-specific.** Despite shipping a `VoiceComposerAccessory`
 view for ManifoldKit's chat composer, the underlying controller and services
@@ -57,8 +57,6 @@ Import `ManifoldVoice` directly when:
   a chat session.
 - You need **TTS readback** of model output or any other text, with start/stop
   control and an `isSpeaking` observable property to drive UI.
-- You want **wake-word triggering** — a passive phrase (e.g. "Hey Manifold")
-  that starts a recording session hands-free without a tap target.
 - You are building an accessibility-first UI and need `VoiceCaptureState`
   changes to drive button labels and progress indicators.
 - You want to replace `SFSpeechRecognizer` with a different STT engine (e.g. a
@@ -206,37 +204,6 @@ let controller = VoiceConversationController(transcriber: WhisperTranscriber())
 In unit tests, inject a scripted conformer that feeds canned ``SpeechTranscriptionUpdate``
 values synchronously — no audio session needed.
 
-### Wake-word detection
-
-``WakeWordDetector`` intercepts in-flight transcription updates and fires when a
-configured phrase is heard. Implement the two-method protocol and pass it to the
-controller. ``VoiceConversationController/recentWakeWordDetection`` holds the
-last detection for UI toast display:
-
-```swift,no-build
-import ManifoldVoice
-
-final class PhraseDetector: WakeWordDetector {
-    private let trigger: String
-
-    init(phrase: String) { self.trigger = phrase.lowercased() }
-
-    @MainActor
-    func ingest(_ update: SpeechTranscriptionUpdate) -> WakeWordDetection? {
-        guard update.text.lowercased().contains(trigger) else { return nil }
-        return WakeWordDetection(phrase: trigger, transcript: update.text)
-    }
-
-    @MainActor func reset() {}
-}
-
-let controller = VoiceConversationController(
-    wakeWordDetector: PhraseDetector(phrase: "hey manifold")
-)
-
-// Observe recentWakeWordDetection to show a toast and start a new turn.
-```
-
 ## Topics
 
 ### Standalone usage
@@ -252,12 +219,10 @@ let controller = VoiceConversationController(
 
 - ``SpeechTranscribing``
 - ``SpeechSynthesizing``
-- ``WakeWordDetector``
 
 ### Value types
 
 - ``SpeechTranscriptionUpdate``
-- ``WakeWordDetection``
 - ``VoiceAuthorizationStatus``
 - ``VoiceError``
 
@@ -265,4 +230,3 @@ let controller = VoiceConversationController(
 
 - ``AppleSpeechTranscriber``
 - ``AppleSpeechSynthesizer``
-- ``AppleWakeWordDetector``
