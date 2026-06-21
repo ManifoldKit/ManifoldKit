@@ -94,16 +94,18 @@ public struct ChatTemplateToolDescriptor: Sendable, Equatable {
         // whitespace-control variants (`{%-`/`-%}`) and extra inner spacing are
         // normalised by collapsing runs of whitespace before substring matching.
         let normalized = raw
-            // Drop Jinja whitespace-control hyphens so `{%-`/`-%}` match the
-            // plain `{%`/`%}` guard shapes below.
-            .replacingOccurrences(of: #"\{%-?"#, with: "{%", options: .regularExpression)
-            .replacingOccurrences(of: #"-?%\}"#, with: "%}", options: .regularExpression)
+            // Drop Jinja whitespace-control markers (`{%-`/`{%+`/`-%}`/`+%}`) so
+            // the trimmed/non-trimmed tag spellings all match the plain `{%`/`%}`
+            // guard shapes below, then collapse runs of whitespace (including
+            // newlines inside a multi-line tag) to single spaces.
+            .replacingOccurrences(of: #"\{%[-+]?"#, with: "{%", options: .regularExpression)
+            .replacingOccurrences(of: #"[-+]?%\}"#, with: "%}", options: .regularExpression)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
 
         let guardShapes = [
             "{% if tools %}",            // gemma, Qwen ({%- if tools %} normalises to this)
             "{% if tools is not none",   // Mistral
-            "{% for tool",               // Hermes (iterates tools directly)
+            "{% for tool in tools",      // Hermes (iterates the tools list directly)
             "Environment: ipython",      // Llama-3.1 system preamble
             "[TOOL_CALLS]",              // Mistral call token (also a guard signal)
         ]

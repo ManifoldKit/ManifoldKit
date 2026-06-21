@@ -143,6 +143,56 @@ final class ChatTemplateToolDescriptorTests: XCTestCase {
         XCTAssertEqual(claim.extractability, .toolless)
     }
 
+    // MARK: - False positives — a tools-shaped substring must NOT trip the guard
+
+    /// Prose that merely mentions the word "tools" (a system-prompt string, a
+    /// comment) carries no Jinja guard construct and must stay toolless — the
+    /// guard is anchored to the `{% if tools %}` / `[TOOL_CALLS]` shapes, not to
+    /// the bare word.
+    func testProseMentioningToolsIsNotExpressible() {
+        let template = """
+        {% for message in messages %}
+        <|im_start|>{{ message.role }}
+        You are a helpful assistant. You may use tools when the user asks.
+        {{ message.content }}<|im_end|>
+        {% endfor %}
+        """
+        let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
+
+        XCTAssertFalse(claim.toolsExpressible)
+        XCTAssertNil(claim.declaredDialect)
+        XCTAssertEqual(claim.extractability, .toolless)
+    }
+
+    /// A `{% for tool_message in ... %}` loop iterates an unrelated variable that
+    /// merely starts with "tool" — it is not the Hermes `for tool in tools`
+    /// guard and must not be mistaken for one.
+    func testForLoopOverToolPrefixedVariableIsNotExpressible() {
+        let template = """
+        {% for tool_message in history %}
+        {{ tool_message.content }}
+        {% endfor %}
+        """
+        let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
+
+        XCTAssertFalse(claim.toolsExpressible)
+        XCTAssertNil(claim.declaredDialect)
+        XCTAssertEqual(claim.extractability, .toolless)
+    }
+
+    // MARK: - Whitespace-control variants of the guard tag all normalise
+
+    /// The `{%+` trim-plus marker and newlines inside the tag must normalise to
+    /// the plain `{% if tools %}` guard just like `{%-` does.
+    func testWhitespaceControlVariantsNormaliseToGuard() {
+        for tag in ["{%+ if tools %}", "{%-\n if tools +%}", "{%   if tools   %}"] {
+            let template = tag + "\n<tool_call>\n{\"name\": \"x\"}\n</tool_call>"
+            let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
+            XCTAssertTrue(claim.toolsExpressible, "guard tag \(tag) should be recognised")
+            XCTAssertEqual(claim.declaredDialect?.openDelimiter, "<tool_call>", "tag \(tag)")
+        }
+    }
+
     // MARK: - ModelInfo accessor wiring
 
     func testModelInfoExposesClaimFromChatTemplate() {
