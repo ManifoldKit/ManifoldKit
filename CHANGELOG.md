@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.57.0](https://github.com/roryford/ManifoldKit/compare/v0.56.0...v0.57.0) (2026-06-21)
+
+### Highlights
+
+**Hybrid retrieval — BM25 + dense with Reciprocal Rank Fusion.** RAG retrieval can now fuse a sparse BM25 pass with the existing dense embedding search via Reciprocal Rank Fusion, recovering exact-token matches (codes, identifiers, rare terms) that pure-vector search misses. Opt in per bootstrap; the RRF/BM25 tuning constants ship as the published defaults but stay provisional until the eval harness ([#1937](https://github.com/roryford/ManifoldKit/issues/1937)) can defend them on recall@k / MRR ([#1919](https://github.com/roryford/ManifoldKit/issues/1919)).
+
+```swift
+var rag = RAGConfiguration(embeddingBackend: embedder)
+rag.hybridRetrieval = true   // fuse BM25 + dense via RRF
+```
+
+**Resilient inference — fallback chains and isolated per-model executors.** `withFallbacks([...])` wraps an ordered list of backends into one that advances to the next on failure, so a local-first chain can degrade to cloud transparently. Underneath, each model now runs in its own isolated executor with hot-swap, wedge recovery, and eviction, so one model wedging no longer stalls the others ([#1935](https://github.com/roryford/ManifoldKit/issues/1935), [#1936](https://github.com/roryford/ManifoldKit/issues/1936)).
+
+```swift
+let backend = withFallbacks([localBackend, cloudBackend])   // try local, fall back to cloud
+```
+
+**First-party cloud reranker.** `CloudReranker` adds a hosted cross-encoder rerank stage (Cohere / Jina presets) over the existing `Reranker` seam — retrieve a wide candidate set, rerank to the top few, with the same graceful degrade to first-stage order if the service is unavailable ([#1920](https://github.com/roryford/ManifoldKit/issues/1920)).
+
+```swift
+let reranker = CloudReranker.cohere(apiKey: key)
+let rag = RAGConfiguration(embeddingBackend: embedder, reranker: reranker)
+```
+
+**Agentic controls — sticky tool approval and run-aware memory residency.** A `ToolApprovalPolicy` (`.alwaysAsk` / `.alwaysApprove` / `.approveForRun`) sits over the existing pre-tool-use hook, so a host can approve a tool once and have it stick for the rest of a run, with the model-emitted arguments surfaced for preview ([#1923](https://github.com/roryford/ManifoldKit/issues/1923)). Separately, `KeepAlivePolicy` can preemptively evict an idle model on a `.warning` memory-pressure event (not just `.critical`) and bridges its idle timeout into Ollama's server-side `keep_alive` so the two residency horizons agree ([#1931](https://github.com/roryford/ManifoldKit/issues/1931)).
+
+```swift
+let approval = ToolApprovalPolicy.approveForRun(toolNames: ["read_file"])
+let keepAlive = KeepAlivePolicy(idleTimeout: 5 * 60, evictOnMemoryWarning: true)
+```
+
+**Multimodal and local-tool prompt fidelity.** Image and RAG-document message parts are now threaded through the Jinja chat-template path instead of being flattened to text, so vision and grounded-document turns render with full structure on local backends ([#1967](https://github.com/roryford/ManifoldKit/issues/1967)). Mistral's `[TOOL_CALLS]` dialect is handled with EOS-keyed close and multi-call bodies ([#1984](https://github.com/roryford/ManifoldKit/issues/1984)), and the scenario harness now drives the production renderer so local tool calling is actually exercised ([#1985](https://github.com/roryford/ManifoldKit/issues/1985)).
+
+**A two-line front door.** A one-shot `respond(_:)` convenience collects a streamed turn to a single `String`, beside the existing `quickStart()` flow (the `LLM(from:template:)` constructor is still to come — [#1942](https://github.com/roryford/ManifoldKit/issues/1942) is partial). The chat UI also gained inline superscript `[n]` citation markers that deep-link to their source ([#1921](https://github.com/roryford/ManifoldKit/issues/1921)).
+
+```swift
+let chat = try await ManifoldKit.quickStart(backends: [...])
+let answer = try await chat.respond("Summarize the document in one line.")
+```
+
+### Features
+
+* Foundation backend exposes an OS-agnostic availability reason ([#1962](https://github.com/roryford/ManifoldKit/issues/1962))
+* Public conservative KV-cache fallback constant in ManifoldHardware ([#1963](https://github.com/roryford/ManifoldKit/issues/1963))
+
+### Fixes
+
+* Turn-loop concurrency races — atomic `isGenerating` transition + a late-cancel tombstone so a cancel racing unregister can no longer be silently dropped ([#1986](https://github.com/roryford/ManifoldKit/issues/1986))
+* ScenarioRunner routes through `InferenceService` so the prompt renderer injects tools + the chat template, fixing zero tool calls for all local backends in the harness ([#1985](https://github.com/roryford/ManifoldKit/issues/1985))
+* Guard empty `BUILD_PATH_FLAG` expansion in the Bash 3.2 cold-start gate ([#1980](https://github.com/roryford/ManifoldKit/issues/1980))
+
+### Documentation
+
+* Competitive-research docs batch — RAG tuning, Foundation-migration, positioning, and MCP coverage ([#1940](https://github.com/roryford/ManifoldKit/issues/1940))
+
 ## [0.56.0](https://github.com/roryford/ManifoldKit/compare/v0.55.0...v0.56.0) (2026-06-20)
 
 ### Highlights
