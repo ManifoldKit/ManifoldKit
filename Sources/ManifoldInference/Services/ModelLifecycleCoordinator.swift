@@ -130,9 +130,12 @@ final class ModelLifecycleCoordinator {
 
     nonisolated init() {}
 
-    #if DEBUG
-    /// Test-only seam for preloading a backend without driving the real load
-    /// pipeline.
+    /// Seam for preloading a backend without driving the real load pipeline.
+    ///
+    /// Always available (previously `#if DEBUG`-gated): the offline tool-calling
+    /// harness (`ManifoldTools.ScenarioRunner`) is a legitimate release consumer
+    /// that injects a pre-built backend so its scenario runs mirror the live
+    /// orchestration path. The body only sets stored fields — no test-only types.
     ///
     /// - Parameters:
     ///   - backend: the pre-configured backend to install as current.
@@ -161,7 +164,6 @@ final class ModelLifecycleCoordinator {
             startedAtUptime: ProcessInfo.processInfo.systemUptime
         )
     }
-    #endif
 
     // MARK: - Backend Registration
 
