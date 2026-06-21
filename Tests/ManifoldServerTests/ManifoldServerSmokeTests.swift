@@ -492,7 +492,7 @@ final class ManifoldServerSmokeTests: XCTestCase {
         }
     }
 
-    func testMalformedRequestBodyReturnsError() async throws {
+    func testMalformedChatCompletionBodyReturns400InvalidRequest() async throws {
         let server = ServerApp(
             backendProvider: FakeBackendProvider(models: ["tiny"]),
             adapter: FixedChatAdapter()
@@ -509,18 +509,57 @@ final class ManifoldServerSmokeTests: XCTestCase {
                 headers: headers,
                 body: malformedBody
             ) { response in
-                XCTAssertNotEqual(response.status, .ok)
+                // A malformed body is a client error, not a server fault.
+                XCTAssertEqual(response.status, .badRequest)
                 XCTAssertTrue(
                     response.headers[.contentType]?.contains("application/json") == true,
                     "Error responses must be JSON"
                 )
-                XCTAssertNoThrow(
-                    try JSONDecoder().decode(
-                        ChatCompletionErrorEnvelope.self,
-                        from: Data(buffer: response.body)
-                    ),
-                    "Malformed-body error must decode as ChatCompletionErrorEnvelope"
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
                 )
+                XCTAssertEqual(envelope.error.type, "invalid_request_error")
+                // The message must read as a parse error, never leak raw Swift
+                // type detail like `DecodingError.dataCorrupted(...)`.
+                XCTAssertTrue(
+                    envelope.error.message.lowercased().contains("parse")
+                        || envelope.error.message.lowercased().contains("json"),
+                    "Message should be a readable parse error; got: \(envelope.error.message)"
+                )
+                XCTAssertFalse(
+                    envelope.error.message.contains("DecodingError"),
+                    "Message must not leak internal Swift type detail"
+                )
+            }
+        }
+    }
+
+    func testMalformedEmbeddingsBodyReturns400InvalidRequest() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            var headers = HTTPFields()
+            headers[.contentType] = "application/json"
+            // Valid JSON, but wrong schema (missing required `input`/`model`).
+            let malformedBody = ByteBuffer(string: #"{"unexpected": true}"#)
+            try await client.execute(
+                uri: "/v1/embeddings",
+                method: .post,
+                headers: headers,
+                body: malformedBody
+            ) { response in
+                XCTAssertEqual(response.status, .badRequest)
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
+                )
+                XCTAssertEqual(envelope.error.type, "invalid_request_error")
+                XCTAssertFalse(envelope.error.message.contains("DecodingError"))
             }
         }
     }
