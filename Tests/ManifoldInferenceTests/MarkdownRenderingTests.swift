@@ -141,14 +141,21 @@ final class MarkdownRenderingTests: XCTestCase {
 
     // MARK: - stripLeadingBlockMarker (precompiled-regex parity)
 
-    /// Verifies that the precompiled-regex path produces byte-identical output
-    /// to the previously inline-compiled patterns across all four marker types,
-    /// including indented (nested) bullet lines whose leading whitespace the
-    /// `^\s*[-*+]\s+` pattern consumes along with the marker. Any divergence in
-    /// pattern, anchoring, or whitespace handling would surface here.
+    /// Verifies that the manual block-marker scanner produces byte-identical
+    /// output to the regex patterns it replaced across every marker type, plus
+    /// indented (nested) bullets — whose leading whitespace the `^\s*[-*+]\s+`
+    /// pattern consumes along with the marker. Any divergence in pattern,
+    /// boundary, or whitespace handling would surface here.
+    ///
+    /// `*` bullets are deliberately excluded: `stripMarkdownSyntax` strips inline
+    /// `*`/`_` emphasis runs BEFORE the per-line marker scan, so a `* bullet`
+    /// line reaches `stripLeadingBlockMarker` already as ` bullet` (the `*` gone,
+    /// the space left) — it exercises the emphasis path, not the marker scanner.
+    /// Both the old regex and the new scanner behave identically there; `-` and
+    /// `+` exercise the bullet branch without that confound.
     func test_render_blockMarkerStrippingIsByteIdenticalAcrossAllMarkerTypes() {
-        // heading (all levels), bullet variants, ordered, blockquote, nested
-        // bullets with leading whitespace, and plain prose (no marker).
+        // heading (all levels), bullet variants (- and +), ordered, blockquote,
+        // a nested bullet with leading whitespace, and plain prose (no marker).
         let input = """
             # H1
             ## H2
@@ -157,10 +164,8 @@ final class MarkdownRenderingTests: XCTestCase {
             ##### H5
             ###### H6
             - bullet dash
-            * bullet star
             + bullet plus
               - nested dash
-              * nested star
             1. first
             12. twelfth
             > blockquote
@@ -174,10 +179,8 @@ final class MarkdownRenderingTests: XCTestCase {
             H5
             H6
             bullet dash
-            bullet star
             bullet plus
             nested dash
-            nested star
             first
             twelfth
             blockquote
