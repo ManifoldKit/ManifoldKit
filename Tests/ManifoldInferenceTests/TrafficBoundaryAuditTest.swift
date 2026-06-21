@@ -91,6 +91,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldCloudSaaS/ClaudeBackend.swift",
         "ManifoldCloudSaaS/OpenAIBackend.swift",
         "ManifoldCloudSaaS/OpenAIResponsesBackend.swift",
+        // First-party cloud reranker (#1920) — POSTs query+candidates to a
+        // hosted /rerank endpoint via URLSession (Cohere/Jina presets), same
+        // posture as the cloud backends above.
+        "ManifoldCloudSaaS/CloudReranker.swift",
         "ManifoldOllama/OllamaBackend.swift",
         // Extracted from OllamaBackend in #1163 (issue #1113 decomposition):
         // OllamaModelProbe owns the `/api/show` capability probe. The
@@ -262,6 +266,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// **Cap: 12 entries.**
     private static let hostnameAllowlist: Set<String> = [
         "ManifoldCloudSaaS/OpenAIBackend.swift",
+        // Cloud reranker (#1920) — `.cohere`/`.jina` presets embed the
+        // canonical `/rerank` endpoint URLs as compile-time constant
+        // literals, same static-base-URL pattern as the backends here.
+        "ManifoldCloudSaaS/CloudReranker.swift",
         "ManifoldHuggingFace/HuggingFaceService.swift",
         "ManifoldHuggingFace/BackgroundDownloadManager.swift",
         "ManifoldTestSupport/MockHuggingFaceService.swift",
@@ -364,8 +372,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
 
         Self.assertNoOffenders(offenders)
 
+        // Cap raised 50 → 51 for the first-party cloud reranker (#1920) — a
+        // genuinely new cloud network boundary (POST to a hosted /rerank
+        // endpoint via URLSessionProvider), the legitimate "new boundary"
+        // case this allowlist exists to track. Do not raise further without
+        // re-architecting rather than expanding.
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 50,
+            Self.networkIOAllowlist.count, 51,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }
