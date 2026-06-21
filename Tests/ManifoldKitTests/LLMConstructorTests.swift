@@ -85,7 +85,12 @@ final class LLMConstructorTests: XCTestCase {
             _ = try await llm.respond(to: "hi")
             XCTFail("LLM.respond(to:) must throw when the backend fails the turn, not return empty text.")
         } catch let error as SendMessageError {
-            XCTAssertNotNil(error, "Expected a typed SendMessageError to propagate.")
+            // A backend generate-time failure surfaces as .runtime — the ConversationRuntime
+            // wraps the underlying error rather than re-typing it. Asserting the specific
+            // case (not just the type) catches regressions where the wrong case propagates.
+            guard case .runtime = error else {
+                return XCTFail("Expected SendMessageError.runtime, got \(error)")
+            }
         }
     }
 
