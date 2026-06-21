@@ -38,6 +38,91 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(controller.statusText, "Microphone access is required for voice input.")
     }
 
+    func test_deniedPermissionOffersOpenSettingsRecovery() async {
+        let transcriber = MockSpeechTranscriber()
+        transcriber.authorizationStatus = .denied
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer()
+        )
+
+        await controller.startRecording()
+
+        XCTAssertEqual(controller.recoveryAffordance, .openSettings)
+        XCTAssertEqual(controller.statusText, "Speech recognition permission is required for voice input.")
+    }
+
+    func test_notDeterminedIsNotDeniedAndRequestsAgain() async {
+        let transcriber = MockSpeechTranscriber()
+        transcriber.authorizationStatus = .notDetermined
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer()
+        )
+
+        await controller.startRecording()
+
+        // notDetermined must map to a distinct, non-blaming "tap to allow" state
+        // — never the denied affordance/message.
+        XCTAssertEqual(controller.recoveryAffordance, .requestAgain)
+        XCTAssertNotEqual(controller.recoveryAffordance, .openSettings)
+        XCTAssertEqual(controller.statusText, "Tap to allow microphone and speech access for voice input.")
+        XCTAssertNotEqual(
+            controller.statusText,
+            "Speech recognition permission is required for voice input.",
+            "notDetermined must not be labelled as denied"
+        )
+    }
+
+    func test_microphoneDeniedOffersOpenSettingsRecovery() async {
+        let transcriber = MockSpeechTranscriber()
+        transcriber.authorizationStatus = .microphoneDenied
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer()
+        )
+
+        await controller.startRecording()
+
+        XCTAssertEqual(controller.recoveryAffordance, .openSettings)
+    }
+
+    func test_emptyTranscriptSurfacesDidntCatchThat() async {
+        let transcriber = MockSpeechTranscriber()
+        transcriber.stopResult = "   " // whitespace only → resolves to empty
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer()
+        )
+
+        await controller.startRecording()
+        let transcript = await controller.stopRecording()
+
+        XCTAssertNil(transcript)
+        XCTAssertEqual(controller.captureState, .idle)
+        // Not silent: a brief, non-blaming nudge with a retry affordance.
+        XCTAssertEqual(controller.statusText, "Didn't catch that — tap to try again.")
+        XCTAssertEqual(controller.recoveryAffordance, .retry)
+    }
+
+    func test_startRecordingClearsPriorRecoveryAffordance() async {
+        let transcriber = MockSpeechTranscriber()
+        transcriber.authorizationStatus = .denied
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer()
+        )
+
+        await controller.startRecording()
+        XCTAssertEqual(controller.recoveryAffordance, .openSettings)
+
+        // A subsequent successful authorization clears the stale affordance.
+        transcriber.authorizationStatus = .authorized
+        await controller.startRecording()
+        XCTAssertNil(controller.recoveryAffordance)
+        XCTAssertEqual(controller.captureState, .recording)
+    }
+
     func test_togglePlaybackStartsAndStopsSpeech() async {
         let synthesizer = MockSpeechSynthesizer()
         synthesizer.shouldSuspend = true

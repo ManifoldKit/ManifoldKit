@@ -1,5 +1,10 @@
 import Foundation
 import Observation
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 @Observable
 @MainActor
@@ -11,6 +16,13 @@ public final class VoiceConversationController {
     public private(set) var recentWakeWordDetection: WakeWordDetection?
     public private(set) var errorMessage: String?
     public private(set) var isSpeaking: Bool = false
+
+    /// The recovery path the view should offer alongside ``statusText`` when the
+    /// last attempt didn't reach recording. `nil` means there's nothing to
+    /// recover from. Drives the "Open Settings" / "tap to allow" / "try again"
+    /// affordances so a denied permission or an empty transcript is never a dead
+    /// end. See ``VoiceRecoveryAffordance``.
+    public private(set) var recoveryAffordance: VoiceRecoveryAffordance?
 
     /// Voice/rate/pitch/language applied to spoken utterances. Defaults to
     /// `SpeechOptions()` (system voice, default rate) for source-compatible
@@ -89,6 +101,7 @@ public final class VoiceConversationController {
 
         stopSpeaking()
         errorMessage = nil
+        recoveryAffordance = nil
         lastCommittedTranscript = nil
         recentWakeWordDetection = nil
         liveTranscript = ""
@@ -101,19 +114,24 @@ public final class VoiceConversationController {
         case .authorized:
             break
         case .denied:
-            setFailure(VoiceError.speechRecognitionDenied)
+            // Actively refused: the only way back is the system Settings app.
+            setFailure(VoiceError.speechRecognitionDenied, recovery: .openSettings)
             return
         case .restricted:
-            setFailure(VoiceError.speechRecognitionRestricted)
+            // Restricted (e.g. parental controls / MDM): also a Settings path.
+            setFailure(VoiceError.speechRecognitionRestricted, recovery: .openSettings)
             return
         case .notDetermined:
-            setFailure(VoiceError.speechRecognitionDenied)
+            // Never asked yet — this is NOT a denial. Re-tapping the mic
+            // re-triggers the OS prompt, so guide the user to allow rather than
+            // telling them permission was refused.
+            setFailure(VoiceError.speechRecognitionNotDetermined, recovery: .requestAgain)
             return
         case .unsupportedLocale:
             setFailure(VoiceError.unsupportedLocale)
             return
         case .microphoneDenied:
-            setFailure(VoiceError.microphoneAccessDenied)
+            setFailure(VoiceError.microphoneAccessDenied, recovery: .openSettings)
             return
         }
 
@@ -146,7 +164,12 @@ public final class VoiceConversationController {
 
             captureState = .idle
             guard !resolved.isEmpty else {
+                // Nothing was recognised. Surface a brief, non-blaming nudge
+                // instead of silently doing nothing so the user knows the tap
+                // registered and what to do next.
                 liveTranscript = ""
+                errorMessage = Self.nothingRecognizedMessage
+                recoveryAffordance = .retry
                 return nil
             }
 
@@ -168,6 +191,7 @@ public final class VoiceConversationController {
         lastCommittedTranscript = nil
         wakeWordDetector?.reset()
         errorMessage = nil
+        recoveryAffordance = nil
         if case .failed = captureState {
             captureState = .idle
         } else if captureState != .idle {
@@ -198,7 +222,13 @@ public final class VoiceConversationController {
     }
 
     private func startPlayback(of trimmed: String, enqueue: Bool) {
+        // Don't read aloud over VoiceOver: it would duck/fight the screen
+        // reader's own speech. VoiceOver users already hear content via the
+        // screen reader, so suppress the redundant TTS playback.
+        guard !isVoiceOverRunning else { return }
+
         errorMessage = nil
+        recoveryAffordance = nil
         if !enqueue {
             playbackTask?.cancel()
             // New generation: any in-flight (now-cancelled) task belongs to the
@@ -279,8 +309,40 @@ public final class VoiceConversationController {
         }
     }
 
-    private func setFailure(_ error: Error) {
+    private func setFailure(_ error: Error, recovery: VoiceRecoveryAffordance? = nil) {
         captureState = .failed(error.localizedDescription)
         errorMessage = error.localizedDescription
+        recoveryAffordance = recovery
+    }
+
+    /// Brief, non-blaming nudge shown when the transcript came back empty.
+    static let nothingRecognizedMessage = "Didn't catch that — tap to try again."
+
+    /// Whether VoiceOver is currently running. Used to avoid the TTS read-aloud
+    /// path fighting VoiceOver's own speech (it would talk over the screen
+    /// reader). Always `false` off-iOS where the property is unavailable.
+    var isVoiceOverRunning: Bool {
+        #if os(iOS)
+        UIAccessibility.isVoiceOverRunning
+        #else
+        false
+        #endif
+    }
+
+    /// Opens the OS settings surface so the user can grant a previously
+    /// denied/restricted microphone or speech permission. On iOS this deep-links
+    /// straight to the app's settings pane; on macOS it opens System Settings.
+    /// Elsewhere it is a no-op (the view should fall back to a textual hint).
+    public func openSystemSettings() {
+        #if os(iOS)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+        #elseif os(macOS)
+        // The microphone privacy pane; falls back to opening System Settings.
+        let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        if let url = URL(string: pane) {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
 }
