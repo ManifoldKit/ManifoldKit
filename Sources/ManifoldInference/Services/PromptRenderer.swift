@@ -167,8 +167,13 @@ struct PromptRenderer {
             warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: false)
         }
 
+        // Use the tool-aware projection (not `flatten`) so `.toolCall` /
+        // `.toolResult` parts reach the prompt text instead of being silently
+        // dropped (#1944). The enum formatters still consume only the textual
+        // `content`, but that content now carries the folded tool turns. `tools`
+        // remains threaded for the `.gemma4` native-declaration branch.
         return template.format(
-            messages: GenerationHistoryInstaller.flatten(messages),
+            messages: GenerationHistoryInstaller.toolAwareProjection(messages),
             systemPrompt: systemPrompt,
             tools: tools
         )
