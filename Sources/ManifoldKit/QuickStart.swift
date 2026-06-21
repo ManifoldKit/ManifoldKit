@@ -606,6 +606,16 @@ public struct QuickStartResult: Sendable {
         self.viewModel = viewModel
         self.sessionManager = sessionManager
     }
+
+    /// Sends `text` and returns the assistant's reply as a `String`.
+    ///
+    /// One-hop convenience over ``ChatViewModel/respond(to:)`` so consumers can
+    /// write `try await kit.respond(to: "…")` without the `.viewModel`
+    /// indirection. Throws the same ``SendMessageError`` cases.
+    @discardableResult
+    public func respond(to text: String) async throws -> String {
+        try await viewModel.respond(to: text)
+    }
 }
 
 // MARK: - ManifoldConfiguration.default

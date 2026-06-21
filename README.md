@@ -68,6 +68,23 @@ struct MyChatApp: App {
 }
 ```
 
+#### One-shot response
+
+Already have a `QuickStartResult` and just want one reply as a `String`? `respond(to:)` sends the message, drives the turn, and returns the assistant's text — no `inputText`/observation plumbing:
+
+```swift
+import ManifoldKit
+// + `import ManifoldLlama` for the GGUF seed below (see the note above)
+
+func oneShot() async throws -> String {
+    let kit = try await ManifoldKit.quickStart(
+        // backends: [LlamaBackends.self], ← uncomment with the manifold-llama package
+        seed: .recommendedSmallModel()
+    )
+    return try await kit.respond(to: "Explain monads in one sentence.")
+}
+```
+
 > **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
 > **Don't want the starter download?** Drop `seed:` — the chat is then inert until you select a model. `quickStart` registers the backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or keep `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
