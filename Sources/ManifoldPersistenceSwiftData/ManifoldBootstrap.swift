@@ -33,7 +33,19 @@ import ManifoldInference
 /// )
 /// ```
 ///
-/// When `reranker` is `nil` (the default) or its model is not loaded, retrieval
+/// For a first-party cloud cross-encoder instead, use `CloudReranker` (from
+/// `ManifoldCloudSaaS`), which POSTs to a hosted `/rerank` endpoint with Cohere
+/// and Jina presets and needs no local model:
+///
+/// ```swift
+/// let rag = RAGConfiguration(
+///     embeddingBackend: myEmbeddingBackend,
+///     reranker: CloudReranker.cohere(apiKey: cohereKey)
+/// )
+/// ```
+///
+/// When `reranker` is `nil` (the default) or not ready (an on-device model that
+/// is not loaded, or a `CloudReranker` with an empty API key), retrieval
 /// behaves exactly as it does without reranking — including the keyword
 /// fallback.
 public struct RAGConfiguration: Sendable {
