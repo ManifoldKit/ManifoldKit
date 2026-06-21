@@ -18,6 +18,7 @@ public struct StorageManagementView: View {
 
     @State private var modelToDelete: ModelInfo?
     @State private var showDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
 
     /// Canonical init — pass the registry the host already constructed
     /// (typically `chatViewModel.modelRegistry`).
@@ -85,6 +86,19 @@ public struct StorageManagementView: View {
                 }
             } message: { model in
                 Text("Are you sure you want to delete \"\(model.name)\"? This will free \(model.fileSizeFormatted) of storage. This action cannot be undone.")
+            }
+            .alert(
+                "Delete Failed",
+                isPresented: Binding(
+                    get: { deleteErrorMessage != nil },
+                    set: { if !$0 { deleteErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    deleteErrorMessage = nil
+                }
+            } message: {
+                Text(deleteErrorMessage ?? "")
             }
         }
     }
@@ -210,6 +224,7 @@ public struct StorageManagementView: View {
             }
         } catch {
             Log.download.error("Failed to delete model: \(error)")
+            deleteErrorMessage = error.localizedDescription
         }
         modelToDelete = nil
     }

@@ -18,6 +18,9 @@ struct HuggingFaceBrowserView: View {
     @State private var importSuccessMessage: String?
     @State private var importErrorMessage: String?
     @State private var pendingUseNowModel: DownloadableModel?
+    /// Surfaced when "Use Now" cannot select the just-downloaded model even after
+    /// a rescan — so the success path never silently no-ops.
+    @State private var useNowErrorMessage: String?
     /// Tracks model IDs we have already offered a "Use Now" prompt for, so that
     /// stale completed entries remaining in `trackedDownloads` are never re-offered
     /// when a subsequent download finishes and increments `completedDownloadCount`.
@@ -84,6 +87,19 @@ struct HuggingFaceBrowserView: View {
             useNowAlertActions(for: model)
         } message: { _ in
             Text("The download is complete. Switch to this model?")
+        }
+        .alert(
+            "Couldn't Switch Model",
+            isPresented: Binding(
+                get: { useNowErrorMessage != nil },
+                set: { if !$0 { useNowErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                useNowErrorMessage = nil
+            }
+        } message: {
+            Text(useNowErrorMessage ?? "")
         }
         .onChange(of: modelRegistry.selectedModel) { _, newModel in
             viewModel.activeModelFileName = newModel?.fileName
@@ -383,21 +399,48 @@ struct HuggingFaceBrowserView: View {
     @ViewBuilder
     private func useNowAlertActions(for model: DownloadableModel) -> some View {
         Button("Use Now") {
-            if let match = modelRegistry.availableModels.first(where: { $0.fileName == model.fileName }) {
-                modelRegistry.selectedModel = match
-            } else {
-                // refreshModels() now rescans off-main (#1774), so this branch is
-                // reachable either if the file was deleted between download
-                // completion and the tap, or if the user taps before the rescan
-                // lands. Either way the safe action is to log and skip — the model
-                // appears in Select once the rescan completes.
-                Log.download.warning("Use Now: \(model.fileName) not found in availableModels — file may have been deleted or rescan still in flight")
-            }
+            // Dismiss the confirmation immediately; selection (and any rescan)
+            // completes asynchronously below.
             pendingUseNowModel = nil
+            Task { await selectUseNowModel(model) }
         }
         Button("Not Now", role: .cancel) {
             pendingUseNowModel = nil
         }
+    }
+
+    /// Selects the just-downloaded model, awaiting a rescan first if the registry
+    /// snapshot doesn't yet contain it (the download-completion → rescan race).
+    ///
+    /// This is the primary success path, so it must never silently no-op: if the
+    /// model still can't be resolved after a fresh rescan, a visible error is
+    /// surfaced rather than dismissing with nothing happening.
+    private func selectUseNowModel(_ model: DownloadableModel) async {
+        if selectModel(matchingFileName: model.fileName) { return }
+
+        // Not present yet — the completion-triggered rescan may still be in
+        // flight. Force a fresh rescan and retry.
+        do {
+            try await modelRegistry.refreshAsync()
+        } catch {
+            Log.download.warning("Use Now: rescan failed for \(model.fileName): \(error)")
+        }
+
+        if selectModel(matchingFileName: model.fileName) { return }
+
+        // Genuinely unresolvable (e.g. the file was deleted between download
+        // completion and the tap). Surface it instead of a silent dismiss.
+        Log.download.warning("Use Now: \(model.fileName) not found in availableModels after rescan — file may have been deleted")
+        useNowErrorMessage = "\(model.displayName) couldn't be selected. The downloaded file may have been moved or deleted. Try downloading it again."
+    }
+
+    /// Selects the registry model whose `fileName` matches, if present.
+    /// - Returns: `true` when a matching model was found and selected.
+    private func selectModel(matchingFileName fileName: String) -> Bool {
+        guard let match = modelRegistry.availableModels.first(where: { $0.fileName == fileName }) else {
+            return false
+        }
+        return modelRegistry.selectModel(match)
     }
 
     // MARK: - Ranking helpers
