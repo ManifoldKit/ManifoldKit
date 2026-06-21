@@ -59,6 +59,33 @@ final class GenerationQueue {
         PromptRenderer(template: selectedPromptTemplate, chatTemplateRaw: selectedChatTemplateRaw)
     }
 
+    /// The typed ``ChatTemplate`` for the active model (#1944). Used to derive
+    /// template-default stop sequences. Mirrors ``promptRenderer``'s
+    /// embedded-vs-enum precedence: an embedded Jinja string wins.
+    var chatTemplate: ChatTemplate {
+        if let raw = selectedChatTemplateRaw,
+           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ChatTemplate(embeddedJinja: raw)
+        }
+        return ChatTemplate(builtIn: selectedPromptTemplate)
+    }
+
+    /// Returns `config` with its ``GenerationConfig/stopSequences`` filled from
+    /// the active template's defaults when the caller did not set any (#1944).
+    ///
+    /// Merge policy: a caller-supplied list wins outright (caller overrides);
+    /// an empty list inherits the template-derived turn-terminators. In-core
+    /// backends may ignore stop sequences (like `seed`); companion backends read
+    /// them to cut generation at the turn boundary.
+    func applyingTemplateStopSequences(to config: GenerationConfig) -> GenerationConfig {
+        guard config.stopSequences.isEmpty else { return config }
+        let derived = chatTemplate.stopSequences
+        guard !derived.isEmpty else { return config }
+        var merged = config
+        merged.stopSequences = derived
+        return merged
+    }
+
     /// Bind the backend-state closures in one call. Inverts the previous
     /// `coord.provider = self` assignment; the caller decides retain semantics
     /// via the captures it passes in.
@@ -433,8 +460,16 @@ final class GenerationQueue {
         backend: InferenceBackend,
         messages: [StructuredMessage],
         systemPrompt: String?,
-        config: GenerationConfig
+        config rawConfig: GenerationConfig
     ) throws -> GenerationStream {
+        // Fill the effective stop sequences from the active template's defaults
+        // when the caller set none, for prompt-template backends (#1944). The
+        // merged list rides on the dispatched config so companion backends that
+        // honour stop strings can cut at the turn boundary; in-core backends may
+        // ignore it (documented as ignored, like `seed`).
+        let config = backend.capabilities.requiresPromptTemplate
+            ? applyingTemplateStopSequences(to: rawConfig)
+            : rawConfig
         Self.warnIfJSONModeUnsupported(backend: backend, config: config)
 
         if GenerationHistoryInstaller.containsImages(messages), !backend.capabilities.supportsVision {
