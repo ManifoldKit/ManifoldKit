@@ -89,6 +89,25 @@ func oneShot() async throws -> String {
 >
 > **Don't want the starter download?** Drop `seed:` — the chat is then inert until you select a model. `quickStart` registers the backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or keep `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
+#### Value-typed front door: `LLM`
+
+Want the LLM.swift feel — construct a value, call `.respond(to:)`? `LLM(from:template:)` wraps the same `quickStart` plumbing in a value type. `backends:` defaults to the compiled-in cloud + Foundation families, so a cloud/Foundation `LLM` is genuinely two lines:
+
+```swift
+import ManifoldKit
+// + `import ManifoldLlama` for the local GGUF seed below (see the note above)
+
+func twoLine() async throws -> String {
+    let llm = try await LLM(
+        from: .recommendedSmallModel(),
+        // backends: [LlamaBackends.self], ← required (+ import) for a LOCAL model
+    )
+    return try await llm.respond(to: "Explain monads in one sentence.")
+}
+```
+
+> **Local models need a companion registrar.** The default `backends:` covers cloud (Ollama / OpenAI / Anthropic) and Apple Foundation Models. For an on-device model, add the `manifold-llama` (GGUF) or `manifold-mlx` package and pass its registrar — `backends: [LlamaBackends.self]` — plus the matching `import`. Pass an optional `template: ChatTemplate` to override formatting for built-in (enum) templates.
+
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.
 Building a CLI, server, or non-SwiftUI consumer? See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md) — compile-tested Foundation Models, local GGUF, and Ollama / OpenAI examples.
