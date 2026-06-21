@@ -198,6 +198,106 @@ final class KeepAlivePolicyTests: XCTestCase {
 
     // MARK: - Explicit unload cancels the watch task (no double-unload)
 
+    // MARK: - Preemptive eviction on .warning (#1931)
+
+    /// Collects every `didUnload` reason emitted by the service so a test can
+    /// assert *which* reason drove an eviction (or that none did).
+    @MainActor
+    private func collectUnloadReasons(
+        from service: InferenceService
+    ) -> (reasons: () -> [UnloadReason], task: Task<Void, Never>) {
+        let box = UnloadReasonBox()
+        let stream = service.memoryPressureEvents()
+        let task = Task { @MainActor in
+            for await event in stream {
+                if case .didUnload(_, let reason) = event {
+                    box.append(reason)
+                }
+            }
+        }
+        return ({ box.snapshot() }, task)
+    }
+
+    func test_warning_idleModel_preemptivelyEvicts() async throws {
+        let service = makeService()
+        XCTAssertTrue(service.isModelLoaded)
+
+        // Opt in with a zero grace window: a freshly-loaded model that has never
+        // generated reports idleDuration == .infinity, so it is immediately past
+        // any grace window — the warning should evict it straight away.
+        service.keepAlivePolicy = KeepAlivePolicy(idleTimeout: nil, evictOnMemoryWarning: true, memoryWarningGrace: 0)
+
+        let (reasons, eventTask) = collectUnloadReasons(from: service)
+        defer { eventTask.cancel() }
+
+        service.notifyPressureLevel(.warning)
+
+        let didUnload = try await poll(timeout: 1.0) { !service.isModelLoaded }
+        XCTAssertTrue(didUnload, "An idle model should be preemptively evicted on .warning when evictOnMemoryWarning is true")
+
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(
+            reasons().contains(.backgroundEviction),
+            "Preemptive .warning eviction must carry UnloadReason.backgroundEviction; got \(reasons())"
+        )
+    }
+
+    func test_warning_busyModel_doesNotEvict() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["one", "two"]
+        // Gate the token emission so the generation is held in-flight: the mock
+        // awaits the gate BEFORE yielding each token, so once a turn starts the
+        // service reports isGenerating == true until we advance the gate.
+        let gate = TokenEmissionGate()
+        backend.tokenEmissionGate = gate
+        let service = InferenceService(backend: backend)
+
+        // Zero grace window so the ONLY thing standing between a .warning and an
+        // eviction is the busy guard — this is what the sabotage check flips.
+        service.keepAlivePolicy = KeepAlivePolicy(idleTimeout: nil, evictOnMemoryWarning: true, memoryWarningGrace: 0)
+
+        let (token, stream) = try service.enqueue(messages: [.user("hi")], config: GenerationConfig())
+        let drain = Task { @MainActor in
+            for try await _ in stream.events {}
+        }
+        defer {
+            drain.cancel()
+            service.cancel(token)
+        }
+
+        // Wait until the turn is actually in flight (the mock is parked on the
+        // gate before its first token).
+        let becameBusy = try await poll(timeout: 1.0) { service.isGenerating }
+        XCTAssertTrue(becameBusy, "Generation should be in flight before we send the warning")
+
+        service.notifyPressureLevel(.warning)
+
+        // Give the (non-)eviction path a moment to run; the model must stay loaded.
+        let stayedLoaded = try await poll(timeout: 0.4) { !service.isModelLoaded }
+        XCTAssertFalse(stayedLoaded, "A .warning must NOT evict a BUSY model — generation in flight")
+        XCTAssertTrue(service.isModelLoaded)
+        XCTAssertTrue(service.isGenerating)
+
+        // Let the generation finish cleanly so the gate doesn't leak.
+        await gate.advance()
+        await gate.advance()
+    }
+
+    func test_warning_defaultPolicy_isNoOp() async throws {
+        let service = makeService()
+        XCTAssertTrue(service.isModelLoaded)
+
+        // Default policy: evictOnMemoryWarning == false. A .warning must do nothing.
+        XCTAssertFalse(service.keepAlivePolicy.evictOnMemoryWarning)
+
+        service.notifyPressureLevel(.warning)
+
+        let evicted = try await poll(timeout: 0.4) { !service.isModelLoaded }
+        XCTAssertFalse(evicted, "With the default policy a .warning must be a no-op — only .critical evicts")
+        XCTAssertTrue(service.isModelLoaded)
+    }
+
     func test_explicitUnload_doesNotTriggerSecondUnload() async throws {
         let service = makeService()
         XCTAssertTrue(service.isModelLoaded)
@@ -225,4 +325,13 @@ final class KeepAlivePolicyTests: XCTestCase {
 
         XCTAssertEqual(didUnloadCount, 1, "Only one unload event should fire — the explicit one")
     }
+}
+
+/// MainActor-confined collector for unload reasons observed on the event stream.
+/// The collecting `Task` is `@MainActor`, so plain mutation is race-free.
+@MainActor
+private final class UnloadReasonBox {
+    private var reasons: [UnloadReason] = []
+    func append(_ reason: UnloadReason) { reasons.append(reason) }
+    func snapshot() -> [UnloadReason] { reasons }
 }

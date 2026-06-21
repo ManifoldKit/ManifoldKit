@@ -516,6 +516,101 @@ private final class GatedLoadBackend: InferenceBackend, @unchecked Sendable {
     }
 }
 
+// MARK: - Advisory keep-alive bridge wiring (#1931)
+
+extension ModelLifecycleCoordinatorTests {
+
+    private func makeOllamaEndpoint() -> APIEndpointRecord {
+        APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.2"
+        )
+    }
+
+    /// A non-`.never` policy must be bridged into the endpoint backend's
+    /// advisory residency horizon at load time.
+    ///
+    /// Sabotage: deleting the `applyAdvisoryKeepAlive` call in
+    /// `loadEndpointBackend` leaves `receivedAdvisoryTimeout == nil` and the
+    /// assertion fails.
+    func test_loadEndpointBackend_bridgesKeepAlivePolicyIntoAdvisoryResidency() async throws {
+        let coordinator = ModelLifecycleCoordinator()
+        let spy = AdvisoryEndpointSpyBackend()
+        coordinator.registerEndpointBackendFactory { provider in
+            provider == .ollama ? spy : nil
+        }
+        coordinator.keepAlivePolicy = KeepAlivePolicy(idleTimeout: 120)
+
+        try await coordinator.loadEndpointBackend(from: makeOllamaEndpoint())
+
+        XCTAssertTrue(coordinator.isModelLoaded)
+        XCTAssertEqual(
+            spy.receivedAdvisoryTimeout,
+            120,
+            "loadEndpointBackend must bridge the owned idleTimeout into the backend's advisory residency"
+        )
+    }
+
+    /// A `.never` policy (idleTimeout == nil) must still call the bridge but
+    /// advise `nil` so the backend keeps its own default residency.
+    func test_loadEndpointBackend_neverPolicy_advisesNilTimeout() async throws {
+        let coordinator = ModelLifecycleCoordinator()
+        let spy = AdvisoryEndpointSpyBackend()
+        coordinator.registerEndpointBackendFactory { provider in
+            provider == .ollama ? spy : nil
+        }
+        // .never is the default; assert explicitly for clarity.
+        coordinator.keepAlivePolicy = .never
+
+        try await coordinator.loadEndpointBackend(from: makeOllamaEndpoint())
+
+        XCTAssertTrue(spy.didReceiveAdvisoryCall, "The bridge should still be invoked under .never")
+        XCTAssertNil(spy.receivedAdvisoryTimeout, "A .never policy advises a nil timeout — no advice given")
+    }
+}
+
+/// Endpoint backend spy that records the advisory keep-alive timeout it is given.
+private final class AdvisoryEndpointSpyBackend:
+    InferenceBackend,
+    EndpointBackendURLModelConfigurable,
+    AdvisoryResidencyConfigurable,
+    @unchecked Sendable {
+
+    private(set) var didReceiveAdvisoryCall = false
+    private(set) var receivedAdvisoryTimeout: TimeInterval?
+
+    private let stateLock = OSAllocatedUnfairLock(initialState: false)
+    var isModelLoaded: Bool { stateLock.withLock { $0 } }
+    var isGenerating: Bool { false }
+
+    let capabilities = BackendCapabilities(
+        supportedParameters: [.temperature],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true
+    )
+
+    func configure(baseURL: URL, modelName: String) {}
+
+    func applyAdvisoryKeepAlive(idleTimeout: TimeInterval?) {
+        didReceiveAdvisoryCall = true
+        receivedAdvisoryTimeout = idleTimeout
+    }
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
+        stateLock.withLock { $0 = true }
+    }
+
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { $0.finish() })
+    }
+
+    func stopGeneration() {}
+    func unloadModel() { stateLock.withLock { $0 = false } }
+}
+
 // MARK: - LoadGate Actor
 
 /// An actor-based gate that blocks `loadModel` until the test releases it.

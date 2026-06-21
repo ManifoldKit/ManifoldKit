@@ -20,7 +20,7 @@ import ManifoldCloudCore
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, ToolCallingHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
+public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, AdvisoryResidencyConfigurable, ToolCallingHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Ollama)
     //
@@ -43,7 +43,33 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
     /// How long Ollama should keep the model loaded in VRAM after a request.
     /// Default is "30m" (30 minutes). Ollama's own default is "5m".
+    ///
+    /// This is **advisory residency**: it is sent as the request body's
+    /// `keep_alive` field and the *Ollama server* decides when to actually free
+    /// VRAM. MK cannot evict a server-side model itself. When an Ollama endpoint
+    /// is loaded under a non-`.never` ``KeepAlivePolicy``, the lifecycle
+    /// coordinator overwrites this via ``applyAdvisoryKeepAlive(idleTimeout:)``
+    /// so the server's keep-alive horizon agrees with MK's owned idle policy
+    /// instead of diverging from it.
     public var keepAlive: String = "30m"
+
+    /// Bridges MK's owned ``KeepAlivePolicy`` idle horizon into Ollama's
+    /// server-side `keep_alive` advice.
+    ///
+    /// Owned vs advisory residency: MK's policy unloads the *in-process* model
+    /// when its idle timer fires; this method translates the same horizon into
+    /// the `keep_alive` string Ollama uses to decide when *it* frees VRAM, so
+    /// the two timers agree instead of diverging (see
+    /// ``AdvisoryResidencyConfigurable``). A `nil` timeout (`.never`) leaves the
+    /// existing default in place — no advice is given. Emits seconds (`"<n>s"`)
+    /// so the wire value matches the configured timeout exactly; a fractional
+    /// timeout is rounded up to whole seconds (Ollama parses integer seconds),
+    /// and any non-positive value clamps to `"0s"` (Ollama unloads immediately).
+    public func applyAdvisoryKeepAlive(idleTimeout: TimeInterval?) {
+        guard let idleTimeout else { return }
+        let seconds = max(0, Int(idleTimeout.rounded(.up)))
+        keepAlive = "\(seconds)s"
+    }
 
     /// Whether the currently-loaded Ollama model advertises thinking/reasoning
     /// capability. Detected once at `loadModel` time by probing `/api/show`

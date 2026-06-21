@@ -126,3 +126,4 @@ API breakage: func InferenceService.enqueueAsync(structuredMessages:systemPrompt
 API breakage: constructor RAGService.RetrievalResult.init(slots:citations:) has been removed
 API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkSize:chunkOverlap:topK:similarityThreshold:fullContextMode:fullContextBudgetTokens:vectorStoreURL:) has been removed
 API breakage: constructor RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:fullContextMode:fullContextBudgetTokens:) has been removed
+API breakage: constructor KeepAlivePolicy.init(idleTimeout:) has been removed
