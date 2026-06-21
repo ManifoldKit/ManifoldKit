@@ -338,15 +338,17 @@ final class JinjaPromptRendererTests: XCTestCase {
     /// evaluated to `true` when `dict["content"]` was already a `[[String:Any]]`
     /// list (the cast returns nil → `?? true` → overwrites).
     func test_jinjaMessage_imageNotClobberedByToolResult() throws {
-        // A minimal vision template that iterates `content` as a list — the
-        // `{% if item.type == "image_url" %}` branch is what triggers
-        // `templateReferencesImages` to return `true`, causing `threadImages`.
+        // A minimal vision template that iterates `content` as a list. The bare
+        // `image` identifier inside the `{% if item.type == "image" %}` block is
+        // what triggers `templateReferencesImages` to return `true` (the probe is
+        // word-bounded, so `image_url` would NOT match), causing `threadImages`;
+        // the content-list items emitted by the renderer carry `type: "image"`.
         let visionTemplate = """
         {%- for message in messages %}
         <|{{ message.role }}|>
         {%- if message.content is iterable and message.content is not string %}
         {%- for item in message.content %}
-        {%- if item.type == "image_url" %}<image/>
+        {%- if item.type == "image" %}<image/>
         {%- elif item.type == "text" %}{{ item.text }}
         {%- endif %}
         {%- endfor %}
