@@ -92,18 +92,24 @@ public struct ChatTemplate: Sendable {
     ///   turn-terminators (see ``builtInStopSequences(for:)``) — not the full
     ///   ``PromptTemplate`` special-token union, which also contains opening
     ///   delimiters that must NOT stop generation.
-    /// - For ``Source/embeddedJinja(_:)`` this is `[]`: the embedded template
-    ///   carries no machine-readable stop list, and parsing one out of Jinja is
-    ///   deferred. Callers that need stops for an embedded-template model should
-    ///   set ``GenerationConfig/stopSequences`` explicitly.
+    /// - For ``Source/embeddedJinja(_:)`` the template family is detected from
+    ///   the raw Jinja string (the same detection used in ``format(_:systemPrompt:tools:)``
+    ///   for the enum fallback) and the corresponding curated stop sequences are
+    ///   returned. This prevents non-ChatML models — e.g. Mistral, whose
+    ///   end-of-turn marker is `</s>` not `<|im_end|>` — from inheriting the
+    ///   ChatML default when the embedded template is the authority (#2008).
     public var stopSequences: [String] {
         switch source {
         case .builtIn(let template):
             return Self.builtInStopSequences(for: template)
-        case .embeddedJinja:
-            // Documented gap: no machine-readable stop list is extractable from
-            // a raw Jinja string in v1.
-            return []
+        case .embeddedJinja(let raw):
+            // Derive the stop sequence from the template's actual token markers
+            // rather than returning [] and leaving the backend without a stop
+            // signal. The detector runs the same substring matching used by the
+            // render-path fallback, so the family is consistent with how the
+            // prompt is assembled.
+            let detected = PromptTemplateDetector.detect(fromChatTemplate: raw)
+            return Self.builtInStopSequences(for: detected)
         }
     }
 
