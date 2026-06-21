@@ -142,10 +142,10 @@ final class MarkdownRenderingTests: XCTestCase {
     // MARK: - stripLeadingBlockMarker (precompiled-regex parity)
 
     /// Verifies that the precompiled-regex path produces byte-identical output
-    /// to the previously inline-compiled patterns across all four marker types
-    /// and whitespace-preservation cases (nested bullets, ordered list leading
-    /// indent). Any divergence in pattern, anchoring, or whitespace handling
-    /// would surface here.
+    /// to the previously inline-compiled patterns across all four marker types,
+    /// including indented (nested) bullet lines whose leading whitespace the
+    /// `^\s*[-*+]\s+` pattern consumes along with the marker. Any divergence in
+    /// pattern, anchoring, or whitespace handling would surface here.
     func test_render_blockMarkerStrippingIsByteIdenticalAcrossAllMarkerTypes() {
         // heading (all levels), bullet variants, ordered, blockquote, nested
         // bullets with leading whitespace, and plain prose (no marker).
@@ -176,8 +176,8 @@ final class MarkdownRenderingTests: XCTestCase {
             bullet dash
             bullet star
             bullet plus
-              nested dash
-              nested star
+            nested dash
+            nested star
             first
             twelfth
             blockquote
