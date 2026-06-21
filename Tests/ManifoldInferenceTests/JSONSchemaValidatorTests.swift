@@ -382,4 +382,66 @@ final class JSONSchemaValidatorTests: XCTestCase {
             "Protocol message should mention the missing field; got: \(invalidMessage ?? "nil")"
         )
     }
+
+    // MARK: - Integer-literal numeric constraints (JSONDecoder path)
+
+    /// `JSONSchemaValue.init(from:)` decodes whole-number JSON literals as
+    /// `.integer(Int64)` (it tries Int64 before Double). Before the fix, the
+    /// six numeric-constraint sites all matched only `.number`, so a schema
+    /// decoded via `JSONDecoder` from JSON like `{"minimum":5}` silently
+    /// ignored the bound and returned nil even for values that violated it.
+    ///
+    /// This test decodes the schema via `JSONDecoder` (not via `lift()`) to
+    /// exercise the `.integer` decode path. It asserts that each bound is
+    /// actually enforced.
+    ///
+    // SABOTAGE NOTE (removed before commit): reverting `numericConstraint` to
+    // only match `.case .number(let n)` makes every assertion below fail because
+    // `JSONDecoder` produces `.integer` for these whole-number literals and the
+    // old pattern never matched.
+    func test_numericConstraints_enforcedWhenDecodedViaJSONDecoder() throws {
+        // Decode the schema through JSONDecoder so that whole-number literals
+        // produce .integer(Int64), not .number(Double).
+        let schemaJSON = #"""
+        {
+          "type": "object",
+          "properties": {
+            "n": { "type": "integer", "minimum": 5 },
+            "s": { "type": "string", "minLength": 3 },
+            "a": { "type": "array", "minItems": 2 }
+          }
+        }
+        """#
+        let schema = try JSONDecoder().decode(JSONSchemaValue.self, from: Data(schemaJSON.utf8))
+
+        // n:1 violates minimum:5
+        let nFailure = validator.validate(json(#"{"n":1}"#), against: schema)
+        XCTAssertNotNil(nFailure, "minimum:5 decoded as .integer must be enforced; n=1 should fail")
+        XCTAssertTrue(
+            nFailure?.modelReadableMessage.contains(">=") ?? false,
+            "minimum failure message should contain '>='; got: \(nFailure?.modelReadableMessage ?? "nil")"
+        )
+
+        // s:"a" violates minLength:3
+        let sFailure = validator.validate(json(#"{"s":"a"}"#), against: schema)
+        XCTAssertNotNil(sFailure, "minLength:3 decoded as .integer must be enforced; s=\"a\" should fail")
+        XCTAssertTrue(
+            sFailure?.modelReadableMessage.contains("characters") ?? false,
+            "minLength failure message should contain 'characters'; got: \(sFailure?.modelReadableMessage ?? "nil")"
+        )
+
+        // a:[] violates minItems:2
+        let aFailure = validator.validate(json("{}"), against: schema)
+        _ = aFailure  // object with no 'a' key is valid (not required); test the array directly
+        let aDirectSchema = try JSONDecoder().decode(
+            JSONSchemaValue.self,
+            from: Data(#"{"type":"array","minItems":2}"#.utf8)
+        )
+        let aDirectFailure = validator.validate(json("[]"), against: aDirectSchema)
+        XCTAssertNotNil(aDirectFailure, "minItems:2 decoded as .integer must be enforced; [] should fail")
+        XCTAssertTrue(
+            aDirectFailure?.modelReadableMessage.contains("items") ?? false,
+            "minItems failure message should contain 'items'; got: \(aDirectFailure?.modelReadableMessage ?? "nil")"
+        )
+    }
 }

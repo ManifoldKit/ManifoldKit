@@ -398,12 +398,24 @@ public struct JSONSchemaValidator: Sendable {
         return nil
     }
 
+    /// Extract a numeric constraint value from a `JSONSchemaValue`, handling
+    /// both `.number` (produced by `lift()` from Foundation JSON) and `.integer`
+    /// (produced by `JSONDecoder` when the literal is a whole number, since
+    /// `JSONSchemaValue.init(from:)` tries `Int64` before `Double`).
+    private func numericConstraint(_ v: JSONSchemaValue?) -> Double? {
+        switch v {
+        case .number(let n): return n
+        case .integer(let i): return Double(i)
+        default: return nil
+        }
+    }
+
     private func validateArray(
         items: [JSONSchemaValue],
         schemaObject: [String: JSONSchemaValue],
         path: [String]
     ) -> ValidationFailure? {
-        if let minItems = schemaObject["minItems"], case let .number(n) = minItems {
+        if let n = numericConstraint(schemaObject["minItems"]) {
             let bound = Int(n)
             if items.count < bound {
                 return ValidationFailure(
@@ -412,7 +424,7 @@ public struct JSONSchemaValidator: Sendable {
                 )
             }
         }
-        if let maxItems = schemaObject["maxItems"], case let .number(n) = maxItems {
+        if let n = numericConstraint(schemaObject["maxItems"]) {
             let bound = Int(n)
             if items.count > bound {
                 return ValidationFailure(
@@ -442,7 +454,7 @@ public struct JSONSchemaValidator: Sendable {
     ) -> ValidationFailure? {
         // Count Unicode scalars rather than UTF-16 code units so "é" counts as 1.
         let length = value.unicodeScalars.count
-        if let minLen = schemaObject["minLength"], case let .number(n) = minLen {
+        if let n = numericConstraint(schemaObject["minLength"]) {
             let bound = Int(n)
             if length < bound {
                 return ValidationFailure(
@@ -451,7 +463,7 @@ public struct JSONSchemaValidator: Sendable {
                 )
             }
         }
-        if let maxLen = schemaObject["maxLength"], case let .number(n) = maxLen {
+        if let n = numericConstraint(schemaObject["maxLength"]) {
             let bound = Int(n)
             if length > bound {
                 return ValidationFailure(
@@ -468,7 +480,7 @@ public struct JSONSchemaValidator: Sendable {
         schemaObject: [String: JSONSchemaValue],
         path: [String]
     ) -> ValidationFailure? {
-        if let minimum = schemaObject["minimum"], case let .number(n) = minimum {
+        if let n = numericConstraint(schemaObject["minimum"]) {
             if value < n {
                 return ValidationFailure(
                     modelReadableMessage: "argument \(Self.describePath(path)) must be >= \(Self.describeNumber(n)). Got \(Self.describeNumber(value)).",
@@ -476,7 +488,7 @@ public struct JSONSchemaValidator: Sendable {
                 )
             }
         }
-        if let maximum = schemaObject["maximum"], case let .number(n) = maximum {
+        if let n = numericConstraint(schemaObject["maximum"]) {
             if value > n {
                 return ValidationFailure(
                     modelReadableMessage: "argument \(Self.describePath(path)) must be <= \(Self.describeNumber(n)). Got \(Self.describeNumber(value)).",
