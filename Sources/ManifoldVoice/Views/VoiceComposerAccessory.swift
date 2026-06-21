@@ -84,6 +84,16 @@ public struct VoiceComposerAccessory: View {
                         .foregroundStyle(isFailure(controller.captureState) ? Color.red : .secondary)
                         .lineLimit(2)
                 }
+
+                if controller.recoveryAffordance == .openSettings {
+                    Button("Open Settings") {
+                        controller.openSystemSettings()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Opens system settings so you can grant microphone and speech access.")
+                    .accessibilityIdentifier("voice-open-settings-button")
+                }
             }
             .padding(.horizontal)
             .padding(.bottom, 8)
