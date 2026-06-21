@@ -88,8 +88,7 @@ public struct ToolSystemPromptBuilder: Sendable {
 
                 When a tool can answer a question, you MUST call the tool. \
                 Never guess values (timestamps, math, files, external data) \
-                that a tool can provide. Call tools by emitting the \
-                appropriate tool_call in your response.
+                that a tool can provide. \(toolCallFormatInstruction)
 
                 """
 
@@ -101,8 +100,7 @@ public struct ToolSystemPromptBuilder: Sendable {
 
                 When a tool can answer a question, you MUST call the tool. \
                 Never guess values (timestamps, math, files, external data) \
-                that a tool can provide. Call tools by emitting the \
-                appropriate tool_call in your response.
+                that a tool can provide. \(toolCallFormatInstruction)
 
                 If no tool matches the user's request, say "I don't have a \
                 tool for that" rather than guessing.
@@ -111,19 +109,80 @@ public struct ToolSystemPromptBuilder: Sendable {
         }
     }
 
+    // MARK: - Tool-call format
+
+    /// Concrete tool-call emission format folded into the imperative presets.
+    ///
+    /// ## Why a literal JSON envelope
+    ///
+    /// Templates that don't render tools natively (Phi-3.5, Mistral-7B-Instruct
+    /// GGUFs, and every non-`gemma4` enum template) reach the model through this
+    /// preamble alone — the model is told tools exist but, with only a vague
+    /// "emit a tool_call" nudge, improvises an unparseable shape such as the
+    /// Pythonic `tool_call(calc, "7823 * 41")` (positional, opaque) that no local
+    /// parser can dispatch (#2002). Spelling out the exact `{"name": …,
+    /// "arguments": {…}}` envelope — the shape the local `<tool_call>` /
+    /// bare-`{"name"` dialects already consume — plus the named-argument
+    /// requirement and an explicit "not a Python-style call" prohibition closes
+    /// that gap. Native-tool templates never see this string: `GenerationQueue`'s
+    /// fold decision skips the preamble entirely when the renderer emits tools
+    /// natively (keyed on ``PromptRenderer/rendersToolsNatively``).
+    private static let toolCallFormatInstruction = """
+        To call a tool, respond with a single JSON object of exactly this \
+        form and nothing else:
+
+        {"name": "<one of the tool names above>", "arguments": {"<argument name>": <value>}}
+
+        Use the argument names listed for the chosen tool. Do not write the \
+        call as prose or as a Python-style function call such as `tool(value)`.
+        """
+
     // MARK: - Rendering
 
     /// Renders a single tool definition as one line of the preamble tool list.
     ///
-    /// Shape: `- <name>: <description> (requires: a, b)` or `- <name>:
-    /// <description>` when the tool has no declared required arguments.
-    /// Tool names are emitted verbatim — consumers with exotic characters
-    /// in names are responsible for the consequences.
+    /// Shape: `- <name>: <description> (arguments: a, b) (requires: a)`. Either
+    /// parenthesised clause is dropped when empty, so a tool with no declared
+    /// parameters renders as the bare `- <name>: <description>`. The `arguments`
+    /// clause names every parameter the tool accepts — the JSON keys the model
+    /// must use inside the `"arguments"` object (#2002) — while `requires` marks
+    /// the mandatory subset. Tool names are emitted verbatim; consumers with
+    /// exotic characters in names are responsible for the consequences.
     private static func renderTool(_ tool: ToolDefinition) -> String {
+        let arguments = extractArgumentNames(from: tool.parameters)
         let required = extractRequiredArgumentNames(from: tool.parameters)
-        let base = "- \(tool.name): \(tool.description)"
-        guard !required.isEmpty else { return base }
-        return "\(base) (requires: \(required.joined(separator: ", ")))"
+        var line = "- \(tool.name): \(tool.description)"
+        if !arguments.isEmpty {
+            line += " (arguments: \(arguments.joined(separator: ", ")))"
+        }
+        if !required.isEmpty {
+            line += " (requires: \(required.joined(separator: ", ")))"
+        }
+        return line
+    }
+
+    /// Names every parameter the tool accepts, in a deterministic order.
+    ///
+    /// `properties` is an unordered JSON-Schema object (a Swift dictionary), so a
+    /// raw key walk would emit a non-stable order across runs. To keep the
+    /// preamble byte-stable, required arguments lead in schema-declared order
+    /// (the array preserves it) and any remaining optional properties follow
+    /// alphabetically. Returns `[]` when the schema declares no `properties`
+    /// block — falling back to `required` alone is intentional, since some
+    /// hand-built schemas list `required` without a matching `properties` map.
+    private static func extractArgumentNames(
+        from parameters: JSONSchemaValue
+    ) -> [String] {
+        let required = extractRequiredArgumentNames(from: parameters)
+        guard case .object(let fields) = parameters,
+              case .object(let properties) = fields["properties"] else {
+            return required
+        }
+        let requiredSet = Set(required)
+        let optional = properties.keys
+            .filter { !requiredSet.contains($0) }
+            .sorted()
+        return required + optional
     }
 
     /// Pulls the `required` array out of a JSON-Schema object value.
