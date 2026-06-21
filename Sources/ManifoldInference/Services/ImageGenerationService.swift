@@ -228,27 +228,38 @@ public final class ImageGenerationService {
             // into the producer — without the check, a backend that yields
             // events on a timer keeps feeding the wrapper even after the
             // downstream consumer dropped its iterator.
-            let task = Task.detached(priority: .userInitiated) { [weak self] in
+            // Strong-capture `self` for the lifetime of this detached task.
+            // The state-restore (`restoreLoadedState`) is must-complete cleanup:
+            // if it were gated on a weak `self?` and the service deallocated
+            // (or the consumer dropped the stream) before the task ran, the
+            // restore would silently drop and the service would stay stuck in
+            // `.generating`. A weak capture is the documented anti-pattern for
+            // must-complete `Task.detached` work ("No [weak self] in
+            // must-complete Task.detached — strong capture or work drops").
+            // The temporary retain cycle (task → service) breaks the moment
+            // the task completes, which it always does: the stream finishes,
+            // throws, or is cancelled via `onTermination`.
+            let task = Task.detached(priority: .userInitiated) {
                 do {
                     for try await event in upstream {
                         if Task.isCancelled {
-                            await self?.restoreLoadedState(for: info)
+                            await self.restoreLoadedState(for: info)
                             continuation.finish()
                             return
                         }
                         continuation.yield(event)
                     }
-                    await self?.restoreLoadedState(for: info)
+                    await self.restoreLoadedState(for: info)
                     continuation.finish()
                 } catch is CancellationError {
-                    await self?.restoreLoadedState(for: info)
+                    await self.restoreLoadedState(for: info)
                     continuation.finish()
                 } catch {
                     if Task.isCancelled {
-                        await self?.restoreLoadedState(for: info)
+                        await self.restoreLoadedState(for: info)
                         continuation.finish()
                     } else {
-                        await self?.restoreLoadedState(for: info)
+                        await self.restoreLoadedState(for: info)
                         continuation.finish(throwing: error)
                     }
                 }
