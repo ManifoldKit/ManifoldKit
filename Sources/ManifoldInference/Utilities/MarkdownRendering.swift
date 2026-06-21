@@ -247,28 +247,45 @@ public enum MarkdownRendering {
         return nil
     }
 
+    // Precompiled regexes for `stripLeadingBlockMarker` — hoisted to avoid
+    // recompiling an NSRegularExpression on every call (up to 4×N per render).
+    // Patterns are identical to the inline literals they replace; anchored `^`
+    // is preserved. Order below must match the first-match-wins logic in the
+    // function body.
+    private static let headingRegex = try! NSRegularExpression(pattern: #"^#{1,6}\s+"#)
+    private static let bulletRegex  = try! NSRegularExpression(pattern: #"^\s*[-*+]\s+"#)
+    private static let orderedRegex = try! NSRegularExpression(pattern: #"^\s*\d+\.\s+"#)
+    private static let bqRegex      = try! NSRegularExpression(pattern: #"^>\s+"#)
+
     private static func stripLeadingBlockMarker(_ line: String) -> String {
         var s = line
+        let nsLine = s as NSString
+        let fullRange = NSRange(location: 0, length: nsLine.length)
+
         // Heading: leading "#"+ followed by space.
-        if let hashRange = s.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+        if let match = headingRegex.firstMatch(in: s, range: fullRange) {
+            let hashRange = Range(match.range, in: s)!
             s.removeSubrange(hashRange)
             return s
         }
         // Bullet: "- ", "* ", "+ " with optional leading whitespace.
-        if let bulletRange = s.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) {
+        if let match = bulletRegex.firstMatch(in: s, range: fullRange) {
+            let bulletRange = Range(match.range, in: s)!
             // Preserve leading whitespace for nested-list visual alignment.
             let leading = s[s.startIndex..<bulletRange.lowerBound]
             s.removeSubrange(s.startIndex..<bulletRange.upperBound)
             return String(leading) + s
         }
         // Ordered list: "1. " / "12. ".
-        if let orderedRange = s.range(of: #"^\s*\d+\.\s+"#, options: .regularExpression) {
+        if let match = orderedRegex.firstMatch(in: s, range: fullRange) {
+            let orderedRange = Range(match.range, in: s)!
             let leading = s[s.startIndex..<orderedRange.lowerBound]
             s.removeSubrange(s.startIndex..<orderedRange.upperBound)
             return String(leading) + s
         }
         // Blockquote: leading "> ".
-        if let bqRange = s.range(of: #"^>\s+"#, options: .regularExpression) {
+        if let match = bqRegex.firstMatch(in: s, range: fullRange) {
+            let bqRange = Range(match.range, in: s)!
             s.removeSubrange(bqRange)
             return s
         }
