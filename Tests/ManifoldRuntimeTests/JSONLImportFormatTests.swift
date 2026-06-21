@@ -190,10 +190,14 @@ final class JSONLImportFormatTests: XCTestCase {
         let missingRole = #"{"content":"hi","timestamp":"2026-01-01T00:00:00Z"}"# + "\n"
         let data = missingRole.data(using: .utf8)!
         XCTAssertThrowsError(try format.decode(data)) { error in
-            // Missing role decodes into a Swift error from JSONDecoder (keyNotFound),
-            // which surfaces as malformedJSON since MessageLine requires role.
-            XCTAssertNotNil(error as? JSONLImportError,
-                            "Missing role must produce a JSONLImportError, not a generic error")
+            // Missing role triggers a JSONDecoder keyNotFound error on the non-optional
+            // MessageLine.role field, which the importer re-throws as .malformedJSON.
+            // Asserting the specific case (not just the type) ensures a raw DecodingError
+            // leaking past the importer's catch also fails this test.
+            guard case .malformedJSON = error as? JSONLImportError else {
+                XCTFail("Expected JSONLImportError.malformedJSON, got \(error)")
+                return
+            }
         }
     }
 
@@ -202,8 +206,14 @@ final class JSONLImportFormatTests: XCTestCase {
         let missingContent = #"{"role":"user","timestamp":"2026-01-01T00:00:00Z"}"# + "\n"
         let data = missingContent.data(using: .utf8)!
         XCTAssertThrowsError(try format.decode(data)) { error in
-            XCTAssertNotNil(error as? JSONLImportError,
-                            "Missing content must produce a JSONLImportError")
+            // Missing content triggers a JSONDecoder keyNotFound error on the non-optional
+            // MessageLine.content field, which the importer re-throws as .malformedJSON.
+            // Asserting the specific case (not just the type) ensures a raw DecodingError
+            // leaking past the importer's catch also fails this test.
+            guard case .malformedJSON = error as? JSONLImportError else {
+                XCTFail("Expected JSONLImportError.malformedJSON, got \(error)")
+                return
+            }
         }
     }
 
