@@ -69,7 +69,10 @@ final class ChatViewModelRespondTests: XCTestCase {
 
     func testRespondThrowsNoModelLoadedWhenModelMissing() async throws {
         await createAndActivateSession()
-        mock.isModelLoaded = false
+        // The test-injection InferenceService init marks the lifecycle loaded;
+        // unload so `vm.isModelLoaded` (which proxies the service) is false and
+        // the precondition fires before the runtime is invoked.
+        vm.inferenceService.unloadModel()
 
         do {
             _ = try await vm.respond(to: "Hi there")
