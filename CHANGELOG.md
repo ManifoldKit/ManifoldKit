@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.58.0](https://github.com/roryford/ManifoldKit/compare/v0.57.0...v0.58.0) (2026-06-21)
+
+### Highlights
+
+**The two-line front door is complete.** The `LLM(from:template:)` value-typed entry point closes the front-door story 0.57.0 started — a single `await` stands up a working chat runtime over the curated model floor, and `respond(to:)` collects a streamed turn to a `String`. Cloud and Foundation work in two lines with no backend list; a local model takes one more line to pass a companion registrar. Construction wraps the existing `quickStart` plumbing, so there's no new bootstrap path ([#1942](https://github.com/roryford/ManifoldKit/issues/1942), [#1998](https://github.com/roryford/ManifoldKit/issues/1998), [#2004](https://github.com/roryford/ManifoldKit/issues/2004)).
+
+```swift
+let llm = try await LLM(from: .recommendedSmallModel())          // cloud/Foundation: 2 lines
+let answer = try await llm.respond(to: "Explain monads in one sentence.")
+```
+
+**`ChatTemplate` as a value, with template-derived stop sequences.** A `ChatTemplate` value type wraps either a built-in `PromptTemplate` or a raw embedded-Jinja string and exposes the stop sequences derived from the template itself, so a turn stops on the model's own end-of-turn markers instead of relying on caller-supplied `stopSequences`. It threads into the `LLM` constructor as the optional formatting override ([#1944](https://github.com/roryford/ManifoldKit/issues/1944), [#1999](https://github.com/roryford/ManifoldKit/issues/1999)).
+
+```swift
+let llm = try await LLM(from: .recommendedSmallModel(), template: ChatTemplate(builtIn: .chatML))
+```
+
+**Local tool calling is parseable for templateless and forced-call paths.** Two fixes land together. Templateless GGUF models (Phi-3.5-mini, Mistral-7B-Instruct-v0.3) whose embedded chat template has no tool support now reach the model through a `ToolSystemPromptBuilder` preamble that spells out the exact `{"name": …, "arguments": {…}}` envelope — with named-argument enumeration and an explicit prohibition on Python-style positional calls — instead of the old vague nudge that produced unparseable `tool_call(calc, "7823 * 41")` output ([#2002](https://github.com/roryford/ManifoldKit/issues/2002), [#2006](https://github.com/roryford/ManifoldKit/issues/2006)). Separately, `ToolGrammarBuilder` gained a bare-object grammar mode (`.permissive` vs `.strict`) so `toolChoice == .auto` can emit prose *or* a tool call per request, without relaxing the forced-call guarantee that `.required` / `.tool(name:)` depend on ([#1992](https://github.com/roryford/ManifoldKit/issues/1992), [#1995](https://github.com/roryford/ManifoldKit/issues/1995)).
+
+**Classification metrics — confusion counts and macro-averaging.** `ConfusionCounts` and `MacroAveragedMetrics` add a small, dependency-free metrics surface to `ManifoldInference` for scoring tool-selection and retrieval as classification — per-class precision/recall/F1 and the macro-average across classes, the groundwork for the eval harness ([#1993](https://github.com/roryford/ManifoldKit/issues/1993), [#1996](https://github.com/roryford/ManifoldKit/issues/1996)).
+
+```swift
+let perClass = labels.map { ConfusionCounts.compute(actual: predicted[$0]!, expected: gold[$0]!) }
+let macro = MacroAveragedMetrics(perClass: perClass)   // macro precision / recall / F1
+```
+
 ## [0.57.0](https://github.com/roryford/ManifoldKit/compare/v0.56.0...v0.57.0) (2026-06-21)
 
 ### Highlights
