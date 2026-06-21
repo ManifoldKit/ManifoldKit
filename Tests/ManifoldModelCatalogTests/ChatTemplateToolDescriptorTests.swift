@@ -180,6 +180,69 @@ final class ChatTemplateToolDescriptorTests: XCTestCase {
         XCTAssertEqual(claim.extractability, .toolless)
     }
 
+    /// A guard literal that lives ONLY inside a Jinja `{# ... #}` comment is
+    /// inert text the renderer never emits, so it must not trip the claim — even
+    /// though the raw substring `{% if tools %}` is present in the source.
+    func testGuardInsideJinjaCommentIsNotExpressible() {
+        let template = """
+        {# Historical note: {% if tools %} used to live here, and the model
+           would emit [TOOL_CALLS] / <tool_call>, but tool support was dropped. #}
+        {% for message in messages %}
+        <|im_start|>{{ message.role }}{{ message.content }}<|im_end|>
+        {% endfor %}
+        """
+        let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
+
+        XCTAssertFalse(claim.toolsExpressible)
+        XCTAssertNil(claim.declaredDialect)
+        XCTAssertEqual(claim.extractability, .toolless)
+    }
+
+    /// A real guard outside a comment still wins even when a comment elsewhere in
+    /// the template mentions a *different* dialect literal — comment stripping
+    /// must not swallow the live guard, and the live dialect (Qwen `<tool_call>`)
+    /// must be the one reported, not the commented `[TOOL_CALLS]`.
+    func testLiveGuardSurvivesUnrelatedCommentMentioningAnotherDialect() {
+        let template = """
+        {# this model does NOT use [TOOL_CALLS]; see Mistral for that #}
+        {%- if tools %}
+        {%- endif %}
+        <tool_call>
+        {"name": "x"}
+        </tool_call>
+        """
+        let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
+
+        XCTAssertTrue(claim.toolsExpressible)
+        XCTAssertEqual(claim.declaredDialect?.openDelimiter, "<tool_call>")
+        XCTAssertEqual(claim.declaredDialect?.argEncoding, .json)
+    }
+
+    // MARK: - Codable round-trip (claim is shippable as catalog data)
+
+    /// The claim is documented as catalog data a host may persist/transmit, so it
+    /// must survive a JSON encode/decode round-trip with stable enum raw values.
+    func testClaimCodableRoundTrips() throws {
+        let original = ChatTemplateToolDescriptor(
+            parsingChatTemplate: "{%- if tools %}{% endif %}<tool_call></tool_call>"
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(ChatTemplateToolDescriptor.self, from: data)
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(decoded.declaredDialect?.argEncoding, .json)
+    }
+
+    /// Enum raw values are wire identifiers — pin them so a rename can't silently
+    /// break a persisted catalog claim.
+    func testEnumRawValuesAreStable() {
+        XCTAssertEqual(ChatTemplateToolDescriptor.ArgEncoding.json.rawValue, "json")
+        XCTAssertEqual(ChatTemplateToolDescriptor.ArgEncoding.keyValue.rawValue, "keyValue")
+        XCTAssertEqual(ChatTemplateToolDescriptor.ArgEncoding.keyEqualsValue.rawValue, "keyEqualsValue")
+        XCTAssertEqual(ChatTemplateToolDescriptor.Extractability.clean.rawValue, "clean")
+        XCTAssertEqual(ChatTemplateToolDescriptor.Extractability.buried.rawValue, "buried")
+        XCTAssertEqual(ChatTemplateToolDescriptor.Extractability.toolless.rawValue, "toolless")
+    }
+
     // MARK: - Whitespace-control variants of the guard tag all normalise
 
     /// The `{%+` trim-plus marker and newlines inside the tag must normalise to
@@ -191,6 +254,44 @@ final class ChatTemplateToolDescriptorTests: XCTestCase {
             XCTAssertTrue(claim.toolsExpressible, "guard tag \(tag) should be recognised")
             XCTAssertEqual(claim.declaredDialect?.openDelimiter, "<tool_call>", "tag \(tag)")
         }
+    }
+
+    // MARK: - Real-world full template (snippet-vs-reality drift guard)
+
+    /// A faithful excerpt of the *shipped* Qwen2.5-Instruct chat template — the
+    /// real guard wording, the `<tools>` block, the System message scaffolding,
+    /// and the `<tool_call>` emission — not the minimal snippet the other tests
+    /// use. Catches drift between the parser's assumptions and a template that
+    /// actually moves in the wild.
+    func testRealWorldQwenTemplateExpressesToolsWithJSONDialect() {
+        let template = """
+        {%- if tools %}
+            {{- '<|im_start|>system\\n' }}
+            {%- if messages[0].role == 'system' %}
+                {{- messages[0].content + '\\n\\n' }}
+            {%- endif %}
+            {{- "# Tools\\n\\nYou may call one or more functions to assist with the user query.\\n\\nYou are provided with function signatures within <tools></tools> XML tags:\\n<tools>" }}
+            {%- for tool in tools %}
+                {{- "\\n" }}
+                {{- tool | tojson }}
+            {%- endfor %}
+            {{- "\\n</tools>\\n\\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\\n<tool_call>\\n{\\"name\\": <function-name>, \\"arguments\\": <args-json-object>}\\n</tool_call><|im_end|>\\n" }}
+        {%- else %}
+            {%- if messages[0].role == 'system' %}
+                {{- '<|im_start|>system\\n' + messages[0].content + '<|im_end|>\\n' }}
+            {%- endif %}
+        {%- endif %}
+        {%- for message in messages %}
+            {{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>' + '\\n' }}
+        {%- endfor %}
+        """
+        let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
+
+        XCTAssertTrue(claim.toolsExpressible)
+        XCTAssertEqual(claim.declaredDialect?.openDelimiter, "<tool_call>")
+        XCTAssertEqual(claim.declaredDialect?.closeDelimiter, "</tool_call>")
+        XCTAssertEqual(claim.declaredDialect?.argEncoding, .json)
+        XCTAssertEqual(claim.extractability, .clean)
     }
 
     // MARK: - ModelInfo accessor wiring

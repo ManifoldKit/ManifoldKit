@@ -23,10 +23,13 @@ import Foundation
 /// The parser is intentionally heuristic. It recognises the guard and call
 /// dialect of the common open-weight families; an unrecognised-but-present guard
 /// still reports ``toolsExpressible`` `true` with a `nil` ``declaredDialect``.
-public struct ChatTemplateToolDescriptor: Sendable, Equatable {
+public struct ChatTemplateToolDescriptor: Sendable, Equatable, Hashable, Codable {
 
     /// The serialisation a model uses to encode tool-call *arguments*.
-    public enum ArgEncoding: Sendable, Equatable {
+    ///
+    /// Raw values are stable wire identifiers — never renumber or rename them; a
+    /// persisted catalog claim decodes against these strings.
+    public enum ArgEncoding: String, Sendable, Equatable, Hashable, Codable {
         /// JSON object, e.g. `{"location": "Paris"}` (Qwen, Hermes, Mistral).
         case json
         /// Newline-delimited `key: value` pairs (Gemma's `<|tool_call>` form).
@@ -36,12 +39,17 @@ public struct ChatTemplateToolDescriptor: Sendable, Equatable {
     }
 
     /// How cleanly a host can extract a tool call from the model's output.
-    public enum Extractability: Sendable, Equatable {
+    ///
+    /// Raw values are stable wire identifiers — never renumber or rename them.
+    public enum Extractability: String, Sendable, Equatable, Hashable, Codable {
         /// A distinct open/close delimiter brackets the call — trivial to scan.
         case clean
         /// The call is bare JSON or a `python_tag` blob with no reliable
         /// delimiter (Llama-3.1) — extractable, but requires heuristics and is
-        /// easy to confuse with ordinary assistant prose.
+        /// easy to confuse with ordinary assistant prose. A host should still
+        /// attempt extraction (the claim is positive), but must scan with the
+        /// family heuristic rather than a delimiter, and treat a miss as
+        /// "model emitted prose" rather than "malformed call".
         case buried
         /// The template cannot express tools at all.
         case toolless
@@ -50,7 +58,7 @@ public struct ChatTemplateToolDescriptor: Sendable, Equatable {
     /// The tool-call dialect a template *declares* it will emit, when one is
     /// recognised. `nil` when tools are not expressible or the dialect is
     /// present-but-unrecognised.
-    public struct ToolCallDialect: Sendable, Equatable {
+    public struct ToolCallDialect: Sendable, Equatable, Hashable, Codable {
         /// Opening delimiter the model wraps a tool call in, e.g. `<tool_call>`.
         /// `nil` for bare-JSON / python-tag dialects with no opener.
         public let openDelimiter: String?
@@ -89,11 +97,21 @@ public struct ChatTemplateToolDescriptor: Sendable, Equatable {
             return
         }
 
+        // --- 0. Strip Jinja comments -------------------------------------------
+        // `{# ... #}` comment blocks are inert text the renderer never emits, yet
+        // they freely contain guard/delimiter literals (a commented-out
+        // `{# {% if tools %} #}` or a "{# emits [TOOL_CALLS] #}" note). Remove
+        // them before BOTH guard and dialect probing so a comment can never trip
+        // a claim. Non-greedy, dot-matches-newline so multi-line comments go too.
+        let commentless = raw.replacingOccurrences(
+            of: #"(?s)\{#.*?#\}"#, with: "", options: .regularExpression
+        )
+
         // --- 1. Guard detection -------------------------------------------------
         // Recognise the tools-block guard shapes from the evidence table. Jinja
         // whitespace-control variants (`{%-`/`-%}`) and extra inner spacing are
         // normalised by collapsing runs of whitespace before substring matching.
-        let normalized = raw
+        let normalized = commentless
             // Drop Jinja whitespace-control markers (`{%-`/`{%+`/`-%}`/`+%}`) so
             // the trimmed/non-trimmed tag spellings all match the plain `{%`/`%}`
             // guard shapes below, then collapse runs of whitespace (including
@@ -121,27 +139,31 @@ public struct ChatTemplateToolDescriptor: Sendable, Equatable {
 
         // --- 2. Dialect mapping -------------------------------------------------
         // Order matters: probe for the most specific call markers first. The
-        // checks read the (un-normalised) raw template so delimiter literals are
-        // matched verbatim.
-        if raw.contains("[TOOL_CALLS]") {
+        // checks read the comment-stripped template so delimiter literals are
+        // matched verbatim but a commented-out literal cannot win. Ordering note:
+        // `<|tool_call>` must be probed before the broader `<tool_call>` (the
+        // latter is NOT a substring of the former — different leading char — so
+        // there is no shadowing, but keeping Gemma ahead of Qwen documents intent
+        // and guards against a future loosening of either literal).
+        if commentless.contains("[TOOL_CALLS]") {
             // Mistral: [TOOL_CALLS] then a JSON array of calls.
             self.declaredDialect = ToolCallDialect(
                 openDelimiter: "[TOOL_CALLS]", closeDelimiter: nil, argEncoding: .json
             )
             self.extractability = .clean
-        } else if raw.contains("<|tool_call>") {
+        } else if commentless.contains("<|tool_call>") {
             // Gemma: <|tool_call> with newline-delimited key: value args.
             self.declaredDialect = ToolCallDialect(
                 openDelimiter: "<|tool_call>", closeDelimiter: "<|/tool_call>", argEncoding: .keyValue
             )
             self.extractability = .clean
-        } else if raw.contains("<tool_call>") {
+        } else if commentless.contains("<tool_call>") {
             // Qwen / Hermes: <tool_call>…</tool_call> wrapping a JSON object.
             self.declaredDialect = ToolCallDialect(
                 openDelimiter: "<tool_call>", closeDelimiter: "</tool_call>", argEncoding: .json
             )
             self.extractability = .clean
-        } else if raw.contains("Environment: ipython") || raw.contains("python_tag") || raw.contains("<|python_tag|>") {
+        } else if commentless.contains("Environment: ipython") || commentless.contains("python_tag") || commentless.contains("<|python_tag|>") {
             // Llama-3.1: bare JSON or a python_tag blob, no reliable delimiter.
             self.declaredDialect = ToolCallDialect(
                 openDelimiter: nil, closeDelimiter: nil, argEncoding: .json
