@@ -143,4 +143,17 @@ final class ChatTemplateTests: XCTestCase {
 
         XCTAssertEqual(stops, ["<|im_end|>"], "ChatML embedded-Jinja must derive <|im_end|>; got: \(stops)")
     }
+
+    /// A markerless embedded-Jinja template the detector can't classify must
+    /// derive NO stop sequence — it must not inherit the ChatML default, which
+    /// would re-introduce the leak #2008 fixes. (The detector falls back to
+    /// `.chatML`; `stopSequences` must distinguish that from a real ChatML
+    /// template.) Mirrors `ChatTemplateStopAndFlattenTests.test_mergePolicy_
+    /// embeddedJinjaNoDefault_leavesEmpty` at the queue layer.
+    func test_stopSequences_embeddedUnknownJinja_staysEmpty() {
+        let markerless = "{% for m in messages %}{{ m['content'] }}{% endfor %}"
+        let stops = ChatTemplate(embeddedJinja: markerless).stopSequences
+
+        XCTAssertEqual(stops, [], "Unrecognised embedded-Jinja must contribute no stop sequence; got: \(stops)")
+    }
 }
