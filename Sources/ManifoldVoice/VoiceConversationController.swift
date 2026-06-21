@@ -13,7 +13,6 @@ public final class VoiceConversationController {
     public private(set) var captureState: VoiceCaptureState = .idle
     public private(set) var liveTranscript: String = ""
     public private(set) var lastCommittedTranscript: String?
-    public private(set) var recentWakeWordDetection: WakeWordDetection?
     public private(set) var errorMessage: String?
     public private(set) var isSpeaking: Bool = false
 
@@ -31,11 +30,7 @@ public final class VoiceConversationController {
 
     @ObservationIgnored private let transcriber: any SpeechTranscribing
     @ObservationIgnored private let synthesizer: any SpeechSynthesizing
-    @ObservationIgnored private let wakeWordDetector: (any WakeWordDetector)?
-    @ObservationIgnored private let wakeWordToastDuration: Duration
-    @ObservationIgnored private let toastSleeper: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
-    @ObservationIgnored private var wakeWordDismissTask: Task<Void, Never>?
     @ObservationIgnored private var activeUtterances = 0
     /// Monotonic playback-generation token. A replace-mode `startPlayback`
     /// (or `stopSpeaking`) bumps this so a previously-cancelled utterance task
@@ -48,16 +43,10 @@ public final class VoiceConversationController {
 
     public init(
         transcriber: (any SpeechTranscribing)? = nil,
-        synthesizer: (any SpeechSynthesizing)? = nil,
-        wakeWordDetector: (any WakeWordDetector)? = nil,
-        wakeWordToastDuration: Duration = .seconds(2),
-        toastSleeper: @Sendable @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+        synthesizer: (any SpeechSynthesizing)? = nil
     ) {
         self.transcriber = transcriber ?? AppleSpeechTranscriber()
         self.synthesizer = synthesizer ?? AppleSpeechSynthesizer()
-        self.wakeWordDetector = wakeWordDetector
-        self.wakeWordToastDuration = wakeWordToastDuration
-        self.toastSleeper = toastSleeper
     }
 
     public var isRecording: Bool {
@@ -103,11 +92,7 @@ public final class VoiceConversationController {
         errorMessage = nil
         recoveryAffordance = nil
         lastCommittedTranscript = nil
-        recentWakeWordDetection = nil
         liveTranscript = ""
-        wakeWordDismissTask?.cancel()
-        wakeWordDismissTask = nil
-        wakeWordDetector?.reset()
         captureState = .requestingPermission
 
         switch await transcriber.requestAuthorization() {
@@ -138,9 +123,6 @@ public final class VoiceConversationController {
         do {
             try await transcriber.startTranscribing { [weak self] update in
                 guard let self else { return }
-                if let detection = self.wakeWordDetector?.ingest(update) {
-                    self.presentWakeWordDetection(detection)
-                }
                 self.liveTranscript = update.text
             }
             captureState = .recording
@@ -153,9 +135,6 @@ public final class VoiceConversationController {
     public func stopRecording() async -> String? {
         guard captureState == .recording || captureState == .processing else { return nil }
         captureState = .processing
-        wakeWordDismissTask?.cancel()
-        wakeWordDismissTask = nil
-        recentWakeWordDetection = nil
 
         do {
             let transcript = try await transcriber.stopTranscribing()?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -184,12 +163,8 @@ public final class VoiceConversationController {
 
     public func cancelRecording() {
         transcriber.cancelTranscribing()
-        wakeWordDismissTask?.cancel()
-        wakeWordDismissTask = nil
-        recentWakeWordDetection = nil
         liveTranscript = ""
         lastCommittedTranscript = nil
-        wakeWordDetector?.reset()
         errorMessage = nil
         recoveryAffordance = nil
         if case .failed = captureState {
@@ -279,34 +254,6 @@ public final class VoiceConversationController {
         playbackGeneration += 1
         activeUtterances = 0
         isSpeaking = false
-    }
-
-    private func presentWakeWordDetection(_ detection: WakeWordDetection) {
-        recentWakeWordDetection = detection
-        wakeWordDismissTask?.cancel()
-
-        wakeWordDismissTask = Task { [weak self] in
-            guard let self else { return }
-
-            do {
-                try await self.toastSleeper(self.wakeWordToastDuration)
-            } catch is CancellationError {
-                return
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.wakeWordDismissTask = nil
-                }
-                return
-            }
-
-            await MainActor.run {
-                if self.recentWakeWordDetection == detection {
-                    self.recentWakeWordDetection = nil
-                }
-                self.wakeWordDismissTask = nil
-            }
-        }
     }
 
     private func setFailure(_ error: Error, recovery: VoiceRecoveryAffordance? = nil) {
