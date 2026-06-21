@@ -121,6 +121,19 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         curatedSupportsReasoning ?? detectedSupportsReasoning ?? false
     }
 
+    /// A static, template-derived **claim** about tool calling, parsed from
+    /// ``chatTemplateRaw`` (#2005, Layer 1).
+    ///
+    /// Read it as a claim, not a verdict: a negative (no tools guard in the
+    /// template) is trustworthy, while a positive ("expresses tools in dialect
+    /// X") is necessary-but-not-sufficient — a base checkpoint can carry an
+    /// instruct template it cannot actually follow. The host verifies a positive
+    /// itself by running the model; ManifoldKit does not measure here. Computed
+    /// on access (no stored field, no schema change).
+    public var toolCallClaim: ChatTemplateToolDescriptor {
+        ChatTemplateToolDescriptor(parsingChatTemplate: chatTemplateRaw)
+    }
+
     /// Applies a curation override, copying the three capability flags from a
     /// ``CuratedModelCapabilities`` value. Only non-nil fields override; `nil`
     /// leaves the existing detected/curated layer untouched. This is the
