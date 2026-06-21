@@ -37,6 +37,32 @@ struct InferenceCostEstimatorTests {
         #expect(!isApprox)
     }
 
+    @Test("Claude Opus 4-8 cost is non-zero and non-approximate")
+    func claudeOpus48Cost() {
+        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
+            provider: "Claude",
+            model: "claude-opus-4-8",
+            promptTokens: 1_000_000,
+            completionTokens: 1_000_000
+        )
+        // Input $5/M + Output $25/M = $30 for 1M each
+        #expect(usd == 30.0)
+        #expect(!isApprox)
+    }
+
+    @Test("Claude Opus 4-6 cost is non-zero and non-approximate")
+    func claudeOpus46Cost() {
+        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
+            provider: "Claude",
+            model: "claude-opus-4-6",
+            promptTokens: 1_000_000,
+            completionTokens: 1_000_000
+        )
+        // Input $5/M + Output $25/M = $30 for 1M each
+        #expect(usd == 30.0)
+        #expect(!isApprox)
+    }
+
     @Test("Claude Haiku 4-5 cost matches rate table")
     func claudeHaiku45Cost() {
         let (usd, isApprox) = InferenceCostEstimator.estimatedCost(

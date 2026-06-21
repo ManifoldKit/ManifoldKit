@@ -9,12 +9,16 @@ import Foundation
 public enum InferenceCostEstimator {
 
     /// ISO date string of the rate table bundled in this build.
-    public static let costTableDate = "2026-05-24"
+    public static let costTableDate = "2026-06-21"
 
     // Per-million token prices: (inputUSD, outputUSD)
     // Sourced from public pricing pages as of costTableDate.
     private static let ratesPerMillion: [String: (input: Double, output: Double)] = [
+        // claude-opus-4-8 is listed before claude-opus-4-6 so that exact-match and
+        // longest-prefix lookups both resolve correctly for date-suffixed variants.
+        "claude-opus-4-8":      (5.00,  25.00),
         "claude-opus-4-7":      (15.00, 75.00),
+        "claude-opus-4-6":      (5.00,  25.00),
         "claude-sonnet-4-6":    (3.00,  15.00),
         "claude-haiku-4-5":     (0.80,  4.00),
         "gpt-4o":               (2.50,  10.00),
