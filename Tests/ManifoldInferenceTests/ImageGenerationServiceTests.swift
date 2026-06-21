@@ -268,4 +268,143 @@ final class ImageGenerationServiceTests: XCTestCase {
             XCTFail("expected ImageGenerationServiceError.notLoaded, got \(error)")
         }
     }
+
+    // MARK: - 8. Consumer drops the stream early → state restores to .loaded
+
+    /// Backend whose stream yields events on a real per-event delay so a
+    /// consumer can drop the iterator mid-stream (with events still queued),
+    /// forcing the `onTermination(.cancelled)` cleanup path. The default
+    /// `MockBackend` finishes synchronously, leaving no early-drop window.
+    private final class SlowMockBackend: ImageGenerationBackend, @unchecked Sendable {
+        var isLoaded: Bool = false
+        var isGenerating: Bool = false
+        let events: [ImageGenerationEvent]
+        let delayPerEventNs: UInt64
+
+        init(events: [ImageGenerationEvent], delayPerEventNs: UInt64) {
+            self.events = events
+            self.delayPerEventNs = delayPerEventNs
+        }
+
+        func loadModel(from url: URL) async throws { isLoaded = true }
+
+        func generate(
+            prompt: String,
+            config: ImageGenerationConfig
+        ) throws -> AsyncThrowingStream<ImageGenerationEvent, Error> {
+            isGenerating = true
+            let events = self.events
+            let delay = self.delayPerEventNs
+            return AsyncThrowingStream { continuation in
+                let task = Task<Void, Never> {
+                    for event in events {
+                        if Task.isCancelled { break }
+                        do {
+                            try await Task.sleep(nanoseconds: delay)
+                        } catch {
+                            break
+                        }
+                        if Task.isCancelled { break }
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+
+        func stopGeneration() { isGenerating = false }
+        func unloadModel() { isLoaded = false }
+    }
+
+    /// Regression: when the consumer drops the stream after the first event
+    /// (with more events still queued), the service's must-complete
+    /// state-restore must still run and return the service to `.loaded`. Before
+    /// the `[weak self]` → strong-`self` fix the restore could be dropped,
+    /// leaving the service stuck in `.generating`.
+    func test_generate_consumerDropsEarly_restoresLoadedState() async throws {
+        let outURL = URL(fileURLWithPath: "/tmp/out.png")
+        let mock = SlowMockBackend(
+            events: [
+                .progress(step: 1, total: 5),
+                .progress(step: 2, total: 5),
+                .progress(step: 3, total: 5),
+                .progress(step: 4, total: 5),
+                .completed(outURL),
+            ],
+            delayPerEventNs: 20_000_000  // 20ms
+        )
+        let info = makeInfo()
+        let service = ImageGenerationService()
+        service.registerBackendFactory(for: .mlxDiffusion) { _ in mock }
+        try await service.loadModel(info)
+
+        let stream = service.generate(prompt: "x", config: ImageGenerationConfig())
+
+        // Consume one event then drop the iterator. onTermination(.cancelled)
+        // cancels the forwarding task, whose strong-self cleanup must run.
+        for try await _ in stream {
+            break
+        }
+
+        // Cleanup hops back to the main actor asynchronously; poll-settle.
+        try await pollUntilState(service, equals: .loaded(info), timeoutNs: 2_000_000_000)
+        XCTAssertEqual(service.state, .loaded(info), "service must return to .loaded after the consumer drops the stream early")
+        XCTAssertEqual(service.loadedModel, info)
+    }
+
+    /// Sabotage-provable regression for the dealloc race. The bug: the
+    /// forwarding `Task.detached` captured `[weak self]`, so when the only
+    /// strong reference to the service is dropped mid-stream the task does NOT
+    /// keep it alive — the service deallocates and `await self?.restoreLoadedState(...)`
+    /// no-ops, dropping the cleanup. The fix strong-captures `self`, so the task
+    /// retains the service until it finishes; the service must therefore still
+    /// be alive while a generation is in flight even after every external strong
+    /// reference is released.
+    func test_generate_consumerDropsEarly_taskRetainsServiceUntilCleanup() async throws {
+        let mock = SlowMockBackend(
+            events: [
+                .progress(step: 1, total: 3),
+                .progress(step: 2, total: 3),
+                .completed(URL(fileURLWithPath: "/tmp/out.png")),
+            ],
+            delayPerEventNs: 500_000_000  // 500ms — task reliably in-flight at the assert
+        )
+        let info = makeInfo()
+
+        weak var weakService: ImageGenerationService?
+        var stream: AsyncThrowingStream<ImageGenerationEvent, Error>?
+
+        do {
+            let service = ImageGenerationService()
+            service.registerBackendFactory(for: .mlxDiffusion) { _ in mock }
+            try await service.loadModel(info)
+            weakService = service
+            stream = service.generate(prompt: "x", config: ImageGenerationConfig())
+            XCTAssertEqual(service.state, .generating(info))
+            // `service` leaves scope here — the forwarding task is the only
+            // remaining potential owner (iff it strong-captured self).
+        }
+
+        XCTAssertNotNil(
+            weakService,
+            "forwarding task must retain the service while a generation is in flight (regressed under [weak self])"
+        )
+
+        withExtendedLifetime(stream) {}
+        stream = nil
+    }
+
+    /// Polls `service.state` until it equals `expected` or the timeout elapses.
+    private func pollUntilState(
+        _ service: ImageGenerationService,
+        equals expected: ImageGenerationService.State,
+        timeoutNs: UInt64
+    ) async throws {
+        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNs
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if service.state == expected { return }
+            try await Task.sleep(nanoseconds: 5_000_000)  // 5ms
+        }
+    }
 }
