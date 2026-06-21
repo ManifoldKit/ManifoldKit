@@ -153,6 +153,30 @@ public protocol EndpointBackendKeychainConfigurable: AnyObject {
     func configure(baseURL: URL, keychainAccount: String, modelName: String)
 }
 
+/// Adopted by backends whose *residency* is advisory — owned by a remote server
+/// the engine cannot directly evict (e.g. Ollama keeps a model resident in VRAM
+/// server-side and unloads it on its own `keep_alive` timer).
+///
+/// ## Owned vs advisory residency
+///
+/// ``InferenceService``'s ``KeepAlivePolicy`` governs **owned** (in-process)
+/// residency: when its idle timer fires the engine actually frees the model.
+/// For a server-side backend the engine cannot do that — it can only *advise*
+/// the server how long to keep the model loaded after the last request. This
+/// protocol is the bridge: the coordinator translates the owned policy's
+/// `idleTimeout` into the backend's server-side hint so the two horizons agree
+/// instead of diverging (an in-process 5-minute policy paired with Ollama's
+/// independent 30-minute default would otherwise hold VRAM long after MK
+/// considers the model idle).
+public protocol AdvisoryResidencyConfigurable: AnyObject {
+    /// Advises the backend's server-side keep-alive horizon.
+    ///
+    /// - Parameter idleTimeout: The owned policy's idle timeout in seconds, or
+    ///   `nil` for ``KeepAlivePolicy/never`` (the backend should apply its own
+    ///   default residency in that case — no advice is given).
+    func applyAdvisoryKeepAlive(idleTimeout: TimeInterval?)
+}
+
 /// Adopted by backends that can report granular model-load progress.
 ///
 /// `InferenceService` installs a handler before each load and clears it

@@ -1110,6 +1110,41 @@ extension InferenceService {
     /// rather than calling this directly.
     package func notifyPressureLevel(_ level: MemoryPressureLevel) {
         pressureBroadcaster.send(.levelChanged(level))
+        maybeEvictOnMemoryWarning(level)
+    }
+
+    /// Preemptively evicts an idle resident model on an elevated (`.warning`)
+    /// memory-pressure level — one step *before* the reactive `.critical` unload
+    /// that ``ChatViewModel/handleMemoryPressure()`` performs.
+    ///
+    /// This is opt-in via ``KeepAlivePolicy/evictOnMemoryWarning`` and deliberately
+    /// conservative: it fires only when the model has been **idle past**
+    /// ``KeepAlivePolicy/memoryWarningGrace`` and is **not** currently generating.
+    /// A `.warning` raised while a turn is in flight must never tear the model
+    /// down mid-generation — the busy guard below enforces that.
+    ///
+    /// Critical-level eviction is handled separately (by the host's reactive
+    /// `.critical` path with ``UnloadReason/criticalMemoryPressure``); this method
+    /// is concerned only with the preemptive `.warning` step and emits
+    /// ``UnloadReason/backgroundEviction``.
+    private func maybeEvictOnMemoryWarning(_ level: MemoryPressureLevel) {
+        guard level == .warning else { return }
+        let policy = lifecycle.keepAlivePolicy
+        guard policy.evictOnMemoryWarning else { return }
+        guard lifecycle.isModelLoaded else { return }
+
+        // Never evict a model mid-turn: a transient warning must not interrupt
+        // an active generation.
+        guard !generation.isGenerating else { return }
+
+        // Only evict once the model has been idle past the short grace window,
+        // so a warning landing right after a turn completes doesn't tear down a
+        // model the user is actively using.
+        let idle = generation.idleDuration
+        guard idle >= policy.memoryWarningGrace else { return }
+
+        Log.inference.info("KeepAlivePolicy: memory .warning + idle \(idle, privacy: .public)s >= grace \(policy.memoryWarningGrace, privacy: .public)s — preemptive eviction")
+        unloadModel(reason: .backgroundEviction)
     }
 }
 

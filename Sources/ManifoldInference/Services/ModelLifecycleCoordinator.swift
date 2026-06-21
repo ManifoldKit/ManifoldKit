@@ -413,6 +413,18 @@ final class ModelLifecycleCoordinator {
             urlModelConfigurable.configure(baseURL: url, modelName: endpoint.modelName)
         }
 
+        // Bridge MK's owned keep-alive policy into the backend's *advisory*
+        // (server-side) residency horizon when the backend opts in. MK cannot
+        // actually evict a server-resident model (e.g. Ollama holds it in VRAM);
+        // it can only advise the server how long to keep it. Translating the
+        // idle timeout here keeps the owned (in-process) and advisory
+        // (server-side) timers in agreement instead of diverging. A `.never`
+        // policy (`idleTimeout == nil`) gives no advice — the backend keeps its
+        // own default.
+        if let advisory = newBackend as? AdvisoryResidencyConfigurable {
+            advisory.applyAdvisoryKeepAlive(idleTimeout: keepAlivePolicy.idleTimeout)
+        }
+
         let cloudBackendName = backendDisplayName(for: endpoint.provider)
         let backendURL = url
         let cloudPlan = ModelLoadPlan.cloud()
