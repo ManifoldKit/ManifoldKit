@@ -117,11 +117,16 @@ let systemPrompt = preamble + "\n\n" + appSpecificSystemPrompt
 
 `preferTools` returns an empty string when `tools` is empty, so it is safe to
 concatenate unconditionally. It renders each tool as
-`- <name>: <description> (requires: a, b)` and (for `.standard`/`.strict`) adds
-the imperative "When a tool can answer a question, you MUST call the tool… Call
-tools by emitting the appropriate tool_call in your response." In ManifoldKit's
-own product testing this lifted `llama3.1:8b` tool-recall from ~50% (no preamble)
-to 70–85%.
+`- <name>: <description> (arguments: a, b) (requires: a)` and (for
+`.standard`/`.strict`) adds the imperative "When a tool can answer a question,
+you MUST call the tool…", followed by the concrete emission format — a single
+JSON object `{"name": …, "arguments": {…}}` using the listed argument names,
+with an explicit prohibition on Python-style positional calls. That format
+clause exists because templateless models (Phi-3.5, Mistral GGUF) reach the
+model through this preamble alone and otherwise improvise an unparseable
+`tool_call(value)` shape ([#2002](https://github.com/roryford/ManifoldKit/issues/2002)).
+In ManifoldKit's own product testing the imperative preamble lifted
+`llama3.1:8b` tool-recall from ~50% (no preamble) to 70–85%.
 
 > **Is this auto-injected?** **Yes, as of [#1856](https://github.com/roryford/ManifoldKit/issues/1856).**
 > The queue calls `ToolSystemPromptBuilder.preferTools(for:)` (`.standard` style)

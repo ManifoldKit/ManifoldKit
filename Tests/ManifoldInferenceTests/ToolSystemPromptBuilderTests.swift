@@ -71,6 +71,73 @@ final class ToolSystemPromptBuilderTests: XCTestCase {
         XCTAssertFalse(prompt.contains("I don't have a tool"), "minimal preset must not include refusal clause")
     }
 
+    // MARK: - Templateless JSON tool-call format (#2002)
+
+    /// The imperative presets must spell out the concrete JSON envelope local
+    /// parsers consume — templateless models (Phi-3.5, Mistral GGUF) reach the
+    /// model through this preamble alone and otherwise improvise an unparseable
+    /// Pythonic `tool_call(...)` shape.
+    func test_standardStyle_specifiesJSONToolCallFormat() {
+        let prompt = ToolSystemPromptBuilder.preferTools(for: fixtureTools(), style: .standard)
+
+        // SABOTAGE TARGET: `toolCallFormatInstruction`. Reverting it to the old
+        // vague "emit the appropriate tool_call" phrasing fails these asserts.
+        XCTAssertTrue(prompt.contains("{\"name\":"), "must show the JSON envelope key \"name\"")
+        XCTAssertTrue(prompt.contains("\"arguments\":"), "must show the JSON envelope key \"arguments\"")
+        XCTAssertTrue(
+            prompt.contains("Python-style function call"),
+            "must explicitly prohibit the Pythonic positional-call shape (#2002)"
+        )
+    }
+
+    func test_strictStyle_specifiesJSONToolCallFormat() {
+        let prompt = ToolSystemPromptBuilder.preferTools(for: fixtureTools(), style: .strict)
+
+        XCTAssertTrue(prompt.contains("{\"name\":"))
+        XCTAssertTrue(prompt.contains("\"arguments\":"))
+        XCTAssertTrue(prompt.contains("Python-style function call"))
+        // Strict still carries its differentiating refusal clause alongside the format.
+        XCTAssertTrue(prompt.contains("I don't have a tool for that"))
+    }
+
+    /// The JSON-format instruction is an imperative — `.minimal` (app drives the
+    /// format) must not carry it.
+    func test_minimalStyle_omitsJSONFormatInstruction() {
+        let prompt = ToolSystemPromptBuilder.preferTools(for: fixtureTools(), style: .minimal)
+
+        XCTAssertFalse(prompt.contains("{\"name\":"), "minimal must not dictate a tool-call format")
+        XCTAssertFalse(prompt.contains("Python-style function call"))
+    }
+
+    /// The listing names every parameter (the JSON keys the model must use),
+    /// not just the required subset.
+    func test_listing_namesAllArguments() {
+        let prompt = ToolSystemPromptBuilder.preferTools(for: fixtureTools(), style: .standard)
+        // weather declares one property `city`, which is also required.
+        XCTAssertTrue(prompt.contains("(arguments: city)"), "must enumerate the tool's argument names")
+    }
+
+    /// Argument ordering is deterministic: required args lead in schema order,
+    /// optional properties follow alphabetically (properties is an unordered
+    /// dictionary, so a raw key walk would be byte-unstable).
+    func test_argumentNames_requiredLeadThenOptionalSorted() {
+        let schema: JSONSchemaValue = .object([
+            "type": .string("object"),
+            "properties": .object([
+                "city": .object(["type": .string("string")]),
+                "zebra": .object(["type": .string("string")]),
+                "apple": .object(["type": .string("string")])
+            ]),
+            "required": .array([.string("city")])
+        ])
+        let def = ToolDefinition(name: "weather", description: "x", parameters: schema)
+        let prompt = ToolSystemPromptBuilder.preferTools(for: [def], style: .minimal)
+        XCTAssertTrue(
+            prompt.contains("(arguments: city, apple, zebra)"),
+            "required `city` leads; optional `apple`/`zebra` follow alphabetically; got:\n\(prompt)"
+        )
+    }
+
     func test_stylesProduceDistinctOutput() {
         let standard = ToolSystemPromptBuilder.preferTools(for: fixtureTools(), style: .standard)
         let strict = ToolSystemPromptBuilder.preferTools(for: fixtureTools(), style: .strict)
