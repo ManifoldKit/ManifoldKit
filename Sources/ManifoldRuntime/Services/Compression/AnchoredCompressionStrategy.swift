@@ -42,6 +42,32 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
 
     private let fallback = ExtractiveCompressionStrategy()
 
+    // MARK: - Cached constants
+
+    /// Precompiled regex for `parseSummaryResponse` — hoisted from the call site
+    /// to avoid recompiling the same NSRegularExpression on every compression
+    /// cycle. The pattern is a compile-time constant; `preconditionFailure` here
+    /// signals a toolchain regression, not bad input (there is no recovery path).
+    private static let summaryFieldRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: "^([A-Z][A-Z _]*[A-Z]):\\s*(.+)$",
+                options: [.anchorsMatchLines, .caseInsensitive]
+            )
+        } catch {
+            preconditionFailure("[AnchoredCompression] failed to compile summary regex: \(error)")
+        }
+    }()
+
+    /// Cached template `ThinkingTransform` for the Qwen3/DeepSeek `<think>` marker.
+    /// `ThinkingTransform` is a struct — each call copies this value-typed template,
+    /// so the per-call mutable state (`depth`, `buffer`) is always reset to zero.
+    private static let qwen3ThinkingTemplate = ThinkingTransform(markers: .qwen3)
+
+    /// Cached template `ThinkingTransform` for the Mistral/Sky-T1 `<thinking>` marker.
+    /// Same copy-on-use semantics as `qwen3ThinkingTemplate`.
+    private static let mistralThinkingTemplate = ThinkingTransform(markers: .mistralReasoning)
+
     /// Placeholder `{old_text}` is replaced with the concatenated old messages.
     static let defaultSummaryTemplate = """
         Summarize the conversation so far. Be concise. Use only what is in the text.
@@ -206,8 +232,10 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
     /// `<thinking>`) in sequence and keep only the visible `.token` text.
     private func stripThinking(_ text: String) -> String {
         var result = text
-        for markers in [ThinkingMarkers.qwen3, ThinkingMarkers.mistralReasoning] {
-            var transform = ThinkingTransform(markers: markers)
+        // Copy the struct templates — ThinkingTransform is a value type, so each
+        // `var` assignment gives us a fresh instance with depth=0 and buffer="".
+        for template in [Self.qwen3ThinkingTemplate, Self.mistralThinkingTemplate] {
+            var transform = template
             var events = transform.process([.token(result)])
             events += transform.finalize()
             let visible = events.compactMap { event -> String? in
@@ -224,18 +252,7 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
     /// leaked reasoning first so chain-of-thought can't masquerade as a summary.
     private func parseSummaryResponse(_ rawResponse: String) -> String {
         let response = stripThinking(rawResponse)
-        let pattern = "^([A-Z][A-Z _]*[A-Z]):\\s*(.+)$"
-        let regex: NSRegularExpression
-        do {
-            regex = try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines, .caseInsensitive])
-        } catch {
-            // The pattern is a compile-time constant; a failure here means a
-            // toolchain regression, not bad input. Surface it and fall back to
-            // the trimmed raw response rather than swallowing it silently.
-            Log.inference.error("[AnchoredCompression] summary regex failed to compile: \(error)")
-            let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "[Summary unavailable]" : String(trimmed.prefix(400))
-        }
+        let regex = Self.summaryFieldRegex
         let ns = response as NSString
         var fields: [String] = []
         for match in regex.matches(in: response, range: NSRange(location: 0, length: ns.length)) where match.numberOfRanges >= 3 {

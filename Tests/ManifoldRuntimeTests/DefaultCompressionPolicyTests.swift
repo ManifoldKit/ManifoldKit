@@ -408,6 +408,57 @@ final class DefaultCompressionPolicyTests: XCTestCase {
                       "single-field response degrades to trimmed raw text")
     }
 
+    // MARK: - parseSummaryResponse / stripThinking caching correctness
+
+    /// `parseSummaryResponse` must produce the same field extraction regardless
+    /// of whether the regex is freshly compiled or read from the static cache.
+    /// Calling it multiple times on the same input is the minimal proof that the
+    /// cached regex returns byte-identical results to the inline compile.
+    func testParseSummaryResponseIsIdempotent() async throws {
+        let history = overflowingHistory()
+        let fixedResponse = "TOPIC: caching\nKEY POINTS: a; b; c\nLAST DISCUSSED: the test"
+        let generate: @Sendable ([ChatMessage]) async throws -> String = { _ in fixedResponse }
+        // Run twice: the first call warms the static cache, the second exercises it.
+        let out1 = try await AnchoredCompressionStrategy().compress(
+            history: history, contextSize: contextSize, reservedTokens: reservedTokens,
+            tokenizer: nil, generate: generate)
+        let out2 = try await AnchoredCompressionStrategy().compress(
+            history: history, contextSize: contextSize, reservedTokens: reservedTokens,
+            tokenizer: nil, generate: generate)
+        let summary1 = try XCTUnwrap(out1.first)
+        let summary2 = try XCTUnwrap(out2.first)
+        XCTAssertEqual(summary1.content, summary2.content,
+                       "cached regex must produce byte-identical output on repeated calls")
+        XCTAssertTrue(summary1.content.contains("TOPIC"), "field extraction survived caching")
+    }
+
+    /// `stripThinking` must produce the same visible text whether the
+    /// `ThinkingTransform` instances come from the static cache or are freshly
+    /// constructed — the struct copy-on-use semantics must reset mutable state.
+    func testStripThinkingCachingProducesSameOutput() async throws {
+        let history = overflowingHistory()
+        // Two consecutive calls with thinking markers: each call must get a fresh
+        // copy of the transform struct, so the second call doesn't carry over
+        // depth/buffer state from the first.
+        let leaky: @Sendable ([ChatMessage]) async throws -> String = { _ in
+            "<think>scratchpad A</think>\nTOPIC: reuse\nKEY POINTS: x; y; z"
+        }
+        let out1 = try await AnchoredCompressionStrategy().compress(
+            history: history, contextSize: contextSize, reservedTokens: reservedTokens,
+            tokenizer: nil, generate: leaky)
+        let out2 = try await AnchoredCompressionStrategy().compress(
+            history: history, contextSize: contextSize, reservedTokens: reservedTokens,
+            tokenizer: nil, generate: leaky)
+        let s1 = try XCTUnwrap(out1.first)
+        let s2 = try XCTUnwrap(out2.first)
+        XCTAssertEqual(s1.content, s2.content,
+                       "cached ThinkingTransform copies must produce byte-identical output")
+        XCTAssertFalse(s1.content.contains("scratchpad A"),
+                       "thinking content must be stripped on both calls")
+        XCTAssertTrue(s1.content.contains("TOPIC"),
+                      "visible summary fields must survive stripping")
+    }
+
     // MARK: - Policy thresholds & seam agreement
 
     func testShouldCompressHonorsThreshold() {
