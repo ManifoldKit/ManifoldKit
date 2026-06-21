@@ -10,6 +10,16 @@ public struct SpeechTranscriptionUpdate: Sendable, Equatable {
     }
 }
 
+public struct WakeWordDetection: Sendable, Equatable {
+    public let phrase: String
+    public let transcript: String
+
+    public init(phrase: String, transcript: String) {
+        self.phrase = phrase
+        self.transcript = transcript
+    }
+}
+
 public enum VoiceAuthorizationStatus: Sendable, Equatable {
     case authorized
     case denied
@@ -204,4 +214,12 @@ public protocol SpeechProgressReporting: AnyObject {
     /// progresses. `nil` (the default) disables reporting.
     @MainActor
     var onSpeechProgress: (@MainActor (SpeechProgress) -> Void)? { get set }
+}
+
+public protocol WakeWordDetector: AnyObject {
+    @MainActor
+    func ingest(_ update: SpeechTranscriptionUpdate) -> WakeWordDetection?
+
+    @MainActor
+    func reset()
 }
