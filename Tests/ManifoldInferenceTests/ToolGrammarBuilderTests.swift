@@ -439,6 +439,7 @@ final class ToolGrammarBuilderTests: XCTestCase {
             let rhs = String(line[sep.upperBound...])
             var inLiteral = false
             var inClass = false
+            var escaped = false
             var token = ""
             func flush() {
                 if !token.isEmpty,
@@ -450,10 +451,16 @@ final class ToolGrammarBuilderTests: XCTestCase {
             }
             for ch in rhs {
                 if inLiteral {
+                    // Honor backslash escapes so `\"` inside a literal does not
+                    // prematurely close it (e.g. the literal `"\"city\""`).
+                    if escaped { escaped = false; continue }
+                    if ch == "\\" { escaped = true; continue }
                     if ch == "\"" { inLiteral = false }
                     continue
                 }
                 if inClass {
+                    if escaped { escaped = false; continue }
+                    if ch == "\\" { escaped = true; continue }
                     if ch == "]" { inClass = false }
                     continue
                 }
