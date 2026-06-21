@@ -77,6 +77,11 @@ public final class ScenarioRunner {
         var accumulatedText = ""
         var toolCallsExecuted: [String] = []
         var toolResults: [ToolResultRecord] = []
+        // `.toolResult` carries only the call id (not the tool name), so map
+        // each result back to its originating `.toolCall` by id. This is robust
+        // to any short-circuit path (cancellation/byte-budget) that emits a
+        // result whose position doesn't line up with the call ordinal.
+        var toolNameByCallID: [String: String] = [:]
 
         // Single enqueue through the production orchestrator. The dispatch
         // loop runs every tool iteration internally and surfaces each turn's
@@ -96,25 +101,28 @@ public final class ScenarioRunner {
 
             case .toolCall(let call):
                 toolCallsExecuted.append(call.toolName)
+                toolNameByCallID[call.id] = call.toolName
                 logger?.append(.toolCall(scenarioId: scenario.id, name: call.toolName, arguments: call.arguments))
 
             case .toolResult(let result):
+                let name = toolNameByCallID[result.callId] ?? ""
                 toolResults.append(ToolResultRecord(
-                    toolName: toolName(for: result, executed: toolCallsExecuted, recorded: toolResults),
+                    toolName: name,
                     content: result.content,
                     errorKind: result.errorKind?.rawValue
                 ))
                 logger?.append(.toolResult(
                     scenarioId: scenario.id,
-                    name: toolResults.last?.toolName ?? "",
+                    name: name,
                     content: result.content,
                     errorKind: result.errorKind?.rawValue
                 ))
 
             case .generationCompleted:
                 // Terminal marker — the orchestrator finished the whole turn
-                // (all tool iterations included). Stop consuming.
-                break
+                // (all tool iterations included); the stream finishes right
+                // after, so the `for await` loop ends on its own.
+                continue
 
             case .prefillProgress, .promptRendered, .usage, .thinkingToken,
                  .thinkingCompleted, .thinkingSignature, .kvCacheReuse,
@@ -152,22 +160,6 @@ public final class ScenarioRunner {
             toolResults: toolResults,
             assertions: assertionOutcomes
         )
-    }
-
-    /// Resolves the tool name for a `.toolResult` event. ``ToolResult`` only
-    /// carries the call id, not the tool name, so we recover the name by
-    /// matching the result against the pending `.toolCall` events in dispatch
-    /// order: the Nth recorded result corresponds to the Nth executed call.
-    private func toolName(
-        for result: ToolResult,
-        executed: [String],
-        recorded: [ToolResultRecord]
-    ) -> String {
-        let index = recorded.count
-        if index < executed.count {
-            return executed[index]
-        }
-        return executed.last ?? ""
     }
 
     private func makeConfig(for scenario: Scenario, tools: [ToolDefinition]) -> GenerationConfig {
