@@ -285,8 +285,12 @@ public final class VoiceConversationController {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
         #elseif os(macOS)
-        // The microphone privacy pane; falls back to opening System Settings.
-        let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        // The microphone privacy pane. Uses the modern System Settings URL
+        // scheme — the legacy `com.apple.preference.security` host was
+        // deprecated in macOS 13 and no longer deep-links to the pane on the
+        // supported macOS 15+ floor. System Settings opens to its root if the
+        // anchor can't be resolved, so this degrades gracefully.
+        let pane = "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone"
         if let url = URL(string: pane) {
             NSWorkspace.shared.open(url)
         }

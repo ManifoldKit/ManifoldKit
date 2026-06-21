@@ -200,6 +200,10 @@ extension ChatViewModel {
         guard let message = messages.first(where: { $0.id == messageID }) else { return }
         guard message.role == .user, message.status == .failed else { return }
         guard !isGenerating else { return }
+        // Bail before the optimistic status flip if there's no session to run
+        // the turn on — otherwise `editMessage` returns early and leaves the
+        // bubble stuck on "Sending…" with no terminal outcome to clear it.
+        guard activeSessionID != nil else { return }
 
         // Optimistically flip the bubble back to "Sending…" so the retry is
         // visible immediately; the runtime's terminal outcome re-marks it

@@ -113,6 +113,17 @@ func describeState(_ s: VoiceCaptureState) -> String {
     }
 }
 
+// ── VoiceRecoveryAffordance enum check ────────────────────────────────────
+// Views switch on this to pick the right recovery control (Open Settings /
+// request again / retry). Exhaustive switch verifies no cases were hidden.
+func describeAffordance(_ a: VoiceRecoveryAffordance) -> String {
+    switch a {
+    case .openSettings: return "openSettings"
+    case .requestAgain: return "requestAgain"
+    case .retry: return "retry"
+    }
+}
+
 // ── Protocol conformance check ────────────────────────────────────────────
 // Prove that a consumer-defined type can conform to SpeechTranscribing and
 // SpeechSynthesizing — the public protocol pair for custom voice engines.
@@ -147,7 +158,13 @@ func run() -> Int32 {
     let _ = NoOpTranscriber()
     let _ = NoOpSynthesizer()
 
-    print("OK VoiceError-exhaustive=pass VoiceCaptureState-exhaustive=pass SpeechTranscribing-conformable=pass SpeechSynthesizing-conformable=pass")
+    let settingsAffordance = describeAffordance(.openSettings)
+    guard settingsAffordance == "openSettings" else {
+        FileHandle.standardError.write(Data("FAIL: unexpected affordance description\n".utf8))
+        return 3
+    }
+
+    print("OK VoiceError-exhaustive=pass VoiceCaptureState-exhaustive=pass VoiceRecoveryAffordance-exhaustive=pass SpeechTranscribing-conformable=pass SpeechSynthesizing-conformable=pass")
     return 0
 }
 
