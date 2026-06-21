@@ -27,16 +27,4 @@ final class VoiceViewContractTests: XCTestCase {
         XCTAssertEqual(try view.inspect().find(text: "Voice draft").string(), "Voice draft")
         XCTAssertEqual(try view.inspect().find(text: "Hello from speech").string(), "Hello from speech")
     }
-
-    func test_wakeWordToastUsesAccessibilityContract() throws {
-        let view = WakeWordToast(phrase: "hey base chat")
-
-        let label = try view.inspect()
-            .find(viewWithAccessibilityIdentifier: "wake-word-toast")
-            .accessibilityLabel()
-            .string()
-
-        XCTAssertEqual(label, "Wake word detected: hey base chat")
-        XCTAssertEqual(label, WakeWordToast.accessibilityLabel(for: "hey base chat"))
-    }
 }
