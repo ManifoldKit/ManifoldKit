@@ -43,6 +43,9 @@ public struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
                 copyButton
 
                 if message.role == .user {
+                    if message.status == .failed {
+                        retryButton
+                    }
                     editButton
                 }
 
@@ -87,6 +90,16 @@ public struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
+    }
+
+    private var retryButton: some View {
+        Button {
+            Task { await viewModel.retrySend(message.id) }
+        } label: {
+            Label("Retry", systemImage: "arrow.clockwise")
+        }
+        .accessibilityLabel("Retry sending message")
+        .accessibilityHint("Re-attempts delivery of this failed message")
     }
 
     private var editButton: some View {

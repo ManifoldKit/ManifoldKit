@@ -32,6 +32,16 @@ public struct MessageBubbleView: View {
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    /// The chat view model, used to drive the inline retry affordance on a
+    /// failed user message. Read from the environment the same way
+    /// ``MessagePartsView`` (rendered inside this bubble) already does, so it is
+    /// resolved at every real render site and in previews.
+    @Environment(ChatViewModel.self) private var viewModel
+
+    /// Honors the system Reduce-Motion setting for the retry control's
+    /// transition, matching ``StreamingCursorView``'s convention.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     /// Semantic styling tokens (per-role background, padding, radius, spacing,
     /// fonts). Defaults to ``ChatTheme/standard``, which reproduces the
     /// historical look, so reading the theme is non-breaking.
@@ -114,6 +124,14 @@ public struct MessageBubbleView: View {
                         provider: linkPreviewProvider
                     )
                     .frame(maxWidth: 700, alignment: alignment)
+                }
+
+                // A user message that failed to send keeps its content but has
+                // no implicit retry; surface an inline, discoverable affordance
+                // directly under the bubble rather than burying retry in the
+                // context menu alone.
+                if message.role == .user, message.status == .failed {
+                    retryButton
                 }
             }
 
@@ -330,6 +348,29 @@ public struct MessageBubbleView: View {
                 .padding(6)
                 .accessibilityLabel("Pinned message")
         }
+    }
+
+    // MARK: - Retry Affordance
+
+    /// Inline "Try again" control shown beneath a failed user message. Wired to
+    /// ``ChatViewModel/retrySend(_:)`` which re-runs the message through the
+    /// runtime's user-edit turn flow (the resend path). Disabled while a
+    /// generation is in flight so a retry can't race an active turn.
+    private var retryButton: some View {
+        Button {
+            Task { await viewModel.retrySend(message.id) }
+        } label: {
+            Label("Try again", systemImage: "arrow.clockwise")
+                .font(.caption.weight(.semibold))
+        }
+        .buttonStyle(.borderless)
+        .tint(.red)
+        .disabled(viewModel.isGenerating)
+        .frame(maxWidth: 700, alignment: alignment)
+        .transition(reduceMotion ? .identity : .opacity)
+        .accessibilityLabel("Retry sending message")
+        .accessibilityHint("Re-attempts delivery of this failed message")
+        .accessibilityIdentifier("retry-send-\(message.id.uuidString)")
     }
 
     // MARK: - Streaming Indicator

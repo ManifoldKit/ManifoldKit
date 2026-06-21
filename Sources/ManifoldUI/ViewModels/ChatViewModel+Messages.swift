@@ -185,6 +185,29 @@ extension ChatViewModel {
         }
     }
 
+    /// Re-attempts delivery of a user message whose send previously failed.
+    ///
+    /// When a send turn faults, the runtime marks the most recent user message
+    /// with ``MessageStatus/failed`` but leaves its content intact so the user
+    /// does not have to retype. This re-runs that message through the same
+    /// `.edit` turn flow the runtime uses for user-message edits — re-running
+    /// the content unchanged truncates any trailing artifacts and regenerates
+    /// the assistant reply, which is exactly the resend semantic.
+    ///
+    /// No-op when the message is missing, is not a user message, did not fail,
+    /// while a generation is in flight, or when no session is active.
+    public func retrySend(_ messageID: UUID) async {
+        guard let message = messages.first(where: { $0.id == messageID }) else { return }
+        guard message.role == .user, message.status == .failed else { return }
+        guard !isGenerating else { return }
+
+        // Optimistically flip the bubble back to "Sending…" so the retry is
+        // visible immediately; the runtime's terminal outcome re-marks it
+        // `.failed` (markMostRecentUserMessageFailed) if the resend faults too.
+        mutateMessage(id: messageID) { $0.status = .sending }
+        await editMessage(messageID, newContent: message.content)
+    }
+
     /// Edits a message and regenerates everything after it.
     public func editMessage(_ messageID: UUID, newContent: String) async {
         guard messages.firstIndex(where: { $0.id == messageID }) != nil else { return }
