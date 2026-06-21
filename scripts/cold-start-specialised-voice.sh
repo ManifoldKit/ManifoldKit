@@ -92,6 +92,7 @@ func describeError(_ e: VoiceError) -> String {
     case .recognizerUnavailable: return "recognizerUnavailable"
     case .unsupportedLocale: return "unsupportedLocale"
     case .speechRecognitionDenied: return "speechRecognitionDenied"
+    case .speechRecognitionNotDetermined: return "speechRecognitionNotDetermined"
     case .speechRecognitionRestricted: return "speechRecognitionRestricted"
     case .microphoneAccessDenied: return "microphoneAccessDenied"
     case .simulatorUnsupported: return "simulatorUnsupported"
