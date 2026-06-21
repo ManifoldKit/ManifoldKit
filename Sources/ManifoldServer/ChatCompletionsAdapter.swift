@@ -52,7 +52,11 @@ internal extension ChatCompletionMessage {
     /// `StructuredHistoryReceiver` backend can replay the full turn structure.
     var structuredMessage: StructuredMessage {
         var parts: [MessagePart] = []
-        if let content, !content.isEmpty {
+        // A tool turn's content is the tool *result* payload — it belongs in the
+        // `.toolResult` part below, not as a sibling `.text` part. Emitting both
+        // would represent the same content twice and double-encode on a
+        // structured-only backend, so the text part is skipped for `.tool`.
+        if let content, !content.isEmpty, role != .tool {
             parts.append(.text(content))
         }
         if let toolCalls {
