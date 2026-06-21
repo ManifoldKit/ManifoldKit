@@ -69,22 +69,24 @@ final class QuickStartRespondTests: XCTestCase {
         )
     }
 
-    /// Precondition surfacing: with no model loaded, `respond` propagates the
-    /// typed `SendMessageError.noModelLoaded` from the underlying
-    /// `sendMessage(_:)` rather than returning empty text.
-    func test_respond_throwsNoModelLoaded_whenBackendNotReady() async throws {
+    /// Error propagation: when the backend fails the turn, `respond` surfaces
+    /// the typed `SendMessageError` from the underlying `sendMessage(_:)`
+    /// rather than swallowing it and returning empty text. The mock is loaded
+    /// (so the turn dispatches) but throws inside generation.
+    func test_respond_propagatesSendMessageError_onBackendFailure() async throws {
+        struct ForcedGenerationFailure: Error {}
+
         let mock = MockInferenceBackend()
-        mock.isModelLoaded = false
+        mock.isModelLoaded = true
+        mock.shouldThrowOnGenerate = ForcedGenerationFailure()
 
         let result = try await makeResult(mock: mock)
 
         do {
             _ = try await result.respond("hi")
-            XCTFail("respond(_:) must throw when no model is loaded.")
-        } catch let error as SendMessageError {
-            guard case .noModelLoaded = error else {
-                return XCTFail("Expected .noModelLoaded, got \(error).")
-            }
+            XCTFail("respond(_:) must throw when the backend fails the turn, not return empty text.")
+        } catch is SendMessageError {
+            // Expected: the typed error rim is preserved through respond(_:).
         }
     }
 }
