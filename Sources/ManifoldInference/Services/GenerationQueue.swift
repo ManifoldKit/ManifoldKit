@@ -1009,6 +1009,27 @@ final class GenerationQueue {
 
             var thrownError: Error?
             defer {
+                // Atomic post-turn state transition (issue #1986). This whole
+                // `defer` body runs as a single `@MainActor`-isolated, non-
+                // suspending block, so no other `@MainActor` work interleaves
+                // *within* it. The ordering inside it is still load-bearing:
+                // clear the active-slot flags (`activeRequest`, `activeTask`,
+                // `isGenerating`) BEFORE finishing the continuation. Finishing
+                // the continuation can wake a consumer whose stream-end handler
+                // hops back onto the main actor and calls `enqueue()`; if that
+                // re-entrant caller ran while `isGenerating`/`activeRequest`
+                // still reflected the dying turn, it would observe a stale
+                // mid-tear-down state and either queue a turn that should have
+                // activated or race a double-activation. Clearing first means
+                // any such observer sees a clean, idle queue.
+                let isCurrentSlot = self.activeRequest?.token == next.token
+                if isCurrentSlot {
+                    self.lastActivityTimestamp = Date()
+                    self.activeRequest = nil
+                    self.activeTask = nil
+                    self.isGenerating = false
+                }
+
                 if let continuation = self.continuations.removeValue(forKey: next.token) {
                     if let thrownError {
                         continuation.finish(throwing: thrownError)
@@ -1027,11 +1048,11 @@ final class GenerationQueue {
                         continuation.finish()
                     }
                 }
-                if self.activeRequest?.token == next.token {
-                    self.lastActivityTimestamp = Date()
-                    self.activeRequest = nil
-                    self.activeTask = nil
-                    self.isGenerating = false
+
+                // Drain only after the slot is idle and the stream has been
+                // finished, so a queued follow-up activates against a clean
+                // slot rather than mid-transition.
+                if isCurrentSlot {
                     self.drainQueue()
                 }
             }
