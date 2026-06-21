@@ -62,14 +62,25 @@ public final class DefaultBackgroundTaskScheduler: BackgroundTaskScheduler, @unc
         work: @Sendable @escaping () async throws -> Void
     ) async {
         let sampler = memorySampler
-        let task = Task.detached { [weak self] in
+        // Capture `self` strongly for the lifetime of the task so the
+        // `clear(identifier:)` cleanup is guaranteed to run, even if the
+        // scheduler deallocates while the work is still in flight. A `[weak
+        // self]` capture would silently drop the cleanup on early dealloc,
+        // leaving an orphaned `inFlight[identifier]` entry that blocks future
+        // scheduling for that id. The strong capture forms a temporary
+        // scheduler → inFlight → task → scheduler retain cycle that is
+        // self-breaking: the moment the task clears its own identifier,
+        // `inFlight` no longer retains the task and the scheduler can
+        // deallocate normally. `runWithBudget` swallows its errors, so the
+        // task always reaches `clear`.
+        let task = Task.detached {
             await Self.runWithBudget(
                 identifier: identifier,
                 budget: budget,
                 memorySampler: sampler,
                 work: work
             )
-            self?.clear(identifier: identifier)
+            self.clear(identifier: identifier)
         }
 
         // `schedule` as a "replace if newer" primitive: swap the new task
