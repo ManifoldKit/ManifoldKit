@@ -86,7 +86,9 @@ final class ChatCompletionsAdapterTests: XCTestCase {
 
         XCTAssertEqual(chunks.compactMap { $0.choices.first?.delta.content }, ["Hel", "lo"])
         XCTAssertEqual(chunks.last?.choices.first?.finishReason, .stop)
-        XCTAssertEqual(backend.lastPrompt, "user: hi")
+        // The prompt is now the raw latest-user-turn text (no `role:` prefix);
+        // turn structure is carried via the installed conversation history.
+        XCTAssertEqual(backend.lastPrompt, "hi")
     }
 
     func testToolCallDeltasUseStableIndexes() async throws {
@@ -257,7 +259,7 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(requiredRequest.toolChoice, .some(.required))
     }
 
-    func testPromptAssemblyForMultiTurnConversation() async throws {
+    func testMultiTurnConversationPreservesTurnStructure() async throws {
         let request = ChatCompletionRequest(
             model: "m",
             messages: [
@@ -274,20 +276,78 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         )
 
         let adapter = DefaultChatCompletionsAdapter()
-        // Access promptParts via generationConfig indirectly — use the adapter's response
-        // with a fake backend to verify the prompt reaches the backend correctly.
         let backend = CapturingBackend()
-        _ = try? await adapter.response(for: request, using: backend)
+        _ = try await adapter.response(for: request, using: backend)
 
-        XCTAssertNotNil(backend.capturedSystemPrompt, "System message should be extracted as systemPrompt")
+        // System turns are extracted into the dedicated system-prompt channel,
+        // not folded into the conversation.
         XCTAssertEqual(backend.capturedSystemPrompt, "You are helpful.")
 
-        let prompt = backend.capturedPrompt ?? ""
-        XCTAssertTrue(prompt.contains("user: Hello"), "User message should appear with role prefix")
-        XCTAssertTrue(prompt.contains("assistant: Hi there!"), "Assistant message should appear with role prefix")
-        XCTAssertTrue(prompt.contains("tool(call_123): 42"), "Tool message should include call ID")
-        XCTAssertTrue(prompt.contains("user: Thanks"), "Final user message should appear")
-        XCTAssertFalse(prompt.contains("You are helpful."), "System message should NOT appear in prompt")
+        // The structured multi-turn history is threaded onto the backend with
+        // per-message roles preserved — NOT collapsed into one `role: text`
+        // string. The system turn is excluded; the other four turns keep order.
+        let structured = try XCTUnwrap(backend.capturedStructuredHistory)
+        XCTAssertEqual(structured.map(\.role), ["user", "assistant", "tool", "user"])
+        XCTAssertEqual(structured.first?.textContent, "Hello")
+        XCTAssertEqual(structured.last?.textContent, "Thanks")
+
+        // The tool turn retains its call id as a structured tool-result part.
+        let toolTurn = try XCTUnwrap(structured.first { $0.role == "tool" })
+        let hasToolResult = toolTurn.parts.contains { part in
+            if case .toolResult(let result) = part {
+                return result.callId == "call_123" && result.content == "42"
+            }
+            return false
+        }
+        XCTAssertTrue(hasToolResult, "Tool turn should carry a structured tool-result part with the call id")
+
+        // The flattened receiver shape also preserves per-turn roles.
+        let flattened = try XCTUnwrap(backend.capturedHistory)
+        XCTAssertEqual(flattened.map(\.role), ["user", "assistant", "tool", "user"])
+
+        // The tool-aware shape threads the call id through for `role: tool`.
+        let toolAware = try XCTUnwrap(backend.capturedToolAwareHistory)
+        XCTAssertEqual(toolAware.first { $0.role == "tool" }?.toolCallId, "call_123")
+
+        // The prompt argument carries the latest user turn (the fallback shape
+        // for backends with no installed history) — never the role-prefixed dump.
+        XCTAssertEqual(backend.capturedPrompt, "Thanks")
+    }
+
+    func testAssistantToolCallTurnThreadsThroughStructuredHistory() async throws {
+        let request = ChatCompletionRequest(
+            model: "m",
+            messages: [
+                ChatCompletionMessage(role: .user, content: "What's the weather?"),
+                ChatCompletionMessage(
+                    role: .assistant,
+                    content: nil,
+                    toolCalls: [ChatCompletionMessageToolCall(
+                        id: "call_w",
+                        function: ChatCompletionFunctionCall(name: "get_weather", arguments: "{\"city\":\"SF\"}")
+                    )]
+                ),
+                ChatCompletionMessage(role: .tool, content: "sunny", toolCallID: "call_w"),
+                ChatCompletionMessage(role: .user, content: "Thanks!")
+            ]
+        )
+
+        let backend = CapturingBackend()
+        _ = try await DefaultChatCompletionsAdapter().response(for: request, using: backend)
+
+        let structured = try XCTUnwrap(backend.capturedStructuredHistory)
+        let assistantTurn = try XCTUnwrap(structured.first { $0.role == "assistant" })
+        let hasToolCall = assistantTurn.parts.contains { part in
+            if case .toolCall(let call) = part {
+                return call.id == "call_w" && call.toolName == "get_weather"
+            }
+            return false
+        }
+        XCTAssertTrue(hasToolCall, "Assistant tool-call turn should carry a structured tool-call part")
+
+        let toolAware = try XCTUnwrap(backend.capturedToolAwareHistory)
+        let assistantEntry = try XCTUnwrap(toolAware.first { $0.role == "assistant" })
+        XCTAssertEqual(assistantEntry.toolCalls?.first?.toolName, "get_weather")
     }
 
     func testErrorEnvelopeRoundTrips() throws {
@@ -378,7 +438,7 @@ private struct ResponseOnlyUsageAdapter: ChatCompletionsAdapter {
     }
 }
 
-private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
+private final class CapturingBackend: InferenceBackend, ConversationHistoryReceiver, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
     var isModelLoaded = true
     var isGenerating = false
     var capabilities = BackendCapabilities(
@@ -393,6 +453,9 @@ private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
     )
     private(set) var capturedPrompt: String?
     private(set) var capturedSystemPrompt: String?
+    private(set) var capturedHistory: [(role: String, content: String)]?
+    private(set) var capturedStructuredHistory: [StructuredMessage]?
+    private(set) var capturedToolAwareHistory: [ToolAwareHistoryEntry]?
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws { isModelLoaded = true }
 
@@ -402,6 +465,18 @@ private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
         return GenerationStream(AsyncThrowingStream { continuation in
             continuation.finish()
         })
+    }
+
+    func setConversationHistory(_ messages: [(role: String, content: String)]) {
+        capturedHistory = messages
+    }
+
+    func setStructuredHistory(_ messages: [StructuredMessage]) {
+        capturedStructuredHistory = messages
+    }
+
+    func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
+        capturedToolAwareHistory = messages
     }
 
     func stopGeneration() {}

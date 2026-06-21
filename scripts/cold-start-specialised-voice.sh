@@ -92,6 +92,7 @@ func describeError(_ e: VoiceError) -> String {
     case .recognizerUnavailable: return "recognizerUnavailable"
     case .unsupportedLocale: return "unsupportedLocale"
     case .speechRecognitionDenied: return "speechRecognitionDenied"
+    case .speechRecognitionNotDetermined: return "speechRecognitionNotDetermined"
     case .speechRecognitionRestricted: return "speechRecognitionRestricted"
     case .microphoneAccessDenied: return "microphoneAccessDenied"
     case .simulatorUnsupported: return "simulatorUnsupported"
@@ -109,6 +110,17 @@ func describeState(_ s: VoiceCaptureState) -> String {
     case .recording: return "recording"
     case .processing: return "processing"
     case .failed(let reason): return "failed(\(reason))"
+    }
+}
+
+// ── VoiceRecoveryAffordance enum check ────────────────────────────────────
+// Views switch on this to pick the right recovery control (Open Settings /
+// request again / retry). Exhaustive switch verifies no cases were hidden.
+func describeAffordance(_ a: VoiceRecoveryAffordance) -> String {
+    switch a {
+    case .openSettings: return "openSettings"
+    case .requestAgain: return "requestAgain"
+    case .retry: return "retry"
     }
 }
 
@@ -146,7 +158,13 @@ func run() -> Int32 {
     let _ = NoOpTranscriber()
     let _ = NoOpSynthesizer()
 
-    print("OK VoiceError-exhaustive=pass VoiceCaptureState-exhaustive=pass SpeechTranscribing-conformable=pass SpeechSynthesizing-conformable=pass")
+    let settingsAffordance = describeAffordance(.openSettings)
+    guard settingsAffordance == "openSettings" else {
+        FileHandle.standardError.write(Data("FAIL: unexpected affordance description\n".utf8))
+        return 3
+    }
+
+    print("OK VoiceError-exhaustive=pass VoiceCaptureState-exhaustive=pass VoiceRecoveryAffordance-exhaustive=pass SpeechTranscribing-conformable=pass SpeechSynthesizing-conformable=pass")
     return 0
 }
 

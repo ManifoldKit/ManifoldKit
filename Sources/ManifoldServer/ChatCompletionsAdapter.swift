@@ -46,6 +46,52 @@ internal struct ChatCompletionMessage: Codable, Equatable, Sendable {
     }
 }
 
+internal extension ChatCompletionMessage {
+    /// Projects this wire message into the engine's structured-history shape,
+    /// preserving the role plus any tool call / tool result parts so a
+    /// `StructuredHistoryReceiver` backend can replay the full turn structure.
+    var structuredMessage: StructuredMessage {
+        var parts: [MessagePart] = []
+        // A tool turn's content is the tool *result* payload — it belongs in the
+        // `.toolResult` part below, not as a sibling `.text` part. Emitting both
+        // would represent the same content twice and double-encode on a
+        // structured-only backend, so the text part is skipped for `.tool`.
+        if let content, !content.isEmpty, role != .tool {
+            parts.append(.text(content))
+        }
+        if let toolCalls {
+            for call in toolCalls {
+                parts.append(.toolCall(ToolCall(
+                    id: call.id,
+                    toolName: call.function.name ?? "",
+                    arguments: call.function.arguments ?? ""
+                )))
+            }
+        }
+        if role == .tool, let toolCallID {
+            parts.append(.toolResult(ToolResult(callId: toolCallID, content: content ?? "")))
+        }
+        return StructuredMessage(role: role.rawValue, parts: parts)
+    }
+
+    /// Projects this wire message into the tool-aware history shape consumed by
+    /// `ToolCallingHistoryReceiver` backends (Ollama's `/api/chat`).
+    var toolAwareHistoryEntry: ToolAwareHistoryEntry {
+        ToolAwareHistoryEntry(
+            role: role.rawValue,
+            content: content ?? "",
+            toolCalls: toolCalls?.map { call in
+                ToolCall(
+                    id: call.id,
+                    toolName: call.function.name ?? "",
+                    arguments: call.function.arguments ?? ""
+                )
+            },
+            toolCallId: role == .tool ? toolCallID : nil
+        )
+    }
+}
+
 internal struct ChatCompletionRequest: Codable, Equatable, Sendable {
     internal var model: String
     internal var messages: [ChatCompletionMessage]
@@ -450,6 +496,16 @@ internal struct ChatCompletionErrorEnvelope: Codable, Equatable, Sendable {
             }
             return ChatCompletionErrorEnvelope(message: serverError.description, type: "server_error")
         }
+        // A decode failure that bypassed the request-decode normalization is
+        // still a client error — map it to invalid_request_error rather than a
+        // 500 that leaks raw Swift type detail.
+        if error is DecodingError {
+            return ChatCompletionErrorEnvelope(
+                message: "Could not parse request body. Ensure it is valid JSON matching the expected schema.",
+                type: "invalid_request_error",
+                code: "invalid_body"
+            )
+        }
         return ChatCompletionErrorEnvelope(message: String(describing: error), type: "server_error")
     }
 }
@@ -547,8 +603,7 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
     ) async throws -> ChatCompletionResponse {
-        let (prompt, systemPrompt) = promptParts(for: request)
-        let stream = try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: generationConfig(for: request))
+        let stream = try generate(for: request, using: backend)
         let mapper = ChatCompletionEventMapper(id: completionID(), created: currentTimestamp(), model: request.model)
         return try await mapper.response(from: stream.events)
     }
@@ -557,8 +612,7 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
     ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
-        let (prompt, systemPrompt) = promptParts(for: request)
-        let stream = try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: generationConfig(for: request))
+        let stream = try generate(for: request, using: backend)
         let mapper = ChatCompletionEventMapper(id: completionID(), created: currentTimestamp(), model: request.model)
         return mapper.chunks(
             from: stream.events,
@@ -567,21 +621,56 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         )
     }
 
+    /// Threads the request's structured multi-turn history onto the backend and
+    /// kicks off generation.
+    ///
+    /// Mirrors the engine's non-prompt-template dispatch path
+    /// (`GenerationQueue.dispatchToBackend` →
+    /// `GenerationHistoryInstaller.installHistory`): per-message roles, tool
+    /// calls, and tool results are preserved by installing them through the
+    /// public history-receiver protocols (`ToolCallingHistoryReceiver`,
+    /// `StructuredHistoryReceiver`, `ConversationHistoryReceiver`) rather than
+    /// being collapsed into one `role: text` string. The backends the server
+    /// can actually load (Ollama, Foundation) reconstruct the turn structure
+    /// from that installed history; the `prompt` argument carries the latest
+    /// user turn for the absent-history fallback shape.
+    private func generate(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) throws -> GenerationStream {
+        let conversation = request.messages.filter { $0.role != .system && $0.role != .developer }
+        installHistory(from: conversation, on: backend)
+        let (prompt, systemPrompt) = promptParts(for: request)
+        return try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: generationConfig(for: request))
+    }
+
+    /// Installs the structured conversation history on whichever receiver
+    /// protocol(s) the backend opts into — the same precedence the engine uses.
+    private func installHistory(from conversation: [ChatCompletionMessage], on backend: any InferenceBackend) {
+        if let toolReceiver = backend as? ToolCallingHistoryReceiver {
+            toolReceiver.setToolAwareHistory(conversation.map(\.toolAwareHistoryEntry))
+        }
+        if let structuredReceiver = backend as? StructuredHistoryReceiver {
+            structuredReceiver.setStructuredHistory(conversation.map(\.structuredMessage))
+        }
+        if let historyReceiver = backend as? ConversationHistoryReceiver {
+            historyReceiver.setConversationHistory(conversation.map { (role: $0.role.rawValue, content: $0.content ?? "") })
+        }
+    }
+
+    /// Builds the `(prompt, systemPrompt)` pair for the legacy single-string
+    /// `generate` entry point. The system/developer turns are joined into the
+    /// system prompt; the prompt is the most recent user turn so backends
+    /// without an installed history (the fallback shape) still see the current
+    /// message.
     private func promptParts(for request: ChatCompletionRequest) -> (prompt: String, systemPrompt: String?) {
         let systemPrompt = request.messages
             .filter { $0.role == .system || $0.role == .developer }
             .compactMap(\.content)
             .joined(separator: "\n")
         let prompt = request.messages
-            .filter { $0.role != .system && $0.role != .developer }
-            .map { message in
-                let content = message.content ?? ""
-                if message.role == .tool, let callID = message.toolCallID {
-                    return "tool(\(callID)): \(content)"
-                }
-                return "\(message.role.rawValue): \(content)"
-            }
-            .joined(separator: "\n")
+            .last(where: { $0.role == .user })?
+            .content ?? ""
         return (prompt, systemPrompt.isEmpty ? nil : systemPrompt)
     }
 

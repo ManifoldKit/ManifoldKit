@@ -95,7 +95,7 @@ internal struct ServerApp: Sendable {
             }
             metrics.recordRequestStarted()
             do {
-                let completionRequest = try await request.decode(as: ChatCompletionRequest.self, context: context)
+                let completionRequest = try await decodeBody(ChatCompletionRequest.self, from: request, context: context)
                 let response = try await chatCompletionResponse(for: completionRequest)
                 metrics.recordRequestCompleted()
                 return response
@@ -113,7 +113,7 @@ internal struct ServerApp: Sendable {
             }
             metrics.recordRequestStarted()
             do {
-                let embedRequest = try await request.decode(as: EmbedRequest.self, context: context)
+                let embedRequest = try await decodeBody(EmbedRequest.self, from: request, context: context)
                 let response = try await embeddingResponse(for: embedRequest)
                 metrics.recordRequestCompleted()
                 return jsonResponse(response)
@@ -248,6 +248,62 @@ internal struct ServerApp: Sendable {
         return Response(status: .ok, headers: headers, body: body)
     }
 
+    /// Decodes a request body, mapping decode/parse failures to a 400
+    /// `invalid_request_error` instead of letting them fall through to the
+    /// generic 500 `server_error` path.
+    ///
+    /// A malformed JSON body is a client mistake, not a server fault. We catch
+    /// `DecodingError` (and any non-`ServerError` thrown while decoding the
+    /// body) and rethrow it as ``ServerError/invalidRequest(message:param:code:)``
+    /// — the existing path that already produces a correct 400 envelope. The
+    /// surfaced message is a readable summary, never a raw `String(describing:)`
+    /// dump of internal Swift type detail.
+    private func decodeBody<T: Decodable>(
+        _ type: T.Type,
+        from request: Request,
+        context: ManifoldServerRequestContext
+    ) async throws -> T {
+        do {
+            return try await request.decode(as: type, context: context)
+        } catch let error as ServerError {
+            // A capability/validation error raised during decoding already
+            // carries the right shape — let it through unchanged.
+            throw error
+        } catch let error as DecodingError {
+            throw ServerError.invalidRequest(
+                message: "Could not parse request body: \(Self.readableDecodingFailure(error))",
+                code: "invalid_body"
+            )
+        } catch {
+            throw ServerError.invalidRequest(
+                message: "Could not parse request body. Ensure it is valid JSON matching the expected schema.",
+                code: "invalid_body"
+            )
+        }
+    }
+
+    /// Renders a `DecodingError` as a short, client-safe explanation. We expose
+    /// the coding path and the human-readable debug description, but never the
+    /// underlying error chain or Swift type names.
+    private static func readableDecodingFailure(_ error: DecodingError) -> String {
+        func path(_ context: DecodingError.Context) -> String {
+            let keys = context.codingPath.map(\.stringValue).filter { !$0.isEmpty }
+            return keys.isEmpty ? "" : " at '\(keys.joined(separator: "."))'"
+        }
+        switch error {
+        case .dataCorrupted(let context):
+            return "malformed JSON\(path(context))."
+        case .keyNotFound(let key, let context):
+            return "missing required field '\(key.stringValue)'\(path(context))."
+        case .typeMismatch(_, let context):
+            return "wrong type for field\(path(context))."
+        case .valueNotFound(_, let context):
+            return "missing value for field\(path(context))."
+        @unknown default:
+            return "the body did not match the expected schema."
+        }
+    }
+
     private func validatedBackend(for request: ChatCompletionRequest) async throws -> any InferenceBackend {
         let backend = try await backendProvider.backend(for: ServerBackendRequest(model: request.model))
         try validateRequestCapabilities(for: request, backend: backend)
@@ -308,6 +364,12 @@ internal struct ServerApp: Sendable {
     }
 
     private func httpStatus(for error: Error) -> HTTPResponse.Status {
+        // A decode failure is a malformed client request, not a server fault —
+        // surface 400 even on the rare path that doesn't route through
+        // `decodeBody`.
+        if error is DecodingError {
+            return .badRequest
+        }
         guard let serverError = error as? ServerError else {
             return .internalServerError
         }

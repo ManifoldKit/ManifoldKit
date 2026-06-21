@@ -40,10 +40,6 @@ public struct VoiceComposerAccessory: View {
         @Bindable var controller = controller
 
         VStack(alignment: .leading, spacing: 8) {
-            if let detection = controller.recentWakeWordDetection {
-                WakeWordToast(phrase: detection.phrase)
-            }
-
             if controller.showsTranscriptPreview {
                 LiveTranscriptionView(
                     text: transcriptPreviewText(for: controller),
@@ -83,6 +79,16 @@ public struct VoiceComposerAccessory: View {
                         .font(.caption)
                         .foregroundStyle(isFailure(controller.captureState) ? Color.red : .secondary)
                         .lineLimit(2)
+                }
+
+                if controller.recoveryAffordance == .openSettings {
+                    Button("Open Settings") {
+                        controller.openSystemSettings()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Opens system settings so you can grant microphone and speech access.")
+                    .accessibilityIdentifier("voice-open-settings-button")
                 }
             }
             .padding(.horizontal)

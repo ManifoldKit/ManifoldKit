@@ -1,5 +1,10 @@
 import Foundation
 import Observation
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 @Observable
 @MainActor
@@ -8,9 +13,15 @@ public final class VoiceConversationController {
     public private(set) var captureState: VoiceCaptureState = .idle
     public private(set) var liveTranscript: String = ""
     public private(set) var lastCommittedTranscript: String?
-    public private(set) var recentWakeWordDetection: WakeWordDetection?
     public private(set) var errorMessage: String?
     public private(set) var isSpeaking: Bool = false
+
+    /// The recovery path the view should offer alongside ``statusText`` when the
+    /// last attempt didn't reach recording. `nil` means there's nothing to
+    /// recover from. Drives the "Open Settings" / "tap to allow" / "try again"
+    /// affordances so a denied permission or an empty transcript is never a dead
+    /// end. See ``VoiceRecoveryAffordance``.
+    public private(set) var recoveryAffordance: VoiceRecoveryAffordance?
 
     /// Voice/rate/pitch/language applied to spoken utterances. Defaults to
     /// `SpeechOptions()` (system voice, default rate) for source-compatible
@@ -19,11 +30,7 @@ public final class VoiceConversationController {
 
     @ObservationIgnored private let transcriber: any SpeechTranscribing
     @ObservationIgnored private let synthesizer: any SpeechSynthesizing
-    @ObservationIgnored private let wakeWordDetector: (any WakeWordDetector)?
-    @ObservationIgnored private let wakeWordToastDuration: Duration
-    @ObservationIgnored private let toastSleeper: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
-    @ObservationIgnored private var wakeWordDismissTask: Task<Void, Never>?
     @ObservationIgnored private var activeUtterances = 0
     /// Monotonic playback-generation token. A replace-mode `startPlayback`
     /// (or `stopSpeaking`) bumps this so a previously-cancelled utterance task
@@ -36,16 +43,10 @@ public final class VoiceConversationController {
 
     public init(
         transcriber: (any SpeechTranscribing)? = nil,
-        synthesizer: (any SpeechSynthesizing)? = nil,
-        wakeWordDetector: (any WakeWordDetector)? = nil,
-        wakeWordToastDuration: Duration = .seconds(2),
-        toastSleeper: @Sendable @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+        synthesizer: (any SpeechSynthesizing)? = nil
     ) {
         self.transcriber = transcriber ?? AppleSpeechTranscriber()
         self.synthesizer = synthesizer ?? AppleSpeechSynthesizer()
-        self.wakeWordDetector = wakeWordDetector
-        self.wakeWordToastDuration = wakeWordToastDuration
-        self.toastSleeper = toastSleeper
     }
 
     public var isRecording: Bool {
@@ -89,40 +90,39 @@ public final class VoiceConversationController {
 
         stopSpeaking()
         errorMessage = nil
+        recoveryAffordance = nil
         lastCommittedTranscript = nil
-        recentWakeWordDetection = nil
         liveTranscript = ""
-        wakeWordDismissTask?.cancel()
-        wakeWordDismissTask = nil
-        wakeWordDetector?.reset()
         captureState = .requestingPermission
 
         switch await transcriber.requestAuthorization() {
         case .authorized:
             break
         case .denied:
-            setFailure(VoiceError.speechRecognitionDenied)
+            // Actively refused: the only way back is the system Settings app.
+            setFailure(VoiceError.speechRecognitionDenied, recovery: .openSettings)
             return
         case .restricted:
-            setFailure(VoiceError.speechRecognitionRestricted)
+            // Restricted (e.g. parental controls / MDM): also a Settings path.
+            setFailure(VoiceError.speechRecognitionRestricted, recovery: .openSettings)
             return
         case .notDetermined:
-            setFailure(VoiceError.speechRecognitionDenied)
+            // Never asked yet — this is NOT a denial. Re-tapping the mic
+            // re-triggers the OS prompt, so guide the user to allow rather than
+            // telling them permission was refused.
+            setFailure(VoiceError.speechRecognitionNotDetermined, recovery: .requestAgain)
             return
         case .unsupportedLocale:
             setFailure(VoiceError.unsupportedLocale)
             return
         case .microphoneDenied:
-            setFailure(VoiceError.microphoneAccessDenied)
+            setFailure(VoiceError.microphoneAccessDenied, recovery: .openSettings)
             return
         }
 
         do {
             try await transcriber.startTranscribing { [weak self] update in
                 guard let self else { return }
-                if let detection = self.wakeWordDetector?.ingest(update) {
-                    self.presentWakeWordDetection(detection)
-                }
                 self.liveTranscript = update.text
             }
             captureState = .recording
@@ -135,9 +135,6 @@ public final class VoiceConversationController {
     public func stopRecording() async -> String? {
         guard captureState == .recording || captureState == .processing else { return nil }
         captureState = .processing
-        wakeWordDismissTask?.cancel()
-        wakeWordDismissTask = nil
-        recentWakeWordDetection = nil
 
         do {
             let transcript = try await transcriber.stopTranscribing()?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -146,7 +143,12 @@ public final class VoiceConversationController {
 
             captureState = .idle
             guard !resolved.isEmpty else {
+                // Nothing was recognised. Surface a brief, non-blaming nudge
+                // instead of silently doing nothing so the user knows the tap
+                // registered and what to do next.
                 liveTranscript = ""
+                errorMessage = Self.nothingRecognizedMessage
+                recoveryAffordance = .retry
                 return nil
             }
 
@@ -161,13 +163,10 @@ public final class VoiceConversationController {
 
     public func cancelRecording() {
         transcriber.cancelTranscribing()
-        wakeWordDismissTask?.cancel()
-        wakeWordDismissTask = nil
-        recentWakeWordDetection = nil
         liveTranscript = ""
         lastCommittedTranscript = nil
-        wakeWordDetector?.reset()
         errorMessage = nil
+        recoveryAffordance = nil
         if case .failed = captureState {
             captureState = .idle
         } else if captureState != .idle {
@@ -198,7 +197,13 @@ public final class VoiceConversationController {
     }
 
     private func startPlayback(of trimmed: String, enqueue: Bool) {
+        // Don't read aloud over VoiceOver: it would duck/fight the screen
+        // reader's own speech. VoiceOver users already hear content via the
+        // screen reader, so suppress the redundant TTS playback.
+        guard !isVoiceOverRunning else { return }
+
         errorMessage = nil
+        recoveryAffordance = nil
         if !enqueue {
             playbackTask?.cancel()
             // New generation: any in-flight (now-cancelled) task belongs to the
@@ -251,36 +256,44 @@ public final class VoiceConversationController {
         isSpeaking = false
     }
 
-    private func presentWakeWordDetection(_ detection: WakeWordDetection) {
-        recentWakeWordDetection = detection
-        wakeWordDismissTask?.cancel()
-
-        wakeWordDismissTask = Task { [weak self] in
-            guard let self else { return }
-
-            do {
-                try await self.toastSleeper(self.wakeWordToastDuration)
-            } catch is CancellationError {
-                return
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.wakeWordDismissTask = nil
-                }
-                return
-            }
-
-            await MainActor.run {
-                if self.recentWakeWordDetection == detection {
-                    self.recentWakeWordDetection = nil
-                }
-                self.wakeWordDismissTask = nil
-            }
-        }
-    }
-
-    private func setFailure(_ error: Error) {
+    private func setFailure(_ error: Error, recovery: VoiceRecoveryAffordance? = nil) {
         captureState = .failed(error.localizedDescription)
         errorMessage = error.localizedDescription
+        recoveryAffordance = recovery
+    }
+
+    /// Brief, non-blaming nudge shown when the transcript came back empty.
+    static let nothingRecognizedMessage = "Didn't catch that — tap to try again."
+
+    /// Whether VoiceOver is currently running. Used to avoid the TTS read-aloud
+    /// path fighting VoiceOver's own speech (it would talk over the screen
+    /// reader). Always `false` off-iOS where the property is unavailable.
+    var isVoiceOverRunning: Bool {
+        #if os(iOS)
+        UIAccessibility.isVoiceOverRunning
+        #else
+        false
+        #endif
+    }
+
+    /// Opens the OS settings surface so the user can grant a previously
+    /// denied/restricted microphone or speech permission. On iOS this deep-links
+    /// straight to the app's settings pane; on macOS it opens System Settings.
+    /// Elsewhere it is a no-op (the view should fall back to a textual hint).
+    public func openSystemSettings() {
+        #if os(iOS)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+        #elseif os(macOS)
+        // The microphone privacy pane. Uses the modern System Settings URL
+        // scheme — the legacy `com.apple.preference.security` host was
+        // deprecated in macOS 13 and no longer deep-links to the pane on the
+        // supported macOS 15+ floor. System Settings opens to its root if the
+        // anchor can't be resolved, so this degrades gracefully.
+        let pane = "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone"
+        if let url = URL(string: pane) {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
 }

@@ -176,9 +176,17 @@ public struct APIEndpointEditorView: View {
             updated.baseURL = trimmedURL.isEmpty ? provider.defaultBaseURL : trimmedURL
             updated.modelName = resolvedModelName
 
+            // Capture the prior key before overwriting so a failed record
+            // update can be rolled back to it (rather than leaving the freshly
+            // written key orphaned).
+            var didWriteKey = false
+            let priorKey: String? = apiKey.isEmpty
+                ? nil
+                : KeychainService.retrieve(account: updated.keychainAccount)
             if !apiKey.isEmpty {
                 do {
                     try KeychainService.store(key: apiKey, account: updated.keychainAccount)
+                    didWriteKey = true
                 } catch {
                     // `KeychainError.localizedDescription` already reads as a
                     // complete sentence (e.g. "Couldn't store the API key in
@@ -192,6 +200,14 @@ public struct APIEndpointEditorView: View {
                 try await endpointStore.updateEndpoint(updated)
                 dismiss()
             } catch {
+                // Roll back the just-written key so a failed record update never
+                // leaves an orphaned Keychain item (mirrors the create path).
+                if didWriteKey {
+                    Self.rollbackKeychainKey(
+                        account: updated.keychainAccount,
+                        priorKey: priorKey
+                    )
+                }
                 validationError = error.localizedDescription.isEmpty
                     ? "Failed to save the endpoint configuration."
                     : error.localizedDescription
@@ -229,6 +245,25 @@ public struct APIEndpointEditorView: View {
                     ? "Failed to save the endpoint configuration."
                     : error.localizedDescription
             }
+        }
+    }
+
+    /// Restores the Keychain key for `account` after a failed record update on the
+    /// edit path: re-stores `priorKey` if there was one, otherwise deletes the
+    /// freshly written (now-orphaned) key. Best-effort — a Keychain failure here
+    /// is logged, not surfaced, since the user is already seeing the save error.
+    ///
+    /// Extracted from `save()` so the rollback contract is unit-testable without
+    /// hosting the SwiftUI view.
+    static func rollbackKeychainKey(account: String, priorKey: String?) {
+        do {
+            if let priorKey, !priorKey.isEmpty {
+                try KeychainService.store(key: priorKey, account: account)
+            } else {
+                try KeychainService.delete(account: account)
+            }
+        } catch {
+            Log.security.warning("Keychain rollback failed after endpoint update error: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

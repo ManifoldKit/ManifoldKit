@@ -10,16 +10,6 @@ public struct SpeechTranscriptionUpdate: Sendable, Equatable {
     }
 }
 
-public struct WakeWordDetection: Sendable, Equatable {
-    public let phrase: String
-    public let transcript: String
-
-    public init(phrase: String, transcript: String) {
-        self.phrase = phrase
-        self.transcript = transcript
-    }
-}
-
 public enum VoiceAuthorizationStatus: Sendable, Equatable {
     case authorized
     case denied
@@ -37,10 +27,26 @@ public enum VoiceCaptureState: Equatable {
     case failed(String)
 }
 
+/// A non-blaming, recoverable outcome surfaced to the user instead of a dead-end
+/// failure string. Lets the view offer the right affordance:
+/// - `.openSettings`: permission was actively refused/restricted — the only path
+///   forward is the system Settings app, so the view shows an "Open Settings"
+///   button wired to ``VoiceConversationController/openSystemSettings()``.
+/// - `.requestAgain`: permission was never asked (`notDetermined`) — tapping the
+///   mic again re-triggers the OS prompt, so we say "tap to allow" rather than
+///   telling the user they were denied.
+/// - `.retry`: a transient miss ("didn't catch that") — just try again.
+public enum VoiceRecoveryAffordance: Sendable, Equatable {
+    case openSettings
+    case requestAgain
+    case retry
+}
+
 public enum VoiceError: LocalizedError, Equatable {
     case recognizerUnavailable
     case unsupportedLocale
     case speechRecognitionDenied
+    case speechRecognitionNotDetermined
     case speechRecognitionRestricted
     case microphoneAccessDenied
     case simulatorUnsupported
@@ -54,6 +60,8 @@ public enum VoiceError: LocalizedError, Equatable {
             "Speech recognition is unavailable for the current locale."
         case .speechRecognitionDenied:
             "Speech recognition permission is required for voice input."
+        case .speechRecognitionNotDetermined:
+            "Tap to allow microphone and speech access for voice input."
         case .speechRecognitionRestricted:
             "Speech recognition is restricted on this device."
         case .microphoneAccessDenied:
@@ -196,12 +204,4 @@ public protocol SpeechProgressReporting: AnyObject {
     /// progresses. `nil` (the default) disables reporting.
     @MainActor
     var onSpeechProgress: (@MainActor (SpeechProgress) -> Void)? { get set }
-}
-
-public protocol WakeWordDetector: AnyObject {
-    @MainActor
-    func ingest(_ update: SpeechTranscriptionUpdate) -> WakeWordDetection?
-
-    @MainActor
-    func reset()
 }
