@@ -418,6 +418,133 @@ final class ToolGrammarBuilderTests: XCTestCase {
         XCTAssertEqual(grammar, expected)
     }
 
+    // MARK: - Bare-object grammar (#1992)
+
+    /// Asserts the grammar is well-formed structurally: every nonterminal it
+    /// references is defined by some `name ::=` rule, and there is exactly one
+    /// `root`. No live GBNF compiler in CI, so this catches dangling refs.
+    private func assertNoDanglingRules(_ grammar: String, file: StaticString = #filePath, line: UInt = #line) {
+        var defined = Set<String>()
+        var referenced = Set<String>()
+        var rootCount = 0
+        for rawLine in grammar.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = String(rawLine)
+            guard let sep = line.range(of: " ::= ") else { continue }
+            let name = String(line[line.startIndex..<sep.lowerBound])
+            defined.insert(name)
+            if name == "root" { rootCount += 1 }
+            // Collect bareword tokens on the RHS that look like rule names
+            // (lowercase/hyphen/digit identifiers, not inside a quoted literal
+            // and not a char-class). Tokenize on whitespace and structural punct.
+            let rhs = String(line[sep.upperBound...])
+            var inLiteral = false
+            var inClass = false
+            var token = ""
+            func flush() {
+                if !token.isEmpty,
+                   token.first!.isLetter,
+                   token.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) {
+                    referenced.insert(token)
+                }
+                token = ""
+            }
+            for ch in rhs {
+                if inLiteral {
+                    if ch == "\"" { inLiteral = false }
+                    continue
+                }
+                if inClass {
+                    if ch == "]" { inClass = false }
+                    continue
+                }
+                switch ch {
+                case "\"": flush(); inLiteral = true
+                case "[": flush(); inClass = true
+                case "a"..."z", "A"..."Z", "0"..."9", "-": token.append(ch)
+                default: flush()
+                }
+            }
+            flush()
+        }
+        XCTAssertEqual(rootCount, 1, "grammar must define exactly one root", file: file, line: line)
+        let dangling = referenced.subtracting(defined)
+        XCTAssertTrue(
+            dangling.isEmpty,
+            "every referenced nonterminal must be defined; dangling: \(dangling.sorted())",
+            file: file, line: line
+        )
+    }
+
+    func test_objectGrammar_simpleObject_isExactPayloadGrammar() {
+        let schema = objectSchema([
+            ("city", .object(["type": .string("string")])),
+            ("count", .object(["type": .string("integer")]))
+        ], required: ["city"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let expected = #"""
+        root ::= payload-0
+        args-0-0 ::= string
+        args-0-1 ::= integer
+        payload-0 ::= "{" ws "\"city\"" ws ":" ws args-0-0 ( ws "," ws "\"count\"" ws ":" ws args-0-1 )? ws "}"
+        """# + "\n" + genericTail
+        XCTAssertEqual(grammar, expected)
+        // Bare payload: root is payload-first and there is NO tool-call envelope.
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        XCTAssertFalse(grammar.contains("toolcall-"), "no tool-call envelope branches")
+        XCTAssertFalse(grammar.contains(#""\"name\"""#), "no envelope \"name\" key")
+        XCTAssertFalse(grammar.contains(#""\"arguments\"""#), "no envelope \"arguments\" key")
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_stringEnumProperty_lowersToAlternation() {
+        let schema = objectSchema([
+            ("direction", .object([
+                "type": .string("string"),
+                "enum": .array([.string("north"), .string("south")])
+            ]))
+        ], required: ["direction"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        let enumLine = grammar
+            .split(separator: "\n")
+            .first { $0.hasPrefix("args-0-0 ::=") }
+            .map(String.init) ?? ""
+        XCTAssertEqual(enumLine, #"args-0-0 ::= ("\"north\"" | "\"south\"")"#)
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_nestedObjectAndArray_recurse() {
+        let schema = objectSchema([
+            ("tags", .object([
+                "type": .string("array"),
+                "items": .object(["type": .string("string")])
+            ])),
+            ("meta", .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "id": .object(["type": .string("integer")])
+                ]),
+                "required": .array([.string("id")])
+            ]))
+        ], required: ["meta", "tags"])
+        let grammar = try! XCTUnwrap(builder.buildObjectGrammar(for: schema))
+        XCTAssertEqual(rootLine(grammar), "root ::= payload-0")
+        // The nested object's `id` property and the array's item rule both recurse
+        // into their own helper rules — assert their constrained primitives appear.
+        XCTAssertTrue(grammar.contains(#""\"id\""#), "nested object key is constrained")
+        XCTAssertTrue(grammar.contains(#""[" ws"#), "array item list is constrained")
+        XCTAssertFalse(grammar.contains("toolcall-"))
+        assertNoDanglingRules(grammar)
+    }
+
+    func test_objectGrammar_nonObjectSchema_returnsNil() {
+        // A bare scalar schema string-value (no `type:"object"`) is not an object
+        // schema → nil (nothing object-shaped to root a payload grammar on).
+        XCTAssertNil(builder.buildObjectGrammar(for: .string("string")))
+        // A dict whose `type` is a top-level scalar is likewise not an object.
+        XCTAssertNil(builder.buildObjectGrammar(for: .object(["type": .string("string")])))
+    }
+
     // MARK: - Golden snapshot (fixed 2-tool, empty-params input)
 
     func test_goldenSnapshot_twoTools() {

@@ -16,6 +16,20 @@ import Foundation
 /// queue can force well-formed tool-call emission whenever the backend
 /// advertises `supportsGrammarConstrainedSampling`.
 ///
+/// ## Two modes: envelope vs bare-object
+///
+/// This builder emits grammars in two shapes:
+///
+/// - **Tool-call envelope** (``buildGrammar(for:)`` / ``buildGrammar(for:mode:)``):
+///   a discriminated union over the supplied tools, each branch pinning
+///   `{"name": ..., "arguments": <args>}` — see the envelope shape below.
+/// - **Bare-object payload** (``buildObjectGrammar(for:)``): a grammar whose
+///   `root` constrains output to a single JSON object lowered directly from one
+///   object schema, with *no* `{"name","arguments"}` wrapper. Use when a caller
+///   wants constrained structured output for one object schema (e.g. extraction
+///   payloads) rather than a tool-call union. Both modes share the same
+///   recursive lowerer and generic-rule tail.
+///
 /// ## Envelope shape (discriminated union)
 ///
 /// ```
@@ -253,6 +267,52 @@ public struct ToolGrammarBuilder: Sendable {
         if rules["root"] == "value" { return nil }
 
         var lines: [String] = []
+        for name in emittedOrder {
+            lines.append("\(name) ::= \(rules[name]!)")
+        }
+        lines.append(contentsOf: Self.genericRuleLines)
+        return lines.joined(separator: "\n")
+    }
+
+    /// Builds a GBNF grammar constraining output to a single JSON object lowered
+    /// directly from `schema` — i.e. the *bare payload*, with no tool-call
+    /// `{"name","arguments"}` envelope. Use when a caller wants constrained
+    /// structured output for one object schema (e.g. extraction payloads) rather
+    /// than a tool-call union. Returns nil when `schema` is not an object schema
+    /// (a bare scalar payload carries nothing to root a grammar on).
+    ///
+    /// Mirrors the tail of ``buildGrammar(for:mode:)``: it reuses the same
+    /// recursive ``lower(_:into:ruleName:emit:)`` to lower `schema` into a
+    /// `payload-0` root rule, emits `root ::= payload-0` first (the root-first
+    /// convention), then the lowered rules in emission order, then the shared
+    /// generic JSON rule set. For an object schema it always returns a grammar:
+    /// unmodeled nodes degrade gracefully to the generic `value` rule, exactly as
+    /// on the envelope path — never returning nil for an object input.
+    public func buildObjectGrammar(for schema: JSONSchemaValue) -> String? {
+        // Only an object *schema* (`"type": "object"`) roots a payload grammar.
+        // A bare scalar (or a dict whose `type` is a scalar like "string") would
+        // lower to a primitive/`value` with nothing object-shaped to constrain —
+        // signal "no grammar" so the caller can fall back rather than ship one.
+        guard case let .object(dict) = schema,
+              case .string("object")? = dict["type"] else {
+            return nil
+        }
+
+        var emittedOrder: [String] = []
+        var rules: [String: String] = [:]
+        func emit(_ name: String, _ rhs: String) {
+            if rules[name] == nil { emittedOrder.append(name) }
+            rules[name] = rhs
+        }
+
+        // toolIndex 0 keeps helper rule names stable/deterministic, matching the
+        // single-tool envelope path's `args-0-*` naming.
+        var ctx = LoweringContext(toolIndex: 0, suffix: 0)
+        lower(schema, into: &ctx, ruleName: "payload-0", emit: emit)
+
+        // root first (entry point), then the lowered rules in emission order,
+        // then the shared generic JSON rule set the fallback/primitives need.
+        var lines: [String] = ["root ::= payload-0"]
         for name in emittedOrder {
             lines.append("\(name) ::= \(rules[name]!)")
         }
