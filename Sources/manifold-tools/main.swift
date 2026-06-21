@@ -340,8 +340,8 @@ func runCLI() async -> Int32 {
         for model in models {
             print("\n── \(scenario.id) via \(cli.backend.rawValue)/\(model) ──")
             do {
-                let backend = try await makeBackend(cli: cli, scenario: scenario, model: model)
-                let runner = ScenarioRunner(backend: backend, registry: registry, logger: logger)
+                let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
+                let runner = ScenarioRunner(service: service, logger: logger)
                 let outcome = try await runner.run(scenario)
                 for assertion in outcome.assertions {
                     let marker = assertion.passed ? "  PASS" : "  FAIL"
@@ -368,16 +368,31 @@ func runCLI() async -> Int32 {
 }
 
 @MainActor
-func makeBackend(cli: CLI, scenario: Scenario, model: String) async throws -> any InferenceBackend {
+func makeService(
+    cli: CLI,
+    scenario: Scenario,
+    model: String,
+    registry: ToolRegistry
+) async throws -> InferenceService {
+    let backend: any InferenceBackend
+    let name: String
     switch cli.backend {
     case .mock:
-        return MockFactory.make(for: scenario)
+        backend = MockFactory.make(for: scenario)
+        name = "mock"
     case .ollama:
-        let backend = OllamaBackend(_registrar: ())
-        backend.configure(baseURL: cli.ollamaBaseURL, modelName: model)
-        try await backend.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
-        return backend
+        let ollama = OllamaBackend(_registrar: ())
+        ollama.configure(baseURL: cli.ollamaBaseURL, modelName: model)
+        try await ollama.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
+        backend = ollama
+        name = "ollama"
     }
+    // Inject the pre-loaded backend together with the tool registry so the
+    // scenario runs through the production GenerationQueue → dispatch-loop
+    // path. That path is the only one that renders the prompt template and
+    // injects tool definitions, so the model is actually told the tools exist
+    // (#1983). Driving the raw backend directly would dispatch zero tools.
+    return InferenceService(backend: backend, name: name, modelName: model, toolRegistry: registry)
 }
 
 enum MockFactory {

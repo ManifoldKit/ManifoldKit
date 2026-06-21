@@ -5,6 +5,20 @@ import ManifoldInference
 @MainActor
 final class ScenarioRunnerTests: XCTestCase {
 
+    /// Builds a `ScenarioRunner` driving the production `InferenceService`
+    /// orchestration path: the scripted backend is injected together with the
+    /// tool registry so `GenerationQueue` → `GenerationToolDispatchLoop` runs
+    /// the tool loop, renders the prompt template, and injects tool
+    /// definitions — exactly what production does (#1983).
+    private func makeRunner(
+        backend: ScriptedBackend,
+        registry: ToolRegistry,
+        maxIterations: Int = 6
+    ) -> ScenarioRunner {
+        let service = InferenceService(backend: backend, name: "scripted", toolRegistry: registry)
+        return ScenarioRunner(service: service, maxIterations: maxIterations)
+    }
+
     // MARK: - Assertion evaluator
 
     func test_containsLiteralAssertion_passesWhenValuePresent() {
@@ -142,7 +156,7 @@ final class ScenarioRunnerTests: XCTestCase {
             ],
             backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
         )
-        let runner = ScenarioRunner(backend: backend, registry: registry)
+        let runner = makeRunner(backend: backend, registry: registry)
         let outcome = try await runner.run(scenario)
         XCTAssertTrue(outcome.passed, "outcome should pass; answer=\(outcome.finalAnswer)")
         XCTAssertEqual(outcome.toolCallsExecuted, ["now"])
@@ -165,7 +179,7 @@ final class ScenarioRunnerTests: XCTestCase {
             ],
             backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
         )
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
         XCTAssertTrue(outcome.passed)
     }
 
@@ -181,7 +195,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["Aurora shipped the deterministic tool harness; Beacon is blocked on MCP credentials."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertEqual(outcome.toolCallsExecuted, ["list_dir", "read_file"])
@@ -203,7 +217,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["apples and rice cost 19.75; skip saffron."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertEqual(outcome.toolCallsExecuted, ["read_file", "calc"])
@@ -221,7 +235,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["DEMO-README-NONCE appears in both; Backend A uses streaming tools and Backend B uses batch tools."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertEqual(outcome.toolCallsExecuted, ["read_file", "read_file"])
@@ -254,7 +268,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["The tool output exceeds maxBytes; request a narrower slice."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "assertions=\(outcome.assertions)")
         XCTAssertEqual(outcome.toolResults.first?.errorKind, "invalidArguments")
@@ -269,7 +283,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["The read_file output exceeds maxBytes; ask for a narrower slice."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "default output policy should reject the oversize fixture")
         XCTAssertEqual(outcome.toolResults.first?.errorKind, "invalidArguments")
@@ -284,10 +298,14 @@ final class ScenarioRunnerTests: XCTestCase {
             systemPrompt: "sys",
             userPrompt: "search slowly",
             requiredTools: ["sample_repo_search"],
+            // A `.cancelled` tool result unwinds the production dispatch loop
+            // immediately (the orchestrator does not let the model narrate over
+            // a cancelled tool), so the contract is verified through the
+            // recorded tool result, not a follow-up text turn.
             assertions: [
                 Scenario.Assertion(kind: "toolInvoked", value: "sample_repo_search", values: nil, message: nil),
                 Scenario.Assertion(kind: "toolResultErrorKind", value: "sample_repo_search", values: ["cancelled"], message: nil),
-                Scenario.Assertion(kind: "containsLiteral", value: "cancelled", values: nil, message: nil)
+                Scenario.Assertion(kind: "toolResultContains", value: "sample_repo_search", values: ["cancelled"], message: nil)
             ],
             backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
         )
@@ -301,7 +319,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["Search was cancelled by the user; no stale results were used."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertFalse(outcome.finalAnswer.contains("FAKE_STALE_RESULT"))
@@ -329,13 +347,17 @@ final class ScenarioRunnerTests: XCTestCase {
             ]
         )
         let registry = ToolRegistry(tools: [crashingTool])
+        // The retry varies its query. The production dispatch loop
+        // short-circuits two *identical* consecutive tool calls (a safety
+        // valve against loops), so a faithful recovery turn — like a real
+        // model — issues a distinct query on the second attempt.
         let backend = ScriptedBackend(turns: [
             .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash"}"#),
-            .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash"}"#),
+            .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash recovery"}"#),
             .tokens(["The search recovered and found CRASH-RECOVERY-754."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertEqual(outcome.toolCallsExecuted, ["sample_repo_search", "sample_repo_search"])
@@ -368,7 +390,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens(["Created reminder REMINDER-754."])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         let recordedReminders = await recorder.values()
@@ -382,7 +404,7 @@ final class ScenarioRunnerTests: XCTestCase {
             .tokens([#"{"invoice_id":"INV-754-CORE","total":123.45,"currency":"USD"}"#])
         ])
 
-        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
         XCTAssertTrue(outcome.toolCallsExecuted.isEmpty)
@@ -410,7 +432,7 @@ final class ScenarioRunnerTests: XCTestCase {
             ],
             backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
         )
-        let runner = ScenarioRunner(backend: backend, registry: registry, maxIterations: 2)
+        let runner = makeRunner(backend: backend, registry: registry, maxIterations: 2)
         let outcome = try await runner.run(scenario)
         XCTAssertFalse(outcome.passed, "scenario should not pass once the runner aborts on iteration cap")
         XCTAssertEqual(outcome.toolCallsExecuted.count, 2, "should dispatch exactly maxIterations tool calls")

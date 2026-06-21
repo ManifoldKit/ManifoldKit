@@ -845,18 +845,23 @@ public final class InferenceService {
         generation.preToolUseHook = hook
     }
 
-    #if DEBUG
-    /// Debug-only init that pre-loads a backend, optionally alongside a
-    /// ``ToolRegistry`` and ``ToolApprovalGate``. Used by tests to drive a
-    /// mock backend, and by ``--uitesting`` launches in the example app so
-    /// the approval sheet can be exercised deterministically against a
-    /// ``ScriptedBackend``.
+    /// Init that pre-loads a backend, optionally alongside a ``ToolRegistry``
+    /// and ``ToolApprovalGate``. Used by tests to drive a mock backend, by
+    /// ``--uitesting`` launches in the example app so the approval sheet can
+    /// be exercised deterministically against a ``ScriptedBackend``, and by
+    /// the `ManifoldTools` scenario harness so its mock/offline path drives
+    /// the same orchestrator (and therefore the same prompt-renderer +
+    /// tool-injection seam) that production uses (#1983).
     ///
     /// When `toolRegistry` is `nil` (the default) the generation coordinator
     /// is constructed without tool-calling wired in — matching the behaviour
     /// every existing test suite relies on. Pass a non-nil registry to
     /// enable tool dispatch; `toolApprovalGate` then gates each call and
     /// defaults to ``AutoApproveGate`` so legacy callers see no change.
+    ///
+    /// Always available (previously `#if DEBUG`-gated): the harness is a
+    /// legitimate release consumer that must inject a scripted backend with a
+    /// registry so the offline path mirrors the live orchestration path.
     public init(
         backend: any InferenceBackend,
         name: String = "Mock",
@@ -872,7 +877,6 @@ public final class InferenceService {
         wireGenerationContext()
         Self.scheduleToolSpillReap()
     }
-    #endif
 
     /// Fire-and-forget detached sweep of stale tool-spill files, scheduled
     /// from every public `init`. Detached so it never blocks instantiation
