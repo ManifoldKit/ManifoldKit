@@ -92,18 +92,30 @@ public struct ChatTemplate: Sendable {
     ///   turn-terminators (see ``builtInStopSequences(for:)``) — not the full
     ///   ``PromptTemplate`` special-token union, which also contains opening
     ///   delimiters that must NOT stop generation.
-    /// - For ``Source/embeddedJinja(_:)`` this is `[]`: the embedded template
-    ///   carries no machine-readable stop list, and parsing one out of Jinja is
-    ///   deferred. Callers that need stops for an embedded-template model should
-    ///   set ``GenerationConfig/stopSequences`` explicitly.
+    /// - For ``Source/embeddedJinja(_:)`` the family is detected from the raw
+    ///   Jinja string (the same detection used in ``format(_:systemPrompt:tools:)``
+    ///   for the enum fallback) and that family's curated stop sequences are
+    ///   returned — but only when a marker is *positively* recognised. This
+    ///   fixes non-ChatML models — e.g. Mistral, whose end-of-turn marker is
+    ///   `</s>` not `<|im_end|>` — from inheriting the ChatML default (#2008),
+    ///   while a genuinely-unrecognised template still contributes no stop
+    ///   sequence (the backend decides) rather than being assumed ChatML.
     public var stopSequences: [String] {
         switch source {
         case .builtIn(let template):
             return Self.builtInStopSequences(for: template)
-        case .embeddedJinja:
-            // Documented gap: no machine-readable stop list is extractable from
-            // a raw Jinja string in v1.
-            return []
+        case .embeddedJinja(let raw):
+            // `detect(fromChatTemplate:)` falls back to `.chatML` for any
+            // template it can't classify, so a bare `.chatML` result is
+            // ambiguous: it could be a real ChatML template or just the
+            // fallback. Only trust it when the template actually carries a
+            // ChatML marker — otherwise an unknown template would wrongly
+            // inherit `<|im_end|>`, re-introducing the very leak #2008 fixes.
+            let detected = PromptTemplateDetector.detect(fromChatTemplate: raw)
+            if detected == .chatML && !raw.contains("<|im_start|>") {
+                return []
+            }
+            return Self.builtInStopSequences(for: detected)
         }
     }
 

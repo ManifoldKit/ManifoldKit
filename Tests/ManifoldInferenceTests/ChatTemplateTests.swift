@@ -109,8 +109,51 @@ final class ChatTemplateTests: XCTestCase {
         XCTAssertFalse(llama3.contains("<|begin_of_text|>"))
     }
 
-    func test_stopSequences_embeddedJinja_isEmptyGap() {
-        // Documented v1 gap: no machine-readable stop list from raw Jinja.
-        XCTAssertEqual(ChatTemplate(embeddedJinja: chatMLJinja).stopSequences, [])
+    // MARK: - Embedded-Jinja stop-sequence derivation (#2008)
+
+    /// A minimal Mistral-style Jinja template — `[INST]`/`[/INST]` delimiters,
+    /// `</s>` end-of-turn. This mirrors the actual template shipped in
+    /// Mistral-7B-Instruct-v0.3.gguf that triggered #2008.
+    private let mistralJinja = """
+    {{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}\
+    {{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}\
+    {{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}\
+    {% endif %}{% endfor %}
+    """
+
+    /// An embedded Mistral Jinja template must derive `</s>` as its stop
+    /// sequence — NOT the ChatML default `<|im_end|>` (#2008).
+    ///
+    /// Before the fix, `embeddedJinja` always returned `[]`, leaving the
+    /// backend without a stop signal; the llama.cpp backend then applied its
+    /// own ChatML default, leaking `<|im_end|>` into Mistral output.
+    func test_stopSequences_embeddedMistralJinja_derivesEndOfSentence() {
+        let template = ChatTemplate(embeddedJinja: mistralJinja)
+        let stops = template.stopSequences
+
+        XCTAssertEqual(stops, ["</s>"], "Mistral embedded-Jinja must derive </s> not ChatML default; got: \(stops)")
+        XCTAssertFalse(stops.contains("<|im_end|>"), "ChatML end token must never appear for a Mistral template")
+    }
+
+    /// A ChatML embedded-Jinja template must still derive `<|im_end|>` — guard
+    /// against regressing the models #1944 already fixed.
+    func test_stopSequences_embeddedChatMLJinja_derivesChatMLToken() {
+        let template = ChatTemplate(embeddedJinja: chatMLJinja)
+        let stops = template.stopSequences
+
+        XCTAssertEqual(stops, ["<|im_end|>"], "ChatML embedded-Jinja must derive <|im_end|>; got: \(stops)")
+    }
+
+    /// A markerless embedded-Jinja template the detector can't classify must
+    /// derive NO stop sequence — it must not inherit the ChatML default, which
+    /// would re-introduce the leak #2008 fixes. (The detector falls back to
+    /// `.chatML`; `stopSequences` must distinguish that from a real ChatML
+    /// template.) Mirrors `ChatTemplateStopAndFlattenTests.test_mergePolicy_
+    /// embeddedJinjaNoDefault_leavesEmpty` at the queue layer.
+    func test_stopSequences_embeddedUnknownJinja_staysEmpty() {
+        let markerless = "{% for m in messages %}{{ m['content'] }}{% endfor %}"
+        let stops = ChatTemplate(embeddedJinja: markerless).stopSequences
+
+        XCTAssertEqual(stops, [], "Unrecognised embedded-Jinja must contribute no stop sequence; got: \(stops)")
     }
 }
