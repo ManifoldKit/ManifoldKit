@@ -327,4 +327,68 @@ final class JinjaPromptRendererTests: XCTestCase {
             "Empty/whitespace template is a miss → nil so the caller falls back"
         )
     }
+
+    // MARK: - Image + toolResult clobber regression
+
+    /// A vision template that references `content` as a list (so `threadImages`
+    /// fires) combined with a `.toolResult` part on the SAME message must NOT
+    /// clobber the image content-list with the tool-result string.
+    ///
+    /// Regression for the bug where `(dict["content"] as? String)?.isEmpty ?? true`
+    /// evaluated to `true` when `dict["content"]` was already a `[[String:Any]]`
+    /// list (the cast returns nil → `?? true` → overwrites).
+    func test_jinjaMessage_imageNotClobberedByToolResult() throws {
+        // A minimal vision template that iterates `content` as a list — the
+        // `{% if item.type == "image_url" %}` branch is what triggers
+        // `templateReferencesImages` to return `true`, causing `threadImages`.
+        let visionTemplate = """
+        {%- for message in messages %}
+        <|{{ message.role }}|>
+        {%- if message.content is iterable and message.content is not string %}
+        {%- for item in message.content %}
+        {%- if item.type == "image_url" %}<image/>
+        {%- elif item.type == "text" %}{{ item.text }}
+        {%- endif %}
+        {%- endfor %}
+        {%- else %}{{ message.content }}
+        {%- endif %}
+        {%- endfor %}
+        {%- if add_generation_prompt %}<|assistant|>{% endif %}
+        """
+
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47]) // minimal PNG header
+        // A tool-result turn that also carries an image part (edge case:
+        // a vision backend echoing the image alongside the tool result).
+        let messages: [StructuredMessage] = [
+            StructuredMessage(role: "tool", parts: [
+                .image(data: imageData, mimeType: "image/png"),
+                .toolResult(ToolResult(callId: "call_img", content: "image analyzed")),
+            ]),
+        ]
+
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: visionTemplate,
+                messages: messages,
+                systemPrompt: nil
+            ),
+            "Vision template must render"
+        )
+
+        // The image placeholder must appear — it would be missing if the
+        // content-list were overwritten with the plain tool-result string.
+        XCTAssertTrue(
+            rendered.contains("<image/>"),
+            "Image content-list must survive; toolResult must not clobber it"
+        )
+
+        // Sabotage: tool-result content is a plain string, which the template's
+        // `else` branch emits directly. If the bug were present the image token
+        // would be absent and we'd only see the plain text — confirming the
+        // assertion above is discriminating.
+        XCTAssertTrue(
+            rendered.contains("tool"),
+            "Tool role must appear in the rendered output"
+        )
+    }
 }
