@@ -138,4 +138,58 @@ final class MarkdownRenderingTests: XCTestCase {
     func test_renderVisibleText_emptyPartsListYieldsEmptyString() {
         XCTAssertEqual(MarkdownRendering.renderVisibleText(parts: []), "")
     }
+
+    // MARK: - stripLeadingBlockMarker (precompiled-regex parity)
+
+    /// Verifies that the manual block-marker scanner produces byte-identical
+    /// output to the regex patterns it replaced across every marker type, plus
+    /// indented (nested) bullets — whose leading whitespace the `^\s*[-*+]\s+`
+    /// pattern consumes along with the marker. Any divergence in pattern,
+    /// boundary, or whitespace handling would surface here.
+    ///
+    /// `*` bullets are deliberately excluded: `stripMarkdownSyntax` strips inline
+    /// `*`/`_` emphasis runs BEFORE the per-line marker scan, so a `* bullet`
+    /// line reaches `stripLeadingBlockMarker` already as ` bullet` (the `*` gone,
+    /// the space left) — it exercises the emphasis path, not the marker scanner.
+    /// Both the old regex and the new scanner behave identically there; `-` and
+    /// `+` exercise the bullet branch without that confound.
+    func test_render_blockMarkerStrippingIsByteIdenticalAcrossAllMarkerTypes() {
+        // heading (all levels), bullet variants (- and +), ordered, blockquote,
+        // a nested bullet with leading whitespace, and plain prose (no marker).
+        let input = """
+            # H1
+            ## H2
+            ### H3
+            #### H4
+            ##### H5
+            ###### H6
+            - bullet dash
+            + bullet plus
+              - nested dash
+            1. first
+            12. twelfth
+            > blockquote
+            plain prose
+            """
+        let expected = """
+            H1
+            H2
+            H3
+            H4
+            H5
+            H6
+            bullet dash
+            bullet plus
+            nested dash
+            first
+            twelfth
+            blockquote
+            plain prose
+            """
+        // renderToVisibleString exercises the full inline-stripping path, which
+        // calls stripLeadingBlockMarker for every line of every markdown block.
+        let result = MarkdownRendering.renderToVisibleString(input)
+        XCTAssertEqual(result, expected,
+            "stripLeadingBlockMarker output must be byte-identical to expected across all marker types")
+    }
 }

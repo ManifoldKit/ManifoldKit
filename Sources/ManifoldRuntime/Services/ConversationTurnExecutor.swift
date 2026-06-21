@@ -1366,8 +1366,11 @@ package struct ConversationTurnExecutor: Sendable {
         let canonicalIDs = canonicalHistory.map(\.id)
         let canonicalIDSet = Set(canonicalIDs)
         let promptIDs = promptHistory.map(\.id)
+        // Build a Set once for O(1) membership — reused for both duplicate
+        // detection and the canonicalVisibleIDs filter below (was O(n×m)).
+        let promptIDSet = Set(promptIDs)
 
-        guard Set(promptIDs).count == promptIDs.count else {
+        guard promptIDSet.count == promptIDs.count else {
             throw HistoryShaperValidationError.duplicateMessageIDs
         }
 
@@ -1375,7 +1378,9 @@ package struct ConversationTurnExecutor: Sendable {
             throw HistoryShaperValidationError.nonCanonicalMessageIDs
         }
 
-        let canonicalVisibleIDs = canonicalIDs.filter { promptIDs.contains($0) }
+        // Order is preserved: we filter canonicalIDs (canonical ordering) using
+        // the set, so canonicalVisibleIDs retains canonical order as before.
+        let canonicalVisibleIDs = canonicalIDs.filter { promptIDSet.contains($0) }
         guard canonicalVisibleIDs == promptIDs else {
             throw HistoryShaperValidationError.orderViolation
         }
