@@ -247,48 +247,54 @@ public enum MarkdownRendering {
         return nil
     }
 
-    // Precompiled regexes for `stripLeadingBlockMarker` — hoisted to avoid
-    // recompiling an NSRegularExpression on every call (up to 4×N per render).
-    // Patterns are identical to the inline literals they replace; anchored `^`
-    // is preserved. Order below must match the first-match-wins logic in the
-    // function body.
-    private static let headingRegex = try! NSRegularExpression(pattern: #"^#{1,6}\s+"#)
-    private static let bulletRegex  = try! NSRegularExpression(pattern: #"^\s*[-*+]\s+"#)
-    private static let orderedRegex = try! NSRegularExpression(pattern: #"^\s*\d+\.\s+"#)
-    private static let bqRegex      = try! NSRegularExpression(pattern: #"^>\s+"#)
-
+    // Manual single-pass scanner for `stripLeadingBlockMarker`. The previous
+    // implementation compiled up to four NSRegularExpression objects on every
+    // call (up to 4×N per render); this walks the line's characters once with
+    // no regex compilation and no force-unwraps. Behavior is identical to the
+    // anchored patterns it replaces:
+    //   heading    ^#{1,6}\s+      bullet  ^\s*[-*+]\s+
+    //   ordered    ^\s*\d+\.\s+    quote   ^>\s+
+    // (`\s+` is greedy, so each branch also consumes the run of whitespace that
+    // followed the marker — matching the regex match length exactly.)
     private static func stripLeadingBlockMarker(_ line: String) -> String {
-        var s = line
-        let nsLine = s as NSString
-        let fullRange = NSRange(location: 0, length: nsLine.length)
+        let chars = Array(line)
+        let n = chars.count
 
-        // Heading: leading "#"+ followed by space.
-        if let match = headingRegex.firstMatch(in: s, range: fullRange) {
-            let hashRange = Range(match.range, in: s)!
-            s.removeSubrange(hashRange)
-            return s
+        func dropWhitespace(from start: Int) -> String {
+            var i = start
+            while i < n, chars[i].isWhitespace { i += 1 }
+            return String(chars[i...])
         }
-        // Bullet: "- ", "* ", "+ " with optional leading whitespace.
-        if let match = bulletRegex.firstMatch(in: s, range: fullRange) {
-            let bulletRange = Range(match.range, in: s)!
-            // Preserve leading whitespace for nested-list visual alignment.
-            let leading = s[s.startIndex..<bulletRange.lowerBound]
-            s.removeSubrange(s.startIndex..<bulletRange.upperBound)
-            return String(leading) + s
+
+        // Heading: 1–6 leading "#" immediately followed by whitespace.
+        var h = 0
+        while h < n, chars[h] == "#" { h += 1 }
+        if h >= 1, h <= 6, h < n, chars[h].isWhitespace {
+            return dropWhitespace(from: h)
         }
-        // Ordered list: "1. " / "12. ".
-        if let match = orderedRegex.firstMatch(in: s, range: fullRange) {
-            let orderedRange = Range(match.range, in: s)!
-            let leading = s[s.startIndex..<orderedRange.lowerBound]
-            s.removeSubrange(s.startIndex..<orderedRange.upperBound)
-            return String(leading) + s
+
+        // Bullet: optional leading whitespace, one of -*+, then whitespace.
+        var b = 0
+        while b < n, chars[b].isWhitespace { b += 1 }
+        if b < n, chars[b] == "-" || chars[b] == "*" || chars[b] == "+",
+           b + 1 < n, chars[b + 1].isWhitespace {
+            return dropWhitespace(from: b + 1)
         }
-        // Blockquote: leading "> ".
-        if let match = bqRegex.firstMatch(in: s, range: fullRange) {
-            let bqRange = Range(match.range, in: s)!
-            s.removeSubrange(bqRange)
-            return s
+
+        // Ordered list: optional leading whitespace, digits, ".", then whitespace.
+        var o = 0
+        while o < n, chars[o].isWhitespace { o += 1 }
+        var d = o
+        while d < n, chars[d] >= "0", chars[d] <= "9" { d += 1 }
+        if d > o, d < n, chars[d] == ".", d + 1 < n, chars[d + 1].isWhitespace {
+            return dropWhitespace(from: d + 1)
         }
-        return s
+
+        // Blockquote: ">" at the absolute start, then whitespace.
+        if n >= 2, chars[0] == ">", chars[1].isWhitespace {
+            return dropWhitespace(from: 1)
+        }
+
+        return line
     }
 }
