@@ -458,7 +458,7 @@ final class ScenarioRunnerTests: XCTestCase {
         }
 
         let logger = try TranscriptLogger(url: path)
-        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u"))
+        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u", requiredTools: ["now"]))
         logger.append(.toolCall(scenarioId: "t", name: "now", arguments: "{}"))
         logger.append(.final(scenarioId: "t", text: "done"))
 
@@ -485,7 +485,7 @@ final class ScenarioRunnerTests: XCTestCase {
         }
 
         let logger = try TranscriptLogger(url: path, backend: "ollama", model: "qwen3.5-9b", quant: "q4_K_M")
-        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u"))
+        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u", requiredTools: ["now"]))
         logger.append(.toolCall(scenarioId: "t", name: "now", arguments: "{}"))
         logger.append(.assertion(scenarioId: "t", passed: true, message: "ok"))
 
@@ -584,6 +584,47 @@ final class ScenarioRunnerTests: XCTestCase {
         let data = try ConformanceScorer.encodeJSON(rows)
         let decoded = try JSONDecoder().decode([ConformanceScorer.ResultRow].self, from: data)
         XCTAssertEqual(decoded, rows, "rows must survive a JSON round-trip")
+    }
+
+    /// Tool-selection ConfusionCounts must match the shared core metric: a
+    /// scenario requiring `now` where the model calls `now` plus a decoy
+    /// `weather` is tp=1 / fp=1 / fn=0; a scenario requiring `calc` where the
+    /// model calls nothing is tp=0 / fp=0 / fn=1.
+    func test_conformanceScorer_computesToolSelectionConfusionAndMacroAverage() {
+        let lines = [
+            #"{"kind":"prompt","scenario":"s1","backend":"ollama","model":"A","requiredTools":["now"]}"#,
+            #"{"kind":"tool_call","scenario":"s1","backend":"ollama","model":"A","name":"now"}"#,
+            #"{"kind":"tool_call","scenario":"s1","backend":"ollama","model":"A","name":"weather"}"#,
+            #"{"kind":"prompt","scenario":"s2","backend":"ollama","model":"A","requiredTools":["calc"]}"#,
+            // no tool_call for s2 → a missed required tool (false negative)
+            // s3 is a no-tool scenario: empty requiredTools, excluded from macro avg
+            #"{"kind":"prompt","scenario":"s3","backend":"ollama","model":"A","requiredTools":[]}"#,
+            #"{"kind":"final","scenario":"s3","backend":"ollama","model":"A","text":"hello"}"#
+        ].joined(separator: "\n")
+
+        let rows = ConformanceScorer.score(jsonl: lines)
+
+        let s1 = rows.first { $0.scenario == "s1" }
+        XCTAssertEqual(s1?.toolTP, 1)
+        XCTAssertEqual(s1?.toolFP, 1, "the decoy `weather` call is a false positive")
+        XCTAssertEqual(s1?.toolFN, 0)
+        XCTAssertEqual(s1?.calledTools, ["now", "weather"], "called tools are sorted + de-duped")
+        XCTAssertEqual(s1?.confusion.precision ?? 0, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(s1?.confusion.recall ?? 0, 1.0, accuracy: 0.0001)
+
+        let s2 = rows.first { $0.scenario == "s2" }
+        XCTAssertEqual(s2?.toolTP, 0)
+        XCTAssertEqual(s2?.toolFP, 0)
+        XCTAssertEqual(s2?.toolFN, 1, "required `calc` never called → false negative")
+
+        let s3 = rows.first { $0.scenario == "s3" }
+        XCTAssertFalse(s3?.isToolBearing ?? true, "empty requiredTools → not tool-bearing")
+
+        // Macro average is over the two tool-bearing rows only (s3 excluded):
+        // precision = mean(0.5, 0.0) = 0.25; recall = mean(1.0, 0.0) = 0.5.
+        let macro = ConformanceScorer.aggregate(rows)
+        XCTAssertEqual(macro.precision, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(macro.recall, 0.5, accuracy: 0.0001)
     }
 }
 

@@ -322,6 +322,16 @@ enum ScoreCLI {
                 let data = try ConformanceScorer.encodeJSON(rows)
                 print(String(data: data, encoding: .utf8) ?? "[]")
             }
+            // Macro-averaged tool-selection metrics to stderr (stdout stays pure
+            // JSON/CSV) — the cross-backend-comparable SUMMARY line, same shape
+            // as the MLX/llama soak CLIs report.
+            let macro = ConformanceScorer.aggregate(rows)
+            let toolBearing = rows.filter { $0.isToolBearing }.count
+            let summary = String(
+                format: "SUMMARY rows=%d tool_bearing=%d precision=%.4f recall=%.4f f1=%.4f\n",
+                rows.count, toolBearing, macro.precision, macro.recall, macro.f1
+            )
+            FileHandle.standardError.write(Data(summary.utf8))
             return 0
         } catch {
             FileHandle.standardError.write(Data("manifold-tools score: \(error)\n".utf8))

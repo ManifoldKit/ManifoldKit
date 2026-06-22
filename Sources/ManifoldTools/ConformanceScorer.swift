@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldInference
 
 /// Parses a ``TranscriptLogger`` JSONL file and reduces it to normalized,
 /// scorable result rows — one per (backend, model, quant, scenario).
@@ -28,6 +29,15 @@ public enum ConformanceScorer {
     }
 
     /// One normalized result row per (backend, model, quant, scenario).
+    ///
+    /// Two complementary scores are carried:
+    /// - The assertion-derived ``verdict`` (`.pass/.partial/.fail/.errored`) — a
+    ///   scenario-level rollup of every assertion the harness checked.
+    /// - The tool-selection ``ConfusionCounts`` (`tp/fp/fn` of *tools the model
+    ///   called* vs *tools the scenario required*) — the same metric the MLX and
+    ///   llama soak CLIs report, so a `(model × quant × backend)` matrix is
+    ///   directly comparable across all three backends. `precision/recall/f1`
+    ///   come free from `ConfusionCounts`.
     public struct ResultRow: Codable, Sendable, Equatable {
         public let backend: String?
         public let model: String?
@@ -38,6 +48,17 @@ public enum ConformanceScorer {
         public let errored: Bool
         public let toolCallCount: Int
         public let verdict: Verdict
+        /// Tools the scenario expected to be called (the prompt record's
+        /// `requiredTools`). Empty for a no-tool scenario.
+        public let expectedTools: [String]
+        /// Distinct tools the model actually called, sorted for stable output.
+        public let calledTools: [String]
+        /// Tool-selection true positives (called ∩ expected).
+        public let toolTP: Int
+        /// Tool-selection false positives (called − expected; includes decoys).
+        public let toolFP: Int
+        /// Tool-selection false negatives (expected − called).
+        public let toolFN: Int
 
         public init(
             backend: String?,
@@ -48,7 +69,12 @@ public enum ConformanceScorer {
             assertionsFailed: Int,
             errored: Bool,
             toolCallCount: Int,
-            verdict: Verdict
+            verdict: Verdict,
+            expectedTools: [String],
+            calledTools: [String],
+            toolTP: Int,
+            toolFP: Int,
+            toolFN: Int
         ) {
             self.backend = backend
             self.model = model
@@ -59,7 +85,30 @@ public enum ConformanceScorer {
             self.errored = errored
             self.toolCallCount = toolCallCount
             self.verdict = verdict
+            self.expectedTools = expectedTools
+            self.calledTools = calledTools
+            self.toolTP = toolTP
+            self.toolFP = toolFP
+            self.toolFN = toolFN
         }
+
+        /// The tool-selection counts as the shared core ``ConfusionCounts`` type
+        /// (carries `precision`/`recall`/`f1`). Computed — not encoded twice.
+        public var confusion: ConfusionCounts {
+            ConfusionCounts(tp: toolTP, fp: toolFP, fn: toolFN)
+        }
+
+        /// Whether this scenario exercises tools (has a non-empty expected set).
+        /// No-tool scenarios are excluded from macro-averaged tool metrics.
+        public var isToolBearing: Bool { !expectedTools.isEmpty }
+    }
+
+    /// Macro-averaged tool-selection metrics over the tool-bearing rows — the
+    /// unweighted mean of each scenario's precision/recall/F1, matching the
+    /// `MacroAveragedMetrics` the MLX/llama CLIs emit. No-tool scenarios are
+    /// excluded (an empty expected set is not a tool-selection class).
+    public static func aggregate(_ rows: [ResultRow]) -> MacroAveragedMetrics {
+        MacroAveragedMetrics(perClass: rows.filter { $0.isToolBearing }.map { $0.confusion })
     }
 
     public enum ScoringError: Error, CustomStringConvertible {
@@ -102,6 +151,8 @@ public enum ConformanceScorer {
             var assertionsFailed = 0
             var errored = false
             var toolCallCount = 0
+            var expectedTools: [String] = []
+            var calledTools: Set<String> = []
         }
 
         var order: [String] = []
@@ -136,6 +187,12 @@ public enum ConformanceScorer {
             }
 
             switch kind {
+            case "prompt":
+                // The prompt record carries the scenario's expected tool set.
+                // Tolerate its absence (older transcripts) — expected stays empty.
+                if let required = object["requiredTools"] as? [String] {
+                    groups[key]?.expectedTools = required
+                }
             case "assertion":
                 if (object["passed"] as? Bool) == true {
                     groups[key]?.assertionsPassed += 1
@@ -144,6 +201,9 @@ public enum ConformanceScorer {
                 }
             case "tool_call":
                 groups[key]?.toolCallCount += 1
+                if let name = object["name"] as? String {
+                    groups[key]?.calledTools.insert(name)
+                }
             case "error":
                 // Not emitted by the current logger, but tolerated so a future
                 // explicit error record is honoured by the scorer.
@@ -155,6 +215,12 @@ public enum ConformanceScorer {
 
         return order.compactMap { key -> ResultRow? in
             guard let acc = groups[key] else { return nil }
+            // Tool-selection confusion: tools called vs tools required. Reuses the
+            // shared core metric so the row is comparable with the MLX/llama soak.
+            let confusion = ConfusionCounts.compute(
+                actual: acc.calledTools,
+                expected: Set(acc.expectedTools)
+            )
             return ResultRow(
                 backend: acc.backend,
                 model: acc.model,
@@ -168,7 +234,12 @@ public enum ConformanceScorer {
                     passed: acc.assertionsPassed,
                     failed: acc.assertionsFailed,
                     errored: acc.errored
-                )
+                ),
+                expectedTools: acc.expectedTools,
+                calledTools: acc.calledTools.sorted(),
+                toolTP: confusion.tp,
+                toolFP: confusion.fp,
+                toolFN: confusion.fn
             )
         }
     }
@@ -190,7 +261,7 @@ public enum ConformanceScorer {
 
     /// CSV helper (nice-to-have): one header row + one row per result.
     public static func encodeCSV(_ rows: [ResultRow]) -> String {
-        let header = "backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict"
+        let header = "backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict,toolTP,toolFP,toolFN,precision,recall,f1"
         let body = rows.map { row in
             [
                 csvField(row.backend),
@@ -201,10 +272,22 @@ public enum ConformanceScorer {
                 String(row.assertionsFailed),
                 String(row.errored),
                 String(row.toolCallCount),
-                row.verdict.rawValue
+                row.verdict.rawValue,
+                String(row.toolTP),
+                String(row.toolFP),
+                String(row.toolFN),
+                fixed(row.confusion.precision),
+                fixed(row.confusion.recall),
+                fixed(row.confusion.f1)
             ].joined(separator: ",")
         }
         return ([header] + body).joined(separator: "\n")
+    }
+
+    /// Formats a metric to 4 decimals with a fixed locale so CSV output is
+    /// stable across machines (no comma decimal separators).
+    private static func fixed(_ value: Double) -> String {
+        String(format: "%.4f", value)
     }
 
     private static func csvField(_ value: String?) -> String {

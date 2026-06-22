@@ -61,7 +61,7 @@ public final class ScenarioRunner {
     /// Executes a scenario. Errors bubble out; ``Outcome/passed`` captures
     /// the assertion verdict.
     public func run(_ scenario: Scenario) async throws -> Outcome {
-        logger?.append(.prompt(scenarioId: scenario.id, system: scenario.systemPrompt, user: scenario.userPrompt))
+        logger?.append(.prompt(scenarioId: scenario.id, system: scenario.systemPrompt, user: scenario.userPrompt, requiredTools: scenario.requiredTools))
 
         let messages: [StructuredMessage] = [
             StructuredMessage(role: "user", content: scenario.userPrompt)

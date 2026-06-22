@@ -9,7 +9,7 @@ import Foundation
 public final class TranscriptLogger {
 
     public enum Event {
-        case prompt(scenarioId: String, system: String, user: String)
+        case prompt(scenarioId: String, system: String, user: String, requiredTools: [String])
         case toolCall(scenarioId: String, name: String, arguments: String)
         case toolResult(scenarioId: String, name: String, content: String, errorKind: String?)
         case tokenDelta(scenarioId: String, text: String)
@@ -97,13 +97,19 @@ public final class TranscriptLogger {
     private func encode(_ event: Event) -> [String: Any] {
         let timestamp = isoFormatter.string(from: Date())
         switch event {
-        case .prompt(let id, let system, let user):
+        case .prompt(let id, let system, let user, let requiredTools):
+            // `requiredTools` is the scenario's *expected* tool set. Recording it
+            // here is what lets ConformanceScorer compute ConfusionCounts (tool
+            // selection precision/recall/F1) straight from the transcript —
+            // matching the metric the MLX/llama soak CLIs report, so all three
+            // backends are directly comparable.
             return [
                 "ts": timestamp,
                 "kind": "prompt",
                 "scenario": id,
                 "system": system,
-                "user": user
+                "user": user,
+                "requiredTools": requiredTools
             ]
         case .toolCall(let id, let name, let arguments):
             return [
