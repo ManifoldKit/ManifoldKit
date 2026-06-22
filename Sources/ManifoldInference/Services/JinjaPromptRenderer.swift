@@ -60,6 +60,12 @@ enum JinjaPromptRenderer {
     ///     `{% if documents %}` / `{% for document in documents %}` branch. Empty
     ///     keeps that branch falsey. Each document is exposed with `title`/`text`
     ///     (the Command-R / HF RAG convention) plus a `doc_id` alias (#1967).
+    ///   - errorSink: invoked with the underlying caught render error when the
+    ///     template cannot be evaluated and `render` returns `nil`. Lets the
+    ///     caller surface *why* the embedded template failed (e.g. an
+    ///     alternation `raise_exception` from a Mistral-family template) in a
+    ///     diagnostic message instead of swallowing it. Default `nil` keeps
+    ///     every existing call site unchanged.
     /// - Returns: the rendered prompt, or `nil` when the template cannot be
     ///   parsed or evaluated. A `nil` return is the signal for the caller to
     ///   fall back to the ``PromptTemplate`` enum — never a hard failure, since
@@ -69,7 +75,8 @@ enum JinjaPromptRenderer {
         messages: [StructuredMessage],
         systemPrompt: String?,
         tools: [ToolDefinition] = [],
-        documents: [RetrievedDocument] = []
+        documents: [RetrievedDocument] = [],
+        errorSink: ((Error) -> Void)? = nil
     ) -> String? {
         let trimmed = rawTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -83,67 +90,173 @@ enum JinjaPromptRenderer {
         // sees. Probing once up front keeps the text path byte-identical (#1967).
         let threadImages = Self.templateReferencesImages(trimmed)
 
-        var jinjaMessages: [[String: Any]] = []
-
         // Only synthesize a leading system message when the host supplied one and
         // the history does not already open with a system turn. If the host gave
         // no system prompt, we deliberately omit it so the template's own
         // default-system branch (Qwen2.5 et al.) can fire.
         let historyHasLeadingSystem = messages.first?.role == "system"
+        let prependsSystem: Bool
         if let systemPrompt, !systemPrompt.isEmpty, !historyHasLeadingSystem {
-            jinjaMessages.append(["role": "system", "content": systemPrompt])
+            prependsSystem = true
+        } else {
+            prependsSystem = false
         }
 
+        var jinjaMessages: [[String: Any]] = []
+        if prependsSystem, let systemPrompt {
+            jinjaMessages.append(["role": "system", "content": systemPrompt])
+        }
         for message in messages where renderableRoles.contains(message.role) {
             jinjaMessages.append(jinjaMessage(from: message, threadImages: threadImages))
         }
 
         do {
-            // Render with the SAME whitespace semantics Hugging Face
-            // `transformers.apply_chat_template` uses — `trim_blocks=True` and
-            // `lstrip_blocks=True`. swift-jinja defaults both to `false`, so
-            // without this a template that relies on block trimming (the HF
-            // default, and common in real `chat_template` strings) renders with
-            // spurious newlines/indentation the model never saw in training —
-            // a silent fidelity drift the byte-match goldens (#1938) caught.
-            // Templates that already use explicit `{%-`/`-%}` controls (Qwen,
-            // Llama-3.2) are unaffected; this only fixes the ones that don't.
-            let template = try Template(trimmed, with: .init(lstripBlocks: true, trimBlocks: true))
-            let context: [String: Value] = [
-                "messages": try Value(any: jinjaMessages),
-                "add_generation_prompt": true,
-                // Native tool templates branch on `tools` being defined and
-                // non-empty; supply the real definitions (#1909). An empty array
-                // keeps `{%- if tools %}` falsey for tool-less turns.
-                "tools": try Value(any: toolsContext(tools)),
-                // Many templates also branch on `documents` (RAG retrieval).
-                // Thread the retrieved passages through so `{% if documents %}`
-                // fires for RAG turns; an empty array keeps it falsey rather than
-                // raising an "undefined" error in stricter templates (#1967).
-                "documents": try Value(any: documentsContext(documents)),
-            ]
-            let rendered = try template.render(context)
-            // A template that evaluates to empty output is not usable — treat it
-            // as a miss so the enum fallback produces a real prompt. Log it: an
-            // empty render is otherwise a silent capability loss (the caller
-            // degrades to the text-only enum), the same failure class as the
-            // catch branch below.
-            if rendered.isEmpty {
-                Log.inference.warning(
-                    "JinjaPromptRenderer: embedded chat template rendered empty output, falling back to enum."
-                )
-                return nil
-            }
-            return rendered
+            return try renderJinja(
+                trimmed: trimmed,
+                jinjaMessages: jinjaMessages,
+                tools: tools,
+                documents: documents
+            )
         } catch {
+            // Render-retry for alternation-strict templates (#1992). Mistral-v0.3
+            // (and other templates that assert `user`/`assistant` strictly
+            // alternate from index 0) `raise_exception` on a leading `system`
+            // turn. transformers handles this by folding the system instruction
+            // into the FIRST user message rather than emitting a system turn.
+            // We only reach here on the throwing path, so templates that ACCEPT a
+            // leading system role never retry — their output is byte-identical to
+            // before. Retry ONCE with the folded shape; if the host supplied no
+            // system prompt or there is no user turn to fold into, there is
+            // nothing to change, so fall through to the existing nil-return.
+            if prependsSystem,
+               let systemPrompt,
+               let folded = Self.foldingSystemIntoFirstUser(
+                   messages: messages,
+                   systemPrompt: systemPrompt,
+                   threadImages: threadImages
+               ) {
+                do {
+                    return try renderJinja(
+                        trimmed: trimmed,
+                        jinjaMessages: folded,
+                        tools: tools,
+                        documents: documents
+                    )
+                } catch let retryError {
+                    // The folded retry also failed — this template is genuinely
+                    // unrenderable. Surface the retry error and fall through.
+                    errorSink?(retryError)
+                    Log.inference.warning(
+                        "JinjaPromptRenderer: embedded chat template failed even after folding the system prompt into the first user turn, falling back to enum: \(retryError.localizedDescription)"
+                    )
+                    return nil
+                }
+            }
+
             // Do not crash generation on a malformed or unsupported embedded
             // template — log and let the caller fall back to the enum. This is a
             // recoverable boundary condition, not a programmer error.
+            errorSink?(error)
             Log.inference.warning(
                 "JinjaPromptRenderer: failed to render embedded chat template, falling back to enum: \(error.localizedDescription)"
             )
             return nil
         }
+    }
+
+    /// Renders `jinjaMessages` against `trimmed`. Throws on a parse/evaluation
+    /// failure (the signal the render-retry and enum-fallback paths key on) and
+    /// — for symmetry with the empty-output miss — returns `nil` only via the
+    /// empty-render branch, which is mapped to a thrown sentinel so a single
+    /// `do/catch` covers both miss classes.
+    private static func renderJinja(
+        trimmed: String,
+        jinjaMessages: [[String: Any]],
+        tools: [ToolDefinition],
+        documents: [RetrievedDocument]
+    ) throws -> String {
+        // Render with the SAME whitespace semantics Hugging Face
+        // `transformers.apply_chat_template` uses — `trim_blocks=True` and
+        // `lstrip_blocks=True`. swift-jinja defaults both to `false`, so
+        // without this a template that relies on block trimming (the HF
+        // default, and common in real `chat_template` strings) renders with
+        // spurious newlines/indentation the model never saw in training —
+        // a silent fidelity drift the byte-match goldens (#1938) caught.
+        // Templates that already use explicit `{%-`/`-%}` controls (Qwen,
+        // Llama-3.2) are unaffected; this only fixes the ones that don't.
+        let template = try Template(trimmed, with: .init(lstripBlocks: true, trimBlocks: true))
+        let context: [String: Value] = [
+            "messages": try Value(any: jinjaMessages),
+            "add_generation_prompt": true,
+            // Native tool templates branch on `tools` being defined and
+            // non-empty; supply the real definitions (#1909). An empty array
+            // keeps `{%- if tools %}` falsey for tool-less turns.
+            "tools": try Value(any: toolsContext(tools)),
+            // Many templates also branch on `documents` (RAG retrieval).
+            // Thread the retrieved passages through so `{% if documents %}`
+            // fires for RAG turns; an empty array keeps it falsey rather than
+            // raising an "undefined" error in stricter templates (#1967).
+            "documents": try Value(any: documentsContext(documents)),
+        ]
+        let rendered = try template.render(context)
+        // A template that evaluates to empty output is not usable — treat it
+        // as a miss so the enum fallback produces a real prompt. Log it: an
+        // empty render is otherwise a silent capability loss (the caller
+        // degrades to the text-only enum), the same failure class as the
+        // catch branch in `render`.
+        if rendered.isEmpty {
+            Log.inference.warning(
+                "JinjaPromptRenderer: embedded chat template rendered empty output, falling back to enum."
+            )
+            throw EmptyRenderError()
+        }
+        return rendered
+    }
+
+    /// Sentinel thrown when a template evaluates to empty output, so the
+    /// single `do/catch` in `render` treats it as a render miss. (It never
+    /// reaches the retry's fold path usefully — folding a system prompt into a
+    /// user turn does not make an empty-output template produce text — so the
+    /// retry simply re-misses and falls through, exactly as before.)
+    private struct EmptyRenderError: Error {}
+
+    /// Builds the `jinjaMessages` array WITHOUT a synthesized `system` turn,
+    /// folding `systemPrompt` into the first user message's content as
+    /// `systemPrompt + "\n\n" + originalFirstUserContent`. Returns `nil` when
+    /// there is no user turn to fold into (nothing to retry).
+    ///
+    /// This mirrors `transformers.apply_chat_template`'s handling of
+    /// alternation-strict templates (Mistral-v0.3 et al.) that reject a leading
+    /// system role.
+    private static func foldingSystemIntoFirstUser(
+        messages: [StructuredMessage],
+        systemPrompt: String,
+        threadImages: Bool
+    ) -> [[String: Any]]? {
+        let renderable = messages.filter { renderableRoles.contains($0.role) }
+        guard let firstUserIndex = renderable.firstIndex(where: { $0.role == "user" }) else {
+            return nil
+        }
+        var jinjaMessages: [[String: Any]] = []
+        for (index, message) in renderable.enumerated() {
+            var dict = jinjaMessage(from: message, threadImages: threadImages)
+            if index == firstUserIndex {
+                let original = message.textContent
+                let merged = original.isEmpty ? systemPrompt : systemPrompt + "\n\n" + original
+                // Only override a plain-string content; if this user turn already
+                // carries an image content-list, prepend the system text as a
+                // leading text block instead of clobbering the list.
+                if let list = dict["content"] as? [[String: Any]] {
+                    var newList: [[String: Any]] = [["type": "text", "text": merged]]
+                    newList.append(contentsOf: list.filter { ($0["type"] as? String) != "text" || ($0["text"] as? String) != original })
+                    dict["content"] = newList
+                } else {
+                    dict["content"] = merged
+                }
+            }
+            jinjaMessages.append(dict)
+        }
+        return jinjaMessages
     }
 
     /// Builds the per-message Jinja dictionary, threading the native tool-call /
