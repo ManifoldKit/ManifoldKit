@@ -290,6 +290,72 @@ final class ToolDispatchHardeningTests: XCTestCase {
         XCTAssertEqual(byId["b-1"], "B")
     }
 
+    // MARK: - B. Cancellation propagates into an in-flight parallel batch
+
+    /// Two concurrent-safe executors are dispatched in parallel and both hang on
+    /// a cancellation-aware sleep. A user stop (`stopGeneration()`) must
+    /// propagate into the parallel child tasks so each executor observes
+    /// `Task.isCancelled` and unwinds, the loop records `.cancelled`, and the
+    /// stream terminates promptly.
+    ///
+    /// This is the regression guard for the parallel cancellation contract: the
+    /// parallel children are unstructured `Task`s that do NOT inherit parent
+    /// cancellation automatically, so `dispatchParallel` wraps the await in a
+    /// `withTaskCancellationHandler` that cancels every child. Without that
+    /// handler the executors hang forever and this test times out.
+    func test_stopGeneration_duringParallelBatch_cancelsChildren_andStops() async throws {
+        let entered = StartBarrier(expected: 2)
+        let execA = HangingConcurrentExecutor(name: "hang_a", didEnter: entered)
+        let execB = HangingConcurrentExecutor(name: "hang_b", didEnter: entered)
+
+        let registry = ToolRegistry()
+        registry.register(execA)
+        registry.register(execB)
+
+        provider.backend.scriptedToolCallsPerTurn = [
+            [makeCall(id: "h-a", name: "hang_a"), makeCall(id: "h-b", name: "hang_b")],
+            [],
+        ]
+        provider.backend.tokensToYieldPerTurn = [[], ["must-not-run"]]
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+
+        let collector = Task<[GenerationEvent], Never> {
+            var events: [GenerationEvent] = []
+            do {
+                for try await event in stream.events { events.append(event) }
+            } catch {
+                // Cancellation throws — events gathered before the throw stand.
+            }
+            return events
+        }
+
+        // Both parallel children must be inside `execute` before we stop, so the
+        // cancellation lands on a genuinely in-flight batch (not before dispatch).
+        await entered.waitUntilAllArrived()
+        coordinator.stopGeneration()
+
+        // Bound the wait: a regression that fails to cancel the children leaves
+        // them sleeping 60s and surfaces here as a visible failure, not a hang.
+        let timeoutTask = Task {
+            try await Task.sleep(for: .seconds(5))
+            collector.cancel()
+        }
+        let events = await collector.value
+        timeoutTask.cancel()
+
+        let completions = events.compactMap { e -> GenerationCompletion? in
+            if case .generationCompleted(let c) = e { return c } else { return nil }
+        }
+        XCTAssertEqual(completions.first?.reason, .cancelled, "stop during a parallel batch must terminate the loop as cancelled")
+
+        let tokens = events.compactMap { e -> String? in
+            if case .token(let t) = e { return t } else { return nil }
+        }
+        XCTAssertFalse(tokens.contains("must-not-run"), "no further turn after a cancelled parallel batch")
+    }
+
     // MARK: - B. Mixed batch falls back to sequential
 
     /// When one executor in the batch is NOT concurrent-safe, the whole turn
@@ -392,6 +458,29 @@ private actor StartBarrier {
             waiters.append(continuation)
         }
     }
+
+    /// Marks arrival WITHOUT waiting — for executors that need to signal "I'm
+    /// in-flight" and then suspend on something else (e.g. a cancellation-aware
+    /// sleep) rather than block on the barrier.
+    func arrive() {
+        arrived += 1
+        if arrived >= expected {
+            for waiter in observers { waiter.resume() }
+            observers.removeAll()
+        }
+    }
+
+    /// Suspends until `expected` participants have called `arrive()` (or
+    /// `arriveAndWait()`). Used by a non-participant observer (the test) to know
+    /// the whole batch is in-flight before acting.
+    func waitUntilAllArrived() async {
+        if arrived >= expected { return }
+        await withCheckedContinuation { continuation in
+            observers.append(continuation)
+        }
+    }
+
+    private var observers: [CheckedContinuation<Void, Never>] = []
 }
 
 /// Concurrent-safe executor that arrives at a shared barrier before returning.
@@ -413,5 +502,27 @@ private struct BarrierExecutor: ToolExecutor {
     func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
         await barrier.arriveAndWait()
         return ToolResult(callId: "", content: result, errorKind: nil)
+    }
+}
+
+/// Concurrent-safe executor that signals it has entered `execute` and then hangs
+/// on a cancellation-aware sleep. Used to prove that a stop during an in-flight
+/// parallel batch propagates cancellation into every child task.
+private struct HangingConcurrentExecutor: ToolExecutor {
+    let definition: ToolDefinition
+    var supportsConcurrentDispatch: Bool { true }
+    private let didEnter: StartBarrier
+
+    init(name: String, didEnter: StartBarrier) {
+        self.definition = ToolDefinition(name: name, description: "hangs (concurrent)", parameters: .object([:]))
+        self.didEnter = didEnter
+    }
+
+    func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
+        await didEnter.arrive()
+        // Cancellation-aware sleep: `Task.sleep` throws `CancellationError` the
+        // moment the surrounding (child) task is cancelled.
+        try await Task.sleep(for: .seconds(60))
+        return ToolResult(callId: "", content: "should-never-reach", errorKind: nil)
     }
 }

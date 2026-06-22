@@ -391,12 +391,12 @@ struct GenerationToolDispatchLoop {
     /// Dispatches every buffered call for a turn, choosing parallel or
     /// sequential execution and re-imposing receipt order on the results.
     ///
-    /// Parallel dispatch (`withTaskGroup`) is used only when there is more than
-    /// one call AND every targeted executor reports
-    /// ``ToolExecutor/supportsConcurrentDispatch``. The duplicate-call
-    /// short-circuit and per-result byte-budget guards are evaluated in receipt
-    /// order *after* the group completes, so a parallel batch produces the same
-    /// history and termination behavior as the sequential path.
+    /// Parallel dispatch is used only when there is more than one call AND every
+    /// targeted executor reports ``ToolExecutor/supportsConcurrentDispatch``. The
+    /// duplicate-call short-circuit and per-result byte-budget guards are
+    /// evaluated in receipt order *after* the concurrent batch completes, so a
+    /// parallel batch produces the same history and termination behavior as the
+    /// sequential path.
     private func dispatchTurn(
         pendingCalls: [PendingCall],
         lastCallSignature: (toolName: String, arguments: String)?,
@@ -427,9 +427,18 @@ struct GenerationToolDispatchLoop {
         }
 
         // Re-impose receipt order and apply the per-result guards (cancellation,
-        // duplicate-call short-circuit, byte budget) in that order. This is the
-        // single place history and termination are decided, so the parallel and
-        // sequential paths converge to identical behavior here.
+        // then byte budget) in that order. This is the single place history and
+        // termination are decided, so the parallel and sequential paths converge
+        // to identical history/termination behavior here.
+        //
+        // The duplicate-call short-circuit is NOT re-applied in this loop — it is
+        // enforced upstream in `dispatchResult` via the `duplicateOf` signature
+        // threaded by the sequential path. The parallel path passes `nil` (its
+        // executors are concurrent-safe/stateless, so a repeated call is an
+        // independent read, not a runaway loop); cross-turn repeats on the
+        // parallel path are bounded by the iteration and run-token ceilings
+        // instead. `runningSignature` is tracked here only to carry the turn's
+        // last signature forward for the *next* turn's sequential short-circuit.
         var dispatchedInThisTurn: [(ToolCall, ToolResult)] = []
         var runningByteTotal = toolResultByteTotal
         var runningSignature = lastCallSignature
@@ -578,35 +587,62 @@ struct GenerationToolDispatchLoop {
         return outcomes
     }
 
-    /// Parallel dispatch. Every call runs concurrently in its own child Task;
+    /// Parallel dispatch. Every call runs concurrently in its own child `Task`;
     /// results are awaited in receipt order so the returned array index-aligns
     /// with `calls`. The duplicate-call short-circuit is intentionally NOT
-    /// applied across a parallel batch — concurrent-safe executors are
-    /// stateless, so two identical calls in one batch are independent reads, not
-    /// a runaway loop. Cross-turn duplicate detection still runs in
-    /// `dispatchTurn` against the prior turn's signature.
+    /// applied across a parallel batch — concurrent-safe executors are stateless,
+    /// so two identical calls in one batch are independent reads, not a runaway
+    /// loop. Cross-turn duplicate detection is likewise skipped here (each call
+    /// is dispatched with `duplicateOf: nil`); stateless concurrent executors are
+    /// bounded by the iteration and run-token ceilings instead of the same-call
+    /// short-circuit the sequential path applies.
+    ///
+    /// `withTaskGroup` would be the structured-cancellation-for-free choice, but
+    /// `group.addTask { @MainActor in self.dispatchOne(...) }` trips a Swift
+    /// region-based isolation checker bug ("pattern that the region-based
+    /// isolation checker does not understand"), reproduced on both 6.2 and 6.3.
+    /// So the children are unstructured `Task`s — which do NOT inherit parent
+    /// cancellation — and the await is wrapped in `withTaskCancellationHandler`
+    /// to restore the cancellation contract: when the parent generation task is
+    /// cancelled (user stop → `activeTask.cancel()` in `GenerationQueue`), every
+    /// child is cancelled so its executor observes `Task.isCancelled` and unwinds
+    /// promptly, matching the sequential path (where dispatch runs directly in
+    /// the parent task). Without that handler a mid-dispatch stop would leak live
+    /// tool work into a dead stream. The `@MainActor` child closures invoke the
+    /// `@MainActor` `dispatchOne`; each body runs on the main actor (concurrency
+    /// comes from suspension interleaving, exactly as the sequential path), so
+    /// the parallel and sequential isolation domains are identical.
     private func dispatchParallel(_ calls: [ToolCall]) async -> [CallOutcome] {
-        // Run each call's dispatch concurrently in its own child Task, then
-        // await them in receipt order. Using an array of `Task` (rather than
-        // `withTaskGroup`) sidesteps a Swift 6.2 region-isolation checker bug
-        // that rejects `group.addTask { @MainActor in … }` closures invoking a
-        // `@MainActor` method. `Task { @MainActor in … }` inherits the current
-        // main-actor isolation (it is NOT `Task.detached`), so concurrency is
-        // preserved while every body runs on the main actor — matching the
-        // sequential path's isolation exactly.
-        var tasks: [Task<CallOutcome, Never>] = []
-        for call in calls {
-            let task = Task { @MainActor in
-                await dispatchOne(call, duplicateOf: nil, previousContent: "")
+        // Spawn one child `Task` per call (concurrency via main-actor suspension
+        // interleaving) and await them in receipt order. `withTaskGroup` would be
+        // the structured-cancellation-for-free choice, but
+        // `group.addTask { @MainActor in self.dispatchOne(...) }` trips a Swift
+        // region-based isolation checker bug ("pattern that the region-based
+        // isolation checker does not understand", reproduced on 6.2 and 6.3).
+        //
+        // To preserve the cancellation contract WITHOUT the task group, the await
+        // is wrapped in `withTaskCancellationHandler`: if the parent generation
+        // task is cancelled (user stop → `activeTask.cancel()` in
+        // `GenerationQueue`), every child is cancelled so its executor observes
+        // `Task.isCancelled` and unwinds — matching the sequential path, where
+        // dispatch runs directly in the parent task. Without this, the children
+        // (which do NOT inherit parent cancellation) would leak live tool work
+        // into a dead stream.
+        let tasks: [Task<CallOutcome, Never>] = calls.map { call in
+            Task { @MainActor in
+                await self.dispatchOne(call, duplicateOf: nil, previousContent: "")
             }
-            tasks.append(task)
         }
 
-        var gathered: [CallOutcome] = []
-        for task in tasks {
-            gathered.append(await task.value)
+        return await withTaskCancellationHandler {
+            var gathered: [CallOutcome] = []
+            for task in tasks {
+                gathered.append(await task.value)
+            }
+            return gathered
+        } onCancel: {
+            for task in tasks { task.cancel() }
         }
-        return gathered
     }
 
     /// Dispatches one call: pre-tool-use hook, approval, then execution with
