@@ -2,6 +2,8 @@
 
 Run: `20260622-232839` · 5 legs (Ollama, llama.cpp, MLX, OpenRouter) · 9-scenario reference toolset · scorer = `manifold-tools score --csv` (`ConformanceScorer`).
 
+> **Note:** the raw per-run `.jsonl` transcripts (~12 MB) and `.log` files were pruned to keep this PR light; the scored per-run `.csv` files are retained alongside this matrix. Re-run the sweep to regenerate raw transcripts.
+
 ## 1. Headline
 
 A model's tool-calling capability is not a property of the *model* — it is a property of the **(model × quant × backend × renderer)** cell, and the only way to know a cell works is to measure it. This matrix runs the same reference toolset across four runtimes precisely to surface cells that diverge despite "same model." It worked: the #1 finding is an **(a)-class off-diagonal on Mistral-v0.3**. The *same weights* tool-call cleanly via **Ollama** (server-side template, F1 ≈ 0.875) but produce **prompt-only, tool-less transcripts via llama.cpp** — core's `JinjaPromptRenderer` prepended a `system` role that Mistral's alternation-strict template rejected (`Conversation roles must alternate`), so the renderer refused to send a tool-less prompt and emitted nothing. That is a real core bug the matrix caught by design, **fixed tonight in merged PR #2032** (fold the system turn into the first user turn). The llama/MLX Mistral cells below reflect the **pre-#2032** state and are flagged *re-measure pending*.
