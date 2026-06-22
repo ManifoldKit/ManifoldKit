@@ -52,6 +52,14 @@ plan, not the diff. It does not contain implementation.
   decisions + a bug fix; P1 is pure file-moves with zero behavior change. **P2–P4 sequencing
   is re-confirmed after the keynote**, since Apple's agent/tool/on-device-media announcements
   may reprioritize the driver seam (P3) and the media seam (P4).
+- **P4 status (2026-06-22): SHIPPED.** The post-WWDC re-confirmation above is resolved — the
+  modality-generify seam landed. `MediaGeneration<Output>`
+  (`Sources/ManifoldModelCatalog/MediaGeneration.swift`), the generic
+  `MessagePart.generatedMedia(GeneratedMediaPayload)` case (the old
+  `generatedImage`/`generatedVideo` survive only as legacy decode `CodingKeys`),
+  `AudioGeneration = MediaGeneration<SpeechGenerationConfig>`, the `AppleTTSBackend` reference
+  impl + `AudioGenerationService`, and audio runtime/UI wiring all exist. The P4a/P4b/P4c
+  sub-phase definitions below are retained as the executed record.
 - **Agentic scope (decided):** commit to **resumable runs only**. Multi-agent / plan-execute
   drivers are deferred until explicit adopter demand; the P3 seam keeps the door open but is
   built for `SingleTurnDriver` + `ResumableRunDriver` only.
