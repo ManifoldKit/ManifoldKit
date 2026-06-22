@@ -50,7 +50,7 @@ plan from reality at a glance. Where the prose below still reads as future tense
 | **P1** kernel leaves | Extract `ManifoldHardware`, `ManifoldModelCatalog`, `ManifoldNetworking`, `ManifoldSecrets` as zero-dep leaves | **SHIPPED** | all four dirs exist under `Sources/` (#1608–#1611) |
 | **P2** engine carve | Extract the Contract kernel downward as `ManifoldContract`; `ManifoldInference` `@_exported import`s it | **SHIPPED** | `Sources/ManifoldContract/` exists (P2a #1719); engine de-tangle landed P2c #1724. `ManifoldContractTestSupport` is the contract-test mixin product, also present. |
 | **P3** TurnDriver / Run / RunStore | Pluggable `TurnDriver` seam over a resumable `ConversationRun`, with a `RunStore` checkpoint port | **SHIPPED (v0.48, #1744)** | `Sources/ManifoldRuntime/Protocols/TurnDriver.swift`, `…/Protocols/RunStore.swift`, `…/Models/ConversationRun.swift`, `…/Services/SingleTurnDriver.swift`, `…/Services/ResumableRunDriver.swift` all exist. **Persistence + reachability shipped (P3b, #1795):** a SwiftData `RunStore` adapter + V9→V10 migration in `Sources/ManifoldPersistenceSwiftData/`, opt-in bootstrap wiring (`ManifoldBootstrap(enableResumableRuns:)`), and `ResumableRunDriver.resume(runID:)`, so a run survives process death and resumes from its checkpoint. |
-| **P4** modality generify | Single `MediaGeneration<Output>` seam replacing per-modality clones | **DEFERRED (post-WWDC)** | no `MediaGeneration` generic exists in `Sources/`; the image/video records live in `ManifoldModelCatalog` and the per-modality backends remain concrete. |
+| **P4** modality generify | Single `MediaGeneration<Output>` seam replacing per-modality clones | **SHIPPED** | the generic seam exists: `MediaGeneration<Output>` (`Sources/ManifoldModelCatalog/MediaGeneration.swift`), the generic `MessagePart.generatedMedia(GeneratedMediaPayload)` case (`Sources/ManifoldContract/MessagePart.swift`), `AudioGeneration = MediaGeneration<SpeechGenerationConfig>`, the `AppleTTSBackend` reference backend + `AudioGenerationService` (`Sources/ManifoldInference/`), and audio runtime/UI wiring (`ChatViewModel+AudioGeneration`). |
 | **P5** trait → product | Retire product-selection traits; ship the gated modules as library products | **SHIPPED** | trait roster in `Package.swift` is down to `Server`, `Macros`, and the two WWDC stubs; MCP/Voice/Tools/AppIntents/Skills/Ollama/CloudSaaS/AnyLanguageModel/HuggingFace/Fuzz/Llama/MLX traits retired (#1764–#1769, C2 #1771). |
 | **P6** usability | One-call `quickStart`, registrar-injectable backends, clean error rim | **PARTIAL** | `quickStart(configuration:)`, `quickStart(configuration:seed:)`, and `quickStart(backends:configuration:seed:)` all exist in `Sources/ManifoldKit/QuickStart.swift`; the backend-availability diagnostic + selection policy ship. Remaining usability polish (progress-aware facade variants, richer empty-state UX) is ongoing. |
 | **P7** retire shims | Remove the `ManifoldBackends` / `ManifoldCloud` / `DefaultBackends.register` deprecated shims | **NOT STARTED** | the shims still ship and compile (deprecated) for one release; removal is a future major. See `docs/MIGRATION-0.48.md` → "product 'ManifoldBackends' not found". |
@@ -135,10 +135,11 @@ tools/data and a bottom port for persistence.
 - `*` **MLX / Llama** — shipped, but no longer in this repo: they live in companion packages
   `manifold-mlx` / `manifold-llama` (C2 #1771; module names unchanged). The image/video media
   backends moved with `manifold-mlx`.
-- `‡` **MediaGen seam** — still **per-modality**, not the generic seam this diagram targets:
-  `MessagePart.generatedImage` / `.generatedVideo` remain distinct cases in `ManifoldContract`.
-  The `MediaGeneration<Output>` collapse (P4) is **deferred post-WWDC** — WWDC 2026 added no new
-  modality to force it; sequence it just before the 1.0 vocabulary freeze (in-repo).
+- `‡` **MediaGen seam** — **SHIPPED (P4).** The generic seam is in place: `MessagePart` now carries
+  a single `generatedMedia(GeneratedMediaPayload)` case (the old `generatedImage`/`generatedVideo`
+  survive only as legacy decode `CodingKeys`, mapped into `.generatedMedia`), backed by the generic
+  `MediaGeneration<Output>` (`Sources/ManifoldModelCatalog/MediaGeneration.swift`) with
+  `AudioGeneration = MediaGeneration<SpeechGenerationConfig>` and the `AppleTTSBackend` reference impl.
 - `†` **Resumable Run / RUN checkpoints** — **COMPLETE.** The seam shipped in P3 (#1744:
   `TurnDriver`, `ConversationRun`/`RunStep`, `ResumableRunDriver`, `RunStore` port) and the
   persistence + reachability sub-phase shipped in P3b (#1795): a SwiftData `RunStore` adapter,
