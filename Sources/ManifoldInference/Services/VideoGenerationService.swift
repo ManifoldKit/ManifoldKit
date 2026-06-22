@@ -91,27 +91,38 @@ public final class VideoGenerationService {
             let upstream = try await backend.generate(prompt: prompt, config: config)
 
             return AsyncThrowingStream { continuation in
-                let task = Task.detached(priority: .userInitiated) { [weak self] in
+                // Strong-capture `self` for the lifetime of this detached task.
+                // The state-restore (`restoreIdleState`) is must-complete cleanup:
+                // if it were gated on a weak `self?` and the service deallocated
+                // (or the consumer dropped the stream) before the task ran, the
+                // restore would silently drop and the service would stay stuck in
+                // `.generating`. A weak capture is the documented anti-pattern for
+                // must-complete `Task.detached` work ("No [weak self] in
+                // must-complete Task.detached — strong capture or work drops").
+                // The temporary retain cycle (task → service) breaks the moment
+                // the task completes, which it always does: the stream finishes,
+                // throws, or is cancelled via `onTermination`.
+                let task = Task.detached(priority: .userInitiated) {
                     do {
                         for try await event in upstream {
                             if Task.isCancelled {
-                                await self?.restoreIdleState()
+                                await self.restoreIdleState()
                                 continuation.finish()
                                 return
                             }
                             continuation.yield(event)
                         }
-                        await self?.restoreIdleState()
+                        await self.restoreIdleState()
                         continuation.finish()
                     } catch is CancellationError {
-                        await self?.restoreIdleState()
+                        await self.restoreIdleState()
                         continuation.finish()
                     } catch {
                         if Task.isCancelled {
-                            await self?.restoreIdleState()
+                            await self.restoreIdleState()
                             continuation.finish()
                         } else {
-                            await self?.restoreIdleState()
+                            await self.restoreIdleState()
                             continuation.finish(throwing: error)
                         }
                     }

@@ -176,6 +176,101 @@ final class VideoGenerationServiceTests: XCTestCase {
         XCTAssertEqual(url, videoURL)
     }
 
+    /// Regression: when the consumer drops the stream after the first event
+    /// (while more events are still queued), the service's must-complete
+    /// state-restore must still run and return the service to `.idle`. Before
+    /// the `[weak self]` → strong-`self` fix the restore could be dropped,
+    /// leaving the service stuck in `.generating`.
+    func test_generate_consumerDropsEarly_restoresIdleState() async throws {
+        let backend = MockVideoBackend()
+        // Many events with a real per-event delay so we can break after the
+        // first while the producer still has work queued — that forces the
+        // onTermination(.cancelled) path rather than a natural finish.
+        backend.setPlan(.init(
+            events: [
+                .queued,
+                .generating(fractionComplete: 0.2),
+                .generating(fractionComplete: 0.4),
+                .generating(fractionComplete: 0.6),
+                .generating(fractionComplete: 0.8),
+                .completed(URL(fileURLWithPath: "/tmp/vid.mp4"))
+            ],
+            delayPerEventNs: 20_000_000  // 20ms
+        ))
+
+        let service = VideoGenerationService(backend: backend)
+        let stream = try await service.generate(prompt: "x", config: Self.config)
+        XCTAssertEqual(service.state, .generating)
+
+        // Consume exactly one event, then drop the iterator (break). The
+        // stream's onTermination fires .cancelled, the forwarding task is
+        // cancelled, and its strong-self cleanup must run.
+        for try await _ in stream {
+            break
+        }
+
+        // The cleanup hops back to the main actor asynchronously, so poll-settle
+        // rather than asserting synchronously. Bounded wait keeps the test from
+        // hanging if the fix regresses.
+        try await pollUntilState(service, equals: .idle, timeoutNs: 2_000_000_000)
+        XCTAssertEqual(service.state, .idle, "service must return to .idle after the consumer drops the stream early")
+    }
+
+    /// Sabotage-provable regression for the dealloc race. The bug: the
+    /// forwarding `Task.detached` captured `[weak self]`, so when the only
+    /// strong reference to the service is dropped mid-stream the task does NOT
+    /// keep it alive — the service deallocates and `await self?.restoreIdleState()`
+    /// no-ops, dropping the cleanup. The fix strong-captures `self`, so the task
+    /// retains the service until it finishes; the service must therefore still
+    /// be alive while a generation is in flight even after every external strong
+    /// reference is released.
+    func test_generate_consumerDropsEarly_taskRetainsServiceUntilCleanup() async throws {
+        let backend = MockVideoBackend()
+        backend.setPlan(.init(
+            events: [
+                .queued,
+                .generating(fractionComplete: 0.5),
+                .completed(URL(fileURLWithPath: "/tmp/vid.mp4"))
+            ],
+            delayPerEventNs: 500_000_000  // 500ms — task reliably in-flight at the assert
+        ))
+
+        weak var weakService: VideoGenerationService?
+        var stream: AsyncThrowingStream<VideoGenerationEvent, Error>?
+
+        // `generate` is `async throws`, so the submission handshake must run
+        // while the service is alive; the service is dropped right after.
+        do {
+            let service = VideoGenerationService(backend: backend)
+            weakService = service
+            stream = try await service.generate(prompt: "x", config: Self.config)
+            XCTAssertEqual(service.state, .generating)
+        }
+
+        XCTAssertNotNil(
+            weakService,
+            "forwarding task must retain the service while a generation is in flight (regressed under [weak self])"
+        )
+
+        withExtendedLifetime(stream) {}
+        stream = nil
+    }
+
+    /// Polls `service.state` until it equals `expected` or the timeout elapses.
+    /// Used for transitions that complete on an async actor hop after a stream
+    /// drop, where a synchronous assert would race the cleanup.
+    private func pollUntilState(
+        _ service: VideoGenerationService,
+        equals expected: VideoGenerationService.State,
+        timeoutNs: UInt64
+    ) async throws {
+        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNs
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if service.state == expected { return }
+            try await Task.sleep(nanoseconds: 5_000_000)  // 5ms
+        }
+    }
+
     func test_generate_trailingStreamError_propagates() async throws {
         struct NetworkError: Error {}
         let backend = MockVideoBackend()
