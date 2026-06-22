@@ -186,7 +186,12 @@ struct PromptRenderer {
         // (which renders tools natively in the enum) fall through to the safe
         // text-only fallback.
         if chatTemplateRaw != nil, !tools.isEmpty, !template.rendersToolsNatively {
-            let reason = renderError.map { " (underlying template error: \($0.localizedDescription))" } ?? ""
+            // Use `String(describing:)` rather than `localizedDescription`: a
+            // `Jinja.TemplateException` carries its `raise_exception` message in
+            // a stored property but does not conform to `LocalizedError`, so
+            // `localizedDescription` returns the generic Foundation string and
+            // loses the actual reason (e.g. the alternation constraint text).
+            let reason = renderError.map { " (underlying template error: \(String(describing: $0)))" } ?? ""
             throw InferenceError.inferenceFailure(
                 "PromptRenderer: the model's embedded chat template could not be "
                     + "rendered\(reason), and the \(String(describing: template)) text-only "
