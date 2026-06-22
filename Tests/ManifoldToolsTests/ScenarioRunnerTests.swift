@@ -334,7 +334,11 @@ final class ScenarioRunnerTests: XCTestCase {
             requiredTools: ["sample_repo_search"],
             assertions: [
                 Scenario.Assertion(kind: "toolInvoked", value: "sample_repo_search", values: nil, message: nil),
-                Scenario.Assertion(kind: "toolResultErrorKind", value: "sample_repo_search", values: ["transient"], message: nil),
+                // The transient failure is recovered *internally* by the dispatch
+                // loop's bounded retry, so only the SUCCESS result is surfaced.
+                // `toolResultErrorKind` can't express the nil-success case, so the
+                // "no transient surfaced" contract is asserted via XCTAssert below;
+                // here we only assert the recovered answer reaches the model.
                 Scenario.Assertion(kind: "containsAll", value: nil, values: ["recovered", "CRASH-RECOVERY-754"], message: nil)
             ],
             backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
@@ -347,21 +351,34 @@ final class ScenarioRunnerTests: XCTestCase {
             ]
         )
         let registry = ToolRegistry(tools: [crashingTool])
-        // The retry varies its query. The production dispatch loop
-        // short-circuits two *identical* consecutive tool calls (a safety
-        // valve against loops), so a faithful recovery turn — like a real
-        // model — issues a distinct query on the second attempt.
+        // Auto-retry recovers transparently: the model issues a SINGLE tool call,
+        // the executor's first attempt returns `.transient`, and the dispatch
+        // loop retries the identical call with backoff. The retry consumes the
+        // executor's success result, which is the only `.toolResult` surfaced to
+        // the model — the transient attempt is swallowed internally. The model
+        // therefore never sees the failure and goes straight to its final answer.
         let backend = ScriptedBackend(turns: [
             .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash"}"#),
-            .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash recovery"}"#),
             .tokens(["The search recovered and found CRASH-RECOVERY-754."])
         ])
 
         let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
         XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
-        XCTAssertEqual(outcome.toolCallsExecuted, ["sample_repo_search", "sample_repo_search"])
+        // One model-emitted tool call; the internal retry is NOT a separate
+        // recorded call (the loop surfaces one `.toolCall` per model emission).
+        XCTAssertEqual(outcome.toolCallsExecuted, ["sample_repo_search"])
+        // Exactly one tool result surfaces, and it is the recovered SUCCESS —
+        // proving the transient was retried away internally rather than shown
+        // to the model.
+        XCTAssertEqual(outcome.toolResults.count, 1)
         XCTAssertTrue(outcome.toolResults.contains { $0.errorKind == nil && $0.content.contains("CRASH-RECOVERY-754") })
+        // `ToolResultRecord.errorKind` is the raw-value string (nil for success).
+        let surfacedTransient = outcome.toolResults.contains { $0.errorKind == "transient" }
+        XCTAssertFalse(
+            surfacedTransient,
+            "the transient attempt must be recovered internally, never surfaced"
+        )
     }
 
     func test_runner_executesAppIntentStyleToolAndRecordsSideEffect() async throws {
