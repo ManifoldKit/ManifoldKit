@@ -475,7 +475,7 @@ final class ScenarioRunnerTests: XCTestCase {
         }
 
         let logger = try TranscriptLogger(url: path)
-        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u"))
+        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u", requiredTools: ["now"]))
         logger.append(.toolCall(scenarioId: "t", name: "now", arguments: "{}"))
         logger.append(.final(scenarioId: "t", text: "done"))
 
@@ -487,6 +487,161 @@ final class ScenarioRunnerTests: XCTestCase {
         for line in lines {
             XCTAssertNoThrow(try JSONSerialization.jsonObject(with: line), "each row must be valid JSON")
         }
+    }
+
+    func test_transcriptLogger_stampsBackendModelQuantOnEveryRecord() throws {
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("attributed-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let logger = try TranscriptLogger(url: path, backend: "ollama", model: "qwen3.5-9b", quant: "q4_K_M")
+        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u", requiredTools: ["now"]))
+        logger.append(.toolCall(scenarioId: "t", name: "now", arguments: "{}"))
+        logger.append(.assertion(scenarioId: "t", passed: true, message: "ok"))
+
+        let data = try Data(contentsOf: path)
+        let lines = data.split(separator: 0x0A).map { Data($0) }
+        XCTAssertEqual(lines.count, 3)
+        for line in lines {
+            let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: line) as? [String: Any])
+            XCTAssertEqual(object["backend"] as? String, "ollama", "every record must be attributable to its backend")
+            XCTAssertEqual(object["model"] as? String, "qwen3.5-9b", "every record must carry its model")
+            XCTAssertEqual(object["quant"] as? String, "q4_K_M", "every record must carry its quant when present")
+        }
+    }
+
+    func test_transcriptLogger_omitsQuantWhenNil_andKeepsRecordShapeBackwardCompatible() throws {
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("no-quant-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        // No attribution at all → original record shape, backward compatible.
+        let bare = try TranscriptLogger(url: path)
+        bare.append(.final(scenarioId: "t", text: "done"))
+        let bareData = try Data(contentsOf: path)
+        let firstLine = try XCTUnwrap(bareData.split(separator: UInt8(0x0A)).first.map { Data($0) })
+        let bareObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: firstLine) as? [String: Any]
+        )
+        XCTAssertNil(bareObject["backend"], "no attribution → no backend key")
+        XCTAssertNil(bareObject["model"])
+        XCTAssertNil(bareObject["quant"])
+        XCTAssertEqual(bareObject["kind"] as? String, "final", "existing field names must be unchanged")
+    }
+
+    // MARK: - ConformanceScorer
+
+    /// Builds a fixture transcript covering an all-pass, a partial, and an
+    /// errored scenario across two models, then scores it.
+    func test_conformanceScorer_producesRowsAndVerdictsFromTranscript() throws {
+        let lines = [
+            // all-pass: 2 passing assertions, 1 tool call, model A
+            #"{"kind":"prompt","scenario":"s1","backend":"ollama","model":"A","quant":"q4_K_M"}"#,
+            #"{"kind":"tool_call","scenario":"s1","backend":"ollama","model":"A","quant":"q4_K_M","name":"now"}"#,
+            #"{"kind":"assertion","scenario":"s1","backend":"ollama","model":"A","quant":"q4_K_M","passed":true}"#,
+            #"{"kind":"assertion","scenario":"s1","backend":"ollama","model":"A","quant":"q4_K_M","passed":true}"#,
+            // partial: 1 pass, 1 fail, model A
+            #"{"kind":"assertion","scenario":"s2","backend":"ollama","model":"A","quant":"q4_K_M","passed":true}"#,
+            #"{"kind":"assertion","scenario":"s2","backend":"ollama","model":"A","quant":"q4_K_M","passed":false}"#,
+            // errored: explicit error record, model B
+            #"{"kind":"prompt","scenario":"s3","backend":"ollama","model":"B"}"#,
+            #"{"kind":"error","scenario":"s3","backend":"ollama","model":"B"}"#,
+            // a torn / malformed final line must be skipped, not fatal
+            #"{"kind":"assertion","scenario":"s3","backend":"oll"#
+        ].joined(separator: "\n")
+
+        let rows = ConformanceScorer.score(jsonl: lines)
+        XCTAssertEqual(rows.count, 3, "one row per (backend, model, quant, scenario)")
+
+        let s1 = try XCTUnwrap(rows.first { $0.scenario == "s1" })
+        XCTAssertEqual(s1.model, "A")
+        XCTAssertEqual(s1.quant, "q4_K_M")
+        XCTAssertEqual(s1.assertionsPassed, 2)
+        XCTAssertEqual(s1.assertionsFailed, 0)
+        XCTAssertEqual(s1.toolCallCount, 1)
+        XCTAssertFalse(s1.errored)
+        XCTAssertEqual(s1.verdict, .pass)
+
+        let s2 = try XCTUnwrap(rows.first { $0.scenario == "s2" })
+        XCTAssertEqual(s2.assertionsPassed, 1)
+        XCTAssertEqual(s2.assertionsFailed, 1)
+        XCTAssertEqual(s2.verdict, .partial)
+
+        let s3 = try XCTUnwrap(rows.first { $0.scenario == "s3" })
+        XCTAssertEqual(s3.model, "B")
+        XCTAssertNil(s3.quant)
+        XCTAssertTrue(s3.errored)
+        XCTAssertEqual(s3.verdict, .errored)
+    }
+
+    func test_conformanceScorer_failVerdictWhenNoAssertionsPass() {
+        let line = #"{"kind":"assertion","scenario":"s","backend":"mock","model":"m","passed":false}"#
+        let rows = ConformanceScorer.score(jsonl: line)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.verdict, .fail)
+    }
+
+    func test_conformanceScorer_roundTripsThroughJSON() throws {
+        let line = #"{"kind":"assertion","scenario":"s","backend":"ollama","model":"A","quant":"q8_0","passed":true}"#
+        let rows = ConformanceScorer.score(jsonl: line)
+        let data = try ConformanceScorer.encodeJSON(rows)
+        let decoded = try JSONDecoder().decode([ConformanceScorer.ResultRow].self, from: data)
+        XCTAssertEqual(decoded, rows, "rows must survive a JSON round-trip")
+    }
+
+    /// Tool-selection ConfusionCounts must match the shared core metric: a
+    /// scenario requiring `now` where the model calls `now` plus a decoy
+    /// `weather` is tp=1 / fp=1 / fn=0; a scenario requiring `calc` where the
+    /// model calls nothing is tp=0 / fp=0 / fn=1.
+    func test_conformanceScorer_computesToolSelectionConfusionAndMacroAverage() {
+        let lines = [
+            #"{"kind":"prompt","scenario":"s1","backend":"ollama","model":"A","requiredTools":["now"]}"#,
+            #"{"kind":"tool_call","scenario":"s1","backend":"ollama","model":"A","name":"now"}"#,
+            #"{"kind":"tool_call","scenario":"s1","backend":"ollama","model":"A","name":"weather"}"#,
+            #"{"kind":"prompt","scenario":"s2","backend":"ollama","model":"A","requiredTools":["calc"]}"#,
+            // no tool_call for s2 → a missed required tool (false negative)
+            // s3 is a no-tool scenario: empty requiredTools, excluded from macro avg
+            #"{"kind":"prompt","scenario":"s3","backend":"ollama","model":"A","requiredTools":[]}"#,
+            #"{"kind":"final","scenario":"s3","backend":"ollama","model":"A","text":"hello"}"#
+        ].joined(separator: "\n")
+
+        let rows = ConformanceScorer.score(jsonl: lines)
+
+        let s1 = rows.first { $0.scenario == "s1" }
+        XCTAssertEqual(s1?.toolTP, 1)
+        XCTAssertEqual(s1?.toolFP, 1, "the decoy `weather` call is a false positive")
+        XCTAssertEqual(s1?.toolFN, 0)
+        XCTAssertEqual(s1?.calledTools, ["now", "weather"], "called tools are sorted + de-duped")
+        XCTAssertEqual(s1?.confusion.precision ?? 0, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(s1?.confusion.recall ?? 0, 1.0, accuracy: 0.0001)
+
+        let s2 = rows.first { $0.scenario == "s2" }
+        XCTAssertEqual(s2?.toolTP, 0)
+        XCTAssertEqual(s2?.toolFP, 0)
+        XCTAssertEqual(s2?.toolFN, 1, "required `calc` never called → false negative")
+
+        let s3 = rows.first { $0.scenario == "s3" }
+        XCTAssertFalse(s3?.isToolBearing ?? true, "empty requiredTools → not tool-bearing")
+
+        // Macro average is over the two tool-bearing rows only (s3 excluded):
+        // precision = mean(0.5, 0.0) = 0.25; recall = mean(1.0, 0.0) = 0.5.
+        let macro = ConformanceScorer.aggregate(rows)
+        XCTAssertEqual(macro.precision, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(macro.recall, 0.5, accuracy: 0.0001)
     }
 }
 

@@ -113,6 +113,7 @@ struct CLI {
           --help                Show this text.
 
         SUBCOMMANDS
+          score <file.jsonl>    Score a transcript into a per-(model × scenario) matrix.
           test-uplift           Inspect or control ~/.claude/state/bck-test-uplift/.
 
         EXIT
@@ -282,11 +283,71 @@ enum TestUpliftCLI {
     }
 }
 
+/// `manifold-tools score <file.jsonl> [--csv]` — parses a transcript and prints
+/// the per-(backend × model × quant × scenario) conformance matrix. Defaults to
+/// JSON; `--csv` emits CSV instead.
+enum ScoreCLI {
+    static func run(_ argv: [String]) -> Int32 {
+        if argv.first == "--help" || argv.first == "-h" || argv.isEmpty {
+            print("""
+            manifold-tools score — score a transcript JSONL into a conformance matrix
+
+            USAGE
+              manifold-tools score <file.jsonl> [--csv]
+            """)
+            return argv.isEmpty ? 2 : 0
+        }
+        var path: String?
+        var csv = false
+        for arg in argv {
+            switch arg {
+            case "--csv": csv = true
+            default:
+                if path == nil { path = arg } else {
+                    FileHandle.standardError.write(Data("manifold-tools score: unexpected argument '\(arg)'\n".utf8))
+                    return 2
+                }
+            }
+        }
+        guard let path else {
+            FileHandle.standardError.write(Data("manifold-tools score: missing <file.jsonl>\n".utf8))
+            return 2
+        }
+        let url = URL(fileURLWithPath: path)
+        do {
+            let rows = try ConformanceScorer.score(fileAt: url)
+            if csv {
+                print(ConformanceScorer.encodeCSV(rows))
+            } else {
+                let data = try ConformanceScorer.encodeJSON(rows)
+                print(String(data: data, encoding: .utf8) ?? "[]")
+            }
+            // Macro-averaged tool-selection metrics to stderr (stdout stays pure
+            // JSON/CSV) — the cross-backend-comparable SUMMARY line, same shape
+            // as the MLX/llama soak CLIs report.
+            let macro = ConformanceScorer.aggregate(rows)
+            let toolBearing = rows.filter { $0.isToolBearing }.count
+            let summary = String(
+                format: "SUMMARY rows=%d tool_bearing=%d precision=%.4f recall=%.4f f1=%.4f\n",
+                rows.count, toolBearing, macro.precision, macro.recall, macro.f1
+            )
+            FileHandle.standardError.write(Data(summary.utf8))
+            return 0
+        } catch {
+            FileHandle.standardError.write(Data("manifold-tools score: \(error)\n".utf8))
+            return 1
+        }
+    }
+}
+
 @MainActor
 func runCLI() async -> Int32 {
     let argv = Array(CommandLine.arguments.dropFirst())
     if argv.first == "test-uplift" {
         return TestUpliftCLI.run(Array(argv.dropFirst()))
+    }
+    if argv.first == "score" {
+        return ScoreCLI.run(Array(argv.dropFirst()))
     }
     let cli = CLI.parse(argv)
 
@@ -317,14 +378,7 @@ func runCLI() async -> Int32 {
         }
     }
 
-    let logger: TranscriptLogger
-    do {
-        logger = try TranscriptLogger(url: cli.output)
-    } catch {
-        FileHandle.standardError.write(Data("failed to open log: \(error)\n".utf8))
-        return 1
-    }
-    print("Logging to \(logger.destination.path)")
+    print("Logging to \(cli.output.path)")
 
     let registry = ToolRegistry()
     registry.register(NowTool.makeExecutor())
@@ -340,6 +394,15 @@ func runCLI() async -> Int32 {
         for model in models {
             print("\n── \(scenario.id) via \(cli.backend.rawValue)/\(model) ──")
             do {
+                // One logger per (backend, model) run, all appending to the same
+                // file. Per-record attribution makes the interleaved transcript
+                // scorable per-model without parsing stdout.
+                let logger = try TranscriptLogger(
+                    url: cli.output,
+                    backend: cli.backend.rawValue,
+                    model: model,
+                    quant: quantLabel(from: model)
+                )
                 let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
                 let runner = ScenarioRunner(service: service, logger: logger)
                 let outcome = try await runner.run(scenario)
@@ -362,9 +425,35 @@ func runCLI() async -> Int32 {
         print("\nAll scenarios passed.")
         return 0
     } else {
-        print("\nOne or more scenarios failed — see \(logger.destination.path)")
+        print("\nOne or more scenarios failed — see \(cli.output.path)")
         return 1
     }
+}
+
+/// Best-effort quantization label derived from a model id. Recognises the
+/// common GGUF/Ollama suffix conventions (`...:q4_K_M`, `...-Q5_K_S`,
+/// `...-q8_0`, `...-int4`, `...-fp16`). Returns nil when nothing matches —
+/// `quant` is optional and a missing label is fine.
+func quantLabel(from model: String) -> String? {
+    // Split on the last ':' (Ollama tag) or '-' segment and look for a token
+    // that looks like a quant marker.
+    let separators = CharacterSet(charactersIn: ":-/")
+    let tokens = model
+        .components(separatedBy: separators)
+        .filter { !$0.isEmpty }
+    for token in tokens.reversed() {
+        let lower = token.lowercased()
+        if lower.hasPrefix("q") && lower.dropFirst().first?.isNumber == true {
+            return token            // q4_K_M, q8_0, q5_k_s, ...
+        }
+        if lower == "fp16" || lower == "fp32" || lower == "bf16" || lower == "f16" {
+            return token
+        }
+        if lower.hasPrefix("int") && lower.dropFirst(3).allSatisfy(\.isNumber) && lower.count > 3 {
+            return token            // int4, int8
+        }
+    }
+    return nil
 }
 
 @MainActor
