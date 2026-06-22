@@ -160,13 +160,18 @@ struct PromptRenderer {
         // shipping a tool-less prompt and reporting a mystery parse failure.
         //
         // Attempt the embedded Jinja render once. If it succeeds, return it.
+        // Capture the underlying render error so a fail-fast refusal can name
+        // *why* the template was rejected (e.g. an alternation `raise_exception`
+        // from a Mistral-family template) rather than reporting a mystery miss.
+        var renderError: Error?
         if let chatTemplateRaw,
            let rendered = JinjaPromptRenderer.render(
                rawTemplate: chatTemplateRaw,
                messages: messages,
                systemPrompt: systemPrompt,
                tools: tools,
-               documents: documents
+               documents: documents,
+               errorSink: { renderError = $0 }
            ) {
             if warnOnCapabilityLoss {
                 warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: true)
@@ -181,9 +186,15 @@ struct PromptRenderer {
         // (which renders tools natively in the enum) fall through to the safe
         // text-only fallback.
         if chatTemplateRaw != nil, !tools.isEmpty, !template.rendersToolsNatively {
+            // Use `String(describing:)` rather than `localizedDescription`: a
+            // `Jinja.TemplateException` carries its `raise_exception` message in
+            // a stored property but does not conform to `LocalizedError`, so
+            // `localizedDescription` returns the generic Foundation string and
+            // loses the actual reason (e.g. the alternation constraint text).
+            let reason = renderError.map { " (underlying template error: \(String(describing: $0)))" } ?? ""
             throw InferenceError.inferenceFailure(
                 "PromptRenderer: the model's embedded chat template could not be "
-                    + "rendered, and the \(String(describing: template)) text-only "
+                    + "rendered\(reason), and the \(String(describing: template)) text-only "
                     + "fallback cannot carry the \(tools.count) requested tool "
                     + "definition(s). Refusing to send a tool-less prompt that would "
                     + "silently disable tool calling. Use a model whose chat template "

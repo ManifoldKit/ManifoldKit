@@ -395,4 +395,136 @@ final class JinjaPromptRendererTests: XCTestCase {
             "Tool role must appear in the rendered output"
         )
     }
+
+    // MARK: - #1992: alternation-strict templates (Mistral-v0.3) — system fold
+
+    /// A minimal alternation-strict template modelled on Mistral-v0.3: it
+    /// asserts user/assistant strictly alternate from index 0, so a leading
+    /// `system` turn (index 0 is not `user`) triggers `raise_exception`. This is
+    /// exactly the guard the real Mistral-v0.3 `tokenizer.chat_template` uses.
+    private static let mistralAlternationTemplate = """
+    {{- '<s>' }}
+    {%- for message in messages %}
+        {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}
+            {{- raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+        {%- endif %}
+        {%- if message['role'] == 'user' %}
+            {{- '[INST] ' + message['content'] + ' [/INST]' }}
+        {%- elif message['role'] == 'assistant' %}
+            {{- message['content'] + '</s>' }}
+        {%- endif %}
+    {%- endfor %}
+    """
+
+    /// The retry folds the system prompt into the first user turn so the
+    /// alternation-strict template renders instead of raising. Both the system
+    /// text and the user text must be present, folded into a single `[INST]`.
+    func test_mistral_foldsSystemIntoFirstUser_whenLeadingSystemRejected() throws {
+        let messages = [msg("user", "What is 2+2?")]
+
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: Self.mistralAlternationTemplate,
+                messages: messages,
+                systemPrompt: "You are a terse calculator."
+            ),
+            "Render-retry must fold the system prompt into the first user turn so the alternation-strict template renders (instead of returning nil)"
+        )
+
+        XCTAssertTrue(
+            rendered.contains("You are a terse calculator."),
+            "System text must be folded into the prompt"
+        )
+        XCTAssertTrue(
+            rendered.contains("What is 2+2?"),
+            "Original user text must still be present"
+        )
+        // The fold puts both inside the SAME [INST] block (no separate system turn).
+        XCTAssertTrue(
+            rendered.contains("You are a terse calculator.\n\nWhat is 2+2?"),
+            "System text must be prepended to the user content with a blank-line separator"
+        )
+        // No standalone system turn was emitted (the template has no system arm,
+        // and a leading system role would have raised).
+        XCTAssertEqual(
+            rendered.components(separatedBy: "[INST]").count - 1, 1,
+            "Exactly one user [INST] block — system was folded in, not emitted separately"
+        )
+    }
+
+    /// SABOTAGE-VERIFIED (see PR body): with the render-retry reverted, this
+    /// template raises on the leading system turn and `render` returns `nil`.
+    /// This asserts the no-system / no-user edge cases do NOT retry — they fall
+    /// through exactly as before (nothing to fold).
+    func test_mistral_noSystemPrompt_doesNotRetry_andStillRenders() throws {
+        // No system prompt → no leading system turn synthesized → the first
+        // (and only) message is the user turn at index 0 → alternation holds →
+        // renders on the first attempt, no retry needed.
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: Self.mistralAlternationTemplate,
+                messages: [msg("user", "Hi")],
+                systemPrompt: nil
+            ),
+            "With no system prompt there is no leading system turn to reject"
+        )
+        XCTAssertTrue(rendered.contains("[INST] Hi [/INST]"))
+    }
+
+    /// No-regression: a template that ACCEPTS a leading system role must render
+    /// IDENTICALLY with the fix in place — the first render succeeds, so the
+    /// retry never fires and a `system` turn is still emitted. This is the key
+    /// safety property: system-accepting templates are byte-identical to before.
+    func test_systemAcceptingTemplate_stillEmitsSystemTurn_retryNeverFires() throws {
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: Self.qwen25Template,
+                messages: [msg("user", "Hi")],
+                systemPrompt: "You are a pirate."
+            )
+        )
+        // Qwen emits the system prompt inside an explicit `<|im_start|>system`
+        // turn. If the retry had fired (folding into the user turn), the system
+        // text would appear inside the user turn instead — it does not.
+        XCTAssertTrue(
+            rendered.contains("<|im_start|>system\nYou are a pirate.<|im_end|>"),
+            "System-accepting template must still emit a discrete system turn — the retry must NOT fire"
+        )
+        XCTAssertFalse(
+            rendered.contains("You are a pirate.\n\nHi"),
+            "System text must NOT be folded into the user turn for a system-accepting template"
+        )
+    }
+
+    /// The fail-fast refusal message must now name the underlying template error
+    /// (#1992 observability) so a transcript is diagnosable. Use an
+    /// alternation-strict template with NO user turn to fold into (an
+    /// assistant-only history) so even the retry cannot rescue it, plus tools
+    /// requested via a non-native-tool enum → the throw path fires.
+    func test_refusalMessage_surfacesUnderlyingTemplateError() throws {
+        // assistant-first history: index 0 is assistant, so alternation fails and
+        // there is no user turn for the fold retry to target → genuine miss.
+        let renderer = PromptRenderer(
+            template: .chatML,
+            chatTemplateRaw: Self.mistralAlternationTemplate
+        )
+        let toolDefs = [Self.weatherTool()]
+        XCTAssertThrowsError(
+            try renderer.render(
+                messages: [msg("assistant", "hello first")],
+                systemPrompt: nil,
+                tools: toolDefs
+            )
+        ) { error in
+            let description = "\(error)"
+            XCTAssertTrue(
+                description.contains("underlying template error:"),
+                "Refusal must interpolate the underlying render error so the transcript is diagnosable; got: \(description)"
+            )
+            XCTAssertTrue(
+                description.contains("alternate"),
+                "The Mistral alternation raise_exception text must reach the refusal message; got: \(description)"
+            )
+        }
+    }
 }
