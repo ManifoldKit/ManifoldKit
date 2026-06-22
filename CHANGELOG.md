@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.59.0](https://github.com/roryford/ManifoldKit/compare/v0.58.0...v0.59.0) (2026-06-22)
+
+### ⚠ BREAKING CHANGES
+
+**Built-in inference cost estimation is removed.** ManifoldKit no longer owns a model-pricing table or estimates per-call cost — keeping accurate prices for every provider was a perpetual maintenance burden, and the metric/trace pipeline already carries everything needed to cost a call downstream. Removed public symbols: `InferenceCostEstimator` (`ManifoldCloudCore`); `InferenceMetric.estimatedCostUSD` / `.isCostApproximate` / `.costTableDate` and their `init` parameters; and the `gen_ai.usage.cost_usd` / `cost_is_approximate` / `cost_table_date` span attributes (`GenAIAttributeKeys.costUSD` / `.costApproximate` / `.costTableDate`). Compute cost in your own `InferenceMetricSink` by joining the model id and token counts against a caller-owned price table ([#2021](https://github.com/roryford/ManifoldKit/issues/2021)). Migration: [`docs/MIGRATION-cost-estimation-removed.md`](https://github.com/roryford/ManifoldKit/blob/main/docs/MIGRATION-cost-estimation-removed.md).
+
+```swift
+func record(_ metric: InferenceMetric) async {
+    guard let price = pricePerMillion[metric.model] else { return }   // caller-owned table
+    let costUSD = price.input  * Double(metric.promptTokens)     / 1_000_000
+                + price.output * Double(metric.completionTokens) / 1_000_000
+    // …forward costUSD to your own telemetry
+}
+```
+
+### Highlights
+
+**Tool-call conformance — a static claim plus a render round-trip (#2005 Layers 1–2).** Two layers land for steering hosts toward models that can actually drive tool calls. `ModelInfo.toolCallClaim` parses a model's embedded chat template into a `ChatTemplateToolDescriptor` — an honest *claim* (`toolsExpressible` plus the declared call dialect) where a negative is trustworthy and a positive is necessary-but-not-sufficient ([#2009](https://github.com/roryford/ManifoldKit/issues/2009)). `RenderConsistencyChecker` then round-trips a canonical tool-bearing prompt through the real Jinja renderer — no live inference — and flags templates that *claim* tools but silently drop them on render, the #1909 failure class ([#2022](https://github.com/roryford/ManifoldKit/issues/2022)). The measured per-model soak (Layer 3) stays deferred.
+
+```swift
+let claim = model.toolCallClaim                       // necessary-but-not-sufficient
+if claim.toolsExpressible,
+   RenderConsistencyChecker.check(chatTemplateRaw: model.chatTemplateRaw).status == .consistent {
+    // template declares tools AND they survive a render round-trip
+}
+```
+
+**Templateless prompt rendering threads images and pairs tool results.** GGUF models whose embedded chat template lacks tool/vision support now render through the templateless path with image parts threaded and tool results paired to their originating calls, instead of being flattened to text — closing a silent fidelity gap on local backends ([#2014](https://github.com/roryford/ManifoldKit/issues/2014)).
+
+### Fixes
+
+* UX-review findings across server, chat, voice, and model management ([#2007](https://github.com/roryford/ManifoldKit/issues/2007))
+* Derive the Mistral stop sequence from `</s>` instead of the ChatML default ([#2008](https://github.com/roryford/ManifoldKit/issues/2008), [#2019](https://github.com/roryford/ManifoldKit/issues/2019))
+* Enforce integer-literal numeric constraints in `JSONSchemaValidator` ([#2011](https://github.com/roryford/ManifoldKit/issues/2011))
+* Guarantee state-restore cleanup in media-generation services when the consumer drops early ([#2018](https://github.com/roryford/ManifoldKit/issues/2018))
+* Guarantee task-registry and background-scheduler cleanup on completion ([#2017](https://github.com/roryford/ManifoldKit/issues/2017))
+
+### Performance Improvements
+
+* Cache markdown block-marker regexes and use set membership in history validation ([#2012](https://github.com/roryford/ManifoldKit/issues/2012))
+* Cache the summary-field regex and thinking transforms in `AnchoredCompressionStrategy` ([#2016](https://github.com/roryford/ManifoldKit/issues/2016))
+
 ## [0.58.0](https://github.com/roryford/ManifoldKit/compare/v0.57.0...v0.58.0) (2026-06-21)
 
 ### Highlights
