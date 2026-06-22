@@ -1,0 +1,10 @@
+backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict,toolTP,toolFP,toolFN,precision,recall,f1
+openai-compat,poolside/laguna-m.1:free,,01-now,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,02-calc,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,03-read,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,04-list,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,meeting-notes-summary,4,0,false,2,pass,2,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,shopping-list-budget,5,0,false,2,pass,2,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,parallel-readme-comparison,3,0,false,2,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,poolside/laguna-m.1:free,,oversize-tool-output,2,1,false,2,partial,1,1,0,0.5000,1.0000,0.6667
+openai-compat,poolside/laguna-m.1:free,,structured-json-extraction,0,1,false,0,fail,0,0,0,0.0000,0.0000,0.0000

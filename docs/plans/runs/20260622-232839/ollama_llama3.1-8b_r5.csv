@@ -1,0 +1,10 @@
+backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict,toolTP,toolFP,toolFN,precision,recall,f1
+ollama,llama3.1-8b,,01-now,1,1,false,1,partial,1,0,0,1.0000,1.0000,1.0000
+ollama,llama3.1-8b,,02-calc,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+ollama,llama3.1-8b,,03-read,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+ollama,llama3.1-8b,,04-list,1,1,false,1,partial,1,0,0,1.0000,1.0000,1.0000
+ollama,llama3.1-8b,,meeting-notes-summary,4,0,false,3,pass,2,0,0,1.0000,1.0000,1.0000
+ollama,llama3.1-8b,,shopping-list-budget,0,0,false,0,fail,0,0,2,0.0000,0.0000,0.0000
+ollama,llama3.1-8b,,parallel-readme-comparison,0,0,false,0,fail,0,0,1,0.0000,0.0000,0.0000
+ollama,llama3.1-8b,,oversize-tool-output,0,0,false,1,fail,1,0,0,1.0000,1.0000,1.0000
+ollama,llama3.1-8b,,structured-json-extraction,0,1,false,6,fail,0,2,0,0.0000,0.0000,0.0000

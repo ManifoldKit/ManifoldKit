@@ -1,0 +1,933 @@
+{"advertisedTools":["now"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["now"],"scenario":"01-now","system":"You have tools. When a tool can answer, call it. Never guess time, dates, or numeric calculations — always call the relevant tool and quote its result verbatim.","ts":"2026-06-22T14:40:22Z","user":"What time is it? Reply with exactly the timestamp the tool returns."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:22Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:23Z"}
+{"arguments":"{}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"now","scenario":"01-now","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","content":"{\"timestamp\":\"2099-01-01T00:00:00Z\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"now","scenario":"01-now","ts":"2026-06-22T14:40:23Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"209","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"9","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"-","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"01","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"-","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"01","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"T","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"00","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":":","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"00","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":":","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"00","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"Z","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"01-now","text":"2099-01-01T00:00:00Z","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `now` to actually be dispatched — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"01-now","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should quote the OOD timestamp from `now` — found","model":"openai\/gpt-oss-120b","passed":true,"scenario":"01-now","ts":"2026-06-22T14:40:24Z"}
+{"advertisedTools":["calc"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["calc"],"scenario":"02-calc","system":"You have tools. When a tool can answer, call it. Never perform arithmetic in your head — always call `calc` and quote its answer.","ts":"2026-06-22T14:40:24Z","user":"What is 7823 multiplied by 41? Reply with only the number the tool returns."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:24Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:25Z"}
+{"arguments":"{\n  \"a\": 7823,\n  \"b\": 41,\n  \"op\": \"*\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"calc","scenario":"02-calc","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","content":"{\"answer\":320743}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"calc","scenario":"02-calc","ts":"2026-06-22T14:40:25Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"320","ts":"2026-06-22T14:40:26Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"743","ts":"2026-06-22T14:40:26Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"","ts":"2026-06-22T14:40:26Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"02-calc","text":"320743","ts":"2026-06-22T14:40:26Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `calc` to actually be dispatched — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"02-calc","ts":"2026-06-22T14:40:26Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should quote the calc result 320743 — found","model":"openai\/gpt-oss-120b","passed":true,"scenario":"02-calc","ts":"2026-06-22T14:40:26Z"}
+{"advertisedTools":["read_file"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["read_file"],"scenario":"03-read","system":"You have tools. When the user asks about a file, always call `read_file` and quote the file's contents verbatim in your reply. Never guess file contents.","ts":"2026-06-22T14:40:26Z","user":"Read the file example.txt in the fixtures sandbox and reply with exactly its contents."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:27Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:28Z"}
+{"arguments":"{\n  \"path\": \"example.txt\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"03-read","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","content":"{\"path\":\"example.txt\",\"content\":\"NONCE-example-2026-04-22\\n\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"03-read","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"NON","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"CE","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"-example","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"-","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"202","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"6","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"-","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"04","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"-","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"22","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"03-read","text":"NONCE-example-2026-04-22","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `read_file` to actually be dispatched — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"03-read","ts":"2026-06-22T14:40:28Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should echo the nonce embedded in example.txt — found","model":"openai\/gpt-oss-120b","passed":true,"scenario":"03-read","ts":"2026-06-22T14:40:28Z"}
+{"advertisedTools":["list_dir"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["list_dir"],"scenario":"04-list","system":"You have tools. When the user asks what is inside a directory, always call `list_dir` with dir=\".\" and then list every filename it returns, one per line. Never invent filenames.","ts":"2026-06-22T14:40:28Z","user":"List everything in the fixtures sandbox. Include every filename the tool returns."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:29Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:30Z"}
+{"arguments":"{\n  \"dir\": \".\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"list_dir","scenario":"04-list","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","content":"{\"dir\":\".\",\"entries\":[\"a.txt\",\"b.txt\",\"c.txt\",\"example.txt\",\"notes\",\"oversize-output.txt\",\"readmes\",\"shopping-list.txt\"]}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"list_dir","scenario":"04-list","ts":"2026-06-22T14:40:30Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"a","ts":"2026-06-22T14:40:31Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":".txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"b","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":".txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"c","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":".txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"example","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":".txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"notes","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"overs","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"ize","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"-output","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":".txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"read","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"mes","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"  \n","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"shopping","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"-list","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":".txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"04-list","text":"a.txt  \nb.txt  \nc.txt  \nexample.txt  \nnotes  \noversize-output.txt  \nreadmes  \nshopping-list.txt","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires list_dir to actually be dispatched — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"04-list","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should enumerate all three seeded filenames","model":"openai\/gpt-oss-120b","passed":true,"scenario":"04-list","ts":"2026-06-22T14:40:32Z"}
+{"advertisedTools":["list_dir","read_file"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["list_dir","read_file"],"scenario":"meeting-notes-summary","system":"You have tools. For questions about workspace notes, first call `list_dir`, then call `read_file` for the relevant note, and only then summarize facts from tool output. Never invent note contents.","ts":"2026-06-22T14:40:32Z","user":"Summarize the standup note in the notes directory. Include the Aurora and Beacon statuses."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:32Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"arguments":"{\n  \"dir\": \"notes\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"list_dir","scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","content":"{\"entries\":[\"archive.md\",\"standup.md\"],\"dir\":\"notes\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"list_dir","scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:33Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:34Z"}
+{"arguments":"{\n  \"path\": \"notes\/standup.md\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","content":"{\"path\":\"notes\\\/standup.md\",\"content\":\"# Standup\\n\\n- Aurora: shipped the deterministic tool harness.\\n- Beacon: blocked on MCP credentials for the Everything server.\\n- Nonce: MEETING-NOTES-754.\\n\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"**","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"Stand","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"up","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" Note","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" Summary","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"**\n\n","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"-","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" **","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"Aur","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"ora","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":":**","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" Sh","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"ipped","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" the","ts":"2026-06-22T14:40:34Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" deterministic","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" tool","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" harness","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":".","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"  \n","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"-","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" **","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"Beacon","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":":**","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" Block","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"ed","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" on","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" MCP","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" credentials","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" for","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" the","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" Everything","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" server","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":".","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"  \n\n","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"(","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"Other","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" items","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" in","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" the","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" note","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" include","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" a","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" reference","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" to","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" “","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"Nonce","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":":","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":" ME","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"ETING","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"‑","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"NOT","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"ES","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"‑","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"754","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":".”","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":")","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"meeting-notes-summary","text":"**Standup Note Summary**\n\n- **Aurora:** Shipped the deterministic tool harness.  \n- **Beacon:** Blocked on MCP credentials for the Everything server.  \n\n(Other items in the note include a reference to “Nonce: MEETING‑NOTES‑754.”)","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `list_dir` before reading note files — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `read_file` to inspect standup.md — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Tool result should expose the seeded standup nonce — found in tool result","model":"openai\/gpt-oss-120b","passed":true,"scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:35Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should summarize both seeded standup statuses","model":"openai\/gpt-oss-120b","passed":true,"scenario":"meeting-notes-summary","ts":"2026-06-22T14:40:35Z"}
+{"advertisedTools":["calc","read_file"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["read_file","calc"],"scenario":"shopping-list-budget","system":"You have tools. Read files with `read_file` and perform arithmetic with `calc`; do not calculate prices in your head or invent shopping-list items.","ts":"2026-06-22T14:40:35Z","user":"Read shopping-list.txt. What is the total for apples and rice only, and which expensive item should I skip?"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:36Z"}
+{"arguments":"{\n  \"path\": \"shopping-list.txt\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"shopping-list-budget","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","content":"{\"content\":\"apples: 12.50\\nrice: 7.25\\nsaffron: 41.00\\n\\nBudget note: buy apples and rice; skip saffron.\\n\",\"path\":\"shopping-list.txt\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"shopping-list-budget","ts":"2026-06-22T14:40:36Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"The","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" total","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" cost","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" for","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" **","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"ap","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"ples","ts":"2026-06-22T14:40:37Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"**","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" (","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" ","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"$","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"12","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":".","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"50","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" ","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":")","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" and","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" **","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"rice","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"**","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" (","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" ","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"$","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"7","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":".","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"25","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" ","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":")","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" is","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" **","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"$","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"19","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":".","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"75","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"**","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":".\n\n","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"According","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" to","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" the","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" budget","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" note","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":",","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" the","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" expensive","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" item","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" you","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" should","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" skip","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" is","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":" **","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"s","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"aff","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"ron","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"**","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":".","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"shopping-list-budget","text":"The total cost for **apples** ( $12.50 ) and **rice** ( $7.25 ) is **$19.75**.\n\nAccording to the budget note, the expensive item you should skip is **saffron**.","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires the shopping list to be read from the fixture — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"shopping-list-budget","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `calc` for the selected total — never dispatched — final answer may be hallucinated","model":"openai\/gpt-oss-120b","passed":false,"scenario":"shopping-list-budget","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Tool result should include the expensive fixture item — found in tool result","model":"openai\/gpt-oss-120b","passed":true,"scenario":"shopping-list-budget","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Tool result should include the calculated selected total — missing from tool results","model":"openai\/gpt-oss-120b","passed":false,"scenario":"shopping-list-budget","ts":"2026-06-22T14:40:38Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should include the calculated total and expensive item from the fixture","model":"openai\/gpt-oss-120b","passed":true,"scenario":"shopping-list-budget","ts":"2026-06-22T14:40:38Z"}
+{"advertisedTools":["read_file"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["read_file"],"scenario":"parallel-readme-comparison","system":"You have tools. When comparing two README files, call `read_file` for both files before answering. Use only tool output and mention each side's unique capability.","ts":"2026-06-22T14:40:38Z","user":"Compare readmes\/backend-a.md and readmes\/backend-b.md. Mention the shared nonce and each backend's tool mode."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:39Z"}
+{"arguments":"{\n  \"path\": \"readmes\/backend-a.md\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","content":"{\"path\":\"readmes\\\/backend-a.md\",\"content\":\"# Backend A\\n\\nShared marker: DEMO-README-NONCE.\\n\\nBackend A uses streaming tools for incremental tool-call arguments.\\n\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:39Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:40Z"}
+{"arguments":"{\n  \"path\": \"readmes\/backend-b.md\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","content":"{\"content\":\"# Backend B\\n\\nShared marker: DEMO-README-NONCE.\\n\\nBackend B uses batch tools for whole-call dispatch.\\n\",\"path\":\"readmes\\\/backend-b.md\"}","errorKind":null,"kind":"tool_result","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:40Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Shared","ts":"2026-06-22T14:40:41Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" nonce","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"  \n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Both","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" README","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" files","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" contain","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" same","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" marker","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" line","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":":\n\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"``","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"`\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Shared","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" marker","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":":","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" DEM","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"O","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"-","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"README","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"-N","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"ON","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"CE","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":".\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"``","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"`\n\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"This","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" shows","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" they","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" are","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" part","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" of","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" same","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" demo","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" set","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":".\n\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Backend","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"‑","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"specific","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" tool","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" mode","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**\n\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"|","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" Backend","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" |","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" Tool","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" mode","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" described","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" in","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" its","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" README","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" |\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"|","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"---------","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"|","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"--------------------------------","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"---","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"|\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"|","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" **","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Backend","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" ","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"A","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" |","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" *","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Streaming","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" tools","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"*","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" –","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" it","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" processes","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" tool","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"‑","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"call","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" arguments","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" increment","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"ally","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":",","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" allowing","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" data","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" to","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" be","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" sent","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" piece","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"‑","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"by","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"‑","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"piece","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" as","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" call","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" progresses","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":".","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" |\n","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"|","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" **","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Backend","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" ","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"B","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" |","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" *","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"Batch","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" tools","ts":"2026-06-22T14:40:42Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"*","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" –","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" it","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" sends","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" entire","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" set","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" of","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" arguments","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" in","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" one","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" go","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":",","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" dispatch","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"ing","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" whole","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" call","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" at","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" once","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":".","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" |\n\n","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"So","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":",","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" while","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" two","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" back","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"ends","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" share","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" the","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" same","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" nonce","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":",","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" Backend","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" ","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"A","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" is","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" built","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" around","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" a","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" streaming","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" approach","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":",","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" whereas","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" Backend","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" ","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"B","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" relies","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" on","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" a","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" batch","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" (","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"single","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"‑","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"shot","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":")","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":" approach","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":".","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"parallel-readme-comparison","text":"**Shared nonce**  \nBoth README files contain the same marker line:\n\n```\nShared marker: DEMO-README-NONCE.\n```\n\nThis shows they are part of the same demo set.\n\n**Backend‑specific tool mode**\n\n| Backend | Tool mode described in its README |\n|---------|-----------------------------------|\n| **Backend A** | *Streaming tools* – it processes tool‑call arguments incrementally, allowing data to be sent piece‑by‑piece as the call progresses. |\n| **Backend B** | *Batch tools* – it sends the entire set of arguments in one go, dispatching the whole call at once. |\n\nSo, while the two backends share the same nonce, Backend A is built around a streaming approach, whereas Backend B relies on a batch (single‑shot) approach.","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires file reads rather than hallucinated README contents — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"assertion","message":"At least one README tool result should contain the shared nonce — found in tool result","model":"openai\/gpt-oss-120b","passed":true,"scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:43Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should compare both seeded README facts","model":"openai\/gpt-oss-120b","passed":false,"scenario":"parallel-readme-comparison","ts":"2026-06-22T14:40:43Z"}
+{"advertisedTools":["read_file"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":["read_file"],"scenario":"oversize-tool-output","system":"You have tools. If a tool reports that output exceeds maxBytes, explain the size policy and ask for a narrower slice. Do not pretend you saw the hidden content.","ts":"2026-06-22T14:40:43Z","user":"Read oversize-output.txt and summarize it."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:44Z"}
+{"arguments":"{\n  \"path\": \"oversize-output.txt\"\n}","backend":"openai-compat","kind":"tool_call","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"oversize-tool-output","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","content":"output exceeds maxBytes (41203 > 32768)","errorKind":"invalidArguments","kind":"tool_result","model":"openai\/gpt-oss-120b","name":"read_file","scenario":"oversize-tool-output","ts":"2026-06-22T14:40:44Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"I","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"’m","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" unable","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" to","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" read","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" the","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" entire","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" ","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"`","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"overs","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"ize","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"-output","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":".txt","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"`","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" file","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" because","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" it","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" exceeds","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" the","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" size","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" limit","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" for","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" a","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" single","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" read","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" operation","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":".","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" Could","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" you","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" let","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" me","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" know","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" a","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" specific","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" portion","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" you","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"’d","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" like","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" to","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" see","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"—","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"such","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" as","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" a","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" range","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" of","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" lines","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" (","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"e","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":".g","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":".,","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" lines","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" ","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"1","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"‑","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"200","ts":"2026-06-22T14:40:45Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":")","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" or","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" a","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" particular","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" section","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" of","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" the","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" text","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"?","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" Then","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" I","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" can","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" retrieve","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" that","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" slice","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" and","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" provide","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" a","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":" summary","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":".","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"oversize-tool-output","text":"I’m unable to read the entire `oversize-output.txt` file because it exceeds the size limit for a single read operation. Could you let me know a specific portion you’d like to see—such as a range of lines (e.g., lines 1‑200) or a particular section of the text? Then I can retrieve that slice and provide a summary.","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Scenario requires `read_file` to hit the oversize policy — dispatched","model":"openai\/gpt-oss-120b","passed":true,"scenario":"oversize-tool-output","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Oversize output should be rejected before it floods context — observed","model":"openai\/gpt-oss-120b","passed":true,"scenario":"oversize-tool-output","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should surface the bounded-output contract without hallucinating file contents","model":"openai\/gpt-oss-120b","passed":false,"scenario":"oversize-tool-output","ts":"2026-06-22T14:40:46Z"}
+{"advertisedTools":["calc","http_get_fixture","list_dir","now","read_file","sample_repo_search"],"backend":"openai-compat","kind":"prompt","model":"openai\/gpt-oss-120b","requiredTools":[],"scenario":"structured-json-extraction","system":"Return only compact JSON that satisfies the user's requested schema. Do not include markdown fences or commentary.","ts":"2026-06-22T14:40:46Z","user":"Extract invoice id INV-754-CORE, total 123.45, and currency USD into keys invoice_id, total, and currency."}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:46Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"{\"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"invoice","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"_id","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"\":\"","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"INV","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"-","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"754","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"-","ts":"2026-06-22T14:40:47Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"CORE","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"\",\"","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"total","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"\":","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"123","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":".","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"45","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":",\"","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"currency","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"\":\"","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"USD","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"\"}","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"token_delta","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"final","model":"openai\/gpt-oss-120b","scenario":"structured-json-extraction","text":"{\"invoice_id\":\"INV-754-CORE\",\"total\":123.45,\"currency\":\"USD\"}","ts":"2026-06-22T14:40:48Z"}
+{"backend":"openai-compat","kind":"assertion","message":"Final answer should be compact JSON with the seeded invoice fields","model":"openai\/gpt-oss-120b","passed":true,"scenario":"structured-json-extraction","ts":"2026-06-22T14:40:48Z"}
