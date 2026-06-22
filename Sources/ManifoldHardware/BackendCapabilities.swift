@@ -195,6 +195,23 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// `MCPToolFilter.foundationModelsToolCap`).
     public let maxAdvertisedToolCount: Int?
 
+    /// The tool-call dialect this backend selects when `supportsToolCalling` is
+    /// `true` — the delimiters, argument encoding, and extractability that
+    /// describe *how* this (model × backend × renderer) emits tool calls on the
+    /// wire. `nil` when unknown or unsupported.
+    ///
+    /// This is the capability seam from `docs/plans/tool-call-conformance.md`:
+    /// backends already pick a dialect internally (e.g. llama.cpp's per-family
+    /// markers) and used to discard it at the capability boundary. They may now
+    /// surface it here instead. `supportsToolCalling` stays the headline yes/no
+    /// bool, but — because genuine tool-calling is a measured property of a
+    /// (model × quant × backend) — it may be computed conditionally rather than
+    /// hardcoded once a backend wires this seam through.
+    ///
+    /// Additive and optional: a backend that does not opt in leaves this `nil`,
+    /// and the existing `supportsToolCalling` bool is unchanged.
+    public let toolDialect: ToolCallDialect?
+
     /// Preferred structured-output mechanism implied by this capability set.
     public var preferredStructuredOutputSupport: StructuredOutputSupport {
         if supportsGrammarConstrainedSampling {
@@ -238,7 +255,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsStrictSchema: Bool = false,
         sharesMLXProcessResources: Bool = false,
         rendersFullPrompt: Bool = false,
-        maxAdvertisedToolCount: Int? = nil
+        maxAdvertisedToolCount: Int? = nil,
+        toolDialect: ToolCallDialect? = nil
     ) {
         self.supportedParameters = supportedParameters
         self.maxContextTokens = maxContextTokens
@@ -264,6 +282,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.sharesMLXProcessResources = sharesMLXProcessResources
         self.rendersFullPrompt = rendersFullPrompt
         self.maxAdvertisedToolCount = maxAdvertisedToolCount
+        self.toolDialect = toolDialect
     }
 
     /// Merges an ordered list of capability sets into the "can the composed
@@ -304,6 +323,10 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         var streamsToolCallArguments = first.streamsToolCallArguments
         var supportsParallelToolCalls = first.supportsParallelToolCalls
         var supportsGuidedStructuredOutput = first.supportsGuidedStructuredOutput
+        // Prefer the first non-nil dialect: the union answer is "the runtime can
+        // serve a backend that reports *some* dialect" — a discovered dialect
+        // beats an unknown one, and we don't try to reconcile conflicting ones.
+        var toolDialect = first.toolDialect
 
         for c in capabilities.dropFirst() {
             supportedParameters.formUnion(c.supportedParameters)
@@ -334,6 +357,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             streamsToolCallArguments = streamsToolCallArguments || c.streamsToolCallArguments
             supportsParallelToolCalls = supportsParallelToolCalls || c.supportsParallelToolCalls
             supportsGuidedStructuredOutput = supportsGuidedStructuredOutput || c.supportsGuidedStructuredOutput
+            if toolDialect == nil { toolDialect = c.toolDialect }
         }
         return BackendCapabilities(
             supportedParameters: supportedParameters,
@@ -355,7 +379,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             supportsVision: supportsVision,
             streamsToolCallArguments: streamsToolCallArguments,
             supportsParallelToolCalls: supportsParallelToolCalls,
-            supportsGuidedStructuredOutput: supportsGuidedStructuredOutput
+            supportsGuidedStructuredOutput: supportsGuidedStructuredOutput,
+            toolDialect: toolDialect
         )
     }
 
@@ -392,6 +417,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case sharesMLXProcessResources
         case rendersFullPrompt
         case maxAdvertisedToolCount
+        case toolDialect
     }
 
     public init(from decoder: Decoder) throws {
@@ -423,6 +449,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         sharesMLXProcessResources = (try c.decodeIfPresent(Bool.self, forKey: .sharesMLXProcessResources)) ?? false
         rendersFullPrompt = (try c.decodeIfPresent(Bool.self, forKey: .rendersFullPrompt)) ?? false
         maxAdvertisedToolCount = try c.decodeIfPresent(Int.self, forKey: .maxAdvertisedToolCount)
+        toolDialect = try c.decodeIfPresent(ToolCallDialect.self, forKey: .toolDialect)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -451,5 +478,6 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(sharesMLXProcessResources, forKey: .sharesMLXProcessResources)
         try c.encode(rendersFullPrompt, forKey: .rendersFullPrompt)
         try c.encodeIfPresent(maxAdvertisedToolCount, forKey: .maxAdvertisedToolCount)
+        try c.encodeIfPresent(toolDialect, forKey: .toolDialect)
     }
 }
