@@ -990,6 +990,7 @@ let package = Package(
             dependencies: [
                 "ManifoldTools",
                 "ManifoldOllama",
+                "ManifoldCloudSaaS",
                 "ManifoldInference",
             ],
             path: "Sources/manifold-tools"
