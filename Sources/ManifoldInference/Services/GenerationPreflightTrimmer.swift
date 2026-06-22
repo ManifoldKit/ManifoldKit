@@ -77,7 +77,7 @@ struct GenerationPreflightTrimmer {
             // shape, not of any one trim attempt — emitting them per iteration
             // would spam the log. The returned prompt is re-rendered once below
             // with warnings enabled so the loss is reported exactly once.
-            let prompt = renderer.render(
+            let prompt = try renderer.render(
                 messages: workingMessages,
                 systemPrompt: systemPrompt,
                 tools: config.tools,
@@ -91,7 +91,7 @@ struct GenerationPreflightTrimmer {
                 // (runs only on the success iteration) and uses the renderer's
                 // own path detection, so a present-but-unusable embedded template
                 // still correctly reports the tool-drop fallback.
-                _ = renderer.render(
+                _ = try renderer.render(
                     messages: workingMessages,
                     systemPrompt: systemPrompt,
                     tools: config.tools,

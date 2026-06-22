@@ -148,7 +148,18 @@ struct PromptRenderer {
         tools: [ToolDefinition] = [],
         documents: [RetrievedDocument] = [],
         warnOnCapabilityLoss: Bool = true
-    ) -> String {
+    ) throws -> String {
+        // FAIL-FAST (#1957 Tier 3 / #1909): an embedded chat template that is
+        // present but unusable would otherwise silently degrade to the text-only
+        // enum fallback, which renders tool definitions only for `.gemma4` and
+        // drops them for every other family — driving tool-calling success to
+        // ~0% on malformed-template models with no error surfaced anywhere. When
+        // the caller is actually trying to use tools, that silent capability
+        // loss is a correctness failure, not a graceful degradation: throw so
+        // the host sees it and can pick a different model or backend rather than
+        // shipping a tool-less prompt and reporting a mystery parse failure.
+        //
+        // Attempt the embedded Jinja render once. If it succeeds, return it.
         if let chatTemplateRaw,
            let rendered = JinjaPromptRenderer.render(
                rawTemplate: chatTemplateRaw,
@@ -163,6 +174,75 @@ struct PromptRenderer {
             return rendered
         }
 
+        // The embedded render failed (or there is none). The fail-fast applies
+        // only when (a) an embedded template exists, (b) tools were requested,
+        // and (c) the text-only enum fallback would not render them — i.e. the
+        // exact ~0%-tool-calling condition. Plain chat (no tools) and `.gemma4`
+        // (which renders tools natively in the enum) fall through to the safe
+        // text-only fallback.
+        if chatTemplateRaw != nil, !tools.isEmpty, !template.rendersToolsNatively {
+            throw InferenceError.inferenceFailure(
+                "PromptRenderer: the model's embedded chat template could not be "
+                    + "rendered, and the \(String(describing: template)) text-only "
+                    + "fallback cannot carry the \(tools.count) requested tool "
+                    + "definition(s). Refusing to send a tool-less prompt that would "
+                    + "silently disable tool calling. Use a model whose chat template "
+                    + "renders correctly, or send this request without tools."
+            )
+        }
+
+        return renderTextOnlyFallback(
+            messages: messages,
+            systemPrompt: systemPrompt,
+            tools: tools,
+            warnOnCapabilityLoss: warnOnCapabilityLoss
+        )
+    }
+
+    /// The lower-level rendering primitive used by
+    /// ``ChatTemplate/format(_:systemPrompt:tools:)``, a non-throwing surface.
+    /// Unlike the throwing ``render(messages:systemPrompt:tools:documents:warnOnCapabilityLoss:)``
+    /// (the generation path), this *permits* a text-only fallback even when that
+    /// drops tool definitions — it predates the fail-fast and keeps
+    /// `ChatTemplate.format`'s historical, source-stable behaviour. Production
+    /// generation does not call this; it goes through the throwing path.
+    func renderAllowingToolDrop(
+        messages: [StructuredMessage],
+        systemPrompt: String?,
+        tools: [ToolDefinition] = [],
+        documents: [RetrievedDocument] = [],
+        warnOnCapabilityLoss: Bool = true
+    ) -> String {
+        if let chatTemplateRaw,
+           let rendered = JinjaPromptRenderer.render(
+               rawTemplate: chatTemplateRaw,
+               messages: messages,
+               systemPrompt: systemPrompt,
+               tools: tools,
+               documents: documents
+           ) {
+            if warnOnCapabilityLoss {
+                warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: true)
+            }
+            return rendered
+        }
+        return renderTextOnlyFallback(
+            messages: messages,
+            systemPrompt: systemPrompt,
+            tools: tools,
+            warnOnCapabilityLoss: warnOnCapabilityLoss
+        )
+    }
+
+    /// The text-only enum projection used when no embedded template applies (or
+    /// when the caller permits tool-dropping). Shared by both render entry
+    /// points so the fallback shape stays identical.
+    private func renderTextOnlyFallback(
+        messages: [StructuredMessage],
+        systemPrompt: String?,
+        tools: [ToolDefinition],
+        warnOnCapabilityLoss: Bool
+    ) -> String {
         if warnOnCapabilityLoss {
             warnIfCapabilityLost(messages: messages, tools: tools, viaEmbeddedTemplate: false)
         }

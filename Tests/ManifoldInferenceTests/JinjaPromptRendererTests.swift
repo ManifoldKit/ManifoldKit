@@ -210,9 +210,9 @@ final class JinjaPromptRendererTests: XCTestCase {
         XCTAssertFalse(noTools.contains("<|tools|>"), "no tools → declaration block must not render")
     }
 
-    func test_promptRenderer_threadsToolsThroughJinjaPath() {
+    func test_promptRenderer_threadsToolsThroughJinjaPath() throws {
         let renderer = PromptRenderer(template: .gemma4, chatTemplateRaw: Self.nativeToolTemplate)
-        let out = renderer.render(
+        let out = try renderer.render(
             messages: [StructuredMessage(role: "user", content: "weather?")],
             systemPrompt: nil,
             tools: [Self.weatherTool()]
@@ -299,24 +299,26 @@ final class JinjaPromptRendererTests: XCTestCase {
 
     // MARK: - PromptRenderer prefers Jinja, falls back to the enum
 
-    func test_promptRenderer_prefersJinjaWhenTemplatePresent() {
+    func test_promptRenderer_prefersJinjaWhenTemplatePresent() throws {
         let renderer = PromptRenderer(template: .chatML, chatTemplateRaw: Self.qwen25Template)
-        let out = renderer.render(messages: [msg("user", "Hi")], systemPrompt: nil)
+        let out = try renderer.render(messages: [msg("user", "Hi")], systemPrompt: nil)
         XCTAssertTrue(out.contains("You are Qwen"), "Renderer must prefer the real embedded Jinja")
     }
 
-    func test_promptRenderer_fallsBackToEnum_whenNoTemplate() {
+    func test_promptRenderer_fallsBackToEnum_whenNoTemplate() throws {
         let renderer = PromptRenderer(template: .chatML, chatTemplateRaw: nil)
-        let out = renderer.render(messages: [msg("user", "Hi")], systemPrompt: nil)
+        let out = try renderer.render(messages: [msg("user", "Hi")], systemPrompt: nil)
         let enumOut = PromptTemplate.chatML.format(messages: [(role: "user", content: "Hi")], systemPrompt: nil)
         XCTAssertEqual(out, enumOut, "No embedded template → enum output verbatim")
     }
 
-    func test_promptRenderer_fallsBackToEnum_whenTemplateMalformed() {
-        // A template swift-jinja cannot parse must not block generation — the
-        // renderer falls back to the enum (a recoverable boundary condition).
+    func test_promptRenderer_fallsBackToEnum_whenTemplateMalformed() throws {
+        // A template swift-jinja cannot parse must not block generation *when no
+        // tools are requested* — the renderer falls back to the enum (a
+        // recoverable boundary condition). The tools-present case fails fast
+        // instead (see PromptRendererToolFidelityTests, #1957 Tier 3).
         let renderer = PromptRenderer(template: .chatML, chatTemplateRaw: "{%- if broken")
-        let out = renderer.render(messages: [msg("user", "Hi")], systemPrompt: nil)
+        let out = try renderer.render(messages: [msg("user", "Hi")], systemPrompt: nil)
         let enumOut = PromptTemplate.chatML.format(messages: [(role: "user", content: "Hi")], systemPrompt: nil)
         XCTAssertEqual(out, enumOut, "Malformed embedded template → enum fallback, no crash")
     }
