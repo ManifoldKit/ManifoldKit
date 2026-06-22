@@ -537,14 +537,14 @@ final class GenerationQueue {
                     backend: backend,
                     config: config
                 )
-                assembledPrompt = renderer.render(
+                assembledPrompt = try renderer.render(
                     messages: messages,
                     systemPrompt: augmentedSystemPrompt,
                     tools: config.tools,
                     documents: config.documents
                 )
             } else {
-                assembledPrompt = renderer.render(
+                assembledPrompt = try renderer.render(
                     messages: messages,
                     systemPrompt: systemPrompt,
                     documents: config.documents

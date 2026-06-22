@@ -25,13 +25,15 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
 
     private func makeBackend(
         template: PromptTemplate,
-        supportsToolCalling: Bool
+        supportsToolCalling: Bool,
+        chatTemplateRaw: String? = nil
     ) -> (backend: ToolPromptCountingBackend, provider: ToolPromptFakeProvider, queue: GenerationQueue) {
         let backend = ToolPromptCountingBackend(supportsToolCalling: supportsToolCalling)
         // Always-fits: one count under budget so generate runs without trimming.
         backend.countTokensResponses = [10]
         let provider = ToolPromptFakeProvider(backend: backend)
         provider.promptTemplate = template
+        provider.chatTemplateRaw = chatTemplateRaw
         let queue = GenerationQueue()
         provider.bind(to: queue)
         return (backend, provider, queue)
@@ -116,6 +118,52 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
                      "rejected request must never reach the backend, so nothing is injected")
         withExtendedLifetime(provider) {}
     }
+
+    // (d) THE PRODUCTION FAIL-FAST (#1957 Tier 3 / #1909): an unrenderable
+    // embedded chat template + tools requested must surface an *error through the
+    // real generation path* — not silently drop the tools and ship a tool-less
+    // prompt. This exercises the exact `GenerationQueue` → `PromptRenderer.render`
+    // (throwing) route a local GGUF model takes, proving the fix is wired into
+    // production and not merely present on the unit-level `render` API. The
+    // `PromptRendererToolFidelityTests` cover the unit; this guards the seam.
+    func test_productionPath_failsFast_onUnusableTemplateWithTools() async throws {
+        // A template swift-jinja cannot parse → the embedded render always misses,
+        // forcing the fail-fast since `.chatML` does not render tools natively.
+        let (backend, provider, queue) = makeBackend(
+            template: .chatML,
+            supportsToolCalling: true,
+            chatTemplateRaw: "{%- if broken"
+        )
+
+        let (_, stream) = try queue.enqueue(
+            messages: [("user", "what time is it?")],
+            systemPrompt: "You are a helpful assistant.",
+            tools: [tool("get_time")]
+        )
+
+        var thrown: Error?
+        do {
+            for try await _ in stream.events {}
+        } catch {
+            thrown = error
+        }
+
+        let error = try XCTUnwrap(
+            thrown,
+            "the production generation path must surface an error when the embedded "
+                + "template is unusable and tools were requested — not silently drop tools"
+        )
+        XCTAssertTrue(
+            String(describing: error).contains("tool"),
+            "the surfaced error must name the tool-fidelity failure; got: \(error)"
+        )
+        // The tool-less prompt must NOT have reached the backend.
+        XCTAssertNil(
+            backend.lastPrompt,
+            "a fail-fast turn must abort before dispatching a tool-less prompt to the backend"
+        )
+        withExtendedLifetime(provider) {}
+    }
 }
 
 // MARK: - Local mocks
@@ -176,6 +224,7 @@ private final class ToolPromptCountingBackend: InferenceBackend, TokenCountingBa
 private final class ToolPromptFakeProvider {
     let backend: ToolPromptCountingBackend
     var promptTemplate: PromptTemplate = .chatML
+    var chatTemplateRaw: String?
 
     init(backend: ToolPromptCountingBackend) {
         self.backend = backend
@@ -186,7 +235,8 @@ private final class ToolPromptFakeProvider {
         queue.bindContext(
             currentBackend: { [weak self] in self?.backend },
             isBackendLoaded: { [weak self] in self?.backend.isModelLoaded ?? false },
-            selectedPromptTemplate: { [weak self] in self?.promptTemplate ?? .chatML }
+            selectedPromptTemplate: { [weak self] in self?.promptTemplate ?? .chatML },
+            selectedChatTemplateRaw: { [weak self] in self?.chatTemplateRaw }
         )
     }
 }

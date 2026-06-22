@@ -57,11 +57,11 @@ final class ChatTemplateTests: XCTestCase {
 
     // MARK: - format parity (behaviour-preserving wrap)
 
-    func test_format_builtIn_textIsByteIdenticalToPromptRenderer() {
+    func test_format_builtIn_textIsByteIdenticalToPromptRenderer() throws {
         let messages = [msg("user", "Hello"), msg("assistant", "Hi"), msg("user", "How are you?")]
         let system = "You are helpful."
 
-        let expected = PromptRenderer(template: .chatML, chatTemplateRaw: nil)
+        let expected = try PromptRenderer(template: .chatML, chatTemplateRaw: nil)
             .render(messages: messages, systemPrompt: system, tools: [])
 
         let rendered = ChatTemplate(builtIn: .chatML)
@@ -70,9 +70,9 @@ final class ChatTemplateTests: XCTestCase {
         XCTAssertEqual(rendered.text, expected, "ChatTemplate.format must wrap PromptRenderer byte-for-byte")
     }
 
-    func test_format_embeddedJinja_textIsByteIdenticalToPromptRenderer() {
+    func test_format_embeddedJinja_textIsByteIdenticalToPromptRenderer() throws {
         let messages = [msg("user", "Hello")]
-        let expected = PromptRenderer(template: .chatML, chatTemplateRaw: chatMLJinja)
+        let expected = try PromptRenderer(template: .chatML, chatTemplateRaw: chatMLJinja)
             .render(messages: messages, systemPrompt: nil, tools: [])
 
         let rendered = ChatTemplate(embeddedJinja: chatMLJinja)
