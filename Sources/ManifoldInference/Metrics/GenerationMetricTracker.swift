@@ -44,9 +44,6 @@ package final class GenerationMetricTracker: @unchecked Sendable {
         promptTokens: Int,
         cachedPromptTokens: Int,
         completionTokens: Int,
-        estimatedCostUSD: Double,
-        isCostApproximate: Bool,
-        costTableDate: String,
         errorClass: String?
     ) -> InferenceMetric {
         lock.lock()
@@ -80,9 +77,6 @@ package final class GenerationMetricTracker: @unchecked Sendable {
             timeToFirstToken: ttft,
             meanInterTokenLatency: meanITL,
             wallClockDuration: wallClock,
-            estimatedCostUSD: estimatedCostUSD,
-            isCostApproximate: isCostApproximate,
-            costTableDate: costTableDate,
             errorClass: errorClass,
             timestamp: capturedDate
         )
@@ -117,12 +111,6 @@ package enum SSEGenerationMetrics {
     }
 
     /// Records a metric to `sink` using pre-built tracker data.
-    ///
-    /// Cost fields are passed explicitly so this method remains in
-    /// `ManifoldInference` without a dependency on `InferenceCostEstimator`,
-    /// which lives in `ManifoldCloudCore`. Cloud backends compute cost before
-    /// calling this method; local backends (Foundation) pass zero cost with
-    /// `isCostApproximate: true`.
     package static func record(
         to sink: any InferenceMetricSink,
         tracker: GenerationMetricTracker,
@@ -131,9 +119,6 @@ package enum SSEGenerationMetrics {
         promptTokens: Int,
         completionTokens: Int,
         cachedPromptTokens: Int = 0,
-        estimatedCostUSD: Double,
-        isCostApproximate: Bool,
-        costTableDate: String,
         errorClass: String?
     ) {
         let metric = tracker.buildMetric(
@@ -142,9 +127,6 @@ package enum SSEGenerationMetrics {
             promptTokens: promptTokens,
             cachedPromptTokens: cachedPromptTokens,
             completionTokens: completionTokens,
-            estimatedCostUSD: estimatedCostUSD,
-            isCostApproximate: isCostApproximate,
-            costTableDate: costTableDate,
             errorClass: errorClass
         )
         Task { await sink.record(metric) }

@@ -175,10 +175,6 @@ public enum GenAIAttributeKeys {
     public static let usagePromptTokens = "gen_ai.usage.prompt_tokens"
     public static let usageCachedPromptTokens = "gen_ai.usage.cached_prompt_tokens"
     public static let usageCompletionTokens = "gen_ai.usage.completion_tokens"
-    /// Non-standard but widely-ingested: per-call estimated cost in USD.
-    public static let costUSD = "gen_ai.usage.cost_usd"
-    public static let costApproximate = "gen_ai.usage.cost_is_approximate"
-    public static let costTableDate = "gen_ai.usage.cost_table_date"
     /// Time-to-first-token in milliseconds.
     public static let timeToFirstTokenMs = "gen_ai.latency.time_to_first_token_ms"
     /// Mean inter-token latency in milliseconds.

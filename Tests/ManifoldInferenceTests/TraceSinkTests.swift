@@ -12,7 +12,6 @@ final class TraceSinkTests: XCTestCase {
         promptTokens: Int = 120,
         cachedPromptTokens: Int = 40,
         completionTokens: Int = 256,
-        cost: Double = 0.0042,
         errorClass: String? = nil
     ) -> InferenceMetric {
         InferenceMetric(
@@ -24,9 +23,6 @@ final class TraceSinkTests: XCTestCase {
             timeToFirstToken: .milliseconds(180),
             meanInterTokenLatency: .milliseconds(12),
             wallClockDuration: .milliseconds(900),
-            estimatedCostUSD: cost,
-            isCostApproximate: false,
-            costTableDate: "2026-06-20",
             errorClass: errorClass,
             timestamp: Date(timeIntervalSince1970: 1_000_000)
         )
@@ -48,9 +44,6 @@ final class TraceSinkTests: XCTestCase {
         XCTAssertEqual(span.attributes[GenAIAttributeKeys.usagePromptTokens], .int(120))
         XCTAssertEqual(span.attributes[GenAIAttributeKeys.usageCachedPromptTokens], .int(40))
         XCTAssertEqual(span.attributes[GenAIAttributeKeys.usageCompletionTokens], .int(256))
-        XCTAssertEqual(span.attributes[GenAIAttributeKeys.costUSD], .double(0.0042))
-        XCTAssertEqual(span.attributes[GenAIAttributeKeys.costApproximate], .bool(false))
-        XCTAssertEqual(span.attributes[GenAIAttributeKeys.costTableDate], .string("2026-06-20"))
         // Latency attributes carry millisecond values.
         XCTAssertEqual(span.attributes[GenAIAttributeKeys.timeToFirstTokenMs], .double(180))
         XCTAssertEqual(span.attributes[GenAIAttributeKeys.meanInterTokenLatencyMs], .double(12))
