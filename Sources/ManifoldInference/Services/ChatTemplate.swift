@@ -140,7 +140,13 @@ public struct ChatTemplate: Sendable {
             let fallback = PromptTemplateDetector.detect(fromChatTemplate: raw)
             renderer = PromptRenderer(template: fallback, chatTemplateRaw: raw)
         }
-        let text = renderer.render(
+        // `format` is a non-throwing rendering primitive, so it uses the
+        // tool-drop-permitting path rather than the generation path's fail-fast
+        // render (#1957 Tier 3). Production generation goes through the throwing
+        // `PromptRenderer.render` (via `GenerationQueue`), which refuses to drop
+        // tools silently; this lower-level surface preserves its historical,
+        // source-stable behaviour.
+        let text = renderer.renderAllowingToolDrop(
             messages: messages,
             systemPrompt: systemPrompt,
             tools: tools

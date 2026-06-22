@@ -11,7 +11,7 @@ final class ChatTemplateStopAndFlattenTests: XCTestCase {
     /// A templateless model (`chatTemplateRaw == nil`) carrying a `.toolResult`
     /// part must render that tool content into the fallback prompt. Before the
     /// fix the fallback used `flatten()`, which dropped tool parts entirely.
-    func test_enumFallback_rendersToolResultContent() {
+    func test_enumFallback_rendersToolResultContent() throws {
         let toolResult = ToolResult(callId: "call_1", content: "The weather is 21C and sunny.")
         let messages: [StructuredMessage] = [
             StructuredMessage(role: "user", content: "What's the weather?"),
@@ -22,7 +22,7 @@ final class ChatTemplateStopAndFlattenTests: XCTestCase {
         ]
 
         let renderer = PromptRenderer(template: .chatML, chatTemplateRaw: nil)
-        let prompt = renderer.render(messages: messages, systemPrompt: nil, tools: [])
+        let prompt = try renderer.render(messages: messages, systemPrompt: nil, tools: [])
 
         // The tool result content must survive into the prompt (regression).
         XCTAssertTrue(
