@@ -22,9 +22,31 @@ public final class TranscriptLogger {
     private let encoder: JSONEncoder
     private let isoFormatter: ISO8601DateFormatter
 
-    /// - Parameter url: Destination path. Parents are created on demand.
-    public init(url: URL) throws {
+    /// Run attribution stamped onto every record so a single transcript that
+    /// interleaves multiple (scenario × model) runs can be scored per-model
+    /// straight from the JSONL — without parsing stdout. Per-record (rather than
+    /// a one-off header row) is the safer default precisely because the CLI
+    /// appends every model's events to one file.
+    private let backend: String?
+    private let model: String?
+    private let quant: String?
+
+    /// - Parameters:
+    ///   - url: Destination path. Parents are created on demand.
+    ///   - backend: Backend family driving the run (e.g. "ollama"). Optional so
+    ///     existing callers keep compiling; when set, every record carries it.
+    ///   - model: Model id driving the run (e.g. "qwen3.5-9b"). Optional.
+    ///   - quant: Quantization label when derivable (e.g. "Q4_K_M"). May be nil.
+    public init(
+        url: URL,
+        backend: String? = nil,
+        model: String? = nil,
+        quant: String? = nil
+    ) throws {
         self.url = url
+        self.backend = backend
+        self.model = model
+        self.quant = quant
         let parent = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: url.path) {
@@ -51,7 +73,13 @@ public final class TranscriptLogger {
     public var destination: URL { url }
 
     public func append(_ event: Event) {
-        let dict = encode(event)
+        var dict = encode(event)
+        // Stamp run attribution onto every record. Keys are only added when set,
+        // so transcripts produced by callers that didn't supply attribution keep
+        // their original shape (backward compatible).
+        if let backend { dict["backend"] = backend }
+        if let model { dict["model"] = model }
+        if let quant { dict["quant"] = quant }
         let data: Data
         do {
             data = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
