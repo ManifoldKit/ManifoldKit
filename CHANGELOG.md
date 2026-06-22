@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.60.0](https://github.com/roryford/ManifoldKit/compare/v0.59.0...v0.60.0) (2026-06-22)
+
+### Highlights
+
+**The measured tool-call conformance spine lands across runtime, hardware, and the CLI (#2005 Layer 3, Step 3–4).** This release builds the infrastructure to *measure* which `(model × quant × backend)` combinations can actually drive tool calls, rather than trusting a template's static claim. `ToolCallConformanceCache` arrives as a pure port + `Sendable`/`Codable` value type + in-memory adapter (mirroring `BenchmarkCache`); the SwiftData adapter is a deliberate human-reviewed follow-up ([#2030](https://github.com/roryford/ManifoldKit/issues/2030)). Backends now surface the tool-call *dialect* they select internally — family, delimiters, arg encoding, extractability — on `BackendCapabilities`, purely additively ([#2029](https://github.com/roryford/ManifoldKit/issues/2029)). The `manifold-tools` harness stamps every JSONL record with `backend`/`model`/`quant` and ships a conformance scorer so multi-model runs score per-model without parsing stdout ([#2027](https://github.com/roryford/ManifoldKit/issues/2027)), and gains an `openai-compat` backend plus an `--extra-tools N` decoy flag to test tool selection under distractor pressure ([#2031](https://github.com/roryford/ManifoldKit/issues/2031)).
+
+```swift
+let key = ToolCallConformanceKey(model: "qwen2.5:7b", quant: "Q4_K_M", backend: "ollama")
+await conformanceCache.record(key, capability: .supported, source: .measured)
+let dialect = backend.capabilities.toolCallDialect   // family, delimiters, arg encoding
+```
+
+```bash
+# Score tool-call conformance for three models under decoy pressure
+manifold-tools run --backend openai-compat --base-url https://openrouter.ai/api \
+  --model qwen2.5:7b,mistral-small,llama3.1:8b --extra-tools 5
+```
+
+**Concurrent-safe tool calls now dispatch in parallel, with transient-error retry.** When a backend emits several tool calls in one turn and *every* targeted executor reports `supportsConcurrentDispatch == true`, `GenerationToolDispatchLoop` runs them concurrently (one main-actor child task each) instead of serially; if any executor is not concurrent-safe the whole turn falls back to the sequential path. The loop also retries tool calls that fail with transient errors ([#2026](https://github.com/roryford/ManifoldKit/issues/2026)).
+
+**Public JSON-Schema → GBNF grammar surface.** A JSON Schema can now be compiled to a GBNF grammar and used to validate or parse constrained model output through a public API, instead of the conversion living behind the llama backend ([#1992](https://github.com/roryford/ManifoldKit/issues/1992), [#2025](https://github.com/roryford/ManifoldKit/issues/2025)).
+
+### Fixes
+
+* Fold the system prompt into the first user turn for alternation-strict chat templates — Mistral-family tool calling was silently broken because the leading system role tripped the template's strict user/assistant alternation check and fell through to a tool-less refusal ([#2032](https://github.com/roryford/ManifoldKit/issues/2032))
+
 ## [0.59.0](https://github.com/roryford/ManifoldKit/compare/v0.58.0...v0.59.0) (2026-06-22)
 
 ### ⚠ BREAKING CHANGES
