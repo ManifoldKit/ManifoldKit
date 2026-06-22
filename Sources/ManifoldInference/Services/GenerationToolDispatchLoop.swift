@@ -438,18 +438,11 @@ struct GenerationToolDispatchLoop {
             let call = outcome.effectiveCall
             let result = outcome.result
 
-            yieldEvent(.toolDispatchStarted(callId: call.id, name: call.toolName, attempt: outcome.attempts))
-            Log.inference.info(
-                "tool_dispatch_started call_id=\(call.id, privacy: .public) name=\(call.toolName, privacy: .public) attempt=\(outcome.attempts, privacy: .public)"
-            )
-            GenerationQueue.toolDispatchLogHook?(
-                "tool_dispatch_started",
-                [
-                    "call_id": call.id,
-                    "name": call.toolName,
-                    "attempt": "\(outcome.attempts)"
-                ]
-            )
+            // `.toolDispatchStarted` is emitted inside `dispatchWithRetry`
+            // (once per attempt, BEFORE execution) so progress events surface
+            // after their start marker and retries each get their own start.
+            // Here we only emit the terminal result + completion in receipt
+            // order.
 
             if result.errorKind == .cancelled {
                 // Cancellation completes the dispatch pair but is not recorded
@@ -471,9 +464,11 @@ struct GenerationToolDispatchLoop {
             }
 
             if outcome.wasBlocked {
-                // Hook-blocked: emit the matched dispatch pair (with the denied
-                // error kind) so consumers don't desync, but exclude the call
-                // from history and from the duplicate-call signature.
+                // Hook-blocked: the call never reached `dispatchWithRetry`, so
+                // emit the matched dispatch pair here (with the denied error
+                // kind) so consumers don't desync, but exclude the call from
+                // history and from the duplicate-call signature.
+                yieldEvent(.toolDispatchStarted(callId: call.id, name: call.toolName, attempt: 1))
                 yieldEvent(.toolResult(result))
                 yieldEvent(
                     .toolDispatchCompleted(
@@ -531,13 +526,14 @@ struct GenerationToolDispatchLoop {
                 )
             )
             Log.inference.info(
-                "tool_dispatch_completed call_id=\(call.id, privacy: .public) duration_ms=\(outcome.durationMilliseconds, privacy: .public) error_kind=\(result.errorKind?.rawValue ?? "none", privacy: .public)"
+                "tool_dispatch_completed call_id=\(call.id, privacy: .public) duration_ms=\(outcome.durationMilliseconds, privacy: .public) attempts=\(outcome.attempts, privacy: .public) error_kind=\(result.errorKind?.rawValue ?? "none", privacy: .public)"
             )
             GenerationQueue.toolDispatchLogHook?(
                 "tool_dispatch_completed",
                 [
                     "call_id": call.id,
                     "duration_ms": "\(outcome.durationMilliseconds)",
+                    "attempts": "\(outcome.attempts)",
                     "error_kind": result.errorKind?.rawValue ?? "none"
                 ]
             )
@@ -701,6 +697,22 @@ struct GenerationToolDispatchLoop {
                     attempt
                 )
             }
+
+            // Emit the start marker BEFORE execution so streaming progress
+            // events surface after it. Each retry attempt gets its own marker
+            // with an incrementing `attempt` field.
+            yieldEvent(.toolDispatchStarted(callId: call.id, name: call.toolName, attempt: attempt))
+            Log.inference.info(
+                "tool_dispatch_started call_id=\(call.id, privacy: .public) name=\(call.toolName, privacy: .public) attempt=\(attempt, privacy: .public)"
+            )
+            GenerationQueue.toolDispatchLogHook?(
+                "tool_dispatch_started",
+                [
+                    "call_id": call.id,
+                    "name": call.toolName,
+                    "attempt": "\(attempt)"
+                ]
+            )
 
             let result = await dispatchResult(
                 for: call,

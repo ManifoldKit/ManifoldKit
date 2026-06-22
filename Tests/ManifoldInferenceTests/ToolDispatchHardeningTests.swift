@@ -93,11 +93,12 @@ final class ToolDispatchHardeningTests: XCTestCase {
         XCTAssertEqual(results.first?.content, "recovered")
         XCTAssertNil(results.first?.errorKind)
 
-        // The terminal dispatch event reports the final attempt number.
+        // Each attempt emits its own start marker with an incrementing
+        // `attempt` field: the first attempt (1) then the retry (2).
         let started = events.compactMap { e -> Int? in
             if case .toolDispatchStarted(_, _, let attempt) = e { return attempt } else { return nil }
         }
-        XCTAssertEqual(started, [2], "the dispatch event reports the attempt that produced the result")
+        XCTAssertEqual(started, [1, 2], "each attempt emits a start marker; the retry is attempt 2")
     }
 
     // MARK: - C. RateLimited backs off and retries
@@ -138,7 +139,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         let started = events.compactMap { e -> Int? in
             if case .toolDispatchStarted(_, _, let attempt) = e { return attempt } else { return nil }
         }
-        XCTAssertEqual(started, [3], "the success arrives on the third attempt")
+        XCTAssertEqual(started, [1, 2, 3], "three attempts; the success arrives on attempt 3")
     }
 
     // MARK: - C. Retry budget exhausts and surfaces the last failure
