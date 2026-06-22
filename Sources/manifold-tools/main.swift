@@ -11,6 +11,7 @@ import Foundation
 import ManifoldInference
 import ManifoldTools
 import ManifoldOllama
+import ManifoldCloudSaaS
 
 /// Hand-rolled argument parser — `swift-argument-parser` would be the right
 /// call in a larger CLI, but pulling in an external SPM dependency for a
@@ -21,6 +22,7 @@ struct CLI {
     enum BackendChoice: String {
         case ollama
         case mock
+        case openaiCompat = "openai-compat"
     }
 
     var scenarioFilter: String = "all"
@@ -30,6 +32,14 @@ struct CLI {
     var list: Bool = false
     var realNetwork: Bool = false
     var ollamaBaseURL: URL = URL(string: "http://localhost:11434")!
+    /// Base URL for the OpenAI-compatible endpoint (e.g. https://openrouter.ai/api).
+    /// MK appends `/v1/chat/completions` internally — do not include the path.
+    var openAICompatBaseURL: URL = URL(string: "https://openrouter.ai/api")!
+    /// Name of the environment variable that holds the API key.
+    var apiKeyEnvVar: String = "OPENROUTER_API_KEY"
+    /// Number of plausible-but-irrelevant decoy tools to register alongside the
+    /// real reference tools.  Zero (default) means no distractor pressure.
+    var extraTools: Int = 0
 
     static func defaultOutputURL() -> URL {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -59,7 +69,7 @@ struct CLI {
                 i += 1
                 guard i < argv.count else { fail("--backend requires a value") }
                 guard let b = BackendChoice(rawValue: argv[i]) else {
-                    fail("unknown backend '\(argv[i])' — must be ollama or mock")
+                    fail("unknown backend '\(argv[i])' — must be ollama, mock, or openai-compat")
                 }
                 cli.backend = b
             case "--model":
@@ -81,6 +91,24 @@ struct CLI {
                     fail("--ollama-base-url value '\(argv[i])' is not a valid URL (missing scheme?)")
                 }
                 cli.ollamaBaseURL = u
+            case "--base-url":
+                i += 1
+                guard i < argv.count else { fail("--base-url requires a value") }
+                guard let u = URL(string: argv[i]), let scheme = u.scheme, !scheme.isEmpty else {
+                    fail("--base-url value '\(argv[i])' is not a valid URL (missing scheme?)")
+                }
+                cli.openAICompatBaseURL = u
+            case "--api-key-env":
+                i += 1
+                guard i < argv.count else { fail("--api-key-env requires a value") }
+                cli.apiKeyEnvVar = argv[i]
+            case "--extra-tools":
+                i += 1
+                guard i < argv.count else { fail("--extra-tools requires a value") }
+                guard let n = Int(argv[i]), n >= 0 else {
+                    fail("--extra-tools value '\(argv[i])' must be a non-negative integer")
+                }
+                cli.extraTools = n
             case "--help", "-h":
                 printUsage()
                 exit(0)
@@ -88,6 +116,13 @@ struct CLI {
                 fail("unknown argument: \(arg)")
             }
             i += 1
+        }
+        // Validate openai-compat prerequisites once all flags are parsed.
+        if cli.backend == .openaiCompat {
+            let key = ProcessInfo.processInfo.environment[cli.apiKeyEnvVar] ?? ""
+            if key.isEmpty {
+                fail("--backend openai-compat requires the '\(cli.apiKeyEnvVar)' environment variable to be set and non-empty")
+            }
         }
         return cli
     }
@@ -97,18 +132,26 @@ struct CLI {
         manifold-tools — end-to-end tool-calling validation harness
 
         USAGE
-          manifold-tools [--scenario <id|all>] [--backend ollama|mock] [--model A,B]
-                    [--output path.jsonl] [--real-network] [--list]
+          manifold-tools [--scenario <id|all>] [--backend ollama|mock|openai-compat] [--model A,B]
+                    [--output path.jsonl] [--real-network] [--extra-tools N] [--list]
           manifold-tools test-uplift status|pause|resume|stop
 
         FLAGS
           --scenario <id>       Scenario id (matches JSON 'id') or 'all'. Default: all.
-          --backend <kind>      'ollama' (default) or 'mock' (offline, scripted).
+          --backend <kind>      'ollama' (default), 'mock' (offline, scripted), or
+                                'openai-compat' (OpenAI Chat Completions–compatible endpoint).
           --model <list>        Comma-separated model overrides; each scenario runs once per model.
           --output <path>       Transcript JSONL destination. Default: tmp/manifold-tools/<iso>.jsonl.
           --real-network        Allow HttpGetFixtureTool to hit the real internet (requires
                                 MANIFOLD_TOOLS_ALLOW_NETWORK=1). Default: off.
           --ollama-base-url     Override the Ollama base URL. Default: http://localhost:11434.
+          --base-url <url>      Base URL for the OpenAI-compatible endpoint.
+                                Default: https://openrouter.ai/api (MK appends /v1/chat/completions).
+          --api-key-env <VAR>   Env var name containing the API key for openai-compat.
+                                Default: OPENROUTER_API_KEY.
+          --extra-tools <N>     Register N additional plausible-but-irrelevant decoy tools so the
+                                model must select the correct tool under distractor pressure.
+                                Default: 0 (no decoys). Decoys are recorded in the transcript prompt.
           --list                Print available scenarios and exit.
           --help                Show this text.
 
@@ -120,6 +163,13 @@ struct CLI {
           0 — all scenarios passed.
           1 — at least one scenario or assertion failed.
           2 — bad arguments.
+
+        OPENROUTER EXAMPLE
+          OPENROUTER_API_KEY=sk-or-... manifold-tools \\
+            --backend openai-compat \\
+            --base-url https://openrouter.ai/api \\
+            --model openai/gpt-4o-mini \\
+            --scenario all
 
         The transcript is one JSONL line per event (prompt / tool_call / tool_result /
         token_delta / final / assertion) so downstream tooling can diff runs without
@@ -388,6 +438,16 @@ func runCLI() async -> Int32 {
     registry.register(SampleRepoSearchTool.makeExecutor(root: ReadFileTool.defaultRoot()))
     registry.register(HttpGetFixtureTool.makeExecutor(allowRealNetwork: cli.realNetwork))
 
+    // Decoy tools — plausible-but-irrelevant distractors injected to raise the
+    // bar on tool selection. They should never be the correct answer for any
+    // built-in scenario; their executors return a canned string if the model
+    // mistakenly invokes one, so scoring will catch the error.
+    if cli.extraTools > 0 {
+        for executor in DecoyTools.makeExecutors(count: cli.extraTools) {
+            registry.register(executor)
+        }
+    }
+
     var allPassed = true
     for scenario in filtered {
         let models = cli.modelOverrides.isEmpty ? [scenario.backend.model] : cli.modelOverrides
@@ -404,7 +464,11 @@ func runCLI() async -> Int32 {
                     quant: quantLabel(from: model)
                 )
                 let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
-                let runner = ScenarioRunner(service: service, logger: logger)
+                let runner = ScenarioRunner(
+                    service: service,
+                    logger: logger,
+                    passAllRegisteredTools: cli.extraTools > 0
+                )
                 let outcome = try await runner.run(scenario)
                 for assertion in outcome.assertions {
                     let marker = assertion.passed ? "  PASS" : "  FAIL"
@@ -475,6 +539,15 @@ func makeService(
         try await ollama.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
         backend = ollama
         name = "ollama"
+    case .openaiCompat:
+        // Key was validated in CLI.parse — we can safely force-unwrap the env here.
+        // Using do/catch instead of try? to keep SilentCatchAuditTest green.
+        let apiKey = ProcessInfo.processInfo.environment[cli.apiKeyEnvVar] ?? ""
+        let openAI = OpenAIBackend()
+        openAI.configure(baseURL: cli.openAICompatBaseURL, apiKey: apiKey, modelName: model)
+        try await openAI.loadModel(from: cli.openAICompatBaseURL, plan: .cloud())
+        backend = openAI
+        name = "openai-compat"
     }
     // Inject the pre-loaded backend together with the tool registry so the
     // scenario runs through the production GenerationQueue → dispatch-loop
@@ -482,6 +555,76 @@ func makeService(
     // injects tool definitions, so the model is actually told the tools exist
     // (#1983). Driving the raw backend directly would dispatch zero tools.
     return InferenceService(backend: backend, name: name, modelName: model, toolRegistry: registry)
+}
+
+/// Generates plausible-but-irrelevant decoy tools for distractor-pressure
+/// testing.  Each decoy has a realistic name and description but should never
+/// be the correct tool for any built-in scenario.  The executor returns a
+/// canned string so a misfiring invocation shows up clearly in the transcript.
+enum DecoyTools {
+
+    /// Metadata table — add entries here when expanding the ladder.
+    private static let catalogue: [(name: String, description: String, paramKey: String, paramDesc: String)] = [
+        ("get_weather", "Returns current weather conditions for a given city name.", "city", "The name of the city to retrieve weather for."),
+        ("translate_text", "Translates a text string from one language to another using a cloud translation service.", "text", "The text to translate."),
+        ("convert_units", "Converts a numeric value between physical units such as miles to kilometres or Fahrenheit to Celsius.", "value", "The numeric value to convert."),
+        ("send_email", "Sends an email to a recipient address with a subject and body. Requires prior user authorisation.", "recipient", "The destination email address."),
+        ("lookup_stock_price", "Fetches the latest closing price for a stock ticker symbol from a financial data feed.", "ticker", "The stock ticker symbol, e.g. AAPL."),
+        ("create_calendar_event", "Creates a new calendar event with a title, start time, and duration.", "title", "The event title."),
+        ("summarise_url", "Downloads and summarises the text content at the given URL using an extractive summarisation model.", "url", "The URL of the page to summarise."),
+        ("run_sql_query", "Executes a read-only SQL SELECT statement against the configured analytics database.", "query", "The SQL SELECT statement to run."),
+        ("get_exchange_rate", "Returns the current exchange rate between two ISO 4217 currency codes.", "from_currency", "The source currency code, e.g. USD."),
+        ("resize_image", "Resizes an image file to the specified dimensions and returns the path to the resized file.", "path", "The path to the source image file."),
+        ("check_dns", "Performs a DNS lookup for a hostname and returns the resolved IP addresses.", "hostname", "The hostname to resolve."),
+        ("fetch_git_log", "Returns the most recent commits from a git repository at the given path.", "repo_path", "The path to the git repository."),
+        ("list_s3_objects", "Lists objects in an S3 bucket with an optional key prefix filter.", "bucket", "The S3 bucket name."),
+        ("ping_host", "Sends ICMP echo requests to a host and returns round-trip latency statistics.", "host", "The hostname or IP address to ping."),
+        ("parse_csv", "Parses a CSV file and returns the first N rows as a JSON array.", "path", "The path to the CSV file."),
+        ("hash_file", "Computes the SHA-256 hash of a file and returns it as a hex string.", "path", "The path to the file to hash."),
+        ("get_system_uptime", "Returns the current system uptime in human-readable format.", "format", "The output format: 'human' or 'seconds'."),
+        ("fetch_rss_feed", "Fetches an RSS feed from the given URL and returns the latest N items.", "url", "The URL of the RSS feed."),
+        ("diff_files", "Computes a unified diff between two text files.", "file_a", "The path to the first file."),
+        ("validate_json", "Validates a JSON string against an optional JSON Schema and returns a pass/fail result.", "json", "The JSON string to validate."),
+    ]
+
+    /// Returns `count` decoy ``ToolExecutor`` values drawn in order from the
+    /// catalogue, cycling if `count` exceeds the catalogue size.
+    static func makeExecutors(count: Int) -> [any ToolExecutor] {
+        guard count > 0 else { return [] }
+        return (0..<count).map { i in
+            let entry = catalogue[i % catalogue.count]
+            let definition = ToolDefinition(
+                name: "decoy_tool_\(i + 1)_\(entry.name)",
+                description: entry.description,
+                parameters: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        entry.paramKey: .object([
+                            "type": .string("string"),
+                            "description": .string(entry.paramDesc)
+                        ])
+                    ]),
+                    "required": .array([.string(entry.paramKey)])
+                ])
+            )
+            return DecoyExecutor(definition: definition)
+        }
+    }
+
+    /// Minimal executor that returns a fixed canned string.  If this executor
+    /// is ever called it means the model chose a decoy over a real tool —
+    /// which is a tool-selection failure that will surface in scoring.
+    private struct DecoyExecutor: ToolExecutor {
+        let definition: ToolDefinition
+        var supportsConcurrentDispatch: Bool { true }
+        var requiresApproval: Bool { false }
+        func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
+            ToolResult(
+                callId: "",
+                content: "[decoy] This tool is a test distractor and has no real implementation."
+            )
+        }
+    }
 }
 
 enum MockFactory {

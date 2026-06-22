@@ -9,7 +9,7 @@ import Foundation
 public final class TranscriptLogger {
 
     public enum Event {
-        case prompt(scenarioId: String, system: String, user: String, requiredTools: [String])
+        case prompt(scenarioId: String, system: String, user: String, requiredTools: [String], advertisedTools: [String] = [])
         case toolCall(scenarioId: String, name: String, arguments: String)
         case toolResult(scenarioId: String, name: String, content: String, errorKind: String?)
         case tokenDelta(scenarioId: String, text: String)
@@ -97,13 +97,18 @@ public final class TranscriptLogger {
     private func encode(_ event: Event) -> [String: Any] {
         let timestamp = isoFormatter.string(from: Date())
         switch event {
-        case .prompt(let id, let system, let user, let requiredTools):
+        case .prompt(let id, let system, let user, let requiredTools, let advertisedTools):
             // `requiredTools` is the scenario's *expected* tool set. Recording it
             // here is what lets ConformanceScorer compute ConfusionCounts (tool
             // selection precision/recall/F1) straight from the transcript —
             // matching the metric the MLX/llama soak CLIs report, so all three
             // backends are directly comparable.
-            return [
+            //
+            // `advertisedTools` is the full set forwarded to the model on this
+            // run (which may include decoy distractors when --extra-tools N > 0).
+            // Omitted from the record when empty to keep baseline transcripts
+            // shape-identical to their pre-decoy form.
+            var dict: [String: Any] = [
                 "ts": timestamp,
                 "kind": "prompt",
                 "scenario": id,
@@ -111,6 +116,10 @@ public final class TranscriptLogger {
                 "user": user,
                 "requiredTools": requiredTools
             ]
+            if !advertisedTools.isEmpty {
+                dict["advertisedTools"] = advertisedTools
+            }
+            return dict
         case .toolCall(let id, let name, let arguments):
             return [
                 "ts": timestamp,

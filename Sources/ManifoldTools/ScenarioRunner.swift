@@ -48,29 +48,59 @@ public final class ScenarioRunner {
     /// definitions advertised to the model for a given scenario.
     private var registry: ToolRegistry? { service.toolRegistry }
 
+    /// When `true`, ALL tools in the registry are advertised to the model on
+    /// every generation — not just the subset named in `scenario.requiredTools`.
+    /// Set this to enable distractor-pressure testing: extra decoy tools are
+    /// registered in the registry and included in the prompt so the model must
+    /// identify the correct tool among irrelevant ones.
+    ///
+    /// Assertions still check only `scenario.requiredTools`; extra tools never
+    /// affect scoring.
+    public let passAllRegisteredTools: Bool
+
     public init(
         service: InferenceService,
         logger: TranscriptLogger? = nil,
-        maxIterations: Int = 6
+        maxIterations: Int = 6,
+        passAllRegisteredTools: Bool = false
     ) {
         self.service = service
         self.logger = logger
         self.maxIterations = maxIterations
+        self.passAllRegisteredTools = passAllRegisteredTools
     }
 
     /// Executes a scenario. Errors bubble out; ``Outcome/passed`` captures
     /// the assertion verdict.
     public func run(_ scenario: Scenario) async throws -> Outcome {
-        logger?.append(.prompt(scenarioId: scenario.id, system: scenario.systemPrompt, user: scenario.userPrompt, requiredTools: scenario.requiredTools))
+        // Defer the advertisedTools list until after we know which definitions
+        // we're forwarding, so we log them below after the definitions are resolved.
 
         let messages: [StructuredMessage] = [
             StructuredMessage(role: "user", content: scenario.userPrompt)
         ]
 
         let allDefinitions = registry?.definitions ?? []
-        let definitions = allDefinitions.filter {
-            scenario.requiredTools.isEmpty || scenario.requiredTools.contains($0.name)
+        // When passAllRegisteredTools is true (decoy-pressure mode) every
+        // registered tool is advertised to the model so distractors are visible.
+        // Otherwise only required tools are forwarded — preserves the baseline
+        // semantics where decoys can't accidentally inflate recall denominators.
+        let definitions: [ToolDefinition]
+        if passAllRegisteredTools {
+            definitions = allDefinitions
+        } else {
+            definitions = allDefinitions.filter {
+                scenario.requiredTools.isEmpty || scenario.requiredTools.contains($0.name)
+            }
         }
+
+        logger?.append(.prompt(
+            scenarioId: scenario.id,
+            system: scenario.systemPrompt,
+            user: scenario.userPrompt,
+            requiredTools: scenario.requiredTools,
+            advertisedTools: definitions.map(\.name)
+        ))
 
         let config = makeConfig(for: scenario, tools: definitions)
 
