@@ -4,137 +4,6 @@ import Foundation
 @testable import ManifoldInference
 import ManifoldTestSupport
 
-// MARK: - Cost estimator tests (no trait gate — ManifoldCloudCore is always compiled)
-
-@Suite("InferenceCostEstimator")
-struct InferenceCostEstimatorTests {
-
-    // MARK: - Known Models
-
-    @Test("Claude Sonnet 4-6 cost matches rate table")
-    func claudeSonnet46Cost() {
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "Claude",
-            model: "claude-sonnet-4-6",
-            promptTokens: 1_000_000,
-            completionTokens: 1_000_000
-        )
-        // Input $3/M + Output $15/M = $18 for 1M each
-        #expect(usd == 18.0)
-        #expect(!isApprox)
-    }
-
-    @Test("Claude Opus 4-7 cost matches rate table")
-    func claudeOpus47Cost() {
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "Claude",
-            model: "claude-opus-4-7",
-            promptTokens: 1_000_000,
-            completionTokens: 1_000_000
-        )
-        // Input $15/M + Output $75/M = $90 for 1M each
-        #expect(usd == 90.0)
-        #expect(!isApprox)
-    }
-
-    @Test("Claude Haiku 4-5 cost matches rate table")
-    func claudeHaiku45Cost() {
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "Claude",
-            model: "claude-haiku-4-5",
-            promptTokens: 1_000_000,
-            completionTokens: 1_000_000
-        )
-        // Input $0.80/M + Output $4/M = $4.80
-        #expect(abs(usd - 4.80) < 0.0001)
-        #expect(!isApprox)
-    }
-
-    @Test("GPT-4o cost matches rate table")
-    func gpt4oCost() {
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "OpenAI",
-            model: "gpt-4o",
-            promptTokens: 1_000_000,
-            completionTokens: 1_000_000
-        )
-        // Input $2.50/M + Output $10/M = $12.50
-        #expect(usd == 12.5)
-        #expect(!isApprox)
-    }
-
-    @Test("GPT-4o-mini cost matches rate table")
-    func gpt4oMiniCost() {
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "OpenAI",
-            model: "gpt-4o-mini",
-            promptTokens: 1_000_000,
-            completionTokens: 1_000_000
-        )
-        // Input $0.15/M + Output $0.60/M = $0.75
-        #expect(abs(usd - 0.75) < 0.0001)
-        #expect(!isApprox)
-    }
-
-    @Test("Unknown model returns zero cost and isApproximate = true")
-    func unknownModel() {
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "SomeProvider",
-            model: "totally-unknown-model-xyz",
-            promptTokens: 100,
-            completionTokens: 100
-        )
-        #expect(usd == 0)
-        #expect(isApprox)
-    }
-
-    @Test("Model variant with date suffix is matched via prefix")
-    func modelVariantPrefix() {
-        // Model identifiers with a date suffix (e.g. claude-sonnet-4-6-20261201)
-        // should still resolve against the base rate.
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "Claude",
-            model: "claude-sonnet-4-6-20261201",
-            promptTokens: 1_000_000,
-            completionTokens: 0
-        )
-        #expect(usd == 3.0) // Input only: $3/M
-        #expect(!isApprox)
-    }
-
-    @Test("gpt-4o-mini variant uses mini rate, not gpt-4o rate")
-    func gpt4oMiniVariantUsesLongestPrefix() {
-        // "gpt-4o-mini-20261201" has two matching prefixes: "gpt-4o" and "gpt-4o-mini".
-        // The longest-prefix-wins rule must select "gpt-4o-mini" ($0.15/$0.60 per M)
-        // rather than "gpt-4o" ($2.50/$10 per M).
-        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
-            provider: "OpenAI",
-            model: "gpt-4o-mini-20261201",
-            promptTokens: 1_000_000,
-            completionTokens: 0
-        )
-        // Input $0.15/M → $0.15 for 1M tokens
-        #expect(abs(usd - 0.15) < 0.0001)
-        #expect(!isApprox)
-    }
-
-    @Test("Zero tokens produces zero cost")
-    func zeroTokens() {
-        let (usd, _) = InferenceCostEstimator.estimatedCost(
-            provider: "Claude",
-            model: "claude-sonnet-4-6",
-            promptTokens: 0,
-            completionTokens: 0
-        )
-        #expect(usd == 0)
-    }
-
-    @Test("Cost table date is set")
-    func costTableDateIsSet() {
-        #expect(!InferenceCostEstimator.costTableDate.isEmpty)
-    }
-}
-
 // MARK: - Ring buffer tests
 
 @Suite("InMemoryMetricSink")
@@ -150,9 +19,6 @@ struct InMemoryMetricSinkTests {
             timeToFirstToken: .zero,
             meanInterTokenLatency: .zero,
             wallClockDuration: .zero,
-            estimatedCostUSD: 0,
-            isCostApproximate: false,
-            costTableDate: "2026-05-24",
             errorClass: nil
         )
     }
@@ -313,7 +179,18 @@ struct SSECloudBackendMetricTests {
         #expect(metric.provider == "TestBackend")
         #expect(metric.model == "gpt-4o")
         #expect(metric.errorClass == nil)
-        #expect(!metric.isCostApproximate) // gpt-4o is in the rate table
+        // The metric carries the token counts the downstream consumer needs to
+        // join against its own price table; this handler reports no usage, so 0.
+        #expect(metric.promptTokens == 0)
+        #expect(metric.completionTokens == 0)
+
+        // The same surfaces through the vendor-neutral GenAI span: provider,
+        // model, and token counts — no cost attributes.
+        let span = metric.asGenSpan()
+        #expect(span.attributes[GenAIAttributeKeys.system] == .string("TestBackend"))
+        #expect(span.attributes[GenAIAttributeKeys.requestModel] == .string("gpt-4o"))
+        #expect(span.attributes[GenAIAttributeKeys.usagePromptTokens] == .int(0))
+        #expect(span.attributes[GenAIAttributeKeys.usageCompletionTokens] == .int(0))
     }
 
     @Test("Metric errorClass is populated on failure")

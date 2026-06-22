@@ -1,12 +1,13 @@
 import Foundation
 
-/// A snapshot of latency, cost, and token-count data produced after a single
+/// A snapshot of latency and token-count data produced after a single
 /// inference call.
 ///
 /// Emitted by backends after every generation (success or failure) and forwarded
 /// to the configured ``InferenceMetricSink``. Consumers use this to power
-/// dashboards, cost alerts, and latency regression detection without having to
-/// instrument individual backends.
+/// dashboards and latency regression detection without having to instrument
+/// individual backends. Cost is intentionally not computed here — join the
+/// model and token counts against your own price table downstream.
 public struct InferenceMetric: Sendable {
     /// Human-readable backend name (e.g. "Claude", "OpenAI", "FoundationModels").
     public let provider: String
@@ -28,13 +29,6 @@ public struct InferenceMetric: Sendable {
     public let meanInterTokenLatency: Duration
     /// Wall-clock duration from request dispatch to stream completion or error.
     public let wallClockDuration: Duration
-    /// Estimated USD cost for the call based on the static rate table.
-    public let estimatedCostUSD: Double
-    /// `true` when the model was not in the known rate table and the cost is
-    /// therefore zero rather than accurate.
-    public let isCostApproximate: Bool
-    /// ISO date string of the rate table used for the cost estimate (e.g. "2026-05-24").
-    public let costTableDate: String
     /// Short error class name when the call ended in failure, `nil` on success
     /// (e.g. "rateLimited", "networkError", "authenticationFailed").
     public let errorClass: String?
@@ -51,9 +45,6 @@ public struct InferenceMetric: Sendable {
         timeToFirstToken: Duration,
         meanInterTokenLatency: Duration,
         wallClockDuration: Duration,
-        estimatedCostUSD: Double,
-        isCostApproximate: Bool,
-        costTableDate: String,
         errorClass: String?,
         timestamp: Date = Date()
     ) {
@@ -65,9 +56,6 @@ public struct InferenceMetric: Sendable {
         self.timeToFirstToken = timeToFirstToken
         self.meanInterTokenLatency = meanInterTokenLatency
         self.wallClockDuration = wallClockDuration
-        self.estimatedCostUSD = estimatedCostUSD
-        self.isCostApproximate = isCostApproximate
-        self.costTableDate = costTableDate
         self.errorClass = errorClass
         self.timestamp = timestamp
     }

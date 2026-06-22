@@ -537,8 +537,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                     }
                 }
                 // Emit an InferenceMetric after every generation (success or
-                // failure). Cost is zero / approximate because the Foundation
-                // Models framework does not expose token-level billing.
+                // failure). The Foundation Models framework does not expose
+                // token-level usage, so prompt/completion counts are zero.
                 if let sink = capturedMetricSink {
                     SSEGenerationMetrics.record(
                         to: sink,
@@ -547,9 +547,6 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         model: "apple-foundation",
                         promptTokens: 0,
                         completionTokens: 0,
-                        estimatedCostUSD: 0,
-                        isCostApproximate: true,
-                        costTableDate: "",
                         errorClass: streamError.map { String(describing: type(of: $0)) }
                     )
                 }

@@ -127,3 +127,15 @@ API breakage: constructor RAGService.RetrievalResult.init(slots:citations:) has 
 API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkSize:chunkOverlap:topK:similarityThreshold:fullContextMode:fullContextBudgetTokens:vectorStoreURL:) has been removed
 API breakage: constructor RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:fullContextMode:fullContextBudgetTokens:) has been removed
 API breakage: constructor KeepAlivePolicy.init(idleTimeout:) has been removed
+API breakage: func GenerationMetricTracker.buildMetric(provider:model:promptTokens:cachedPromptTokens:completionTokens:estimatedCostUSD:isCostApproximate:costTableDate:errorClass:) has parameter 5 type change from Swift.Double to Swift.String?
+API breakage: func SSEGenerationMetrics.record(to:tracker:provider:model:promptTokens:completionTokens:cachedPromptTokens:estimatedCostUSD:isCostApproximate:costTableDate:errorClass:) has parameter 7 type change from Swift.Double to Swift.String?
+API breakage: var GenAIAttributeKeys.costUSD has been removed
+API breakage: var GenAIAttributeKeys.costApproximate has been removed
+API breakage: var GenAIAttributeKeys.costTableDate has been removed
+API breakage: func GenerationMetricTracker.buildMetric(provider:model:promptTokens:cachedPromptTokens:completionTokens:estimatedCostUSD:isCostApproximate:costTableDate:errorClass:) has been renamed to func buildMetric(provider:model:promptTokens:cachedPromptTokens:completionTokens:errorClass:)
+API breakage: func SSEGenerationMetrics.record(to:tracker:provider:model:promptTokens:completionTokens:cachedPromptTokens:estimatedCostUSD:isCostApproximate:costTableDate:errorClass:) has been renamed to func record(to:tracker:provider:model:promptTokens:completionTokens:cachedPromptTokens:errorClass:)
+API breakage: var InferenceMetric.estimatedCostUSD has been removed
+API breakage: var InferenceMetric.isCostApproximate has been removed
+API breakage: var InferenceMetric.costTableDate has been removed
+API breakage: constructor InferenceMetric.init(provider:model:promptTokens:cachedPromptTokens:completionTokens:timeToFirstToken:meanInterTokenLatency:wallClockDuration:estimatedCostUSD:isCostApproximate:costTableDate:errorClass:timestamp:) has been removed
+API breakage: enum InferenceCostEstimator has been removed

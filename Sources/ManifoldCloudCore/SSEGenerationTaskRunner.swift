@@ -110,27 +110,14 @@ struct SSEGenerationTaskRunner {
         }
 
         if let sink = context.metricSink {
-            // Compute cost in ManifoldCloudCore where InferenceCostEstimator lives,
-            // then pass the pre-resolved values to the ManifoldInference record helper.
             let usage = context.readUsage()
-            let promptTokens = usage?.promptTokens ?? 0
-            let completionTokens = usage?.completionTokens ?? 0
-            let (costUSD, isApprox) = InferenceCostEstimator.estimatedCost(
-                provider: context.backendName,
-                model: context.modelName,
-                promptTokens: promptTokens,
-                completionTokens: completionTokens
-            )
             SSEGenerationMetrics.record(
                 to: sink,
                 tracker: metricTracker,
                 provider: context.backendName,
                 model: context.modelName,
-                promptTokens: promptTokens,
-                completionTokens: completionTokens,
-                estimatedCostUSD: costUSD,
-                isCostApproximate: isApprox,
-                costTableDate: InferenceCostEstimator.costTableDate,
+                promptTokens: usage?.promptTokens ?? 0,
+                completionTokens: usage?.completionTokens ?? 0,
                 errorClass: streamError.map { SSECloudBackend.classifyError($0) }
             )
         }
