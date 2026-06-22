@@ -23,9 +23,19 @@ package final class ConversationTurnTaskRegistry: @unchecked Sendable {
         operation: @escaping @Sendable () async -> Void
     ) async -> Task<Void, Never> {
         let gate = ConversationTurnTaskStartGate()
-        let task = Task.detached(priority: priority) { [weak self] in
+        // Capture `self` strongly for the lifetime of the task so the
+        // `unregister` cleanup is guaranteed to run, even if the owning
+        // runtime deallocates while generation is still in flight. A `[weak
+        // self]` capture would silently drop the cleanup on early dealloc,
+        // leaking the handle's entry in `tasks` forever. The strong capture
+        // forms a temporary owner → tasks → task → registry retain cycle that
+        // is self-breaking: the moment the task unregisters its own handle,
+        // `tasks` no longer retains the task and the registry can deallocate
+        // normally. The task always reaches `unregister` — `operation()` is
+        // `() async -> Void` and cannot throw past this scope.
+        let task = Task.detached(priority: priority) {
             await gate.wait()
-            defer { self?.unregister(handle) }
+            defer { self.unregister(handle) }
             await operation()
         }
 

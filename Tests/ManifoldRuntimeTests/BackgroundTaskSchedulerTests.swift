@@ -166,6 +166,58 @@ final class BackgroundTaskSchedulerTests: XCTestCase {
         await fulfillment(of: [cancelled], timeout: 1.0)
     }
 
+    // MARK: - DefaultBackgroundTaskScheduler — completion cleanup
+
+    /// The detached task clears its own `inFlight` entry on completion. That
+    /// cleanup must be guaranteed even when the scheduler deallocates while the
+    /// work is still in flight — otherwise the orphaned entry would block
+    /// future scheduling for that identifier. The strong `self` capture that
+    /// provides this guarantee must be transient: once the task completes and
+    /// clears its entry, the scheduler must be free to deallocate (no permanent
+    /// retain cycle). We drop the only strong reference to the scheduler while
+    /// its work runs, then let it finish and confirm the scheduler deallocates.
+    func test_default_schedulerDeallocates_afterWorkCompletes_underEarlyOwnerDrop() async {
+        weak var weakScheduler: DefaultBackgroundTaskScheduler?
+        let started = expectation(description: "work started")
+        let finished = expectation(description: "work finished")
+        // A `Sendable` gate the test holds open without capturing the
+        // non-`Sendable` `XCTestCase` inside the `@Sendable` work closure.
+        let gate = SchedulerTestGate()
+
+        do {
+            let scheduler = DefaultBackgroundTaskScheduler(memorySampler: { 1_000 })
+            weakScheduler = scheduler
+            await scheduler.schedule(
+                identifier: "default.dealloc",
+                budget: MemoryBudget(maxBytes: 10_000_000, sampleInterval: .seconds(60))
+            ) {
+                started.fulfill()
+                await gate.wait()
+                finished.fulfill()
+            }
+            // `scheduler` leaves scope here — only the detached task's transient
+            // strong capture keeps it alive while the work runs.
+        }
+
+        await fulfillment(of: [started], timeout: 1.0)
+        XCTAssertNotNil(weakScheduler, "scheduler stays alive while its work runs")
+
+        await gate.open()
+        await fulfillment(of: [finished], timeout: 2.0)
+
+        // The task clears its identifier and releases its transient strong
+        // capture. Give the detached task's tail a turn to run, then assert the
+        // scheduler has deallocated — proving the cleanup ran and the cycle
+        // self-broke rather than leaking.
+        for _ in 0..<50 where weakScheduler != nil {
+            await Task.yield()
+        }
+        XCTAssertNil(
+            weakScheduler,
+            "scheduler must deallocate once the completed task releases its transient strong capture"
+        )
+    }
+
     // MARK: - Recommended identifiers
 
     func test_recommendedIdentifiers_areStableStrings() {
@@ -176,5 +228,30 @@ final class BackgroundTaskSchedulerTests: XCTestCase {
                        "com.manifoldkit.background.indexing")
         XCTAssertEqual(ManifoldBackgroundTaskIdentifiers.archive,
                        "com.manifoldkit.background.archive")
+    }
+}
+
+/// A `Sendable` one-shot gate so a test can park a scheduler's `@Sendable`
+/// work closure and release it later without capturing the non-`Sendable`
+/// `XCTestCase`.
+private actor SchedulerTestGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        for continuation in pending {
+            continuation.resume()
+        }
     }
 }
