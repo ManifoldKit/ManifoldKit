@@ -527,4 +527,166 @@ final class JinjaPromptRendererTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - #2033: alternation-strict templates — tool-result fold (Mistral multi-turn)
+
+    /// A Mistral-style alternation-strict template that also handles tool calls
+    /// and the Mistral `[TOOL_RESULTS]...[/TOOL_RESULTS]` user-turn convention
+    /// for tool results.
+    ///
+    /// The template mirrors the structure of the real Mistral-v0.3 chat template:
+    /// - Tool calls appear on the assistant turn via `tool_calls`.
+    /// - Tool results are expected as USER turns (role `user`) whose content is
+    ///   wrapped in `[TOOL_RESULTS]...[/TOOL_RESULTS]`.
+    /// - Alternation is strictly enforced from index 0.
+    ///
+    /// The `tool` role does NOT appear in this template — it only handles `user`
+    /// and `assistant`. Any `tool` message in the input MUST be folded to `user`
+    /// by the renderer's retry path, otherwise the alternation check fires.
+    private static let mistralToolCallTemplate = """
+    {{- '<s>' }}
+    {%- for message in messages %}
+        {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}
+            {{- raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}
+        {%- endif %}
+        {%- if message['role'] == 'user' %}
+            {{- '[INST] ' + message['content'] + ' [/INST]' }}
+        {%- elif message['role'] == 'assistant' %}
+            {%- if message.tool_calls %}
+                {%- for tc in message.tool_calls %}
+                    {{- '[TOOL_CALLS] [{"name": "' + tc.function.name + '", "arguments": ' + tc.function.arguments | string + '}]</s>' }}
+                {%- endfor %}
+            {%- else %}
+                {{- message['content'] + '</s>' }}
+            {%- endif %}
+        {%- endif %}
+    {%- endfor %}
+    """
+
+    /// SABOTAGE NOTE: This test was confirmed to FAIL (render returns nil) on
+    /// origin/main BEFORE the fix was applied. With the fix, the renderer retries
+    /// by folding the `tool` role message into a `user` role message with
+    /// `[TOOL_RESULTS]...[/TOOL_RESULTS]` content, which the template accepts as
+    /// a valid user turn at even index.
+    ///
+    /// The sequence that breaks on strict-alternation templates:
+    ///   [user(0), assistant+toolCall(1), tool(2)] — index 2 is even but NOT user.
+    func test_mistral_multiTurnToolCall_foldToolResultIntoUserTurn() throws {
+        let call = ToolCall(id: "call_weather_1", toolName: "get_weather", arguments: #"{"city":"Paris"}"#)
+        let messages: [StructuredMessage] = [
+            msg("user", "What's the weather in Paris?"),
+            StructuredMessage(role: "assistant", parts: [.toolCall(call)]),
+            StructuredMessage(role: "tool", parts: [.toolResult(ToolResult(callId: "call_weather_1", content: "18C and sunny"))]),
+        ]
+
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: Self.mistralToolCallTemplate,
+                messages: messages,
+                systemPrompt: nil
+            ),
+            "Render-retry must fold the tool result into a user turn so the alternation-strict template renders (not nil). SABOTAGE: this XCTUnwrap fails without the fix."
+        )
+
+        // The original user question must still be present in an [INST] block.
+        XCTAssertTrue(
+            rendered.contains("[INST] What's the weather in Paris? [/INST]"),
+            "Original user question must appear in an [INST] block"
+        )
+
+        // The tool result must be present, wrapped in [TOOL_RESULTS] as a user turn.
+        XCTAssertTrue(
+            rendered.contains("[TOOL_RESULTS]"),
+            "Tool result content must be wrapped in [TOOL_RESULTS] brackets (folded into a user turn)"
+        )
+        XCTAssertTrue(
+            rendered.contains("[/TOOL_RESULTS]"),
+            "Tool result must have a closing [/TOOL_RESULTS] bracket"
+        )
+        XCTAssertTrue(
+            rendered.contains("18C and sunny"),
+            "Tool result payload must be present in the rendered prompt"
+        )
+        XCTAssertTrue(
+            rendered.contains("call_weather_1"),
+            "call_id must be present in the folded tool-result user turn"
+        )
+    }
+
+    /// The combined fold handles BOTH a system prompt AND tool results in the same
+    /// multi-turn conversation — the common real-world case.
+    func test_mistral_multiTurnToolCall_withSystemPrompt_foldsBothSystemAndToolResult() throws {
+        let call = ToolCall(id: "call_w2", toolName: "get_weather", arguments: #"{"city":"London"}"#)
+        let messages: [StructuredMessage] = [
+            msg("user", "Check the weather"),
+            StructuredMessage(role: "assistant", parts: [.toolCall(call)]),
+            StructuredMessage(role: "tool", parts: [.toolResult(ToolResult(callId: "call_w2", content: "10C and cloudy"))]),
+        ]
+
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: Self.mistralToolCallTemplate,
+                messages: messages,
+                systemPrompt: "You are a weather assistant."
+            ),
+            "Combined system+tool-result fold must succeed on the retry"
+        )
+
+        // System text folded into the first user turn.
+        XCTAssertTrue(
+            rendered.contains("You are a weather assistant."),
+            "System prompt text must appear in the prompt (folded into the first user turn)"
+        )
+        XCTAssertTrue(
+            rendered.contains("You are a weather assistant.\n\nCheck the weather"),
+            "System text must be prepended to the first user content with a blank-line separator"
+        )
+
+        // Tool result wrapped in [TOOL_RESULTS].
+        XCTAssertTrue(
+            rendered.contains("[TOOL_RESULTS]"),
+            "Tool result must be wrapped in [TOOL_RESULTS] even when a system fold also fires"
+        )
+        XCTAssertTrue(
+            rendered.contains("10C and cloudy"),
+            "Tool result payload must be present"
+        )
+    }
+
+    /// No-regression for non-strict templates: ChatML accepts a `tool` role
+    /// natively, so the first render SUCCEEDS and the retry NEVER fires.
+    /// The `tool` role must appear as-is with role `tool` (not rewritten to `user`).
+    func test_chatml_toolResult_notFolded_retryNeverFires() throws {
+        let rendered = try XCTUnwrap(
+            JinjaPromptRenderer.render(
+                rawTemplate: Self.nativeToolTemplate,
+                messages: [
+                    msg("user", "weather?"),
+                    StructuredMessage(role: "assistant", parts: [
+                        .toolCall(ToolCall(id: "c1", toolName: "get_weather", arguments: #"{"city":"NYC"}"#))
+                    ]),
+                    StructuredMessage(role: "tool", parts: [
+                        .toolResult(ToolResult(callId: "c1", content: "Sunny, 22C"))
+                    ]),
+                ],
+                systemPrompt: nil,
+                tools: [Self.weatherTool()]
+            ),
+            "Non-strict (native tool) template must render on the first attempt without retry"
+        )
+
+        // The tool result must reach the template via the normal `tool` role path —
+        // the `nativeToolTemplate` emits `<|result_for|>c1<|/result_for|>`.
+        XCTAssertTrue(
+            rendered.contains("<|result_for|>c1<|/result_for|>"),
+            "Non-strict template must emit the tool result via its native tool_call_id branch (retry must NOT fire)"
+        )
+
+        // The result content must NOT be wrapped in [TOOL_RESULTS] — that bracket
+        // format is only applied by the Mistral fold path.
+        XCTAssertFalse(
+            rendered.contains("[TOOL_RESULTS]"),
+            "Non-strict native template must NOT wrap the tool result in [TOOL_RESULTS] — the Mistral fold must NOT fire for this template"
+        )
+    }
 }
