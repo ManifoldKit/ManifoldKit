@@ -118,21 +118,34 @@ enum JinjaPromptRenderer {
                 documents: documents
             )
         } catch {
-            // Render-retry for alternation-strict templates (#1992). Mistral-v0.3
-            // (and other templates that assert `user`/`assistant` strictly
-            // alternate from index 0) `raise_exception` on a leading `system`
-            // turn. transformers handles this by folding the system instruction
-            // into the FIRST user message rather than emitting a system turn.
-            // We only reach here on the throwing path, so templates that ACCEPT a
-            // leading system role never retry — their output is byte-identical to
-            // before. Retry ONCE with the folded shape; if the host supplied no
-            // system prompt or there is no user turn to fold into, there is
-            // nothing to change, so fall through to the existing nil-return.
-            if prependsSystem,
-               let systemPrompt,
-               let folded = Self.foldingSystemIntoFirstUser(
+            // Render-retry for alternation-strict templates (#1992 / #2033).
+            // Mistral-v0.3 (and other templates that assert `user`/`assistant`
+            // strictly alternate from index 0) `raise_exception` on role
+            // violations. Two cases each trigger this:
+            //
+            // 1. A leading `system` turn (#1992 / PR #2032): transformers handles
+            //    this by folding the system instruction into the FIRST user message.
+            //
+            // 2. A `tool` result turn in a multi-turn tool-calling conversation
+            //    (#2033 follow-on): Mistral-v0.3 represents tool results as USER
+            //    turns whose content is wrapped in `[TOOL_RESULTS]...[/TOOL_RESULTS]`
+            //    rather than emitting a standalone `tool` role message. A `tool`
+            //    turn at an even index (after user→assistant) violates the
+            //    alternation check; the fix folds it into a user-role message with
+            //    the result wrapped in the Mistral brackets.
+            //
+            // Both folds are applied together so a conversation that has BOTH a
+            // system prompt AND tool results (the common multi-turn case) succeeds
+            // in a single retry rather than requiring two attempts. We reach here
+            // only on the throwing path, so templates that ACCEPT these role shapes
+            // natively never retry — their output is byte-identical to before.
+            let hasToolResultMessages = messages.contains { $0.role == "tool" }
+            let canFold = (prependsSystem && systemPrompt != nil) || hasToolResultMessages
+
+            if canFold,
+               let folded = Self.foldingForAlternationStrict(
                    messages: messages,
-                   systemPrompt: systemPrompt,
+                   systemPrompt: prependsSystem ? systemPrompt : nil,
                    threadImages: threadImages
                ) {
                 do {
@@ -143,11 +156,11 @@ enum JinjaPromptRenderer {
                         documents: documents
                     )
                 } catch let retryError {
-                    // The folded retry also failed — this template is genuinely
+                    // The combined fold also failed — this template is genuinely
                     // unrenderable. Surface the retry error and fall through.
                     errorSink?(retryError)
                     Log.inference.warning(
-                        "JinjaPromptRenderer: embedded chat template failed even after folding the system prompt into the first user turn, falling back to enum: \(retryError.localizedDescription)"
+                        "JinjaPromptRenderer: embedded chat template failed even after folding for alternation-strict layout, falling back to enum: \(retryError.localizedDescription)"
                     )
                     return nil
                 }
@@ -220,43 +233,123 @@ enum JinjaPromptRenderer {
     /// retry simply re-misses and falls through, exactly as before.)
     private struct EmptyRenderError: Error {}
 
-    /// Builds the `jinjaMessages` array WITHOUT a synthesized `system` turn,
-    /// folding `systemPrompt` into the first user message's content as
-    /// `systemPrompt + "\n\n" + originalFirstUserContent`. Returns `nil` when
-    /// there is no user turn to fold into (nothing to retry).
+    /// Builds the `jinjaMessages` array in the shape alternation-strict templates
+    /// (Mistral-v0.3 et al.) require, applying two folds that keep the sequence
+    /// in strict `user`/`assistant` alternation starting at index 0:
     ///
-    /// This mirrors `transformers.apply_chat_template`'s handling of
-    /// alternation-strict templates (Mistral-v0.3 et al.) that reject a leading
-    /// system role.
-    private static func foldingSystemIntoFirstUser(
+    /// 1. **System fold** (mirrors #2032 / `transformers.apply_chat_template`):
+    ///    when `systemPrompt` is non-nil, no synthesized `system` turn is emitted;
+    ///    instead, the system text is prepended to the first user message's content
+    ///    as `systemPrompt + "\n\n" + originalContent`.
+    ///
+    /// 2. **Tool-result fold** (this PR, #2033): `tool` role messages (tool results)
+    ///    are converted to `user` role messages whose content is wrapped in the
+    ///    Mistral `[TOOL_RESULTS]...[/TOOL_RESULTS]` bracket tokens. This matches
+    ///    what `transformers.apply_chat_template` does for Mistral-family models:
+    ///    tool results travel as USER turns, not as a separate `tool` role, so the
+    ///    alternation invariant is preserved across multi-turn tool-calling rounds.
+    ///
+    /// Both folds are applied in the same pass. Returns `nil` when neither fold
+    /// would change anything useful (no user turn to fold system into, and no tool
+    /// result messages to convert) — the signal to skip the retry.
+    ///
+    /// Only called on the throwing path (the first render already failed), so
+    /// templates that accept `system` and `tool` roles natively never reach here —
+    /// their first render succeeds and the result is byte-identical to before.
+    private static func foldingForAlternationStrict(
         messages: [StructuredMessage],
-        systemPrompt: String,
+        systemPrompt: String?,
         threadImages: Bool
     ) -> [[String: Any]]? {
         let renderable = messages.filter { renderableRoles.contains($0.role) }
-        guard let firstUserIndex = renderable.firstIndex(where: { $0.role == "user" }) else {
-            return nil
-        }
+
+        // Determine whether either fold would actually change the shape. Return
+        // nil if there is nothing to do (no retry would help).
+        let hasSystemToFold = systemPrompt != nil && renderable.contains { $0.role == "user" }
+        let hasToolResults = renderable.contains { $0.role == "tool" }
+        guard hasSystemToFold || hasToolResults else { return nil }
+
+        let firstUserIndex = renderable.firstIndex { $0.role == "user" }
+
         var jinjaMessages: [[String: Any]] = []
         for (index, message) in renderable.enumerated() {
-            var dict = jinjaMessage(from: message, threadImages: threadImages)
-            if index == firstUserIndex {
-                let original = message.textContent
-                let merged = original.isEmpty ? systemPrompt : systemPrompt + "\n\n" + original
-                // Only override a plain-string content; if this user turn already
-                // carries an image content-list, prepend the system text as a
-                // leading text block instead of clobbering the list.
-                if let list = dict["content"] as? [[String: Any]] {
-                    var newList: [[String: Any]] = [["type": "text", "text": merged]]
-                    newList.append(contentsOf: list.filter { ($0["type"] as? String) != "text" || ($0["text"] as? String) != original })
-                    dict["content"] = newList
-                } else {
-                    dict["content"] = merged
+            if message.role == "tool" {
+                // Tool-result fold: emit as a user turn whose content is the
+                // Mistral bracket-wrapped tool result. Preserves the tool_call_id
+                // so templates that branch on it can still pair the result.
+                let resultContent = Self.mistralToolResultContent(from: message)
+                var dict: [String: Any] = [
+                    "role": "user",
+                    "content": resultContent,
+                ]
+                // Thread tool_call_id so templates that expose it can still pair
+                // the result to the originating call.
+                if let result = firstToolResult(in: message.parts) {
+                    dict["tool_call_id"] = result.callId
                 }
+                jinjaMessages.append(dict)
+            } else {
+                var dict = jinjaMessage(from: message, threadImages: threadImages)
+                // System fold: prepend system text into the first user turn.
+                if let systemPrompt, let firstUser = firstUserIndex, index == firstUser {
+                    let original = message.textContent
+                    let merged = original.isEmpty ? systemPrompt : systemPrompt + "\n\n" + original
+                    // Only override a plain-string content; if this user turn
+                    // already carries an image content-list, prepend the system
+                    // text as a leading text block instead of clobbering the list.
+                    if let list = dict["content"] as? [[String: Any]] {
+                        var newList: [[String: Any]] = [["type": "text", "text": merged]]
+                        newList.append(contentsOf: list.filter {
+                            ($0["type"] as? String) != "text" || ($0["text"] as? String) != original
+                        })
+                        dict["content"] = newList
+                    } else {
+                        dict["content"] = merged
+                    }
+                }
+                jinjaMessages.append(dict)
             }
-            jinjaMessages.append(dict)
         }
         return jinjaMessages
+    }
+
+    /// Formats a `tool` role message's content for the Mistral alternation-strict
+    /// fold: wraps the tool result payload in `[TOOL_RESULTS]...[/TOOL_RESULTS]`.
+    ///
+    /// Mistral-v0.3's chat template represents tool results as user turns whose
+    /// content is the JSON-encoded result wrapped in these bracket tokens, rather
+    /// than as a standalone `tool` role message. This matches what
+    /// `transformers.apply_chat_template` emits for Mistral-family models.
+    private static func mistralToolResultContent(from message: StructuredMessage) -> String {
+        if let result = firstToolResult(in: message.parts) {
+            // Emit a JSON ARRAY with one object carrying `call_id` and `content`,
+            // mirroring the payload shape Mistral's own `apply_chat_template`
+            // produces. The real Mistral-v0.3 tokenizer wraps results as an array
+            // (matching the `[TOOL_CALLS]` convention on the assistant turn) rather
+            // than a bare object.
+            let payload = "[{\"call_id\": \"\(result.callId)\", \"content\": \(jsonString(result.content))}]"
+            return "[TOOL_RESULTS]\(payload)[/TOOL_RESULTS]"
+        }
+        // Fallback: no structured ToolResult part — use the text content as-is,
+        // still wrapped so the alternation constraint is satisfied.
+        let text = message.textContent
+        return text.isEmpty ? "[TOOL_RESULTS][][/TOOL_RESULTS]" : "[TOOL_RESULTS]\(text)[/TOOL_RESULTS]"
+    }
+
+    /// Returns `str` as a JSON string literal — quoted, with internal double-quotes,
+    /// backslashes, and all RFC 8259 §7 control characters escaped. Used to embed
+    /// tool-result content inside a JSON object without pulling in JSONSerialization
+    /// for a single scalar value.
+    private static func jsonString(_ str: String) -> String {
+        let escaped = str
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+            .replacingOccurrences(of: "\u{08}", with: "\\b")  // backspace U+0008
+            .replacingOccurrences(of: "\u{0C}", with: "\\f")  // form feed  U+000C
+        return "\"\(escaped)\""
     }
 
     /// Builds the per-message Jinja dictionary, threading the native tool-call /
