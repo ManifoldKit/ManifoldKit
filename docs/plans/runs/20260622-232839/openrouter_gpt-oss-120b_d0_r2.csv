@@ -1,0 +1,10 @@
+backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict,toolTP,toolFP,toolFN,precision,recall,f1
+openai-compat,openai/gpt-oss-120b,,01-now,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,02-calc,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,03-read,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,04-list,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,meeting-notes-summary,4,0,false,2,pass,2,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,shopping-list-budget,5,0,false,2,pass,2,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,parallel-readme-comparison,3,0,false,2,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,oversize-tool-output,2,1,false,1,partial,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openai/gpt-oss-120b,,structured-json-extraction,1,0,false,0,pass,0,0,0,0.0000,0.0000,0.0000

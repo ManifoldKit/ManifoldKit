@@ -1,0 +1,10 @@
+backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict,toolTP,toolFP,toolFN,precision,recall,f1
+openai-compat,openrouter/owl-alpha,,01-now,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,02-calc,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,03-read,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,04-list,2,0,false,1,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,meeting-notes-summary,4,0,false,2,pass,2,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,shopping-list-budget,3,2,false,1,partial,1,0,1,1.0000,0.5000,0.6667
+openai-compat,openrouter/owl-alpha,,parallel-readme-comparison,3,0,false,2,pass,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,oversize-tool-output,2,1,false,2,partial,1,0,0,1.0000,1.0000,1.0000
+openai-compat,openrouter/owl-alpha,,structured-json-extraction,0,1,false,0,fail,0,0,0,0.0000,0.0000,0.0000

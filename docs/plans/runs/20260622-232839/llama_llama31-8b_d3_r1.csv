@@ -1,0 +1,10 @@
+backend,model,quant,scenario,assertionsPassed,assertionsFailed,errored,toolCallCount,verdict,toolTP,toolFP,toolFN,precision,recall,f1
+,,,01-now,2,0,false,1,pass,1,0,3,1.0000,0.2500,0.4000
+,,,02-calc,2,0,false,1,pass,1,0,3,1.0000,0.2500,0.4000
+,,,03-read,2,0,false,1,pass,1,0,3,1.0000,0.2500,0.4000
+,,,04-list,2,0,false,2,pass,1,0,3,1.0000,0.2500,0.4000
+,,,meeting-notes-summary,3,1,false,3,partial,1,0,4,1.0000,0.2000,0.3333
+,,,shopping-list-budget,0,5,false,0,fail,0,0,5,0.0000,0.0000,0.0000
+,,,parallel-readme-comparison,0,3,false,0,fail,0,0,4,0.0000,0.0000,0.0000
+,,,oversize-tool-output,2,1,false,6,partial,2,0,2,1.0000,0.5000,0.6667
+,,,structured-json-extraction,0,1,false,3,fail,3,0,0,1.0000,1.0000,1.0000
