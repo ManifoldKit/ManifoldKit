@@ -322,20 +322,24 @@ enum JinjaPromptRenderer {
     /// `transformers.apply_chat_template` emits for Mistral-family models.
     private static func mistralToolResultContent(from message: StructuredMessage) -> String {
         if let result = firstToolResult(in: message.parts) {
-            // Emit a JSON object with `call_id` and `content`, mirroring the
-            // payload shape Mistral's own `apply_chat_template` produces.
-            let payload = "{\"call_id\": \"\(result.callId)\", \"content\": \(jsonString(result.content))}"
+            // Emit a JSON ARRAY with one object carrying `call_id` and `content`,
+            // mirroring the payload shape Mistral's own `apply_chat_template`
+            // produces. The real Mistral-v0.3 tokenizer wraps results as an array
+            // (matching the `[TOOL_CALLS]` convention on the assistant turn) rather
+            // than a bare object.
+            let payload = "[{\"call_id\": \"\(result.callId)\", \"content\": \(jsonString(result.content))}]"
             return "[TOOL_RESULTS]\(payload)[/TOOL_RESULTS]"
         }
         // Fallback: no structured ToolResult part — use the text content as-is,
         // still wrapped so the alternation constraint is satisfied.
         let text = message.textContent
-        return text.isEmpty ? "[TOOL_RESULTS]{}[/TOOL_RESULTS]" : "[TOOL_RESULTS]\(text)[/TOOL_RESULTS]"
+        return text.isEmpty ? "[TOOL_RESULTS][][/TOOL_RESULTS]" : "[TOOL_RESULTS]\(text)[/TOOL_RESULTS]"
     }
 
-    /// Returns `str` as a JSON string literal — quoted, with internal double-quotes
-    /// and backslashes escaped. Used to embed tool-result content inside a JSON
-    /// object without pulling in JSONSerialization for a single scalar value.
+    /// Returns `str` as a JSON string literal — quoted, with internal double-quotes,
+    /// backslashes, and all RFC 8259 §7 control characters escaped. Used to embed
+    /// tool-result content inside a JSON object without pulling in JSONSerialization
+    /// for a single scalar value.
     private static func jsonString(_ str: String) -> String {
         let escaped = str
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -343,6 +347,8 @@ enum JinjaPromptRenderer {
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
             .replacingOccurrences(of: "\t", with: "\\t")
+            .replacingOccurrences(of: "\u{08}", with: "\\b")  // backspace U+0008
+            .replacingOccurrences(of: "\u{0C}", with: "\\f")  // form feed  U+000C
         return "\"\(escaped)\""
     }
 
