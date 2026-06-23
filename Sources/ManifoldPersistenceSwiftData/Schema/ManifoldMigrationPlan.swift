@@ -11,6 +11,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV8.self,
             ManifoldSchemaV9.self,
             ManifoldSchemaV10.self,
+            ManifoldSchemaV11.self,
         ]
     }
 
@@ -32,6 +33,10 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             // (P3b #1784). Two new @Model types, purely additive — no existing
             // column changes, no data motion.
             .lightweight(fromVersion: ManifoldSchemaV9.self, toVersion: ManifoldSchemaV10.self),
+            // V11 adds ToolCallConformanceRecord for durable tool-call conformance
+            // verdicts (follow-up to #2030). One new @Model type, purely additive
+            // — no existing column changes, no data motion.
+            .lightweight(fromVersion: ManifoldSchemaV10.self, toVersion: ManifoldSchemaV11.self),
         ]
     }
 }

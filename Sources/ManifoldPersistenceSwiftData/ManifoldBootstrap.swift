@@ -173,6 +173,12 @@ public final class ManifoldBootstrap {
     public let persistence: SwiftDataPersistenceProvider
     public let samplerPresetStore: SwiftDataSamplerPresetStore
     public let benchmarkCache: SwiftDataBenchmarkCache
+    /// Persists measured tool-call conformance verdicts keyed by
+    /// `(model × quant × backend)`. Host apps can read cached verdicts via
+    /// ``ManifoldRuntime/ToolCallConformanceCache`` to gate tool-calling UI
+    /// without re-running the soak. Backed by ``ToolCallConformanceRecord``
+    /// (``ManifoldSchemaV11``).
+    public let toolCallConformanceCache: SwiftDataToolCallConformanceCache
     public let endpointStore: SwiftDataEndpointStore
     /// Persists per-turn token counts for all cloud-backed sessions. Host apps
     /// can read aggregated totals via ``usageStore`` to surface cost dashboards.
@@ -317,6 +323,7 @@ public final class ManifoldBootstrap {
             self.persistence = resolvedPersistence
             self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
             self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
+            self.toolCallConformanceCache = SwiftDataToolCallConformanceCache(modelContext: mainContext)
             self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
             let resolvedUsageStore = SwiftDataUsageStore(modelContext: mainContext)
             self.usageStore = resolvedUsageStore
@@ -387,6 +394,7 @@ public final class ManifoldBootstrap {
         persistence: SwiftDataPersistenceProvider,
         samplerPresetStore: SwiftDataSamplerPresetStore,
         benchmarkCache: SwiftDataBenchmarkCache,
+        toolCallConformanceCache: SwiftDataToolCallConformanceCache,
         endpointStore: SwiftDataEndpointStore,
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
@@ -406,6 +414,7 @@ public final class ManifoldBootstrap {
         self.persistence = persistence
         self.samplerPresetStore = samplerPresetStore
         self.benchmarkCache = benchmarkCache
+        self.toolCallConformanceCache = toolCallConformanceCache
         self.endpointStore = endpointStore
         self.usageStore = usageStore
         self.ragService = ragService
@@ -611,6 +620,7 @@ public final class ManifoldBootstrap {
                 let persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
                 let samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
                 let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
+                let toolCallConformanceCache = SwiftDataToolCallConformanceCache(modelContext: mainContext)
                 let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
                 let usageStore = SwiftDataUsageStore(modelContext: mainContext)
                 let ragService = makeRAGService(
@@ -631,6 +641,7 @@ public final class ManifoldBootstrap {
                     persistence: persistence,
                     samplerPresetStore: samplerPresetStore,
                     benchmarkCache: benchmarkCache,
+                    toolCallConformanceCache: toolCallConformanceCache,
                     endpointStore: endpointStore,
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
