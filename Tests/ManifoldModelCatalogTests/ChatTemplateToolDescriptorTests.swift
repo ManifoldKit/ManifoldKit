@@ -23,12 +23,14 @@ final class ChatTemplateToolDescriptorTests: XCTestCase {
         <|tool_call>
         name: get_weather
         location: Paris
-        <|/tool_call>
+        <|end_of_turn>
         """
         let claim = ChatTemplateToolDescriptor(parsingChatTemplate: template)
 
         XCTAssertTrue(claim.toolsExpressible)
         XCTAssertEqual(claim.declaredDialect?.openDelimiter, "<|tool_call>")
+        // Gemma terminates the call at the turn delimiter; there is no close-tool tag.
+        XCTAssertEqual(claim.declaredDialect?.closeDelimiter, "<|end_of_turn>")
         XCTAssertEqual(claim.declaredDialect?.argEncoding, .keyValue)
         XCTAssertEqual(claim.extractability, .clean)
     }

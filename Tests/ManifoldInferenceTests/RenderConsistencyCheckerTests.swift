@@ -59,7 +59,7 @@ final class RenderConsistencyCheckerTests: XCTestCase {
         {%- if message.tool_calls %}
             {%- for tc in message.tool_calls %}<|tool_call>
         name: {{ tc.function.name }}
-        <|/tool_call>
+        <|end_of_turn>
             {%- endfor %}
         {%- endif %}
         {%- endfor %}

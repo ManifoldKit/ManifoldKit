@@ -11,7 +11,8 @@ public enum ToolCallDialectFamily: String, Codable, Sendable, CaseIterable {
     case hermes
     /// Qwen2.5-Instruct `<tool_call>\n{json}\n</tool_call>` (same delimiters as Hermes; kept distinct so backends can report the family they actually selected).
     case qwen
-    /// gemma `<|tool_call>call:NAME{…}<tool_call|>` with custom `key:value` arguments.
+    /// gemma `<|tool_call>call:NAME{…}<|end_of_turn>` with custom `key:value` arguments
+    /// (the call is terminated by the turn delimiter — there is no dedicated close-tool tag).
     case gemma
     /// Llama-3.1 `<|python_tag|>name.call(…)` (the python-tag custom-tool path; bare-JSON calls have no delimiter).
     case llamaPythonTag
@@ -109,11 +110,14 @@ public struct ToolCallDialect: Sendable, Codable, Equatable, Hashable {
         extractability: .clean
     )
 
-    /// gemma: `<|tool_call>call:NAME{…}<tool_call|>` with custom `key:value` args.
+    /// gemma: `<|tool_call>call:NAME{…}<|end_of_turn>` with custom `key:value` args.
+    /// The call is terminated by the turn delimiter `<|end_of_turn>` — Gemma has no
+    /// dedicated close-tool tag — matching the runtime parser (`LlamaToolMarkers`
+    /// `gemma4OpenTag`/`gemma4EndTurn`; `ToolCallTransform` "`<|tool_call>`…`<|end_of_turn>`").
     public static let gemma = ToolCallDialect(
         family: .gemma,
         openDelimiter: "<|tool_call>",
-        closeDelimiter: "<tool_call|>",
+        closeDelimiter: "<|end_of_turn>",
         argEncoding: .keyValue,
         extractability: .clean
     )
