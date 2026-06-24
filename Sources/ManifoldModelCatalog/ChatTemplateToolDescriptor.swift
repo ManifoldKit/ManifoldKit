@@ -152,9 +152,11 @@ public struct ChatTemplateToolDescriptor: Sendable, Equatable, Hashable, Codable
             )
             self.extractability = .clean
         } else if commentless.contains("<|tool_call>") {
-            // Gemma: <|tool_call> with newline-delimited key: value args.
+            // Gemma: <|tool_call> with newline-delimited key: value args, terminated by
+            // the turn delimiter <|end_of_turn> (Gemma has no dedicated close-tool tag —
+            // this matches the runtime parser, not a per-taxonomy invented spelling).
             self.declaredDialect = ToolCallDialect(
-                openDelimiter: "<|tool_call>", closeDelimiter: "<|/tool_call>", argEncoding: .keyValue
+                openDelimiter: "<|tool_call>", closeDelimiter: "<|end_of_turn>", argEncoding: .keyValue
             )
             self.extractability = .clean
         } else if commentless.contains("<tool_call>") {
