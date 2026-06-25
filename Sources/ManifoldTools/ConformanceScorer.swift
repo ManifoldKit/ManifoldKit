@@ -141,6 +141,59 @@ public enum ConformanceScorer {
     /// Scores a transcript supplied as a JSONL string. Rows are returned in a
     /// stable order (first-seen grouping key) so output diffs are deterministic.
     public static func score(jsonl text: String) -> [ResultRow] {
+        resolve(jsonl: text).map { r in
+            ResultRow(
+                backend: r.backend,
+                model: r.model,
+                quant: r.quant,
+                scenario: r.scenario,
+                assertionsPassed: r.assertionsPassed,
+                assertionsFailed: r.assertionsFailed,
+                errored: r.errored,
+                toolCallCount: r.toolCallCount,
+                verdict: r.verdict,
+                expectedTools: r.expectedTools,
+                calledTools: r.calledTools,
+                toolTP: r.confusion.tp,
+                toolFP: r.confusion.fp,
+                toolFN: r.confusion.fn
+            )
+        }
+    }
+
+    /// Internal richer row produced by the single parse pass. Carries everything
+    /// ``ResultRow`` exposes *plus* the advertised-tools set (decoy-pressure
+    /// signal), which the public `ResultRow` deliberately doesn't surface but the
+    /// ``ConformanceRecord`` mapping needs to derive `decoyLevel`.
+    struct ResolvedRow {
+        let backend: String?
+        let model: String?
+        let quant: String?
+        let scenario: String
+        let assertionsPassed: Int
+        let assertionsFailed: Int
+        let errored: Bool
+        let toolCallCount: Int
+        /// Resolved expected set (prompt `requiredTools`, else assertion recovery).
+        let expectedTools: [String]
+        /// Full tool set advertised to the model this run (real + decoys), used to
+        /// count decoy pressure. Empty when the transcript omits `advertisedTools`.
+        let advertisedTools: [String]
+        let calledTools: [String]
+        let confusion: ConfusionCounts
+
+        var verdict: Verdict {
+            ConformanceScorer.verdict(passed: assertionsPassed, failed: assertionsFailed, errored: errored)
+        }
+
+        var isToolBearing: Bool { !expectedTools.isEmpty }
+    }
+
+    /// Single parse pass over the JSONL transcript, grouping events into resolved
+    /// rows keyed by the attribution tuple + scenario. Both ``score(jsonl:)`` and
+    /// the ``ConformanceRecord`` emitters consume this so the grouping/expected-set
+    /// recovery logic lives in exactly one place.
+    static func resolve(jsonl text: String) -> [ResolvedRow] {
         // Accumulator keyed by the attribution tuple + scenario.
         struct Accumulator {
             var backend: String?
@@ -152,6 +205,8 @@ public enum ConformanceScorer {
             var errored = false
             var toolCallCount = 0
             var expectedTools: [String] = []
+            /// Full advertised tool set forwarded to the model (real + decoys).
+            var advertisedTools: [String] = []
             /// Whether a `prompt` record actually carried a `requiredTools` field.
             /// Distinguishes "no-tool scenario" (`requiredTools: []`) from "this
             /// transcript shape never emits the field" — only the latter triggers
@@ -205,6 +260,12 @@ public enum ConformanceScorer {
                     groups[key]?.expectedTools = required
                     groups[key]?.requiredToolsPresent = true
                 }
+                // The advertised set (real tools + decoy distractors) is what lets
+                // the record mapping derive `decoyLevel`. Absent on baseline /
+                // pre-decoy transcripts — left empty, scored as zero decoy pressure.
+                if let advertised = object["advertisedTools"] as? [String] {
+                    groups[key]?.advertisedTools = advertised
+                }
             case "assertion":
                 if (object["passed"] as? Bool) == true {
                     groups[key]?.assertionsPassed += 1
@@ -240,7 +301,7 @@ public enum ConformanceScorer {
             }
         }
 
-        return order.compactMap { key -> ResultRow? in
+        return order.compactMap { key -> ResolvedRow? in
             guard let acc = groups[key] else { return nil }
             // Expected set: the prompt's `requiredTools` when present, otherwise the
             // set recovered from dispatch-requirement assertions (older / companion
@@ -256,7 +317,7 @@ public enum ConformanceScorer {
                 actual: acc.calledTools,
                 expected: Set(expectedTools)
             )
-            return ResultRow(
+            return ResolvedRow(
                 backend: acc.backend,
                 model: acc.model,
                 quant: acc.quant,
@@ -265,16 +326,10 @@ public enum ConformanceScorer {
                 assertionsFailed: acc.assertionsFailed,
                 errored: acc.errored,
                 toolCallCount: acc.toolCallCount,
-                verdict: verdict(
-                    passed: acc.assertionsPassed,
-                    failed: acc.assertionsFailed,
-                    errored: acc.errored
-                ),
                 expectedTools: expectedTools,
+                advertisedTools: acc.advertisedTools,
                 calledTools: acc.calledTools.sorted(),
-                toolTP: confusion.tp,
-                toolFP: confusion.fp,
-                toolFN: confusion.fn
+                confusion: confusion
             )
         }
     }
