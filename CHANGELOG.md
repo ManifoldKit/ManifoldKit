@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.61.0](https://github.com/roryford/ManifoldKit/compare/v0.60.0...v0.61.0) (2026-06-25)
+
+### Highlights
+
+**Tool-call conformance verdicts now persist across launches (#2005 Layer 3, SwiftData follow-up).** The SwiftData adapter deferred for human review in 0.60.0 ([#2030](https://github.com/roryford/ManifoldKit/issues/2030)) lands. `SwiftDataToolCallConformanceCache` backs the `ToolCallConformanceCache` port with the same `@MainActor`, `ModelContext`-injected, delete-then-insert upsert shape as `SwiftDataBenchmarkCache`, and `ManifoldBootstrap` wires it automatically as `toolCallConformanceCache`. A measured `(model × quant × backend)` verdict now survives a restart, so hosts can gate tool-calling UI without re-running the soak; a key that has never been measured returns `.unknownDefault`, keeping conformance lazy rather than a cold-start tax ([#2034](https://github.com/roryford/ManifoldKit/issues/2034)).
+
+```swift
+let cache = bootstrap.toolCallConformanceCache   // SwiftData-backed, persisted
+let key = ToolCallConformanceKey(model: "qwen2.5:7b", quant: "Q4_K_M", backend: "ollama")
+await cache.put(key, ToolCallConformance(capability: .supported, source: .measured, f1: 0.94, sampleCount: 25))
+let verdict = await cache.get(key)               // .supported — survives a relaunch
+```
+
+### Fixes
+
+* Fold tool results into the user turn for alternation-strict chat templates — Mistral-family multi-turn tool calling broke when a `tool` role landed where the template's strict user/assistant alternation expected a user turn, extending the 0.60.0 system-prompt fix to tool results ([#2035](https://github.com/roryford/ManifoldKit/issues/2035))
+* Adjudicate the Gemma tool-call close delimiter to `<|end_of_turn|>`, so Gemma-family tool calls terminate at the right boundary instead of running past it and failing to parse ([#2039](https://github.com/roryford/ManifoldKit/issues/2039))
+* Recover expected tools from scenario assertions when `requiredTools` is absent, so the conformance scorer no longer under-counts on scenarios that declare tools only via assertions ([#2040](https://github.com/roryford/ManifoldKit/issues/2040))
+
+### Documentation
+
+* Cross-backend tool-call conformance matrix + raw soak data across Ollama, llama.cpp, MLX, and OpenRouter ([#2033](https://github.com/roryford/ManifoldKit/issues/2033))
+* Tool-calling architecture proposal — template-derived `ChatProfile` + grammar-first dispatch ([#2038](https://github.com/roryford/ManifoldKit/issues/2038))
+
 ## [0.60.0](https://github.com/roryford/ManifoldKit/compare/v0.59.0...v0.60.0) (2026-06-22)
 
 ### Highlights
