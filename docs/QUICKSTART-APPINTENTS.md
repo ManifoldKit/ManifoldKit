@@ -17,7 +17,7 @@ No trait required — the former `AppIntents` trait was retired in v0.48. Add th
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.60.0" // x-release-please-version
+    from: "0.61.0" // x-release-please-version
 )
 ```
 

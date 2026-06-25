@@ -51,7 +51,7 @@ companion package:
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.60.0" // x-release-please-version
+        from: "0.61.0" // x-release-please-version
     ),
     // Only needed for semantic search (§3) / reranking (§4) —
     // keyword-fallback RAG works with core alone.
