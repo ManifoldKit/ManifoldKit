@@ -215,11 +215,12 @@ public enum ConformanceScorer {
                 // dispatch-requirement assertions when the prompt record didn't
                 // carry `requiredTools`. The manifold-llama soak emitter predates
                 // that field, so without this every correct llama tool call lands
-                // in FP against an empty expected set (#2005). We extract ONLY the
-                // backtick-quoted tool token from the structural
-                // `Scenario requires `X` … — dispatched/never dispatched` template —
-                // never free prose — so recovery cannot invent a tool the scenario
-                // didn't require, and a wrong tool still scores FP.
+                // in FP against an empty expected set (#2005). We extract only the
+                // tool token from the structural `Scenario requires X …` template —
+                // whether the emitter wrote it backtick-quoted or bare (the bare
+                // `… to actually be dispatched` form), never free prose — so recovery
+                // cannot invent a tool the scenario didn't require, and a wrong tool
+                // still scores FP.
                 if let message = object["message"] as? String {
                     for tool in expectedToolsFromAssertion(message) {
                         groups[key]?.recoveredExpectedTools.insert(tool)
@@ -282,13 +283,20 @@ public enum ConformanceScorer {
     /// assertion message, used only when a transcript omits the `requiredTools`
     /// prompt field (#2005 — the manifold-llama soak emitter predates it).
     ///
-    /// Deliberately conservative: it matches ONLY the backtick-quoted tool token
-    /// in the structural `Scenario requires `X` …` template the harness emits.
-    /// Free-prose requirement assertions (e.g. "Scenario requires the shopping
-    /// list to be read from the fixture") yield nothing rather than risk crediting
-    /// a phantom expected tool — under-counting the expected set is safe (it never
-    /// manufactures a false positive *or* a false true-positive), whereas prose
-    /// matching could. A genuinely wrong tool therefore still scores as FP.
+    /// Deliberately conservative: it matches the tool token in the structural
+    /// `Scenario requires X …` template the harness emits — both when the token is
+    /// backtick-quoted (`Scenario requires `now` …`) and when the manifold-llama
+    /// soak emitter renders it bare (`Scenario requires list_dir to actually be
+    /// dispatched`). The bare form is why a correctly dispatched `list_dir` was
+    /// mis-scored as a false positive: backtick-only extraction recovered an empty
+    /// expected set, so `calledTools − expectedTools` flagged the right call as an
+    /// FP. The bare matcher is anchored to the exact `… to actually be dispatched`
+    /// frame, so free-prose requirement assertions (e.g. "Scenario requires the
+    /// shopping list to be read from the fixture") still yield nothing rather than
+    /// risk crediting a phantom expected tool — under-counting the expected set is
+    /// safe (it never manufactures a false positive *or* a false true-positive),
+    /// whereas loose prose matching could. A genuinely wrong tool therefore still
+    /// scores as FP.
     static func expectedToolsFromAssertion(_ message: String) -> [String] {
         guard message.hasPrefix("Scenario requires") else { return [] }
         var tools: [String] = []
@@ -304,6 +312,24 @@ public enum ConformanceScorer {
                 tools.append(token)
             }
             rest = rest[rest.index(after: close)...]
+        }
+        // Bare-token dispatch frame: `Scenario requires <id> to actually be
+        // dispatched`. Only the single identifier sitting *exactly* between the
+        // `Scenario requires ` prefix and the ` to actually be dispatched` marker
+        // is recovered — a backtick-wrapped token contains backticks (failing the
+        // id check) and is left to the loop above, and prose between the two
+        // anchors (multiple words / spaces) never satisfies the bare-id check.
+        let prefix = "Scenario requires "
+        let dispatchMarker = " to actually be dispatched"
+        if message.hasPrefix(prefix), let marker = message.range(of: dispatchMarker) {
+            let tokenStart = message.index(message.startIndex, offsetBy: prefix.count)
+            if tokenStart <= marker.lowerBound {
+                let token = String(message[tokenStart..<marker.lowerBound])
+                if !token.isEmpty,
+                   token.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) {
+                    tools.append(token)
+                }
+            }
         }
         return tools
     }

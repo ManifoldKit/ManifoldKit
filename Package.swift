@@ -1001,7 +1001,11 @@ let package = Package(
                 "ManifoldTools",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-            ]
+            ],
+            // Golden conformance transcripts (minimal real-run slices) consumed by
+            // ConformanceScorer tests. Bundled so the test reads them via
+            // Bundle.module rather than depending on cwd / source layout.
+            resources: [.copy("Fixtures")]
         ),
         // ManifoldAppIntents: AppIntent ↔ ToolDefinition bridge.
         // Lets hosts expose any AppIntent as a model-callable tool by deriving
