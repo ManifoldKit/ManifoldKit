@@ -166,4 +166,35 @@ final class ConformanceRecordTests: XCTestCase {
         let renderFail = try encoder.encode(CellStatus.renderFail)
         XCTAssertEqual(String(decoding: renderFail, as: UTF8.self), #"{"kind":"renderFail"}"#)
     }
+
+    /// The load-bearing guard: a `CellStatus` whose `kind` discriminator is
+    /// unrecognized must fail to decode — *loudly* — never silently default to
+    /// `.measured`. Defaulting an unknown/garbage kind to `.measured` is exactly
+    /// the "absence reads as measured" defect this schema exists to kill, so the
+    /// throw is pinned here against future refactors.
+    func testUnknownCellStatusKindFailsToDecode() throws {
+        let json = Data(#"{"kind":"teleported"}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(CellStatus.self, from: json)) { error in
+            XCTAssertTrue(error is DecodingError, "expected a DecodingError, got \(error)")
+        }
+    }
+
+    /// A `CellStatus` with no `kind` discriminator at all must also fail loudly —
+    /// a missing key must never be read as `.measured`.
+    func testMissingCellStatusKindFailsToDecode() throws {
+        let json = Data(#"{"reason":"offline"}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(CellStatus.self, from: json)) { error in
+            XCTAssertTrue(error is DecodingError, "expected a DecodingError, got \(error)")
+        }
+    }
+
+    /// `notMeasured`/`loadFail` carry a required reason; a record that drops it
+    /// fails to decode rather than fabricating an empty reason — the reason is part
+    /// of the measured-hole's identity, not optional decoration.
+    func testNotMeasuredMissingReasonFailsToDecode() throws {
+        let json = Data(#"{"kind":"notMeasured"}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(CellStatus.self, from: json)) { error in
+            XCTAssertTrue(error is DecodingError, "expected a DecodingError, got \(error)")
+        }
+    }
 }
