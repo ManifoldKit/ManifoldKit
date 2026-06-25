@@ -172,8 +172,67 @@ elif have_lane mlx; then
   SUMMARY_LANES="${SUMMARY_LANES}mlx: skip (repo absent at $MLX_DIR)\n"
 fi
 
-# ----- 4. perf extraction ----------------------------------------------------
+# ----- 4. conformance matrix (rendered from ConformanceRecords) --------------
+# Run the reference tool-calling scenarios through the manifold-tools harness,
+# then SCORE -> emit [ConformanceRecord] JSON -> RENDER MATRIX.md. The matrix is
+# a PURE rendered query over the records (MatrixRenderer): the same records
+# always render byte-identical, and absence (model/GGUF/backend missing) reads as
+# a 🚫/💥 hole row, never a measured 0.000. This covers the Ollama leg; the
+# companion llama/mlx legs emit the same record shape from their own repos, so a
+# cross-leg collation can later concatenate the JSON arrays before `matrix`.
+# Bash 3.2 safe — no associative arrays.
+if have_lane core; then
+  MATRIX_DIR="$OUT/matrix"
+  mkdir -p "$MATRIX_DIR"
+  TRANSCRIPT="$MATRIX_DIR/transcript.jsonl"
+  RECORDS="$MATRIX_DIR/records.json"
+  MATRIX_MD="$OUT/MATRIX.md"
+  CORE_COMMIT="$(git -C "$CORE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  log "=== [matrix] $(date +%H:%M:%S) building manifold-tools ==="
+  if ( cd "$CORE_DIR" && swift build --product manifold-tools ) >"$MATRIX_DIR/build.log" 2>&1; then
+    TOOL_BIN="$(cd "$CORE_DIR" && swift build --product manifold-tools --show-bin-path 2>/dev/null)/manifold-tools"
+    if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
+      # Optional model override: MATRIX_MODELS="m1,m2". Unset -> scenario defaults.
+      MATRIX_MODEL_ARGS=""
+      if [ -n "${MATRIX_MODELS:-}" ]; then MATRIX_MODEL_ARGS="--model ${MATRIX_MODELS}"; fi
+      # A non-zero exit means some scenarios failed — that is data, not a script
+      # error; score the transcript regardless (word-split MODEL_ARGS on purpose).
+      ( cd "$CORE_DIR" && "$TOOL_BIN" --backend ollama --scenario all --output "$TRANSCRIPT" ${MATRIX_MODEL_ARGS} ) \
+        >"$MATRIX_DIR/run.log" 2>&1 || true
+      if [ -s "$TRANSCRIPT" ]; then
+        "$TOOL_BIN" score "$TRANSCRIPT" --emit-records "$RECORDS" \
+          --renderer ollama-server --core-commit "$CORE_COMMIT" \
+          >/dev/null 2>"$MATRIX_DIR/score.log" || true
+        if [ -s "$RECORDS" ]; then
+          if "$TOOL_BIN" matrix "$RECORDS" --out "$MATRIX_MD" 2>>"$MATRIX_DIR/score.log"; then
+            SUMMARY_LANES="${SUMMARY_LANES}matrix: rendered -> $(basename "$MATRIX_MD")\n"
+            log "=== [matrix] $(date +%H:%M:%S) rendered $MATRIX_MD ==="
+          else
+            SUMMARY_LANES="${SUMMARY_LANES}matrix: render failed -> matrix/score.log\n"
+          fi
+        else
+          SUMMARY_LANES="${SUMMARY_LANES}matrix: skip (no records emitted -> matrix/score.log)\n"
+        fi
+      else
+        SUMMARY_LANES="${SUMMARY_LANES}matrix: skip (empty transcript — Ollama models absent?)\n"
+      fi
+    else
+      SUMMARY_LANES="${SUMMARY_LANES}matrix: skip (Ollama down at localhost:11434)\n"
+    fi
+  else
+    SUMMARY_LANES="${SUMMARY_LANES}matrix: skip (manifold-tools build failed -> matrix/build.log)\n"
+  fi
+fi
+
+# ----- 5. perf extraction ----------------------------------------------------
 {
+  echo "## Conformance matrix"
+  if [ -s "$OUT/MATRIX.md" ]; then
+    echo "- rendered from \`ConformanceRecord\`s: \`$OUT/MATRIX.md\` (records: \`matrix/records.json\`)"
+  else
+    echo "- not rendered this run (see Lane summary for why)"
+  fi
+  echo
   echo "## Performance signals"
   echo '```'
   echo "MLX benchmark (TTFT/TPS sentinels):"
