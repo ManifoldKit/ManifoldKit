@@ -65,16 +65,19 @@ public enum ScenarioLoader {
     /// corpus loads identically under `swift run`, `swift test`, an installed
     /// CLI, or a downstream consumer of the `ManifoldTools` library.
     ///
-    /// Falls back to the legacy CWD-relative path only if the resource bundle
-    /// somehow lacks the `built-in` directory (a packaging regression). That
-    /// fallback URL is non-existent in any normal install, so ``load(from:)``
-    /// surfaces a clear ``LoadError/directoryMissing(_:)`` rather than silently
-    /// returning an empty corpus.
+    /// If the resource bundle somehow lacks the `built-in` directory (a
+    /// packaging regression), this returns the path where the corpus *should*
+    /// live inside the bundle — a non-existent location — so ``load(from:)``
+    /// throws a clear ``LoadError/directoryMissing(_:)`` that names the bundle.
+    /// We deliberately do NOT fall back to a CWD-relative source path: that
+    /// would silently mask the regression whenever the process happens to run
+    /// from the package root (every in-repo `swift test` / `swift run`), making
+    /// a broken package look healthy in development while failing for installed
+    /// binaries and downstream consumers.
     public static func builtInDirectory() -> URL {
         if let bundled = Bundle.module.url(forResource: "built-in", withExtension: nil) {
             return bundled
         }
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("Sources/ManifoldTools/Scenarios/built-in", isDirectory: true)
+        return Bundle.module.bundleURL.appendingPathComponent("built-in", isDirectory: true)
     }
 }
