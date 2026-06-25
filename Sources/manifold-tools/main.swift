@@ -333,9 +333,11 @@ enum TestUpliftCLI {
     }
 }
 
-/// `manifold-tools score <file.jsonl> [--csv]` — parses a transcript and prints
-/// the per-(backend × model × quant × scenario) conformance matrix. Defaults to
-/// JSON; `--csv` emits CSV instead.
+/// `manifold-tools score <file.jsonl> [--csv] [--emit-records <path>]` — parses a
+/// transcript and prints the per-(backend × model × quant × scenario) conformance
+/// matrix. Defaults to JSON; `--csv` emits CSV instead. `--emit-records <path>`
+/// additionally writes the normalized `[ConformanceRecord]` schema (#2041) as JSON
+/// so cross-leg eval collation reads one shape across Ollama / llama / MLX / cloud.
 enum ScoreCLI {
     static func run(_ argv: [String]) -> Int32 {
         if argv.first == "--help" || argv.first == "-h" || argv.isEmpty {
@@ -344,20 +346,59 @@ enum ScoreCLI {
 
             USAGE
               manifold-tools score <file.jsonl> [--csv]
+                  [--emit-records <out.json>] [--renderer <label>] [--core-commit <sha>]
+
+            FLAGS
+              --csv                 Emit the matrix as CSV instead of JSON (stdout).
+              --emit-records <path> Also write the normalized [ConformanceRecord] JSON
+                                    (the cross-leg eval schema) to <path>. Additive —
+                                    stdout still carries the JSON/CSV matrix.
+              --renderer <label>    Renderer label stamped on emitted records (the
+                                    transcript doesn't capture it). Default: 'unknown'.
+              --core-commit <sha>   ManifoldKit core commit the run was built from.
+                                    Default: $MANIFOLD_CORE_COMMIT, else 'unknown'.
             """)
             return argv.isEmpty ? 2 : 0
         }
         var path: String?
         var csv = false
-        for arg in argv {
+        var emitRecordsPath: String?
+        var renderer = "unknown"
+        var coreCommit = ProcessInfo.processInfo.environment["MANIFOLD_CORE_COMMIT"] ?? "unknown"
+        var i = 0
+        while i < argv.count {
+            let arg = argv[i]
             switch arg {
-            case "--csv": csv = true
+            case "--csv":
+                csv = true
+            case "--emit-records":
+                i += 1
+                guard i < argv.count else {
+                    FileHandle.standardError.write(Data("manifold-tools score: --emit-records requires a path\n".utf8))
+                    return 2
+                }
+                emitRecordsPath = argv[i]
+            case "--renderer":
+                i += 1
+                guard i < argv.count else {
+                    FileHandle.standardError.write(Data("manifold-tools score: --renderer requires a value\n".utf8))
+                    return 2
+                }
+                renderer = argv[i]
+            case "--core-commit":
+                i += 1
+                guard i < argv.count else {
+                    FileHandle.standardError.write(Data("manifold-tools score: --core-commit requires a value\n".utf8))
+                    return 2
+                }
+                coreCommit = argv[i]
             default:
                 if path == nil { path = arg } else {
                     FileHandle.standardError.write(Data("manifold-tools score: unexpected argument '\(arg)'\n".utf8))
                     return 2
                 }
             }
+            i += 1
         }
         guard let path else {
             FileHandle.standardError.write(Data("manifold-tools score: missing <file.jsonl>\n".utf8))
@@ -371,6 +412,20 @@ enum ScoreCLI {
             } else {
                 let data = try ConformanceScorer.encodeJSON(rows)
                 print(String(data: data, encoding: .utf8) ?? "[]")
+            }
+            // Additive: write the normalized ConformanceRecord schema alongside the
+            // matrix when requested. The transcript path doubles as the record's
+            // `transcriptRef` so a verdict can always be traced back to its source.
+            if let emitRecordsPath {
+                let context = ConformanceScorer.RecordContext(
+                    renderer: renderer,
+                    coreCommit: coreCommit,
+                    transcriptRef: path
+                )
+                let records = ConformanceScorer.records(fileAt: url, context: context)
+                let data = try ConformanceScorer.encodeJSON(records)
+                try data.write(to: URL(fileURLWithPath: emitRecordsPath))
+                FileHandle.standardError.write(Data("Wrote \(records.count) ConformanceRecord(s) to \(emitRecordsPath)\n".utf8))
             }
             // Macro-averaged tool-selection metrics to stderr (stdout stays pure
             // JSON/CSV) — the cross-backend-comparable SUMMARY line, same shape
