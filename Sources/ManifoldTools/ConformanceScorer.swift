@@ -152,6 +152,15 @@ public enum ConformanceScorer {
             var errored = false
             var toolCallCount = 0
             var expectedTools: [String] = []
+            /// Whether a `prompt` record actually carried a `requiredTools` field.
+            /// Distinguishes "no-tool scenario" (`requiredTools: []`) from "this
+            /// transcript shape never emits the field" — only the latter triggers
+            /// the assertion-derived expected-set recovery below.
+            var requiredToolsPresent = false
+            /// Expected tools recovered from the harness's dispatch-requirement
+            /// assertions (`Scenario requires `X` … — dispatched/never dispatched`).
+            /// Used only as a fallback when `requiredToolsPresent == false`.
+            var recoveredExpectedTools: Set<String> = []
             var calledTools: Set<String> = []
         }
 
@@ -189,15 +198,32 @@ public enum ConformanceScorer {
             switch kind {
             case "prompt":
                 // The prompt record carries the scenario's expected tool set.
-                // Tolerate its absence (older transcripts) — expected stays empty.
+                // Tolerate its absence (older / companion transcript shapes) — the
+                // assertion-derived recovery below fills the gap so a correctly
+                // dispatched tool isn't mis-scored as a false positive.
                 if let required = object["requiredTools"] as? [String] {
                     groups[key]?.expectedTools = required
+                    groups[key]?.requiredToolsPresent = true
                 }
             case "assertion":
                 if (object["passed"] as? Bool) == true {
                     groups[key]?.assertionsPassed += 1
                 } else {
                     groups[key]?.assertionsFailed += 1
+                }
+                // Recover the scenario's required tool(s) from the harness's
+                // dispatch-requirement assertions when the prompt record didn't
+                // carry `requiredTools`. The manifold-llama soak emitter predates
+                // that field, so without this every correct llama tool call lands
+                // in FP against an empty expected set (#2005). We extract ONLY the
+                // backtick-quoted tool token from the structural
+                // `Scenario requires `X` … — dispatched/never dispatched` template —
+                // never free prose — so recovery cannot invent a tool the scenario
+                // didn't require, and a wrong tool still scores FP.
+                if let message = object["message"] as? String {
+                    for tool in expectedToolsFromAssertion(message) {
+                        groups[key]?.recoveredExpectedTools.insert(tool)
+                    }
                 }
             case "tool_call":
                 groups[key]?.toolCallCount += 1
@@ -215,11 +241,19 @@ public enum ConformanceScorer {
 
         return order.compactMap { key -> ResultRow? in
             guard let acc = groups[key] else { return nil }
+            // Expected set: the prompt's `requiredTools` when present, otherwise the
+            // set recovered from dispatch-requirement assertions (older / companion
+            // transcript shapes that omit the field — #2005). When `requiredTools`
+            // *is* present we never consult the recovered set, so the Ollama path is
+            // untouched and an authoritative `requiredTools: []` stays a no-tool row.
+            let expectedTools: [String] = acc.requiredToolsPresent
+                ? acc.expectedTools
+                : acc.recoveredExpectedTools.sorted()
             // Tool-selection confusion: tools called vs tools required. Reuses the
             // shared core metric so the row is comparable with the MLX/llama soak.
             let confusion = ConfusionCounts.compute(
                 actual: acc.calledTools,
-                expected: Set(acc.expectedTools)
+                expected: Set(expectedTools)
             )
             return ResultRow(
                 backend: acc.backend,
@@ -235,13 +269,43 @@ public enum ConformanceScorer {
                     failed: acc.assertionsFailed,
                     errored: acc.errored
                 ),
-                expectedTools: acc.expectedTools,
+                expectedTools: expectedTools,
                 calledTools: acc.calledTools.sorted(),
                 toolTP: confusion.tp,
                 toolFP: confusion.fp,
                 toolFN: confusion.fn
             )
         }
+    }
+
+    /// Recovers the required tool name(s) named in a dispatch-requirement
+    /// assertion message, used only when a transcript omits the `requiredTools`
+    /// prompt field (#2005 — the manifold-llama soak emitter predates it).
+    ///
+    /// Deliberately conservative: it matches ONLY the backtick-quoted tool token
+    /// in the structural `Scenario requires `X` …` template the harness emits.
+    /// Free-prose requirement assertions (e.g. "Scenario requires the shopping
+    /// list to be read from the fixture") yield nothing rather than risk crediting
+    /// a phantom expected tool — under-counting the expected set is safe (it never
+    /// manufactures a false positive *or* a false true-positive), whereas prose
+    /// matching could. A genuinely wrong tool therefore still scores as FP.
+    static func expectedToolsFromAssertion(_ message: String) -> [String] {
+        guard message.hasPrefix("Scenario requires") else { return [] }
+        var tools: [String] = []
+        var rest = Substring(message)
+        while let open = rest.firstIndex(of: "`") {
+            let afterOpen = rest.index(after: open)
+            guard let close = rest[afterOpen...].firstIndex(of: "`") else { break }
+            let token = String(rest[afterOpen..<close])
+            // A tool identifier — reject anything that isn't a bare snake/alnum id
+            // so an incidentally back-ticked prose fragment can't slip through.
+            if !token.isEmpty,
+               token.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) {
+                tools.append(token)
+            }
+            rest = rest[rest.index(after: close)...]
+        }
+        return tools
     }
 
     /// Derives the verdict from the assertion tallies and error flag.

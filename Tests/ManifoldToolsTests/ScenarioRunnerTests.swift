@@ -643,6 +643,97 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertEqual(macro.precision, 0.25, accuracy: 0.0001)
         XCTAssertEqual(macro.recall, 0.5, accuracy: 0.0001)
     }
+
+    // MARK: - #2005: expected-tool recovery for transcripts without `requiredTools`
+
+    /// Regression for #2005. The manifold-llama soak emitter predates the
+    /// `requiredTools` prompt field, so its `prompt` records carry no expected
+    /// tool set. Before the fix, every correctly dispatched llama tool call was
+    /// scored against an empty expected set → `toolTP=0, toolFP=1, f1=0` even
+    /// though the right tool was called and the scenario verdict was `.pass`.
+    ///
+    /// This fixture reproduces the exact llama `tool_call`/`assertion` record
+    /// shape (no `backend`/`model`/`quant`, no `requiredTools`; the required tool
+    /// is named only in the back-ticked dispatch-requirement assertion). The
+    /// scorer must recover `now` as the expected tool and credit it as a TP.
+    func test_conformanceScorer_recoversExpectedToolFromAssertion_whenRequiredToolsAbsent() {
+        let lines = [
+            #"{"kind":"prompt","scenario":"01-now","system":"You have tools.","user":"What time is it?"}"#,
+            #"{"kind":"tool_call","scenario":"01-now","name":"now","arguments":"{}"}"#,
+            #"{"kind":"tool_result","scenario":"01-now","name":"now","content":"{}","errorKind":null}"#,
+            #"{"kind":"assertion","scenario":"01-now","passed":true,"message":"Scenario requires `now` to actually be dispatched — dispatched"}"#,
+            #"{"kind":"assertion","scenario":"01-now","passed":true,"message":"Final answer should quote the OOD timestamp from `now` — found"}"#
+        ].joined(separator: "\n")
+
+        let row = ConformanceScorer.score(jsonl: lines).first { $0.scenario == "01-now" }
+
+        XCTAssertEqual(row?.expectedTools, ["now"], "required `now` recovered from the dispatch assertion")
+        XCTAssertEqual(row?.calledTools, ["now"])
+        XCTAssertEqual(row?.toolTP, 1, "a correctly dispatched expected tool is a true positive, not an FP (#2005)")
+        XCTAssertEqual(row?.toolFP, 0)
+        XCTAssertEqual(row?.toolFN, 0)
+        XCTAssertEqual(row?.confusion.precision ?? 0, 1.0, accuracy: 0.0001, "precision must be > 0 for the recovered cell")
+        XCTAssertEqual(row?.confusion.f1 ?? 0, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(row?.verdict, .pass)
+        XCTAssertTrue(row?.isToolBearing ?? false, "the recovered expected set makes the row tool-bearing")
+    }
+
+    /// Guard: recovery must not loosen matching into false positives. A scenario
+    /// that requires `calc` but where the model called the wrong tool (`read_file`)
+    /// must still score `calc` as a false negative and `read_file` as a false
+    /// positive — never a spurious true positive. (Mirrors `shopping-list-budget`
+    /// from the captured llama transcript.)
+    func test_conformanceScorer_recoveredExpectedTool_stillScoresWrongToolAsFalsePositive() {
+        let lines = [
+            #"{"kind":"prompt","scenario":"shopping-list-budget","system":"You have tools.","user":"Total the cheapest items."}"#,
+            #"{"kind":"tool_call","scenario":"shopping-list-budget","name":"read_file","arguments":"{}"}"#,
+            #"{"kind":"assertion","scenario":"shopping-list-budget","passed":false,"message":"Scenario requires `calc` for the selected total — never dispatched — final answer may be hallucinated"}"#
+        ].joined(separator: "\n")
+
+        let row = ConformanceScorer.score(jsonl: lines).first { $0.scenario == "shopping-list-budget" }
+
+        XCTAssertEqual(row?.expectedTools, ["calc"], "expected `calc` recovered even though it was never dispatched")
+        XCTAssertEqual(row?.calledTools, ["read_file"])
+        XCTAssertEqual(row?.toolTP, 0, "the wrong tool must NOT count as a true positive")
+        XCTAssertEqual(row?.toolFP, 1, "the wrong tool (`read_file`) is a false positive")
+        XCTAssertEqual(row?.toolFN, 1, "the required `calc` is a false negative")
+    }
+
+    /// Recovery is a fallback only. When the prompt record carries an explicit
+    /// `requiredTools` (the Ollama / current-logger shape), the scorer must use it
+    /// verbatim and never consult the assertion text — so an authoritative empty
+    /// set stays a no-tool row even if an assertion happens to name a tool.
+    func test_conformanceScorer_explicitRequiredToolsTakesPrecedenceOverAssertionRecovery() {
+        let lines = [
+            #"{"kind":"prompt","scenario":"s","backend":"ollama","model":"A","requiredTools":[]}"#,
+            #"{"kind":"final","scenario":"s","backend":"ollama","model":"A","text":"hello"}"#,
+            #"{"kind":"assertion","scenario":"s","backend":"ollama","model":"A","passed":true,"message":"Scenario requires `now` to actually be dispatched — dispatched"}"#
+        ].joined(separator: "\n")
+
+        let row = ConformanceScorer.score(jsonl: lines).first { $0.scenario == "s" }
+
+        XCTAssertEqual(row?.expectedTools, [], "explicit empty requiredTools wins over assertion recovery")
+        XCTAssertFalse(row?.isToolBearing ?? true, "an authoritative no-tool scenario stays non-tool-bearing")
+    }
+
+    /// The extractor must ignore free-prose requirement assertions (no back-ticked
+    /// tool token) rather than crediting a phantom expected tool.
+    func test_expectedToolsFromAssertion_ignoresProseAndExtractsBacktickedTools() {
+        XCTAssertEqual(
+            ConformanceScorer.expectedToolsFromAssertion("Scenario requires `read_file` to inspect standup.md — never dispatched — final answer may be hallucinated"),
+            ["read_file"]
+        )
+        XCTAssertEqual(
+            ConformanceScorer.expectedToolsFromAssertion("Scenario requires the shopping list to be read from the fixture — dispatched"),
+            [],
+            "free prose with no back-ticked tool token yields nothing"
+        )
+        XCTAssertEqual(
+            ConformanceScorer.expectedToolsFromAssertion("Final answer should quote the calc result 320743 — found"),
+            [],
+            "only `Scenario requires …` requirement assertions are mined"
+        )
+    }
 }
 
 private struct FixedToolExecutor: ToolExecutor {
