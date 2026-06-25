@@ -1,12 +1,19 @@
 import Foundation
 
-/// Loads bundled scenario JSON from the repo-relative resource directory.
+/// Loads the bundled scenario corpus from the package resource bundle.
 ///
-/// We intentionally do not use `Bundle.module` here — the scenarios live
-/// under `Sources/ManifoldTools/Scenarios/built-in/` and we ship them as
-/// plain files the executable discovers at runtime. This keeps the pattern
-/// identical for end users who write their own scenarios and pass them via
-/// `--scenario-file`.
+/// The `built-in` directory is declared as a `.copy` resource on the
+/// `ManifoldTools` target (see `Package.swift`), so the canonical corpus ships
+/// inside `Bundle.module` and resolves regardless of the process working
+/// directory — `swift run`, `swift test`, an installed `manifold-tools`
+/// binary, or a companion package that depends on this target all see the
+/// single canonical corpus. The previous implementation resolved a
+/// `Sources/ManifoldTools/Scenarios/built-in` path relative to the current
+/// working directory, which only worked when the CWD happened to be the
+/// package root and forced companions to vendor drift-prone copies.
+///
+/// End users who write their own scenarios still pass them explicitly via
+/// ``load(from:)`` / `--scenario-file`.
 public enum ScenarioLoader {
 
     public enum LoadError: Error, CustomStringConvertible {
@@ -23,7 +30,7 @@ public enum ScenarioLoader {
         }
     }
 
-    /// Returns every scenario found in the `built-in` directory, sorted by id
+    /// Returns every scenario in the bundled `built-in` corpus, sorted by id
     /// for stable output.
     public static func loadBuiltIn() throws -> [Scenario] {
         let dir = builtInDirectory()
@@ -53,11 +60,21 @@ public enum ScenarioLoader {
         return scenarios
     }
 
-    /// Resolves the bundled scenario directory relative to the current
-    /// working directory. SwiftPM invocations (`swift run`, `swift test`) set
-    /// CWD to the package root.
+    /// Resolves the bundled scenario directory from the package resource
+    /// bundle (`Bundle.module`). Independent of the working directory, so the
+    /// corpus loads identically under `swift run`, `swift test`, an installed
+    /// CLI, or a downstream consumer of the `ManifoldTools` library.
+    ///
+    /// Falls back to the legacy CWD-relative path only if the resource bundle
+    /// somehow lacks the `built-in` directory (a packaging regression). That
+    /// fallback URL is non-existent in any normal install, so ``load(from:)``
+    /// surfaces a clear ``LoadError/directoryMissing(_:)`` rather than silently
+    /// returning an empty corpus.
     public static func builtInDirectory() -> URL {
-        URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        if let bundled = Bundle.module.url(forResource: "built-in", withExtension: nil) {
+            return bundled
+        }
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("Sources/ManifoldTools/Scenarios/built-in", isDirectory: true)
     }
 }

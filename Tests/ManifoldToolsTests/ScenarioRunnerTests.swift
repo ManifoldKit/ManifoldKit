@@ -137,6 +137,35 @@ final class ScenarioRunnerTests: XCTestCase {
         }
     }
 
+    /// `loadBuiltIn()` resolves the corpus from `Bundle.module`, not a path
+    /// relative to the process working directory. Temporarily chdir to a
+    /// directory that has no `Sources/ManifoldTools/Scenarios/built-in` tree;
+    /// the loader must still find the full corpus via the resource bundle.
+    /// This is the regression guard for the CWD-relative loader that forced
+    /// companion packages to vendor drift-prone copies.
+    func test_scenarioLoader_loadsFromBundleRegardlessOfWorkingDirectory() throws {
+        let fm = FileManager.default
+        let originalCWD = fm.currentDirectoryPath
+        let foreignCWD = NSTemporaryDirectory()  // has no package source tree
+
+        guard fm.changeCurrentDirectoryPath(foreignCWD) else {
+            throw XCTSkip("could not chdir to a scratch directory for the bundle-resolution check")
+        }
+        defer { _ = fm.changeCurrentDirectoryPath(originalCWD) }
+
+        // Sanity: the legacy CWD-relative path genuinely does not exist here,
+        // so a pass below can only come from the bundle.
+        let legacyRelative = URL(fileURLWithPath: foreignCWD)
+            .appendingPathComponent("Sources/ManifoldTools/Scenarios/built-in", isDirectory: true)
+        XCTAssertFalse(
+            fm.fileExists(atPath: legacyRelative.path),
+            "test precondition: the foreign CWD must not contain the package source tree"
+        )
+
+        let scenarios = try ScenarioLoader.loadBuiltIn()
+        XCTAssertEqual(scenarios.count, 9, "full corpus must load from Bundle.module under a foreign CWD")
+    }
+
     // MARK: - Runner happy paths (scripted backend + real registry)
 
     func test_runner_executesNowToolAndQuotesFixture() async throws {
