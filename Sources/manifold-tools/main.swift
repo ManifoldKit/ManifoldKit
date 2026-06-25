@@ -157,6 +157,8 @@ struct CLI {
 
         SUBCOMMANDS
           score <file.jsonl>    Score a transcript into a per-(model × scenario) matrix.
+          matrix <records.json> Render a [ConformanceRecord] JSON (from score --emit-records)
+                                into a cross-backend Markdown conformance matrix.
           test-uplift           Inspect or control ~/.claude/state/bck-test-uplift/.
 
         EXIT
@@ -445,6 +447,82 @@ enum ScoreCLI {
     }
 }
 
+/// `manifold-tools matrix <records.json> [--out <path>] [--title <title>]` —
+/// decodes a `[ConformanceRecord]` payload (the `score --emit-records` output)
+/// and renders the cross-backend conformance matrix as Markdown. Writes to
+/// `--out` when given, otherwise stdout. Additive — the matrix is a pure
+/// rendered query over the records, so the same records always render identically.
+enum MatrixCLI {
+    static func run(_ argv: [String]) -> Int32 {
+        if argv.first == "--help" || argv.first == "-h" || argv.isEmpty {
+            print("""
+            manifold-tools matrix — render a [ConformanceRecord] JSON into a Markdown matrix
+
+            USAGE
+              manifold-tools matrix <records.json> [--out <path>] [--title <title>]
+
+            FLAGS
+              --out <path>     Write the rendered Markdown to <path>. Default: stdout.
+              --title <title>  Override the document H1 heading.
+
+            INPUT
+              <records.json> is the [ConformanceRecord] array written by
+              `manifold-tools score --emit-records <path>`.
+            """)
+            return argv.isEmpty ? 2 : 0
+        }
+        var path: String?
+        var outPath: String?
+        var title: String?
+        var i = 0
+        while i < argv.count {
+            let arg = argv[i]
+            switch arg {
+            case "--out":
+                i += 1
+                guard i < argv.count else {
+                    FileHandle.standardError.write(Data("manifold-tools matrix: --out requires a path\n".utf8))
+                    return 2
+                }
+                outPath = argv[i]
+            case "--title":
+                i += 1
+                guard i < argv.count else {
+                    FileHandle.standardError.write(Data("manifold-tools matrix: --title requires a value\n".utf8))
+                    return 2
+                }
+                title = argv[i]
+            default:
+                if path == nil { path = arg } else {
+                    FileHandle.standardError.write(Data("manifold-tools matrix: unexpected argument '\(arg)'\n".utf8))
+                    return 2
+                }
+            }
+            i += 1
+        }
+        guard let path else {
+            FileHandle.standardError.write(Data("manifold-tools matrix: missing <records.json>\n".utf8))
+            return 2
+        }
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let records = try JSONDecoder().decode([ConformanceRecord].self, from: data)
+            let markdown = title.map { MatrixRenderer.render(records, title: $0) }
+                ?? MatrixRenderer.render(records)
+            if let outPath {
+                try markdown.write(to: URL(fileURLWithPath: outPath), atomically: true, encoding: .utf8)
+                FileHandle.standardError.write(Data("Wrote matrix (\(records.count) record(s)) to \(outPath)\n".utf8))
+            } else {
+                print(markdown, terminator: "")
+            }
+            return 0
+        } catch {
+            FileHandle.standardError.write(Data("manifold-tools matrix: \(error)\n".utf8))
+            return 1
+        }
+    }
+}
+
 @MainActor
 func runCLI() async -> Int32 {
     let argv = Array(CommandLine.arguments.dropFirst())
@@ -453,6 +531,9 @@ func runCLI() async -> Int32 {
     }
     if argv.first == "score" {
         return ScoreCLI.run(Array(argv.dropFirst()))
+    }
+    if argv.first == "matrix" {
+        return MatrixCLI.run(Array(argv.dropFirst()))
     }
     let cli = CLI.parse(argv)
 
