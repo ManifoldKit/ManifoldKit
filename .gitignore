@@ -55,3 +55,5 @@ SECURITY_AUDIT*.md
 muter_logs/
 *_mutated/
 .local-integration-runs/
+# Overnight-run JSON data files — ephemeral run output, not living docs.
+docs/overnight/*.json
