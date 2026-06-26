@@ -2,7 +2,7 @@
 
 Run: `20260622-232839` · 5 legs (Ollama, llama.cpp, MLX, OpenRouter) · 9-scenario reference toolset · scorer = `manifold-tools score --csv` (`ConformanceScorer`).
 
-> **Note:** the raw per-run `.jsonl` transcripts (~12 MB) and `.log` files were pruned to keep this PR light; the scored per-run `.csv` files are retained alongside this matrix. Re-run the sweep to regenerate raw transcripts.
+> **Note:** the raw per-run `.jsonl` transcripts (~12 MB), `.log` files, and the scored per-run `.csv` files were all pruned — this matrix is the only committed artifact for the run (curated-summaries-only convention; see `.gitignore`). Re-run the sweep to regenerate the transcripts and re-score from the raw JSONL to rebuild the CSVs.
 
 ## 1. Headline
 
