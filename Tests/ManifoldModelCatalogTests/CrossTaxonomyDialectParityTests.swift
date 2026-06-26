@@ -34,9 +34,15 @@ import ManifoldHardware
 ///   `<|end_of_turn>`") and `PromptTemplate.gemma4`'s special-token set (which
 ///   carries `<|tool_call>` and `<|end_of_turn>` but neither `<tool_call|>` nor
 ///   `<|/tool_call>`).
-/// - The two descriptors each invented a *different, never-parsed* close spelling
-///   (`<tool_call|>` and `<|/tool_call>`). Both are wrong; `<|end_of_turn>` is the
-///   adjudicated truth.
+/// - Correction to the #2039 record: of the two pre-fix close spellings, only
+///   `<|/tool_call>` was genuinely invented (it appears in no template). `<tool_call|>`
+///   is NOT invented — it is the literal close the Ollama `gemma3-4b-tools` community
+///   model's baked template emits (`<|tool_call>call:NAME{…}<tool_call|>`, verified
+///   2026-06 via `ollama show gemma3-4b-tools --template`). But that model is
+///   **Gemma-3**, a different family from the repo's Gemma-4 `.gemma` dialect, so its
+///   close legitimately differs. `<|end_of_turn>` remains the adjudicated truth for the
+///   Gemma-4 `.gemma` dialect; the Gemma-3 vs Gemma-4 close split is pinned by
+///   `testGemma3CommunityCloseIsADistinctFamilyNotTheGemma4Close` below.
 final class CrossTaxonomyDialectParityTests: XCTestCase {
 
     /// One adjudicated dialect both descriptor taxonomies are expected to model
@@ -215,6 +221,56 @@ final class CrossTaxonomyDialectParityTests: XCTestCase {
             claim.declaredDialect?.openDelimiter,
             ManifoldHardware.ToolCallDialect.llamaPythonTag.openDelimiter,
             "Llama python-tag vs bare-JSON split changed shape — re-adjudicate before unifying"
+        )
+    }
+
+    /// The Ollama `gemma3-4b-tools` community model bakes a tool-call template whose
+    /// close delimiter is `<tool_call|>` — NOT the `<|end_of_turn>` the repo's Gemma-4
+    /// `.gemma` dialect uses. Verified 2026-06 against the live template, which emits:
+    ///
+    ///     {{- '<|tool_call>call:' + function['name'] + '{' -}} … {{- '}<tool_call|>' -}}
+    ///
+    /// i.e. `<|tool_call>call:get_weather{location:<|"|>Paris<|"|>}<tool_call|>`.
+    ///
+    /// This corrects the #2039 record: `<tool_call|>` is not an "invented" spelling —
+    /// it is a real Gemma-3 emission. But Gemma-3 is a *different family* from the repo's
+    /// Gemma-4 `.gemma` dialect (`PromptTemplate.gemma4`, `ThinkingMarkers.gemma4`,
+    /// companion `LlamaToolMarkers.gemma4EndTurn`), so the two closes genuinely differ.
+    /// Pin the split so a future reader — or a stale overnight brief pointing at the
+    /// gemma3 Ollama model as "ground truth" — does not "fix" the Gemma-4 `.gemma` close
+    /// back to `<tool_call|>` and break the whole-repo Gemma-4 consensus. NB: Ollama
+    /// returns structured `tool_calls` JSON, so the marker parser never scans this
+    /// template's raw close at runtime — the divergence is a catalog/descriptor concern,
+    /// not a live parse bug.
+    func testGemma3CommunityCloseIsADistinctFamilyNotTheGemma4Close() {
+        // Ground truth: the literal close the Gemma-3 community template emits.
+        let gemma3CommunityClose = "<tool_call|>"
+        // The repo's `.gemma` dialect models Gemma-4, closing at the turn terminator.
+        let gemma4DialectClose = ManifoldHardware.ToolCallDialect.gemma.closeDelimiter
+
+        XCTAssertEqual(
+            gemma4DialectClose, "<|end_of_turn>",
+            "Gemma-4 `.gemma` dialect close changed — re-confirm against PromptTemplate.gemma4 / LlamaToolMarkers"
+        )
+        XCTAssertNotEqual(
+            gemma3CommunityClose, gemma4DialectClose,
+            "Gemma-3 community close and Gemma-4 dialect close collapsed to one value — re-adjudicate the family split before unifying"
+        )
+
+        // The catalog descriptor's heuristic maps any `<|tool_call>` template to the
+        // Gemma-4 close `<|end_of_turn>` — correct for the modelled family, and notably
+        // independent of the (Gemma-3) `<tool_call|>` literal present in the same input.
+        let claim = ChatTemplateToolDescriptor(parsingChatTemplate: """
+        {%- if tools %}You may call tools.{%- endif %}
+        <|tool_call>call:get_weather{location:<|"|>Paris<|"|>}<tool_call|>
+        """)
+        XCTAssertEqual(
+            claim.declaredDialect?.closeDelimiter, "<|end_of_turn>",
+            "ChatTemplateToolDescriptor Gemma close drifted from the Gemma-4 dialect"
+        )
+        XCTAssertNotEqual(
+            claim.declaredDialect?.closeDelimiter, gemma3CommunityClose,
+            "Descriptor now reports the Gemma-3 community close — family split lost"
         )
     }
 }
