@@ -8,7 +8,7 @@
     {
       "kind": "toolInvoked",
       "value": "read_file",
-      "message": "Scenario requires file reads rather than hallucinated README contents"
+      "message": "Scenario requires `read_file` rather than hallucinated README contents"
     },
     {
       "kind": "toolResultContains",

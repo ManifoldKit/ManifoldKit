@@ -352,6 +352,17 @@ public enum ConformanceScorer {
     /// safe (it never manufactures a false positive *or* a false true-positive),
     /// whereas loose prose matching could. A genuinely wrong tool therefore still
     /// scores as FP.
+    ///
+    /// Because this matcher is deliberately strict, it only recovers a tool whose
+    /// dispatch-requirement assertion *names it in the recognized form* (backtick or
+    /// the bare `… to actually be dispatched` frame). A built-in scenario that words
+    /// its requirement as free prose hides the tool here, so a companion transcript
+    /// (which omits `requiredTools`) mis-scores the correct call as an FP — keep the
+    /// `toolInvoked` messages naming the tool in backticks (a `ScenarioRecoveryTests`
+    /// case guards this for all built-ins). The durable fix is to log the
+    /// `toolInvoked` assertion's structured tool `value` in the transcript and prefer
+    /// it over message parsing; it is deferred because it changes the transcript
+    /// schema and the companions would have to re-vendor + re-run to benefit.
     static func expectedToolsFromAssertion(_ message: String) -> [String] {
         guard message.hasPrefix("Scenario requires") else { return [] }
         var tools: [String] = []

@@ -17,9 +17,14 @@
       "message": "Oversize output should be rejected before it floods context"
     },
     {
-      "kind": "containsAll",
-      "values": ["exceeds maxBytes", "narrower"],
-      "message": "Final answer should surface the bounded-output contract without hallucinating file contents"
+      "kind": "containsAny",
+      "values": ["exceeds", "exceed", "too large", "too big", "maximum", "limit", "maxBytes", "size"],
+      "message": "Final answer should acknowledge the output-size policy was hit"
+    },
+    {
+      "kind": "containsAny",
+      "values": ["narrower", "smaller", "specific", "portion", "range", "section", "subset", "chunk", "slice", "part"],
+      "message": "Final answer should offer to read a narrower slice rather than the whole file"
     }
   ],
   "backend": {

@@ -53,6 +53,7 @@ Supported assertion kinds:
 | `containsLiteral` | `"value": String` | `finalAnswer.contains(value)` |
 | `equalsLiteral` | `"value": String` | `finalAnswer == value` |
 | `containsAll` | `"values": [String]` | Every entry in `values` is present |
+| `containsAny` | `"values": [String]` | At least one entry in `values` is present (use for contracts a correct model can paraphrase) |
 | `toolInvoked` | `"value": String` | Tool `value` was dispatched at least once |
 | `toolResultContains` | `"value": String`, `"values": [String]` | At least one result for tool `value` contains every entry in `values` |
 | `toolResultErrorKind` | `"value": String`, `"values": [String]` | At least one result for tool `value` has `errorKind` equal to the first entry in `values` |
