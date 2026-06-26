@@ -57,3 +57,19 @@ muter_logs/
 .local-integration-runs/
 # Overnight-run JSON data files — ephemeral run output, not living docs.
 docs/overnight/*.json
+
+# Eval-run byproducts under docs/plans/runs/. Committed convention is
+# CURATED SUMMARIES ONLY — the rendered MATRIX.md plus hand-written plan/*.md
+# docs. Everything a sweep emits (per-cell CSVs, aggregated record dumps,
+# transcripts, sweep logs) is regenerable scratch and must never be committed;
+# re-score from the raw JSONL instead. It bloated the tree by ~6k lines once.
+docs/plans/runs/**/*.csv
+docs/plans/runs/**/all_records.json
+docs/plans/runs/**/*_records.json
+docs/plans/runs/**/*.records.json
+docs/plans/runs/**/*.jsonl
+docs/plans/runs/**/*.run.log
+docs/plans/runs/**/*.stdout.txt
+docs/plans/runs/**/sweep.log
+docs/plans/runs/overnight-matrix-*.log
+*.profraw
