@@ -1,0 +1,5039 @@
+[
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_gemma4-e4b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_gemma4-e4b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r2_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma3-4b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma4-e4b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_gemma4-e4b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "llama3.1-8b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_llama3.1-8b.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d0_r3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 0.5,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 1,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d1_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.8,
+   "precision": 0.6666666666666666,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 3,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d3_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "failureClass": "noCall",
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "mistral-7b-tools",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_mistral-7b-tools.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "ollama",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 5,
+  "model": "qwen3.5-9b",
+  "quant": "unknown",
+  "renderer": "ollama-server",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/soak-20260626-100115/d5_qwen3.5-9b.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r1.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r2.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "noCall",
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "gemma3-4b-it",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_gemma-3-4b-it-Q4_K_M.tooltmpl_d0_r3.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r1.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r2.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "01-now",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "02-calc",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "03-read",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "04-list",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "meeting-notes-summary",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0.6666666666666666,
+   "precision": 1,
+   "recall": 0.5
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "shopping-list-budget",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 0,
+   "precision": 0,
+   "recall": 0
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "parallel-readme-comparison",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "pass"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "oversize-tool-output",
+  "status": {
+   "kind": "measured"
+  },
+  "toolSelection": {
+   "f1": 1,
+   "precision": 1,
+   "recall": 1
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "partial"
+ },
+ {
+  "backend": "llama.cpp",
+  "coreCommit": "5a0de5cd",
+  "decoyLevel": 0,
+  "failureClass": "lowPrecision",
+  "model": "mistral-7b-instruct",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "repeatIndex": 0,
+  "scenario": "structured-json-extraction",
+  "status": {
+   "kind": "measured"
+  },
+  "toolingVersions": {},
+  "transcriptRef": "docs/plans/runs/overnight-20260624-212539/llama_Mistral-7B-Instruct-v0.3-Q4_K_M_d0_r3.jsonl",
+  "verdict": "fail"
+ },
+ {
+  "backend": "llama.cpp",
+  "model": "gemma4-e4b",
+  "quant": "Q4_K_M",
+  "renderer": "jinja-prompt",
+  "scenario": "(load)",
+  "decoyLevel": 0,
+  "repeatIndex": 0,
+  "status": {
+   "kind": "loadFail",
+   "reason": "Unsupported model architecture: gemma4"
+  },
+  "transcriptRef": "(empty \u2014 load failed)",
+  "coreCommit": "5a0de5cd",
+  "toolingVersions": {}
+ }
+]
