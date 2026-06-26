@@ -32,6 +32,10 @@ public struct Scenario: Codable, Sendable, Equatable {
         /// - `"containsLiteral"` — final-answer text must contain `value` as a substring.
         /// - `"equalsLiteral"` — final-answer text must equal `value` exactly.
         /// - `"containsAll"` — final-answer text must contain every string in `values` as substrings.
+        /// - `"containsAny"` — final-answer text must contain at least one string in `values` as a
+        ///   substring. Use this for behavioural contracts a correct model can phrase many ways
+        ///   (e.g. "acknowledge the size policy") so paraphrase isn't scored as failure — a literal
+        ///   `containsAll` over one canonical wording mis-fails every model that paraphrases.
         /// - `"toolInvoked"` — the scenario must have dispatched the tool named `value` at least once.
         ///   This is the honesty gate: a scenario that only asserts `containsLiteral` can silently
         ///   pass when a model hallucinates the expected answer without actually calling the tool.
@@ -107,6 +111,15 @@ public enum AssertionEvaluator {
             let passed = values.allSatisfy { finalAnswer.contains($0) }
             let label = assertion.message ?? "contains all of \(values)"
             return AssertionOutcome(passed: passed, message: label)
+
+        case "containsAny":
+            guard let values = assertion.values, !values.isEmpty else {
+                return AssertionOutcome(passed: false, message: "containsAny missing 'values'")
+            }
+            let passed = values.contains { finalAnswer.contains($0) }
+            let detail = passed ? "found" : "none present"
+            let label = assertion.message ?? "contains any of \(values)"
+            return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
 
         case "toolInvoked":
             guard let name = assertion.value else {

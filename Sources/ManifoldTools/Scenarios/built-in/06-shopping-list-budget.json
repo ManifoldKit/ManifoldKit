@@ -8,7 +8,7 @@
     {
       "kind": "toolInvoked",
       "value": "read_file",
-      "message": "Scenario requires the shopping list to be read from the fixture"
+      "message": "Scenario requires `read_file` to load the shopping list from the fixture"
     },
     {
       "kind": "toolInvoked",
