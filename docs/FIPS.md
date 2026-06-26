@@ -233,7 +233,7 @@ language in its ATO (Authority to Operate) or vendor questionnaire response:
    the `Ollama`/`CloudSaaS` traits are retired and SaaS code paths are no
    longer compiled out by a flag — exclusion is a **link-out** decision:
    depend only on the products you need (e.g. `ManifoldInference` +
-   `ManifoldUI`, never `ManifoldBackends`/`ManifoldCloudSaaS`) and verify via
+   `ManifoldUI`, never `ManifoldCloudSaaS`) and verify via
    the per-mode symbol audit (`scripts/build-modes.sh <mode> --audit`), which
    asserts no SaaS symbols or cloud hostname literals appear in the product
    graph. This is a deliberate discontinuity from the pre-v0.48 compile-out

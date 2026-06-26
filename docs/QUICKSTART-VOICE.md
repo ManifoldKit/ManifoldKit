@@ -37,8 +37,7 @@ targets: [
 ```
 
 `ManifoldVoice` is a sibling product — you import it directly, not through the
-`ManifoldKit` umbrella. It has no dependency on `ManifoldRuntime`,
-`ManifoldBackends`, or any chat type.
+`ManifoldKit` umbrella. It has no dependency on `ManifoldRuntime` or any chat type.
 
 > **Info.plist.** Add both keys before recording, or authorization fails:
 > - `NSMicrophoneUsageDescription`

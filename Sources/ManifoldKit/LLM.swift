@@ -141,8 +141,6 @@ public struct LLM {
     /// reachable today via ``ChatViewModel/selectedPromptTemplate``. The embedded
     /// raw-Jinja channel (`selectedChatTemplateRaw`) is `private(set)` and set
     /// only at model load, so a full override there needs render-seam work.
-    // TODO(#1942 D2): full template override pending render-seam work — wire the
-    // embedded-Jinja channel once `selectedChatTemplateRaw` has a public setter.
     private static func apply(template: ChatTemplate?, to viewModel: ChatViewModel) {
         guard let promptTemplate = template?.builtInPromptTemplate else { return }
         viewModel.selectedPromptTemplate = promptTemplate

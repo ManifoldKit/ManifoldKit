@@ -437,8 +437,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             // Ollama emits tool calls as whole entries on a single NDJSON
             // line — no incremental `arguments` fragments arrive across
             // multiple lines (some `qwen2.5:7b` configs may stream deltas
-            // but BCK treats Ollama as whole-call only for v1; see
-            // TODO(#753) below in `parseResponseStream`).
+            // but this backend treats Ollama as whole-call only for v1).
             streamsToolCallArguments: false,
             // `/api/chat` is happy to return multiple `tool_calls[]` entries
             // in a single assistant message — the loop in `parseResponseStream`
