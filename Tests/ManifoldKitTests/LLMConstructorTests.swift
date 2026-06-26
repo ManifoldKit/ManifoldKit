@@ -164,7 +164,7 @@ final class LLMConstructorTests: XCTestCase {
         XCTAssertEqual(
             llm.viewModel.selectedPromptTemplate,
             original,
-            "An embedded-Jinja ChatTemplate has no public injection seam yet (TODO #1942 D2); it must not alter selectedPromptTemplate."
+            "An embedded-Jinja ChatTemplate has no public injection seam yet; it must not alter selectedPromptTemplate."
         )
     }
 }
