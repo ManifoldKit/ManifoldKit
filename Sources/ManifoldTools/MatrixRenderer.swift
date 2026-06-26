@@ -288,38 +288,74 @@ public enum MatrixRenderer {
 
     // MARK: - Verdict + status labels
 
-    /// Picks the most common verdict across a cell's measured records and renders
-    /// its symbol. For a dominant `.fail`, the dominant failure class refines the
-    /// label (no-call vs low-precision) so the matrix triages at a glance.
+    /// F1-band ceiling below which a cell counts as "doesn't really call the right
+    /// tool" — only then may a no-call-dominated failure label as `renders-no-call`.
+    /// Set just above 0 so a genuine all-no-call cell (mean F1 0.000) still trips it
+    /// while any cell that lands real calls (e.g. F1 0.750) never does.
+    static let noCallF1Ceiling = 0.05
+
+    /// F1-band floor at/above which a cell reads as `pass` regardless of its most
+    /// common failure subtype — a cell selecting the right tool ~90%+ of the time
+    /// is passing in aggregate even if a minority of records failed.
+    static let passF1Floor = 0.9
+
+    /// Derives a cell's single verdict label from its measured records.
+    ///
+    /// why F1-first, not failure-subtype-first: a cell's *aggregate* tool-selection
+    /// F1 is the honest summary of how often it picks the right tool; the dominant
+    /// `failureClass` is only the shape of its *minority* misses. Refining off the
+    /// failure subtype alone mislabels a 0.750-F1 cell whose most common miss is
+    /// `noCall` as "renders-no-call" — a cell that in fact calls correctly ~75% of
+    /// the time. So we band on F1 first, then use verdict/failureClass only to
+    /// refine *within* a band. Deterministic: `mean` and `dominant` are order-free.
     static func dominantVerdictLabel(_ measured: [ConformanceRecord]) -> String {
         let verdicts = measured.compactMap { $0.verdict }
         guard let topVerdict = dominant(verdicts, priority: verdictPriority) else { return "—" }
-        switch topVerdict {
-        case .pass:
-            return "✅ pass"
-        case .partial:
-            return "⚠️ partial"
-        case .errored:
-            return "💥 errored"
-        case .fail:
-            let failClasses = measured
-                .filter { $0.verdict == .fail }
-                .compactMap { $0.failureClass }
-            switch dominant(failClasses, priority: failureClassPriority) {
-            case .noCall:
-                return "⚠️ renders-no-call"
-            case .lowPrecision:
-                return "⚠️ low-precision"
-            case .truncation:
-                return "⚠️ truncation"
-            case .loadFail:
-                return "💥 load-fail"
-            case .renderFail:
-                return "🛑 render-fail"
-            case .none:
-                return "❌ fail"
-            }
+
+        // A harness/tool error is an infra signal independent of any F1.
+        if topVerdict == .errored { return "💥 errored" }
+
+        let f1s = measured.compactMap { $0.toolSelection?.f1 }
+        let meanF1 = f1s.isEmpty ? nil : mean(f1s)
+
+        // High aggregate F1 — or an unambiguous pass-dominant cell — reads as pass.
+        if topVerdict == .pass || (meanF1 ?? 0) >= passF1Floor { return "✅ pass" }
+
+        // Dominant failure shape among the cell's *failing* records — used only to
+        // refine the label once F1 has placed the cell in a band.
+        let failClasses = measured
+            .filter { $0.verdict == .fail }
+            .compactMap { $0.failureClass }
+        let topFail = dominant(failClasses, priority: failureClassPriority)
+
+        // renders-no-call is reserved for cells that (almost) never call when
+        // required: F1 must be ≈ 0 AND no-call the dominant failure. A cell with no
+        // measured F1 at all but no-call-dominated failures also qualifies (nothing
+        // contradicts the no-call reading). Above the ceiling the cell DOES call, so
+        // the label would be a lie — fall through to the mid-band labels instead.
+        if topFail == .noCall {
+            let f1NearZero = meanF1.map { $0 <= noCallF1Ceiling } ?? true
+            if f1NearZero { return "⚠️ renders-no-call" }
         }
+
+        // Infra-flavoured failure classes keep their distinct symbol regardless of band.
+        switch topFail {
+        case .truncation:
+            return "⚠️ truncation"
+        case .loadFail:
+            return "💥 load-fail"
+        case .renderFail:
+            return "🛑 render-fail"
+        case .lowPrecision:
+            return "⚠️ low-precision"
+        case .noCall, .none:
+            break
+        }
+
+        // Mid band: the cell calls tools but imperfectly. A fail-dominant cell with
+        // no measured F1 to soften the verdict stays a hard fail; otherwise partial.
+        if topVerdict == .fail, meanF1 == nil { return "❌ fail" }
+        return "⚠️ partial"
     }
 
     private static func statusLabel(_ status: CellStatus) -> String {

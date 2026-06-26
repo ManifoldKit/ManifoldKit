@@ -189,4 +189,87 @@ final class MatrixRendererTests: XCTestCase {
                        MatrixRenderer.normalizedModelKey("mistral-7b-instruct"),
                        "role/format suffixes are stripped so the twin groups together")
     }
+
+    // MARK: Verdict label is F1-aware, not failure-subtype-dominant
+
+    /// Reproduces the live-soak shape that mislabeled `llama3.1-8b` d0: 27 records,
+    /// verdicts {pass:6, partial:9, fail:12}, failureClass {noCall:6, lowPrecision:3,
+    /// nil:18}, mean tool-selection F1 0.750. `noCall` is the *dominant failure
+    /// subtype*, so the OLD subtype-first logic stamped "⚠️ renders-no-call" on a
+    /// cell that in fact calls the right tool ~75% of the time. The F1-aware logic
+    /// must NOT — a 0.750-F1 cell does call.
+    func testHighF1NoCallDominantCellIsNotRendersNoCall() throws {
+        var records: [ConformanceRecord] = []
+        // 6 pass + 9 partial: perfect tool selection, no failure class.
+        records += Array(repeating: record(model: "llama3.1-8b", verdict: .pass,
+                                            toolSelection: Scores(precision: 1, recall: 1, f1: 1)), count: 6)
+        records += Array(repeating: record(model: "llama3.1-8b", verdict: .partial,
+                                            toolSelection: Scores(precision: 1, recall: 1, f1: 1)), count: 9)
+        // 6 noCall fails (real 0.000) — the dominant failure subtype.
+        records += Array(repeating: record(model: "llama3.1-8b", verdict: .fail,
+                                            toolSelection: Scores(precision: 0, recall: 0, f1: 0),
+                                            failureClass: .noCall), count: 6)
+        // 3 low-precision fails.
+        records += Array(repeating: record(model: "llama3.1-8b", verdict: .fail,
+                                            toolSelection: Scores(precision: 0.6, recall: 1, f1: 0.75),
+                                            failureClass: .lowPrecision), count: 3)
+        // 3 fails with perfect tool selection but a non-tool (argument) assertion
+        // miss → verdict fail, failureClass nil. Keeps the F1 mean at 0.750.
+        records += Array(repeating: record(model: "llama3.1-8b", verdict: .fail,
+                                            toolSelection: Scores(precision: 1, recall: 1, f1: 1),
+                                            failureClass: nil), count: 3)
+
+        let markdown = MatrixRenderer.render(records)
+        let row = try line(markdown, containing: "llama3.1-8b")
+
+        XCTAssertTrue(row.contains("0.750"), "mean tool-selection F1 must read 0.750: \(row)")
+        // The fix: a 0.750-F1 cell calls the right tool most of the time — it is
+        // NOT a renders-no-call cell. (Fails under the OLD subtype-dominant logic.)
+        XCTAssertFalse(row.contains("renders-no-call"),
+                       "a 0.750-F1 cell must never be labeled renders-no-call: \(row)")
+        XCTAssertTrue(row.contains("⚠️ partial"),
+                      "a mid-band F1 cell reads as partial: \(row)")
+    }
+
+    /// The genuine no-call cell: every record is a `noCall` fail, mean F1 0.000.
+    /// This SHOULD keep "renders-no-call" — the model truly never calls.
+    func testAllNoCallZeroF1CellStaysRendersNoCall() throws {
+        let records = Array(repeating: record(
+            model: "gemma3-4b-tools", verdict: .fail,
+            toolSelection: Scores(precision: 0, recall: 0, f1: 0), failureClass: .noCall
+        ), count: 27)
+
+        let markdown = MatrixRenderer.render(records)
+        let row = try line(markdown, containing: "gemma3-4b-tools")
+
+        XCTAssertTrue(row.contains("0.000"), "an all-no-call cell shows its real 0.000: \(row)")
+        XCTAssertTrue(row.contains("⚠️ renders-no-call"),
+                      "F1 ≈ 0 with no-call dominant is a genuine renders-no-call: \(row)")
+    }
+
+    /// A perfect cell (mean F1 1.000) reads as pass.
+    func testPerfectF1CellIsPass() throws {
+        let records = Array(repeating: record(
+            model: "qwen3.5-9b", verdict: .pass,
+            toolSelection: Scores(precision: 1, recall: 1, f1: 1)
+        ), count: 5)
+
+        let markdown = MatrixRenderer.render(records)
+        let row = try line(markdown, containing: "qwen3.5-9b")
+        XCTAssertTrue(row.contains("1.000"), row)
+        XCTAssertTrue(row.contains("✅ pass"), row)
+    }
+
+    /// High aggregate F1 (≥ 0.9) bands to pass even when a minority of records fail
+    /// — the F1-floor short-circuit, exercised directly on `dominantVerdictLabel`.
+    func testHighF1WithMinorityFailuresBandsToPass() {
+        var records = Array(repeating: record(
+            verdict: .pass, toolSelection: Scores(precision: 1, recall: 1, f1: 1)
+        ), count: 9)
+        records.append(record(verdict: .fail,
+                              toolSelection: Scores(precision: 0, recall: 0, f1: 0),
+                              failureClass: .noCall))
+        // Mean F1 = 9/10 = 0.900 → at the pass floor.
+        XCTAssertEqual(MatrixRenderer.dominantVerdictLabel(records), "✅ pass")
+    }
 }
