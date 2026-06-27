@@ -164,6 +164,16 @@ ManifoldKit's distinct position is the diagonal across this table: not best at
 any single layer's niche, but the only thing that assembles all of them into a
 product you `import` instead of `git clone`.
 
+**Adjacent end-user apps (not Swift packages).** Developers evaluating
+ManifoldKit sometimes compare it against **Ollamac** (macOS Ollama client, Swift
+app), **LM Studio** (cross-platform Electron GUI for local model management),
+and **AnythingLLM** (Node.js / web RAG assistant). These are *end-user apps*,
+not Swift packages or frameworks — they solve "I want to run AI locally" for
+end users, while ManifoldKit solves "I want to build and ship an AI feature in
+my iOS/macOS app." They serve different jobs. The correct comparison for
+ManifoldKit is the table above; the correct comparison for those tools is the
+market of chat clients and local-model GUIs.
+
 ---
 
 ## 6. What's already in the box
