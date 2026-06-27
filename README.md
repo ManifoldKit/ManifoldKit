@@ -22,7 +22,7 @@ Three steps: add **ManifoldKit** (core) plus the **manifold-llama** companion pa
 
 ```text
 .package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.61.0"), // x-release-please-version
-.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
+.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),
 // target dependencies: "ManifoldKit", .product(name: "ManifoldLlama", package: "manifold-llama")
 ```
 
