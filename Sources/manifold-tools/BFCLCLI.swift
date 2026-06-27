@@ -3,8 +3,9 @@ import ManifoldInference
 import ManifoldOllama
 import ManifoldTools
 
-/// `manifold-tools bfcl` — drives the bundled BFCL `simple` slice through a real
-/// Ollama model and scores each emitted tool call at the **argument level** with
+/// `manifold-tools bfcl` — drives a bundled BFCL category slice (`simple` or
+/// `multiple`, default `multiple`) through a real Ollama model and scores each
+/// emitted tool call at the **argument level** with
 /// ``ASTMatcher``, contrasting it against what the name-only ``ConformanceScorer``
 /// would have credited.
 ///

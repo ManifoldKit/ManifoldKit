@@ -126,6 +126,11 @@ ALLOWLIST_PATHS=(
     # manifold-tools CLI: URL(string: "http://localhost:11434")! default Ollama
     # base URL; hard-coded constant, always valid.  CLI binary, not SDK product.
     "manifold-tools/main.swift"
+    # manifold-tools bfcl subcommand: same hard-coded URL(string:)! default
+    # Ollama base URL as main.swift; constant, always valid.  CLI binary, not
+    # SDK product.  (Otherwise hidden from the detector only by the `://`
+    # comment-regex false-match — allowlist it explicitly so the review is real.)
+    "manifold-tools/BFCLCLI.swift"
 )
 
 # Build find-exclusion args from the allowlist paths
