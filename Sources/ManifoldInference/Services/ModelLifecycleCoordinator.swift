@@ -306,6 +306,23 @@ final class ModelLifecycleCoordinator {
         // through `runLoad` directly and leave this nil (cloud backends do not
         // use prompt templates).
         selectedChatTemplateRaw = modelInfo.chatTemplateRaw
+
+        // Layer-2 render-consistency diagnostic (#2005). When a template is
+        // present, check whether the tool dialect it *declares* actually
+        // survives MK's render path. An `.inconsistent` verdict is the #1909
+        // class (template promises a dialect the renderer drops); surface it as
+        // a load-time warning so tool calls failing on this model is diagnosable.
+        // This is a render-health signal, not a capability verdict — it never
+        // blocks the load, and a toolless template stays silent (notApplicable).
+        if let chatTemplate = modelInfo.chatTemplateRaw {
+            let consistency = RenderConsistencyChecker.check(chatTemplateRaw: chatTemplate)
+            if consistency.status == .inconsistent {
+                Log.inference.warning(
+                    "Render-consistency (#2005): model '\(modelInfo.name)' declares a tool-call dialect its chat template does not render — \(consistency.detail). Tool calls may not work; this is an MK render issue, not a weights limitation."
+                )
+            }
+        }
+
         try await runLoad(
             source: "local",
             target: modelTypeLogLabel(modelInfo.modelType),

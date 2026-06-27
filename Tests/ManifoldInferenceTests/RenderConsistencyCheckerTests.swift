@@ -16,28 +16,149 @@ import XCTest
 /// which are not swift-jinja-evaluable.
 final class RenderConsistencyCheckerTests: XCTestCase {
 
+    // MARK: - Committed family-template corpus (single source of truth)
+    //
+    // The gate test (`testKnownGoodFamilyTemplatesNeverRenderInconsistent`) and
+    // the per-family round-trip tests both fold over these constants, so the
+    // CI invariant and the documented behaviour can never drift. The corpus is
+    // deliberately committed (not runtime-discovered) so CI stays deterministic.
+
+    /// Qwen / Hermes `<tool_call>…</tool_call>` JSON dialect behind `{% if tools %}`.
+    static let qwenStyleTemplate = """
+    {%- if tools %}
+    <tools>
+    {%- for tool in tools %}{{ tool.name }}
+    {%- endfor %}
+    </tools>
+    {%- endif %}
+    {%- for message in messages %}
+    <|{{ message.role }}|>{{ message.content }}
+    {%- if message.tool_calls %}
+        {%- for tc in message.tool_calls %}<tool_call>
+    {"name": "{{ tc.function.name }}"}
+    </tool_call>
+        {%- endfor %}
+    {%- endif %}
+    {%- endfor %}
+    """
+
+    /// Gemma-style `<|tool_call>` key/value dialect behind `{% if tools %}`.
+    static let gemmaStyleTemplate = """
+    {%- if tools %}
+    Tools:
+    {%- for tool in tools %}{{ tool.name }}
+    {%- endfor %}
+    {%- endif %}
+    {%- for message in messages %}
+    {{ message.role }}: {{ message.content }}
+    {%- if message.tool_calls %}
+        {%- for tc in message.tool_calls %}<|tool_call>
+    name: {{ tc.function.name }}
+    <|end_of_turn>
+        {%- endfor %}
+    {%- endif %}
+    {%- endfor %}
+    """
+
+    /// Mistral-v0.3 `[TOOL_CALLS]` dialect behind a `tools is not none` guard.
+    static let mistralStyleTemplate = """
+    {%- if tools is not none %}
+    [AVAILABLE_TOOLS]
+    {%- for tool in tools %}{{ tool.name }}
+    {%- endfor %}
+    [/AVAILABLE_TOOLS]
+    {%- endif %}
+    {%- for message in messages %}
+    {{ message.role }}: {{ message.content }}
+    {%- if message.tool_calls %}
+        {%- for tc in message.tool_calls %}[TOOL_CALLS] {{ tc.function.name }}
+        {%- endfor %}
+    {%- endif %}
+    {%- endfor %}
+    """
+
+    /// Hermes-style `<tool_call>` dialect behind a bare `{% for tool in tools %}`
+    /// guard (no `if`).
+    static let hermesStyleTemplate = """
+    {%- for tool in tools %}{{ tool.name }}
+    {%- endfor %}
+    {%- for message in messages %}
+    {{ message.role }}: {{ message.content }}
+    {%- if message.tool_calls %}
+        {%- for tc in message.tool_calls %}<tool_call>
+    {"name": "{{ tc.function.name }}"}
+    </tool_call>
+        {%- endfor %}
+    {%- endif %}
+    {%- endfor %}
+    """
+
+    /// Llama-3.1 `Environment: ipython` guard, bare-JSON dialect — declares NO
+    /// open delimiter, so consistency hinges on the tool name alone.
+    static let llamaStyleTemplate = """
+    {%- if tools %}
+    Environment: ipython
+    {%- for tool in tools %}{{ tool.name }}
+    {%- endfor %}
+    {%- endif %}
+    {%- for message in messages %}
+    {{ message.role }}: {{ message.content }}
+    {%- if message.tool_calls %}
+        {%- for tc in message.tool_calls %}{"name": "{{ tc.function.name }}"}
+        {%- endfor %}
+    {%- endif %}
+    {%- endfor %}
+    """
+
+    /// Phi-4-style: no tools guard at all → trustworthy negative claim
+    /// (`notApplicable`, not `inconsistent` — there is nothing to round-trip).
+    static let phiToollessTemplate = """
+    {%- for message in messages %}
+    <|im_start|>{{ message.role }}<|im_sep|>{{ message.content }}<|im_end|>
+    {%- endfor %}
+    <|im_start|>assistant<|im_sep|>
+    """
+
+    /// The known-good family corpus the CI gate folds over. Includes both
+    /// tool-bearing families (which must render `.consistent`) and the toolless
+    /// Phi-4 case (which must render `.notApplicable`) — the gate's invariant is
+    /// "no known-good family template ever renders `.inconsistent`".
+    static let familyCorpus: [(name: String, template: String)] = [
+        ("Qwen/Hermes", qwenStyleTemplate),
+        ("Gemma", gemmaStyleTemplate),
+        ("Mistral-v0.3", mistralStyleTemplate),
+        ("Hermes (for-guard)", hermesStyleTemplate),
+        ("Llama-3.1", llamaStyleTemplate),
+        ("Phi-4 (toolless)", phiToollessTemplate),
+    ]
+
+    // MARK: - CI gate (the regression spine)
+
+    /// Folds ``RenderConsistencyChecker/check(chatTemplateRaw:)`` over the whole
+    /// committed family corpus and **fails on any `.inconsistent`** verdict.
+    ///
+    /// This encodes the #2005 acceptance invariant: these known-good family
+    /// templates declare tool dialects MK's renderer actually emits, so the
+    /// render path can never silently drop their tool grammar (the #1909 class)
+    /// without this gate going red. `.consistent` and `.notApplicable` both pass
+    /// — only `.inconsistent` is the regression we guard against.
+    func testKnownGoodFamilyTemplatesNeverRenderInconsistent() {
+        for entry in Self.familyCorpus {
+            let result = RenderConsistencyChecker.check(chatTemplateRaw: entry.template)
+            XCTAssertNotEqual(
+                result.status,
+                .inconsistent,
+                "Family template '\(entry.name)' regressed to .inconsistent — "
+                + "its declared tool dialect no longer survives MK's render path "
+                + "(the #1909 class). Detail: \(result.detail)"
+            )
+        }
+    }
+
     // MARK: - Recognised families render consistently
 
     func testQwenStyleRendersConsistently() {
-        // {% if tools %} guard + <tool_call>…</tool_call> JSON dialect.
-        let template = """
-        {%- if tools %}
-        <tools>
-        {%- for tool in tools %}{{ tool.name }}
-        {%- endfor %}
-        </tools>
-        {%- endif %}
-        {%- for message in messages %}
-        <|{{ message.role }}|>{{ message.content }}
-        {%- if message.tool_calls %}
-            {%- for tc in message.tool_calls %}<tool_call>
-        {"name": "{{ tc.function.name }}"}
-        </tool_call>
-            {%- endfor %}
-        {%- endif %}
-        {%- endfor %}
-        """
-        let result = RenderConsistencyChecker.check(chatTemplateRaw: template)
+        let result = RenderConsistencyChecker.check(chatTemplateRaw: Self.qwenStyleTemplate)
 
         XCTAssertEqual(result.status, .consistent, result.detail)
         XCTAssertTrue(result.toolDefinitionRendered)
@@ -47,24 +168,7 @@ final class RenderConsistencyCheckerTests: XCTestCase {
     }
 
     func testGemmaStyleRendersConsistently() {
-        // {% if tools %} guard + <|tool_call> key/value dialect.
-        let template = """
-        {%- if tools %}
-        Tools:
-        {%- for tool in tools %}{{ tool.name }}
-        {%- endfor %}
-        {%- endif %}
-        {%- for message in messages %}
-        {{ message.role }}: {{ message.content }}
-        {%- if message.tool_calls %}
-            {%- for tc in message.tool_calls %}<|tool_call>
-        name: {{ tc.function.name }}
-        <|end_of_turn>
-            {%- endfor %}
-        {%- endif %}
-        {%- endfor %}
-        """
-        let result = RenderConsistencyChecker.check(chatTemplateRaw: template)
+        let result = RenderConsistencyChecker.check(chatTemplateRaw: Self.gemmaStyleTemplate)
 
         XCTAssertEqual(result.status, .consistent, result.detail)
         XCTAssertTrue(result.toolDefinitionRendered)
@@ -73,23 +177,7 @@ final class RenderConsistencyCheckerTests: XCTestCase {
     }
 
     func testMistralStyleRendersConsistently() {
-        // tools-is-not-none guard + [TOOL_CALLS] dialect.
-        let template = """
-        {%- if tools is not none %}
-        [AVAILABLE_TOOLS]
-        {%- for tool in tools %}{{ tool.name }}
-        {%- endfor %}
-        [/AVAILABLE_TOOLS]
-        {%- endif %}
-        {%- for message in messages %}
-        {{ message.role }}: {{ message.content }}
-        {%- if message.tool_calls %}
-            {%- for tc in message.tool_calls %}[TOOL_CALLS] {{ tc.function.name }}
-            {%- endfor %}
-        {%- endif %}
-        {%- endfor %}
-        """
-        let result = RenderConsistencyChecker.check(chatTemplateRaw: template)
+        let result = RenderConsistencyChecker.check(chatTemplateRaw: Self.mistralStyleTemplate)
 
         XCTAssertEqual(result.status, .consistent, result.detail)
         XCTAssertTrue(result.toolDefinitionRendered)
@@ -98,21 +186,7 @@ final class RenderConsistencyCheckerTests: XCTestCase {
     }
 
     func testHermesStyleRendersConsistently() {
-        // {% for tool in tools %} guard (no `if`) + <tool_call> dialect.
-        let template = """
-        {%- for tool in tools %}{{ tool.name }}
-        {%- endfor %}
-        {%- for message in messages %}
-        {{ message.role }}: {{ message.content }}
-        {%- if message.tool_calls %}
-            {%- for tc in message.tool_calls %}<tool_call>
-        {"name": "{{ tc.function.name }}"}
-        </tool_call>
-            {%- endfor %}
-        {%- endif %}
-        {%- endfor %}
-        """
-        let result = RenderConsistencyChecker.check(chatTemplateRaw: template)
+        let result = RenderConsistencyChecker.check(chatTemplateRaw: Self.hermesStyleTemplate)
 
         XCTAssertEqual(result.status, .consistent, result.detail)
         XCTAssertTrue(result.toolDefinitionRendered)
@@ -120,24 +194,10 @@ final class RenderConsistencyCheckerTests: XCTestCase {
     }
 
     func testLlamaStyleNoDelimiterRendersConsistently() {
-        // Llama-3.1: Environment: ipython guard, bare-JSON dialect — the claim
-        // declares NO open delimiter, so declaredDelimiterRendered must be nil
-        // and consistency must hinge on the tool name alone.
-        let template = """
-        {%- if tools %}
-        Environment: ipython
-        {%- for tool in tools %}{{ tool.name }}
-        {%- endfor %}
-        {%- endif %}
-        {%- for message in messages %}
-        {{ message.role }}: {{ message.content }}
-        {%- if message.tool_calls %}
-            {%- for tc in message.tool_calls %}{"name": "{{ tc.function.name }}"}
-            {%- endfor %}
-        {%- endif %}
-        {%- endfor %}
-        """
-        let result = RenderConsistencyChecker.check(chatTemplateRaw: template)
+        // Llama-3.1: the claim declares NO open delimiter, so
+        // declaredDelimiterRendered must be nil and consistency must hinge on
+        // the tool name alone.
+        let result = RenderConsistencyChecker.check(chatTemplateRaw: Self.llamaStyleTemplate)
 
         XCTAssertEqual(result.status, .consistent, result.detail)
         XCTAssertTrue(result.toolDefinitionRendered)
@@ -149,13 +209,7 @@ final class RenderConsistencyCheckerTests: XCTestCase {
 
     func testToollessTemplateIsNotApplicable() {
         // Phi-style: no tools guard at all → trustworthy negative claim.
-        let template = """
-        {%- for message in messages %}
-        <|im_start|>{{ message.role }}<|im_sep|>{{ message.content }}<|im_end|>
-        {%- endfor %}
-        <|im_start|>assistant<|im_sep|>
-        """
-        let result = RenderConsistencyChecker.check(chatTemplateRaw: template)
+        let result = RenderConsistencyChecker.check(chatTemplateRaw: Self.phiToollessTemplate)
 
         XCTAssertEqual(result.status, .notApplicable)
         XCTAssertFalse(result.claim.toolsExpressible)
