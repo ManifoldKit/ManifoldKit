@@ -20,6 +20,13 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
     /// treat as full-precision.
     public let variant: PrecisionVariant?
 
+    /// SHA-256 (lowercase hex) of the GGUF-embedded chat template captured when
+    /// this package was written. Optional so manifests produced before #1932 —
+    /// and packages with no chat template — still decode. The load path compares
+    /// this against the freshly-loaded template's digest to detect a template
+    /// that changed underneath a cached selection; a mismatch warns, never gates.
+    public let chatTemplateSHA256: String?
+
     public init(
         packageKind: ModelPackageKind,
         id: String,
@@ -27,7 +34,8 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
         format: ImageModelFormat? = nil,
         huggingFaceRepoID: String? = nil,
         files: [String],
-        variant: PrecisionVariant? = nil
+        variant: PrecisionVariant? = nil,
+        chatTemplateSHA256: String? = nil
     ) {
         self.packageKind = packageKind
         self.id = id
@@ -36,6 +44,7 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
         self.huggingFaceRepoID = huggingFaceRepoID
         self.files = files
         self.variant = variant
+        self.chatTemplateSHA256 = chatTemplateSHA256
     }
 }
 

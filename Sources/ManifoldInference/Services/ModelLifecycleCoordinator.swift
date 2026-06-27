@@ -323,6 +323,18 @@ final class ModelLifecycleCoordinator {
             }
         }
 
+        // Chat-template integrity (#1932): warn loudly if the model's embedded
+        // template changed since the hash recorded in its on-disk package
+        // manifest — a cached selection or preset may be pinned to the old
+        // template. This is an observability signal only: it never gates the
+        // load and never feeds the renderer (which reads `chatTemplateRaw`
+        // directly), so it cannot reintroduce the #1909 template→render coupling.
+        if case let .mismatch(recorded, current) = chatTemplateIntegrityStatus(for: modelInfo) {
+            Log.inference.warning(
+                "Chat template changed since the recorded manifest hash for model '\(modelInfo.name)' (recorded \(recorded, privacy: .public), now \(current, privacy: .public)). A cached selection or preset may target the old template; rendering proceeds with the current embedded template (#1932)."
+            )
+        }
+
         try await runLoad(
             source: "local",
             target: modelTypeLogLabel(modelInfo.modelType),
@@ -383,6 +395,54 @@ final class ModelLifecycleCoordinator {
             newBackend.unloadModel()
             logLoadEvent("load.suppress", request: request, reason: "stale-success", clearMetadata: true)
             return
+        }
+    }
+
+    // MARK: - Chat-Template Integrity (#1932)
+
+    /// Outcome of comparing a freshly-loaded model's chat-template hash against
+    /// the hash recorded in its on-disk package-manifest sidecar.
+    enum ChatTemplateIntegrityStatus: Equatable {
+        /// No loaded template, no sidecar, or the sidecar carries no recorded
+        /// hash — nothing to compare, so the load is silent.
+        case noRecordedHash
+        /// The recorded hash matches the freshly-loaded template.
+        case match
+        /// The recorded hash differs from the loaded template: the embedded
+        /// template changed underneath whatever cached the recorded hash.
+        case mismatch(recorded: String, current: String)
+    }
+
+    /// Compares the loaded model's chat-template digest against the one recorded
+    /// in its on-disk package manifest, if any. Pure read — never throws, never
+    /// mutates state, never touches the renderer.
+    func chatTemplateIntegrityStatus(for modelInfo: ModelInfo) -> ChatTemplateIntegrityStatus {
+        guard let currentHash = modelInfo.chatTemplateSHA256,
+              let recordedHash = recordedChatTemplateSHA256(forModelAt: modelInfo.url) else {
+            return .noRecordedHash
+        }
+        return recordedHash == currentHash
+            ? .match
+            : .mismatch(recorded: recordedHash, current: currentHash)
+    }
+
+    /// Reads the recorded chat-template SHA-256 from the `.manifoldkit-package.json`
+    /// sidecar next to `modelURL`, or `nil` when there is no sidecar, it cannot be
+    /// decoded, or it carries no recorded hash.
+    ///
+    /// A missing or legacy sidecar is the common case (single-file GGUFs have no
+    /// sidecar at all), so a read/decode failure is treated as "nothing to compare"
+    /// rather than an error — this is a trust-boundary read, kept deliberately quiet.
+    private func recordedChatTemplateSHA256(forModelAt modelURL: URL) -> String? {
+        let manifestURL = modelURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(DownloadedModelPackageManifest.fileName)
+        do {
+            let data = try Data(contentsOf: manifestURL)
+            let manifest = try JSONDecoder().decode(DownloadedModelPackageManifest.self, from: data)
+            return manifest.chatTemplateSHA256
+        } catch {
+            return nil
         }
     }
 
