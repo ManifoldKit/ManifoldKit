@@ -334,7 +334,62 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         XCTAssertNil(coord.activeConversationStreamHandle)
     }
 
-    // MARK: - 12. coordinator does not retain ChatViewModel
+    // MARK: - 12. streamFinished(.length) triggers upgrade hint
+
+    func test_handleStreamFinished_length_triggersUpgradeHint() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+
+        ManifoldConfiguration.shared.features = ManifoldConfiguration.Features(showUpgradeHint: true)
+        defer { ManifoldConfiguration.shared.features = ManifoldConfiguration.Features() }
+
+        var hintFired = false
+        coord.setShowUpgradeHint = { if $0 { hintFired = true } }
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "Truncated", sessionID: sessionID)
+        msg.contentParts = [.text("Truncated")]
+        coord.currentMessages = { [msg] }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+
+        coord.activeConversationMessageID = msgID
+        coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
+
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .length))
+
+        XCTAssertTrue(hintFired, "upgrade hint must fire when the backend hits its length cap")
+    }
+
+    func test_handleStreamFinished_stop_doesNotTriggerUpgradeHint() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+
+        ManifoldConfiguration.shared.features = ManifoldConfiguration.Features(showUpgradeHint: true)
+        defer { ManifoldConfiguration.shared.features = ManifoldConfiguration.Features() }
+
+        var hintFired = false
+        coord.setShowUpgradeHint = { if $0 { hintFired = true } }
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "Done", sessionID: sessionID)
+        msg.contentParts = [.text("Done")]
+        coord.currentMessages = { [msg] }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentPostGenerationTasks = { [] }
+
+        coord.activeConversationMessageID = msgID
+        coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
+
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .stop))
+
+        XCTAssertFalse(hintFired, "upgrade hint must NOT fire on a normal .stop completion")
+    }
+
+    // MARK: - 13. coordinator does not retain ChatViewModel
 
     func test_coordinatorDoesNotRetainChatViewModel() {
         // Construct a full VM and immediately release it — the coordinator's
