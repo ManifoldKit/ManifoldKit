@@ -100,8 +100,10 @@ def main():
     total = len(dump)
     print("\n  ── summary ──")
     print(f"  cases:            {total}")
-    print(f"  ours  AST pass:   {agree_pass + we_stricter}/{total}")
-    print(f"  canon AST pass:   {agree_pass + we_looser}/{total}  (errored: {errored})")
+    # ours passed = agreed-pass + (ours pass, canon fail); canon passed = agreed-pass
+    # + (ours fail, canon pass). Keep these straight — they invert.
+    print(f"  ours  AST pass:   {agree_pass + we_looser}/{total}")
+    print(f"  canon AST pass:   {agree_pass + we_stricter}/{total}  (errored: {errored})")
     print(f"  agree pass:       {agree_pass}")
     print(f"  agree fail:       {agree_fail}")
     print(f"  WE STRICTER:      {we_stricter}  {[c for c, _ in stricter_ids]}")

@@ -18,29 +18,48 @@ any disagreement isolates *matcher strictness* from parser differences.
 
 ## Recorded result (2026-06-27, `bfcl-eval` 2025.8.6.2)
 
-`llama3.1-8b:latest` via local Ollama, `BFCL_v4_multiple` 25-case slice:
+`BFCL_v4_multiple` 25-case slice, two backends running the **same** llama3.1-8b:
 
-| | ours | canonical |
-|---|---|---|
-| AST pass (of 23 scored) | 8 | 8 |
-| Agree pass | 8 | |
-| Agree fail | 15 | |
-| **We stricter** (canonical passes, we fail) | **0** | |
-| **We looser** (we pass, canonical fails) | **0** | |
+| backend | ours AST | canonical AST | agreement |
+|---|---|---|---|
+| Ollama (llama-server, grammar-constrained) | 8/25 (32%) | 8/25 | 23/23 scored, **0 divergence** |
+| companion `LlamaBackend` (direct llama.cpp + native template) | 16/25 (64%) | 17/25 | 24/25, **1 divergence** |
 
-**100% agreement — zero divergence.** Every one of the 15 wrong-argument fails is
-also a `type_error:simple` under canonical BFCL, *including* the list-valued cases
-(`multiple_10`, `multiple_23`) that were the prime suspects for over-strictness:
-they fail canonically too, because the model emitted *stringified* lists
-(`"['email', 'social_security_number']"`) rather than real arrays. The two
-backend-errored cases (`multiple_7`, `multiple_24`) are fails under both scorers,
-so the headline **8/25 = 32%** stands, calibrated. The earlier "~32–50%" hedge is
-resolved: it is **32%**, and the matcher is faithful.
+### Matcher is faithful
 
-The cross-check was sabotage-verified: feeding canonical a corrected
-integer-typed variant of `multiple_1` correctly flips it to `WE-STRICTER`
-(`ours=False canonical=True`), proving the harness detects divergence rather than
-agreeing vacuously.
+On the Ollama run, **every** one of the 15 wrong-argument fails is also a
+`type_error:simple` under canonical BFCL — *including* the list-valued cases
+(`multiple_10`, `multiple_23`) that were the prime over-strictness suspects: they
+fail canonically too, because the model emitted *stringified* lists
+(`"['email', 'social_security_number']"`) rather than real arrays. Zero
+divergence. The earlier "~32–50%" hedge is resolved: it is **32%**.
+
+The cross-check is sabotage-verified: feeding canonical a corrected integer-typed
+variant of `multiple_1` correctly flips it to `WE-STRICTER` (`ours=False
+canonical=True`), proving the harness detects divergence rather than agreeing
+vacuously.
+
+### One known matcher gap — nested objects
+
+The single divergence across both runs is `multiple_8` on the `LlamaBackend` run:
+the model emitted a **correct** nested object `budget:{min:300000, max:400000}`,
+which canonical passes but our matcher fails — it compares the whole object as one
+value and cannot unwrap BFCL's per-key accepted-value-list encoding
+(`{max:[400000], min:[300000]}`). This is exactly the nested-object structural
+matching `ASTMatcher` documents as deferred. Impact is small (1/25 here) and only
+bites when a model emits nested-object arguments *correctly* — but it means our
+score is a slight **lower bound** on backends good enough to produce them.
+
+### Cross-backend finding
+
+The same model scores **32% (Ollama) vs 64% (`LlamaBackend`)** purely on backend
+tool-call handling: Ollama's grammar-constrained path stringifies numerics
+(`{"a":"5"}`), which fail BFCL's type check, while the native-template
+`LlamaBackend` preserves them (`{"a":5}`). This is the kind of backend-robustness
+gap a name-only scorer renders completely invisible — and the reason the
+argument-level scorer earns its keep. The `LlamaBackend` numbers were produced by
+`manifold-tools-llama bfcl` in the companion repo (driver pending a release-gated
+PR); reproduce with the same `--dump` + cross-check flow.
 
 ## Faithfulness caveat
 
