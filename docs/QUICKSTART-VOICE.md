@@ -193,5 +193,5 @@ isn't a chat surface.
 > WhisperKit integration are tracked in
 > [#1928](https://github.com/roryford/ManifoldKit/issues/1928). The current
 > `ManifoldVoice` surface is half-duplex only — STT and TTS run in mutually
-> exclusive states, not simultaneously. See `docs/design/voice-surface-scoping.md`
+> exclusive states, not simultaneously. See [design/voice-surface-scoping.md](design/voice-surface-scoping.md)
 > for the design notes.

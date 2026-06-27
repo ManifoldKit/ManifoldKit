@@ -99,9 +99,12 @@ let ragConfig = RAGConfiguration(
     topK: 5
 )
 
-let bootstrap = try await ManifoldBootstrap.build(
+// build() returns (progress stream, task) — await the task for the bootstrap.
+let (_, task) = ManifoldBootstrap.build(
+    configuration: ManifoldConfiguration.shared,
     ragConfiguration: ragConfig
 )
+let bootstrap = try await task.value
 
 // Ingest documents — parsing, chunking, and embedding happen here.
 let docURL = Bundle.main.url(forResource: "guide", withExtension: "txt")!

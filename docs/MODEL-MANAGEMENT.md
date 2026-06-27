@@ -99,8 +99,8 @@ recommender that filters before displaying.
 
 | Strategy | When to use |
 |----------|-------------|
-| `.mappable` | Default. mmap-backed — weights paged in on demand. Lower peak RSS, higher per-token latency variance on cold access. |
-| `.preloaded` | Force full weight load up front. Higher peak RSS, lower variance. Only worthwhile on devices with comfortable headroom. |
+| `.mappable` | Default for GGUF. mmap-backed — only active pages + KV cache need RAM. Lower peak RSS, higher per-token latency variance on cold access. |
+| `.resident` | Required for MLX (unified-memory backends). Weights must be fully resident in RAM before generation starts. Auto-selected by `compute(for:requestedContextSize:)` for `.mlx` model types — only pass explicitly if overriding the strategy for a custom backend. |
 
 ---
 
