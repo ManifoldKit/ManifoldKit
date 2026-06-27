@@ -30,9 +30,7 @@ struct DemoContentView: View {
     // on iOS Simulator launch (no audio input device). Mount the controller
     // and the composer accessory only on real hardware.
     #if !targetEnvironment(simulator)
-    @State private var voiceController = VoiceConversationController(
-        wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat", "base chat"])
-    )
+    @State private var voiceController = VoiceConversationController()
     #endif
 
     /// Tool registry shared with the app's inference service. Held here so the
