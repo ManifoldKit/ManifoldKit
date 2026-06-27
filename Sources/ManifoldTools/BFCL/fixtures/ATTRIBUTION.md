@@ -38,11 +38,16 @@ The **`multiple`** slice is upstream BFCL data verbatim (Apache-2.0). The
 verbatim copy — and exists only to validate the easy path; its per-case numbers
 are not leaderboard scores.
 
+**Calibration (done):** this Swift `ASTMatcher` was cross-checked against canonical
+`bfcl-eval` (2025.8.6.2) on the same decoded outputs — **100% agreement, zero
+divergence** (8/8 pass, 15/15 fail) for `llama3.1-8b` on this slice. The matcher is
+faithful; the argument-level score is **32%**, not a strictness artifact. See
+`../calibration/README.md` for the result and reproduction steps. Re-run via
+`manifold-tools bfcl --dump`.
+
 **Follow-on (deferred):** vendor the remaining categories (`parallel`,
 `parallel_multiple`, harder `live_*`) — note `parallel*` needs multi-call scoring
-(every ground-truth call matched), which `ASTMatcher.scoreCase` does not yet do —
-and cross-check this Swift `ASTMatcher` once against canonical `bfcl-eval` to
-confirm the two scorers agree on the same transcripts.
+(every ground-truth call matched), which `ASTMatcher.scoreCase` does not yet do.
 
 ## Upstream
 
