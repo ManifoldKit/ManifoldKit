@@ -979,6 +979,8 @@ let package = Package(
             exclude: ["README.md"],
             resources: [
                 .copy("Scenarios/built-in"),
+                // BFCL argument-level scorer fixtures (simple-category slice).
+                .copy("BFCL/fixtures"),
             ]
         ),
         // manifold-tools does NOT depend on the ManifoldBackends umbrella:

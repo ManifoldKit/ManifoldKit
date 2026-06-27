@@ -535,6 +535,9 @@ func runCLI() async -> Int32 {
     if argv.first == "matrix" {
         return MatrixCLI.run(Array(argv.dropFirst()))
     }
+    if argv.first == "bfcl" {
+        return await BFCLCLI.run(Array(argv.dropFirst()))
+    }
     let cli = CLI.parse(argv)
 
     let scenarios: [Scenario]
