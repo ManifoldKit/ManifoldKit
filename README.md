@@ -21,7 +21,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 Three steps: add **ManifoldKit** (core) plus the **manifold-llama** companion package (the on-device GGUF backend), then drop this into your app entry point. `ManifoldKit.quickStart(backends:seed:)` builds the SwiftData container, registers the compiled-in backends plus the companion registrars you pass, and seeds a curated ~400 MB starter model on first launch — one call to a live, generating chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0"),
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.61.0"), // x-release-please-version
 .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
 // target dependencies: "ManifoldKit", .product(name: "ManifoldLlama", package: "manifold-llama")
 ```
