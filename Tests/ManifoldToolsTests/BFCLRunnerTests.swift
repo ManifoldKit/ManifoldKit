@@ -69,6 +69,40 @@ final class BFCLRunnerTests: XCTestCase {
         XCTAssertTrue(out.contains("1 case(s) called the right tool with WRONG arguments"))
     }
 
+    // MARK: - per-case timeout
+
+    func test_withCaseTimeout_fastDrain_returnsResultWithoutCancelling() async throws {
+        var cancelled = false
+        let calls = try await BFCLRunner.withCaseTimeout(
+            seconds: 5,
+            cancel: { cancelled = true },
+            drain: { [ToolCall(id: "c", toolName: "add", arguments: "{}")] }
+        )
+        XCTAssertEqual(calls.map(\.toolName), ["add"])
+        XCTAssertFalse(cancelled, "a fast drain must not trip the timeout/cancel")
+    }
+
+    func test_withCaseTimeout_slowDrain_throwsTimeoutAndCancelsBackend() async {
+        var cancelled = false
+        do {
+            _ = try await BFCLRunner.withCaseTimeout(
+                seconds: 0.05,
+                cancel: { cancelled = true },
+                drain: {
+                    // Simulates a generation that never terminates — must be
+                    // pre-empted by the deadline, not awaited to completion.
+                    try await Task.sleep(for: .seconds(30))
+                    return []
+                }
+            )
+            XCTFail("expected CaseTimeout")
+        } catch is BFCLRunner.CaseTimeout {
+            XCTAssertTrue(cancelled, "timeout must cancel the backend so the next case can run")
+        } catch {
+            XCTFail("expected CaseTimeout, got \(error)")
+        }
+    }
+
     func test_run_noToolCallEmitted_isAFailWithNoCrash() async {
         let cases = [addCase(id: "c_silent")]
         let runner = BFCLRunner { _ in }

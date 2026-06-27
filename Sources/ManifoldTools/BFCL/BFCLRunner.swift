@@ -42,13 +42,19 @@ public struct BFCLRunner {
     ///     be empty — we capture the model's first call and score it, never
     ///     dispatch it.
     ///   - modelLabel: e.g. `"ollama/llama3.1-8b"`, used in the header and dump.
+    ///   - perCaseTimeoutSeconds: per-case generation deadline. A case that
+    ///     exceeds it is cancelled at the backend and counted as errored — so one
+    ///     non-terminating generation (a model that never emits a stop token, seen
+    ///     on MLX) can't stall the whole run. Carries over to every backend that
+    ///     drives the runner (Ollama / Llama / MLX).
     public func run(
         cases: [BFCLLoadedCase],
         service: InferenceService,
-        modelLabel: String
+        modelLabel: String,
+        perCaseTimeoutSeconds: Double = 120
     ) async -> Outcome {
         await run(cases: cases, modelLabel: modelLabel) { testCase in
-            try await Self.emittedCalls(for: testCase, service: service)
+            try await Self.emittedCalls(for: testCase, service: service, timeoutSeconds: perCaseTimeoutSeconds)
         }
     }
 
@@ -132,7 +138,8 @@ public struct BFCLRunner {
     /// (the non-executable BFCL AST track has no execution semantics).
     public static func emittedCalls(
         for testCase: BFCLLoadedCase,
-        service: InferenceService
+        service: InferenceService,
+        timeoutSeconds: Double
     ) async throws -> [ToolCall] {
         let messages = [StructuredMessage(role: "user", content: testCase.prompt)]
         let config = GenerationConfig(
@@ -149,15 +156,56 @@ public struct BFCLRunner {
             thinkingMarkers: nil,
             maxToolIterations: 1
         )
-        let (_, stream) = try service.enqueue(structuredMessages: messages, systemPrompt: "", config: config)
+        let (token, stream) = try service.enqueue(structuredMessages: messages, systemPrompt: "", config: config)
 
-        var calls: [ToolCall] = []
-        for try await event in stream.events {
-            if case .toolCall(let call) = event {
-                calls.append(call)
+        // Race the drain against the deadline. On timeout we MUST cancel the
+        // backend generation (not just stop consuming): a model that never emits a
+        // stop token would otherwise grind to maxOutputTokens and block the next
+        // case — and cancelling the backend is what lets the drain task unblock.
+        return try await withCaseTimeout(
+            seconds: timeoutSeconds,
+            cancel: { service.cancel(token) },
+            drain: {
+                var calls: [ToolCall] = []
+                for try await event in stream.events {
+                    if case .toolCall(let call) = event { calls.append(call) }
+                }
+                return calls
+            }
+        )
+    }
+
+    /// Thrown when one case's generation exceeds the per-case timeout. The run
+    /// loop counts it as an errored case and continues, like a backend error.
+    public struct CaseTimeout: Error, CustomStringConvertible {
+        public let seconds: Double
+        public var description: String { "generation timed out after \(Int(seconds))s" }
+    }
+
+    /// Races a stream-drain against a deadline. On timeout, calls `cancel` — which
+    /// must halt the backend so the drain unblocks — and throws ``CaseTimeout``.
+    /// Extracted so the race/cancel logic is testable without a live model.
+    static func withCaseTimeout(
+        seconds: Double,
+        cancel: () -> Void,
+        drain: @escaping @Sendable () async throws -> [ToolCall]
+    ) async throws -> [ToolCall] {
+        try await withThrowingTaskGroup(of: [ToolCall].self) { group in
+            group.addTask { try await drain() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw CaseTimeout(seconds: seconds)
+            }
+            defer { group.cancelAll() }
+            do {
+                // First task to finish wins: drain success returns calls; the
+                // sleep task throws CaseTimeout; a drain error rethrows here.
+                return try await group.next()!
+            } catch {
+                cancel()
+                throw error
             }
         }
-        return calls
     }
 
     /// Trims a backend error to a single readable line for the per-case row.

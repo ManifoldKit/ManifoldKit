@@ -26,6 +26,7 @@ enum BFCLCLI {
         var baseURL = URL(string: "http://localhost:11434")!
         var category = "multiple"
         var dumpPath: String?
+        var timeoutSeconds: Double = 120
 
         var i = 0
         while i < args.count {
@@ -52,8 +53,13 @@ enum BFCLCLI {
                     dumpPath = args[i + 1]
                     i += 1
                 }
+            case "--timeout":
+                if i + 1 < args.count, let t = Double(args[i + 1]), t > 0 {
+                    timeoutSeconds = t
+                    i += 1
+                }
             case "-h", "--help":
-                print("usage: manifold-tools bfcl [--category simple|multiple] [--model a,b] [--ollama-base-url URL] [--dump PATH.jsonl]")
+                print("usage: manifold-tools bfcl [--category simple|multiple] [--model a,b] [--ollama-base-url URL] [--dump PATH.jsonl] [--timeout SECONDS]")
                 return 0
             default:
                 FileHandle.standardError.write(Data("unknown flag '\(args[i])'\n".utf8))
@@ -75,7 +81,7 @@ enum BFCLCLI {
         var dumpRecords: [BFCLRunRecord] = []
         for model in models {
             do {
-                dumpRecords += try await runModel(model, baseURL: baseURL, category: category, cases: cases)
+                dumpRecords += try await runModel(model, baseURL: baseURL, category: category, cases: cases, timeoutSeconds: timeoutSeconds)
             } catch {
                 anyModelFailed = true
                 print("  ERROR loading (\(model)): \(error)")
@@ -99,7 +105,7 @@ enum BFCLCLI {
     /// loop to the shared, backend-agnostic ``BFCLRunner``. Returns the capture
     /// records (one per scored case) for the offline cross-check dump.
     @MainActor
-    private static func runModel(_ model: String, baseURL: URL, category: String, cases: [BFCLLoadedCase]) async throws -> [BFCLRunRecord] {
+    private static func runModel(_ model: String, baseURL: URL, category: String, cases: [BFCLLoadedCase], timeoutSeconds: Double) async throws -> [BFCLRunRecord] {
         let ollama = OllamaBackend(_registrar: ())
         ollama.configure(baseURL: baseURL, modelName: model)
         // A backend load failure is fatal for this model (no point scoring) and
@@ -110,7 +116,7 @@ enum BFCLCLI {
         // never dispatch/execute it. Tools are advertised via GenerationConfig.
         let service = InferenceService(backend: ollama, name: "ollama", modelName: model, toolRegistry: ToolRegistry())
 
-        let outcome = await BFCLRunner().run(cases: cases, service: service, modelLabel: "ollama/\(model)")
+        let outcome = await BFCLRunner().run(cases: cases, service: service, modelLabel: "ollama/\(model)", perCaseTimeoutSeconds: timeoutSeconds)
         return outcome.records
     }
 }
