@@ -131,6 +131,15 @@ ALLOWLIST_PATHS=(
     # SDK product.  (Otherwise hidden from the detector only by the `://`
     # comment-regex false-match — allowlist it explicitly so the review is real.)
     "manifold-tools/BFCLCLI.swift"
+
+    # URL(string: "https://…")! compile-time-constant API endpoints — the same
+    # reviewed-safe pattern as the HuggingFace/AnyLanguageModel entries above
+    # (HuggingFaceProbe.defaultURL; CloudReranker cohere/jina rerank presets,
+    # which already carry an inline "safe: constant literal URL" comment). These
+    # were only invisible to the detector before the `://` comment-regex
+    # false-match was fixed in this PR; allowlist them now that they are visible.
+    "ManifoldInference/Services/HuggingFaceProbe.swift"
+    "ManifoldCloudSaaS/CloudReranker.swift"
 )
 
 # Build find-exclusion args from the allowlist paths
@@ -141,14 +150,18 @@ done
 
 # Detect force-unwraps:
 #   - word char or ) followed by !
-#   - exclude: comment-only lines (both // and /// forms — grep output is
-#     "file:line:content" so we match ": *//"), != operators, string/char
-#     literals containing !
+#   - exclude: comment-only lines (both // and /// forms), != operators,
+#     string/char literals containing !
+# Comment exclusion is anchored to grep's "file:LINE:content" separator
+# (`:[0-9]+:[[:space:]]*//`) so it only drops lines whose *content* starts with
+# //.  The earlier unanchored `:[[:space:]]*//` false-matched the `://` inside
+# any URL literal (e.g. URL(string: "https://…")!), silently hiding force-unwraps
+# on URL constants repo-wide — see the URL-constant allowlist entries above.
 # Note: find -print0 | xargs -0 is used throughout for bash 3.2 compatibility
 # (macOS ships bash 3.2; mapfile requires bash 4+).
 VIOLATIONS=$(find "$SOURCES_DIR" -name "*.swift" "${FIND_EXCLUDES[@]}" -print0 \
     | xargs -0 grep -n '[a-zA-Z0-9_)]!' \
-    | grep -v ':[[:space:]]*//' \
+    | grep -vE ':[0-9]+:[[:space:]]*//' \
     | grep -v ' != ' \
     | grep -v '"[^"]*!"' \
     | grep -v "'\!'" \
