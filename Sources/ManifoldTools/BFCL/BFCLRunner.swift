@@ -200,7 +200,10 @@ public struct BFCLRunner {
             do {
                 // First task to finish wins: drain success returns calls; the
                 // sleep task throws CaseTimeout; a drain error rethrows here.
-                return try await group.next()!
+                // `next()` is nil only with no child tasks — unreachable (two were
+                // added), so an empty result degrades safely to "no tool call".
+                guard let calls = try await group.next() else { return [] }
+                return calls
             } catch {
                 cancel()
                 throw error
