@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.62.0](https://github.com/roryford/ManifoldKit/compare/v0.61.0...v0.62.0) (2026-06-27)
+
+### Highlights
+
+**Hosts can now observe and cancel an in-flight native model load.** A blocking llama.cpp/MLX load ignores Swift `Task` cancellation: when a host's load deadline fires, the `async loadModel` continuation resumes while the native call keeps mutating the backend on a background thread, and touching it then SIGSEGVs in `ggml_backend_graph_compute_async`. The new opt-in `CancellableModelLoading` protocol gives a host a real cancel hook (`cancelModelLoad()`, cooperatively aborting the native load), a true completion signal (`awaitModelLoadSettled()`), and an `isModelLoadInFlight` flag to latch on precisely instead of guessing. Purely additive — backends that don't adopt it keep the coarse-latch fallback; `LlamaBackend` adopts it in the manifold-llama companion ([#2054](https://github.com/roryford/ManifoldKit/issues/2054)).
+
+```swift
+guard let cancellable = backend as? CancellableModelLoading else { return }
+let load = Task { try await backend.loadModel(from: url, plan: plan) }
+// …a load deadline fires:
+cancellable.cancelModelLoad()                 // cooperatively abort the native load
+await cancellable.awaitModelLoadSettled()     // returns only once native work has truly stopped
+// isModelLoadInFlight is now false — safe to reload or tear down the backend
+load.cancel()
+```
+
+**Tool-call conformance soaks reduce to a normalized, scoreable record — and a deterministic cross-backend matrix.** Each eval leg (Ollama, llama.cpp, MLX, cloud — they run in separate processes because `llama_backend_init` is once-per-process) now emits one `ConformanceRecord` per `(model × quant × backend × renderer)` cell, with a first-class `CellStatus` so a hole in the matrix — missing weights, dead backend, a render that produced no prompt — reads as `notMeasured` rather than a measured failure ([#2041](https://github.com/roryford/ManifoldKit/issues/2041)). `ConformanceScorer` gains a public scoring API and emits those records, and `MatrixRenderer` folds them into a deterministic `MATRIX.md` keyed by cell — the same records always render byte-identical ([#2045](https://github.com/roryford/ManifoldKit/issues/2045), [#2046](https://github.com/roryford/ManifoldKit/issues/2046)).
+
+```swift
+let rows = ConformanceScorer.score(jsonl: transcript)        // per-cell verdict + tool-selection F1
+let metrics = ConformanceScorer.aggregate(rows)              // macro-averaged precision / recall / F1
+let records = ConformanceScorer.records(jsonl: transcript, context: ctx)   // [ConformanceRecord]
+let matrix = MatrixRenderer.render(records)                  // deterministic cross-backend MATRIX.md
+```
+
+### Features
+
+* Add a render-consistency regression gate that fails CI when a model's chat template declares a tool dialect ManifoldKit's renderer silently drops — the #1909 failure class — by folding `RenderConsistencyChecker.check` over a committed family-template corpus, plus a load-time warning for the same condition ([#2055](https://github.com/roryford/ManifoldKit/issues/2055))
+
+### Fixes
+
+* Derive each matrix cell's verdict from its tool-selection F1 rather than the dominant failure subtype, so a cell's pass/partial/fail reflects measured accuracy instead of whichever failure bucket happened to dominate ([#2047](https://github.com/roryford/ManifoldKit/issues/2047))
+* Correct tool-call true-positive attribution in `ConformanceScorer`, fixing under-counted precision/recall on multi-call turns ([#2043](https://github.com/roryford/ManifoldKit/issues/2043))
+* Load the harness's built-in scenarios from `Bundle.module` instead of the current working directory, so `manifold-tools` finds them regardless of where it is invoked ([#2042](https://github.com/roryford/ManifoldKit/issues/2042))
+* Remove two conformance-harness false-negatives that scored valid tool calls as failures ([#2049](https://github.com/roryford/ManifoldKit/issues/2049))
+
+### Documentation
+
+* Consolidate the tool-call conformance plan with cross-repo model coverage and the latest soak results ([#2048](https://github.com/roryford/ManifoldKit/issues/2048))
+* Re-measure the conformance matrix (Ollama + cloud anchor) after the #2049 scorer fixes ([#2051](https://github.com/roryford/ManifoldKit/issues/2051))
+
+### Tests
+
+* Pin the Gemma-3 vs Gemma-4 tool-call close-delimiter family split so the two families do not regress into each other ([#2050](https://github.com/roryford/ManifoldKit/issues/2050))
+
 ## [0.61.0](https://github.com/roryford/ManifoldKit/compare/v0.60.0...v0.61.0) (2026-06-25)
 
 ### Highlights
