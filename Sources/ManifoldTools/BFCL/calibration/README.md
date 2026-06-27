@@ -61,7 +61,18 @@ argument-level scorer earns its keep. The `LlamaBackend` numbers were produced b
 `manifold-tools-llama bfcl` in the companion repo (driver pending a release-gated
 PR); reproduce with the same `--dump` + cross-check flow.
 
-## Faithfulness caveat
+### MLX — a third failure mode (generation-termination, not arguments)
+
+Run via `manifold-tools-mlx bfcl` (companion, `Llama-3.2-3B-Instruct-4bit`), MLX
+exposed something neither Ollama nor llama did: on `multiple`, **21/25 cases never
+emitted a stop token** and hit the per-case timeout; the **4 that completed were
+all argument-correct** (4/4, canonical-confirmed). On `simple` the hangs were
+intermittent (2/8 one run, 0/8 another). So MLX's low score here is a
+*generation-termination* pathology, **not** wrong arguments — and the per-case
+timeout (now in `BFCLRunner`) is what lets the harness produce a number at all
+instead of hanging indefinitely. The lesson: an argument-level scorer plus a
+per-case timeout separates "can't form the call" from "won't stop generating" —
+two failure modes a name-only pass/fail collapses into one.
 
 Our Ollama backend emits **JSON** tool calls, which we decode with `JSONDecoder`;
 canonical BFCL's own decoder would produce the same `str`/`int` distinction from
