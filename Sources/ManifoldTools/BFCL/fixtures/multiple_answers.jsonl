@@ -1,0 +1,25 @@
+{"id": "multiple_0", "ground_truth": [{"triangle_properties.get": {"side1": [5], "side2": [4], "side3": [3], "get_area": ["", true], "get_perimeter": ["", true], "get_angles": ["", true]}}]}
+{"id": "multiple_1", "ground_truth": [{"math.triangle_area_heron": {"side1": [3], "side2": [4], "side3": [5]}}]}
+{"id": "multiple_2", "ground_truth": [{"country_info.capital": {"country": ["Brazil"]}}]}
+{"id": "multiple_3", "ground_truth": [{"EuclideanDistance.calculate": {"pointA": [[3, 4]], "pointB": [[1, 2]], "rounding": ["", 0]}}]}
+{"id": "multiple_4", "ground_truth": [{"kinematics.calculate_displacement": {"initial_speed": [20], "acceleration": [10], "time": [5], "rounding": ["", 2]}}]}
+{"id": "multiple_5", "ground_truth": [{"weather.get_by_coordinates_date": {"coordinates": [[46.603354, 1.888334]], "date": ["2019-12-13"]}}]}
+{"id": "multiple_6", "ground_truth": [{"capacitance_calculator.calculate": {"A": [10], "d": [0.01], "K": [1.0, ""]}}]}
+{"id": "multiple_7", "ground_truth": [{"wildlife_population.assess_growth": {"species": ["deer", "Deer"], "location": ["Washington state", "WA", "Washington"], "duration": [10]}}]}
+{"id": "multiple_8", "ground_truth": [{"realestate.find_properties": {"location": ["SD", "San Diego", "San Diego, CA", "CA"], "propertyType": ["villa"], "bedrooms": [3], "budget": [{"min": [300000], "max": [400000]}]}}]}
+{"id": "multiple_9", "ground_truth": [{"calculate_average": {"gradeDict": [{"math": [90], "science": [75], "history": [82], "music": [89]}]}}]}
+{"id": "multiple_10", "ground_truth": [{"database.modify_columns": {"db_name": ["employees"], "table": ["personal_data"], "operation": ["delete"], "columns": [["email", "ssn"], ["ssn", "email"], ["email", "social_security_number"], ["social_security_number", "email"], ["email", "social security number"], ["social security number", "email"]]}}]}
+{"id": "multiple_11", "ground_truth": [{"math_roots.quadratic": {"a": [5], "b": [20], "c": [-25]}}]}
+{"id": "multiple_12", "ground_truth": [{"corporate_finance.calculate_YOY_growth_rate": {"company_name": ["Tech Inc"], "year1": [2019], "year1_revenue": [1000000], "year2": [2020], "year2_revenue": [1200000]}}]}
+{"id": "multiple_13", "ground_truth": [{"corporate_finance.revenue_forecast": {"company": ["XYZ"], "product": ["A", "Product A"], "sales_units_increase_percentage": [10]}}]}
+{"id": "multiple_14", "ground_truth": [{"finance.property_depreciation": {"initial_cost": [200000], "depreciation_rate": [3], "years": [5], "monthly": [false, true, ""]}}]}
+{"id": "multiple_15", "ground_truth": [{"solarFarm.potential": {"coordinates": [[43.653225, -79.383186]], "panelArea": [80000], "month": ["December", "Dec"]}}]}
+{"id": "multiple_16", "ground_truth": [{"population_genetics.calculate_ne": {"species": ["wild tiger", "tiger"], "generations": [100], "probability": [0.95]}}]}
+{"id": "multiple_17", "ground_truth": [{"currency_conversion.get_rate": {"from_currency": ["EUR", "Euro"], "to_currency": ["Dollar", "USD"], "date": ["2022-01-01", "01/01/2022", "1/1/2022", "Jan.1,2022", "January 1, 2022", "2022-1-1"]}}]}
+{"id": "multiple_18", "ground_truth": [{"european_history.battle_details": {"battle": ["Battle of Stalingrad", "Stalingrad"]}}]}
+{"id": "multiple_19", "ground_truth": [{"religion_history.get_schisms": {"religion": ["Christianity"], "count": [3]}}]}
+{"id": "multiple_20", "ground_truth": [{"sculpture_price.calculate": {"material": ["marble"], "size": [3], "complexity": ["medium", ""]}}]}
+{"id": "multiple_21", "ground_truth": [{"generate_sound_wave": {"frequency": [440], "duration": [5], "wave_type": ["sine", ""]}}]}
+{"id": "multiple_22", "ground_truth": [{"sports_data.basketball.most_points_single_game": {"league": ["NBA"]}}]}
+{"id": "multiple_23", "ground_truth": [{"basketball.player_stats.get": {"player_name": ["LeBron James"], "stats_fields": [["points per game", "assists", "minutes per game"], ["points per game", "minutes per game", "assists"], ["assists", "points per game", "minutes per game"], ["assists", "minutes per game", "points per game"], ["minutes per game", "points per game", "assists"], ["minutes per game", "assists", "points per game"], ["points", "assists", "minutes"], ["points", "minutes", "assists"], ["assists", "points", "minutes"], ["assists", "minutes", "points"], ["minutes", "points", "assists"], ["minutes", "assists", "points"], ["points_per_game", "assists", "minutes_per_game"], ["points_per_game", "minutes_per_game", "assists"], ["assists", "points_per_game", "minutes_per_game"], ["assists", "minutes_per_game", "points_per_game"], ["minutes_per_game", "points_per_game", "assists"], ["minutes_per_game", "assists", "points_per_game"]]}}]}
+{"id": "multiple_24", "ground_truth": [{"route_planner.calculate_route": {"start": ["London"], "destination": ["Edinburgh"], "method": ["fastest", ""]}}]}

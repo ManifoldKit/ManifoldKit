@@ -976,9 +976,13 @@ let package = Package(
                 "ManifoldInference",
             ],
             path: "Sources/ManifoldTools",
-            exclude: ["README.md"],
+            // BFCL/calibration holds the one-time, local-only canonical bfcl-eval
+            // cross-check (Python) — never built or run by SwiftPM/CI.
+            exclude: ["README.md", "BFCL/calibration"],
             resources: [
                 .copy("Scenarios/built-in"),
+                // BFCL argument-level scorer fixtures (simple-category slice).
+                .copy("BFCL/fixtures"),
             ]
         ),
         // manifold-tools does NOT depend on the ManifoldBackends umbrella:
