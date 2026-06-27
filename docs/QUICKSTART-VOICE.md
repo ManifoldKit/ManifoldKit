@@ -183,3 +183,15 @@ isn't a chat surface.
 | `.failed("Speech recognition permission…")` | `NSSpeechRecognitionUsageDescription` missing. |
 | `VoiceError.unsupportedLocale` | `SFSpeechRecognizer(locale:)` returned nil — pass a supported locale or `.current`. |
 | `liveTranscript` stuck empty | Authorization denied silently — check ``VoiceConversationController/errorMessage``. |
+
+---
+
+## Realtime voice: full-duplex, SpeechAnalyzer, VAD, and barge-in
+
+> **Not yet shipped.** Full-duplex conversation with voice activity detection
+> (VAD), barge-in interruption, Apple's `SpeechAnalyzer` framework, and
+> WhisperKit integration are tracked in
+> [#1928](https://github.com/roryford/ManifoldKit/issues/1928). The current
+> `ManifoldVoice` surface is half-duplex only — STT and TTS run in mutually
+> exclusive states, not simultaneously. See `docs/design/voice-surface-scoping.md`
+> for the design notes.
