@@ -25,6 +25,7 @@ enum BFCLCLI {
         var models = ["llama3.1-8b:latest"]
         var baseURL = URL(string: "http://localhost:11434")!
         var category = "multiple"
+        var dumpPath: String?
 
         var i = 0
         while i < args.count {
@@ -44,8 +45,15 @@ enum BFCLCLI {
                     baseURL = url
                     i += 1
                 }
+            case "--dump":
+                // Capture each scored case as JSONL for the offline canonical
+                // `bfcl-eval` cross-check (see Sources/ManifoldTools/BFCL/BFCLDump.swift).
+                if i + 1 < args.count {
+                    dumpPath = args[i + 1]
+                    i += 1
+                }
             case "-h", "--help":
-                print("usage: manifold-tools bfcl [--category simple|multiple] [--model a,b] [--ollama-base-url URL]")
+                print("usage: manifold-tools bfcl [--category simple|multiple] [--model a,b] [--ollama-base-url URL] [--dump PATH.jsonl]")
                 return 0
             default:
                 FileHandle.standardError.write(Data("unknown flag '\(args[i])'\n".utf8))
@@ -64,19 +72,34 @@ enum BFCLCLI {
         print("BFCL category: \(category)")
 
         var anyModelFailed = false
+        var dumpRecords: [BFCLRunRecord] = []
         for model in models {
             do {
-                try await runModel(model, baseURL: baseURL, category: category, cases: cases)
+                dumpRecords += try await runModel(model, baseURL: baseURL, category: category, cases: cases)
             } catch {
                 anyModelFailed = true
                 print("  ERROR loading (\(model)): \(error)")
             }
         }
+
+        if let dumpPath {
+            do {
+                let body = try dumpRecords.map { try $0.jsonLine() }.joined(separator: "\n")
+                try (body + "\n").write(toFile: dumpPath, atomically: true, encoding: .utf8)
+                print("\nWrote \(dumpRecords.count) case record(s) → \(dumpPath)")
+            } catch {
+                FileHandle.standardError.write(Data("failed to write dump to \(dumpPath): \(error)\n".utf8))
+                return 1
+            }
+        }
         return anyModelFailed ? 1 : 0
     }
 
+    /// Drives one model over the cases, prints the per-case rows + summary, and
+    /// returns a capture record per **scored** case (errored cases produce no
+    /// output and are omitted) for the offline cross-check dump.
     @MainActor
-    private static func runModel(_ model: String, baseURL: URL, category: String, cases: [BFCLLoadedCase]) async throws {
+    private static func runModel(_ model: String, baseURL: URL, category: String, cases: [BFCLLoadedCase]) async throws -> [BFCLRunRecord] {
         let ollama = OllamaBackend(_registrar: ())
         ollama.configure(baseURL: baseURL, modelName: model)
         // A backend load failure is fatal for this model (no point scoring) and
@@ -91,6 +114,7 @@ enum BFCLCLI {
         var astMatched = 0
         var nameMatched = 0
         var errored = 0
+        var records: [BFCLRunRecord] = []
         for testCase in cases {
             let id = testCase.id.padding(toLength: 13, withPad: " ", startingAt: 0)
 
@@ -111,6 +135,13 @@ enum BFCLCLI {
             }
             if score.matched { astMatched += 1 }
             if nameOK { nameMatched += 1 }
+            records.append(BFCLRunRecord.make(
+                id: testCase.id,
+                model: "ollama/\(model)",
+                emittedCalls: calls,
+                astMatched: score.matched,
+                nameMatched: nameOK
+            ))
 
             let marker = score.matched ? "✓" : "✗"
             let emitted = calls.first.map { "\($0.toolName) \($0.arguments)" } ?? "<no tool call>"
@@ -134,6 +165,7 @@ enum BFCLCLI {
         if errored > 0 {
             print("  (\(errored) case(s) errored at the backend and were not scored.)")
         }
+        return records
     }
 
     /// Trims a backend error to a single readable line for the per-case row.
