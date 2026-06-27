@@ -371,6 +371,89 @@ else
     fi
 fi
 
+# ── Check 6: ManifoldKit install pins carry the release-please marker ─────
+#
+# Root cause of the 0.48-vs-0.61 drift (the pin this check was added for):
+# release-please's `generic` updater (configured via `extra-files` in
+# release-please-config.json) only rewrites a version on a line annotated
+# with `x-release-please-version` (Swift: `// x-release-please-version`;
+# Markdown: `<!-- x-release-please-version -->`). A `from: "X.Y.Z"` core pin
+# WITHOUT that marker is never bumped, so it silently rots while the marked
+# pins move forward each release.
+#
+# Check 1 above only matched `from:` at line-start (the multi-line `.package`
+# form), so a SINGLE-LINE `.package(url: "…ManifoldKit.git", from: "X.Y.Z")`
+# pin slipped past it entirely. This check is shape-agnostic: it locates
+# every core `ManifoldKit.git` pin (single- or multi-line) and fails if the
+# version-bearing line lacks the marker.
+#
+# Scope is deliberately narrow — the user-facing install docs listed in
+# release-please-config.json's `extra-files` (README + docs/QUICKSTART* +
+# docs/SWIFTUI-MULTI-SESSION.md). It does NOT scan docs/MIGRATION-*.md or
+# docs/plans/**: those pin historical versions (e.g. 0.47.0/0.48.0 to
+# document THAT migration) on purpose and must never be auto-bumped.
+# Companion pins (`manifold-llama.git` / `manifold-mlx.git`) are ignored —
+# they track the companions' own versions, not core's.
+echo
+echo "── Check: ManifoldKit install pins carry x-release-please-version ────"
+
+# Build the file list: README + every existing docs/QUICKSTART*.md + the
+# multi-session guide. A glob that matches nothing expands to itself, so we
+# test -f before scanning.
+marker_scan_files=("${README_PATH}")
+for f in "${REPO_ROOT}"/docs/QUICKSTART*.md "${REPO_ROOT}/docs/SWIFTUI-MULTI-SESSION.md"; do
+    [[ -f "$f" ]] && marker_scan_files+=("$f")
+done
+
+bad_markers=0
+for f in "${marker_scan_files[@]}"; do
+    # awk emits "relpath:lineno" for each core pin whose version line lacks the
+    # marker. Shape-agnostic: same-line `from:`/`.exact(`/`.upToNextMinor(`,
+    # or a `ManifoldKit.git` url line followed (within 4 lines) by the version.
+    while IFS= read -r hit; do
+        [[ -z "$hit" ]] && continue
+        rel="${hit%%:*}"
+        ln="${hit#*:}"
+        echo "::error file=${rel},line=${ln}::Core \`ManifoldKit.git\` install pin lacks an \`x-release-please-version\` marker — release-please will never bump it (this is the 0.48→0.61 drift). Add \`// x-release-please-version\` (Swift fence) or \`<!-- x-release-please-version -->\` (Markdown) to the version-bearing line, and set it to the current release."
+        bad_markers=$((bad_markers + 1))
+    done < <(awk -v root="${REPO_ROOT}/" '
+        function isCoreUrl(s) { return (s ~ /ManifoldKit\.git/) }
+        function hasVersion(s) {
+            return (s ~ /(from:|upToNextMinor\(from:|\.exact\()[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/)
+        }
+        function hasMarker(s) { return (s ~ /x-release-please-version/) }
+        function relname(p) { sub("^" root, "", p); return p }
+        {
+            if (isCoreUrl($0)) {
+                if (hasVersion($0)) {
+                    if (!hasMarker($0)) print relname(FILENAME) ":" FNR
+                    waiting = 0
+                } else {
+                    waiting = 1; window = 4
+                }
+                next
+            }
+            if (waiting) {
+                if (hasVersion($0)) {
+                    if (!hasMarker($0)) print relname(FILENAME) ":" FNR
+                    waiting = 0; next
+                }
+                # A new package block or a companion url means the core block
+                # closed without a version pin — stop looking.
+                if ($0 ~ /\.package\(/ || $0 ~ /manifold-(llama|mlx)\.git/) { waiting = 0; next }
+                window--; if (window <= 0) waiting = 0
+            }
+        }
+    ' "$f")
+done
+
+if [[ ${bad_markers} -gt 0 ]]; then
+    failures=$((failures + 1))
+    echo "Found ${bad_markers} core install pin(s) missing the x-release-please-version marker."
+else
+    echo "✓ All core \`ManifoldKit.git\` install pins carry the x-release-please-version marker."
+fi
+
 # ── Strict-mode checks (opt-in) ────────────────────────────────────────────
 #
 # These checks describe the post-restructure README layout. They are gated

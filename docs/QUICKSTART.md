@@ -318,8 +318,8 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
     url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.61.0" // x-release-please-version
 ),
-.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),  // GGUF / llama.cpp
-.package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"),    // MLX (+ image gen)
+.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),  // GGUF / llama.cpp
+.package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.2.13"),    // MLX (+ image gen)
 
 // target dependencies:
 "ManifoldKit",

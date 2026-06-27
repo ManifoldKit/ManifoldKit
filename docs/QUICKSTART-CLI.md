@@ -46,8 +46,8 @@ dependencies: [
         url: "https://github.com/roryford/ManifoldKit.git",
         from: "0.61.0" // x-release-please-version
     ),
-    .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),  // GGUF
-    // .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"), // MLX
+    .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),  // GGUF
+    // .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.2.13"), // MLX
 ],
 ```
 
@@ -176,7 +176,7 @@ let package = Package(
             from: "0.61.0" // x-release-please-version
         ),
         // The GGUF backend lives in the manifold-llama companion package (v0.48).
-        .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
+        .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),
     ],
     targets: [
         .executableTarget(
@@ -613,7 +613,7 @@ let package = Package(
             from: "0.61.0" // x-release-please-version
         ),
         // The MLX backend lives in the manifold-mlx companion package (v0.48).
-        .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"),
+        .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.2.13"),
     ],
     targets: [
         .executableTarget(
