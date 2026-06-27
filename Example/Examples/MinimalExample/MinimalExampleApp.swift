@@ -43,7 +43,12 @@ struct MinimalExampleApp: App {
 
     @MainActor
     private func resetAndRestart() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            // No Application Support directory to clean — clear the error and let
+            // start() resurface any genuine failure on retry.
+            self.error = nil
+            return
+        }
         let storeDir = appSupport.appendingPathComponent("com.manifoldkit.minimal-example")
         for name in ["store.sqlite", "store.sqlite-shm", "store.sqlite-wal"] {
             do {
