@@ -461,7 +461,7 @@ final class ChatGenerationCoordinator {
                 onSetLastTurnState(.idle)
             }
 
-            if reason == .stop,
+            if reason == .length,
                ManifoldConfiguration.shared.features.showUpgradeHint,
                let completed = currentMessages().first(where: { $0.id == messageID }),
                completed.hasVisibleContent {
@@ -651,7 +651,7 @@ final class ChatGenerationCoordinator {
             onSetLastTurnState(.idle)
         }
 
-        if outcome.reason == .stop,
+        if outcome.reason == .length,
            ManifoldConfiguration.shared.features.showUpgradeHint,
            let completed = outcome.assistantMessageID.flatMap({ id in
                currentMessages().first(where: { $0.id == id })

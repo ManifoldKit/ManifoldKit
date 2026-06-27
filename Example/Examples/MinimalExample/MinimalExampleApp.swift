@@ -26,16 +26,35 @@ struct MinimalExampleApp: App {
                 .environment(result.viewModel)
                 .modelContainer(result.bootstrap.modelContainer)
             } else if let error {
-                ContentUnavailableView(
-                    "Failed to start",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error.errorDescription ?? "Unknown error")
-                )
+                ContentUnavailableView {
+                    Label("Failed to start", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error.errorDescription ?? "Unknown error")
+                } actions: {
+                    Button("Reset app data") { resetAndRestart() }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 ProgressView("Starting…")
                     .task { await start() }
             }
         }
+    }
+
+    @MainActor
+    private func resetAndRestart() {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let storeDir = appSupport.appendingPathComponent("com.manifoldkit.minimal-example")
+        for name in ["store.sqlite", "store.sqlite-shm", "store.sqlite-wal"] {
+            do {
+                try FileManager.default.removeItem(at: storeDir.appendingPathComponent(name))
+            } catch CocoaError.fileNoSuchFile {
+                // already absent — fine
+            } catch {
+                // best-effort; start() will surface any real failure
+            }
+        }
+        self.error = nil
     }
 
     @MainActor

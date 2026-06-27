@@ -120,8 +120,9 @@ final class GenerationExtensionTests: XCTestCase {
 
     // MARK: - 2. Upgrade Hint Logic
 
-    func test_upgradeHint_triggersWhenAllConditionsMet() async {
-        // Save and restore the shared configuration to avoid leaking between tests.
+    func test_upgradeHint_doesNotTriggerOnNormalStop() async {
+        // A normal (.stop) generation must NOT show the hint — only context exhaustion
+        // (.length) should, so the banner doesn't fire on every successful reply.
         let originalConfig = ManifoldConfiguration.shared
         defer { ManifoldConfiguration.shared = originalConfig }
 
@@ -129,17 +130,12 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
-        // Backend name must be the Foundation canonical to trigger the hint.
         let vm = await makeVM(backend: mock, name: BackendName.foundation.rawValue)
-
-        var hintCallbackCalled = false
-        vm.onUpgradeHintTriggered = { hintCallbackCalled = true }
 
         vm.inputText = "Hi"
         await vm.sendMessage()
 
-        XCTAssertTrue(vm.showUpgradeHint, "showUpgradeHint should be true after first assistant response with Apple backend")
-        XCTAssertTrue(hintCallbackCalled, "onUpgradeHintTriggered callback should fire")
+        XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint must stay false after a normal .stop reply")
     }
 
     func test_upgradeHint_doesNotTriggerWhenFeatureFlagDisabled() async {
@@ -174,7 +170,9 @@ final class GenerationExtensionTests: XCTestCase {
         XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false for non-Apple backends")
     }
 
-    func test_upgradeHint_doesNotTriggerOnSecondAssistantResponse() async {
+    func test_upgradeHint_doesNotTriggerAgainOnceFired() async {
+        // Once showUpgradeHint is true the guard `!showUpgradeHint` prevents
+        // onUpgradeHintTriggered from firing a second time, even after another turn.
         let originalConfig = ManifoldConfiguration.shared
         defer { ManifoldConfiguration.shared = originalConfig }
 
@@ -184,14 +182,9 @@ final class GenerationExtensionTests: XCTestCase {
         mock.tokensToYield = ["First"]
         let vm = await makeVM(backend: mock, name: BackendName.foundation.rawValue)
 
-        // First message triggers the hint.
-        vm.inputText = "Hi"
-        await vm.sendMessage()
-        XCTAssertTrue(vm.showUpgradeHint)
+        // Simulate the hint having already fired (e.g. via a prior .length turn).
+        vm.showUpgradeHint = true
 
-        // Reset the hint flag to simulate checking second-time behavior.
-        // The code checks `!showUpgradeHint`, so once set it won't trigger again.
-        // Send a second message: hint should already be true, callback should not re-fire.
         var secondCallback = false
         vm.onUpgradeHintTriggered = { secondCallback = true }
 
@@ -199,8 +192,6 @@ final class GenerationExtensionTests: XCTestCase {
         vm.inputText = "Another"
         await vm.sendMessage()
 
-        // showUpgradeHint is still true (never reset), and the second send should NOT
-        // re-trigger because the guard `!showUpgradeHint` prevents it.
         XCTAssertFalse(secondCallback, "onUpgradeHintTriggered should not fire again once hint is already shown")
     }
 
