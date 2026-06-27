@@ -36,15 +36,31 @@ public struct ToolCallConformanceKey: Hashable, Sendable, Codable {
 /// The tool-calling capability verdict for a cache cell.
 ///
 /// `unknown` is the lazy default for any cell that has not been measured — it is
-/// never a cold-start tax, and hosts treat it as "recommend = no; allow with a
-/// warning = host's call" (see the plan's Acceptance section).
+/// never a cold-start tax.
+///
+/// ## Host policy for `unknown` (#2005)
+///
+/// A host treats `unknown` tool-call conformance as **"recommend = no;
+/// allow-with-warning = host's call"**: don't surface the model as a
+/// tool-calling recommendation, but the host may still let the user select it
+/// and drive tools behind a warning. Crucially, a **toolless** static template
+/// resolves to `unknown`, *not* `unsupported`: MK's own prompt-injection
+/// (`ToolSystemPromptBuilder`) can drive tool calls on models whose template
+/// declares no tools block (e.g. Mistral-v0.3), so a static `unsupported` would
+/// mis-grey a usable model. `unsupported` is reserved for a **measured**
+/// near-zero emission verdict.
 public enum ToolCallCapability: String, Codable, Sendable {
-    /// Measured (or statically proven) able to drive tool calls.
+    /// Measured able to drive tool calls. A positive verdict is measurement-only
+    /// — the static layer never writes `supported`.
     case supported
-    /// Proven unable — e.g. a template with no tools block, or a soak that
-    /// produced ~0% parseable calls.
+    /// Proven unable — reserved for a **measured** soak that produced ~0%
+    /// parseable calls. NOT inferred statically: a toolless template is
+    /// `unknown` (see the type doc), because MK prompt-injection can still drive
+    /// tools on it.
     case unsupported
-    /// Not yet measured. The default for an unpopulated cell.
+    /// Not yet measured, or statically expressible-but-unproven. The default for
+    /// an unpopulated cell, and the verdict for every static template (toolless
+    /// or tool-bearing) until a soak measures it.
     case unknown
 }
 
