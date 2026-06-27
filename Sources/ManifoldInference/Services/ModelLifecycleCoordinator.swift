@@ -329,6 +329,17 @@ final class ModelLifecycleCoordinator {
         // template. This is an observability signal only: it never gates the
         // load and never feeds the renderer (which reads `chatTemplateRaw`
         // directly), so it cannot reintroduce the #1909 template→render coupling.
+        //
+        // ACTIVATION (Piece 1 reads; the writer is deferred): no production path
+        // yet records `chatTemplateSHA256` for a template-bearing package, so this
+        // mismatch branch is currently inert in the field. The only sidecar writers
+        // emit `.diffusion` packages (no chat template); text packages
+        // (`.mlxSnapshot` / single-file GGUF) carry templates but are written
+        // without a `.manifoldkit-package.json`. Detection goes live once the
+        // download path records the template digest for text packages (#1932
+        // Piece 2). The read path, tests, and warning ship now so the writer is a
+        // one-line populate when it lands. End-to-end coverage drives this branch
+        // via a hand-written sidecar (see ChatTemplateIntegrityTests).
         if case let .mismatch(recorded, current) = chatTemplateIntegrityStatus(for: modelInfo) {
             Log.inference.warning(
                 "Chat template changed since the recorded manifest hash for model '\(modelInfo.name)' (recorded \(recorded, privacy: .public), now \(current, privacy: .public)). A cached selection or preset may target the old template; rendering proceeds with the current embedded template (#1932)."
