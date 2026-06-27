@@ -95,117 +95,22 @@ enum BFCLCLI {
         return anyModelFailed ? 1 : 0
     }
 
-    /// Drives one model over the cases, prints the per-case rows + summary, and
-    /// returns a capture record per **scored** case (errored cases produce no
-    /// output and are omitted) for the offline cross-check dump.
+    /// Builds an Ollama-backed service for the model and delegates the per-case
+    /// loop to the shared, backend-agnostic ``BFCLRunner``. Returns the capture
+    /// records (one per scored case) for the offline cross-check dump.
     @MainActor
     private static func runModel(_ model: String, baseURL: URL, category: String, cases: [BFCLLoadedCase]) async throws -> [BFCLRunRecord] {
         let ollama = OllamaBackend(_registrar: ())
         ollama.configure(baseURL: baseURL, modelName: model)
         // A backend load failure is fatal for this model (no point scoring) and
-        // throws to the caller; per-case generation errors below are not.
+        // throws to the caller; per-case generation errors are not (BFCLRunner
+        // counts and continues).
         try await ollama.loadModel(from: baseURL, plan: .cloud())
         // Empty registry: we capture the model's first tool call and score it; we
         // never dispatch/execute it. Tools are advertised via GenerationConfig.
         let service = InferenceService(backend: ollama, name: "ollama", modelName: model, toolRegistry: ToolRegistry())
 
-        print("\nBFCL \(category) — ollama/\(model)  (\(cases.count) cases)")
-
-        var astMatched = 0
-        var nameMatched = 0
-        var errored = 0
-        var records: [BFCLRunRecord] = []
-        for testCase in cases {
-            let id = testCase.id.padding(toLength: 13, withPad: " ", startingAt: 0)
-
-            // A single case erroring (e.g. a backend 500 on malformed tool output)
-            // must not abort the whole model run — count it and continue.
-            let calls: [ToolCall]
-            do {
-                calls = try await emittedCalls(for: testCase, service: service)
-            } catch {
-                errored += 1
-                print("  ⚠ \(id) <error: \(shortError(error))>")
-                continue
-            }
-
-            let score = ASTMatcher.scoreCase(emittedCalls: calls, groundTruth: testCase.groundTruth)
-            let nameOK = calls.contains { call in
-                testCase.groundTruth.contains { $0.functionName == call.toolName }
-            }
-            if score.matched { astMatched += 1 }
-            if nameOK { nameMatched += 1 }
-            records.append(BFCLRunRecord.make(
-                id: testCase.id,
-                model: "ollama/\(model)",
-                emittedCalls: calls,
-                astMatched: score.matched,
-                nameMatched: nameOK
-            ))
-
-            let marker = score.matched ? "✓" : "✗"
-            let emitted = calls.first.map { "\($0.toolName) \($0.arguments)" } ?? "<no tool call>"
-            var line = "  \(marker) \(id) \(emitted)"
-            if !score.matched, let reason = score.bestFailures.first {
-                // Name matched but arguments wrong → exactly the gap the name-only
-                // scorer misses. Surface why.
-                line += "   ↳ \(reason)"
-            }
-            print(line)
-        }
-
-        let total = cases.count
-        print("  ───")
-        print("  AST accuracy (right function + right arguments): \(astMatched)/\(total) (\(pct(astMatched, total)))")
-        print("  Name-only (what ConformanceScorer credits):      \(nameMatched)/\(total) (\(pct(nameMatched, total)))")
-        let gap = nameMatched - astMatched
-        if gap > 0 {
-            print("  → \(gap) case(s) called the right tool with WRONG arguments — invisible to the name-only scorer.")
-        }
-        if errored > 0 {
-            print("  (\(errored) case(s) errored at the backend and were not scored.)")
-        }
-        return records
-    }
-
-    /// Trims a backend error to a single readable line for the per-case row.
-    private static func shortError(_ error: Error) -> String {
-        let full = "\(error)"
-        return full.count > 120 ? String(full.prefix(120)) + "…" : full
-    }
-
-    /// Drives one case through the production path and returns the tool calls the
-    /// model emitted on its first turn.
-    @MainActor
-    private static func emittedCalls(for testCase: BFCLLoadedCase, service: InferenceService) async throws -> [ToolCall] {
-        let messages = [StructuredMessage(role: "user", content: testCase.prompt)]
-        let config = GenerationConfig(
-            temperature: 0.0,
-            topP: 0.9,
-            repeatPenalty: 1.1,
-            topK: 1,
-            typicalP: nil,
-            maxOutputTokens: 512,
-            tools: testCase.tools,
-            toolChoice: .auto,
-            maxThinkingTokens: nil,
-            jsonMode: false,
-            thinkingMarkers: nil,
-            maxToolIterations: 1
-        )
-        let (_, stream) = try service.enqueue(structuredMessages: messages, systemPrompt: "", config: config)
-
-        var calls: [ToolCall] = []
-        for try await event in stream.events {
-            if case .toolCall(let call) = event {
-                calls.append(call)
-            }
-        }
-        return calls
-    }
-
-    private static func pct(_ n: Int, _ d: Int) -> String {
-        guard d > 0 else { return "—" }
-        return String(format: "%.1f%%", Double(n) / Double(d) * 100)
+        let outcome = await BFCLRunner().run(cases: cases, service: service, modelLabel: "ollama/\(model)")
+        return outcome.records
     }
 }

@@ -11,10 +11,10 @@ import ManifoldInference
 /// which is exactly the granularity the matcher-strictness cross-check needs:
 /// feeding identical decoded calls into both scorers isolates "is our matcher
 /// stricter than canonical?" from "did our parser decode the same thing?".
-public struct BFCLRunRecord: Encodable, Equatable {
+public struct BFCLRunRecord: Encodable, Equatable, Sendable {
 
     /// One emitted tool call, decoded.
-    public struct DecodedCall: Encodable, Equatable {
+    public struct DecodedCall: Encodable, Equatable, Sendable {
         /// The tool name the model invoked.
         public let name: String
         /// The decoded argument object, or — when the payload was not a JSON
