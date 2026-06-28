@@ -256,6 +256,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldMCP/OAuthSecurity.swift",
         "ManifoldMCP/OAuthTokenExchange.swift",
         "ManifoldMCP/AuthorizationServerDiscovery.swift",
+
+        // OTLP/HTTP exporter — standalone optional product (no ManifoldCloudCore
+        // dependency) that POSTs serialised GenSpan values to an OTLP collector.
+        // Cannot route through URLSessionProvider (ManifoldCloudCore) without
+        // creating a new upward dependency on that module. Genuine new network
+        // boundary scoped to telemetry export only.
+        "ManifoldTelemetryOTLP/OTLPTraceSink.swift",
     ]
 
     /// Files where hostname literals (e.g. `https://api.anthropic.com`) are
@@ -378,7 +385,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // case this allowlist exists to track. Do not raise further without
         // re-architecting rather than expanding.
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 51,
+            Self.networkIOAllowlist.count, 52,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }

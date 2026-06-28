@@ -109,6 +109,9 @@ let package = Package(
         .library(name: "ManifoldAppIntents", targets: ["ManifoldAppIntents"]),
         .library(name: "ManifoldSkills", targets: ["ManifoldSkills"]),
         .executable(name: "ManifoldServer", targets: ["ManifoldServer"]),
+        // Optional OTLP/HTTP exporter — not re-exported by the ManifoldKit
+        // umbrella. Import explicitly: `import ManifoldTelemetryOTLP`.
+        .library(name: "ManifoldTelemetryOTLP", targets: ["ManifoldTelemetryOTLP"]),
     ],
     traits: [
         // No default traits since v0.48 (PR C2): the heavy MLX / llama.cpp
@@ -999,6 +1002,15 @@ let package = Package(
             ],
             path: "Sources/manifold-tools"
         ),
+
+        // OTLP/HTTP trace exporter. Optional product — not re-exported by the
+        // ManifoldKit umbrella. Consumers add it explicitly and pass an
+        // OTLPTraceSink to the backend's traceSink property.
+        .target(
+            name: "ManifoldTelemetryOTLP",
+            dependencies: ["ManifoldInference"],
+            path: "Sources/ManifoldTelemetryOTLP"
+        ),
         .testTarget(
             name: "ManifoldToolsTests",
             dependencies: [
@@ -1079,6 +1091,14 @@ let package = Package(
         .testTarget(
             name: "ManifoldAuditSabotageSuiteTests",
             dependencies: [
+                "ManifoldInference",
+                "ManifoldTestSupport",
+            ]
+        ),
+        .testTarget(
+            name: "ManifoldTelemetryOTLPTests",
+            dependencies: [
+                "ManifoldTelemetryOTLP",
                 "ManifoldInference",
                 "ManifoldTestSupport",
             ]

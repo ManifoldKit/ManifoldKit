@@ -501,6 +501,13 @@
         "ManifoldTools"
       ]
     },
+    "ManifoldTelemetryOTLP": {
+      "type": "regular",
+      "path": "Sources/ManifoldTelemetryOTLP",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
     "ManifoldToolsTests": {
       "type": "test",
       "path": "Tests/ManifoldToolsTests",
@@ -554,6 +561,15 @@
       "path": "Tests/ManifoldAuditSabotageSuiteTests",
       "deps": [
         "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldTelemetryOTLPTests": {
+      "type": "test",
+      "path": "Tests/ManifoldTelemetryOTLPTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldTelemetryOTLP",
         "ManifoldTestSupport"
       ]
     }
