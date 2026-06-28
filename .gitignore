@@ -25,6 +25,9 @@
 .swiftpm/xcode/*.pbxproj.bak
 .swiftpm/xcode/xcuserdata/
 DerivedData/
+# Generated DocC site — produced by .github/workflows/docs.yml (which rm -rf's
+# and regenerates it each run). Never committed; guards against a stray `git add`.
+/docs-site/
 *.xcodeproj/project.xcworkspace/
 *.xcodeproj/xcuserdata/
 xcuserdata/

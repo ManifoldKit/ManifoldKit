@@ -1,19 +1,31 @@
 name: Docs (DocC → GitHub Pages)
 
-# Builds the unified ManifoldKit DocC site (umbrella `ManifoldKit.docc` root plus
-# every module catalog reachable from the `ManifoldKit` scheme) and publishes it
-# to GitHub Pages.
+# Builds the ManifoldKit DocC site as *combined documentation* — the curated
+# umbrella `ManifoldKit` hub page plus a separate, properly-curated page per
+# module — and publishes it to GitHub Pages with one unified navigation sidebar.
 #
-# Why `xcodebuild docbuild` and not `swift package generate-documentation`:
-# historically the umbrella target's `@_exported import`s pulled in the binary
-# `llama` xcframework, whose `.framework`-style slice broke the SwiftPM
-# Swift-DocC plugin's symbol-graph extraction (`-I` vs `-F` search paths →
-# `missing required module 'llama'`). That blocker died with the v0.48 PR C2
-# companion-package split (the llama.cpp xcframework is no longer in the core
-# graph), so switching to the SwiftPM DocC plugin is now viable — deferred to
-# C4 as a follow-up. `xcodebuild docbuild` still builds the whole scheme's
-# catalog set in one pass (so cross-target `<doc:>` links resolve) and emits a
-# single `.doccarchive` we transform for static hosting, so it stays for now.
+# Why the SwiftPM DocC plugin + `--enable-experimental-combined-documentation`
+# (replacing `xcodebuild docbuild -scheme ManifoldKit`): docbuild merged every
+# catalog into ONE umbrella archive, and because `ManifoldKit` re-exports eight
+# modules via `@_exported import`, every one of their ~776 public symbols was
+# baked into the umbrella's symbol graph and dumped as flat auto-generated groups
+# on the landing page (swift-docc #331) — burying the curated Topics. The per-
+# module catalogs were built but discarded (only `ManifoldKit.doccarchive` shipped,
+# so e.g. /documentation/manifoldinference/ 404'd). Combined documentation instead
+# publishes one page per `--target`, with cross-module links resolving via absolute
+# `/Module/Symbol` paths. We pair it with `-DBUILDING_DOCC` (see Sources/ManifoldKit/
+# Exports.swift), which adds `@_documentation(visibility: internal)` to the
+# umbrella's `@_exported import`s for the doc build only (the imports stay
+# `@_exported`, so the umbrella still compiles and re-exports the full surface),
+# dropping the re-exported symbols from its symbol graph so the umbrella page
+# renders just its curated entry points. The historical llama-xcframework blocker
+# that forced docbuild died with the v0.48 PR C2 companion-package split,
+# unblocking the plugin route.
+#
+# NOTE: `--enable-experimental-combined-documentation` is experimental (swift-docc-
+# plugin ≥1.4.2, Swift 6.0+) — the archive layout may change across toolchains.
+# `--target` list MUST cover every module referenced by an absolute `/Module/...`
+# link on the umbrella page, or the link silently 404s.
 #
 # SELF-VALIDATION: the `paths:` filter below MUST list this workflow's own path
 # plus every DocC catalog and `Package.swift`, otherwise edits to a catalog or to
@@ -71,47 +83,69 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-docs-spm-
 
-      - name: Build DocC archive
-        # docbuild emits a .doccarchive into DerivedData. The ManifoldKit scheme
-        # builds the umbrella catalog plus every dependency catalog, so the
-        # re-exported public surface renders under one root.
+      - name: Build combined DocC site
+        # One plugin invocation builds every --target's page into a single
+        # static-hostable site at ./docs-site, with a shared navigation sidebar.
         #
-        # Note: this is a best-effort *publish*, not a link-correctness gate — it
-        # deliberately does NOT pass `--warnings-as-errors`. The scheme also
-        # compiles dependency catalogs that carry pre-existing DocC warnings
-        # (e.g. stale symbol references in ManifoldInference.docc) which are out
-        # of scope here; failing the publish on them would block the site for
-        # unrelated debt. Snippet drift is already gated by readme-snippets.yml.
+        # Flag placement / grant choice (the experimental combined-docs plugin is
+        # finicky about both — these were found by trial):
+        #   * `--allow-writing-to-package-directory` and `-Xswiftc -DBUILDING_DOCC`
+        #     are *package-manager* options and must precede the
+        #     `generate-documentation` verb; `--enable-...`, `--target`,
+        #     `--transform-...`, `--output-path` are *plugin* options and follow it.
+        #   * We grant filesystem access with `--allow-writing-to-package-directory`
+        #     (output lands in the `./docs-site` package subdir), NOT the blanket
+        #     sandbox-disable flag — that flag is banned in workflow scripts by the
+        #     macro-sandbox guard (ci.yml, issue #726), which greps every *.yml for
+        #     it (so it must not appear here even in a comment).
+        #     Crucially, the SwiftPM grant flag MUST sit *before* the verb: there it
+        #     is consumed by SwiftPM and never reaches the plugin. If placed *after*
+        #     the verb it falls into the plugin's pass-through args and leaks to
+        #     `docc convert`, which rejects it ("Unknown option") — that misordering,
+        #     not the grant flag itself, was the abort this comment used to describe.
+        #
+        # `-DBUILDING_DOCC` adds `@_documentation(visibility: internal)` to the
+        # `@_exported import`s in Sources/ManifoldKit/Exports.swift (they stay
+        # `@_exported`, not downgraded to plain `import`), so the umbrella's symbol
+        # graph stops absorbing the eight re-exported modules' ~776 symbols.
+        #
+        # The --target list MUST include every module referenced by an absolute
+        # `/Module/Symbol` link in ManifoldKit.docc/ManifoldKit.md (the curated hub),
+        # or that link 404s — AND every listed target must own a `.docc` catalog.
+        # A catalog-LESS target triggers a non-deterministic `docc convert` exit-64
+        # race ("No documentation directory exists at …") in combined mode, so
+        # ManifoldContract / ManifoldModelCatalog / ManifoldFoundation each carry a
+        # minimal landing-page catalog precisely so they can appear here safely.
+        #
+        # Best-effort *publish*, not a link gate: no `--warnings-as-errors` (the
+        # per-module catalogs carry pre-existing DocC warnings that are out of scope
+        # here; snippet drift is gated by readme-snippets.yml).
         run: |
           set -euo pipefail
-          xcodebuild docbuild \
-            -scheme ManifoldKit \
-            -destination 'generic/platform=macOS' \
-            -derivedDataPath "$RUNNER_TEMP/docc-dd" \
-            -skipPackagePluginValidation \
-            -skipMacroValidation
-
-      - name: Transform for static hosting
-        # Pick the umbrella archive (named ManifoldKit.doccarchive) as the site
-        # root, then rewrite asset/reference paths for a root-served Pages site
-        # on the custom domain https://docs.manifoldkit.com/.
-        run: |
-          set -euo pipefail
-          ARCHIVE=$(find "$RUNNER_TEMP/docc-dd" -type d -name 'ManifoldKit.doccarchive' | head -n 1)
-          if [ -z "$ARCHIVE" ]; then
-            echo "::error::ManifoldKit.doccarchive not found under DerivedData"
-            find "$RUNNER_TEMP/docc-dd" -type d -name '*.doccarchive' || true
-            exit 1
-          fi
-          echo "Using archive: $ARCHIVE"
           rm -rf ./docs-site
-          # Served at the root of the custom domain docs.manifoldkit.com, so no
-          # --hosting-base-path (that's only for project pages under /<repo>/).
-          $(xcrun --find docc) process-archive transform-for-static-hosting \
-            "$ARCHIVE" \
+          # Root-served on the custom domain docs.manifoldkit.com (pinned via the
+          # CNAME written below), so NO --hosting-base-path — that flag is only for
+          # project pages served under /<repo>/, and it would rewrite every asset URL
+          # under /ManifoldKit/. Omitting it yields root-relative asset paths.
+          swift package \
+            --allow-writing-to-package-directory \
+            -Xswiftc -DBUILDING_DOCC \
+            generate-documentation \
+            --enable-experimental-combined-documentation \
+            --target ManifoldKit \
+            --target ManifoldModelCatalog \
+            --target ManifoldContract \
+            --target ManifoldInference \
+            --target ManifoldRuntime \
+            --target ManifoldUI \
+            --target ManifoldPersistenceSwiftData \
+            --target ManifoldFoundation \
+            --transform-for-static-hosting \
             --output-path ./docs-site
-          # Redirect the site root to the umbrella landing page so visiting
+          # Redirect the site root to the curated umbrella hub so visiting
           # https://docs.manifoldkit.com/ lands on ManifoldKit, not a 404.
+          # (Combined docs also synthesize a bare target index at documentation/,
+          # but the curated hub is the better front door.)
           cat > ./docs-site/index.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">
