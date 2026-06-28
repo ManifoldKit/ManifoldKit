@@ -23,7 +23,7 @@
 //
 // Doc-build gate (`BUILDING_DOCC`): `@_exported import` bakes every re-exported
 // symbol into ManifoldKit's OWN symbol graph, so DocC renders all ~776 public
-// symbols from these six modules as flat auto-generated groups on the umbrella
+// symbols from these eight modules as flat auto-generated groups on the umbrella
 // landing page — drowning the curated Topics. That is intended DocC behaviour
 // (swift-docc #331), not a misconfiguration. During the docs build we pass
 // `-DBUILDING_DOCC` and add `@_documentation(visibility: internal)` to each

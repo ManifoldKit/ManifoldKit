@@ -6,7 +6,7 @@ name: Docs (DocC → GitHub Pages)
 #
 # Why the SwiftPM DocC plugin + `--enable-experimental-combined-documentation`
 # (replacing `xcodebuild docbuild -scheme ManifoldKit`): docbuild merged every
-# catalog into ONE umbrella archive, and because `ManifoldKit` re-exports six
+# catalog into ONE umbrella archive, and because `ManifoldKit` re-exports eight
 # modules via `@_exported import`, every one of their ~776 public symbols was
 # baked into the umbrella's symbol graph and dumped as flat auto-generated groups
 # on the landing page (swift-docc #331) — burying the curated Topics. The per-
@@ -14,10 +14,13 @@ name: Docs (DocC → GitHub Pages)
 # so e.g. /documentation/manifoldinference/ 404'd). Combined documentation instead
 # publishes one page per `--target`, with cross-module links resolving via absolute
 # `/Module/Symbol` paths. We pair it with `-DBUILDING_DOCC` (see Sources/ManifoldKit/
-# Exports.swift), which downgrades the umbrella's `@_exported import`s to plain
-# `import` for the doc build only, so the umbrella page renders just its curated
-# entry points. The historical llama-xcframework blocker that forced docbuild died
-# with the v0.48 PR C2 companion-package split, unblocking the plugin route.
+# Exports.swift), which adds `@_documentation(visibility: internal)` to the
+# umbrella's `@_exported import`s for the doc build only (the imports stay
+# `@_exported`, so the umbrella still compiles and re-exports the full surface),
+# dropping the re-exported symbols from its symbol graph so the umbrella page
+# renders just its curated entry points. The historical llama-xcframework blocker
+# that forced docbuild died with the v0.48 PR C2 companion-package split,
+# unblocking the plugin route.
 #
 # NOTE: `--enable-experimental-combined-documentation` is experimental (swift-docc-
 # plugin ≥1.4.2, Swift 6.0+) — the archive layout may change across toolchains.
@@ -91,9 +94,10 @@ jobs:
         # `--allow-writing-to-directory` before the verb makes SwiftPM reject
         # `-Xswiftc` with "Unknown option".
         #
-        # `-DBUILDING_DOCC` flips Sources/ManifoldKit/Exports.swift from
-        # `@_exported import` to plain `import`, so the umbrella's symbol graph stops
-        # absorbing the six re-exported modules' ~776 symbols.
+        # `-DBUILDING_DOCC` adds `@_documentation(visibility: internal)` to the
+        # `@_exported import`s in Sources/ManifoldKit/Exports.swift (they stay
+        # `@_exported`, not downgraded to plain `import`), so the umbrella's symbol
+        # graph stops absorbing the eight re-exported modules' ~776 symbols.
         #
         # The --target list MUST include every module referenced by an absolute
         # `/Module/Symbol` link in ManifoldKit.docc/ManifoldKit.md (the curated
