@@ -65,8 +65,10 @@ on:
   # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.
   # No `paths:` filter here — the queue branch is the real pre-merge state, so we
   # always validate it. The `changes` job's `if:` already runs on non-pull_request
-  # events; the dorny/paths-filter step is skipped on merge_group (no base SHA),
-  # which makes the Tier 0 resolver fall back to FULL → `test` runs the whole bundle.
+  # events; we skip the dorny/paths-filter step on merge_group to FORCE a full run
+  # (deliberately not narrowing the final pre-merge gate). With it skipped the Tier 0
+  # resolver gets no changed paths and emits NONE, which the `test` job's "Compute
+  # test mode" step maps to mode=full → `test` runs the whole bundle on the queue branch.
   merge_group:
     types: [checks_requested]
 
@@ -124,11 +126,14 @@ jobs:
         with:
           fetch-depth: 2
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
-        # Skipped on merge_group: the queue branch has no base SHA to diff
-        # against and paths-filter would error (failing `changes` → skipping the
-        # required `test` job → stalling the queue). With it skipped, the Tier 0
-        # resolver below sees empty inputs and falls back to FULL, so `test` runs
-        # the whole bundle on the queue branch — the conservative, correct gate.
+        # Skipped on merge_group to FORCE a full run on the queue branch rather
+        # than narrowing the final pre-merge gate. (paths-filter v4 natively
+        # SUPPORTS merge_group — it diffs merge_group.base_sha..head_sha — so this
+        # is a deliberate conservatism choice, NOT an error workaround; the same
+        # action is left live in the `test` job's deps-changed step on merge_group
+        # for exactly that reason.) With it skipped the Tier 0 resolver below gets
+        # no changed paths and emits NONE, which the `test` job's "Compute test
+        # mode" maps to mode=full, so `test` runs the whole bundle on the queue branch.
         if: github.event_name != 'merge_group'
         id: filter
         with:
