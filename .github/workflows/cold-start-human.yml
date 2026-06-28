@@ -31,6 +31,10 @@ name: cold-start-human
 
 on:
   pull_request:
+    # `ready_for_review` required so a draft→ready transition triggers this
+    # gate (see CLAUDE.md §"Draft-PR review loop"); the job's draft guard keeps
+    # drafts a zero-CI staging area.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "README.md"
@@ -52,6 +56,8 @@ permissions:
 
 jobs:
   cold-start-human:
+    # Skip on draft PRs — CI runs once the PR is marked ready.
+    if: github.event.pull_request.draft == false
     # Match the macos-15 runner the tier-1/2/3 cold-start jobs use so SwiftPM
     # cache keys collide and we share the warm checkouts cache.
     runs-on: macos-15

@@ -37,6 +37,10 @@ xcuserdata/
 .claude/*
 !.claude/README.md
 !.claude/settings.json
+# Shared project skills (e.g. /ship — the draft-PR review loop). Committed like
+# settings.json so the workflow tooling travels with the repo.
+!.claude/skills/
+!.claude/skills/**
 tmp/
 .worktrees/
 # DX walkthrough per-run artefacts — large + ephemeral. Keep only the
