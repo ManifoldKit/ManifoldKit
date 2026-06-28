@@ -1,10 +1,10 @@
 # Changelog
 
-## [0.62.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.61.0...v0.62.0) (2026-06-27)
+## [0.62.0](https://github.com/roryford/ManifoldKit/compare/v0.61.0...v0.62.0) (2026-06-27)
 
 ### Highlights
 
-**Hosts can now observe and cancel an in-flight native model load.** A blocking llama.cpp/MLX load ignores Swift `Task` cancellation: when a host's load deadline fires, the `async loadModel` continuation resumes while the native call keeps mutating the backend on a background thread, and touching it then SIGSEGVs in `ggml_backend_graph_compute_async`. The new opt-in `CancellableModelLoading` protocol gives a host a real cancel hook (`cancelModelLoad()`, cooperatively aborting the native load), a true completion signal (`awaitModelLoadSettled()`), and an `isModelLoadInFlight` flag to latch on precisely instead of guessing. Purely additive — backends that don't adopt it keep the coarse-latch fallback; `LlamaBackend` adopts it in the manifold-llama companion ([#2054](https://github.com/ManifoldKit/ManifoldKit/issues/2054)).
+**Hosts can now observe and cancel an in-flight native model load.** A blocking llama.cpp/MLX load ignores Swift `Task` cancellation: when a host's load deadline fires, the `async loadModel` continuation resumes while the native call keeps mutating the backend on a background thread, and touching it then SIGSEGVs in `ggml_backend_graph_compute_async`. The new opt-in `CancellableModelLoading` protocol gives a host a real cancel hook (`cancelModelLoad()`, cooperatively aborting the native load), a true completion signal (`awaitModelLoadSettled()`), and an `isModelLoadInFlight` flag to latch on precisely instead of guessing. Purely additive — backends that don't adopt it keep the coarse-latch fallback; `LlamaBackend` adopts it in the manifold-llama companion ([#2054](https://github.com/roryford/ManifoldKit/issues/2054)).
 
 ```swift
 guard let cancellable = backend as? CancellableModelLoading else { return }
@@ -16,7 +16,7 @@ await cancellable.awaitModelLoadSettled()     // returns only once native work h
 load.cancel()
 ```
 
-**Tool-call conformance soaks reduce to a normalized, scoreable record — and a deterministic cross-backend matrix.** Each eval leg (Ollama, llama.cpp, MLX, cloud — they run in separate processes because `llama_backend_init` is once-per-process) now emits one `ConformanceRecord` per `(model × quant × backend × renderer)` cell, with a first-class `CellStatus` so a hole in the matrix — missing weights, dead backend, a render that produced no prompt — reads as `notMeasured` rather than a measured failure ([#2041](https://github.com/ManifoldKit/ManifoldKit/issues/2041)). `ConformanceScorer` gains a public scoring API and emits those records, and `MatrixRenderer` folds them into a deterministic `MATRIX.md` keyed by cell — the same records always render byte-identical ([#2045](https://github.com/ManifoldKit/ManifoldKit/issues/2045), [#2046](https://github.com/ManifoldKit/ManifoldKit/issues/2046)).
+**Tool-call conformance soaks reduce to a normalized, scoreable record — and a deterministic cross-backend matrix.** Each eval leg (Ollama, llama.cpp, MLX, cloud — they run in separate processes because `llama_backend_init` is once-per-process) now emits one `ConformanceRecord` per `(model × quant × backend × renderer)` cell, with a first-class `CellStatus` so a hole in the matrix — missing weights, dead backend, a render that produced no prompt — reads as `notMeasured` rather than a measured failure ([#2041](https://github.com/roryford/ManifoldKit/issues/2041)). `ConformanceScorer` gains a public scoring API and emits those records, and `MatrixRenderer` folds them into a deterministic `MATRIX.md` keyed by cell — the same records always render byte-identical ([#2045](https://github.com/roryford/ManifoldKit/issues/2045), [#2046](https://github.com/roryford/ManifoldKit/issues/2046)).
 
 ```swift
 let rows = ConformanceScorer.score(jsonl: transcript)        // per-cell verdict + tool-selection F1
@@ -27,29 +27,29 @@ let matrix = MatrixRenderer.render(records)                  // deterministic cr
 
 ### Features
 
-* Add a render-consistency regression gate that fails CI when a model's chat template declares a tool dialect ManifoldKit's renderer silently drops — the #1909 failure class — by folding `RenderConsistencyChecker.check` over a committed family-template corpus, plus a load-time warning for the same condition ([#2055](https://github.com/ManifoldKit/ManifoldKit/issues/2055))
+* Add a render-consistency regression gate that fails CI when a model's chat template declares a tool dialect ManifoldKit's renderer silently drops — the #1909 failure class — by folding `RenderConsistencyChecker.check` over a committed family-template corpus, plus a load-time warning for the same condition ([#2055](https://github.com/roryford/ManifoldKit/issues/2055))
 
 ### Fixes
 
-* Derive each matrix cell's verdict from its tool-selection F1 rather than the dominant failure subtype, so a cell's pass/partial/fail reflects measured accuracy instead of whichever failure bucket happened to dominate ([#2047](https://github.com/ManifoldKit/ManifoldKit/issues/2047))
-* Correct tool-call true-positive attribution in `ConformanceScorer`, fixing under-counted precision/recall on multi-call turns ([#2043](https://github.com/ManifoldKit/ManifoldKit/issues/2043))
-* Load the harness's built-in scenarios from `Bundle.module` instead of the current working directory, so `manifold-tools` finds them regardless of where it is invoked ([#2042](https://github.com/ManifoldKit/ManifoldKit/issues/2042))
-* Remove two conformance-harness false-negatives that scored valid tool calls as failures ([#2049](https://github.com/ManifoldKit/ManifoldKit/issues/2049))
+* Derive each matrix cell's verdict from its tool-selection F1 rather than the dominant failure subtype, so a cell's pass/partial/fail reflects measured accuracy instead of whichever failure bucket happened to dominate ([#2047](https://github.com/roryford/ManifoldKit/issues/2047))
+* Correct tool-call true-positive attribution in `ConformanceScorer`, fixing under-counted precision/recall on multi-call turns ([#2043](https://github.com/roryford/ManifoldKit/issues/2043))
+* Load the harness's built-in scenarios from `Bundle.module` instead of the current working directory, so `manifold-tools` finds them regardless of where it is invoked ([#2042](https://github.com/roryford/ManifoldKit/issues/2042))
+* Remove two conformance-harness false-negatives that scored valid tool calls as failures ([#2049](https://github.com/roryford/ManifoldKit/issues/2049))
 
 ### Documentation
 
-* Consolidate the tool-call conformance plan with cross-repo model coverage and the latest soak results ([#2048](https://github.com/ManifoldKit/ManifoldKit/issues/2048))
-* Re-measure the conformance matrix (Ollama + cloud anchor) after the #2049 scorer fixes ([#2051](https://github.com/ManifoldKit/ManifoldKit/issues/2051))
+* Consolidate the tool-call conformance plan with cross-repo model coverage and the latest soak results ([#2048](https://github.com/roryford/ManifoldKit/issues/2048))
+* Re-measure the conformance matrix (Ollama + cloud anchor) after the #2049 scorer fixes ([#2051](https://github.com/roryford/ManifoldKit/issues/2051))
 
 ### Tests
 
-* Pin the Gemma-3 vs Gemma-4 tool-call close-delimiter family split so the two families do not regress into each other ([#2050](https://github.com/ManifoldKit/ManifoldKit/issues/2050))
+* Pin the Gemma-3 vs Gemma-4 tool-call close-delimiter family split so the two families do not regress into each other ([#2050](https://github.com/roryford/ManifoldKit/issues/2050))
 
-## [0.61.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.60.0...v0.61.0) (2026-06-25)
+## [0.61.0](https://github.com/roryford/ManifoldKit/compare/v0.60.0...v0.61.0) (2026-06-25)
 
 ### Highlights
 
-**Tool-call conformance verdicts now persist across launches (#2005 Layer 3, SwiftData follow-up).** The SwiftData adapter deferred for human review in 0.60.0 ([#2030](https://github.com/ManifoldKit/ManifoldKit/issues/2030)) lands. `SwiftDataToolCallConformanceCache` backs the `ToolCallConformanceCache` port with the same `@MainActor`, `ModelContext`-injected, delete-then-insert upsert shape as `SwiftDataBenchmarkCache`, and `ManifoldBootstrap` wires it automatically as `toolCallConformanceCache`. A measured `(model × quant × backend)` verdict now survives a restart, so hosts can gate tool-calling UI without re-running the soak; a key that has never been measured returns `.unknownDefault`, keeping conformance lazy rather than a cold-start tax ([#2034](https://github.com/ManifoldKit/ManifoldKit/issues/2034)).
+**Tool-call conformance verdicts now persist across launches (#2005 Layer 3, SwiftData follow-up).** The SwiftData adapter deferred for human review in 0.60.0 ([#2030](https://github.com/roryford/ManifoldKit/issues/2030)) lands. `SwiftDataToolCallConformanceCache` backs the `ToolCallConformanceCache` port with the same `@MainActor`, `ModelContext`-injected, delete-then-insert upsert shape as `SwiftDataBenchmarkCache`, and `ManifoldBootstrap` wires it automatically as `toolCallConformanceCache`. A measured `(model × quant × backend)` verdict now survives a restart, so hosts can gate tool-calling UI without re-running the soak; a key that has never been measured returns `.unknownDefault`, keeping conformance lazy rather than a cold-start tax ([#2034](https://github.com/roryford/ManifoldKit/issues/2034)).
 
 ```swift
 let cache = bootstrap.toolCallConformanceCache   // SwiftData-backed, persisted
@@ -60,20 +60,20 @@ let verdict = await cache.get(key)               // .supported — survives a re
 
 ### Fixes
 
-* Fold tool results into the user turn for alternation-strict chat templates — Mistral-family multi-turn tool calling broke when a `tool` role landed where the template's strict user/assistant alternation expected a user turn, extending the 0.60.0 system-prompt fix to tool results ([#2035](https://github.com/ManifoldKit/ManifoldKit/issues/2035))
-* Adjudicate the Gemma tool-call close delimiter to `<|end_of_turn|>`, so Gemma-family tool calls terminate at the right boundary instead of running past it and failing to parse ([#2039](https://github.com/ManifoldKit/ManifoldKit/issues/2039))
-* Recover expected tools from scenario assertions when `requiredTools` is absent, so the conformance scorer no longer under-counts on scenarios that declare tools only via assertions ([#2040](https://github.com/ManifoldKit/ManifoldKit/issues/2040))
+* Fold tool results into the user turn for alternation-strict chat templates — Mistral-family multi-turn tool calling broke when a `tool` role landed where the template's strict user/assistant alternation expected a user turn, extending the 0.60.0 system-prompt fix to tool results ([#2035](https://github.com/roryford/ManifoldKit/issues/2035))
+* Adjudicate the Gemma tool-call close delimiter to `<|end_of_turn|>`, so Gemma-family tool calls terminate at the right boundary instead of running past it and failing to parse ([#2039](https://github.com/roryford/ManifoldKit/issues/2039))
+* Recover expected tools from scenario assertions when `requiredTools` is absent, so the conformance scorer no longer under-counts on scenarios that declare tools only via assertions ([#2040](https://github.com/roryford/ManifoldKit/issues/2040))
 
 ### Documentation
 
-* Cross-backend tool-call conformance matrix + raw soak data across Ollama, llama.cpp, MLX, and OpenRouter ([#2033](https://github.com/ManifoldKit/ManifoldKit/issues/2033))
-* Tool-calling architecture proposal — template-derived `ChatProfile` + grammar-first dispatch ([#2038](https://github.com/ManifoldKit/ManifoldKit/issues/2038))
+* Cross-backend tool-call conformance matrix + raw soak data across Ollama, llama.cpp, MLX, and OpenRouter ([#2033](https://github.com/roryford/ManifoldKit/issues/2033))
+* Tool-calling architecture proposal — template-derived `ChatProfile` + grammar-first dispatch ([#2038](https://github.com/roryford/ManifoldKit/issues/2038))
 
-## [0.60.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.59.0...v0.60.0) (2026-06-22)
+## [0.60.0](https://github.com/roryford/ManifoldKit/compare/v0.59.0...v0.60.0) (2026-06-22)
 
 ### Highlights
 
-**The measured tool-call conformance spine lands across runtime, hardware, and the CLI (#2005 Layer 3, Step 3–4).** This release builds the infrastructure to *measure* which `(model × quant × backend)` combinations can actually drive tool calls, rather than trusting a template's static claim. `ToolCallConformanceCache` arrives as a pure port + `Sendable`/`Codable` value type + in-memory adapter (mirroring `BenchmarkCache`); the SwiftData adapter is a deliberate human-reviewed follow-up ([#2030](https://github.com/ManifoldKit/ManifoldKit/issues/2030)). Backends now surface the tool-call *dialect* they select internally — family, delimiters, arg encoding, extractability — on `BackendCapabilities`, purely additively ([#2029](https://github.com/ManifoldKit/ManifoldKit/issues/2029)). The `manifold-tools` harness stamps every JSONL record with `backend`/`model`/`quant` and ships a conformance scorer so multi-model runs score per-model without parsing stdout ([#2027](https://github.com/ManifoldKit/ManifoldKit/issues/2027)), and gains an `openai-compat` backend plus an `--extra-tools N` decoy flag to test tool selection under distractor pressure ([#2031](https://github.com/ManifoldKit/ManifoldKit/issues/2031)).
+**The measured tool-call conformance spine lands across runtime, hardware, and the CLI (#2005 Layer 3, Step 3–4).** This release builds the infrastructure to *measure* which `(model × quant × backend)` combinations can actually drive tool calls, rather than trusting a template's static claim. `ToolCallConformanceCache` arrives as a pure port + `Sendable`/`Codable` value type + in-memory adapter (mirroring `BenchmarkCache`); the SwiftData adapter is a deliberate human-reviewed follow-up ([#2030](https://github.com/roryford/ManifoldKit/issues/2030)). Backends now surface the tool-call *dialect* they select internally — family, delimiters, arg encoding, extractability — on `BackendCapabilities`, purely additively ([#2029](https://github.com/roryford/ManifoldKit/issues/2029)). The `manifold-tools` harness stamps every JSONL record with `backend`/`model`/`quant` and ships a conformance scorer so multi-model runs score per-model without parsing stdout ([#2027](https://github.com/roryford/ManifoldKit/issues/2027)), and gains an `openai-compat` backend plus an `--extra-tools N` decoy flag to test tool selection under distractor pressure ([#2031](https://github.com/roryford/ManifoldKit/issues/2031)).
 
 ```swift
 let key = ToolCallConformanceKey(model: "qwen2.5:7b", quant: "Q4_K_M", backend: "ollama")
@@ -87,19 +87,19 @@ manifold-tools run --backend openai-compat --base-url https://openrouter.ai/api 
   --model qwen2.5:7b,mistral-small,llama3.1:8b --extra-tools 5
 ```
 
-**Concurrent-safe tool calls now dispatch in parallel, with transient-error retry.** When a backend emits several tool calls in one turn and *every* targeted executor reports `supportsConcurrentDispatch == true`, `GenerationToolDispatchLoop` runs them concurrently (one main-actor child task each) instead of serially; if any executor is not concurrent-safe the whole turn falls back to the sequential path. The loop also retries tool calls that fail with transient errors ([#2026](https://github.com/ManifoldKit/ManifoldKit/issues/2026)).
+**Concurrent-safe tool calls now dispatch in parallel, with transient-error retry.** When a backend emits several tool calls in one turn and *every* targeted executor reports `supportsConcurrentDispatch == true`, `GenerationToolDispatchLoop` runs them concurrently (one main-actor child task each) instead of serially; if any executor is not concurrent-safe the whole turn falls back to the sequential path. The loop also retries tool calls that fail with transient errors ([#2026](https://github.com/roryford/ManifoldKit/issues/2026)).
 
-**Public JSON-Schema → GBNF grammar surface.** A JSON Schema can now be compiled to a GBNF grammar and used to validate or parse constrained model output through a public API, instead of the conversion living behind the llama backend ([#1992](https://github.com/ManifoldKit/ManifoldKit/issues/1992), [#2025](https://github.com/ManifoldKit/ManifoldKit/issues/2025)).
+**Public JSON-Schema → GBNF grammar surface.** A JSON Schema can now be compiled to a GBNF grammar and used to validate or parse constrained model output through a public API, instead of the conversion living behind the llama backend ([#1992](https://github.com/roryford/ManifoldKit/issues/1992), [#2025](https://github.com/roryford/ManifoldKit/issues/2025)).
 
 ### Fixes
 
-* Fold the system prompt into the first user turn for alternation-strict chat templates — Mistral-family tool calling was silently broken because the leading system role tripped the template's strict user/assistant alternation check and fell through to a tool-less refusal ([#2032](https://github.com/ManifoldKit/ManifoldKit/issues/2032))
+* Fold the system prompt into the first user turn for alternation-strict chat templates — Mistral-family tool calling was silently broken because the leading system role tripped the template's strict user/assistant alternation check and fell through to a tool-less refusal ([#2032](https://github.com/roryford/ManifoldKit/issues/2032))
 
-## [0.59.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.58.0...v0.59.0) (2026-06-22)
+## [0.59.0](https://github.com/roryford/ManifoldKit/compare/v0.58.0...v0.59.0) (2026-06-22)
 
 ### ⚠ BREAKING CHANGES
 
-**Built-in inference cost estimation is removed.** ManifoldKit no longer owns a model-pricing table or estimates per-call cost — keeping accurate prices for every provider was a perpetual maintenance burden, and the metric/trace pipeline already carries everything needed to cost a call downstream. Removed public symbols: `InferenceCostEstimator` (`ManifoldCloudCore`); `InferenceMetric.estimatedCostUSD` / `.isCostApproximate` / `.costTableDate` and their `init` parameters; and the `gen_ai.usage.cost_usd` / `cost_is_approximate` / `cost_table_date` span attributes (`GenAIAttributeKeys.costUSD` / `.costApproximate` / `.costTableDate`). Compute cost in your own `InferenceMetricSink` by joining the model id and token counts against a caller-owned price table ([#2021](https://github.com/ManifoldKit/ManifoldKit/issues/2021)). Migration: [`docs/MIGRATION-cost-estimation-removed.md`](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/MIGRATION-cost-estimation-removed.md).
+**Built-in inference cost estimation is removed.** ManifoldKit no longer owns a model-pricing table or estimates per-call cost — keeping accurate prices for every provider was a perpetual maintenance burden, and the metric/trace pipeline already carries everything needed to cost a call downstream. Removed public symbols: `InferenceCostEstimator` (`ManifoldCloudCore`); `InferenceMetric.estimatedCostUSD` / `.isCostApproximate` / `.costTableDate` and their `init` parameters; and the `gen_ai.usage.cost_usd` / `cost_is_approximate` / `cost_table_date` span attributes (`GenAIAttributeKeys.costUSD` / `.costApproximate` / `.costTableDate`). Compute cost in your own `InferenceMetricSink` by joining the model id and token counts against a caller-owned price table ([#2021](https://github.com/roryford/ManifoldKit/issues/2021)). Migration: [`docs/MIGRATION-cost-estimation-removed.md`](https://github.com/roryford/ManifoldKit/blob/main/docs/MIGRATION-cost-estimation-removed.md).
 
 ```swift
 func record(_ metric: InferenceMetric) async {
@@ -112,7 +112,7 @@ func record(_ metric: InferenceMetric) async {
 
 ### Highlights
 
-**Tool-call conformance — a static claim plus a render round-trip (#2005 Layers 1–2).** Two layers land for steering hosts toward models that can actually drive tool calls. `ModelInfo.toolCallClaim` parses a model's embedded chat template into a `ChatTemplateToolDescriptor` — an honest *claim* (`toolsExpressible` plus the declared call dialect) where a negative is trustworthy and a positive is necessary-but-not-sufficient ([#2009](https://github.com/ManifoldKit/ManifoldKit/issues/2009)). `RenderConsistencyChecker` then round-trips a canonical tool-bearing prompt through the real Jinja renderer — no live inference — and flags templates that *claim* tools but silently drop them on render, the #1909 failure class ([#2022](https://github.com/ManifoldKit/ManifoldKit/issues/2022)). The measured per-model soak (Layer 3) stays deferred.
+**Tool-call conformance — a static claim plus a render round-trip (#2005 Layers 1–2).** Two layers land for steering hosts toward models that can actually drive tool calls. `ModelInfo.toolCallClaim` parses a model's embedded chat template into a `ChatTemplateToolDescriptor` — an honest *claim* (`toolsExpressible` plus the declared call dialect) where a negative is trustworthy and a positive is necessary-but-not-sufficient ([#2009](https://github.com/roryford/ManifoldKit/issues/2009)). `RenderConsistencyChecker` then round-trips a canonical tool-bearing prompt through the real Jinja renderer — no live inference — and flags templates that *claim* tools but silently drop them on render, the #1909 failure class ([#2022](https://github.com/roryford/ManifoldKit/issues/2022)). The measured per-model soak (Layer 3) stays deferred.
 
 ```swift
 let claim = model.toolCallClaim                       // necessary-but-not-sufficient
@@ -122,81 +122,81 @@ if claim.toolsExpressible,
 }
 ```
 
-**Templateless prompt rendering threads images and pairs tool results.** GGUF models whose embedded chat template lacks tool/vision support now render through the templateless path with image parts threaded and tool results paired to their originating calls, instead of being flattened to text — closing a silent fidelity gap on local backends ([#2014](https://github.com/ManifoldKit/ManifoldKit/issues/2014)).
+**Templateless prompt rendering threads images and pairs tool results.** GGUF models whose embedded chat template lacks tool/vision support now render through the templateless path with image parts threaded and tool results paired to their originating calls, instead of being flattened to text — closing a silent fidelity gap on local backends ([#2014](https://github.com/roryford/ManifoldKit/issues/2014)).
 
 ### Fixes
 
-* UX-review findings across server, chat, voice, and model management ([#2007](https://github.com/ManifoldKit/ManifoldKit/issues/2007))
-* Derive the Mistral stop sequence from `</s>` instead of the ChatML default ([#2008](https://github.com/ManifoldKit/ManifoldKit/issues/2008), [#2019](https://github.com/ManifoldKit/ManifoldKit/issues/2019))
-* Enforce integer-literal numeric constraints in `JSONSchemaValidator` ([#2011](https://github.com/ManifoldKit/ManifoldKit/issues/2011))
-* Guarantee state-restore cleanup in media-generation services when the consumer drops early ([#2018](https://github.com/ManifoldKit/ManifoldKit/issues/2018))
-* Guarantee task-registry and background-scheduler cleanup on completion ([#2017](https://github.com/ManifoldKit/ManifoldKit/issues/2017))
+* UX-review findings across server, chat, voice, and model management ([#2007](https://github.com/roryford/ManifoldKit/issues/2007))
+* Derive the Mistral stop sequence from `</s>` instead of the ChatML default ([#2008](https://github.com/roryford/ManifoldKit/issues/2008), [#2019](https://github.com/roryford/ManifoldKit/issues/2019))
+* Enforce integer-literal numeric constraints in `JSONSchemaValidator` ([#2011](https://github.com/roryford/ManifoldKit/issues/2011))
+* Guarantee state-restore cleanup in media-generation services when the consumer drops early ([#2018](https://github.com/roryford/ManifoldKit/issues/2018))
+* Guarantee task-registry and background-scheduler cleanup on completion ([#2017](https://github.com/roryford/ManifoldKit/issues/2017))
 
 ### Performance Improvements
 
-* Cache markdown block-marker regexes and use set membership in history validation ([#2012](https://github.com/ManifoldKit/ManifoldKit/issues/2012))
-* Cache the summary-field regex and thinking transforms in `AnchoredCompressionStrategy` ([#2016](https://github.com/ManifoldKit/ManifoldKit/issues/2016))
+* Cache markdown block-marker regexes and use set membership in history validation ([#2012](https://github.com/roryford/ManifoldKit/issues/2012))
+* Cache the summary-field regex and thinking transforms in `AnchoredCompressionStrategy` ([#2016](https://github.com/roryford/ManifoldKit/issues/2016))
 
-## [0.58.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.57.0...v0.58.0) (2026-06-21)
+## [0.58.0](https://github.com/roryford/ManifoldKit/compare/v0.57.0...v0.58.0) (2026-06-21)
 
 ### Highlights
 
-**The two-line front door is complete.** The `LLM(from:template:)` value-typed entry point closes the front-door story 0.57.0 started — a single `await` stands up a working chat runtime over the curated model floor, and `respond(to:)` collects a streamed turn to a `String`. Cloud and Foundation work in two lines with no backend list; a local model takes one more line to pass a companion registrar. Construction wraps the existing `quickStart` plumbing, so there's no new bootstrap path ([#1942](https://github.com/ManifoldKit/ManifoldKit/issues/1942), [#1998](https://github.com/ManifoldKit/ManifoldKit/issues/1998), [#2004](https://github.com/ManifoldKit/ManifoldKit/issues/2004)).
+**The two-line front door is complete.** The `LLM(from:template:)` value-typed entry point closes the front-door story 0.57.0 started — a single `await` stands up a working chat runtime over the curated model floor, and `respond(to:)` collects a streamed turn to a `String`. Cloud and Foundation work in two lines with no backend list; a local model takes one more line to pass a companion registrar. Construction wraps the existing `quickStart` plumbing, so there's no new bootstrap path ([#1942](https://github.com/roryford/ManifoldKit/issues/1942), [#1998](https://github.com/roryford/ManifoldKit/issues/1998), [#2004](https://github.com/roryford/ManifoldKit/issues/2004)).
 
 ```swift
 let llm = try await LLM(from: .recommendedSmallModel())          // cloud/Foundation: 2 lines
 let answer = try await llm.respond(to: "Explain monads in one sentence.")
 ```
 
-**`ChatTemplate` as a value, with template-derived stop sequences.** A `ChatTemplate` value type wraps either a built-in `PromptTemplate` or a raw embedded-Jinja string and exposes the stop sequences derived from the template itself, so a turn stops on the model's own end-of-turn markers instead of relying on caller-supplied `stopSequences`. It threads into the `LLM` constructor as the optional formatting override ([#1944](https://github.com/ManifoldKit/ManifoldKit/issues/1944), [#1999](https://github.com/ManifoldKit/ManifoldKit/issues/1999)).
+**`ChatTemplate` as a value, with template-derived stop sequences.** A `ChatTemplate` value type wraps either a built-in `PromptTemplate` or a raw embedded-Jinja string and exposes the stop sequences derived from the template itself, so a turn stops on the model's own end-of-turn markers instead of relying on caller-supplied `stopSequences`. It threads into the `LLM` constructor as the optional formatting override ([#1944](https://github.com/roryford/ManifoldKit/issues/1944), [#1999](https://github.com/roryford/ManifoldKit/issues/1999)).
 
 ```swift
 let llm = try await LLM(from: .recommendedSmallModel(), template: ChatTemplate(builtIn: .chatML))
 ```
 
-**Local tool calling is parseable for templateless and forced-call paths.** Two fixes land together. Templateless GGUF models (Phi-3.5-mini, Mistral-7B-Instruct-v0.3) whose embedded chat template has no tool support now reach the model through a `ToolSystemPromptBuilder` preamble that spells out the exact `{"name": …, "arguments": {…}}` envelope — with named-argument enumeration and an explicit prohibition on Python-style positional calls — instead of the old vague nudge that produced unparseable `tool_call(calc, "7823 * 41")` output ([#2002](https://github.com/ManifoldKit/ManifoldKit/issues/2002), [#2006](https://github.com/ManifoldKit/ManifoldKit/issues/2006)). Separately, `ToolGrammarBuilder` gained a bare-object grammar mode (`.permissive` vs `.strict`) so `toolChoice == .auto` can emit prose *or* a tool call per request, without relaxing the forced-call guarantee that `.required` / `.tool(name:)` depend on ([#1992](https://github.com/ManifoldKit/ManifoldKit/issues/1992), [#1995](https://github.com/ManifoldKit/ManifoldKit/issues/1995)).
+**Local tool calling is parseable for templateless and forced-call paths.** Two fixes land together. Templateless GGUF models (Phi-3.5-mini, Mistral-7B-Instruct-v0.3) whose embedded chat template has no tool support now reach the model through a `ToolSystemPromptBuilder` preamble that spells out the exact `{"name": …, "arguments": {…}}` envelope — with named-argument enumeration and an explicit prohibition on Python-style positional calls — instead of the old vague nudge that produced unparseable `tool_call(calc, "7823 * 41")` output ([#2002](https://github.com/roryford/ManifoldKit/issues/2002), [#2006](https://github.com/roryford/ManifoldKit/issues/2006)). Separately, `ToolGrammarBuilder` gained a bare-object grammar mode (`.permissive` vs `.strict`) so `toolChoice == .auto` can emit prose *or* a tool call per request, without relaxing the forced-call guarantee that `.required` / `.tool(name:)` depend on ([#1992](https://github.com/roryford/ManifoldKit/issues/1992), [#1995](https://github.com/roryford/ManifoldKit/issues/1995)).
 
-**Classification metrics — confusion counts and macro-averaging.** `ConfusionCounts` and `MacroAveragedMetrics` add a small, dependency-free metrics surface to `ManifoldInference` for scoring tool-selection and retrieval as classification — per-class precision/recall/F1 and the macro-average across classes, the groundwork for the eval harness ([#1993](https://github.com/ManifoldKit/ManifoldKit/issues/1993), [#1996](https://github.com/ManifoldKit/ManifoldKit/issues/1996)).
+**Classification metrics — confusion counts and macro-averaging.** `ConfusionCounts` and `MacroAveragedMetrics` add a small, dependency-free metrics surface to `ManifoldInference` for scoring tool-selection and retrieval as classification — per-class precision/recall/F1 and the macro-average across classes, the groundwork for the eval harness ([#1993](https://github.com/roryford/ManifoldKit/issues/1993), [#1996](https://github.com/roryford/ManifoldKit/issues/1996)).
 
 ```swift
 let perClass = labels.map { ConfusionCounts.compute(actual: predicted[$0]!, expected: gold[$0]!) }
 let macro = MacroAveragedMetrics(perClass: perClass)   // macro precision / recall / F1
 ```
 
-## [0.57.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.56.0...v0.57.0) (2026-06-21)
+## [0.57.0](https://github.com/roryford/ManifoldKit/compare/v0.56.0...v0.57.0) (2026-06-21)
 
 ### Highlights
 
-**Hybrid retrieval — BM25 + dense with Reciprocal Rank Fusion.** RAG retrieval can now fuse a sparse BM25 pass with the existing dense embedding search via Reciprocal Rank Fusion, recovering exact-token matches (codes, identifiers, rare terms) that pure-vector search misses. Opt in per bootstrap; the RRF/BM25 tuning constants ship as the published defaults but stay provisional until the eval harness ([#1937](https://github.com/ManifoldKit/ManifoldKit/issues/1937)) can defend them on recall@k / MRR ([#1919](https://github.com/ManifoldKit/ManifoldKit/issues/1919)).
+**Hybrid retrieval — BM25 + dense with Reciprocal Rank Fusion.** RAG retrieval can now fuse a sparse BM25 pass with the existing dense embedding search via Reciprocal Rank Fusion, recovering exact-token matches (codes, identifiers, rare terms) that pure-vector search misses. Opt in per bootstrap; the RRF/BM25 tuning constants ship as the published defaults but stay provisional until the eval harness ([#1937](https://github.com/roryford/ManifoldKit/issues/1937)) can defend them on recall@k / MRR ([#1919](https://github.com/roryford/ManifoldKit/issues/1919)).
 
 ```swift
 var rag = RAGConfiguration(embeddingBackend: embedder)
 rag.hybridRetrieval = true   // fuse BM25 + dense via RRF
 ```
 
-**Resilient inference — fallback chains and isolated per-model executors.** `withFallbacks([...])` wraps an ordered list of backends into one that advances to the next on failure, so a local-first chain can degrade to cloud transparently. Underneath, each model now runs in its own isolated executor with hot-swap, wedge recovery, and eviction, so one model wedging no longer stalls the others ([#1935](https://github.com/ManifoldKit/ManifoldKit/issues/1935), [#1936](https://github.com/ManifoldKit/ManifoldKit/issues/1936)).
+**Resilient inference — fallback chains and isolated per-model executors.** `withFallbacks([...])` wraps an ordered list of backends into one that advances to the next on failure, so a local-first chain can degrade to cloud transparently. Underneath, each model now runs in its own isolated executor with hot-swap, wedge recovery, and eviction, so one model wedging no longer stalls the others ([#1935](https://github.com/roryford/ManifoldKit/issues/1935), [#1936](https://github.com/roryford/ManifoldKit/issues/1936)).
 
 ```swift
 let backend = withFallbacks([localBackend, cloudBackend])   // try local, fall back to cloud
 ```
 
-**First-party cloud reranker.** `CloudReranker` adds a hosted cross-encoder rerank stage (Cohere / Jina presets) over the existing `Reranker` seam — retrieve a wide candidate set, rerank to the top few, with the same graceful degrade to first-stage order if the service is unavailable ([#1920](https://github.com/ManifoldKit/ManifoldKit/issues/1920)).
+**First-party cloud reranker.** `CloudReranker` adds a hosted cross-encoder rerank stage (Cohere / Jina presets) over the existing `Reranker` seam — retrieve a wide candidate set, rerank to the top few, with the same graceful degrade to first-stage order if the service is unavailable ([#1920](https://github.com/roryford/ManifoldKit/issues/1920)).
 
 ```swift
 let reranker = CloudReranker.cohere(apiKey: key)
 let rag = RAGConfiguration(embeddingBackend: embedder, reranker: reranker)
 ```
 
-**Agentic controls — sticky tool approval and run-aware memory residency.** A `ToolApprovalPolicy` (`.alwaysAsk` / `.alwaysApprove` / `.approveForRun`) sits over the existing pre-tool-use hook, so a host can approve a tool once and have it stick for the rest of a run, with the model-emitted arguments surfaced for preview ([#1923](https://github.com/ManifoldKit/ManifoldKit/issues/1923)). Separately, `KeepAlivePolicy` can preemptively evict an idle model on a `.warning` memory-pressure event (not just `.critical`) and bridges its idle timeout into Ollama's server-side `keep_alive` so the two residency horizons agree ([#1931](https://github.com/ManifoldKit/ManifoldKit/issues/1931)).
+**Agentic controls — sticky tool approval and run-aware memory residency.** A `ToolApprovalPolicy` (`.alwaysAsk` / `.alwaysApprove` / `.approveForRun`) sits over the existing pre-tool-use hook, so a host can approve a tool once and have it stick for the rest of a run, with the model-emitted arguments surfaced for preview ([#1923](https://github.com/roryford/ManifoldKit/issues/1923)). Separately, `KeepAlivePolicy` can preemptively evict an idle model on a `.warning` memory-pressure event (not just `.critical`) and bridges its idle timeout into Ollama's server-side `keep_alive` so the two residency horizons agree ([#1931](https://github.com/roryford/ManifoldKit/issues/1931)).
 
 ```swift
 let approval = ToolApprovalPolicy.approveForRun(toolNames: ["read_file"])
 let keepAlive = KeepAlivePolicy(idleTimeout: 5 * 60, evictOnMemoryWarning: true)
 ```
 
-**Multimodal and local-tool prompt fidelity.** Image and RAG-document message parts are now threaded through the Jinja chat-template path instead of being flattened to text, so vision and grounded-document turns render with full structure on local backends ([#1967](https://github.com/ManifoldKit/ManifoldKit/issues/1967)). Mistral's `[TOOL_CALLS]` dialect is handled with EOS-keyed close and multi-call bodies ([#1984](https://github.com/ManifoldKit/ManifoldKit/issues/1984)), and the scenario harness now drives the production renderer so local tool calling is actually exercised ([#1985](https://github.com/ManifoldKit/ManifoldKit/issues/1985)).
+**Multimodal and local-tool prompt fidelity.** Image and RAG-document message parts are now threaded through the Jinja chat-template path instead of being flattened to text, so vision and grounded-document turns render with full structure on local backends ([#1967](https://github.com/roryford/ManifoldKit/issues/1967)). Mistral's `[TOOL_CALLS]` dialect is handled with EOS-keyed close and multi-call bodies ([#1984](https://github.com/roryford/ManifoldKit/issues/1984)), and the scenario harness now drives the production renderer so local tool calling is actually exercised ([#1985](https://github.com/roryford/ManifoldKit/issues/1985)).
 
-**A two-line front door.** A one-shot `respond(_:)` convenience collects a streamed turn to a single `String`, beside the existing `quickStart()` flow (the `LLM(from:template:)` constructor is still to come — [#1942](https://github.com/ManifoldKit/ManifoldKit/issues/1942) is partial). The chat UI also gained inline superscript `[n]` citation markers that deep-link to their source ([#1921](https://github.com/ManifoldKit/ManifoldKit/issues/1921)).
+**A two-line front door.** A one-shot `respond(_:)` convenience collects a streamed turn to a single `String`, beside the existing `quickStart()` flow (the `LLM(from:template:)` constructor is still to come — [#1942](https://github.com/roryford/ManifoldKit/issues/1942) is partial). The chat UI also gained inline superscript `[n]` citation markers that deep-link to their source ([#1921](https://github.com/roryford/ManifoldKit/issues/1921)).
 
 ```swift
 let chat = try await ManifoldKit.quickStart(backends: [...])
@@ -205,24 +205,24 @@ let answer = try await chat.respond("Summarize the document in one line.")
 
 ### Features
 
-* Foundation backend exposes an OS-agnostic availability reason ([#1962](https://github.com/ManifoldKit/ManifoldKit/issues/1962))
-* Public conservative KV-cache fallback constant in ManifoldHardware ([#1963](https://github.com/ManifoldKit/ManifoldKit/issues/1963))
+* Foundation backend exposes an OS-agnostic availability reason ([#1962](https://github.com/roryford/ManifoldKit/issues/1962))
+* Public conservative KV-cache fallback constant in ManifoldHardware ([#1963](https://github.com/roryford/ManifoldKit/issues/1963))
 
 ### Fixes
 
-* Turn-loop concurrency races — atomic `isGenerating` transition + a late-cancel tombstone so a cancel racing unregister can no longer be silently dropped ([#1986](https://github.com/ManifoldKit/ManifoldKit/issues/1986))
-* ScenarioRunner routes through `InferenceService` so the prompt renderer injects tools + the chat template, fixing zero tool calls for all local backends in the harness ([#1985](https://github.com/ManifoldKit/ManifoldKit/issues/1985))
-* Guard empty `BUILD_PATH_FLAG` expansion in the Bash 3.2 cold-start gate ([#1980](https://github.com/ManifoldKit/ManifoldKit/issues/1980))
+* Turn-loop concurrency races — atomic `isGenerating` transition + a late-cancel tombstone so a cancel racing unregister can no longer be silently dropped ([#1986](https://github.com/roryford/ManifoldKit/issues/1986))
+* ScenarioRunner routes through `InferenceService` so the prompt renderer injects tools + the chat template, fixing zero tool calls for all local backends in the harness ([#1985](https://github.com/roryford/ManifoldKit/issues/1985))
+* Guard empty `BUILD_PATH_FLAG` expansion in the Bash 3.2 cold-start gate ([#1980](https://github.com/roryford/ManifoldKit/issues/1980))
 
 ### Documentation
 
-* Competitive-research docs batch — RAG tuning, Foundation-migration, positioning, and MCP coverage ([#1940](https://github.com/ManifoldKit/ManifoldKit/issues/1940))
+* Competitive-research docs batch — RAG tuning, Foundation-migration, positioning, and MCP coverage ([#1940](https://github.com/roryford/ManifoldKit/issues/1940))
 
-## [0.56.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.55.0...v0.56.0) (2026-06-20)
+## [0.56.0](https://github.com/roryford/ManifoldKit/compare/v0.55.0...v0.56.0) (2026-06-20)
 
 ### Highlights
 
-**Typed structured output, end to end.** Derive a JSON schema from a Swift type and get a decoded instance back: `respond(_:to:)` returns a validated `StructuredOutput<T>`, `streamObject(_:to:)` streams `PartialSnapshot<T>` values as the object fills in, and a bounded validation-reask loop retries automatically when the model emits malformed or schema-invalid JSON ([#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915), [#1917](https://github.com/ManifoldKit/ManifoldKit/issues/1917), [#1916](https://github.com/ManifoldKit/ManifoldKit/issues/1916)). Cloud backends emit native strict schemas (OpenAI `response_format`, Anthropic) so the constraint is enforced server-side where supported ([#1918](https://github.com/ManifoldKit/ManifoldKit/issues/1918)).
+**Typed structured output, end to end.** Derive a JSON schema from a Swift type and get a decoded instance back: `respond(_:to:)` returns a validated `StructuredOutput<T>`, `streamObject(_:to:)` streams `PartialSnapshot<T>` values as the object fills in, and a bounded validation-reask loop retries automatically when the model emits malformed or schema-invalid JSON ([#1915](https://github.com/roryford/ManifoldKit/issues/1915), [#1917](https://github.com/roryford/ManifoldKit/issues/1917), [#1916](https://github.com/roryford/ManifoldKit/issues/1916)). Cloud backends emit native strict schemas (OpenAI `response_format`, Anthropic) so the constraint is enforced server-side where supported ([#1918](https://github.com/roryford/ManifoldKit/issues/1918)).
 
 ```swift
 struct Recipe: Decodable, Sendable, SchemaProviding { /* @ToolSchema or a hand-written jsonSchema */ }
@@ -235,7 +235,7 @@ for try await snapshot in service.streamObject(Recipe.self, to: "A quick pasta r
 }
 ```
 
-**Operational controls: stop sequences, run budgets, and GenAI tracing.** `GenerationConfig.stopSequences` ends a turn on custom strings — honored by OpenAI Chat Completions, Anthropic, and Ollama (OpenAI Responses is excluded because the endpoint rejects the field) ([#1969](https://github.com/ManifoldKit/ManifoldKit/issues/1969)). `GenerationConfig.maxRunTokens` caps total tokens across a multi-step tool-dispatch run, alongside the existing iteration limit ([#1949](https://github.com/ManifoldKit/ManifoldKit/issues/1949)). And a vendor-neutral `TraceSink`/`GenSpan` surface exports GenAI spans over the existing `InferenceMetricSink` ([#1954](https://github.com/ManifoldKit/ManifoldKit/issues/1954)).
+**Operational controls: stop sequences, run budgets, and GenAI tracing.** `GenerationConfig.stopSequences` ends a turn on custom strings — honored by OpenAI Chat Completions, Anthropic, and Ollama (OpenAI Responses is excluded because the endpoint rejects the field) ([#1969](https://github.com/roryford/ManifoldKit/issues/1969)). `GenerationConfig.maxRunTokens` caps total tokens across a multi-step tool-dispatch run, alongside the existing iteration limit ([#1949](https://github.com/roryford/ManifoldKit/issues/1949)). And a vendor-neutral `TraceSink`/`GenSpan` surface exports GenAI spans over the existing `InferenceMetricSink` ([#1954](https://github.com/roryford/ManifoldKit/issues/1954)).
 
 ```swift
 var config = GenerationConfig()
@@ -243,31 +243,31 @@ config.stopSequences = ["\n\nUser:", "<|end|>"]
 config.maxRunTokens = 8_000
 ```
 
-**Correct local prompts.** Tool-call grammar injection now honors `toolChoice`: `.auto` admits prose *or* a tool call (fixing local models that previously stopped at zero completion tokens under a forced-call grammar), `.required`/`.tool(name:)` stay strictly constrained, and `.none` injects no grammar ([#1961](https://github.com/ManifoldKit/ManifoldKit/issues/1961)). Embedded GGUF chat templates render with the same `trim_blocks`/`lstrip_blocks` whitespace semantics as `transformers`, with byte-match golden tests locking the output and a fail-loud warning when a fallback would silently drop tool or image parts ([#1966](https://github.com/ManifoldKit/ManifoldKit/issues/1966)).
+**Correct local prompts.** Tool-call grammar injection now honors `toolChoice`: `.auto` admits prose *or* a tool call (fixing local models that previously stopped at zero completion tokens under a forced-call grammar), `.required`/`.tool(name:)` stay strictly constrained, and `.none` injects no grammar ([#1961](https://github.com/roryford/ManifoldKit/issues/1961)). Embedded GGUF chat templates render with the same `trim_blocks`/`lstrip_blocks` whitespace semantics as `transformers`, with byte-match golden tests locking the output and a fail-loud warning when a fallback would silently drop tool or image parts ([#1966](https://github.com/roryford/ManifoldKit/issues/1966)).
 
-**RAG retrieval controls.** Tune the similarity threshold and top-K from the retrieval UI ([#1947](https://github.com/ManifoldKit/ManifoldKit/issues/1947)), or enable full-context mode to inject whole short documents and only chunk when they exceed the budget ([#1955](https://github.com/ManifoldKit/ManifoldKit/issues/1955)).
+**RAG retrieval controls.** Tune the similarity threshold and top-K from the retrieval UI ([#1947](https://github.com/roryford/ManifoldKit/issues/1947)), or enable full-context mode to inject whole short documents and only chunk when they exceed the budget ([#1955](https://github.com/roryford/ManifoldKit/issues/1955)).
 
 ### Features
 
-* MCP transport emits `Mcp-Method`/`Mcp-Name` routing headers ahead of the spec change ([#1952](https://github.com/ManifoldKit/ManifoldKit/issues/1952))
-* Quality-aware TTS voice selection with a voice picker ([#1941](https://github.com/ManifoldKit/ManifoldKit/issues/1941))
-* SKILL.md L3 lazy progressive disclosure ([#1953](https://github.com/ManifoldKit/ManifoldKit/issues/1953))
-* Device-fit verdict badge + recommended quant in the model browser ([#1951](https://github.com/ManifoldKit/ManifoldKit/issues/1951))
+* MCP transport emits `Mcp-Method`/`Mcp-Name` routing headers ahead of the spec change ([#1952](https://github.com/roryford/ManifoldKit/issues/1952))
+* Quality-aware TTS voice selection with a voice picker ([#1941](https://github.com/roryford/ManifoldKit/issues/1941))
+* SKILL.md L3 lazy progressive disclosure ([#1953](https://github.com/roryford/ManifoldKit/issues/1953))
+* Device-fit verdict badge + recommended quant in the model browser ([#1951](https://github.com/roryford/ManifoldKit/issues/1951))
 
 ### Fixes
 
-* Harden the turn loop — multimodal trim budget, tool-dispatch budget + event symmetry, and v1.0 tripwire tests ([#1959](https://github.com/ManifoldKit/ManifoldKit/issues/1959))
-* MCP client tool-result rendering preserves `resource_link`/embedded/image/audio content ([#1946](https://github.com/ManifoldKit/ManifoldKit/issues/1946))
+* Harden the turn loop — multimodal trim budget, tool-dispatch budget + event symmetry, and v1.0 tripwire tests ([#1959](https://github.com/roryford/ManifoldKit/issues/1959))
+* MCP client tool-result rendering preserves `resource_link`/embedded/image/audio content ([#1946](https://github.com/roryford/ManifoldKit/issues/1946))
 
 ### Tests
 
-* First-party RAG retrieval-metrics eval harness (recall@k / MRR / hit-rate) ([#1948](https://github.com/ManifoldKit/ManifoldKit/issues/1948))
+* First-party RAG retrieval-metrics eval harness (recall@k / MRR / hit-rate) ([#1948](https://github.com/roryford/ManifoldKit/issues/1948))
 
-## [0.55.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.54.0...v0.55.0) (2026-06-20)
+## [0.55.0](https://github.com/roryford/ManifoldKit/compare/v0.54.0...v0.55.0) (2026-06-20)
 
 ### Highlights
 
-**In-core text-to-speech.** `AudioGenerationRuntime` ships as a reference TTS backend that drives any `AudioGenerationBackend` from a live token stream — subscribe to its `events` property to receive `AudioRuntimeEvent` ticks as audio is synthesised and completed ([#1904](https://github.com/ManifoldKit/ManifoldKit/issues/1904), [#1908](https://github.com/ManifoldKit/ManifoldKit/issues/1908)). `ChatViewModel` wires this automatically when you pass an `audioGenerationService` to `ManifoldBootstrap`, and the message list renders a playback control per assistant turn ([#1911](https://github.com/ManifoldKit/ManifoldKit/issues/1911)).
+**In-core text-to-speech.** `AudioGenerationRuntime` ships as a reference TTS backend that drives any `AudioGenerationBackend` from a live token stream — subscribe to its `events` property to receive `AudioRuntimeEvent` ticks as audio is synthesised and completed ([#1904](https://github.com/roryford/ManifoldKit/issues/1904), [#1908](https://github.com/roryford/ManifoldKit/issues/1908)). `ChatViewModel` wires this automatically when you pass an `audioGenerationService` to `ManifoldBootstrap`, and the message list renders a playback control per assistant turn ([#1911](https://github.com/roryford/ManifoldKit/issues/1911)).
 
 ```swift
 let bootstrap = try ManifoldBootstrap(
@@ -279,43 +279,43 @@ for await event in bootstrap.audioRuntime!.events {
 }
 ```
 
-**Local tool calling through the Jinja render path.** The Jinja prompt renderer now injects tool definitions and tool-call/result turns into the formatted prompt, so backends that use `rendersFullPrompt = true` get correct tool round-trips without falling back to the legacy hand-rolled path ([#1909](https://github.com/ManifoldKit/ManifoldKit/issues/1909), [#1912](https://github.com/ManifoldKit/ManifoldKit/issues/1912)). No caller changes required — tool calls that previously produced empty completions on Jinja-template models now work.
+**Local tool calling through the Jinja render path.** The Jinja prompt renderer now injects tool definitions and tool-call/result turns into the formatted prompt, so backends that use `rendersFullPrompt = true` get correct tool round-trips without falling back to the legacy hand-rolled path ([#1909](https://github.com/roryford/ManifoldKit/issues/1909), [#1912](https://github.com/roryford/ManifoldKit/issues/1912)). No caller changes required — tool calls that previously produced empty completions on Jinja-template models now work.
 
-**`BackendCapabilities.rendersFullPrompt`.** A new boolean capability flag that backends set to `true` when they render the complete formatted prompt server-side (rather than relying on ManifoldKit's client-side template). Cloud backends default to `false`; custom backends that do their own prompt assembly should advertise `true` so consumers can label captured prompts accurately ([#1905](https://github.com/ManifoldKit/ManifoldKit/issues/1905), [#1907](https://github.com/ManifoldKit/ManifoldKit/issues/1907)).
+**`BackendCapabilities.rendersFullPrompt`.** A new boolean capability flag that backends set to `true` when they render the complete formatted prompt server-side (rather than relying on ManifoldKit's client-side template). Cloud backends default to `false`; custom backends that do their own prompt assembly should advertise `true` so consumers can label captured prompts accurately ([#1905](https://github.com/roryford/ManifoldKit/issues/1905), [#1907](https://github.com/roryford/ManifoldKit/issues/1907)).
 
 ### Fixes
 
-* Auto-load persisted backends on `quickStart` relaunch — a persisted Ollama endpoint now resumes generating without a manual `loadSelectedEndpoint()` call ([#1914](https://github.com/ManifoldKit/ManifoldKit/issues/1914)).
+* Auto-load persisted backends on `quickStart` relaunch — a persisted Ollama endpoint now resumes generating without a manual `loadSelectedEndpoint()` call ([#1914](https://github.com/roryford/ManifoldKit/issues/1914)).
 
 ### Documentation
 
-* Added CLI interactive REPL quickstart (§3b) with stdin loop, stdout/stderr routing guidance, and `OLLAMA_MODEL` env override ([#1913](https://github.com/ManifoldKit/ManifoldKit/issues/1913)).
-* Documented `GenerationConfig` throw-vs-silent rule and Codable-lossy decoding behaviour ([#1906](https://github.com/ManifoldKit/ManifoldKit/issues/1906)).
+* Added CLI interactive REPL quickstart (§3b) with stdin loop, stdout/stderr routing guidance, and `OLLAMA_MODEL` env override ([#1913](https://github.com/roryford/ManifoldKit/issues/1913)).
+* Documented `GenerationConfig` throw-vs-silent rule and Codable-lossy decoding behaviour ([#1906](https://github.com/roryford/ManifoldKit/issues/1906)).
 
-## [0.54.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.53.0...v0.54.0) (2026-06-18)
+## [0.54.0](https://github.com/roryford/ManifoldKit/compare/v0.53.0...v0.54.0) (2026-06-18)
 
 ### Highlights
 
-**Real GGUF Jinja chat templates.** Local GGUF models now render their embedded Jinja chat template via swift-jinja instead of a hand-rolled approximation, so prompts match each model family's exact turn formatting ([#1898](https://github.com/ManifoldKit/ManifoldKit/issues/1898), closes [#1811](https://github.com/ManifoldKit/ManifoldKit/issues/1811)). The Gemma 4 control-token leak detector was extended to cover the new render path ([#1897](https://github.com/ManifoldKit/ManifoldKit/issues/1897)).
+**Real GGUF Jinja chat templates.** Local GGUF models now render their embedded Jinja chat template via swift-jinja instead of a hand-rolled approximation, so prompts match each model family's exact turn formatting ([#1898](https://github.com/roryford/ManifoldKit/issues/1898), closes [#1811](https://github.com/roryford/ManifoldKit/issues/1811)). The Gemma 4 control-token leak detector was extended to cover the new render path ([#1897](https://github.com/roryford/ManifoldKit/issues/1897)).
 
-**Server-side HTTP/SSE transport for the MCP host.** `MCPHostServer` can now expose its sessions, messages, and tools to remote MCP clients (such as Claude Desktop's streamable-HTTP configuration) over a socket, not just a stdio subprocess. A client opens a long-lived SSE `GET` stream and `POST`s JSON-RPC requests to the same endpoint ([#1899](https://github.com/ManifoldKit/ManifoldKit/issues/1899)).
+**Server-side HTTP/SSE transport for the MCP host.** `MCPHostServer` can now expose its sessions, messages, and tools to remote MCP clients (such as Claude Desktop's streamable-HTTP configuration) over a socket, not just a stdio subprocess. A client opens a long-lived SSE `GET` stream and `POST`s JSON-RPC requests to the same endpoint ([#1899](https://github.com/roryford/ManifoldKit/issues/1899)).
 
 ```swift
 let transport = try MCPHostHTTPTransport(port: 8765)
 try await host.start(transport: transport)
 ```
 
-**Pre-1.0 Contract API hardening.** Continued tightening of the Contract surface ahead of the 1.0 freeze ([#1902](https://github.com/ManifoldKit/ManifoldKit/issues/1902)). `GenerationStream`'s idle timeout now throws a backend-neutral `InferenceError.idleTimeout(_:)` instead of the cloud-only `CloudBackendError.timeout` (deprecated in place); the duplicate `BackendCapabilities.streamsToolCallArgumentDeltas` alias is deprecated in favour of `streamsToolCallArguments`; and `EmbeddingBackend`'s thread-safety expectations, `dimensions` precondition, and `embed(_:)` postcondition are now documented. All changes are deprecate-in-place — no removals.
+**Pre-1.0 Contract API hardening.** Continued tightening of the Contract surface ahead of the 1.0 freeze ([#1902](https://github.com/roryford/ManifoldKit/issues/1902)). `GenerationStream`'s idle timeout now throws a backend-neutral `InferenceError.idleTimeout(_:)` instead of the cloud-only `CloudBackendError.timeout` (deprecated in place); the duplicate `BackendCapabilities.streamsToolCallArgumentDeltas` alias is deprecated in favour of `streamsToolCallArguments`; and `EmbeddingBackend`'s thread-safety expectations, `dimensions` precondition, and `embed(_:)` postcondition are now documented. All changes are deprecate-in-place — no removals.
 
 ### Documentation
 
-* Corrected the CoreAI trait-stub note — `.aimodel` is reachable via the apple/coreai-models package ([#1896](https://github.com/ManifoldKit/ManifoldKit/issues/1896)).
+* Corrected the CoreAI trait-stub note — `.aimodel` is reachable via the apple/coreai-models package ([#1896](https://github.com/roryford/ManifoldKit/issues/1896)).
 
-## [0.53.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.52.0...v0.53.0) (2026-06-16)
+## [0.53.0](https://github.com/roryford/ManifoldKit/compare/v0.52.0...v0.53.0) (2026-06-16)
 
 ### Highlights
 
-**Ollama vision capability detection.** `OllamaBackend` now probes the model manifest at load time and advertises `supportsVision` in `BackendCapabilities` when the loaded model exposes a vision encoder ([#1892](https://github.com/ManifoldKit/ManifoldKit/issues/1892)). UI layers can reliably gate image-attach controls on `capabilities.supportsVision` without hard-coding model-name patterns — no caller change required.
+**Ollama vision capability detection.** `OllamaBackend` now probes the model manifest at load time and advertises `supportsVision` in `BackendCapabilities` when the loaded model exposes a vision encoder ([#1892](https://github.com/roryford/ManifoldKit/issues/1892)). UI layers can reliably gate image-attach controls on `capabilities.supportsVision` without hard-coding model-name patterns — no caller change required.
 
 ```swift
 let caps = await backend.capabilities()
@@ -326,24 +326,24 @@ if caps.supportsVision {
 
 ### Documentation
 
-* Resolved WWDC 2026 `LanguageModelExecutor` / `CoreAI` trait-stub descriptions ([#1895](https://github.com/ManifoldKit/ManifoldKit/issues/1895)).
+* Resolved WWDC 2026 `LanguageModelExecutor` / `CoreAI` trait-stub descriptions ([#1895](https://github.com/roryford/ManifoldKit/issues/1895)).
 
 ### Tests
 
-* Added repeatable local real-model integration and perf sweep ([#1888](https://github.com/ManifoldKit/ManifoldKit/issues/1888)).
-* Capability-based tool-call discovery for Ollama E2E with aligned setup docs ([#1890](https://github.com/ManifoldKit/ManifoldKit/issues/1890)).
-* Live streaming cancellation E2E with deterministic post-conditions ([#1891](https://github.com/ManifoldKit/ManifoldKit/issues/1891)).
-* Made `KeepAlivePolicyTests` robust against CI scheduling starvation ([#1894](https://github.com/ManifoldKit/ManifoldKit/issues/1894)).
+* Added repeatable local real-model integration and perf sweep ([#1888](https://github.com/roryford/ManifoldKit/issues/1888)).
+* Capability-based tool-call discovery for Ollama E2E with aligned setup docs ([#1890](https://github.com/roryford/ManifoldKit/issues/1890)).
+* Live streaming cancellation E2E with deterministic post-conditions ([#1891](https://github.com/roryford/ManifoldKit/issues/1891)).
+* Made `KeepAlivePolicyTests` robust against CI scheduling starvation ([#1894](https://github.com/roryford/ManifoldKit/issues/1894)).
 
 ### Continuous Integration
 
-* Added on-demand companion compat check against an arbitrary core ref ([#1889](https://github.com/ManifoldKit/ManifoldKit/issues/1889)).
+* Added on-demand companion compat check against an arbitrary core ref ([#1889](https://github.com/roryford/ManifoldKit/issues/1889)).
 
-## [0.52.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.51.0...v0.52.0) (2026-06-15)
+## [0.52.0](https://github.com/roryford/ManifoldKit/compare/v0.51.0...v0.52.0) (2026-06-15)
 
 ### Highlights
 
-**See the exact prompt your backend rendered.** A new opt-in `GenerationConfig.captureRenderedPrompt` makes the orchestration layer emit a `.promptRendered(text:)` `GenerationEvent` immediately before the first token — the formatted template string for local backends (GGUF/MLX), or the most-recent user message for cloud backends ([#1879](https://github.com/ManifoldKit/ManifoldKit/issues/1879)). It is off by default to avoid retaining sensitive prompt content, and is advisory metadata only — no chat-message state is mutated.
+**See the exact prompt your backend rendered.** A new opt-in `GenerationConfig.captureRenderedPrompt` makes the orchestration layer emit a `.promptRendered(text:)` `GenerationEvent` immediately before the first token — the formatted template string for local backends (GGUF/MLX), or the most-recent user message for cloud backends ([#1879](https://github.com/roryford/ManifoldKit/issues/1879)). It is off by default to avoid retaining sensitive prompt content, and is advisory metadata only — no chat-message state is mutated.
 
 ```swift
 var config = GenerationConfig()
@@ -356,7 +356,7 @@ for await event in backend.generate(prompt: prompt, systemPrompt: system, config
 }
 ```
 
-**Batteries-included context compression.** `DefaultCompressionPolicy` ships three ready-made policies so hosts no longer hand-roll trimming: `.truncating` (drop oldest), `.extractive` (zero-inference scored selection with optional head-pinning to fight "lost in the middle"), and `.anchored` (inference-backed summary of old turns prepended to a verbatim recent tail) ([#1885](https://github.com/ManifoldKit/ManifoldKit/issues/1885)). Pass a tokenizer for a guaranteed budget, or omit it for an advisory chars/4 heuristic.
+**Batteries-included context compression.** `DefaultCompressionPolicy` ships three ready-made policies so hosts no longer hand-roll trimming: `.truncating` (drop oldest), `.extractive` (zero-inference scored selection with optional head-pinning to fight "lost in the middle"), and `.anchored` (inference-backed summary of old turns prepended to a verbatim recent tail) ([#1885](https://github.com/roryford/ManifoldKit/issues/1885)). Pass a tokenizer for a guaranteed budget, or omit it for an advisory chars/4 heuristic.
 
 ```swift
 // Zero-inference scored compression, pinning the oldest 15% of the budget.
@@ -367,35 +367,35 @@ let policy = DefaultCompressionPolicy.extractive(
 )
 ```
 
-**Model-lifecycle & inference observability.** A `KeepAlivePolicy` now idle-auto-unloads resident models (`UnloadReason.idleTimeout`) ([5ca06aa](https://github.com/ManifoldKit/ManifoldKit/commit/5ca06aa08b7df62885b52b37584b29eb29e5d486)); a `ResidentModelStatus` snapshot exposes what's loaded plus `queuedRequestCount` for backpressure-aware UIs ([#1880](https://github.com/ManifoldKit/ManifoldKit/issues/1880)); and `InferenceMetric` moves into `ManifoldInference` with `FoundationBackend` now reporting metrics through it ([072c5dc](https://github.com/ManifoldKit/ManifoldKit/commit/072c5dc21d689489563edf4f29794d2432850de4)).
+**Model-lifecycle & inference observability.** A `KeepAlivePolicy` now idle-auto-unloads resident models (`UnloadReason.idleTimeout`) ([5ca06aa](https://github.com/roryford/ManifoldKit/commit/5ca06aa08b7df62885b52b37584b29eb29e5d486)); a `ResidentModelStatus` snapshot exposes what's loaded plus `queuedRequestCount` for backpressure-aware UIs ([#1880](https://github.com/roryford/ManifoldKit/issues/1880)); and `InferenceMetric` moves into `ManifoldInference` with `FoundationBackend` now reporting metrics through it ([072c5dc](https://github.com/roryford/ManifoldKit/commit/072c5dc21d689489563edf4f29794d2432850de4)).
 
-**Headless model selection.** `ModelSelection` is now a headless, UI-free selection surface, and a public `ModelPicker` sample is built directly on it ([#1873](https://github.com/ManifoldKit/ManifoldKit/issues/1873), [#1877](https://github.com/ManifoldKit/ManifoldKit/issues/1877)). This collapses the long-standing [#1312](https://github.com/ManifoldKit/ManifoldKit/issues/1312) dual-write — selecting a model now clears the mutually-exclusive endpoint synchronously, so consumers can drop the binding-mirroring workaround (see breaking changes).
+**Headless model selection.** `ModelSelection` is now a headless, UI-free selection surface, and a public `ModelPicker` sample is built directly on it ([#1873](https://github.com/roryford/ManifoldKit/issues/1873), [#1877](https://github.com/roryford/ManifoldKit/issues/1877)). This collapses the long-standing [#1312](https://github.com/roryford/ManifoldKit/issues/1312) dual-write — selecting a model now clears the mutually-exclusive endpoint synchronously, so consumers can drop the binding-mirroring workaround (see breaking changes).
 
 ### ⚠ Breaking changes (pre-1.0)
 
-**Synchronous selection dual-write collapse** ([#1873](https://github.com/ManifoldKit/ManifoldKit/issues/1873)) — `ModelLoadCoordinator.dispatchLoad(_:)` gains a defaulted `drivesChatSeams:` parameter (source-compatible, allowlisted in the API-break gate). Consumers that hand-mirrored `ChatViewModel.selectedModel` into `ModelRegistry.selectedModel` to work around [#1312](https://github.com/ManifoldKit/ManifoldKit/issues/1312) can delete that mirroring — selection clears the mutually-exclusive endpoint synchronously now.
+**Synchronous selection dual-write collapse** ([#1873](https://github.com/roryford/ManifoldKit/issues/1873)) — `ModelLoadCoordinator.dispatchLoad(_:)` gains a defaulted `drivesChatSeams:` parameter (source-compatible, allowlisted in the API-break gate). Consumers that hand-mirrored `ChatViewModel.selectedModel` into `ModelRegistry.selectedModel` to work around [#1312](https://github.com/roryford/ManifoldKit/issues/1312) can delete that mirroring — selection clears the mutually-exclusive endpoint synchronously now.
 
 ### Features
 
-**Auto-injected tool system prompt** ([#1874](https://github.com/ManifoldKit/ManifoldKit/issues/1874)) — templates that don't render tools natively now get a `ToolSystemPromptBuilder` injected automatically, so tool calling works on local non-Gemma models without the host hand-rendering tool definitions into the system prompt (closes [#1856](https://github.com/ManifoldKit/ManifoldKit/issues/1856)).
+**Auto-injected tool system prompt** ([#1874](https://github.com/roryford/ManifoldKit/issues/1874)) — templates that don't render tools natively now get a `ToolSystemPromptBuilder` injected automatically, so tool calling works on local non-Gemma models without the host hand-rendering tool definitions into the system prompt (closes [#1856](https://github.com/roryford/ManifoldKit/issues/1856)).
 
-**EmbeddingBackend capabilities + config contract** ([#1887](https://github.com/ManifoldKit/ManifoldKit/issues/1887)) — `EmbeddingBackend` gains capability advertisement, and the `GenerationConfig` hint-vs-guarantee rule is now documented on the type (closes [#1834](https://github.com/ManifoldKit/ManifoldKit/issues/1834)).
+**EmbeddingBackend capabilities + config contract** ([#1887](https://github.com/roryford/ManifoldKit/issues/1887)) — `EmbeddingBackend` gains capability advertisement, and the `GenerationConfig` hint-vs-guarantee rule is now documented on the type (closes [#1834](https://github.com/roryford/ManifoldKit/issues/1834)).
 
-**Public `ModelPicker` sample + UI gap closers** ([#1877](https://github.com/ManifoldKit/ManifoldKit/issues/1877)) — a ready-to-adopt picker over `ModelSelection`, plus `attachImage` / `togglePin` parity fixes (closes [#1298](https://github.com/ManifoldKit/ManifoldKit/issues/1298), [#1300](https://github.com/ManifoldKit/ManifoldKit/issues/1300)).
+**Public `ModelPicker` sample + UI gap closers** ([#1877](https://github.com/roryford/ManifoldKit/issues/1877)) — a ready-to-adopt picker over `ModelSelection`, plus `attachImage` / `togglePin` parity fixes (closes [#1298](https://github.com/roryford/ManifoldKit/issues/1298), [#1300](https://github.com/roryford/ManifoldKit/issues/1300)).
 
 ### Documentation
 
-Recorded the June 2026 CI-cost reductions in the CLAUDE.md hygiene section ([#1872](https://github.com/ManifoldKit/ManifoldKit/issues/1872)).
+Recorded the June 2026 CI-cost reductions in the CLAUDE.md hygiene section ([#1872](https://github.com/roryford/ManifoldKit/issues/1872)).
 
 ### Continuous Integration
 
-Batched README-snippet compiles into one package and collapsed redundant push-to-main runs within a merge burst ([#1870](https://github.com/ManifoldKit/ManifoldKit/issues/1870), [#1871](https://github.com/ManifoldKit/ManifoldKit/issues/1871)), and removed the glassbox-live-e2e job from the nightly workflow ([#1878](https://github.com/ManifoldKit/ManifoldKit/issues/1878)).
+Batched README-snippet compiles into one package and collapsed redundant push-to-main runs within a merge burst ([#1870](https://github.com/roryford/ManifoldKit/issues/1870), [#1871](https://github.com/roryford/ManifoldKit/issues/1871)), and removed the glassbox-live-e2e job from the nightly workflow ([#1878](https://github.com/roryford/ManifoldKit/issues/1878)).
 
-## [0.51.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.50.0...v0.51.0) (2026-06-14)
+## [0.51.0](https://github.com/roryford/ManifoldKit/compare/v0.50.0...v0.51.0) (2026-06-14)
 
 ### Highlights
 
-**Grammar-constrained tool calling.** Grammar-capable local backends now derive a GBNF grammar from `config.tools` automatically, forcing well-formed tool-call output instead of hoping the model emits valid JSON ([#1863](https://github.com/ManifoldKit/ManifoldKit/issues/1863)). Each tool's `arguments` are constrained to its own parameter schema — typed fields, string enums, arrays, required/optional keys — with schema shapes the lowerer can't express degrading gracefully to generic JSON rather than dropping the tool ([#1865](https://github.com/ManifoldKit/ManifoldKit/issues/1865)). No caller change is required: when a backend advertises `supportsGrammarConstrainedSampling` and you pass tools without an explicit grammar, the constraint is applied for you.
+**Grammar-constrained tool calling.** Grammar-capable local backends now derive a GBNF grammar from `config.tools` automatically, forcing well-formed tool-call output instead of hoping the model emits valid JSON ([#1863](https://github.com/roryford/ManifoldKit/issues/1863)). Each tool's `arguments` are constrained to its own parameter schema — typed fields, string enums, arrays, required/optional keys — with schema shapes the lowerer can't express degrading gracefully to generic JSON rather than dropping the tool ([#1865](https://github.com/roryford/ManifoldKit/issues/1865)). No caller change is required: when a backend advertises `supportsGrammarConstrainedSampling` and you pass tools without an explicit grammar, the constraint is applied for you.
 
 ```swift
 // Tools you already pass are now grammar-constrained on capable local backends.
@@ -404,87 +404,87 @@ let grammar = ToolGrammarBuilder().buildGrammar(for: [getWeatherTool])
 // → output is forced to {"name":"get_weather","arguments":{…}} matching the tool's schema
 ```
 
-**Smarter model selection.** `ModelInfo` gains first-class capability flags — code, multilingual, reasoning — with a curation override so the catalog can correct auto-detection ([#1864](https://github.com/ManifoldKit/ManifoldKit/issues/1864)). A `ModelInfo` fit-score bridge plus a service-vended shared load coordinator let model-management surfaces rank and load the right model per device without each call site re-deriving the decision ([#1866](https://github.com/ManifoldKit/ManifoldKit/issues/1866)).
+**Smarter model selection.** `ModelInfo` gains first-class capability flags — code, multilingual, reasoning — with a curation override so the catalog can correct auto-detection ([#1864](https://github.com/roryford/ManifoldKit/issues/1864)). A `ModelInfo` fit-score bridge plus a service-vended shared load coordinator let model-management surfaces rank and load the right model per device without each call site re-deriving the decision ([#1866](https://github.com/roryford/ManifoldKit/issues/1866)).
 
 ### ⚠ Breaking changes (pre-1.0)
 
-**Backend shim modules retired** ([#1837](https://github.com/ManifoldKit/ManifoldKit/issues/1837)) — `import ManifoldBackends` and `import ManifoldCloud` no longer compile. Import the family modules (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) or the `ManifoldKit` umbrella, and replace `DefaultBackends.register(...)` with an explicit registrar list. See `docs/MIGRATION-shims-retired.md`.
+**Backend shim modules retired** ([#1837](https://github.com/roryford/ManifoldKit/issues/1837)) — `import ManifoldBackends` and `import ManifoldCloud` no longer compile. Import the family modules (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) or the `ManifoldKit` umbrella, and replace `DefaultBackends.register(...)` with an explicit registrar list. See `docs/MIGRATION-shims-retired.md`.
 
-**Media-generation collapse** ([#1839](https://github.com/ManifoldKit/ManifoldKit/issues/1839)) — `MessagePart.generatedImage(_:)` and `.generatedVideo(_:)` are removed in favor of `MessagePart.generatedMedia(GeneratedMediaPayload)`, backed by a generic MediaGeneration seam. Persisted data is unaffected — legacy JSON decodes into `.generatedMedia`.
+**Media-generation collapse** ([#1839](https://github.com/roryford/ManifoldKit/issues/1839)) — `MessagePart.generatedImage(_:)` and `.generatedVideo(_:)` are removed in favor of `MessagePart.generatedMedia(GeneratedMediaPayload)`, backed by a generic MediaGeneration seam. Persisted data is unaffected — legacy JSON decodes into `.generatedMedia`.
 
-**Contract wire-type freeze** ([#1836](https://github.com/ManifoldKit/ManifoldKit/issues/1836)) — new `JSONSchemaValue.integer(Int64)` and `ToolResult.ErrorKind.unknown` cases are source-breaking for exhaustive switches; downstream switches must add `.integer` / `.unknown` arms. Whole-number JSON now decodes to `.integer` rather than `.number`.
+**Contract wire-type freeze** ([#1836](https://github.com/roryford/ManifoldKit/issues/1836)) — new `JSONSchemaValue.integer(Int64)` and `ToolResult.ErrorKind.unknown` cases are source-breaking for exhaustive switches; downstream switches must add `.integer` / `.unknown` arms. Whole-number JSON now decodes to `.integer` rather than `.number`.
 
-**Persistence type renames** ([#1827](https://github.com/ManifoldKit/ManifoldKit/issues/1827)) — `ManifoldPersistenceSwiftData.ChatSession` / `.ChatMessage` are renamed `PersistedChatSession` / `PersistedChatMessage`. Deprecated aliases remain for one window, so this is a soft break — migrate to the `Persisted*` names.
+**Persistence type renames** ([#1827](https://github.com/roryford/ManifoldKit/issues/1827)) — `ManifoldPersistenceSwiftData.ChatSession` / `.ChatMessage` are renamed `PersistedChatSession` / `PersistedChatMessage`. Deprecated aliases remain for one window, so this is a soft break — migrate to the `Persisted*` names.
 
-**Streaming readback accessibility** ([#1838](https://github.com/ManifoldKit/ManifoldKit/issues/1838)) — a completion event, sentence coalescer, and voice queue + announcer reshape the streaming-readback surface; see the PR for the adopted event flow.
+**Streaming readback accessibility** ([#1838](https://github.com/roryford/ManifoldKit/issues/1838)) — a completion event, sentence coalescer, and voice queue + announcer reshape the streaming-readback surface; see the PR for the adopted event flow.
 
 ### Features
 
-**ThinkingTransform newline trim + reusable secondary cloud-backend builder** ([#1850](https://github.com/ManifoldKit/ManifoldKit/issues/1850)) — trims reasoning-block boundary newlines and exposes a reusable builder for a secondary cloud backend.
+**ThinkingTransform newline trim + reusable secondary cloud-backend builder** ([#1850](https://github.com/roryford/ManifoldKit/issues/1850)) — trims reasoning-block boundary newlines and exposes a reusable builder for a secondary cloud backend.
 
-**Voice spoken-range progress** ([#1844](https://github.com/ManifoldKit/ManifoldKit/issues/1844)) — a spoken-range progress callback plus Reduce Motion gating in the voice/UI surface.
+**Voice spoken-range progress** ([#1844](https://github.com/roryford/ManifoldKit/issues/1844)) — a spoken-range progress callback plus Reduce Motion gating in the voice/UI surface.
 
 ### Fixes
 
-**Family-targeted model discovery** ([#1862](https://github.com/ManifoldKit/ManifoldKit/issues/1862)) — `findGGUFModel` / `findMLXModelDirectory` now skip when a `nameContains` fragment matches nothing, instead of silently returning the wrong (smallest) model — making per-family tests trustworthy.
+**Family-targeted model discovery** ([#1862](https://github.com/roryford/ManifoldKit/issues/1862)) — `findGGUFModel` / `findMLXModelDirectory` now skip when a `nameContains` fragment matches nothing, instead of silently returning the wrong (smallest) model — making per-family tests trustworthy.
 
-Also: repaired retired-module references across docs, examples, audits, and workflows, with manifest snippets now validated in CI ([#1840](https://github.com/ManifoldKit/ManifoldKit/issues/1840), [#1847](https://github.com/ManifoldKit/ManifoldKit/issues/1847)).
+Also: repaired retired-module references across docs, examples, audits, and workflows, with manifest snippets now validated in CI ([#1840](https://github.com/roryford/ManifoldKit/issues/1840), [#1847](https://github.com/roryford/ManifoldKit/issues/1847)).
 
 ### Documentation
 
-**Local tool-calling recipe** ([#1860](https://github.com/ManifoldKit/ManifoldKit/issues/1860)) — a single end-to-end host guide for tool-calling on local non-Gemma models: manual tool-definition rendering into the system prompt, the exact `<tool_call>{…}</tool_call>` envelope the parsers expect, the optional GBNF-constraint upgrade, and the silent-drop failure modes.
+**Local tool-calling recipe** ([#1860](https://github.com/roryford/ManifoldKit/issues/1860)) — a single end-to-end host guide for tool-calling on local non-Gemma models: manual tool-definition rendering into the system prompt, the exact `<tool_call>{…}</tool_call>` envelope the parsers expect, the optional GBNF-constraint upgrade, and the silent-drop failure modes.
 
-Also: DX walkthrough iterations ([#1851](https://github.com/ManifoldKit/ManifoldKit/issues/1851), [#1855](https://github.com/ManifoldKit/ManifoldKit/issues/1855)), MLX CLI quickstart ([#1852](https://github.com/ManifoldKit/ManifoldKit/issues/1852)), QuickStartResult shape + arg-order fix ([#1861](https://github.com/ManifoldKit/ManifoldKit/issues/1861)), and de-staling retired-module prose ([#1849](https://github.com/ManifoldKit/ManifoldKit/issues/1849)).
+Also: DX walkthrough iterations ([#1851](https://github.com/roryford/ManifoldKit/issues/1851), [#1855](https://github.com/roryford/ManifoldKit/issues/1855)), MLX CLI quickstart ([#1852](https://github.com/roryford/ManifoldKit/issues/1852)), QuickStartResult shape + arg-order fix ([#1861](https://github.com/roryford/ManifoldKit/issues/1861)), and de-staling retired-module prose ([#1849](https://github.com/roryford/ManifoldKit/issues/1849)).
 
-## [0.50.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.49.1...v0.50.0) (2026-06-13)
+## [0.50.0](https://github.com/roryford/ManifoldKit/compare/v0.49.1...v0.50.0) (2026-06-13)
 
 ### Highlights
 
-**Zero-config RAG.** ManifoldKit now bundles an on-device `NLEmbedding` default embedder ([#1822](https://github.com/ManifoldKit/ManifoldKit/issues/1822)), so retrieval-augmented chat works with no model download and no setup. The Glass Box research-session demo is wired end-to-end against the real retrieval stack ([#1814](https://github.com/ManifoldKit/ManifoldKit/issues/1814)) — context assembly, citation provenance, and pre-turn compression across a real context window.
+**Zero-config RAG.** ManifoldKit now bundles an on-device `NLEmbedding` default embedder ([#1822](https://github.com/roryford/ManifoldKit/issues/1822)), so retrieval-augmented chat works with no model download and no setup. The Glass Box research-session demo is wired end-to-end against the real retrieval stack ([#1814](https://github.com/roryford/ManifoldKit/issues/1814)) — context assembly, citation provenance, and pre-turn compression across a real context window.
 
 ```swift
 // RAG just works — NLEmbedding is the default embedder, no extra config.
 let kit = try await ManifoldKit.quickStart(backends: [LlamaBackends.self])
 ```
 
-**The right model on first launch** ([#1805](https://github.com/ManifoldKit/ManifoldKit/issues/1805)) — `quickStart()` now seeds a device-appropriate model instead of a hardcoded 0.6B. A 64 GB Mac and a base iPhone get different picks, scored on real hardware via `ModelFitScorer`, and the bundled model-management UI surfaces the recommendation.
+**The right model on first launch** ([#1805](https://github.com/roryford/ManifoldKit/issues/1805)) — `quickStart()` now seeds a device-appropriate model instead of a hardcoded 0.6B. A 64 GB Mac and a base iPhone get different picks, scored on real hardware via `ModelFitScorer`, and the bundled model-management UI surfaces the recommendation.
 
-**Watch images form** ([#1815](https://github.com/ManifoldKit/ManifoldKit/issues/1815)) — a new `ImageGenerationEvent.preview(step:total:image:)` case plus opt-in `ImageGenerationConfig.previewStride` give apps a live denoising-preview channel. The emit side ships next in `manifold-mlx`.
+**Watch images form** ([#1815](https://github.com/roryford/ManifoldKit/issues/1815)) — a new `ImageGenerationEvent.preview(step:total:image:)` case plus opt-in `ImageGenerationConfig.previewStride` give apps a live denoising-preview channel. The emit side ships next in `manifold-mlx`.
 
-**Structured history for Apple Foundation Models** ([#1803](https://github.com/ManifoldKit/ManifoldKit/issues/1803)) — `FoundationBackend` adopts `StructuredHistoryReceiver`, reading unflattened message parts like the other backends — the groundwork for multimodal.
+**Structured history for Apple Foundation Models** ([#1803](https://github.com/roryford/ManifoldKit/issues/1803)) — `FoundationBackend` adopts `StructuredHistoryReceiver`, reading unflattened message parts like the other backends — the groundwork for multimodal.
 
 ### Features
 
-**Fuzz-harness completeness** ([#1808](https://github.com/ManifoldKit/ManifoldKit/issues/1808)) — the memory-growth-budget and context-exhaustion-guard detectors are now wired and active.
+**Fuzz-harness completeness** ([#1808](https://github.com/roryford/ManifoldKit/issues/1808)) — the memory-growth-budget and context-exhaustion-guard detectors are now wired and active.
 
-**Ollama `.loading` phase** ([#1819](https://github.com/ManifoldKit/ManifoldKit/issues/1819)) — the pre-first-token model-load stall surfaces as `GenerationStream` `.loading` instead of misreporting `.streaming`. Opt-in per backend; cloud backends are unchanged.
+**Ollama `.loading` phase** ([#1819](https://github.com/roryford/ManifoldKit/issues/1819)) — the pre-first-token model-load stall surfaces as `GenerationStream` `.loading` instead of misreporting `.streaming`. Opt-in per backend; cloud backends are unchanged.
 
 ### Fixes & Performance
 
-**RepetitionDetector** ([#1802](https://github.com/ManifoldKit/ManifoldKit/issues/1802)) — the per-token loop scan is now O(n) in accumulated output instead of O(n²).
+**RepetitionDetector** ([#1802](https://github.com/roryford/ManifoldKit/issues/1802)) — the per-token loop scan is now O(n) in accumulated output instead of O(n²).
 
-**Phase-sampler test determinism** ([#1820](https://github.com/ManifoldKit/ManifoldKit/issues/1820)) — the flaky `.loading` phase-sampler race is replaced with a deterministic await.
+**Phase-sampler test determinism** ([#1820](https://github.com/roryford/ManifoldKit/issues/1820)) — the flaky `.loading` phase-sampler race is replaced with a deterministic await.
 
 ### Documentation & CI
 
-**DocC** — fixed unresolved symbol links across the contract kernel and chat UI ([#1816](https://github.com/ManifoldKit/ManifoldKit/issues/1816)); redesigned the layer-cake hero and corrected stale pre-companion-split references ([#1818](https://github.com/ManifoldKit/ManifoldKit/issues/1818)).
+**DocC** — fixed unresolved symbol links across the contract kernel and chat UI ([#1816](https://github.com/roryford/ManifoldKit/issues/1816)); redesigned the layer-cake hero and corrected stale pre-companion-split references ([#1818](https://github.com/roryford/ManifoldKit/issues/1818)).
 
-**Nightly live-backend Glass Box gate** ([#1817](https://github.com/ManifoldKit/ManifoldKit/issues/1817)) — the registered scenarios run against a real backend nightly, asserting the structural event subsequence.
+**Nightly live-backend Glass Box gate** ([#1817](https://github.com/roryford/ManifoldKit/issues/1817)) — the registered scenarios run against a real backend nightly, asserting the structural event subsequence.
 
-Also: ManifoldVoice surface scoping note ([#1810](https://github.com/ManifoldKit/ManifoldKit/issues/1810)), a GGUF Jinja chat-template spike ([#1821](https://github.com/ManifoldKit/ManifoldKit/issues/1821)), recon-findings capture ([#1809](https://github.com/ManifoldKit/ManifoldKit/issues/1809)), and traffic-audit triage ([#1807](https://github.com/ManifoldKit/ManifoldKit/issues/1807)).
+Also: ManifoldVoice surface scoping note ([#1810](https://github.com/roryford/ManifoldKit/issues/1810)), a GGUF Jinja chat-template spike ([#1821](https://github.com/roryford/ManifoldKit/issues/1821)), recon-findings capture ([#1809](https://github.com/roryford/ManifoldKit/issues/1809)), and traffic-audit triage ([#1807](https://github.com/roryford/ManifoldKit/issues/1807)).
 
-## [0.49.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.49.0...v0.49.1) (2026-06-13)
+## [0.49.1](https://github.com/roryford/ManifoldKit/compare/v0.49.0...v0.49.1) (2026-06-13)
 
 
 ### Bug Fixes
 
-* **model-manager:** show Download tab for runtime-registered backends ([#1801](https://github.com/ManifoldKit/ManifoldKit/issues/1801)) ([de3c03e](https://github.com/ManifoldKit/ManifoldKit/commit/de3c03ee22b382d10f3fefde230fd0526da841a7))
+* **model-manager:** show Download tab for runtime-registered backends ([#1801](https://github.com/roryford/ManifoldKit/issues/1801)) ([de3c03e](https://github.com/roryford/ManifoldKit/commit/de3c03ee22b382d10f3fefde230fd0526da841a7))
 
-## [0.49.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.48.2...v0.49.0) (2026-06-13)
+## [0.49.0](https://github.com/roryford/ManifoldKit/compare/v0.48.2...v0.49.0) (2026-06-13)
 
 ### Highlights
 
-**Route individual turns to a secondary backend without unloading the primary** ([#1799](https://github.com/ManifoldKit/ManifoldKit/issues/1799)) — `InferenceService` gains a `deepBackend` property and a `GenerationRoute` enum. Setting `route: .deep` on any `enqueue` call dispatches that turn through the host-owned secondary backend while the primary model stays loaded; the existing cancel/stop path targets the correct backend automatically. Existing callers are unaffected — `route` defaults to `.primary` and the byte-identical code path is preserved.
+**Route individual turns to a secondary backend without unloading the primary** ([#1799](https://github.com/roryford/ManifoldKit/issues/1799)) — `InferenceService` gains a `deepBackend` property and a `GenerationRoute` enum. Setting `route: .deep` on any `enqueue` call dispatches that turn through the host-owned secondary backend while the primary model stays loaded; the existing cancel/stop path targets the correct backend automatically. Existing callers are unaffected — `route` defaults to `.primary` and the byte-identical code path is preserved.
 
 ```swift
 inferenceService.deepBackend = myCloudBackend
@@ -497,46 +497,46 @@ let stream = try await inferenceService.enqueue(
 )
 ```
 
-**Resumable runs are now persisted end-to-end** ([#1795](https://github.com/ManifoldKit/ManifoldKit/issues/1795)) — `ConversationRun` is a full SwiftData `@Model` type. Runs are written through `RunStore`, survive app restart, and can be rehydrated via `resume(from:)` on `ConversationRuntime`. The `ResumableRunDriver` wires reconnect logic — partial output already delivered to the UI is not re-streamed.
+**Resumable runs are now persisted end-to-end** ([#1795](https://github.com/roryford/ManifoldKit/issues/1795)) — `ConversationRun` is a full SwiftData `@Model` type. Runs are written through `RunStore`, survive app restart, and can be rehydrated via `resume(from:)` on `ConversationRuntime`. The `ResumableRunDriver` wires reconnect logic — partial output already delivered to the UI is not re-streamed.
 
-**Selection-time model profiles for Apple Foundation Models** ([#1783](https://github.com/ManifoldKit/ManifoldKit/issues/1783)) — `ModelProfile` is computed at selection time from `DeviceCapability` and the new MoE-aware recommender inputs, giving the Apple FM tier (Tier 0) an accurate capability signal before the model loads. This feeds `hasDeepBackend` detection and will drive auto-routing once Fireside P1 lands.
+**Selection-time model profiles for Apple Foundation Models** ([#1783](https://github.com/roryford/ManifoldKit/issues/1783)) — `ModelProfile` is computed at selection time from `DeviceCapability` and the new MoE-aware recommender inputs, giving the Apple FM tier (Tier 0) an accurate capability signal before the model loads. This feeds `hasDeepBackend` detection and will drive auto-routing once Fireside P1 lands.
 
 ### Performance
 
-* **Streaming render is O(n) again** ([#1788](https://github.com/ManifoldKit/ManifoldKit/issues/1788)) — the UI streaming path was rebuilding the full message array on every token event; it now appends to an existing buffer.
-* **Session fetch by ID instead of full table scan** ([#1789](https://github.com/ManifoldKit/ManifoldKit/issues/1789)) — `ConversationRuntime` was scanning the entire sessions table to locate the active session on every turn; it now fetches by primary key.
-* **Cloud stream frames parsed once** ([#1800](https://github.com/ManifoldKit/ManifoldKit/issues/1800)) — each SSE frame was decoded 8–12 times through the provider chain; a single parse result is now threaded through.
-* **Model management no longer scans disk on every open** ([#1798](https://github.com/ManifoldKit/ManifoldKit/issues/1798)) — `ModelManagementSheet` dropped its per-appear `invalidateModelCache()` call; the GGUF syscall storm on sheet open is gone.
+* **Streaming render is O(n) again** ([#1788](https://github.com/roryford/ManifoldKit/issues/1788)) — the UI streaming path was rebuilding the full message array on every token event; it now appends to an existing buffer.
+* **Session fetch by ID instead of full table scan** ([#1789](https://github.com/roryford/ManifoldKit/issues/1789)) — `ConversationRuntime` was scanning the entire sessions table to locate the active session on every turn; it now fetches by primary key.
+* **Cloud stream frames parsed once** ([#1800](https://github.com/roryford/ManifoldKit/issues/1800)) — each SSE frame was decoded 8–12 times through the provider chain; a single parse result is now threaded through.
+* **Model management no longer scans disk on every open** ([#1798](https://github.com/roryford/ManifoldKit/issues/1798)) — `ModelManagementSheet` dropped its per-appear `invalidateModelCache()` call; the GGUF syscall storm on sheet open is gone.
 
 ### Fixes
 
-* Branch flow uses a transactional copy with rollback to prevent partial-branch corruption on error ([#1792](https://github.com/ManifoldKit/ManifoldKit/issues/1792)).
-* HuggingFace download delegate and path handling hardened against missing-file and redirect edge cases ([#1793](https://github.com/ManifoldKit/ManifoldKit/issues/1793)).
-* Model-load memory budgeting now accounts for MoE sparse activation, preventing over-allocation on large mixture models ([#1794](https://github.com/ManifoldKit/ManifoldKit/issues/1794)).
-* `CloudImageEncoding.encodeHook` access made race-free under concurrent generation ([#1791](https://github.com/ManifoldKit/ManifoldKit/issues/1791)).
-* MCP OAuth and SwiftData encoding errors now surface their underlying message instead of being swallowed ([#1790](https://github.com/ManifoldKit/ManifoldKit/issues/1790)).
+* Branch flow uses a transactional copy with rollback to prevent partial-branch corruption on error ([#1792](https://github.com/roryford/ManifoldKit/issues/1792)).
+* HuggingFace download delegate and path handling hardened against missing-file and redirect edge cases ([#1793](https://github.com/roryford/ManifoldKit/issues/1793)).
+* Model-load memory budgeting now accounts for MoE sparse activation, preventing over-allocation on large mixture models ([#1794](https://github.com/roryford/ManifoldKit/issues/1794)).
+* `CloudImageEncoding.encodeHook` access made race-free under concurrent generation ([#1791](https://github.com/roryford/ManifoldKit/issues/1791)).
+* MCP OAuth and SwiftData encoding errors now surface their underlying message instead of being swallowed ([#1790](https://github.com/roryford/ManifoldKit/issues/1790)).
 
-## [0.48.2](https://github.com/ManifoldKit/ManifoldKit/compare/v0.48.1...v0.48.2) (2026-06-13)
+## [0.48.2](https://github.com/roryford/ManifoldKit/compare/v0.48.1...v0.48.2) (2026-06-13)
 
 ### Highlights
 
-**The Model Management sheet opens instantly again** ([#1775](https://github.com/ManifoldKit/ManifoldKit/issues/1775)) — Opening the model browser re-scanned the on-disk GGUF catalog synchronously on the main thread *every* time the sheet appeared, stalling the UI for ~2 seconds behind a spinner. The blanket per-open rescan is gone: `ModelManagementSheet.onAppear` no longer calls `invalidateModelCache()`, and the discovery cache is instead invalidated only on the events that actually change it — download completion, delete, and import. Reopening the sheet is now immediate, with regression coverage asserting the cache survives a re-appear when nothing changed. No API change.
+**The Model Management sheet opens instantly again** ([#1775](https://github.com/roryford/ManifoldKit/issues/1775)) — Opening the model browser re-scanned the on-disk GGUF catalog synchronously on the main thread *every* time the sheet appeared, stalling the UI for ~2 seconds behind a spinner. The blanket per-open rescan is gone: `ModelManagementSheet.onAppear` no longer calls `invalidateModelCache()`, and the discovery cache is instead invalidated only on the events that actually change it — download completion, delete, and import. Reopening the sheet is now immediate, with regression coverage asserting the cache survives a re-appear when nothing changed. No API change.
 
 ### Documentation
 
-* **Architecture plan reflects shipped v0.48 reality** ([#1776](https://github.com/ManifoldKit/ManifoldKit/issues/1776)) — `docs/plans/target-architecture.md` gains an Implementation Status table mapping each migration phase (P0–P7) to its verified state in `Sources/`, and the superseded P2c de-tangle brief is archived.
+* **Architecture plan reflects shipped v0.48 reality** ([#1776](https://github.com/roryford/ManifoldKit/issues/1776)) — `docs/plans/target-architecture.md` gains an Implementation Status table mapping each migration phase (P0–P7) to its verified state in `Sources/`, and the superseded P2c de-tangle brief is archived.
 
-## [0.48.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.48.0...v0.48.1) (2026-06-13)
+## [0.48.1](https://github.com/roryford/ManifoldKit/compare/v0.48.0...v0.48.1) (2026-06-13)
 
 ### Highlights
 
-**Streaming-completion wait no longer busy-polls** ([#1772](https://github.com/ManifoldKit/ManifoldKit/issues/1772)) — `ChatGenerationCoordinator.awaitStreamCompletion()` previously spun a 1 ms `Task.sleep` loop on every turn while waiting for the active stream handle to clear. It now suspends on a continuation that resumes the instant the handle is cleared — eliminating the per-turn polling and closing a latent hang where a caller parked across stream teardown would never wake.
+**Streaming-completion wait no longer busy-polls** ([#1772](https://github.com/roryford/ManifoldKit/issues/1772)) — `ChatGenerationCoordinator.awaitStreamCompletion()` previously spun a 1 ms `Task.sleep` loop on every turn while waiting for the active stream handle to clear. It now suspends on a continuation that resumes the instant the handle is cleared — eliminating the per-turn polling and closing a latent hang where a caller parked across stream teardown would never wake.
 
 ### Fixes
 
-* Run the `TrafficBoundaryAuditTest` source-boundary audit on every PR instead of nightly-only, so network- and import-boundary violations are caught before merge rather than days later ([#1706](https://github.com/ManifoldKit/ManifoldKit/issues/1706), [#1772](https://github.com/ManifoldKit/ManifoldKit/issues/1772)).
+* Run the `TrafficBoundaryAuditTest` source-boundary audit on every PR instead of nightly-only, so network- and import-boundary violations are caught before merge rather than days later ([#1706](https://github.com/roryford/ManifoldKit/issues/1706), [#1772](https://github.com/roryford/ManifoldKit/issues/1772)).
 
-## [0.48.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.47.0...v0.48.0) (2026-06-12)
+## [0.48.0](https://github.com/roryford/ManifoldKit/compare/v0.47.0...v0.48.0) (2026-06-12)
 
 ManifoldKit's packaging is rebuilt. SwiftPM traits are retired in favor of library products, and the heavy MLX and llama.cpp backends move to companion packages — `swift build` just works, in every configuration, with no trait matrix. Full upgrade guide: [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md).
 
@@ -544,7 +544,7 @@ ManifoldKit's packaging is rebuilt. SwiftPM traits are retired in favor of libra
 
 ### Highlights
 
-**Traits are gone — products are the new build switch** ([#1764](https://github.com/ManifoldKit/ManifoldKit/issues/1764), [#1765](https://github.com/ManifoldKit/ManifoldKit/issues/1765), [#1768](https://github.com/ManifoldKit/ManifoldKit/issues/1768), [#1769](https://github.com/ManifoldKit/ManifoldKit/issues/1769)) — The `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, and `AnyLanguageModel` traits no longer exist; passing any of them in a `traits:` array is now a resolve error. Those modules either compile unconditionally (MCP, Voice, Tools, AppIntents, Skills) or became products you opt into by importing (`ManifoldOllama`, `ManifoldCloudSaaS`, `ManifoldAnyLanguageModel`). Only `Server` and `Macros` remain as build switches.
+**Traits are gone — products are the new build switch** ([#1764](https://github.com/roryford/ManifoldKit/issues/1764), [#1765](https://github.com/roryford/ManifoldKit/issues/1765), [#1768](https://github.com/roryford/ManifoldKit/issues/1768), [#1769](https://github.com/roryford/ManifoldKit/issues/1769)) — The `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, and `AnyLanguageModel` traits no longer exist; passing any of them in a `traits:` array is now a resolve error. Those modules either compile unconditionally (MCP, Voice, Tools, AppIntents, Skills) or became products you opt into by importing (`ManifoldOllama`, `ManifoldCloudSaaS`, `ManifoldAnyLanguageModel`). Only `Server` and `Macros` remain as build switches.
 
 ```swift
 // Before (v0.47)
@@ -556,12 +556,12 @@ ManifoldKit's packaging is rebuilt. SwiftPM traits are retired in favor of libra
 // target deps: "ManifoldKit", .product(name: "ManifoldOllama", package: "ManifoldKit")
 ```
 
-**MLX and llama.cpp move to companion packages** ([#1771](https://github.com/ManifoldKit/ManifoldKit/issues/1771), [#1749](https://github.com/ManifoldKit/ManifoldKit/issues/1749)) — `ManifoldMLX` (with the vendored FluxSwift/StableDiffusion diffusion backends) and `ManifoldLlama` now live at [`roryford/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) and [`roryford/manifold-llama`](https://github.com/ManifoldKit/manifold-llama), tagged 0.1.0 alongside this release. They plug back in through one registration call. The `ManifoldBackends` umbrella remains for one release as a deprecated Foundation+Cloud shim.
+**MLX and llama.cpp move to companion packages** ([#1771](https://github.com/roryford/ManifoldKit/issues/1771), [#1749](https://github.com/roryford/ManifoldKit/issues/1749)) — `ManifoldMLX` (with the vendored FluxSwift/StableDiffusion diffusion backends) and `ManifoldLlama` now live at [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) and [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama), tagged 0.1.0 alongside this release. They plug back in through one registration call. The `ManifoldBackends` umbrella remains for one release as a deprecated Foundation+Cloud shim.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit", from: "0.48.0"),
-.package(url: "https://github.com/ManifoldKit/manifold-llama", from: "0.1.0"),
+.package(url: "https://github.com/roryford/ManifoldKit", from: "0.48.0"),
+.package(url: "https://github.com/roryford/manifold-llama", from: "0.1.0"),
 
 // App entry point
 import ManifoldKit
@@ -570,27 +570,27 @@ import ManifoldLlama
 let kit = try await ManifoldKit.quickStart(backends: [LlamaBackends.self])
 ```
 
-**`quickStart(backends:)` and runtime capability checks** ([#1766](https://github.com/ManifoldKit/ManifoldKit/issues/1766)) — `quickStart` accepts companion registrars and folds them in before the availability guard, starter-model seed, and model selection run. Capability checks that used to reflect compile-time traits now reflect live registration: on-disk models with no registered backend are flagged instead of auto-selected, the starter seed gates on whether a registered backend can actually load it, and a configuration with no usable backend produces an actionable diagnostic naming the companion packages.
+**`quickStart(backends:)` and runtime capability checks** ([#1766](https://github.com/roryford/ManifoldKit/issues/1766)) — `quickStart` accepts companion registrars and folds them in before the availability guard, starter-model seed, and model selection run. Capability checks that used to reflect compile-time traits now reflect live registration: on-disk models with no registered backend are flagged instead of auto-selected, the starter seed gates on whether a registered backend can actually load it, and a configuration with no usable backend produces an actionable diagnostic naming the companion packages.
 
-**A frozen seam and a TestKit for backend authors** ([#1762](https://github.com/ManifoldKit/ManifoldKit/issues/1762), [#1767](https://github.com/ManifoldKit/ManifoldKit/issues/1767)) — `ManifoldBackendTestKit` and `ManifoldTestSupport` are now products: third-party backends run the same `BackendContractChecks` conformance suite the built-in families do. The cross-package seam (registration surface, Contract kernel, and the `@_spi(BackendInternals)` internals the families need) is pinned by a compile-time freeze fixture, and `scripts/split-proof.sh` proves the family sources build and pass their contracts out-of-package.
+**A frozen seam and a TestKit for backend authors** ([#1762](https://github.com/roryford/ManifoldKit/issues/1762), [#1767](https://github.com/roryford/ManifoldKit/issues/1767)) — `ManifoldBackendTestKit` and `ManifoldTestSupport` are now products: third-party backends run the same `BackendContractChecks` conformance suite the built-in families do. The cross-package seam (registration surface, Contract kernel, and the `@_spi(BackendInternals)` internals the families need) is pinned by a compile-time freeze fixture, and `scripts/split-proof.sh` proves the family sources build and pass their contracts out-of-package.
 
-**Why: SwiftPM traits can't do this job** — The investigation of [#1737](https://github.com/ManifoldKit/ManifoldKit/issues/1737) showed trait-conditional product edges are evaluated inconsistently between resolution and test-graph derivation upstream ([swift-package-manager#8350](https://github.com/swiftlang/swift-package-manager/issues/8350)), Xcode's trait support is broken through 26.x, and the per-combination build matrix could only ever be sampled. Products and companion packages eliminate the bug class structurally.
+**Why: SwiftPM traits can't do this job** — The investigation of [#1737](https://github.com/roryford/ManifoldKit/issues/1737) showed trait-conditional product edges are evaluated inconsistently between resolution and test-graph derivation upstream ([swift-package-manager#8350](https://github.com/swiftlang/swift-package-manager/issues/8350)), Xcode's trait support is broken through 26.x, and the per-combination build matrix could only ever be sampled. Products and companion packages eliminate the bug class structurally.
 
 ### Features
 
-**`ManifoldOllama` and `ManifoldCloudSaaS` products** ([#1761](https://github.com/ManifoldKit/ManifoldKit/issues/1761)) — the cloud families are now real products with explicit registrars; shared SSE/TLS plumbing stays in `ManifoldCloudCore`.
+**`ManifoldOllama` and `ManifoldCloudSaaS` products** ([#1761](https://github.com/roryford/ManifoldKit/issues/1761)) — the cloud families are now real products with explicit registrars; shared SSE/TLS plumbing stays in `ManifoldCloudCore`.
 
-**Faster prompt assembly** ([#1759](https://github.com/ManifoldKit/ManifoldKit/issues/1759)) — `PromptContextPipeline` queries its providers concurrently; wall time is now the slowest provider, not the sum.
+**Faster prompt assembly** ([#1759](https://github.com/roryford/ManifoldKit/issues/1759)) — `PromptContextPipeline` queries its providers concurrently; wall time is now the slowest provider, not the sum.
 
 ### Fixes
 
-**`Package.resolved` freshness for the unconditional AnyLanguageModel edge** ([#1770](https://github.com/ManifoldKit/ManifoldKit/issues/1770)) — lockfile updated alongside the trait retirement, plus README Hello World gate repairs.
+**`Package.resolved` freshness for the unconditional AnyLanguageModel edge** ([#1770](https://github.com/roryford/ManifoldKit/issues/1770)) — lockfile updated alongside the trait retirement, plus README Hello World gate repairs.
 
-## [0.47.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.46.0...v0.47.0) (2026-06-11)
+## [0.47.0](https://github.com/roryford/ManifoldKit/compare/v0.46.0...v0.47.0) (2026-06-11)
 
 ### Highlights
 
-**`BackendName` is now an extensible struct** ([#1742](https://github.com/ManifoldKit/ManifoldKit/issues/1742)) — `BackendName` was a closed `enum`; it is now a `struct` with a `String` raw value so third-party backends can register names without forking the library. `CaseIterable` is removed — use `BackendName.wellKnown` (or the `allCases` alias). `BackendName(rawValue:)` is now non-failable. Exhaustive `switch` statements must add a `default:` arm.
+**`BackendName` is now an extensible struct** ([#1742](https://github.com/roryford/ManifoldKit/issues/1742)) — `BackendName` was a closed `enum`; it is now a `struct` with a `String` raw value so third-party backends can register names without forking the library. `CaseIterable` is removed — use `BackendName.wellKnown` (or the `allCases` alias). `BackendName(rawValue:)` is now non-failable. Exhaustive `switch` statements must add a `default:` arm.
 
 ```swift
 // Before — exhaustive switch compiled; BackendName(rawValue:) returned Optional
@@ -610,9 +610,9 @@ default: …  // required for extensibility
 let name = BackendName(rawValue: "my-backend")  // BackendName, not BackendName?
 ```
 
-**TurnDriver seam and resumable ConversationRun** ([#1744](https://github.com/ManifoldKit/ManifoldKit/issues/1744)) — The turn loop is now driven through a `TurnDriver` protocol so the execution strategy can be swapped or tested independently of `ConversationRuntime`. Runs are represented as a `ConversationRun` value that carries enough state to be resumed after an interruption (background kill, context window swap).
+**TurnDriver seam and resumable ConversationRun** ([#1744](https://github.com/roryford/ManifoldKit/issues/1744)) — The turn loop is now driven through a `TurnDriver` protocol so the execution strategy can be swapped or tested independently of `ConversationRuntime`. Runs are represented as a `ConversationRun` value that carries enough state to be resumed after an interruption (background kill, context window swap).
 
-**Seed a starter model on first launch** ([#1735](https://github.com/ManifoldKit/ManifoldKit/issues/1735)) — `ManifoldBootstrap.quickStart()` now writes a default model entry into the model registry the first time it executes, so new app installs have a working model without any extra setup.
+**Seed a starter model on first launch** ([#1735](https://github.com/roryford/ManifoldKit/issues/1735)) — `ManifoldBootstrap.quickStart()` now writes a default model entry into the model registry the first time it executes, so new app installs have a working model without any extra setup.
 
 ```swift
 // One-call bootstrap now includes a starter model
@@ -622,27 +622,27 @@ let runtime = try await ManifoldBootstrap.quickStart()
 
 ### Features
 
-* **ManifoldHardware:** add structured content sidecar to `ToolResult` ([#1741](https://github.com/ManifoldKit/ManifoldKit/issues/1741))
-* **ManifoldServer:** `brew install manifold-server` support and command rename ([#1734](https://github.com/ManifoldKit/ManifoldKit/issues/1734))
-* Start pre-1.0 deprecation clocks for flagged back-compat aliases ([#1743](https://github.com/ManifoldKit/ManifoldKit/issues/1743))
+* **ManifoldHardware:** add structured content sidecar to `ToolResult` ([#1741](https://github.com/roryford/ManifoldKit/issues/1741))
+* **ManifoldServer:** `brew install manifold-server` support and command rename ([#1734](https://github.com/roryford/ManifoldKit/issues/1734))
+* Start pre-1.0 deprecation clocks for flagged back-compat aliases ([#1743](https://github.com/roryford/ManifoldKit/issues/1743))
 
 ### Fixes
 
-* **ManifoldVoice:** fix `@MainActor` isolation crash in `AppleSpeechTranscriber` on first Voice tap ([#1758](https://github.com/ManifoldKit/ManifoldKit/issues/1758))
-* Close connect-time DNS-rebinding TOCTOU in cloud transport ([#1756](https://github.com/ManifoldKit/ManifoldKit/issues/1756))
+* **ManifoldVoice:** fix `@MainActor` isolation crash in `AppleSpeechTranscriber` on first Voice tap ([#1758](https://github.com/roryford/ManifoldKit/issues/1758))
+* Close connect-time DNS-rebinding TOCTOU in cloud transport ([#1756](https://github.com/roryford/ManifoldKit/issues/1756))
 * Close DNS-rebinding TOCTOU in MCP HTTP/SSE transport
-* Security hardening bundle — action pins, file protection, output bounds ([#1750](https://github.com/ManifoldKit/ManifoldKit/issues/1750))
+* Security hardening bundle — action pins, file protection, output bounds ([#1750](https://github.com/roryford/ManifoldKit/issues/1750))
 * **ManifoldMLX:** load diffusion model from its correct directory
 * Extract slow-to-type-check SwiftUI bodies (478ms/292ms/272ms → <200ms)
 * Inline MLX tokenizer loader to drop `swift-syntax` from default builds
 
-## [0.46.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.45.0...v0.46.0) (2026-06-10)
+## [0.46.0](https://github.com/roryford/ManifoldKit/compare/v0.45.0...v0.46.0) (2026-06-10)
 
 Deprecated turn-input and cloud-backend APIs are removed, the turn loop is decomposed into per-turn seams behind a thin `ManifoldContract` leaf, and background generation lands a `BGContinuedProcessingTask` bridge for iOS.
 
 ### Highlights
 
-**Remove deprecated turn-input and cloud-backend API surface** ([#1717](https://github.com/ManifoldKit/ManifoldKit/issues/1717)) — The `SendInput`/`RegenerateInput`/`EditInput`/`BranchInput` structs and their `ConversationRuntime` overloads are removed; use `processTurn(TurnInput(...))`. `InferenceService`'s `currentCloudBackend`/`registerCloudBackendFactory`/`loadCloudBackend(from:)` and `CloudBackendFactory` are removed; use the `…EndpointBackend…` equivalents. `NoResponseError` is renamed `SendMessageError`.
+**Remove deprecated turn-input and cloud-backend API surface** ([#1717](https://github.com/roryford/ManifoldKit/issues/1717)) — The `SendInput`/`RegenerateInput`/`EditInput`/`BranchInput` structs and their `ConversationRuntime` overloads are removed; use `processTurn(TurnInput(...))`. `InferenceService`'s `currentCloudBackend`/`registerCloudBackendFactory`/`loadCloudBackend(from:)` and `CloudBackendFactory` are removed; use the `…EndpointBackend…` equivalents. `NoResponseError` is renamed `SendMessageError`.
 
 ```swift
 // Before (removed)
@@ -652,30 +652,30 @@ try await runtime.send(SendInput(text: "hello"))
 try await runtime.processTurn(TurnInput(text: "hello"))
 ```
 
-**`ManifoldContract` extracted as a thin leaf module** ([#1723](https://github.com/ManifoldKit/ManifoldKit/issues/1723)) — The core turn-loop contract (`TurnInput`, `TurnOutput`, `TurnDriver`) now lives in a dependency-free `ManifoldContract` target that sits below `ManifoldRuntime`. This lets local backends, MCP, and voice components depend on the contract without pulling in SwiftData or persistence ports.
+**`ManifoldContract` extracted as a thin leaf module** ([#1723](https://github.com/roryford/ManifoldKit/issues/1723)) — The core turn-loop contract (`TurnInput`, `TurnOutput`, `TurnDriver`) now lives in a dependency-free `ManifoldContract` target that sits below `ManifoldRuntime`. This lets local backends, MCP, and voice components depend on the contract without pulling in SwiftData or persistence ports.
 
-**Background generation bridge for iOS** ([#1715](https://github.com/ManifoldKit/ManifoldKit/issues/1715)) — `BGContinuedProcessingTask` is wired into `ConversationRuntime` so long-running inference requests can survive an app moving to the background on iOS 26. The bridge requests background processing time via `BGContinuedProcessingTask` when a turn starts and cancels it cleanly on completion or cancellation.
+**Background generation bridge for iOS** ([#1715](https://github.com/roryford/ManifoldKit/issues/1715)) — `BGContinuedProcessingTask` is wired into `ConversationRuntime` so long-running inference requests can survive an app moving to the background on iOS 26. The bridge requests background processing time via `BGContinuedProcessingTask` when a turn starts and cancels it cleanly on completion or cancellation.
 
 ### Features
 
-* **ManifoldHardware:** expose M5 Neural Accelerator availability probe ([#1714](https://github.com/ManifoldKit/ManifoldKit/issues/1714))
-* **ManifoldHardware:** registry-driven backend descriptor routing — `BackendDescriptorRegistry` replaces per-site `switch` statements on `ModelType`/`APIProvider` for display and routing metadata ([#1733](https://github.com/ManifoldKit/ManifoldKit/issues/1733))
+* **ManifoldHardware:** expose M5 Neural Accelerator availability probe ([#1714](https://github.com/roryford/ManifoldKit/issues/1714))
+* **ManifoldHardware:** registry-driven backend descriptor routing — `BackendDescriptorRegistry` replaces per-site `switch` statements on `ModelType`/`APIProvider` for display and routing metadata ([#1733](https://github.com/roryford/ManifoldKit/issues/1733))
 
 ### Fixes
 
-* Declare missing target dependencies, drop dead edges, capability-based cloud detection ([#1727](https://github.com/ManifoldKit/ManifoldKit/issues/1727))
+* Declare missing target dependencies, drop dead edges, capability-based cloud detection ([#1727](https://github.com/roryford/ManifoldKit/issues/1727))
 
-## [0.45.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.44.0...v0.45.0) (2026-06-07)
+## [0.45.0](https://github.com/roryford/ManifoldKit/compare/v0.44.0...v0.45.0) (2026-06-07)
 
 Glass Box observability wiring completes across the full turn loop and media timelines, the framework ships a unified DocC documentation site, and the fuzz harness gains cloud targeting and block-rotation for broader coverage.
 
 ### Highlights
 
-**Glass Box event wiring complete** ([#1672](https://github.com/ManifoldKit/ManifoldKit/issues/1672)) — All previously dangling emits across the turn loop, image generation, and video timeline are now wired into the Glass Box observability layer. Turn-loop scenarios, per-chunk image-gen progress checkpoints, and video-timeline markers are all instrumented and available to the inspector. XCUITest smoke coverage for the Glass Box inspector panel ships alongside. ([#1689](https://github.com/ManifoldKit/ManifoldKit/issues/1689))
+**Glass Box event wiring complete** ([#1672](https://github.com/roryford/ManifoldKit/issues/1672)) — All previously dangling emits across the turn loop, image generation, and video timeline are now wired into the Glass Box observability layer. Turn-loop scenarios, per-chunk image-gen progress checkpoints, and video-timeline markers are all instrumented and available to the inspector. XCUITest smoke coverage for the Glass Box inspector panel ships alongside. ([#1689](https://github.com/roryford/ManifoldKit/issues/1689))
 
-**Unified ManifoldKit DocC site** ([#1687](https://github.com/ManifoldKit/ManifoldKit/issues/1687)) — ManifoldKit now ships a unified DocC documentation site with an umbrella root, cross-catalog curation, and hosting on GitHub Pages. The full public API surface — inference, runtime, persistence, cloud, UI, and all specialty modules — is browsable from one root, with curated article groups that map the module graph into a reader-friendly hierarchy.
+**Unified ManifoldKit DocC site** ([#1687](https://github.com/roryford/ManifoldKit/issues/1687)) — ManifoldKit now ships a unified DocC documentation site with an umbrella root, cross-catalog curation, and hosting on GitHub Pages. The full public API surface — inference, runtime, persistence, cloud, UI, and all specialty modules — is browsable from one root, with curated article groups that map the module graph into a reader-friendly hierarchy.
 
-**Fuzz harness reaches cloud endpoints** ([#1690](https://github.com/ManifoldKit/ManifoldKit/issues/1690), [#1676](https://github.com/ManifoldKit/ManifoldKit/issues/1676), [#1700](https://github.com/ManifoldKit/ManifoldKit/issues/1700)) — `fuzz-chat` can now target any OpenAI-compatible cloud endpoint (including OpenRouter) via `--endpoint`, broadening coverage beyond local Ollama. Block-rotation cycles through a pool of fuzz models each campaign to amortize per-model load cost. `--request-timeout` bounds per-request hangs so a stalled cloud provider doesn't lock the harness.
+**Fuzz harness reaches cloud endpoints** ([#1690](https://github.com/roryford/ManifoldKit/issues/1690), [#1676](https://github.com/roryford/ManifoldKit/issues/1676), [#1700](https://github.com/roryford/ManifoldKit/issues/1700)) — `fuzz-chat` can now target any OpenAI-compatible cloud endpoint (including OpenRouter) via `--endpoint`, broadening coverage beyond local Ollama. Block-rotation cycles through a pool of fuzz models each campaign to amortize per-model load cost. `--request-timeout` bounds per-request hangs so a stalled cloud provider doesn't lock the harness.
 
 ```bash
 scripts/fuzz.sh --endpoint https://openrouter.ai/api/v1 \
@@ -685,24 +685,24 @@ scripts/fuzz.sh --endpoint https://openrouter.ai/api/v1 \
 
 ### Features
 
-* **Fuzz block-rotate models** — amortize model-load cost across campaigns ([#1676](https://github.com/ManifoldKit/ManifoldKit/issues/1676))
-* **Fuzz `--request-timeout`** — bound cloud fuzz request hangs ([#1700](https://github.com/ManifoldKit/ManifoldKit/issues/1700))
-* **Fuzz OpenAI-compatible cloud endpoints** — target OpenRouter and compatible providers in fuzz-chat ([#1690](https://github.com/ManifoldKit/ManifoldKit/issues/1690))
+* **Fuzz block-rotate models** — amortize model-load cost across campaigns ([#1676](https://github.com/roryford/ManifoldKit/issues/1676))
+* **Fuzz `--request-timeout`** — bound cloud fuzz request hangs ([#1700](https://github.com/roryford/ManifoldKit/issues/1700))
+* **Fuzz OpenAI-compatible cloud endpoints** — target OpenRouter and compatible providers in fuzz-chat ([#1690](https://github.com/roryford/ManifoldKit/issues/1690))
 
 ### Bug Fixes
 
-* **`deleteSession` atomicity** — message purge and session delete now commit in a single transaction ([#1686](https://github.com/ManifoldKit/ManifoldKit/issues/1686))
-* **First-run onboarding hardened** — robust BYO default selection, clearer model-gating error messages, and gated BYO snippets ([#1680](https://github.com/ManifoldKit/ManifoldKit/issues/1680))
-* **HuggingFace download reliability** — background `URLSession` and per-chunk progress in `HuggingFaceDownloadService` ([#1692](https://github.com/ManifoldKit/ManifoldKit/issues/1692))
-* **`StreamAction` switch exhaustiveness and doc drift** — corrects accumulated doc drift and adds a path-existence audit to prevent future drift ([#1697](https://github.com/ManifoldKit/ManifoldKit/issues/1697))
+* **`deleteSession` atomicity** — message purge and session delete now commit in a single transaction ([#1686](https://github.com/roryford/ManifoldKit/issues/1686))
+* **First-run onboarding hardened** — robust BYO default selection, clearer model-gating error messages, and gated BYO snippets ([#1680](https://github.com/roryford/ManifoldKit/issues/1680))
+* **HuggingFace download reliability** — background `URLSession` and per-chunk progress in `HuggingFaceDownloadService` ([#1692](https://github.com/roryford/ManifoldKit/issues/1692))
+* **`StreamAction` switch exhaustiveness and doc drift** — corrects accumulated doc drift and adds a path-existence audit to prevent future drift ([#1697](https://github.com/roryford/ManifoldKit/issues/1697))
 
-## [0.44.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.43.0...v0.44.0) (2026-06-07)
+## [0.44.0](https://github.com/roryford/ManifoldKit/compare/v0.43.0...v0.44.0) (2026-06-07)
 
 ManifoldUI gains a full theming and customization system, and the framework's provider reach widens through a graduated AnyLanguageModel bridge and a cross-encoder rerank stage for RAG. Under the hood, the P1 kernel-thinning continues with `ManifoldModelCatalog`, and a pre-v1 naming pass tightens the public API surface ahead of 1.0.
 
 ### Highlights
 
-**Theming and UI customization for ManifoldUI** — Consumers can now restyle the chat UI without forking `ChatView` or dropping to full BYO-UI, through a three-layer environment-driven stack. Layer 1 is a `ChatTheme` token struct (per-role bubble fills, corner radius, padding, spacing, fonts) applied with `.chatTheme(_:)`. Layer 2 is a `MessageBubbleStyle` protocol with `.plain` (the themed default), `.iMessage`, and `.card` recipes applied with `.messageBubbleStyle(_:)`. Layer 3 is a per-message renderer slot, `.chatMessageRenderer(_:)`. Every layer is a thin shell over SwiftUI's native resolution, so Dark Mode, Dynamic Type, and Increase Contrast keep working. ([#1640](https://github.com/ManifoldKit/ManifoldKit/issues/1640))
+**Theming and UI customization for ManifoldUI** — Consumers can now restyle the chat UI without forking `ChatView` or dropping to full BYO-UI, through a three-layer environment-driven stack. Layer 1 is a `ChatTheme` token struct (per-role bubble fills, corner radius, padding, spacing, fonts) applied with `.chatTheme(_:)`. Layer 2 is a `MessageBubbleStyle` protocol with `.plain` (the themed default), `.iMessage`, and `.card` recipes applied with `.messageBubbleStyle(_:)`. Layer 3 is a per-message renderer slot, `.chatMessageRenderer(_:)`. Every layer is a thin shell over SwiftUI's native resolution, so Dark Mode, Dynamic Type, and Increase Contrast keep working. ([#1640](https://github.com/roryford/ManifoldKit/issues/1640))
 
 ```swift
 ChatView(…)
@@ -710,7 +710,7 @@ ChatView(…)
     .messageBubbleStyle(.iMessage)   // or .card, or .plain (the default, which reads ChatTheme)
 ```
 
-**AnyLanguageModel provider-breadth bridge** — The bridge graduates from a hidden trait into a documented, contract-tested path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint. It advertises a conservative capability floor (`isRemote` on; tools, structured output, native JSON mode, thinking, and grammar all off) and fail-closes on unsupported requests rather than silently dropping them, so the capability router never routes those requests here. Ships `docs/PROVIDER-BRIDGE.md` and an env-gated conformance suite that needs no API key to compile or pass. ([#1638](https://github.com/ManifoldKit/ManifoldKit/issues/1638))
+**AnyLanguageModel provider-breadth bridge** — The bridge graduates from a hidden trait into a documented, contract-tested path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint. It advertises a conservative capability floor (`isRemote` on; tools, structured output, native JSON mode, thinking, and grammar all off) and fail-closes on unsupported requests rather than silently dropping them, so the capability router never routes those requests here. Ships `docs/PROVIDER-BRIDGE.md` and an env-gated conformance suite that needs no API key to compile or pass. ([#1638](https://github.com/roryford/ManifoldKit/issues/1638))
 
 ```swift
 import ManifoldBackends   // behind the `AnyLanguageModel` trait
@@ -720,7 +720,7 @@ let url = URL(string: "gemini://gemini-2.0-flash?apiKey=\(key)")!
 try await backend.loadModel(from: url, plan: plan)
 ```
 
-**Cross-encoder rerank stage in RAG** — `RAGService` gains an optional rerank stage between retrieval and prompt injection — the single biggest RAG-quality lever still open. When a reranker is configured and ready, retrieval widens the first-stage pool to 3× and reranks down to `limit`; with no reranker it is a byte-for-byte passthrough, keyword fallback included. The `Reranker` port lives in `ManifoldInference` alongside `EmbeddingBackend`; `LlamaReranker` scores `[query, document]` pairs through a RANK-pooling cross-encoder GGUF (e.g. `bge-reranker`). ([#1637](https://github.com/ManifoldKit/ManifoldKit/issues/1637))
+**Cross-encoder rerank stage in RAG** — `RAGService` gains an optional rerank stage between retrieval and prompt injection — the single biggest RAG-quality lever still open. When a reranker is configured and ready, retrieval widens the first-stage pool to 3× and reranks down to `limit`; with no reranker it is a byte-for-byte passthrough, keyword fallback included. The `Reranker` port lives in `ManifoldInference` alongside `EmbeddingBackend`; `LlamaReranker` scores `[query, document]` pairs through a RANK-pooling cross-encoder GGUF (e.g. `bge-reranker`). ([#1637](https://github.com/roryford/ManifoldKit/issues/1637))
 
 ```swift
 let rag = RAGService(
@@ -731,33 +731,33 @@ let rag = RAGService(
 )
 ```
 
-**Pre-v1 API surface — naming pass and `ManifoldModelCatalog` extraction** — Two threads of pre-1.0 surface work. The P1 kernel-thinning continues: `ManifoldModelCatalog` (model descriptors, catalog, logging) is extracted from `ManifoldInference` into a standalone zero-dependency product, following the `ManifoldSecrets`/`ManifoldHardware`/`ManifoldNetworking` split from v0.43.0 ([#1611](https://github.com/ManifoldKit/ManifoldKit/issues/1611)) — transparent to consumers via `@_exported import`. Separately, a naming pass tightens the public API ahead of v1: the `Record` suffix is dropped from inference-layer DTOs ([#1650](https://github.com/ManifoldKit/ManifoldKit/issues/1650)), `EndpointBackend` protocols are renamed, `GenerationStream` gains `AsyncSequence` conformance, and the deprecated `configure*` shims are removed in favour of `configure(bootstrap:)` ([#1614](https://github.com/ManifoldKit/ManifoldKit/issues/1614)). The renames and the shim removal are breaking — update affected call sites.
+**Pre-v1 API surface — naming pass and `ManifoldModelCatalog` extraction** — Two threads of pre-1.0 surface work. The P1 kernel-thinning continues: `ManifoldModelCatalog` (model descriptors, catalog, logging) is extracted from `ManifoldInference` into a standalone zero-dependency product, following the `ManifoldSecrets`/`ManifoldHardware`/`ManifoldNetworking` split from v0.43.0 ([#1611](https://github.com/roryford/ManifoldKit/issues/1611)) — transparent to consumers via `@_exported import`. Separately, a naming pass tightens the public API ahead of v1: the `Record` suffix is dropped from inference-layer DTOs ([#1650](https://github.com/roryford/ManifoldKit/issues/1650)), `EndpointBackend` protocols are renamed, `GenerationStream` gains `AsyncSequence` conformance, and the deprecated `configure*` shims are removed in favour of `configure(bootstrap:)` ([#1614](https://github.com/roryford/ManifoldKit/issues/1614)). The renames and the shim removal are breaking — update affected call sites.
 
 ### Features
 
-* **Adaptive prefill memory headroom** — `PrefillFootprintEstimator` adapts the memory budget at prefill time using a measured per-model resident-byte-per-token EWMA, aborting before a prefill exceeds headroom instead of relying solely on the static 40% heuristic. Dormant (behaviour unchanged) until the first accepted sample. ([#1592](https://github.com/ManifoldKit/ManifoldKit/issues/1592))
-* **Per-layer MLX prompt-cache reuse for hybrid architectures** — Prompt-cache reuse is now decided per layer instead of being disqualified wholesale by a single non-`KVCacheSimple` layer, so mixed and recurrent-hybrid models reuse KV where they previously re-prefilled every turn. Falls back to a full prefill whenever a layer cannot be reduced byte-exactly. ([#1597](https://github.com/ManifoldKit/ManifoldKit/issues/1597))
-* **`quickStart()` backend-selection policy** — First-launch `quickStart()` now applies a Foundation-first → first-local → labeled-empty-state selection policy, wiring the built-in Foundation model into the candidate list before the policy runs. ([#1612](https://github.com/ManifoldKit/ManifoldKit/issues/1612))
-* **Developer-journey quickstarts** — New BYO-UI, tool-calling, and AppIntents quickstart guides. ([#1658](https://github.com/ManifoldKit/ManifoldKit/issues/1658))
+* **Adaptive prefill memory headroom** — `PrefillFootprintEstimator` adapts the memory budget at prefill time using a measured per-model resident-byte-per-token EWMA, aborting before a prefill exceeds headroom instead of relying solely on the static 40% heuristic. Dormant (behaviour unchanged) until the first accepted sample. ([#1592](https://github.com/roryford/ManifoldKit/issues/1592))
+* **Per-layer MLX prompt-cache reuse for hybrid architectures** — Prompt-cache reuse is now decided per layer instead of being disqualified wholesale by a single non-`KVCacheSimple` layer, so mixed and recurrent-hybrid models reuse KV where they previously re-prefilled every turn. Falls back to a full prefill whenever a layer cannot be reduced byte-exactly. ([#1597](https://github.com/roryford/ManifoldKit/issues/1597))
+* **`quickStart()` backend-selection policy** — First-launch `quickStart()` now applies a Foundation-first → first-local → labeled-empty-state selection policy, wiring the built-in Foundation model into the candidate list before the policy runs. ([#1612](https://github.com/roryford/ManifoldKit/issues/1612))
+* **Developer-journey quickstarts** — New BYO-UI, tool-calling, and AppIntents quickstart guides. ([#1658](https://github.com/roryford/ManifoldKit/issues/1658))
 
 ### Bug Fixes
 
-* **Gemma GBNF grammar disabled** — Gemma models truncate structured (JSON-object) grammars under llama.cpp — they open the object, stall on whitespace, and never complete — so grammar-constrained sampling is now disabled for the Gemma family (detected by GGUF architecture), routing them to JSON-mode parsing. ([#1670](https://github.com/ManifoldKit/ManifoldKit/issues/1670))
-* **Ollama Gemma 4 thinking-flag backfill and fuzz marker accuracy** ([#1664](https://github.com/ManifoldKit/ManifoldKit/issues/1664))
-* **`OllamaBackend` registrar init made package-visible** — fixes a cross-module registration call under the Ollama trait. ([#1660](https://github.com/ManifoldKit/ManifoldKit/issues/1660))
-* **`ModelLoadPlan` review fixes** — if-let unwrap in `ModelLoadPlan`, `XCTSkip` on network reclaim, and an explicit `self` capture. ([#1667](https://github.com/ManifoldKit/ManifoldKit/issues/1667))
-* **Backend conformance claim methods made parallel-safe** ([#1601](https://github.com/ManifoldKit/ManifoldKit/issues/1601))
-* **DX cleanups** — `OllamaBackend` registrar warning, `GenerationStream` `AsyncSequence` conformance, and a thinking-token sample fix. ([#1649](https://github.com/ManifoldKit/ManifoldKit/issues/1649))
+* **Gemma GBNF grammar disabled** — Gemma models truncate structured (JSON-object) grammars under llama.cpp — they open the object, stall on whitespace, and never complete — so grammar-constrained sampling is now disabled for the Gemma family (detected by GGUF architecture), routing them to JSON-mode parsing. ([#1670](https://github.com/roryford/ManifoldKit/issues/1670))
+* **Ollama Gemma 4 thinking-flag backfill and fuzz marker accuracy** ([#1664](https://github.com/roryford/ManifoldKit/issues/1664))
+* **`OllamaBackend` registrar init made package-visible** — fixes a cross-module registration call under the Ollama trait. ([#1660](https://github.com/roryford/ManifoldKit/issues/1660))
+* **`ModelLoadPlan` review fixes** — if-let unwrap in `ModelLoadPlan`, `XCTSkip` on network reclaim, and an explicit `self` capture. ([#1667](https://github.com/roryford/ManifoldKit/issues/1667))
+* **Backend conformance claim methods made parallel-safe** ([#1601](https://github.com/roryford/ManifoldKit/issues/1601))
+* **DX cleanups** — `OllamaBackend` registrar warning, `GenerationStream` `AsyncSequence` conformance, and a thinking-token sample fix. ([#1649](https://github.com/roryford/ManifoldKit/issues/1649))
 
-## [0.43.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.42.0...v0.43.0) (2026-06-06)
+## [0.43.0](https://github.com/roryford/ManifoldKit/compare/v0.42.0...v0.43.0) (2026-06-06)
 
 The P1 kernel-thinning pass completes its first three modules — `ManifoldSecrets`, `ManifoldHardware`, and `ManifoldNetworking` — each now a zero-dependency leaf product. The release also ships a configurable idle timeout for cloud/LAN backends and closes four resource-correctness bugs.
 
 ### Highlights
 
-**P1 kernel thinning — `ManifoldSecrets`, `ManifoldHardware`, and `ManifoldNetworking` extracted** — Three clusters of types that had no dependency on the inference kernel are now standalone zero-dependency SwiftPM products. `ManifoldSecrets` holds the Keychain service and Secure Enclave key manager ([#1609](https://github.com/ManifoldKit/ManifoldKit/issues/1609)); `ManifoldHardware` holds device-capability probes, GGUF readers, memory-pressure broadcast, and `ModelLoadPlan` ([#1610](https://github.com/ManifoldKit/ManifoldKit/issues/1610)); `ManifoldNetworking` holds all URLSession/SSE infrastructure ([#1608](https://github.com/ManifoldKit/ManifoldKit/issues/1608)). Existing `import ManifoldInference` consumers keep compiling without changes — the kernel shims each module via `@_exported import`.
+**P1 kernel thinning — `ManifoldSecrets`, `ManifoldHardware`, and `ManifoldNetworking` extracted** — Three clusters of types that had no dependency on the inference kernel are now standalone zero-dependency SwiftPM products. `ManifoldSecrets` holds the Keychain service and Secure Enclave key manager ([#1609](https://github.com/roryford/ManifoldKit/issues/1609)); `ManifoldHardware` holds device-capability probes, GGUF readers, memory-pressure broadcast, and `ModelLoadPlan` ([#1610](https://github.com/roryford/ManifoldKit/issues/1610)); `ManifoldNetworking` holds all URLSession/SSE infrastructure ([#1608](https://github.com/roryford/ManifoldKit/issues/1608)). Existing `import ManifoldInference` consumers keep compiling without changes — the kernel shims each module via `@_exported import`.
 
-**Configurable idle timeout for cloud and LAN backends** — `GenerationConfig` now accepts an `idleTimeout: Duration?` that fires when no SSE bytes arrive within the window, surfacing a `GenerationError.streamTimeout` instead of leaving the UI stalled on a slow or saturated model. The default is `nil`, preserving existing behaviour. ([#1633](https://github.com/ManifoldKit/ManifoldKit/issues/1633))
+**Configurable idle timeout for cloud and LAN backends** — `GenerationConfig` now accepts an `idleTimeout: Duration?` that fires when no SSE bytes arrive within the window, surfacing a `GenerationError.streamTimeout` instead of leaving the UI stalled on a slow or saturated model. The default is `nil`, preserving existing behaviour. ([#1633](https://github.com/roryford/ManifoldKit/issues/1633))
 
 ```swift
 var config = GenerationConfig()
@@ -771,18 +771,18 @@ try await runtime.send("Hello", config: config)
 
 ### Bug Fixes
 
-* **`SessionToolSource` tool dispatch** — Tools advertised via `SessionToolSource` were registered in `ToolRegistry` but never dispatched at call sites; the routing gap is closed. ([#1620](https://github.com/ManifoldKit/ManifoldKit/issues/1620))
-* **Grammar constraints corrupting thinking blocks** — Applying a grammar constraint (JSON mode or BNF grammar) to a request with `enableThinking: true` injected the grammar sampler into the thinking-block phase, producing malformed `<think>` output. Grammar constraints are now suppressed during thinking-token emission. ([#1624](https://github.com/ManifoldKit/ManifoldKit/issues/1624))
-* **Resource-correctness fixes (MLX, RAG, search, MCP)** — Four separate bugs: the MLX backend `deinit` dropped its strong reference before async cleanup finished; RAG document deletion left orphaned chunk records and crashed under concurrent access; embedding search exhausted memory on large corpora; MCP tool calls leaked the per-call timeout handle. ([#1627](https://github.com/ManifoldKit/ManifoldKit/issues/1627))
-* **SSE error message sanitization on all cloud paths** — In-stream SSE error payloads were forwarded to the UI unsanitized on partial-stream paths. `CloudErrorSanitizer` is now applied consistently across every cloud backend error surface. ([#1628](https://github.com/ManifoldKit/ManifoldKit/issues/1628))
+* **`SessionToolSource` tool dispatch** — Tools advertised via `SessionToolSource` were registered in `ToolRegistry` but never dispatched at call sites; the routing gap is closed. ([#1620](https://github.com/roryford/ManifoldKit/issues/1620))
+* **Grammar constraints corrupting thinking blocks** — Applying a grammar constraint (JSON mode or BNF grammar) to a request with `enableThinking: true` injected the grammar sampler into the thinking-block phase, producing malformed `<think>` output. Grammar constraints are now suppressed during thinking-token emission. ([#1624](https://github.com/roryford/ManifoldKit/issues/1624))
+* **Resource-correctness fixes (MLX, RAG, search, MCP)** — Four separate bugs: the MLX backend `deinit` dropped its strong reference before async cleanup finished; RAG document deletion left orphaned chunk records and crashed under concurrent access; embedding search exhausted memory on large corpora; MCP tool calls leaked the per-call timeout handle. ([#1627](https://github.com/roryford/ManifoldKit/issues/1627))
+* **SSE error message sanitization on all cloud paths** — In-stream SSE error payloads were forwarded to the UI unsanitized on partial-stream paths. `CloudErrorSanitizer` is now applied consistently across every cloud backend error surface. ([#1628](https://github.com/roryford/ManifoldKit/issues/1628))
 
-## [0.42.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.41.0...v0.42.0) (2026-06-03)
+## [0.42.0](https://github.com/roryford/ManifoldKit/compare/v0.41.0...v0.42.0) (2026-06-03)
 
 Model-fit scoring and use-case-aware model ranking is the headline addition, alongside URLSession security hardening and a round of CI stability fixes.
 
 ### Highlights
 
-**Model-fit scoring — use-case-aware ranking for the model browser** — A composite scoring layer ranks downloadable models across four normalised dimensions (quality, speed, fit, context) and combines them with use-case-specific weights. Six built-in use cases (`general`, `coding`, `reasoning`, `chat`, `multimodal`, `embedding`) tune the blend — `chat` favours speed, `reasoning` favours quality. The authoritative will-it-run gate (`ModelLoadPlan`) is unchanged; the scorer layers over it, gates non-runnable models below every runnable one, and never fabricates context lengths or memory figures. Inspired by [llmfit](https://github.com/AlexsJones/llmfit), reimplemented natively in Swift with no Rust dependency. ([#1581](https://github.com/ManifoldKit/ManifoldKit/issues/1581))
+**Model-fit scoring — use-case-aware ranking for the model browser** — A composite scoring layer ranks downloadable models across four normalised dimensions (quality, speed, fit, context) and combines them with use-case-specific weights. Six built-in use cases (`general`, `coding`, `reasoning`, `chat`, `multimodal`, `embedding`) tune the blend — `chat` favours speed, `reasoning` favours quality. The authoritative will-it-run gate (`ModelLoadPlan`) is unchanged; the scorer layers over it, gates non-runnable models below every runnable one, and never fabricates context lengths or memory figures. Inspired by [llmfit](https://github.com/AlexsJones/llmfit), reimplemented natively in Swift with no Rust dependency. ([#1581](https://github.com/roryford/ManifoldKit/issues/1581))
 
 ```swift
 let scorer = ModelFitScorer()
@@ -792,16 +792,16 @@ let ranked = scorer.rankedVariants(models: downloadableModels, useCase: .coding)
 
 ### Bug Fixes
 
-* **`WebSearchToolSource` URLSession security** — `resolve` was calling `URLSession.shared.data(for:)` directly, bypassing the `URLSessionFactory` seam that enforces hop caps, credential stripping on cross-origin redirects, and scheme-downgrade prevention. Now injects `URLSessionFactory.ephemeral()` by default, closing the `DirectURLSessionConstructionAuditTest` failure that was blocking Dependabot auto-merges. ([#1583](https://github.com/ManifoldKit/ManifoldKit/issues/1583))
-* **CI stability: `ConversationEvent` timing fixes** — Three intermittent CI failures tied to unbounded waits are resolved. `ConversationEventRecorder`/tap outcome waits are now deadline-bounded ([#1584](https://github.com/ManifoldKit/ManifoldKit/issues/1584)); the `ConversationEventTap` teardown test no longer hangs the CI watchdog for 240 s ([#1591](https://github.com/ManifoldKit/ManifoldKit/issues/1591)); and the tool-cancellation bridged handle race and PinnedSession stall watchdog are deflaked under `--parallel` ([#1603](https://github.com/ManifoldKit/ManifoldKit/issues/1603)).
+* **`WebSearchToolSource` URLSession security** — `resolve` was calling `URLSession.shared.data(for:)` directly, bypassing the `URLSessionFactory` seam that enforces hop caps, credential stripping on cross-origin redirects, and scheme-downgrade prevention. Now injects `URLSessionFactory.ephemeral()` by default, closing the `DirectURLSessionConstructionAuditTest` failure that was blocking Dependabot auto-merges. ([#1583](https://github.com/roryford/ManifoldKit/issues/1583))
+* **CI stability: `ConversationEvent` timing fixes** — Three intermittent CI failures tied to unbounded waits are resolved. `ConversationEventRecorder`/tap outcome waits are now deadline-bounded ([#1584](https://github.com/roryford/ManifoldKit/issues/1584)); the `ConversationEventTap` teardown test no longer hangs the CI watchdog for 240 s ([#1591](https://github.com/roryford/ManifoldKit/issues/1591)); and the tool-cancellation bridged handle race and PinnedSession stall watchdog are deflaked under `--parallel` ([#1603](https://github.com/roryford/ManifoldKit/issues/1603)).
 
-## [0.41.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.40.0...v0.41.0) (2026-05-31)
+## [0.41.0](https://github.com/roryford/ManifoldKit/compare/v0.40.0...v0.41.0) (2026-05-31)
 
 This release completes the Glass Box observability system through P4, adds scripted backend tooling and a canned scenario library for host-app testing, and ships several bootstrap conveniences.
 
 ### Highlights
 
-**Glass Box P1 — `ConversationEventKind`, JSONL trace, and `XCTAssertEventSubsequence`** — A stable `String`-rawValue enum covering all 26 `ConversationEvent` cases is now the shared key for JSONL traces and subsequence assertions. `ConversationEventTrace.save(to:)` writes a JSONL file alongside test artifacts for offline inspection. `XCTAssertEventSubsequence` takes an ordered list of `ConversationEventKind` values and fails with a diagnostic showing matched events, the first missing kind, and the full trace — making turn-loop regression tests self-describing. The compiler enforces the `event.kind` mapping when new cases are added. ([#1561](https://github.com/ManifoldKit/ManifoldKit/issues/1561))
+**Glass Box P1 — `ConversationEventKind`, JSONL trace, and `XCTAssertEventSubsequence`** — A stable `String`-rawValue enum covering all 26 `ConversationEvent` cases is now the shared key for JSONL traces and subsequence assertions. `ConversationEventTrace.save(to:)` writes a JSONL file alongside test artifacts for offline inspection. `XCTAssertEventSubsequence` takes an ordered list of `ConversationEventKind` values and fails with a diagnostic showing matched events, the first missing kind, and the full trace — making turn-loop regression tests self-describing. The compiler enforces the `event.kind` mapping when new cases are added. ([#1561](https://github.com/roryford/ManifoldKit/issues/1561))
 
 ```swift
 let recorder = ConversationEventRecorder(runtime: runtime)
@@ -814,7 +814,7 @@ XCTAssertEventSubsequence(
 )
 ```
 
-**Glass Box P2 — `ScriptedGenerationBackend`** — A deterministic `InferenceBackend` whose event sequence is fully scripted turn-by-turn. Any `GenerationEvent` can be emitted, delays injected, or errors thrown at precise points — making it straightforward to exercise KV-cache reuse hits, throttle signals, partial thinking blocks, and mid-stream failures in unit tests that would otherwise require a live model. ([#1562](https://github.com/ManifoldKit/ManifoldKit/issues/1562))
+**Glass Box P2 — `ScriptedGenerationBackend`** — A deterministic `InferenceBackend` whose event sequence is fully scripted turn-by-turn. Any `GenerationEvent` can be emitted, delays injected, or errors thrown at precise points — making it straightforward to exercise KV-cache reuse hits, throttle signals, partial thinking blocks, and mid-stream failures in unit tests that would otherwise require a live model. ([#1562](https://github.com/roryford/ManifoldKit/issues/1562))
 
 ```swift
 let backend = ScriptedGenerationBackend(turns: [
@@ -823,30 +823,30 @@ let backend = ScriptedGenerationBackend(turns: [
 ])
 ```
 
-**Glass Box P3 — dual-mode scenario runner and `RuntimeScenarioRegistry`** — A `RuntimeScenario` bundles a scripted turn sequence, a structural event subsequence, and display metadata into a single definition that runs identically in CI (against `ScriptedGenerationBackend`) and in a live demo (against a real backend). `RuntimeScenarioRegistry.shared` is the single source of truth for both the test matrix gate (`test_allRegisteredScenarios_passInScriptedMode`) and the future demo-picker UI. ([#1563](https://github.com/ManifoldKit/ManifoldKit/issues/1563))
+**Glass Box P3 — dual-mode scenario runner and `RuntimeScenarioRegistry`** — A `RuntimeScenario` bundles a scripted turn sequence, a structural event subsequence, and display metadata into a single definition that runs identically in CI (against `ScriptedGenerationBackend`) and in a live demo (against a real backend). `RuntimeScenarioRegistry.shared` is the single source of truth for both the test matrix gate (`test_allRegisteredScenarios_passInScriptedMode`) and the future demo-picker UI. ([#1563](https://github.com/roryford/ManifoldKit/issues/1563))
 
-**Glass Box P4 — research session, swap-the-brain, error-recovery, and handoff scenarios** — Seven canned scenarios are now in the shared registry, covering the full range of runtime behaviors the Glass Box ArchitectView is designed to visualise: multi-turn research with pre-turn compression, mid-turn backend capability degradation, graceful error recovery, and session handoff. `FixedCountPreTurnCompressionPolicy` fires at a configurable message-count threshold using a synthetic memory record, keeping scripted turn sequences undisrupted. ([#1567](https://github.com/ManifoldKit/ManifoldKit/issues/1567), [#1566](https://github.com/ManifoldKit/ManifoldKit/issues/1566))
+**Glass Box P4 — research session, swap-the-brain, error-recovery, and handoff scenarios** — Seven canned scenarios are now in the shared registry, covering the full range of runtime behaviors the Glass Box ArchitectView is designed to visualise: multi-turn research with pre-turn compression, mid-turn backend capability degradation, graceful error recovery, and session handoff. `FixedCountPreTurnCompressionPolicy` fires at a configurable message-count threshold using a synthetic memory record, keeping scripted turn sequences undisrupted. ([#1567](https://github.com/roryford/ManifoldKit/issues/1567), [#1566](https://github.com/roryford/ManifoldKit/issues/1566))
 
 ### Features
 
-* **`ManifoldBootstrap.makeInMemory`** — Public static factory that returns a fully-wired bootstrap backed by an ephemeral SwiftData in-memory store. Nothing is written to disk; all data is discarded when the instance is deallocated. `ManifoldBootstrap.isInMemory` lets callers detect ephemeral mode without inspecting container internals. Useful for test harnesses, onboarding flows, and incognito sessions. ([#1573](https://github.com/ManifoldKit/ManifoldKit/issues/1573))
-* **`addGenerationToolSources(_:)` on `ManifoldBootstrap`** — One-liner to register `ImageGenerationToolSource` and `VideoGenerationToolSource` from a `ChatViewModel`. Sources for nil services are silently skipped, so it's safe to call unconditionally. ([#1574](https://github.com/ManifoldKit/ManifoldKit/issues/1574))
-* **`VisionInputButton` — cross-platform vision input composer** — A compose-bar button that presents `PhotosPicker` on iOS and `NSOpenPanel` (image UTTypes only) on macOS. The button hides itself automatically when `BackendCapabilities.supportsVision` is `false`, so no conditional logic is needed in host UIs. Images are staged via the existing `ChatViewModel.stageAttachment(_:)` path. ([#1572](https://github.com/ManifoldKit/ManifoldKit/issues/1572))
-* **WWDC 2026 trait stubs (`SystemAIProviderExtension`, `CoreAI`)** — Pre-emptive manifest stubs with no associated targets or external dependencies, keeping the trait surface ready for the WWDC announcements. ([#1565](https://github.com/ManifoldKit/ManifoldKit/issues/1565))
+* **`ManifoldBootstrap.makeInMemory`** — Public static factory that returns a fully-wired bootstrap backed by an ephemeral SwiftData in-memory store. Nothing is written to disk; all data is discarded when the instance is deallocated. `ManifoldBootstrap.isInMemory` lets callers detect ephemeral mode without inspecting container internals. Useful for test harnesses, onboarding flows, and incognito sessions. ([#1573](https://github.com/roryford/ManifoldKit/issues/1573))
+* **`addGenerationToolSources(_:)` on `ManifoldBootstrap`** — One-liner to register `ImageGenerationToolSource` and `VideoGenerationToolSource` from a `ChatViewModel`. Sources for nil services are silently skipped, so it's safe to call unconditionally. ([#1574](https://github.com/roryford/ManifoldKit/issues/1574))
+* **`VisionInputButton` — cross-platform vision input composer** — A compose-bar button that presents `PhotosPicker` on iOS and `NSOpenPanel` (image UTTypes only) on macOS. The button hides itself automatically when `BackendCapabilities.supportsVision` is `false`, so no conditional logic is needed in host UIs. Images are staged via the existing `ChatViewModel.stageAttachment(_:)` path. ([#1572](https://github.com/roryford/ManifoldKit/issues/1572))
+* **WWDC 2026 trait stubs (`SystemAIProviderExtension`, `CoreAI`)** — Pre-emptive manifest stubs with no associated targets or external dependencies, keeping the trait surface ready for the WWDC announcements. ([#1565](https://github.com/roryford/ManifoldKit/issues/1565))
 
 ### Bug Fixes
 
-* **`WebSearchToolSource` URL crash** — Force-unwrap on `URL(string:)!` crashed when the base URL string was malformed; replaced with a `guard let` early-exit. ([#1558](https://github.com/ManifoldKit/ManifoldKit/issues/1558))
-* **`SessionListView` pin/unpin silent errors** — Four `try?` violations in the swipe-action and context-menu handlers are now `do/catch` with `errorMessage` alert surfacing, consistent with `renameSession` and `deleteSession`. ([#1564](https://github.com/ManifoldKit/ManifoldKit/issues/1564))
-* **`ArchitectView` exhaustive switches** — Replaced `default:` fallbacks in `isCompressionRelated` and `categoryColor(for:)` with explicit case enumeration so the compiler surfaces any new `ConversationEvent`/`ConversationEventKind` case. ([#1571](https://github.com/ManifoldKit/ManifoldKit/issues/1571))
+* **`WebSearchToolSource` URL crash** — Force-unwrap on `URL(string:)!` crashed when the base URL string was malformed; replaced with a `guard let` early-exit. ([#1558](https://github.com/roryford/ManifoldKit/issues/1558))
+* **`SessionListView` pin/unpin silent errors** — Four `try?` violations in the swipe-action and context-menu handlers are now `do/catch` with `errorMessage` alert surfacing, consistent with `renameSession` and `deleteSession`. ([#1564](https://github.com/roryford/ManifoldKit/issues/1564))
+* **`ArchitectView` exhaustive switches** — Replaced `default:` fallbacks in `isCompressionRelated` and `categoryColor(for:)` with explicit case enumeration so the compiler surfaces any new `ConversationEvent`/`ConversationEventKind` case. ([#1571](https://github.com/roryford/ManifoldKit/issues/1571))
 
-## [0.40.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.39.1...v0.40.0) (2026-05-31)
+## [0.40.0](https://github.com/roryford/ManifoldKit/compare/v0.39.1...v0.40.0) (2026-05-31)
 
 This release opens the Glass Box observability system with a runtime event tap and surfaces session pinning in the sidebar UI.
 
 ### Highlights
 
-**Glass Box P0 — runtime event tap and `ConversationEventRecorder`** — `ConversationRuntime` now supports secondary multicast event taps independent of the primary `events` stream. Call `addEventTap(bufferingPolicy:)` to install a tap that receives every `ConversationEvent` without interfering with other consumers; taps are unbounded by default so no events are dropped. `ConversationEventRecorder` wraps a tap and accumulates the full event trace into its `trace` array, making it straightforward to capture a complete turn log for testing, debugging, or replay. A new `ObservingATurn` DocC article covers when to use a tap versus the primary stream and the bounded/unbounded buffering tradeoff. ([#1555](https://github.com/ManifoldKit/ManifoldKit/issues/1555))
+**Glass Box P0 — runtime event tap and `ConversationEventRecorder`** — `ConversationRuntime` now supports secondary multicast event taps independent of the primary `events` stream. Call `addEventTap(bufferingPolicy:)` to install a tap that receives every `ConversationEvent` without interfering with other consumers; taps are unbounded by default so no events are dropped. `ConversationEventRecorder` wraps a tap and accumulates the full event trace into its `trace` array, making it straightforward to capture a complete turn log for testing, debugging, or replay. A new `ObservingATurn` DocC article covers when to use a tap versus the primary stream and the bounded/unbounded buffering tradeoff. ([#1555](https://github.com/roryford/ManifoldKit/issues/1555))
 
 ```swift
 let recorder = ConversationEventRecorder(runtime: runtime)
@@ -858,21 +858,21 @@ print(recorder.trace)  // full ordered event log
 
 ### Features
 
-* **Session pinning in `SessionListView`** — Pinned sessions now appear at the top of the sidebar list. The UI wires directly into the existing `isPinned` flag and `pin/unpinSession` calls on `SessionManagerViewModel`; no host-app changes are required. ([#1556](https://github.com/ManifoldKit/ManifoldKit/issues/1556))
+* **Session pinning in `SessionListView`** — Pinned sessions now appear at the top of the sidebar list. The UI wires directly into the existing `isPinned` flag and `pin/unpinSession` calls on `SessionManagerViewModel`; no host-app changes are required. ([#1556](https://github.com/roryford/ManifoldKit/issues/1556))
 
-## [0.39.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.39.0...v0.39.1) (2026-05-31)
+## [0.39.1](https://github.com/roryford/ManifoldKit/compare/v0.39.0...v0.39.1) (2026-05-31)
 
 ### Bug Fixes
 
-* **`WebSearchToolSource` CloudSaaS gate** — `WebSearchToolSource` imports `ManifoldCloudCore` for `TokenProvider`, but `ManifoldUI` was missing the conditional dependency declaration, causing `BUILD FAILED` when the `CloudSaaS` trait is enabled. The file is now compiled only under `#if CloudSaaS` and the package dependency is declared accordingly. ([#1551](https://github.com/ManifoldKit/ManifoldKit/issues/1551))
+* **`WebSearchToolSource` CloudSaaS gate** — `WebSearchToolSource` imports `ManifoldCloudCore` for `TokenProvider`, but `ManifoldUI` was missing the conditional dependency declaration, causing `BUILD FAILED` when the `CloudSaaS` trait is enabled. The file is now compiled only under `#if CloudSaaS` and the package dependency is declared accordingly. ([#1551](https://github.com/roryford/ManifoldKit/issues/1551))
 
-## [0.39.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.38.0...v0.39.0) (2026-05-31)
+## [0.39.0](https://github.com/roryford/ManifoldKit/compare/v0.38.0...v0.39.0) (2026-05-31)
 
 This release adds Core Spotlight integration, a provider-agnostic web search tool, and a convenience wrapper for multi-source tool registration.
 
 ### Highlights
 
-**`SpotlightIndexer` — Core Spotlight integration** — Host apps can now surface ManifoldKit chat sessions in iOS and macOS Spotlight without custom indexing code. Call `SpotlightIndexer.index(sessions:)` after loading sessions and on any change; `SpotlightIndexer.sessionID(from:)` handles activity restoration when the user taps a Spotlight result. ([#1548](https://github.com/ManifoldKit/ManifoldKit/issues/1548))
+**`SpotlightIndexer` — Core Spotlight integration** — Host apps can now surface ManifoldKit chat sessions in iOS and macOS Spotlight without custom indexing code. Call `SpotlightIndexer.index(sessions:)` after loading sessions and on any change; `SpotlightIndexer.sessionID(from:)` handles activity restoration when the user taps a Spotlight result. ([#1548](https://github.com/roryford/ManifoldKit/issues/1548))
 
 ```swift
 SpotlightIndexer.index(sessions: sessionList.sessions)
@@ -883,23 +883,23 @@ if let sessionID = SpotlightIndexer.sessionID(from: userActivity) {
 }
 ```
 
-**`WebSearchToolSource` — provider-agnostic live web search** — A new `ToolSource` that adds a web-search tool to any runtime backed by a search-enabled chat-completion endpoint. Configure it with a `TokenProvider` and `baseURL`; it slots in alongside `ImageGenerationToolSource` and `VideoGenerationToolSource` with no provider-specific code required. ([#1546](https://github.com/ManifoldKit/ManifoldKit/issues/1546))
+**`WebSearchToolSource` — provider-agnostic live web search** — A new `ToolSource` that adds a web-search tool to any runtime backed by a search-enabled chat-completion endpoint. Configure it with a `TokenProvider` and `baseURL`; it slots in alongside `ImageGenerationToolSource` and `VideoGenerationToolSource` with no provider-specific code required. ([#1546](https://github.com/roryford/ManifoldKit/issues/1546))
 
 ### Features
 
-* **`addToolSources(_:)` on `ManifoldBootstrap`** — Convenience wrapper so host apps can register multiple `ToolSource` instances in a single call without reaching into `conversationRuntime` directly. ([#1543](https://github.com/ManifoldKit/ManifoldKit/issues/1543))
+* **`addToolSources(_:)` on `ManifoldBootstrap`** — Convenience wrapper so host apps can register multiple `ToolSource` instances in a single call without reaching into `conversationRuntime` directly. ([#1543](https://github.com/roryford/ManifoldKit/issues/1543))
 
 ### Bug Fixes
 
 * **Generation action buttons** — `try?` replaced with explicit `do/catch` throughout the generation-action-button chain; errors now surface to the UI rather than being silently discarded.
 
-## [0.38.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.37.0...v0.38.0) (2026-05-31)
+## [0.38.0](https://github.com/roryford/ManifoldKit/compare/v0.37.0...v0.38.0) (2026-05-31)
 
 This release adds video generation end-to-end, a `TokenProvider` protocol for rotating cloud credentials, per-turn history and context hooks, and a set of ready-made UI components for media attachment and generation context menus.
 
 ### Highlights
 
-**Video generation end-to-end** — `VideoGenerationBackend` is the new `ManifoldInference` protocol for cloud video generation. It mirrors `ImageGenerationBackend` in shape: `generate(prompt:config:)` returns an `AsyncThrowingStream<VideoGenerationEvent, Error>` whose events progress through `.queued`, `.generating(fractionComplete:)`, and `.completed(URL)`. `VideoGenerationConfig` controls duration (1–15 s), aspect ratio, resolution, and an optional source image URL for image-to-video. `VideoGenerationService` and `VideoGenerationRuntime` sit in `ManifoldRuntime` and wire directly into `ChatViewModel` — no extra assembly required. `VideoGenerationToolSource` and `ImageGenerationToolSource` let the compose bar trigger either modality as a named tool. ([#1526](https://github.com/ManifoldKit/ManifoldKit/issues/1526), [#1527](https://github.com/ManifoldKit/ManifoldKit/issues/1527), [#1530](https://github.com/ManifoldKit/ManifoldKit/issues/1530), [#1536](https://github.com/ManifoldKit/ManifoldKit/issues/1536))
+**Video generation end-to-end** — `VideoGenerationBackend` is the new `ManifoldInference` protocol for cloud video generation. It mirrors `ImageGenerationBackend` in shape: `generate(prompt:config:)` returns an `AsyncThrowingStream<VideoGenerationEvent, Error>` whose events progress through `.queued`, `.generating(fractionComplete:)`, and `.completed(URL)`. `VideoGenerationConfig` controls duration (1–15 s), aspect ratio, resolution, and an optional source image URL for image-to-video. `VideoGenerationService` and `VideoGenerationRuntime` sit in `ManifoldRuntime` and wire directly into `ChatViewModel` — no extra assembly required. `VideoGenerationToolSource` and `ImageGenerationToolSource` let the compose bar trigger either modality as a named tool. ([#1526](https://github.com/roryford/ManifoldKit/issues/1526), [#1527](https://github.com/roryford/ManifoldKit/issues/1527), [#1530](https://github.com/roryford/ManifoldKit/issues/1530), [#1536](https://github.com/roryford/ManifoldKit/issues/1536))
 
 **`TokenProvider` for dynamic cloud auth** — `SSECloudBackend.configure(tokenProvider:)` accepts a `TokenProvider` whose `token()` async method is called per-request, making it straightforward to vend short-lived JWTs or OAuth tokens without re-configuring the backend. The existing Keychain and ephemeral-key paths are unchanged.
 
@@ -912,9 +912,9 @@ struct MyOAuthProvider: TokenProvider {
 
 backend.configure(baseURL: url, tokenProvider: MyOAuthProvider(), modelName: "grok-4.3")
 ```
-([#1541](https://github.com/ManifoldKit/ManifoldKit/issues/1541))
+([#1541](https://github.com/roryford/ManifoldKit/issues/1541))
 
-**Per-turn history and context hooks** — three new opt-in injection points let host apps shape what the runtime sends each turn. `HistoryShaper` is an `async throws` transformer applied to the assembled message history before the prompt is built; it emits a `.historyShaped` event with per-message diagnostics so the UI can surface what changed. `HostTurnContextProvider` is a richer async alternative to the legacy `turnContextProvider` closure, carrying a full `TurnMetadata` snapshot. `PreTurnCompressionPolicy` controls whether history compression runs before a turn starts. Omitting all three preserves existing behavior. Note: `ConversationError` gains a new `preTurnCompressionFailed` case — exhaustive switches outside this repo will need a handler. ([#1524](https://github.com/ManifoldKit/ManifoldKit/issues/1524))
+**Per-turn history and context hooks** — three new opt-in injection points let host apps shape what the runtime sends each turn. `HistoryShaper` is an `async throws` transformer applied to the assembled message history before the prompt is built; it emits a `.historyShaped` event with per-message diagnostics so the UI can surface what changed. `HostTurnContextProvider` is a richer async alternative to the legacy `turnContextProvider` closure, carrying a full `TurnMetadata` snapshot. `PreTurnCompressionPolicy` controls whether history compression runs before a turn starts. Omitting all three preserves existing behavior. Note: `ConversationError` gains a new `preTurnCompressionFailed` case — exhaustive switches outside this repo will need a handler. ([#1524](https://github.com/roryford/ManifoldKit/issues/1524))
 
 **`PhotoAttachmentButton` and `GenerativeContextMenuItems`** — `PhotoAttachmentButton` is a drop-in compose-bar photo picker backed by `stageAttachment`; add it alongside `SendButton` for one-tap image input. `GenerativeContextMenuItems` provides standard long-press context menu items (Regenerate, Copy, Edit) wired to the active `ConversationRuntime`.
 
@@ -922,31 +922,31 @@ backend.configure(baseURL: url, tokenProvider: MyOAuthProvider(), modelName: "gr
 MessageBubble(message: message)
     .contextMenu { GenerativeContextMenuItems(message: message) }
 ```
-([#1535](https://github.com/ManifoldKit/ManifoldKit/issues/1535), [#1537](https://github.com/ManifoldKit/ManifoldKit/issues/1537))
+([#1535](https://github.com/roryford/ManifoldKit/issues/1535), [#1537](https://github.com/roryford/ManifoldKit/issues/1537))
 
 ### Features
 
-* **Reliable turn outcomes and `ManifoldMCPHost`** — per-turn completion is now written atomically through `ConversationTurnHandle`/`ConversationTurnOutcome`, removing the need for UI and MCP flows to listen on the bounded shared events stream. The runtime-backed MCP host is extracted into a standalone `ManifoldMCPHost`. ([#1514](https://github.com/ManifoldKit/ManifoldKit/issues/1514))
-* **`aspectRatio` on `ImageGenerationConfig`** — pass a standard ratio string (`"16:9"`, `"1:1"`, etc.) to image-generation requests. ([#1540](https://github.com/ManifoldKit/ManifoldKit/issues/1540))
-* **`currentCloudBackend` on `InferenceService`** — read the active cloud backend directly without going through the model registry. ([#1542](https://github.com/ManifoldKit/ManifoldKit/issues/1542))
-* **Session auto-title** — sessions receive an auto-generated title from the first user turn when none is set. ([#1517](https://github.com/ManifoldKit/ManifoldKit/issues/1517))
+* **Reliable turn outcomes and `ManifoldMCPHost`** — per-turn completion is now written atomically through `ConversationTurnHandle`/`ConversationTurnOutcome`, removing the need for UI and MCP flows to listen on the bounded shared events stream. The runtime-backed MCP host is extracted into a standalone `ManifoldMCPHost`. ([#1514](https://github.com/roryford/ManifoldKit/issues/1514))
+* **`aspectRatio` on `ImageGenerationConfig`** — pass a standard ratio string (`"16:9"`, `"1:1"`, etc.) to image-generation requests. ([#1540](https://github.com/roryford/ManifoldKit/issues/1540))
+* **`currentCloudBackend` on `InferenceService`** — read the active cloud backend directly without going through the model registry. ([#1542](https://github.com/roryford/ManifoldKit/issues/1542))
+* **Session auto-title** — sessions receive an auto-generated title from the first user turn when none is set. ([#1517](https://github.com/roryford/ManifoldKit/issues/1517))
 
 ### Bug Fixes
 
-* **Voice authorization crash** — `dispatch_assert_queue_fail` crash in `requestAuthorization` when called off the main queue is resolved. ([#1529](https://github.com/ManifoldKit/ManifoldKit/issues/1529))
+* **Voice authorization crash** — `dispatch_assert_queue_fail` crash in `requestAuthorization` when called off the main queue is resolved. ([#1529](https://github.com/roryford/ManifoldKit/issues/1529))
 
 ### Documentation
 
-* Tier 1 DocC catalogs fleshed out for `ManifoldInference`, `ManifoldMLX`, and `ManifoldVoice`. ([#1516](https://github.com/ManifoldKit/ManifoldKit/issues/1516))
-* `GenerationComponents` article covers `PhotoAttachmentButton`, tool sources, and context menus. ([#1538](https://github.com/ManifoldKit/ManifoldKit/issues/1538))
+* Tier 1 DocC catalogs fleshed out for `ManifoldInference`, `ManifoldMLX`, and `ManifoldVoice`. ([#1516](https://github.com/roryford/ManifoldKit/issues/1516))
+* `GenerationComponents` article covers `PhotoAttachmentButton`, tool sources, and context menus. ([#1538](https://github.com/roryford/ManifoldKit/issues/1538))
 
-## [0.37.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.36.0...v0.37.0) (2026-05-29)
+## [0.37.0](https://github.com/roryford/ManifoldKit/compare/v0.36.0...v0.37.0) (2026-05-29)
 
 This release is a correctness-and-hardening pass from a deep code review: conversation history is now crash-safe, the async bootstrap no longer silently disables RAG, the generation API gains a single value-typed entry point, and `LlamaBackend` exposes a way to await an in-flight generation settling. The turn loop and several internal chokepoints were also decomposed and de-duplicated with no behavior change.
 
 ### Highlights
 
-**Crash-safe conversation edits** — the edit, branch, and compression flows now commit their message writes through the transactional store as a single unit, so a failure mid-sequence can no longer truncate or destroy conversation history. Concurrent turns also stop clobbering each other: per-turn handoff detectors and pre-tool-use hooks are passed per request instead of being mutated on the shared `InferenceService`, and session "touch"/active-agent updates are written in place rather than via a full-record read-modify-write. ([#1500](https://github.com/ManifoldKit/ManifoldKit/issues/1500), [#1506](https://github.com/ManifoldKit/ManifoldKit/issues/1506))
+**Crash-safe conversation edits** — the edit, branch, and compression flows now commit their message writes through the transactional store as a single unit, so a failure mid-sequence can no longer truncate or destroy conversation history. Concurrent turns also stop clobbering each other: per-turn handoff detectors and pre-tool-use hooks are passed per request instead of being mutated on the shared `InferenceService`, and session "touch"/active-agent updates are written in place rather than via a full-record read-modify-write. ([#1500](https://github.com/roryford/ManifoldKit/issues/1500), [#1506](https://github.com/roryford/ManifoldKit/issues/1506))
 
 **RAG now works through `ManifoldBootstrap.build()`** — the async progress-stream bootstrap path previously ignored RAG configuration, silently disabling retrieval for apps that adopt the splash-screen flow. `build()` now takes a `ragConfiguration:` and wires retrieval identically to the synchronous initializer.
 
@@ -956,7 +956,7 @@ let bootstrap = try await ManifoldBootstrap.build(
     onProgress: { stage in /* update splash UI */ }
 )
 ```
-([#1503](https://github.com/ManifoldKit/ManifoldKit/issues/1503))
+([#1503](https://github.com/roryford/ManifoldKit/issues/1503))
 
 **Single value-typed generation entry point** — `InferenceService` and `GenerationQueue` previously re-declared an ~18-parameter sampling list across eight signatures. They now funnel through one `GenerationConfig`-based `enqueue`; the long per-parameter overloads remain as deprecated shims for one release.
 
@@ -967,7 +967,7 @@ let (token, stream) = try service.enqueue(
     priority: .normal
 )
 ```
-([#1504](https://github.com/ManifoldKit/ManifoldKit/issues/1504))
+([#1504](https://github.com/roryford/ManifoldKit/issues/1504))
 
 **Await an in-flight generation with `LlamaBackend.awaitGenerationSettled()`** — re-generating on a still-loaded `LlamaBackend` immediately after draining a stream could race the asynchronous release of the in-flight guard and throw `alreadyGenerating`. The new `awaitGenerationSettled()` awaits the active generation task (including its cleanup) without unloading the model, so a caller can safely start the next turn on the same loaded context.
 
@@ -975,78 +975,78 @@ let (token, stream) = try service.enqueue(
 for await event in backend.generate(prompt: prompt, config: config) { /* consume */ }
 await backend.awaitGenerationSettled()   // guard cleared — safe to generate again
 ```
-([#1513](https://github.com/ManifoldKit/ManifoldKit/issues/1513))
+([#1513](https://github.com/roryford/ManifoldKit/issues/1513))
 
 ### Bug Fixes
 
-* **Lossless agent persistence** — `ChatSessionRecord.agents` now round-trips through `insertSession`/`updateSession` (reconciled by id); previously the write path silently dropped the agents array. ([#1507](https://github.com/ManifoldKit/ManifoldKit/issues/1507))
-* **Stable streaming view identity** — `MessagePartsView` keys parts by a per-kind ordinal instead of array offset, so inserting a thinking block mid-stream no longer tears down and rebuilds the following text/tool views (losing their state). ([#1508](https://github.com/ManifoldKit/ManifoldKit/issues/1508))
-* **UTF-8-safe cloud error bodies** — server error bodies are accumulated as `Data` and decoded once, fixing mojibake on non-ASCII upstream errors; the drain/sanitize logic is consolidated into a single `ManifoldCloudCore` helper shared by all SSE backends, and `OllamaBackend.isThinkingModel` is now lock-guarded. ([#1509](https://github.com/ManifoldKit/ManifoldKit/issues/1509))
-* **MLX teardown ordering** — `MLXBackend` serializes resource-arbiter release behind a chained cleanup task (with a new `unloadAndWait()`), so a reload immediately following an unload can't have its fresh claim dropped by the prior release; generation streams now cancel on any stream termination, not only explicit cancellation. ([#1510](https://github.com/ManifoldKit/ManifoldKit/issues/1510))
-* **Observable Claude error handling** — `ClaudeBackend`'s error-body read now logs instead of silently swallowing, and decodes multi-byte UTF-8 correctly. ([#1502](https://github.com/ManifoldKit/ManifoldKit/issues/1502))
+* **Lossless agent persistence** — `ChatSessionRecord.agents` now round-trips through `insertSession`/`updateSession` (reconciled by id); previously the write path silently dropped the agents array. ([#1507](https://github.com/roryford/ManifoldKit/issues/1507))
+* **Stable streaming view identity** — `MessagePartsView` keys parts by a per-kind ordinal instead of array offset, so inserting a thinking block mid-stream no longer tears down and rebuilds the following text/tool views (losing their state). ([#1508](https://github.com/roryford/ManifoldKit/issues/1508))
+* **UTF-8-safe cloud error bodies** — server error bodies are accumulated as `Data` and decoded once, fixing mojibake on non-ASCII upstream errors; the drain/sanitize logic is consolidated into a single `ManifoldCloudCore` helper shared by all SSE backends, and `OllamaBackend.isThinkingModel` is now lock-guarded. ([#1509](https://github.com/roryford/ManifoldKit/issues/1509))
+* **MLX teardown ordering** — `MLXBackend` serializes resource-arbiter release behind a chained cleanup task (with a new `unloadAndWait()`), so a reload immediately following an unload can't have its fresh claim dropped by the prior release; generation streams now cancel on any stream termination, not only explicit cancellation. ([#1510](https://github.com/roryford/ManifoldKit/issues/1510))
+* **Observable Claude error handling** — `ClaudeBackend`'s error-body read now logs instead of silently swallowing, and decodes multi-byte UTF-8 correctly. ([#1502](https://github.com/roryford/ManifoldKit/issues/1502))
 
 ### Tests
 
-* **Hermetic model-discovery E2E** — the `ModelSelection`/`UserJourney` E2E suites now scan an isolated temporary directory instead of the real `~/Documents/Models`, so a developer's local models no longer fail the suites' exact-count assertions. ([#1512](https://github.com/ManifoldKit/ManifoldKit/issues/1512))
+* **Hermetic model-discovery E2E** — the `ModelSelection`/`UserJourney` E2E suites now scan an isolated temporary directory instead of the real `~/Documents/Models`, so a developer's local models no longer fail the suites' exact-count assertions. ([#1512](https://github.com/roryford/ManifoldKit/issues/1512))
 
 ### Documentation
 
-* **Refreshed setup guidance** — corrected stale guidance and setup docs. ([#1493](https://github.com/ManifoldKit/ManifoldKit/issues/1493))
+* **Refreshed setup guidance** — corrected stale guidance and setup docs. ([#1493](https://github.com/roryford/ManifoldKit/issues/1493))
 
 ### Code Refactoring
 
-* **`runGenerationTurn` decomposition** — the ~690-line turn method is split into discrete phase methods (context assembly, preparation, stream drain, finalization, post-turn effects); behavior is unchanged. ([#1501](https://github.com/ManifoldKit/ManifoldKit/issues/1501))
-* **Inference chokepoint cleanup** — duplicated capability-warning blocks are collapsed to single chokepoints, the hand-rolled `os_unfair_lock` in `GenerationStream` is replaced with `OSAllocatedUnfairLock`, and swallowed `modelRegistry.refresh()` errors in the model-management UI are now logged. ([#1511](https://github.com/ManifoldKit/ManifoldKit/issues/1511))
+* **`runGenerationTurn` decomposition** — the ~690-line turn method is split into discrete phase methods (context assembly, preparation, stream drain, finalization, post-turn effects); behavior is unchanged. ([#1501](https://github.com/roryford/ManifoldKit/issues/1501))
+* **Inference chokepoint cleanup** — duplicated capability-warning blocks are collapsed to single chokepoints, the hand-rolled `os_unfair_lock` in `GenerationStream` is replaced with `OSAllocatedUnfairLock`, and swallowed `modelRegistry.refresh()` errors in the model-management UI are now logged. ([#1511](https://github.com/roryford/ManifoldKit/issues/1511))
 
-## [0.36.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.35.0...v0.36.0) (2026-05-27)
+## [0.36.0](https://github.com/roryford/ManifoldKit/compare/v0.35.0...v0.36.0) (2026-05-27)
 
 ### Highlights
 
-**Tool execution progress streaming** — `ConversationRuntime` now emits incremental progress events as tool calls execute, so host UIs can show live status rather than waiting for the full result to arrive. Wire up a `toolProgressHandler` on your runtime configuration to receive updates. ([#1488](https://github.com/ManifoldKit/ManifoldKit/issues/1488))
+**Tool execution progress streaming** — `ConversationRuntime` now emits incremental progress events as tool calls execute, so host UIs can show live status rather than waiting for the full result to arrive. Wire up a `toolProgressHandler` on your runtime configuration to receive updates. ([#1488](https://github.com/roryford/ManifoldKit/issues/1488))
 
 ### Bug Fixes
 
-* **SwiftDataUsageStore container retain** — async turn tasks that outlive `ManifoldBootstrap` could hit a use-after-free on `ModelContext` because `ModelContainer` was only weakly held. The store now retains the container directly, preventing the crash. ([#1490](https://github.com/ManifoldKit/ManifoldKit/issues/1490))
-* **Transactional message mutations** — message edits and deletions are now applied atomically in the SwiftData store, preventing partial writes under concurrent turn activity. ([#1485](https://github.com/ManifoldKit/ManifoldKit/issues/1485))
-* **UI coordinator actor isolation** — coordinator closures are now explicitly isolated to `@MainActor`, fixing a Swift 6 region-isolation warning that could surface as a runtime race on coordinator teardown. ([#1486](https://github.com/ManifoldKit/ManifoldKit/issues/1486))
-* **Runtime turn task registry** — in-flight turn tasks are now tracked in `ConversationTurnTaskRegistry` so cancellation reliably reaches all active tasks on session switch or runtime teardown. ([#1487](https://github.com/ManifoldKit/ManifoldKit/issues/1487))
+* **SwiftDataUsageStore container retain** — async turn tasks that outlive `ManifoldBootstrap` could hit a use-after-free on `ModelContext` because `ModelContainer` was only weakly held. The store now retains the container directly, preventing the crash. ([#1490](https://github.com/roryford/ManifoldKit/issues/1490))
+* **Transactional message mutations** — message edits and deletions are now applied atomically in the SwiftData store, preventing partial writes under concurrent turn activity. ([#1485](https://github.com/roryford/ManifoldKit/issues/1485))
+* **UI coordinator actor isolation** — coordinator closures are now explicitly isolated to `@MainActor`, fixing a Swift 6 region-isolation warning that could surface as a runtime race on coordinator teardown. ([#1486](https://github.com/roryford/ManifoldKit/issues/1486))
+* **Runtime turn task registry** — in-flight turn tasks are now tracked in `ConversationTurnTaskRegistry` so cancellation reliably reaches all active tasks on session switch or runtime teardown. ([#1487](https://github.com/roryford/ManifoldKit/issues/1487))
 
-## [0.35.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.34.0...v0.35.0) (2026-05-26)
+## [0.35.0](https://github.com/roryford/ManifoldKit/compare/v0.34.0...v0.35.0) (2026-05-26)
 
 
 ### Features
 
-* **inference:** pass advanced sampler params through GenerationConfig ([#689](https://github.com/ManifoldKit/ManifoldKit/issues/689)) ([7301bdd](https://github.com/ManifoldKit/ManifoldKit/commit/7301bddf161c391fe5601e248b6a7cb7233e339c))
+* **inference:** pass advanced sampler params through GenerationConfig ([#689](https://github.com/roryford/ManifoldKit/issues/689)) ([7301bdd](https://github.com/roryford/ManifoldKit/commit/7301bddf161c391fe5601e248b6a7cb7233e339c))
 
 
 ### Bug Fixes
 
-* load selected endpoints and correct quickstart docs ([#1480](https://github.com/ManifoldKit/ManifoldKit/issues/1480)) ([68da2d4](https://github.com/ManifoldKit/ManifoldKit/commit/68da2d48d29da05676df7476fd2ce688bcbbd2cd))
-* pin swift-huggingface to verified 0.9.0 tag ([#1479](https://github.com/ManifoldKit/ManifoldKit/issues/1479)) ([c15b569](https://github.com/ManifoldKit/ManifoldKit/commit/c15b5696a567739c16d6a3d9e68c5b155464ffce))
-* **swiftui:** reliable local GGUF discovery + actionable load errors ([#1472](https://github.com/ManifoldKit/ManifoldKit/issues/1472)) ([7b1e230](https://github.com/ManifoldKit/ManifoldKit/commit/7b1e2304d3dd35c29665eda205f7e76046581b81))
-* **ui:** turnkey relaunch restore + canonical multi-session guide ([#1471](https://github.com/ManifoldKit/ManifoldKit/issues/1471)) ([f8d50b8](https://github.com/ManifoldKit/ManifoldKit/commit/f8d50b875dfcb392c9b430d8f12f21f5cf0a6148))
+* load selected endpoints and correct quickstart docs ([#1480](https://github.com/roryford/ManifoldKit/issues/1480)) ([68da2d4](https://github.com/roryford/ManifoldKit/commit/68da2d48d29da05676df7476fd2ce688bcbbd2cd))
+* pin swift-huggingface to verified 0.9.0 tag ([#1479](https://github.com/roryford/ManifoldKit/issues/1479)) ([c15b569](https://github.com/roryford/ManifoldKit/commit/c15b5696a567739c16d6a3d9e68c5b155464ffce))
+* **swiftui:** reliable local GGUF discovery + actionable load errors ([#1472](https://github.com/roryford/ManifoldKit/issues/1472)) ([7b1e230](https://github.com/roryford/ManifoldKit/commit/7b1e2304d3dd35c29665eda205f7e76046581b81))
+* **ui:** turnkey relaunch restore + canonical multi-session guide ([#1471](https://github.com/roryford/ManifoldKit/issues/1471)) ([f8d50b8](https://github.com/roryford/ManifoldKit/commit/f8d50b875dfcb392c9b430d8f12f21f5cf0a6148))
 
 
 ### Documentation
 
-* **docc:** seed Runtime + PersistenceSwiftData catalogs (tier 1 of [#1463](https://github.com/ManifoldKit/ManifoldKit/issues/1463)) ([#1469](https://github.com/ManifoldKit/ManifoldKit/issues/1469)) ([b5cd950](https://github.com/ManifoldKit/ManifoldKit/commit/b5cd95093e62b31007cbdd18947f73e75b9238d1))
-* **dx:** add image-gen + iPhone on-device DX walkthrough briefs ([#1459](https://github.com/ManifoldKit/ManifoldKit/issues/1459)) ([89cb82a](https://github.com/ManifoldKit/ManifoldKit/commit/89cb82acefaffeeaeea616c274d18cb8f3e18645))
-* **image-gen:** add CaseIterable + DocC to public image-gen value types ([#1467](https://github.com/ManifoldKit/ManifoldKit/issues/1467)) ([7c6ddb8](https://github.com/ManifoldKit/ManifoldKit/commit/7c6ddb83c8d076d2256655a9095ad298bcb1ba6c))
-* **imagegen:** publish discoverable image-gen DX surface ([#1470](https://github.com/ManifoldKit/ManifoldKit/issues/1470)) ([971164a](https://github.com/ManifoldKit/ManifoldKit/commit/971164aed51e2b3b32a551e4efe400bc1fee2427))
-* **voice:** document ManifoldVoice for standalone STT alongside chat composer use ([#1466](https://github.com/ManifoldKit/ManifoldKit/issues/1466)) ([2cc431d](https://github.com/ManifoldKit/ManifoldKit/commit/2cc431dde6bbb692c8a94881e1dada973b443c29))
+* **docc:** seed Runtime + PersistenceSwiftData catalogs (tier 1 of [#1463](https://github.com/roryford/ManifoldKit/issues/1463)) ([#1469](https://github.com/roryford/ManifoldKit/issues/1469)) ([b5cd950](https://github.com/roryford/ManifoldKit/commit/b5cd95093e62b31007cbdd18947f73e75b9238d1))
+* **dx:** add image-gen + iPhone on-device DX walkthrough briefs ([#1459](https://github.com/roryford/ManifoldKit/issues/1459)) ([89cb82a](https://github.com/roryford/ManifoldKit/commit/89cb82acefaffeeaeea616c274d18cb8f3e18645))
+* **image-gen:** add CaseIterable + DocC to public image-gen value types ([#1467](https://github.com/roryford/ManifoldKit/issues/1467)) ([7c6ddb8](https://github.com/roryford/ManifoldKit/commit/7c6ddb83c8d076d2256655a9095ad298bcb1ba6c))
+* **imagegen:** publish discoverable image-gen DX surface ([#1470](https://github.com/roryford/ManifoldKit/issues/1470)) ([971164a](https://github.com/roryford/ManifoldKit/commit/971164aed51e2b3b32a551e4efe400bc1fee2427))
+* **voice:** document ManifoldVoice for standalone STT alongside chat composer use ([#1466](https://github.com/roryford/ManifoldKit/issues/1466)) ([2cc431d](https://github.com/roryford/ManifoldKit/commit/2cc431dde6bbb692c8a94881e1dada973b443c29))
 
 
 ### Code Refactoring
 
-* **cloud-core:** decompose SSECloudBackend ([f94315e](https://github.com/ManifoldKit/ManifoldKit/commit/f94315e01884088e62840961ab24781600d03a00))
-* **huggingface:** decompose background download manager ([#1456](https://github.com/ManifoldKit/ManifoldKit/issues/1456)) ([866b340](https://github.com/ManifoldKit/ManifoldKit/commit/866b3403bb47d1ca844424a44841678c9826c383))
-* **ui:** decompose ChatView ([c881ba4](https://github.com/ManifoldKit/ManifoldKit/commit/c881ba4577c78dcc4a9f9a82bcb583f2f95dac79))
+* **cloud-core:** decompose SSECloudBackend ([f94315e](https://github.com/roryford/ManifoldKit/commit/f94315e01884088e62840961ab24781600d03a00))
+* **huggingface:** decompose background download manager ([#1456](https://github.com/roryford/ManifoldKit/issues/1456)) ([866b340](https://github.com/roryford/ManifoldKit/commit/866b3403bb47d1ca844424a44841678c9826c383))
+* **ui:** decompose ChatView ([c881ba4](https://github.com/roryford/ManifoldKit/commit/c881ba4577c78dcc4a9f9a82bcb583f2f95dac79))
 
-## [0.34.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.33.0...v0.34.0) — 2026-05-24
+## [0.34.0](https://github.com/roryford/ManifoldKit/compare/v0.33.0...v0.34.0) — 2026-05-24
 
 ### Highlights
 
-#### Multi-agent runtime — handoffs, hooks, skills, and session tool sources ([#1418](https://github.com/ManifoldKit/ManifoldKit/issues/1418), [#1429](https://github.com/ManifoldKit/ManifoldKit/issues/1429), [#1432](https://github.com/ManifoldKit/ManifoldKit/issues/1432), [#1435](https://github.com/ManifoldKit/ManifoldKit/issues/1435), [#1436](https://github.com/ManifoldKit/ManifoldKit/issues/1436), [#1443](https://github.com/ManifoldKit/ManifoldKit/issues/1443), [#1446](https://github.com/ManifoldKit/ManifoldKit/issues/1446))
+#### Multi-agent runtime — handoffs, hooks, skills, and session tool sources ([#1418](https://github.com/roryford/ManifoldKit/issues/1418), [#1429](https://github.com/roryford/ManifoldKit/issues/1429), [#1432](https://github.com/roryford/ManifoldKit/issues/1432), [#1435](https://github.com/roryford/ManifoldKit/issues/1435), [#1436](https://github.com/roryford/ManifoldKit/issues/1436), [#1443](https://github.com/roryford/ManifoldKit/issues/1443), [#1446](https://github.com/roryford/ManifoldKit/issues/1446))
 
 This release ships the full agentic runtime surface. `SessionToolSource` lets you register tools scoped to a session rather than a backend, so different agents in the same app can have different tool sets. `HookRegistry` adds `preToolUse` and `preCompact` events — inject validation, logging, or a confirmation gate without patching the turn loop. Agent handoffs use a `transfer_to_<name>` synthetic tool that `ConversationRuntime` resolves at call time, so the routing graph is declared in data rather than embedded in prompt text. `ManifoldBootstrap` gains `sessionToolSources` and `hookRegistry` fields so all of this wires up in the same one-call setup path.
 
@@ -1064,11 +1064,11 @@ let bootstrap = ManifoldBootstrap(
 )
 ```
 
-#### `ManifoldFlux` merged into `ManifoldMLX` — BREAKING ([#1408](https://github.com/ManifoldKit/ManifoldKit/issues/1408))
+#### `ManifoldFlux` merged into `ManifoldMLX` — BREAKING ([#1408](https://github.com/roryford/ManifoldKit/issues/1408))
 
 `import ManifoldFlux` is gone. The Flux image-generation backend now lives inside `ManifoldMLX` alongside the text-generation backend, eliminating a separate target that had no independent consumers. Apps using `import ManifoldBackends` (the documented path) are unaffected. Apps that imported the family target directly must replace `import ManifoldFlux` with `import ManifoldMLX`.
 
-#### AppIntents — `AskManifoldIntent` and batch registration ([#1379](https://github.com/ManifoldKit/ManifoldKit/issues/1379), [#1380](https://github.com/ManifoldKit/ManifoldKit/issues/1380))
+#### AppIntents — `AskManifoldIntent` and batch registration ([#1379](https://github.com/roryford/ManifoldKit/issues/1379), [#1380](https://github.com/roryford/ManifoldKit/issues/1380))
 
 `AskManifoldIntent` is a ready-to-use system intent that surfaces ManifoldKit chat sessions to Siri and Shortcuts without any boilerplate. `DiscoverableAppIntent` gains a batch registration API so you can register a whole family of scene-specific intents in one call.
 
@@ -1080,7 +1080,7 @@ ManifoldAppIntents.registerAll([
 ])
 ```
 
-#### Observability — per-token latency and cost meter on `SSECloudBackend` ([#1414](https://github.com/ManifoldKit/ManifoldKit/issues/1414))
+#### Observability — per-token latency and cost meter on `SSECloudBackend` ([#1414](https://github.com/roryford/ManifoldKit/issues/1414))
 
 Every `SSECloudBackend` generation now records an `InferenceMetric`: time-to-first-token, mean inter-token latency, wall-clock duration, prompt/completion token counts, and an estimated cost in USD. Metrics flow through an `InferenceMetricSink` protocol so you can route them to your own analytics pipeline. The built-in `InMemoryMetricSink` keeps the last 100 metrics in an actor-backed ring buffer.
 
@@ -1090,41 +1090,41 @@ let recent = await sink.recent()
 print(recent.last?.meanInterTokenLatency as Any) // TimeInterval?
 ```
 
-#### CloudKit sync and V9 schema ([#873](https://github.com/ManifoldKit/ManifoldKit/issues/873), [#1420](https://github.com/ManifoldKit/ManifoldKit/issues/1420))
+#### CloudKit sync and V9 schema ([#873](https://github.com/roryford/ManifoldKit/issues/873), [#1420](https://github.com/roryford/ManifoldKit/issues/1420))
 
 `ManifoldBootstrap.makeCloudKitContainer()` is a new convenience factory that configures a CloudKit-backed SwiftData container with the right store description and schema migration path. The V9 schema adds agent and skill session fields to the persistent model layer, which `SessionToolSource` and `ManifoldSkills` depend on at runtime.
 
-#### MCP security hardening — STDIO opt-in, auth enforcement, schema sanitizer ([#1413](https://github.com/ManifoldKit/ManifoldKit/issues/1413))
+#### MCP security hardening — STDIO opt-in, auth enforcement, schema sanitizer ([#1413](https://github.com/roryford/ManifoldKit/issues/1413))
 
 `MCPServerDescriptor` now requires explicit opt-in for STDIO transports (`allowsSTDIOTransport: true`) and unauthenticated servers (`isUnauthenticatedUnsafe: true`); attempts to connect without setting the relevant flag throw `MCPError.transportFailure` with an actionable message. `MCPContentSanitizer` now walks the full JSON Schema parameter tree — not just the top-level description — so injected instructions buried in nested property descriptions are caught and logged.
 
 ### Features
 
-* **persistence:** rolling dialogue summarisation hook for long sessions ([#873](https://github.com/ManifoldKit/ManifoldKit/issues/873))
-* **runtime:** conversation import — `JSONLImportFormat` + `ConversationImporter` ([#873](https://github.com/ManifoldKit/ManifoldKit/issues/873))
+* **persistence:** rolling dialogue summarisation hook for long sessions ([#873](https://github.com/roryford/ManifoldKit/issues/873))
+* **runtime:** conversation import — `JSONLImportFormat` + `ConversationImporter` ([#873](https://github.com/roryford/ManifoldKit/issues/873))
 * **ui:** expose `SessionManagerViewModel` from `quickStart()` and await initial session load
-* **ui:** per-agent message rendering and handoff chip ([#1436](https://github.com/ManifoldKit/ManifoldKit/issues/1436))
+* **ui:** per-agent message rendering and handoff chip ([#1436](https://github.com/roryford/ManifoldKit/issues/1436))
 * **inference:** llama.cpp log-level knob, silence internal deprecations
 
 ### Bug Fixes
 
 * **foundation:** emit generation events from `FoundationBackend` stream
 * **llama:** correct Llama-3 chat template and drain Metal residency on unload
-* **swiftui:** auto-create initial session in `quickStart()` so `ChatView` is usable on first launch ([#1411](https://github.com/ManifoldKit/ManifoldKit/issues/1411))
+* **swiftui:** auto-create initial session in `quickStart()` so `ChatView` is usable on first launch ([#1411](https://github.com/roryford/ManifoldKit/issues/1411))
 * **ui:** wire Browse Models CTA and fix empty-state copy in `ChatView`
 
 ### Documentation
 
-* QUICKSTART-CLI guide with Foundation + Llama + cloud worked examples ([#1397](https://github.com/ManifoldKit/ManifoldKit/issues/1397))
-* `ManifoldSkills`, `AgentHandoffs`, and `HookSystem` articles ([#1437](https://github.com/ManifoldKit/ManifoldKit/issues/1437))
-* `GenerationEvent` cases enumerated in QUICKSTART-CLI ([#1431](https://github.com/ManifoldKit/ManifoldKit/issues/1431))
-* Fix `BuildingAChatUI.md` snippets to compile against v0.33.0 ([#1434](https://github.com/ManifoldKit/ManifoldKit/issues/1434))
+* QUICKSTART-CLI guide with Foundation + Llama + cloud worked examples ([#1397](https://github.com/roryford/ManifoldKit/issues/1397))
+* `ManifoldSkills`, `AgentHandoffs`, and `HookSystem` articles ([#1437](https://github.com/roryford/ManifoldKit/issues/1437))
+* `GenerationEvent` cases enumerated in QUICKSTART-CLI ([#1431](https://github.com/roryford/ManifoldKit/issues/1431))
+* Fix `BuildingAChatUI.md` snippets to compile against v0.33.0 ([#1434](https://github.com/roryford/ManifoldKit/issues/1434))
 
-## [0.33.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.32.0...v0.33.0) — 2026-05-23
+## [0.33.0](https://github.com/roryford/ManifoldKit/compare/v0.32.0...v0.33.0) — 2026-05-23
 
 ### Highlights
 
-#### AppIntents v2 — richer schemas, entity parameters, streaming progress, dialog channel ([#1381](https://github.com/ManifoldKit/ManifoldKit/issues/1381), [#1383](https://github.com/ManifoldKit/ManifoldKit/issues/1383), [#1384](https://github.com/ManifoldKit/ManifoldKit/issues/1384), [#1385](https://github.com/ManifoldKit/ManifoldKit/issues/1385), [#1388](https://github.com/ManifoldKit/ManifoldKit/issues/1388))
+#### AppIntents v2 — richer schemas, entity parameters, streaming progress, dialog channel ([#1381](https://github.com/roryford/ManifoldKit/issues/1381), [#1383](https://github.com/roryford/ManifoldKit/issues/1383), [#1384](https://github.com/roryford/ManifoldKit/issues/1384), [#1385](https://github.com/roryford/ManifoldKit/issues/1385), [#1388](https://github.com/roryford/ManifoldKit/issues/1388))
 
 ManifoldAppIntents gets a substantial expansion this release. Authoring an intent now supports `AppEntity` parameters for first-class entity resolution by Siri/Shortcuts, richer parameter schemas with locale-safe authorisation prompts, a streaming progress channel that surfaces partial results to the system UI during long-running generations, and a separate `ProvidesDialog` field that decouples the spoken dialog from the rendered view. Together these close the gap with native AppIntents apps and let agents drive chat sessions from outside ManifoldKit.
 
@@ -1145,7 +1145,7 @@ struct AskManifoldIntent: AppIntent {
 }
 ```
 
-#### Test pipeline hardening — trait-combo gate, CI build gate, profile-driven pre-push ([#1382](https://github.com/ManifoldKit/ManifoldKit/issues/1382), [#1386](https://github.com/ManifoldKit/ManifoldKit/issues/1386), [#1387](https://github.com/ManifoldKit/ManifoldKit/issues/1387))
+#### Test pipeline hardening — trait-combo gate, CI build gate, profile-driven pre-push ([#1382](https://github.com/roryford/ManifoldKit/issues/1382), [#1386](https://github.com/roryford/ManifoldKit/issues/1386), [#1387](https://github.com/roryford/ManifoldKit/issues/1387))
 
 CI runs `--disable-default-traits` and therefore can't compile `#if MLX` / `#if Llama` code; trait-gated bugs lived for weeks before someone happened to run a manual all-traits sweep. PR #1382 unblocks the local sweep itself (KV cache reuse race in `MLXBackend`, stale `Sources/ManifoldBackends/` paths in two memory-pressure tests, a Swift-6 type-checker timeout in `QualityBaselineTests`). PR #1386 ships `scripts/test.sh --profile local|ci|spike` so the pre-push shape is named and stable instead of a 14-flag invocation memorised from CLAUDE.md prose. PR #1387 adds a CI `build-gate` job that runs `swift build --build-tests` first and short-circuits the heavy jobs on compile failures (4-5 min wasted → ~60s), plus a SwiftPM `.build/` cache on the `cold-start-human` job that drops it from 90s cold to 12s warm.
 
@@ -1162,13 +1162,13 @@ scripts/test.sh --profile spike --spike-module ManifoldRuntimeTests
 
 ### Fixes
 
-**`lastLoggedPct` race in DiffusionDownload progress observer** — wrapped the KVO throttling counter in `OSAllocatedUnfairLock<Int>`; the closure observing `task.countOfBytesReceived` fires on URLSession's delegate queue, not the caller's actor, so the captured `var` was racing across threads ([#1377](https://github.com/ManifoldKit/ManifoldKit/issues/1377)).
+**`lastLoggedPct` race in DiffusionDownload progress observer** — wrapped the KVO throttling counter in `OSAllocatedUnfairLock<Int>`; the closure observing `task.countOfBytesReceived` fires on URLSession's delegate queue, not the caller's actor, so the captured `var` was racing across threads ([#1377](https://github.com/roryford/ManifoldKit/issues/1377)).
 
-## [0.32.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.31.0...v0.32.0) — 2026-05-22
+## [0.32.0](https://github.com/roryford/ManifoldKit/compare/v0.31.0...v0.32.0) — 2026-05-22
 
 ### Highlights
 
-#### `ManifoldKit.quickStart()` — one-call onboarding ([#1369](https://github.com/ManifoldKit/ManifoldKit/issues/1369), [#1370](https://github.com/ManifoldKit/ManifoldKit/issues/1370), [#1371](https://github.com/ManifoldKit/ManifoldKit/issues/1371), [#1372](https://github.com/ManifoldKit/ManifoldKit/issues/1372))
+#### `ManifoldKit.quickStart()` — one-call onboarding ([#1369](https://github.com/roryford/ManifoldKit/issues/1369), [#1370](https://github.com/roryford/ManifoldKit/issues/1370), [#1371](https://github.com/roryford/ManifoldKit/issues/1371), [#1372](https://github.com/roryford/ManifoldKit/issues/1372))
 
 Getting from a fresh SwiftUI app to a working chat surface used to require a five-line bootstrap dance — build a progress stream, await the task, register backends, instantiate the view model, wire persistence and endpoint stores. That whole sequence collapses into a single line:
 
@@ -1178,9 +1178,9 @@ let kit = try await ManifoldKit.quickStart()
 
 `QuickStartResult` exposes both the configured `ManifoldBootstrap` and a ready-to-use `ChatViewModel`, so the same call works for "drop in `ChatView`" and "I want the bootstrap, I'll bring my own UI." `MinimalExample` and the top of the README were rewritten around this entry point; the previous demo app moved to `Example/Advanced` as a reference, not the canonical starting point. `docs/QUICKSTART.md` is the new landing page for first-time integrators.
 
-#### Pre-1.0 deprecated API removal ([#1373](https://github.com/ManifoldKit/ManifoldKit/issues/1373))
+#### Pre-1.0 deprecated API removal ([#1373](https://github.com/roryford/ManifoldKit/issues/1373))
 
-The v1.0 cut list from [#759](https://github.com/ManifoldKit/ManifoldKit/issues/759) is done. Five symbols deleted as a single breaking-change PR ahead of the v1.0 tag:
+The v1.0 cut list from [#759](https://github.com/roryford/ManifoldKit/issues/759) is done. Five symbols deleted as a single breaking-change PR ahead of the v1.0 tag:
 
 - `InferenceService.generationDidFinish()` — no-op since v0.11.6; the queue auto-drains on stream termination.
 - `GenerationConfig.init(... maxTokens: Int32 ...)` — superseded by the primary init with `maxOutputTokens`.
@@ -1188,36 +1188,36 @@ The v1.0 cut list from [#759](https://github.com/ManifoldKit/ManifoldKit/issues/
 - `ToolResult.init(callId:content:isError:)` — superseded by `init(callId:content:errorKind:)`. Migration: `isError: true` → `errorKind: .permanent`; `isError: false` → `errorKind: nil`.
 - `ThinkingBlockFilter` typealias — renamed to `ThinkingParser` (file too: `ThinkingBlockFilterTests.swift` → `ThinkingParserTests.swift`).
 
-Out of scope, intentionally retained: `OllamaBackend` build-mode deprecations (tied to [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714)), and newer deprecations on `ConversationRuntime`, MCP OAuth, and the legacy turn-input types — those carry past 1.0.
+Out of scope, intentionally retained: `OllamaBackend` build-mode deprecations (tied to [#714](https://github.com/roryford/ManifoldKit/issues/714)), and newer deprecations on `ConversationRuntime`, MCP OAuth, and the legacy turn-input types — those carry past 1.0.
 
-#### April–May 2026 security audit closed ([#1360](https://github.com/ManifoldKit/ManifoldKit/issues/1360), [#1361](https://github.com/ManifoldKit/ManifoldKit/issues/1361), [#1368](https://github.com/ManifoldKit/ManifoldKit/issues/1368))
+#### April–May 2026 security audit closed ([#1360](https://github.com/roryford/ManifoldKit/issues/1360), [#1361](https://github.com/roryford/ManifoldKit/issues/1361), [#1368](https://github.com/roryford/ManifoldKit/issues/1368))
 
 The three remaining P0s from the multi-week security audit ship together. **SEC-14** enforces SHA-256 checksums on the curated GGUF catalog so a tampered mirror cannot serve a different-but-valid-magic-bytes weight; **SEC-17** widens the cert-pinning loopback exemption from `127.0.0.1` literal to the full `127.0.0.0/8` block, matching how the OS routes the range; **SEC-26** splits the MCP OAuth refresh token into a separate Keychain item with stricter accessibility (`whenPasscodeSetThisDeviceOnly`) so the long-lived secret can't ride along on an access-token read. Only SEC-16 (DNS TOCTOU on host allowlist) remains deferred.
 
-#### `ManifoldKitError` URL-error unification ([#1362](https://github.com/ManifoldKit/ManifoldKit/issues/1362))
+#### `ManifoldKitError` URL-error unification ([#1362](https://github.com/roryford/ManifoldKit/issues/1362))
 
 `URLError` from any cloud-backend code path now surfaces as a typed `ManifoldKitError` case rather than leaking the underlying Foundation type. Adopters get one error surface to switch on, and the diagnostic payload includes the original `URLError.Code` for callers that still need to branch on transport-layer specifics.
 
-#### DX gated by CI ([#1374](https://github.com/ManifoldKit/ManifoldKit/issues/1374), [#1375](https://github.com/ManifoldKit/ManifoldKit/issues/1375))
+#### DX gated by CI ([#1374](https://github.com/roryford/ManifoldKit/issues/1374), [#1375](https://github.com/roryford/ManifoldKit/issues/1375))
 
 Two new workflows lock the onboarding contract in. `readme-snippets` extracts every fenced `swift` block in `README.md` and `docs/*.md`, drops each into a fresh SwiftPM consumer, and runs `swift build` — any future PR that breaks a documented snippet fails CI. `cold-start-human` asserts the first H2 in `README.md` is `## Hello World` and that the snippet under it compiles end-to-end against the current public API. The first run of both gates immediately caught a real bug: the README's Hello World was missing `import SwiftData`. The intent isn't to police prose — it's to convert documentation drift from an editorial discipline problem into a CI failure.
 
 ### Features
 
-* Machine-readable trait→capability feature matrix ([#1366](https://github.com/ManifoldKit/ManifoldKit/issues/1366)) — a JSON document at the repo root and a generator script make the trait/capability cross-product introspectable from tooling.
-* Opt-in README anchor checks in `scripts/check-readme.sh` ([#1364](https://github.com/ManifoldKit/ManifoldKit/issues/1364)) — guards against link rot when section headings move.
+* Machine-readable trait→capability feature matrix ([#1366](https://github.com/roryford/ManifoldKit/issues/1366)) — a JSON document at the repo root and a generator script make the trait/capability cross-product introspectable from tooling.
+* Opt-in README anchor checks in `scripts/check-readme.sh` ([#1364](https://github.com/roryford/ManifoldKit/issues/1364)) — guards against link rot when section headings move.
 
 ### Developer Experience
 
-* `dx:` conventional commit type with a dedicated changelog section ([#1365](https://github.com/ManifoldKit/ManifoldKit/issues/1365)) — surfaces tooling/workflow changes without inflating `feat:` or `chore:` counts.
-* DX checklist added to the PR template ([#1363](https://github.com/ManifoldKit/ManifoldKit/issues/1363)) — prompts authors to consider first-time-user impact on every change.
-* README pruning ritual + DX budget ([#1376](https://github.com/ManifoldKit/ManifoldKit/issues/1376)) — recurring issue template + a `dx-debt` label + a CONTRIBUTING section that reserves one `dx:` PR per minor cycle for editorial debt, so DX work isn't perpetually deferred to "next sprint."
+* `dx:` conventional commit type with a dedicated changelog section ([#1365](https://github.com/roryford/ManifoldKit/issues/1365)) — surfaces tooling/workflow changes without inflating `feat:` or `chore:` counts.
+* DX checklist added to the PR template ([#1363](https://github.com/roryford/ManifoldKit/issues/1363)) — prompts authors to consider first-time-user impact on every change.
+* README pruning ritual + DX budget ([#1376](https://github.com/roryford/ManifoldKit/issues/1376)) — recurring issue template + a `dx-debt` label + a CONTRIBUTING section that reserves one `dx:` PR per minor cycle for editorial debt, so DX work isn't perpetually deferred to "next sprint."
 
-## [0.31.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.30.0...v0.31.0) — 2026-05-22
+## [0.31.0](https://github.com/roryford/ManifoldKit/compare/v0.30.0...v0.31.0) — 2026-05-22
 
 ### Highlights
 
-#### MCP host server — expose your app as an MCP endpoint ([#1357](https://github.com/ManifoldKit/ManifoldKit/issues/1357))
+#### MCP host server — expose your app as an MCP endpoint ([#1357](https://github.com/roryford/ManifoldKit/issues/1357))
 
 ManifoldKit previously consumed MCP servers; now it can *be* one. `ManifoldMCPHost` is an opt-in Swift actor that speaks the MCP JSON-RPC protocol over stdio (HTTP/SSE is planned), exposing conversation sessions and RAG documents as browseable resources and providing `list_sessions`, `send_message`, and `search_documents` as callable tools. External agents — Claude Desktop, custom CLI tools, or any MCP-capable client — can connect to a running ManifoldKit app without any additional infrastructure. Wire it up at app launch by passing your `ConversationRuntime` and optional `RAGService`:
 
@@ -1231,44 +1231,44 @@ let host = ManifoldMCPHost(
 Task { try await host.run(transport: MCPHostStdioTransport()) }
 ```
 
-#### RAG sentence-boundary chunker + `/v1/embeddings` server endpoint ([#1356](https://github.com/ManifoldKit/ManifoldKit/issues/1356), [#1355](https://github.com/ManifoldKit/ManifoldKit/issues/1355))
+#### RAG sentence-boundary chunker + `/v1/embeddings` server endpoint ([#1356](https://github.com/roryford/ManifoldKit/issues/1356), [#1355](https://github.com/roryford/ManifoldKit/issues/1355))
 
 `DocumentChunker` now uses `NLTokenizer(.sentence)` to split documents at sentence boundaries before building overlap windows, eliminating mid-sentence cuts that degraded retrieval precision on prose-heavy corpora. The ManifoldServer also gains an OpenAI-compatible `POST /v1/embeddings` endpoint — same auth and error shape as the completions API — so existing tooling that embeds via the OpenAI SDK works against local models with zero changes.
 
 ### Features
 
-* **server:** wire GGUF manifest verification into download flow ([#1353](https://github.com/ManifoldKit/ManifoldKit/issues/1353))
-* **inference:** add public `MemoryPressureEvent` stream on `InferenceService` ([#1295](https://github.com/ManifoldKit/ManifoldKit/issues/1295))
-* **config:** add `ManifoldConfiguration.networkPolicy` host allowlist ([#1294](https://github.com/ManifoldKit/ManifoldKit/issues/1294))
-* **mcp:** enforce Foundation Models tool-call cap + settings UI counter ([#1354](https://github.com/ManifoldKit/ManifoldKit/issues/1354))
+* **server:** wire GGUF manifest verification into download flow ([#1353](https://github.com/roryford/ManifoldKit/issues/1353))
+* **inference:** add public `MemoryPressureEvent` stream on `InferenceService` ([#1295](https://github.com/roryford/ManifoldKit/issues/1295))
+* **config:** add `ManifoldConfiguration.networkPolicy` host allowlist ([#1294](https://github.com/roryford/ManifoldKit/issues/1294))
+* **mcp:** enforce Foundation Models tool-call cap + settings UI counter ([#1354](https://github.com/roryford/ManifoldKit/issues/1354))
 
 ### Fixes
 
-* **tests:** gate Ollama contract tests on `#if Ollama` + restore `Package.resolved` ([fa3a10f](https://github.com/ManifoldKit/ManifoldKit/commit/fa3a10f80f081eb61c42cdc22ecc0fedc44dd912))
+* **tests:** gate Ollama contract tests on `#if Ollama` + restore `Package.resolved` ([fa3a10f](https://github.com/roryford/ManifoldKit/commit/fa3a10f80f081eb61c42cdc22ecc0fedc44dd912))
 
-## [0.30.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.29.0...v0.30.0) (2026-05-19)
+## [0.30.0](https://github.com/roryford/ManifoldKit/compare/v0.29.0...v0.30.0) (2026-05-19)
 
 
 ### Features
 
-* **hf:** adopt Hub directory convention in diffusion download ([#1338](https://github.com/ManifoldKit/ManifoldKit/issues/1338)) ([f747e02](https://github.com/ManifoldKit/ManifoldKit/commit/f747e0213f458ee301003302077a6a1398ba5151)), closes [#1315](https://github.com/ManifoldKit/ManifoldKit/issues/1315)
+* **hf:** adopt Hub directory convention in diffusion download ([#1338](https://github.com/roryford/ManifoldKit/issues/1338)) ([f747e02](https://github.com/roryford/ManifoldKit/commit/f747e0213f458ee301003302077a6a1398ba5151)), closes [#1315](https://github.com/roryford/ManifoldKit/issues/1315)
 
 
 ### Bug Fixes
 
-* eliminate cross-test state leakage in Foundation and Llama backends ([#1337](https://github.com/ManifoldKit/ManifoldKit/issues/1337)) ([7e0a2a4](https://github.com/ManifoldKit/ManifoldKit/commit/7e0a2a43345d53c98cee038903b59e55113978bc))
+* eliminate cross-test state leakage in Foundation and Llama backends ([#1337](https://github.com/roryford/ManifoldKit/issues/1337)) ([7e0a2a4](https://github.com/roryford/ManifoldKit/commit/7e0a2a43345d53c98cee038903b59e55113978bc))
 
 
 ### Performance Improvements
 
-* **ci:** move coverage threshold check from per-push to nightly ([#1336](https://github.com/ManifoldKit/ManifoldKit/issues/1336)) ([65e10c0](https://github.com/ManifoldKit/ManifoldKit/commit/65e10c0f3a0e2542899fcb15dd7f8fceefe7d37b))
-* **ci:** revert .build/debug cache spike (round 2) ([#1335](https://github.com/ManifoldKit/ManifoldKit/issues/1335)) ([0dd29eb](https://github.com/ManifoldKit/ManifoldKit/commit/0dd29eb361b434dbd5e152060811d380968d014e))
+* **ci:** move coverage threshold check from per-push to nightly ([#1336](https://github.com/roryford/ManifoldKit/issues/1336)) ([65e10c0](https://github.com/roryford/ManifoldKit/commit/65e10c0f3a0e2542899fcb15dd7f8fceefe7d37b))
+* **ci:** revert .build/debug cache spike (round 2) ([#1335](https://github.com/roryford/ManifoldKit/issues/1335)) ([0dd29eb](https://github.com/roryford/ManifoldKit/commit/0dd29eb361b434dbd5e152060811d380968d014e))
 
-## [0.29.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.28.0...v0.29.0) — 2026-05-17
+## [0.29.0](https://github.com/roryford/ManifoldKit/compare/v0.28.0...v0.29.0) — 2026-05-17
 
 ### Highlights
 
-#### Session-level pinning on `SessionManagerViewModel` ([#1332](https://github.com/ManifoldKit/ManifoldKit/issues/1332))
+#### Session-level pinning on `SessionManagerViewModel` ([#1332](https://github.com/roryford/ManifoldKit/issues/1332))
 
 Pinned-session lists ("Pinned" above the chronological list, à la Messages, Slack, Notion) previously required every consumer app to persist its own `Set<UUID>` in `UserDefaults` and reconcile against MK's session list on every load — drifting whenever a session was deleted under MK. ManifoldKit now owns pin state directly. `ChatSessionRecord` carries `isPinned` and `pinnedAt`, `SchemaV8` adds a lightweight migration (existing rows default to unpinned), and `SessionListService` emits a new `.sessionPinChanged` event so list-view bindings stay in sync without polling. The new `pinnedSortKey` mirror column makes `SortDescriptor` work on the `@Model` without reaching outside SwiftData.
 
@@ -1285,7 +1285,7 @@ ForEach(manager.pinnedSessions) { session in
 }
 ```
 
-#### Public `NetworkActivityCenter` — single source of truth for in-flight traffic ([#1331](https://github.com/ManifoldKit/ManifoldKit/issues/1331))
+#### Public `NetworkActivityCenter` — single source of truth for in-flight traffic ([#1331](https://github.com/roryford/ManifoldKit/issues/1331))
 
 Privacy-forward, local-first apps need to display a real "is the framework talking to the network right now?" signal — not infer it from download progress or hand-rolled `URLSession` observers that drift from MK's actual networking. `NetworkActivityCenter` is a public `@Observable @MainActor` funnel that every internal URLSession (HuggingFace browsing, background downloads, cloud transports) reports begin/end pairs to. Each request is counted as a `NetworkActivityToken`; the center exposes `current`, `inFlightCount`, and `activeHosts` as observables plus an `AsyncStream<NetworkActivity>` of state transitions.
 
@@ -1301,7 +1301,7 @@ struct NetworkPill: View {
 }
 ```
 
-#### `ChatViewModel.stagedAttachments` — public draft-attachment API ([#1326](https://github.com/ManifoldKit/ManifoldKit/issues/1326), closes [#1302](https://github.com/ManifoldKit/ManifoldKit/issues/1302))
+#### `ChatViewModel.stagedAttachments` — public draft-attachment API ([#1326](https://github.com/roryford/ManifoldKit/issues/1326), closes [#1302](https://github.com/roryford/ManifoldKit/issues/1302))
 
 The draft attachment list a user has staged before pressing send is now first-class on `ChatViewModel`. Previously consumers reimplemented this in their view layer and routed it through `sendMessage` themselves; the new API mirrors what MK already does internally and replays it on draft restore so files survive backgrounding.
 
@@ -1312,7 +1312,7 @@ viewModel.removeStagedAttachment(at: 0)
 await viewModel.sendMessage()  // sends with staged parts attached
 ```
 
-#### `SessionManagerViewModel.deleteAllSessions()` — atomic bulk-delete ([#1325](https://github.com/ManifoldKit/ManifoldKit/issues/1325), closes [#1300](https://github.com/ManifoldKit/ManifoldKit/issues/1300))
+#### `SessionManagerViewModel.deleteAllSessions()` — atomic bulk-delete ([#1325](https://github.com/roryford/ManifoldKit/issues/1325), closes [#1300](https://github.com/roryford/ManifoldKit/issues/1300))
 
 "Clear All Chats" used to require iterating session IDs and issuing N deletes — partial failures left the UI showing ghosts. `deleteAllSessions()` is one atomic SwiftData transaction that either clears every session or rolls back; `SessionListService` emits a single `.sessionsLoaded` event after.
 
@@ -1320,7 +1320,7 @@ await viewModel.sendMessage()  // sends with staged parts attached
 try await manager.deleteAllSessions()
 ```
 
-#### `ModelCapabilities` gains `supportsCodeGeneration` and `supportsMultilingual` ([#1330](https://github.com/ManifoldKit/ManifoldKit/issues/1330), closes [#1298](https://github.com/ManifoldKit/ManifoldKit/issues/1298))
+#### `ModelCapabilities` gains `supportsCodeGeneration` and `supportsMultilingual` ([#1330](https://github.com/roryford/ManifoldKit/issues/1330), closes [#1298](https://github.com/roryford/ManifoldKit/issues/1298))
 
 Model browsers that show capability badges ("Vision", "Code", "Reasoning", "Multilingual") previously had to hardcode the latter two per backend or guess from display names. `ModelCapabilityProbe` now infers them from the HuggingFace README front-matter (tags, language list, pipeline tag) with `config.json` and `architectures` as fallbacks — and rejects substring traps like `LlamaDecoderForCausalLM` (not code) or `MultiTaskLlama` (not multilingual). Both fields default to `false` for unaffected call sites.
 
@@ -1332,19 +1332,19 @@ if caps.supportsMultilingual   { showBadge(.multilingual) }
 
 ### Features
 
-- **hf:** auto-detect `.fp16.safetensors` variants in the diffusion downloader so half-precision weights are picked over fp32 without manual filename juggling ([#1327](https://github.com/ManifoldKit/ManifoldKit/issues/1327), closes [#1316](https://github.com/ManifoldKit/ManifoldKit/issues/1316))
+- **hf:** auto-detect `.fp16.safetensors` variants in the diffusion downloader so half-precision weights are picked over fp32 without manual filename juggling ([#1327](https://github.com/roryford/ManifoldKit/issues/1327), closes [#1316](https://github.com/roryford/ManifoldKit/issues/1316))
 
 ### Fixes
 
-- **security:** `PromptTemplate.sanitize` now strips all special tokens regardless of which template is active — previously a switch to a different model could leave the prior model's chat-control tokens un-escaped in user input ([#1334](https://github.com/ManifoldKit/ManifoldKit/issues/1334))
-- Deflake `MockBackendLifecycleTests.test_backToBackMakeStream_clearsTaskBetweenRuns` — replaced a `Task.sleep`-poll race with a deterministic `await task.value` happens-before edge on the lifecycle task captured inside `onFinish` ([#1333](https://github.com/ManifoldKit/ManifoldKit/issues/1333), closes [#1329](https://github.com/ManifoldKit/ManifoldKit/issues/1329))
-- **ci:** Annotate README install pins so release-please auto-bumps them on each release ([#1324](https://github.com/ManifoldKit/ManifoldKit/issues/1324))
+- **security:** `PromptTemplate.sanitize` now strips all special tokens regardless of which template is active — previously a switch to a different model could leave the prior model's chat-control tokens un-escaped in user input ([#1334](https://github.com/roryford/ManifoldKit/issues/1334))
+- Deflake `MockBackendLifecycleTests.test_backToBackMakeStream_clearsTaskBetweenRuns` — replaced a `Task.sleep`-poll race with a deterministic `await task.value` happens-before edge on the lifecycle task captured inside `onFinish` ([#1333](https://github.com/roryford/ManifoldKit/issues/1333), closes [#1329](https://github.com/roryford/ManifoldKit/issues/1329))
+- **ci:** Annotate README install pins so release-please auto-bumps them on each release ([#1324](https://github.com/roryford/ManifoldKit/issues/1324))
 
-## [0.28.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.27.0...v0.28.0) — 2026-05-16
+## [0.28.0](https://github.com/roryford/ManifoldKit/compare/v0.27.0...v0.28.0) — 2026-05-16
 
 ### Highlights
 
-#### Pre-turn hooks, app-data on turn context, and richer compression events ([cb99eb6](https://github.com/ManifoldKit/ManifoldKit/commit/cb99eb6070050df919bace75765097f009f79ca1), [25979f5](https://github.com/ManifoldKit/ManifoldKit/commit/25979f596f60c8d224aa9cd0ec058497e9aa1f6b), [ed45267](https://github.com/ManifoldKit/ManifoldKit/commit/ed45267ecbac37adaf670951d0656414d54dff5b))
+#### Pre-turn hooks, app-data on turn context, and richer compression events ([cb99eb6](https://github.com/roryford/ManifoldKit/commit/cb99eb6070050df919bace75765097f009f79ca1), [25979f5](https://github.com/roryford/ManifoldKit/commit/25979f596f60c8d224aa9cd0ec058497e9aa1f6b), [ed45267](https://github.com/roryford/ManifoldKit/commit/ed45267ecbac37adaf670951d0656414d54dff5b))
 
 Three coordinated additions extend the `GenerationHook` / `CompressionPolicy` extensibility surface introduced in 0.26.0.
 
@@ -1378,7 +1378,7 @@ struct MyHook: GenerationHook {
 }
 ```
 
-#### `ModelLoadPlan.estimate` — pre-download fit verdict ([e3caa3f](https://github.com/ManifoldKit/ManifoldKit/commit/e3caa3f77368f85ea5e56b1f24e2caf00a778f40))
+#### `ModelLoadPlan.estimate` — pre-download fit verdict ([e3caa3f](https://github.com/roryford/ManifoldKit/commit/e3caa3f77368f85ea5e56b1f24e2caf00a778f40))
 
 `ModelLoadPlan` gains a static `estimate(modelInfo:availableMemoryMB:)` that returns a `FitVerdict` (`.fits`, `.tight`, `.unsafe`) for a model that has not yet been downloaded. Apps can call it from the download UI to warn the user *before* a multi-gigabyte pull lands on a device that cannot load it. The verdict reuses the same memory-budget math that `ModelLoadPlan.makePlan` runs at load time, so the pre-download answer matches the actual gate.
 
@@ -1394,7 +1394,7 @@ case .unsafe:  presentUpgradePrompt()        // would not load
 }
 ```
 
-#### Security hardening pass ([#1252](https://github.com/ManifoldKit/ManifoldKit/issues/1252), [#1253](https://github.com/ManifoldKit/ManifoldKit/issues/1253), [#1254](https://github.com/ManifoldKit/ManifoldKit/issues/1254), [#1255](https://github.com/ManifoldKit/ManifoldKit/issues/1255), [#1256](https://github.com/ManifoldKit/ManifoldKit/issues/1256), [#1258](https://github.com/ManifoldKit/ManifoldKit/issues/1258), [#1250](https://github.com/ManifoldKit/ManifoldKit/issues/1250))
+#### Security hardening pass ([#1252](https://github.com/roryford/ManifoldKit/issues/1252), [#1253](https://github.com/roryford/ManifoldKit/issues/1253), [#1254](https://github.com/roryford/ManifoldKit/issues/1254), [#1255](https://github.com/roryford/ManifoldKit/issues/1255), [#1256](https://github.com/roryford/ManifoldKit/issues/1256), [#1258](https://github.com/roryford/ManifoldKit/issues/1258), [#1250](https://github.com/roryford/ManifoldKit/issues/1250))
 
 A multi-PR sweep tightens trust boundaries across the framework.
 
@@ -1406,34 +1406,34 @@ A multi-PR sweep tightens trust boundaries across the framework.
 
 ### Features
 
-- `ModelRegistry.selectModel(_:)` — programmatic selection hook point with validation; returns `false` for unknown models, accepts `nil` and `.builtInFoundation` unconditionally ([#1312](https://github.com/ManifoldKit/ManifoldKit/issues/1312))
-- `HuggingFaceService.probe()` — credential-free connectivity check, suitable for an "online?" indicator before opening the model browser ([#1306](https://github.com/ManifoldKit/ManifoldKit/issues/1306))
-- `ModelInfo.isBuiltIn` accessor for distinguishing OS-provided models from downloaded ones ([#1304](https://github.com/ManifoldKit/ManifoldKit/issues/1304))
-- `MCPPersistentToolApprovalStore` is now actually persistent — previously backed by an in-memory dictionary ([#1257](https://github.com/ManifoldKit/ManifoldKit/issues/1257))
-- Cross-backend test-infra Phase 1a: baseline gates + fixture comparator for cross-backend conformance ([#1246](https://github.com/ManifoldKit/ManifoldKit/issues/1246))
+- `ModelRegistry.selectModel(_:)` — programmatic selection hook point with validation; returns `false` for unknown models, accepts `nil` and `.builtInFoundation` unconditionally ([#1312](https://github.com/roryford/ManifoldKit/issues/1312))
+- `HuggingFaceService.probe()` — credential-free connectivity check, suitable for an "online?" indicator before opening the model browser ([#1306](https://github.com/roryford/ManifoldKit/issues/1306))
+- `ModelInfo.isBuiltIn` accessor for distinguishing OS-provided models from downloaded ones ([#1304](https://github.com/roryford/ManifoldKit/issues/1304))
+- `MCPPersistentToolApprovalStore` is now actually persistent — previously backed by an in-memory dictionary ([#1257](https://github.com/roryford/ManifoldKit/issues/1257))
+- Cross-backend test-infra Phase 1a: baseline gates + fixture comparator for cross-backend conformance ([#1246](https://github.com/roryford/ManifoldKit/issues/1246))
 
 ### Fixes
 
-- `GenerationHookWillBeginTurnTests` was deadlocking every CI run (race between the detached pre-turn hook and `withCheckedContinuation`, then a non-cancellable task-group hang) — recording hook now buffers pre-fired events ([#1322](https://github.com/ManifoldKit/ManifoldKit/issues/1322))
-- `scripts/check-coverage.sh` failed on bash 3.2 (the default on macOS GitHub runners) — rewritten without associative arrays ([#1323](https://github.com/ManifoldKit/ManifoldKit/issues/1323))
-- `SessionDiscardOrderingTests` skip now actually takes effect ([#1307](https://github.com/ManifoldKit/ManifoldKit/issues/1307))
-- Gate `CloudSaaS`-only types behind `#if CloudSaaS` in Ollama-only build configurations ([2a36a3e](https://github.com/ManifoldKit/ManifoldKit/commit/2a36a3e28742cec2921ad454d9a9d289ef00d699))
-- README install pin updated to match `version.txt` ([#1263](https://github.com/ManifoldKit/ManifoldKit/issues/1263))
-- CI step timeouts plus pre-existing test failures uncovered by the security-hardening sweep ([b659f6f](https://github.com/ManifoldKit/ManifoldKit/commit/b659f6f234e622554998b0f775d1d826ac93bfd1))
+- `GenerationHookWillBeginTurnTests` was deadlocking every CI run (race between the detached pre-turn hook and `withCheckedContinuation`, then a non-cancellable task-group hang) — recording hook now buffers pre-fired events ([#1322](https://github.com/roryford/ManifoldKit/issues/1322))
+- `scripts/check-coverage.sh` failed on bash 3.2 (the default on macOS GitHub runners) — rewritten without associative arrays ([#1323](https://github.com/roryford/ManifoldKit/issues/1323))
+- `SessionDiscardOrderingTests` skip now actually takes effect ([#1307](https://github.com/roryford/ManifoldKit/issues/1307))
+- Gate `CloudSaaS`-only types behind `#if CloudSaaS` in Ollama-only build configurations ([2a36a3e](https://github.com/roryford/ManifoldKit/commit/2a36a3e28742cec2921ad454d9a9d289ef00d699))
+- README install pin updated to match `version.txt` ([#1263](https://github.com/roryford/ManifoldKit/issues/1263))
+- CI step timeouts plus pre-existing test failures uncovered by the security-hardening sweep ([b659f6f](https://github.com/roryford/ManifoldKit/commit/b659f6f234e622554998b0f775d1d826ac93bfd1))
 
 ### Breaking changes
 
-- **Phase 5 — deprecated cloud helpers removed.** `SaaSCloudBackend`, `AnyCloudBackend`, and the `AuditSabotageSuite` are gone. Migrate to the per-provider adapters (`OpenAIChatAdapter`, `OpenAIResponsesAdapter`, `ClaudeAdapter`, `OllamaAdapter`) that shipped in 0.27.0. ([#1290](https://github.com/ManifoldKit/ManifoldKit/issues/1290))
+- **Phase 5 — deprecated cloud helpers removed.** `SaaSCloudBackend`, `AnyCloudBackend`, and the `AuditSabotageSuite` are gone. Migrate to the per-provider adapters (`OpenAIChatAdapter`, `OpenAIResponsesAdapter`, `ClaudeAdapter`, `OllamaAdapter`) that shipped in 0.27.0. ([#1290](https://github.com/roryford/ManifoldKit/issues/1290))
 
 ### Performance
 
-- Per-test execution-time cap — a hung test now fails fast (~3 min) instead of starving the 30-minute CI job ([#1311](https://github.com/ManifoldKit/ManifoldKit/issues/1311))
+- Per-test execution-time cap — a hung test now fails fast (~3 min) instead of starving the 30-minute CI job ([#1311](https://github.com/roryford/ManifoldKit/issues/1311))
 
-## [0.27.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.26.0...v0.27.0) — 2026-05-15
+## [0.27.0](https://github.com/roryford/ManifoldKit/compare/v0.26.0...v0.27.0) — 2026-05-15
 
 ### Highlights
 
-#### `MessageKind` — orthogonal record provenance axis ([a285baf](https://github.com/ManifoldKit/ManifoldKit/commit/a285baf6a17669a50677164143a4268b2bfa3c0b))
+#### `MessageKind` — orthogonal record provenance axis ([a285baf](https://github.com/roryford/ManifoldKit/commit/a285baf6a17669a50677164143a4268b2bfa3c0b))
 
 `ChatMessageRecord` gains a `kind: MessageKind` property (default `.chat`) that is orthogonal to `MessageRole`. Backends continue to see only role; the persistence, export, and UI layers switch on kind. This eliminates the previous pattern of overloading `role: .system` to carry non-chat records such as compression summaries, and closes the implicit wire-contract where `record.role.rawValue` was stringified directly onto the backend payload.
 
@@ -1468,7 +1468,7 @@ SchemaV7 is a lightweight migration that adds `kindRaw` (default `"chat"`) and `
 - `CompressionPolicy.shouldCompress(promptTokens:contextSize:)` is now `shouldCompress(promptTokens:contextSize:contextUtilization:)`. Add the third parameter — it receives `Double(promptTokens) / Double(contextSize)` pre-computed. Existing implementations that ignore the value can accept and discard it.
 - `CompressionPolicy.compress(...)` return values should use `kind: .memory(...)` instead of `role: .system` for summary records. The old shape still compiles and works at runtime; the kind will default to `.chat`, which means the record will appear in exports and the chat UI. Adopt `kind: .memory` to get the correct hide-by-default behaviour.
 
-#### `HistoryProvider` — pre-generation record injection ([2acdd46](https://github.com/ManifoldKit/ManifoldKit/commit/2acdd46c50dbd4794f7bd6be692b0be87b62b164))
+#### `HistoryProvider` — pre-generation record injection ([2acdd46](https://github.com/roryford/ManifoldKit/commit/2acdd46c50dbd4794f7bd6be692b0be87b62b164))
 
 A new `HistoryAssembly` pipeline stage sits between `MessageStore.fetchMessages` and the turn executor's structured-message mapping. Apps register `HistoryProvider` conformances to inject additional `ChatMessageRecord`s — such as `.memory`-kind compression briefs retrieved from a store — at controlled positions in the history array before each generation turn.
 
@@ -1503,11 +1503,11 @@ let runtime = ConversationRuntime(
 
 Providers run before `ContextBudgetPlanner` windowing so depth-positioned injections are meaningful. Multiple providers are applied in registration order; each sees the previous provider's output. A throwing provider aborts the turn with a `.persistence` error.
 
-## [0.26.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.25.2...v0.26.0) — 2026-05-15
+## [0.26.0](https://github.com/roryford/ManifoldKit/compare/v0.25.2...v0.26.0) — 2026-05-15
 
 ### Highlights
 
-#### Budget-aware context injection pipeline ([2e93fcf](https://github.com/ManifoldKit/ManifoldKit/commit/2e93fcf472f55041a4832c75314a24e27262ba2d))
+#### Budget-aware context injection pipeline ([2e93fcf](https://github.com/roryford/ManifoldKit/commit/2e93fcf472f55041a4832c75314a24e27262ba2d))
 
 `PromptContextProvider` gains a `contributeSlots(budget:context:)` method that receives a `ProviderBudget` (token allocation) and a `TurnContext` (session ID, message count, lowercased conversation text, optional tokenizer). The default implementation delegates to the existing `contributeSlots(messageCount:)` path, so all existing conformers compile without changes. Apps that do keyword matching or relevance scoring — like a lorebook or entity-graph provider — override the new method to select only slots that fit their allocation.
 
@@ -1526,7 +1526,7 @@ let slots = try await planner.assemble(
 )
 ```
 
-#### Post-generation hooks and history compression ([37df683](https://github.com/ManifoldKit/ManifoldKit/commit/37df683a3ecb28eedbc59ee7436882bd6e9c8a6e))
+#### Post-generation hooks and history compression ([37df683](https://github.com/roryford/ManifoldKit/commit/37df683a3ecb28eedbc59ee7436882bd6e9c8a6e))
 
 `GenerationHook` is a new protocol whose `postGeneration(_:)` method is awaited by `ConversationRuntime` after every successful turn, before the next turn starts. Each hook receives a `CompletedTurn` value (session ID, persisted assistant message, prompt and completion token counts). Hooks are awaited with a configurable timeout (default 30 s); a hung hook logs a warning and is skipped rather than blocking the turn loop. Register hooks to drive extraction, indexing, or analytics pipelines without building a parallel turn executor.
 
@@ -1555,11 +1555,11 @@ let runtime = ConversationRuntime(
 
 ### Fixes
 
-**Silent error suppression removed from MCP, Inference, and Persistence** ([#1230](https://github.com/ManifoldKit/ManifoldKit/issues/1230)) — Thirteen `try?` call sites across `ManifoldMCP`, `ManifoldInference`, and `ManifoldPersistenceSwiftData` that silently dropped errors in propagation paths have been replaced with `do/catch` blocks that emit `Log.*` entries. Errors are now observable in Console and crash reporters without changing any public API behaviour.
+**Silent error suppression removed from MCP, Inference, and Persistence** ([#1230](https://github.com/roryford/ManifoldKit/issues/1230)) — Thirteen `try?` call sites across `ManifoldMCP`, `ManifoldInference`, and `ManifoldPersistenceSwiftData` that silently dropped errors in propagation paths have been replaced with `do/catch` blocks that emit `Log.*` entries. Errors are now observable in Console and crash reporters without changing any public API behaviour.
 
-**Cross-test state isolation in FoundationBackend and LlamaBackend suites** ([#1233](https://github.com/ManifoldKit/ManifoldKit/issues/1233)) — Shared mutable state in `FoundationBackend` and `LlamaBackend` test suites caused intermittent failures when tests ran in parallel. Affected suites now own independent instances; no production code was changed.
+**Cross-test state isolation in FoundationBackend and LlamaBackend suites** ([#1233](https://github.com/roryford/ManifoldKit/issues/1233)) — Shared mutable state in `FoundationBackend` and `LlamaBackend` test suites caused intermittent failures when tests ran in parallel. Affected suites now own independent instances; no production code was changed.
 
-## [0.25.2](https://github.com/ManifoldKit/ManifoldKit/compare/v0.25.1...v0.25.2) — 2026-05-15
+## [0.25.2](https://github.com/roryford/ManifoldKit/compare/v0.25.1...v0.25.2) — 2026-05-15
 
 ### Highlights
 
@@ -1569,17 +1569,17 @@ A CI lint gate (`scripts/lint-no-new-force-unwraps.sh`) now fails the build if a
 
 ### Fixes
 
-**MCPCatalog static-data safety** ([#1225](https://github.com/ManifoldKit/ManifoldKit/issues/1225)) — `MCPCatalog` previously embedded six `UUID(uuidString:)!` literals and four `url!` force-unwraps spread across duplicated per-server overloads. A typo in a UUID string or a bad `URLComponents` configuration would crash at the point of first property access, with no typed error and no recovery path. The catalog now holds data in a single `MCPServerSpec` value per server; URL construction goes through a throwing factory that produces `MCPError.malformedMetadata` on failure; and a new `MCPCatalogTests` suite validates all entries at CI time. The public API is unchanged.
+**MCPCatalog static-data safety** ([#1225](https://github.com/roryford/ManifoldKit/issues/1225)) — `MCPCatalog` previously embedded six `UUID(uuidString:)!` literals and four `url!` force-unwraps spread across duplicated per-server overloads. A typo in a UUID string or a bad `URLComponents` configuration would crash at the point of first property access, with no typed error and no recovery path. The catalog now holds data in a single `MCPServerSpec` value per server; URL construction goes through a throwing factory that produces `MCPError.malformedMetadata` on failure; and a new `MCPCatalogTests` suite validates all entries at CI time. The public API is unchanged.
 
-**AsyncStream continuation safety** ([#1228](https://github.com/ManifoldKit/ManifoldKit/issues/1228)) — Five `var continuation: T!` implicit-unwrap-optional declarations in `ManifoldMCP` used the `AsyncThrowingStream { continuation = $0 }` closure pattern, which is safe only because the stdlib calls the closure synchronously — a guarantee the type system cannot enforce. All five sites now use `AsyncStream.makeStream()` / `AsyncThrowingStream.makeStream()`, the Swift 5.9 API that returns the continuation directly without the intermediate optional.
+**AsyncStream continuation safety** ([#1228](https://github.com/roryford/ManifoldKit/issues/1228)) — Five `var continuation: T!` implicit-unwrap-optional declarations in `ManifoldMCP` used the `AsyncThrowingStream { continuation = $0 }` closure pattern, which is safe only because the stdlib calls the closure synchronously — a guarantee the type system cannot enforce. All five sites now use `AsyncStream.makeStream()` / `AsyncThrowingStream.makeStream()`, the Swift 5.9 API that returns the continuation directly without the intermediate optional.
 
-**Cloud backend error visibility** ([#1227](https://github.com/ManifoldKit/ManifoldKit/issues/1227)) — `OpenAIBackend`, `OpenAIResponsesBackend`, and `SSECloudBackend` each copy-pasted the same `try? JSONSerialization.jsonObject(...)` block for extracting a human-readable message from an error response body — thirteen sites total. On parse failure the error was silently dropped with no log entry and no diagnostic signal. A shared `parseCloudErrorMessage(from:)` function in `ManifoldCloudCore` now centralises parsing and all call sites that previously swallowed failures now emit `Log.network.error` entries visible in Console.
+**Cloud backend error visibility** ([#1227](https://github.com/roryford/ManifoldKit/issues/1227)) — `OpenAIBackend`, `OpenAIResponsesBackend`, and `SSECloudBackend` each copy-pasted the same `try? JSONSerialization.jsonObject(...)` block for extracting a human-readable message from an error response body — thirteen sites total. On parse failure the error was silently dropped with no log entry and no diagnostic signal. A shared `parseCloudErrorMessage(from:)` function in `ManifoldCloudCore` now centralises parsing and all call sites that previously swallowed failures now emit `Log.network.error` entries visible in Console.
 
-## [0.25.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.25.0...v0.25.1) — 2026-05-13
+## [0.25.1](https://github.com/roryford/ManifoldKit/compare/v0.25.0...v0.25.1) — 2026-05-13
 
 ### Highlights
 
-**Security patch — upgrade immediately** — three P0 holes closed in `MCPSSRFPolicy`, `GGUFMetadataReader`, and `MCPOAuth` ([#1219](https://github.com/ManifoldKit/ManifoldKit/issues/1219)).
+**Security patch — upgrade immediately** — three P0 holes closed in `MCPSSRFPolicy`, `GGUFMetadataReader`, and `MCPOAuth` ([#1219](https://github.com/roryford/ManifoldKit/issues/1219)).
 
 ### Security
 
@@ -1589,11 +1589,11 @@ A CI lint gate (`scripts/lint-no-new-force-unwraps.sh`) now fails the build if a
 
 **RFC 7592 management-token injection** — `MCPOAuth`'s dynamic client registration path forwarded caller-supplied metadata fields without sanitising the `registration_access_token` key, allowing a server to overwrite the management token via a registration response. The field is now stripped before the metadata is stored.
 
-## [0.25.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.24.0...v0.25.0) — 2026-05-12
+## [0.25.0](https://github.com/roryford/ManifoldKit/compare/v0.24.0...v0.25.0) — 2026-05-12
 
 ### Highlights
 
-#### Track token usage per turn ([9579aab](https://github.com/ManifoldKit/ManifoldKit/commit/9579aab9f7d1227942e81ba17ff9165e1c111682))
+#### Track token usage per turn ([9579aab](https://github.com/roryford/ManifoldKit/commit/9579aab9f7d1227942e81ba17ff9165e1c111682))
 
 `UsageStore` is a new persistence port in `ManifoldRuntime` that records `TurnUsageRecord` values after every successful conversation turn — prompt tokens, completion tokens, model ID, and wall-clock duration. `ConversationRuntime` records usage automatically on each turn; `ManifoldBootstrap` wires in a `SwiftDataUsageStore` backed by the new `ManifoldSchemaV6` (additive migration from V5, no data loss). Query aggregated totals with `UsageSummary`.
 
@@ -1603,7 +1603,7 @@ print("Total prompt tokens:", summary.totalPromptTokens)
 print("Total completion tokens:", summary.totalCompletionTokens)
 ```
 
-#### Automatic Anthropic prompt-cache breakpoints ([419df1b](https://github.com/ManifoldKit/ManifoldKit/commit/419df1b57f653023ca1abe0c66bd850a3b101d95))
+#### Automatic Anthropic prompt-cache breakpoints ([419df1b](https://github.com/roryford/ManifoldKit/commit/419df1b57f653023ca1abe0c66bd850a3b101d95))
 
 `ClaudeBackend` now emits `cache_control: {type: "ephemeral"}` breakpoints on the system prompt block and the last tool definition when `cachePolicy == .automatic` (the new default). For apps with large system prompts or tool catalogs this reduces repeat-turn input costs by 4–10×. Set `cachePolicy = .disabled` to restore pre-0.25.0 behaviour.
 
@@ -1614,45 +1614,45 @@ backend.cachePolicy = .disabled  // opt out if needed
 
 ### Features
 
-**Auxiliary classification backend** — `ConversationRuntime` gains an `auxiliaryInferenceService: InferenceService?` slot (default `nil`, no breaking change). Framework-internal tasks such as title generation now route through `classificationService`, which returns the auxiliary when set and falls back to the primary. This prevents cheap 3–5 word title calls from being billed against the user's main model ([#1208](https://github.com/ManifoldKit/ManifoldKit/issues/1208))
+**Auxiliary classification backend** — `ConversationRuntime` gains an `auxiliaryInferenceService: InferenceService?` slot (default `nil`, no breaking change). Framework-internal tasks such as title generation now route through `classificationService`, which returns the auxiliary when set and falls back to the primary. This prevents cheap 3–5 word title calls from being billed against the user's main model ([#1208](https://github.com/roryford/ManifoldKit/issues/1208))
 
-**Unified error category surface** — `InferenceErrorCategory` and `CategorizedError` are new types in `ManifoldInference`. Both `InferenceError` and `CloudBackendError` now conform to `CategorizedError`, so callers can ask a single `.category` question (`contextExceeded`, `authenticationFailed`, `providerOverloaded`, etc.) without switching on concrete error types ([#1206](https://github.com/ManifoldKit/ManifoldKit/issues/1206))
+**Unified error category surface** — `InferenceErrorCategory` and `CategorizedError` are new types in `ManifoldInference`. Both `InferenceError` and `CloudBackendError` now conform to `CategorizedError`, so callers can ask a single `.category` question (`contextExceeded`, `authenticationFailed`, `providerOverloaded`, etc.) without switching on concrete error types ([#1206](https://github.com/roryford/ManifoldKit/issues/1206))
 
 ### Fixes
 
-**DNS rebinding guard** — the guard previously fail-opened when the remote address was unresolvable, and URLs without a host component bypassed the check entirely; both paths now fail closed ([0a736b8](https://github.com/ManifoldKit/ManifoldKit/commit/0a736b89bb793c938e84497337baef3e7133f91b))
+**DNS rebinding guard** — the guard previously fail-opened when the remote address was unresolvable, and URLs without a host component bypassed the check entirely; both paths now fail closed ([0a736b8](https://github.com/roryford/ManifoldKit/commit/0a736b89bb793c938e84497337baef3e7133f91b))
 
-**OllamaBackend context window race** — `effectiveNumCtx` is now read under `stateLock`, eliminating a data race when the value was updated concurrently with an in-flight generation ([cc2f930](https://github.com/ManifoldKit/ManifoldKit/commit/cc2f93030a8f585e61731d17b3e17d399654c58e))
+**OllamaBackend context window race** — `effectiveNumCtx` is now read under `stateLock`, eliminating a data race when the value was updated concurrently with an in-flight generation ([cc2f930](https://github.com/roryford/ManifoldKit/commit/cc2f93030a8f585e61731d17b3e17d399654c58e))
 
-**Tool-only turns on cancellation** — assistant turns that contained only tool calls were not persisted when the user cancelled; they are now saved so conversation history remains consistent ([1a0a917](https://github.com/ManifoldKit/ManifoldKit/commit/1a0a917d3c215b1c3ffbbcc74c1cfe6368f4ffad))
+**Tool-only turns on cancellation** — assistant turns that contained only tool calls were not persisted when the user cancelled; they are now saved so conversation history remains consistent ([1a0a917](https://github.com/roryford/ManifoldKit/commit/1a0a917d3c215b1c3ffbbcc74c1cfe6368f4ffad))
 
-## [0.24.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.23.1...v0.24.0) (2026-05-11)
+## [0.24.0](https://github.com/roryford/ManifoldKit/compare/v0.23.1...v0.24.0) (2026-05-11)
 
 
 ### Features
 
-* add chat message status slice ([#1196](https://github.com/ManifoldKit/ManifoldKit/issues/1196)) ([551d7c1](https://github.com/ManifoldKit/ManifoldKit/commit/551d7c1866420e5dbeacb331ac26a6fd2f5cd516))
-* add persistence search maturation slice ([#1194](https://github.com/ManifoldKit/ManifoldKit/issues/1194)) ([dfa65ea](https://github.com/ManifoldKit/ManifoldKit/commit/dfa65eacddaa4cbf71db96db9366ab5d1385d8d5))
-* enrich ManifoldServer models response ([#1195](https://github.com/ManifoldKit/ManifoldKit/issues/1195)) ([7f8b525](https://github.com/ManifoldKit/ManifoldKit/commit/7f8b5254a7562409e3dbcf221b17f5323af4cd26))
+* add chat message status slice ([#1196](https://github.com/roryford/ManifoldKit/issues/1196)) ([551d7c1](https://github.com/roryford/ManifoldKit/commit/551d7c1866420e5dbeacb331ac26a6fd2f5cd516))
+* add persistence search maturation slice ([#1194](https://github.com/roryford/ManifoldKit/issues/1194)) ([dfa65ea](https://github.com/roryford/ManifoldKit/commit/dfa65eacddaa4cbf71db96db9366ab5d1385d8d5))
+* enrich ManifoldServer models response ([#1195](https://github.com/roryford/ManifoldKit/issues/1195)) ([7f8b525](https://github.com/roryford/ManifoldKit/commit/7f8b5254a7562409e3dbcf221b17f5323af4cd26))
 
 
 ### Bug Fixes
 
-* add FoundationBackend availability provider seam ([#524](https://github.com/ManifoldKit/ManifoldKit/issues/524)) ([#1202](https://github.com/ManifoldKit/ManifoldKit/issues/1202)) ([a41aaaf](https://github.com/ManifoldKit/ManifoldKit/commit/a41aaafb8c5da4ab3a65e115d293a8e25a8410a0))
-* make SecureEnclaveKeyManagerTests runnable on Apple Silicon Mac ([#1201](https://github.com/ManifoldKit/ManifoldKit/issues/1201)) ([1b475c6](https://github.com/ManifoldKit/ManifoldKit/commit/1b475c6d1bb0724f128b03fa3708e2e99779abd9))
+* add FoundationBackend availability provider seam ([#524](https://github.com/roryford/ManifoldKit/issues/524)) ([#1202](https://github.com/roryford/ManifoldKit/issues/1202)) ([a41aaaf](https://github.com/roryford/ManifoldKit/commit/a41aaafb8c5da4ab3a65e115d293a8e25a8410a0))
+* make SecureEnclaveKeyManagerTests runnable on Apple Silicon Mac ([#1201](https://github.com/roryford/ManifoldKit/issues/1201)) ([1b475c6](https://github.com/roryford/ManifoldKit/commit/1b475c6d1bb0724f128b03fa3708e2e99779abd9))
 
-## [0.23.1](https://github.com/ManifoldKit/ManifoldKit/compare/v0.23.0...v0.23.1) — 2026-05-10
+## [0.23.1](https://github.com/roryford/ManifoldKit/compare/v0.23.0...v0.23.1) — 2026-05-10
 
 ### Fixes
 
-* **FoundationBackend token budget** — `maximumResponseTokens` was never passed to the SDK, so the SDK's internal default capped output far below `GenerationConfig.maxOutputTokens`. Greedy sampling (`temperature == 0`) now sets `.sampling = .greedy` instead of `temperature = 0.0`, and `prewarm()` is called after session creation to reduce first-turn latency ([#1180](https://github.com/ManifoldKit/ManifoldKit/issues/1180))
-* **Model override env var fallback** — when `LLAMA_TEST_MODEL` or `MLX_TEST_MODEL` pointed to a path that failed validation, the helper silently fell back to unrestricted local-model discovery and could load a different model. It now returns `nil` immediately and tests skip explicitly ([#1182](https://github.com/ManifoldKit/ManifoldKit/issues/1182))
+* **FoundationBackend token budget** — `maximumResponseTokens` was never passed to the SDK, so the SDK's internal default capped output far below `GenerationConfig.maxOutputTokens`. Greedy sampling (`temperature == 0`) now sets `.sampling = .greedy` instead of `temperature = 0.0`, and `prewarm()` is called after session creation to reduce first-turn latency ([#1180](https://github.com/roryford/ManifoldKit/issues/1180))
+* **Model override env var fallback** — when `LLAMA_TEST_MODEL` or `MLX_TEST_MODEL` pointed to a path that failed validation, the helper silently fell back to unrestricted local-model discovery and could load a different model. It now returns `nil` immediately and tests skip explicitly ([#1182](https://github.com/roryford/ManifoldKit/issues/1182))
 
-## [0.23.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.22.0...v0.23.0) — 2026-05-10
+## [0.23.0](https://github.com/roryford/ManifoldKit/compare/v0.22.0...v0.23.0) — 2026-05-10
 
 ### Highlights
 
-#### On-device image generation with FLUX.1 Schnell ([#1178](https://github.com/ManifoldKit/ManifoldKit/issues/1178))
+#### On-device image generation with FLUX.1 Schnell ([#1178](https://github.com/roryford/ManifoldKit/issues/1178))
 
 `FluxDiffusionBackend` brings FLUX.1 Schnell on-device image generation to ManifoldKit via MLX. The backend generates 1024×1024 images in four denoising steps. Provide a local directory containing FLUX weights — either flux.swift's quantized layout (with `metadata.json`) or the standard diffusers layout — to `loadModel(from:)`, then iterate the `AsyncThrowingStream<ImageGenerationEvent, Error>` returned by `generate(prompt:config:)`. See [`docs/QUICKSTART-IMAGE-GEN.md`](docs/QUICKSTART-IMAGE-GEN.md) for the end-to-end shape including download options.
 
@@ -1676,13 +1676,13 @@ for try await event in stream {
 
 ### Features
 
-* **benchmark suite** — `scripts/benchmark.sh` auto-detects available backends and prints a TTFT + throughput Markdown table; `scripts/bench/http-bench.py` covers raw Ollama and ManifoldServer HTTP paths; `BackendBenchmarkE2ETests` covers OllamaBackend and LlamaBackend in-process ([24f247a](https://github.com/ManifoldKit/ManifoldKit/commit/24f247a38fd84352e0ffb48f4fc2c1a13f5a99aa))
+* **benchmark suite** — `scripts/benchmark.sh` auto-detects available backends and prints a TTFT + throughput Markdown table; `scripts/bench/http-bench.py` covers raw Ollama and ManifoldServer HTTP paths; `BackendBenchmarkE2ETests` covers OllamaBackend and LlamaBackend in-process ([24f247a](https://github.com/roryford/ManifoldKit/commit/24f247a38fd84352e0ffb48f4fc2c1a13f5a99aa))
 
 ### Fixes
 
-* **Llama Metal sync** — command buffers are now explicitly synchronized between consecutive `generate()` calls, preventing a race where a second call could start before the Metal pipeline drained ([d5c1767](https://github.com/ManifoldKit/ManifoldKit/commit/d5c1767e7ad93832856f4c220a97c30d045ea443))
+* **Llama Metal sync** — command buffers are now explicitly synchronized between consecutive `generate()` calls, preventing a race where a second call could start before the Metal pipeline drained ([d5c1767](https://github.com/roryford/ManifoldKit/commit/d5c1767e7ad93832856f4c220a97c30d045ea443))
 
-## [0.22.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.21.0...v0.22.0) — 2026-05-10
+## [0.22.0](https://github.com/roryford/ManifoldKit/compare/v0.21.0...v0.22.0) — 2026-05-10
 
 ### Highlights
 
@@ -1705,20 +1705,20 @@ let evicted = try await catalog.enforceDiskBudget(10 * 1_000_000_000)
 
 ### Features
 
-* **`/v1/models` enrichment** — each entry now carries `status` (`loaded` / `available`), `backend`, and `source` so API clients can tell which model is active and where it came from ([#1169](https://github.com/ManifoldKit/ManifoldKit/issues/1169))
-* **MCP memory-warning observer** — `MCPNotificationLifecycleEventObserver` is default-wired into `MCPSessionConfiguration`; drops idle SSE buffers on `UIApplication.didReceiveMemoryWarningNotification` ([#1168](https://github.com/ManifoldKit/ManifoldKit/issues/1168))
-* **MCP per-server disclosure consent** — `MCPDataDisclosureConsentStore` persists first-run review decisions per server so the consent dialog is shown exactly once ([#1170](https://github.com/ManifoldKit/ManifoldKit/issues/1170))
+* **`/v1/models` enrichment** — each entry now carries `status` (`loaded` / `available`), `backend`, and `source` so API clients can tell which model is active and where it came from ([#1169](https://github.com/roryford/ManifoldKit/issues/1169))
+* **MCP memory-warning observer** — `MCPNotificationLifecycleEventObserver` is default-wired into `MCPSessionConfiguration`; drops idle SSE buffers on `UIApplication.didReceiveMemoryWarningNotification` ([#1168](https://github.com/roryford/ManifoldKit/issues/1168))
+* **MCP per-server disclosure consent** — `MCPDataDisclosureConsentStore` persists first-run review decisions per server so the consent dialog is shown exactly once ([#1170](https://github.com/roryford/ManifoldKit/issues/1170))
 
 ### Fixes
 
-* **Llama thinking budgets** — separate thinking and visible token budgets; greedy sampler now activates correctly at `temperature=0` ([#1171](https://github.com/ManifoldKit/ManifoldKit/issues/1171))
-* **Llama embedding test discovery** — isolation script now lists all six `LlamaEmbeddingBackend*` classes; env vars renamed from `BCK_` to `MANIFOLD_` prefix ([#1173](https://github.com/ManifoldKit/ManifoldKit/issues/1173))
+* **Llama thinking budgets** — separate thinking and visible token budgets; greedy sampler now activates correctly at `temperature=0` ([#1171](https://github.com/roryford/ManifoldKit/issues/1171))
+* **Llama embedding test discovery** — isolation script now lists all six `LlamaEmbeddingBackend*` classes; env vars renamed from `BCK_` to `MANIFOLD_` prefix ([#1173](https://github.com/roryford/ManifoldKit/issues/1173))
 
-## [0.21.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.20.0...v0.21.0) — 2026-05-09
+## [0.21.0](https://github.com/roryford/ManifoldKit/compare/v0.20.0...v0.21.0) — 2026-05-09
 
 ### Highlights
 
-#### RAG Phase 2 — document library UI and source citations ([#1157](https://github.com/ManifoldKit/ManifoldKit/issues/1157))
+#### RAG Phase 2 — document library UI and source citations ([#1157](https://github.com/roryford/ManifoldKit/issues/1157))
 
 Phase 1 shipped the engine (`FlatFileVectorStore`, `RAGService`, `ConversationRuntime` wiring). Phase 2 makes RAG reachable without writing any plumbing. A new `DocumentLibrarySheet` lets users add `.txt`/`.pdf` files directly from a sidebar button; each ingested document is chunked, indexed, and retrieved automatically on every turn. Retrieved passages now surface as a collapsed "Sources" disclosure beneath the assistant bubble via the new `CitationsView` — mirroring the existing `ThinkingBlockView` idiom. `RAGService` gains a `retrieve(query:limit:)` method that returns both the prompt slot and per-hit `Citation` provenance in one call; the existing `retrieveSlots` is kept as a compatibility shim.
 
@@ -1741,7 +1741,7 @@ if let citations = assistant.citations {
 
 ### Fixes
 
-* **tests:** make `DemoScenarioOllamaE2ETests` compile so all 4 tests register ([#1154](https://github.com/ManifoldKit/ManifoldKit/issues/1154))
+* **tests:** make `DemoScenarioOllamaE2ETests` compile so all 4 tests register ([#1154](https://github.com/roryford/ManifoldKit/issues/1154))
 
 ## [0.20.0] — 2026-05-09
 

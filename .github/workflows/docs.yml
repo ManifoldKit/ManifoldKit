@@ -93,8 +93,8 @@ jobs:
 
       - name: Transform for static hosting
         # Pick the umbrella archive (named ManifoldKit.doccarchive) as the site
-        # root, then rewrite asset/reference paths for a project Pages site served
-        # from https://<user>.github.io/ManifoldKit/.
+        # root, then rewrite asset/reference paths for a root-served Pages site
+        # on the custom domain https://docs.manifoldkit.com/.
         run: |
           set -euo pipefail
           ARCHIVE=$(find "$RUNNER_TEMP/docc-dd" -type d -name 'ManifoldKit.doccarchive' | head -n 1)

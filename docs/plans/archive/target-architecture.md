@@ -58,8 +58,8 @@ plan from reality at a glance. Where the prose below still reads as future tense
 > **Companion-package split is DONE, not in progress.** The heavy MLX and llama.cpp
 > backend families left core in v0.48 (C2 / #1771). `Sources/ManifoldMLX` and
 > `Sources/ManifoldLlama` no longer exist in this repo — they live in
-> [`roryford/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) and
-> [`roryford/manifold-llama`](https://github.com/ManifoldKit/manifold-llama). Module names are
+> [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) and
+> [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama). Module names are
 > unchanged (`import ManifoldMLX` / `import ManifoldLlama` still compile). The RING 2 prose
 > below lists them as adapter products — they remain so, just sourced from companion packages.
 

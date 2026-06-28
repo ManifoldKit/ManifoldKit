@@ -3,7 +3,7 @@
 > **VERDICT (2026-06-21, post-review): DO NOT BUILD `ManifoldEval`.** Three independent reviewers (architecture critic, downstream-consumer critic, comparative-frameworks research) converged: the dedup premise of #1993 is refuted. The `EvalScorer`/`EvalRunOutput` abstraction below fits **neither** app (Fireside scores a live SwiftData graph, not generation text; Idlewick scores a multi-turn offline opcode log, not a single run). Net cross-app deletion ≈ **71 LOC** (`ConfusionCounts`) for Fireside, **~0** for Idlewick. **Action: ship only the `ConfusionCounts` pure-math struct into an existing target + document existing seams (`GenerationCompletion.Reason`, `RunRecord`, detectors, `Replayer`). Revisit at N=3.** A *separate, product-motivated* on-device-eval opportunity exists (see "Review verdict" at end) but must not be justified on #1993's dedup grounds. The design below is retained as the rejected proposal + rationale.
 
 **Status:** ~~DRAFT for adversarial review~~ REVIEWED & REJECTED — 2026-06-21
-**Issue:** [#1993](https://github.com/ManifoldKit/ManifoldKit/issues/1993) (proposed `ManifoldEval` companion)
+**Issue:** [#1993](https://github.com/roryford/ManifoldKit/issues/1993) (proposed `ManifoldEval` companion)
 **Related:** #1930 (OTel GenAI span export — composes, does not overlap), #1992 (structured-output grammar — sibling extraction)
 
 ## TL;DR
