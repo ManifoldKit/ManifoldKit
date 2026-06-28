@@ -17,6 +17,11 @@ public struct ChatInputBar: View {
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    /// Composer feature flags, read from the app-level configuration. Mirrors
+    /// how `ChatView` resolves its feature set so the composer respects the same
+    /// single source of truth.
+    private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+
     @FocusState private var isInputFocused: Bool
     @State private var isImageImporterPresented = false
 #if os(iOS)
@@ -76,12 +81,21 @@ public struct ChatInputBar: View {
     @ViewBuilder
     private var actionButtons: some View {
         HStack(spacing: 4) {
-            if viewModel.supportsImageAttachments {
+            // The built-in paperclip uses `.fileImporter` (a document picker),
+            // which needs no permission usage string — so it is gated on the
+            // feature flag alone, not the photo-library plist guard.
+            if features.showImageAttachment && viewModel.supportsImageAttachments {
                 attachImageButton
             }
 
 #if os(iOS)
-            recordAudioButton
+            // Recording invokes AVAudioSession; without NSMicrophoneUsageDescription
+            // iOS SIGABRTs the host before our try/catch can run. The gate removes
+            // the button from the view tree when the flag is off OR the key is
+            // missing, so a misconfigured host degrades to a no-op, never a crash.
+            if ComposerPermissionGate.shouldShowAudioInput(features: features) {
+                recordAudioButton
+            }
 #endif
 
             if showRegenerateButton {

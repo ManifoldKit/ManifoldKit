@@ -37,6 +37,8 @@ public struct PhotoAttachmentButton: View {
     @Environment(ChatViewModel.self) private var viewModel
     @State private var photoItem: PhotosPickerItem?
 
+    private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+
     public init() {}
 
     /// Returns `true` when there is already an image part staged on the draft.
@@ -48,17 +50,22 @@ public struct PhotoAttachmentButton: View {
     }
 
     public var body: some View {
-        PhotosPicker(selection: $photoItem, matching: .images) {
-            Image(systemName: "photo")
-                .font(.title2)
-                .foregroundStyle(hasImageStaged ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(hasImageStaged ? "Photo attached" : "Attach photo")
-        .help(hasImageStaged ? "Photo attached" : "Attach photo from library")
-        .onChange(of: photoItem) { _, newItem in
-            guard let newItem else { return }
-            loadPhoto(from: newItem)
+        // PhotosPicker is PHPicker-backed (out-of-process) and needs no usage
+        // string, so it is gated on the feature flag alone — a missing
+        // NSPhotoLibraryUsageDescription does not crash it.
+        if features.showImageAttachment {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "photo")
+                    .font(.title2)
+                    .foregroundStyle(hasImageStaged ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(hasImageStaged ? "Photo attached" : "Attach photo")
+            .help(hasImageStaged ? "Photo attached" : "Attach photo from library")
+            .onChange(of: photoItem) { _, newItem in
+                guard let newItem else { return }
+                loadPhoto(from: newItem)
+            }
         }
     }
 

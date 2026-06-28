@@ -282,6 +282,34 @@ extension ManifoldConfiguration {
         /// your app handles model selection differently or doesn't use Foundation.
         public var showUpgradeHint: Bool
 
+        // MARK: - Composer
+
+        /// Shows the microphone / audio-recording button in the chat composer.
+        ///
+        /// The button records an audio message attachment on iOS. It is a
+        /// permission-gated control: recording invokes `AVAudioSession`, which
+        /// hard-crashes the host process (SIGABRT) if the app's Info.plist is
+        /// missing `NSMicrophoneUsageDescription`. Set this to `false` to remove
+        /// the control entirely for apps that don't ship voice capture.
+        ///
+        /// > Note: Even when this is `true`, the button is automatically hidden
+        /// > when `NSMicrophoneUsageDescription` is absent from the host
+        /// > Info.plist, so a missing usage string degrades to a no-op rather
+        /// > than a crash. See `<doc:BuildingAChatUI>` / QUICKSTART for the
+        /// > required Info.plist keys.
+        public var showAudioInput: Bool
+
+        /// Shows image-attachment controls (the built-in file-importer paperclip
+        /// in the composer, plus the opt-in `VisionInputButton` /
+        /// `PhotoAttachmentButton` composer accessories).
+        ///
+        /// The photo accessories use `PhotosPicker` (PHPicker), which runs
+        /// out-of-process and needs no usage-description string, so they are
+        /// gated on this flag alone. Declaring `NSPhotoLibraryUsageDescription`
+        /// is still recommended for App Store review. Set this to `false` to
+        /// remove image attachment from the interface entirely.
+        public var showImageAttachment: Bool
+
         // MARK: - Init
 
         public init(
@@ -293,7 +321,9 @@ extension ManifoldConfiguration {
             showGenerationSettings: Bool = true,
             showAdvancedSettings: Bool = true,
             showCloudAPIManagement: Bool = true,
-            showUpgradeHint: Bool = true
+            showUpgradeHint: Bool = true,
+            showAudioInput: Bool = true,
+            showImageAttachment: Bool = true
         ) {
             self.showContextIndicator = showContextIndicator
             self.showMemoryIndicator = showMemoryIndicator
@@ -304,6 +334,8 @@ extension ManifoldConfiguration {
             self.showAdvancedSettings = showAdvancedSettings
             self.showCloudAPIManagement = showCloudAPIManagement
             self.showUpgradeHint = showUpgradeHint
+            self.showAudioInput = showAudioInput
+            self.showImageAttachment = showImageAttachment
         }
     }
 }
