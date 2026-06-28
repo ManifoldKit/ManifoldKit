@@ -44,7 +44,7 @@ Since v0.48 the heavy local backends ship as companion packages — core Manifol
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.62.0" // x-release-please-version
+        from: "0.63.0" // x-release-please-version
     ),
     .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF
     // .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"), // MLX
@@ -90,7 +90,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.62.0" // x-release-please-version
+            from: "0.63.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -173,7 +173,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.62.0" // x-release-please-version
+            from: "0.63.0" // x-release-please-version
         ),
         // The GGUF backend lives in the manifold-llama companion package (v0.48).
         .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
@@ -418,7 +418,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.62.0" // x-release-please-version
+            from: "0.63.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -610,7 +610,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.62.0" // x-release-please-version
+            from: "0.63.0" // x-release-please-version
         ),
         // The MLX backend lives in the manifold-mlx companion package (v0.48).
         .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),
