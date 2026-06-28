@@ -335,6 +335,11 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "RELEASE",
         "NDEBUG",
         "TESTING",
+        // Custom `-D` define passed only by the DocC build (docs.yml:
+        // `-Xswiftc -DBUILDING_DOCC`) to trim the umbrella's re-exported symbol
+        // graph. Not a Package.swift trait by design — it's a transient
+        // docs-only define, never set during normal builds/tests.
+        "BUILDING_DOCC",
     ]
 
     /// Privacy-sensitive Apple-API call sites that have been individually
