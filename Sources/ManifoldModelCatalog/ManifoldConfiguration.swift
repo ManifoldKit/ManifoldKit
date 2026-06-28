@@ -303,10 +303,11 @@ extension ManifoldConfiguration {
         /// in the composer, plus the opt-in `VisionInputButton` /
         /// `PhotoAttachmentButton` composer accessories).
         ///
-        /// The photo-library accessories are permission-gated on iOS and require
-        /// `NSPhotoLibraryUsageDescription` in the host Info.plist; when that key
-        /// is absent those buttons are automatically hidden. Set this to `false`
-        /// to remove image attachment from the interface entirely.
+        /// The photo accessories use `PhotosPicker` (PHPicker), which runs
+        /// out-of-process and needs no usage-description string, so they are
+        /// gated on this flag alone. Declaring `NSPhotoLibraryUsageDescription`
+        /// is still recommended for App Store review. Set this to `false` to
+        /// remove image attachment from the interface entirely.
         public var showImageAttachment: Bool
 
         // MARK: - Init

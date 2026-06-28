@@ -50,10 +50,10 @@ public struct PhotoAttachmentButton: View {
     }
 
     public var body: some View {
-        // PhotosPicker is permission-gated: hide it when the host disabled image
-        // attachment or omitted NSPhotoLibraryUsageDescription so a tap can never
-        // SIGABRT a misconfigured host.
-        if ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features) {
+        // PhotosPicker is PHPicker-backed (out-of-process) and needs no usage
+        // string, so it is gated on the feature flag alone — a missing
+        // NSPhotoLibraryUsageDescription does not crash it.
+        if features.showImageAttachment {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 Image(systemName: "photo")
                     .font(.title2)

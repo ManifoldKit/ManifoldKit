@@ -70,21 +70,21 @@ Run the app. `quickStart()` will compile, launch, and render a usable composer �
 
 ## Required Info.plist keys for ChatView
 
-`ChatView`'s composer ships permission-gated controls. iOS **hard-crashes the host process (SIGABRT)** the moment a permission API is invoked while its usage-description string is missing from your app's `Info.plist` — the crash happens before any framework `try`/`catch` can run, so it is unrecoverable. Declare the key for every capability you keep enabled:
+`ChatView`'s composer ships permission-gated controls. The microphone button is the critical one: on iOS, recording invokes `AVAudioSession`, which **hard-crashes the host process (SIGABRT)** the moment it runs while `NSMicrophoneUsageDescription` is missing from your app's `Info.plist` — the crash happens before any framework `try`/`catch` can run, so it is unrecoverable. Declare the key for every capability you keep enabled:
 
-| Capability | Composer control | Required Info.plist key |
-|------------|------------------|-------------------------|
-| Microphone (record audio messages, iOS) | mic button in `ChatView` (on by default) | `NSMicrophoneUsageDescription` |
-| Photo attachment (iOS) | `VisionInputButton` / `PhotoAttachmentButton` composer accessories | `NSPhotoLibraryUsageDescription` |
+| Capability | Composer control | Info.plist key |
+|------------|------------------|----------------|
+| Microphone (record audio messages, iOS) | mic button in `ChatView` (on by default) | `NSMicrophoneUsageDescription` — **required**; the button is auto-hidden when it's missing (see below) |
+| Photo attachment (iOS) | `VisionInputButton` / `PhotoAttachmentButton` composer accessories | `NSPhotoLibraryUsageDescription` — recommended for App Store review; the built-in picker is `PhotosPicker` (PHPicker, out-of-process) so it does **not** crash without it |
 
-**Defense in depth.** ManifoldKit also hides each control automatically when its usage string is absent, so a missing key degrades to a no-op rather than a crash. You still need the key for the control to appear.
+**Microphone defense in depth.** ManifoldKit also hides the mic button automatically when `NSMicrophoneUsageDescription` is absent, so a forgotten key degrades to a no-op rather than a crash. You still need the key for the button to appear. The photo-library accessories are *not* gated on their key (PHPicker doesn't require it) — they appear whenever `showImageAttachment` is on and the backend supports vision.
 
-**Turning controls off entirely.** Set the matching `ManifoldConfiguration.Features` flag to `false` at startup — the control is removed from the view tree and you don't need the corresponding key:
+**Turning controls off entirely.** Set the matching `ManifoldConfiguration.Features` flag to `false` at startup — the control is removed from the view tree:
 
 ```swift,no-build
 ManifoldConfiguration.shared.features = .init(
     showAudioInput: false,       // remove the mic button (no NSMicrophoneUsageDescription needed)
-    showImageAttachment: false   // remove image-attachment controls (no NSPhotoLibraryUsageDescription needed)
+    showImageAttachment: false   // remove image-attachment controls (paperclip + photo accessories)
 )
 ```
 

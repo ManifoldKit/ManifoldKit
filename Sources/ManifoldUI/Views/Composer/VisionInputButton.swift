@@ -62,9 +62,9 @@ public struct VisionInputButton: View {
 
     public var body: some View {
         #if os(iOS)
-        // iOS PhotosPicker is permission-gated: hide it when the host disabled
-        // image attachment or omitted NSPhotoLibraryUsageDescription.
-        if isVisionSupported && ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features) {
+        // PhotosPicker is PHPicker-backed and needs no usage string, so only the
+        // feature flag gates it (alongside backend vision support).
+        if isVisionSupported && features.showImageAttachment {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 Image(systemName: "photo.badge.plus")
                     .symbolVariant(.fill)

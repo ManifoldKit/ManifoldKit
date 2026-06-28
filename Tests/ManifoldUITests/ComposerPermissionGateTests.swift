@@ -2,17 +2,18 @@ import XCTest
 @testable import ManifoldUI
 @testable import ManifoldInference
 
-/// Unit tests for ``ComposerPermissionGate`` — the helper that decides whether a
-/// permission-gated composer control (microphone, photo library) may be shown.
+/// Unit tests for ``ComposerPermissionGate`` — the helper that decides whether
+/// the microphone composer control may be shown.
 ///
 /// These cover the two linked behaviours: feature-flag gating and the
-/// Info.plist-absent degradation guard that prevents a host SIGABRT. A custom
-/// `Bundle` is injected so we can simulate a host whose Info.plist lacks the
-/// usage-description key without mutating the test bundle's own plist.
+/// Info.plist-absent degradation guard that prevents a host SIGABRT when
+/// `NSMicrophoneUsageDescription` is missing. A custom `Bundle` is injected so
+/// we can simulate a host whose Info.plist lacks the usage-description key
+/// without mutating the test bundle's own plist.
 final class ComposerPermissionGateTests: XCTestCase {
 
-    // A bundle that carries no Info.plist usage strings — `bundleWithoutPlistKeys`
-    // is freshly allocated and never declares NSMicrophone/NSPhotoLibrary keys.
+    // The xctest bundle declares no usage-description keys, so it stands in for a
+    // host whose Info.plist is missing NSMicrophoneUsageDescription.
     private var bundleWithoutKeys: Bundle { Bundle(for: ComposerPermissionGateTests.self) }
 
     // MARK: - usageDescriptionPresent
@@ -45,43 +46,20 @@ final class ComposerPermissionGateTests: XCTestCase {
         )
     }
 
-    // MARK: - shouldShowPhotoLibraryInput
-
-    func test_shouldShowPhotoLibraryInput_falseWhenPlistKeyMissing_evenWhenFlagOn() {
-        let features = ManifoldConfiguration.Features(showImageAttachment: true)
-        XCTAssertFalse(
-            ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features, bundle: bundleWithoutKeys),
-            "Photo button must be hidden when NSPhotoLibraryUsageDescription is absent, regardless of the flag"
-        )
-    }
-
-    func test_shouldShowPhotoLibraryInput_falseWhenFlagOff() {
-        let features = ManifoldConfiguration.Features(showImageAttachment: false)
-        XCTAssertFalse(
-            ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features, bundle: bundleWithoutKeys),
-            "Photo button must be hidden when the showImageAttachment flag is off"
-        )
-    }
-
     // MARK: - Positive path (key present + flag on)
 
     /// Proves the gate is a genuine `flag && key-present` AND, not a function
-    /// that always returns false: with both usage strings declared and the flags
-    /// on, both controls are shown.
-    func test_shouldShow_trueWhenFlagOnAndKeysPresent() throws {
+    /// that always returns false: with the usage string declared and the flag
+    /// on, the control is shown.
+    func test_shouldShowAudioInput_trueWhenFlagOnAndKeyPresent() throws {
         let bundle = try makeBundle(withInfoPlistKeys: [
             ComposerPermissionGate.microphoneUsageKey: "Record audio messages.",
-            ComposerPermissionGate.photoLibraryUsageKey: "Attach photos to messages.",
         ])
-        let features = ManifoldConfiguration.Features(showAudioInput: true, showImageAttachment: true)
+        let features = ManifoldConfiguration.Features(showAudioInput: true)
 
         XCTAssertTrue(
             ComposerPermissionGate.shouldShowAudioInput(features: features, bundle: bundle),
             "Mic button must show when the flag is on and the usage string is declared"
-        )
-        XCTAssertTrue(
-            ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features, bundle: bundle),
-            "Photo button must show when the flag is on and the usage string is declared"
         )
     }
 
