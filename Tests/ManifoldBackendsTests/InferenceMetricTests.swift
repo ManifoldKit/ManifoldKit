@@ -242,5 +242,54 @@ struct SSECloudBackendMetricTests {
         // shared sink; just confirm we reach this point without error.
         _ = sharedMetrics
     }
+
+    @Test("Span is emitted to traceSink on successful generation")
+    func emitsSpanToTraceSinkOnSuccess() async throws {
+        let (backend, endpointURL) = makeBackend()
+        backend.metricSink = nil
+        let traceSink = RecordingTraceSink()
+        backend.traceSink = traceSink
+
+        let chunks: [Data] = [sseData(#"{"token":"Hi"}"#), sseDone]
+        MockURLProtocol.stub(url: endpointURL, response: .sse(chunks: chunks, statusCode: 200))
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+        let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: GenerationConfig())
+        for try await _ in stream.events {}
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        let spans = await traceSink.recordedSpans()
+        #expect(spans.count == 1)
+        // Sabotage: if wiring were removed, count would be 0 and the check above would fail.
+
+        let span = try #require(spans.first)
+        #expect(span.kind == .llm)
+        #expect(span.status == .ok)
+        #expect(span.attributes[GenAIAttributeKeys.system] == .string("TestBackend"))
+        #expect(span.attributes[GenAIAttributeKeys.requestModel] == .string("gpt-4o"))
+    }
+
+    @Test("Setting traceSink to nil disables span emission")
+    func nilTraceSinkDisablesSpanEmission() async throws {
+        let (backend, endpointURL) = makeBackend()
+        let traceSink = RecordingTraceSink()
+        backend.traceSink = traceSink
+        // Immediately clear the reference so the context captures nil.
+        backend.traceSink = nil
+
+        let chunks: [Data] = [sseData(#"{"token":"hi"}"#), sseDone]
+        MockURLProtocol.stub(url: endpointURL, response: .sse(chunks: chunks, statusCode: 200))
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+        let stream = try backend.generate(prompt: "Hi", systemPrompt: nil, config: GenerationConfig())
+        for try await _ in stream.events {}
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        let spans = await traceSink.recordedSpans()
+        #expect(spans.isEmpty, "No spans should be emitted when traceSink is nil at generate() time")
+        // Sabotage: setting traceSink before generate() instead of nil-ing it would yield count 1.
+    }
 }
 

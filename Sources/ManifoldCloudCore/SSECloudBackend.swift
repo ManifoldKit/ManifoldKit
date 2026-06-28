@@ -130,6 +130,13 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// metrics without any configuration. Set to `nil` to disable metric emission.
     public var metricSink: (any InferenceMetricSink)? = InMemoryMetricSink.shared
 
+    /// Optional vendor-neutral trace sink for OpenTelemetry-compatible span export.
+    ///
+    /// When set, each completed generation emits a ``GenSpan`` of kind ``SpanKind/llm``
+    /// alongside the flat ``InferenceMetric``. Defaults to `nil` (no span export).
+    /// Set to a ``RecordingTraceSink`` for tests or to your OTLP exporter in production.
+    public var traceSink: (any TraceSink)?
+
     public let urlSession: URLSession
 
     /// SSE payload handler that extracts tokens, usage, stream-end signals,
@@ -600,6 +607,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 }
             },
             metricSink: metricSink,
+            traceSink: traceSink,
             modelName: modelName,
             backendName: backendName,
             maxRetries: (capturedStrategy as? ExponentialBackoffStrategy)?.maxRetries ?? 3,
