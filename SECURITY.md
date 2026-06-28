@@ -60,12 +60,12 @@ resolves them. The build modes map to product graphs (see
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.36.0"
 )
 // For local inference add the companion package(s) and registrars:
-// .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0")
-// .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0")
+// .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.1.0")
+// .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.1.0")
 ```
 
 **Guarantees** (enforced by [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
@@ -90,7 +90,7 @@ and the import-graph rule in the same audit):
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.36.0"
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldOllama
@@ -117,7 +117,7 @@ Same `offline` guarantees, plus:
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.36.0"
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldCloudSaaS
@@ -133,7 +133,7 @@ transport-security boundary.
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.36.0"
 )
 // All cloud backends are compiled in. Add the manifold-mlx / manifold-llama
@@ -169,12 +169,12 @@ responsibility:
   redacted strings if invoked with elevated entitlements.
 - **GGUF / safetensors weight tampering** — model-file integrity is the user's
   responsibility (typically via HuggingFace's signed manifest, which ManifoldKit does not
-  yet verify; see [#367](https://github.com/roryford/ManifoldKit/issues/367)).
+  yet verify; see [#367](https://github.com/ManifoldKit/ManifoldKit/issues/367)).
 
 ## Reporting a Vulnerability
 
 Report suspected vulnerabilities through
-[GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new).
+[GitHub Security Advisories](https://github.com/ManifoldKit/ManifoldKit/security/advisories/new).
 This keeps the discussion private until a fix is ready. Please **do not** open public
 issues for security-impacting bugs.
 
@@ -309,22 +309,22 @@ The following are known gaps with tracking issues. Each is listed in
 - **Macro plugin sandbox** — SwiftPM `.buildToolPlugin` / `.commandPlugin` declarations
   are banned by the audit, but `Sources/ManifoldMacrosPlugin/` runs at build time with
   full filesystem and network access. Tracked under
-  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
+  [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5.
 - **xcframework checksum pinning** — `llama.swift` and `mlx-swift` xcframeworks are
   pulled by SwiftPM with `Package.resolved` revision pinning but no SHA-256 binary
-  checksum. Tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714)
+  checksum. Tracked under [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714)
   Phase 5.
 - **GGUF signed-manifest verification** — model weights downloaded from HuggingFace
   are not signature-verified.
-  [#367](https://github.com/roryford/ManifoldKit/issues/367).
+  [#367](https://github.com/ManifoldKit/ManifoldKit/issues/367).
 - **Build-provenance attestation** — no SLSA-style attestation. Tracked under
-  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
+  [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5.
 - **Secure Enclave / key zeroization** — API keys are read into Swift `String` for
   request signing and rely on ARC + zeroing-on-free behaviour from
   Foundation/Security.framework. Tracked under
-  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
+  [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5.
 - **SBOM** — no Software Bill of Materials is published. Tracked under
-  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
+  [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5.
 - **FIPS validation** — see Cryptography at Rest above. No commitment to a FIPS-only
   build path.
 

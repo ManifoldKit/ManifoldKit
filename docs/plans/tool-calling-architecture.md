@@ -2,7 +2,7 @@
 
 > **Status (2026-06-24):** design proposal, not yet scheduled. Synthesises four code investigations across `ManifoldKit` + `manifold-llama` + `manifold-mlx` with comparative research into llama.cpp, Ollama, mlx-lm, vLLM, HuggingFace transformers, the constrained-decoding libraries (outlines / xgrammar / llguidance), and the multi-backend kits (llama-cpp-python, node-llama-cpp, LangChain, LiteLLM). The aim is to fix the *principle*, not just the open matrix findings — to give the tool-calling subsystem a pattern that holds as families multiply.
 
-> **Companion-repo caveat.** The local raw-token backends (`ManifoldLlama`, `ManifoldMLX`) live in [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama) and [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx). Several changes below land there, not in core. File:line references to those repos are marked **(companion)**.
+> **Companion-repo caveat.** The local raw-token backends (`ManifoldLlama`, `ManifoldMLX`) live in [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) and [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx). Several changes below land there, not in core. File:line references to those repos are marked **(companion)**.
 
 > **Research-freshness caveat.** Most secondary sources still describe llama.cpp's *old* `common_chat_format`-enum + per-format-regex model. Current master (PR #17136, merged 2025-12-03) is a **PEG-as-single-source-of-truth** design. This doc designs against the new model. Verify before citing the old one.
 

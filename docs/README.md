@@ -48,8 +48,8 @@ Branch points:
 > configured, no companion packages), `ManifoldKit.quickStart()` throws
 > `ManifoldKitError.noBackendsRegistered` when you call it — it compiles fine,
 > then fails at launch. For local inference add a companion package
-> ([manifold-llama](https://github.com/roryford/manifold-llama) for GGUF,
-> [manifold-mlx](https://github.com/roryford/manifold-mlx) for MLX) and pass its
+> ([manifold-llama](https://github.com/ManifoldKit/manifold-llama) for GGUF,
+> [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) for MLX) and pass its
 > registrar to `quickStart(backends:)`. See
 > [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends).
 
@@ -64,8 +64,8 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | **Expose an App Intent to the model** | [QUICKSTART-APPINTENTS.md](QUICKSTART-APPINTENTS.md) |
 | **RAG — answer from your documents** | [QUICKSTART-RAG.md](QUICKSTART-RAG.md) — ingestion, semantic + keyword retrieval, reranking, and inline citations. |
 | **Voice (STT / TTS)** | [QUICKSTART-VOICE.md](QUICKSTART-VOICE.md) — usable standalone, not just in chat. |
-| **On-device image generation** | FLUX.1 Schnell / SDXL Turbo — the diffusion backends and their quickstart moved to the [manifold-mlx](https://github.com/roryford/manifold-mlx) companion package. |
-| **Cloud video generation** | Moved to the [manifold-mlx](https://github.com/roryford/manifold-mlx) companion package docs (the `VideoGenerationBackend` protocol and persistence wiring stay in core). |
+| **On-device image generation** | FLUX.1 Schnell / SDXL Turbo — the diffusion backends and their quickstart moved to the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package. |
+| **Cloud video generation** | Moved to the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package docs (the `VideoGenerationBackend` protocol and persistence wiring stay in core). |
 | **Share Extension handoff** | [share-action-extension-recipe.md](share-action-extension-recipe.md) — ingest text/URLs from the system share sheet. |
 
 ## Reference
@@ -78,8 +78,8 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) | The AnyLanguageModel bridge — Gemini, xAI, Groq, Mistral, OpenRouter, and OpenAI/Anthropic-compatible endpoints. |
 | [CLOUD-OAUTH.md](CLOUD-OAUTH.md) | OAuth flows for cloud providers. |
 | [LOCAL-GGUF.md](LOCAL-GGUF.md) | Local model storage contract and discovery. |
-| [llama-runtime.md](llama-runtime.md) | Tombstone — the llama.cpp runtime-behaviour doc moved to [manifold-llama](https://github.com/roryford/manifold-llama). |
-| [LLAMA_CONTRACT.md](LLAMA_CONTRACT.md) | Tombstone — the llama.cpp C-API contract moved to [manifold-llama](https://github.com/roryford/manifold-llama). |
+| [llama-runtime.md](llama-runtime.md) | Tombstone — the llama.cpp runtime-behaviour doc moved to [manifold-llama](https://github.com/ManifoldKit/manifold-llama). |
+| [LLAMA_CONTRACT.md](LLAMA_CONTRACT.md) | Tombstone — the llama.cpp C-API contract moved to [manifold-llama](https://github.com/ManifoldKit/manifold-llama). |
 | [SOURCEKIT_DIAGNOSTICS.md](SOURCEKIT_DIAGNOSTICS.md) | Non-destructive investigation of stale SourceKit module errors. |
 
 ## Security & reliability

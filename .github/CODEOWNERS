@@ -3,7 +3,7 @@
 # This file declares ownership for security-sensitive paths so that PRs
 # touching them automatically request review from the listed owners.
 #
-# Tracking: https://github.com/roryford/ManifoldKit/issues/729 (Phase 5 of #714).
+# Tracking: https://github.com/ManifoldKit/ManifoldKit/issues/729 (Phase 5 of #714).
 #
 # NOTE: With a single human maintainer (@roryford), required-Code-Owner-review
 # is decorative — the sole owner authoring a PR cannot self-approve a Code

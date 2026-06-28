@@ -40,12 +40,12 @@ jobs:
       - name: Check out ${{ matrix.companion }}
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: roryford/${{ matrix.companion }}
+          repository: ManifoldKit/${{ matrix.companion }}
           path: companion
       - name: Check out ManifoldKit @ ${{ inputs.core_ref }}
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: roryford/ManifoldKit
+          repository: ManifoldKit/ManifoldKit
           ref: ${{ inputs.core_ref }}
           path: core
       - name: Select newest Xcode 26 toolchain

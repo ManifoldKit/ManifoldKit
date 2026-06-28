@@ -240,11 +240,11 @@ ManifoldKit is **pre-1.0.** Streaming, multi-provider abstraction, tool
 calling, structured output, MCP (client + server), thinking tokens, RAG +
 citations, metrics + cost, and on-device image generation (FLUX / SDXL) all ship
 today. Expect breaking changes between minors until 1.0. RAG reranking
-([#1637](https://github.com/roryford/ManifoldKit/issues/1637)) and mid-stream
+([#1637](https://github.com/ManifoldKit/ManifoldKit/issues/1637)) and mid-stream
 resume are on the roadmap.
 
 MIT licensed. Issues, PRs, and "does it do X?" questions all welcome.
-**→ github.com/roryford/ManifoldKit**
+**→ github.com/ManifoldKit/ManifoldKit**
 
 ---
 
@@ -267,7 +267,7 @@ Anthropic, Ollama — one `GenerationStream` protocol, identical features.
 WWDC 2026 next week? Whatever on-device model Apple ships = one more backend,
 not a rewrite (the stub traits are already in Package.swift). Plus it serves iOS
 18 / macOS 15 that Foundation Models can't. Pre-1.0, MIT, 6,500+ tests.
-→ github.com/roryford/ManifoldKit
+→ github.com/ManifoldKit/ManifoldKit
 
 ---
 
@@ -285,12 +285,12 @@ not a rewrite (the stub traits are already in Package.swift). Plus it serves iOS
    honest and bounded: a short stability note and a visible 1.0 milestone with
    the remaining breaking changes listed. Capture the screenshot shot-list
    (§2.5) so "already ships" is shown, not asserted.
-3. **[#1637](https://github.com/roryford/ManifoldKit/issues/1637) (RAG rerank)**
+3. **[#1637](https://github.com/ManifoldKit/ManifoldKit/issues/1637) (RAG rerank)**
    — currently the named gap in the announcement's honest close. Either land it
    before posting (and upgrade RAG from "+citations" to "+rerank") or leave it
    as the explicit roadmap item the draft already cites. Don't post with it
    half-done and unmentioned.
-4. **[#1638](https://github.com/roryford/ManifoldKit/issues/1638)
+4. **[#1638](https://github.com/ManifoldKit/ManifoldKit/issues/1638)
    (AnyLanguageModel bridge → documented provider-breadth path)** — directly
    backs Pillar 2 and the fan diagram's Gemini/xAI/Groq/Mistral nodes. Landing
    it (or at least a documented path) makes the §2.2 visual truthful rather than

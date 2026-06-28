@@ -1,7 +1,7 @@
 # Local GGUF storage and discovery
 
 How ManifoldKit finds local `.gguf` files on disk, where to put them, and what
-goes wrong when discovery or load fails. Closes [#1468](https://github.com/roryford/ManifoldKit/issues/1468).
+goes wrong when discovery or load fails. Closes [#1468](https://github.com/ManifoldKit/ManifoldKit/issues/1468).
 
 ## Where ModelManagementSheet looks
 

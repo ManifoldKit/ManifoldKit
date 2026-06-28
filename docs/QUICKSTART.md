@@ -16,7 +16,7 @@ Add ManifoldKit to your `Package.swift` (or Xcode's *Package Dependencies*):
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.62.0" // x-release-please-version
 )
 ```
@@ -69,7 +69,7 @@ struct MyChatApp: App {
 Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
 > [!IMPORTANT]
-> **The backend cliff: no registered backend → a *runtime* throw, not a compile error.** If **zero** inference backends are registered when you call it, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause at the assembly boundary instead of a confusing "No model loaded" on the first turn. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a `quickStart()` build always has cloud support — the throw only fires if nothing was *registered* (e.g. you bypassed `quickStart()` and registered no backend yourself). For **local** inference add a companion package — [manifold-llama](https://github.com/roryford/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/roryford/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
+> **The backend cliff: no registered backend → a *runtime* throw, not a compile error.** If **zero** inference backends are registered when you call it, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause at the assembly boundary instead of a confusing "No model loaded" on the first turn. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a `quickStart()` build always has cloud support — the throw only fires if nothing was *registered* (e.g. you bypassed `quickStart()` and registered no backend yourself). For **local** inference add a companion package — [manifold-llama](https://github.com/ManifoldKit/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
 
 > **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
 
@@ -159,7 +159,7 @@ struct MyChatApp: App {
 | No registered backend can load GGUF models | Skip — logged as `quickStart(seed:): no registered backend can load gguf models — seed skipped` |
 | Network failure during the download | Skip silently — app launches in empty state |
 
-**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/roryford/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README Hello World). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
+**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README Hello World). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
 
 ### What "available immediately" actually means
 
@@ -315,11 +315,11 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 ```swift,no-build
 // Package.swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.62.0" // x-release-please-version
 ),
-.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),  // GGUF / llama.cpp
-.package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.2.13"),    // MLX (+ image gen)
+.package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF / llama.cpp
+.package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),    // MLX (+ image gen)
 
 // target dependencies:
 "ManifoldKit",

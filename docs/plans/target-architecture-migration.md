@@ -396,7 +396,7 @@ Delete the `@_exported import` facades after the ≥2-minor deprecation window.
 ## Sequencing summary (recommended order)
 1. **P0** (P0a decision, P0b bug, **P0c characterization harness**) — now, WWDC-independent.
 2. **P6** usability — pull forward (high adopter value, WWDC-independent).
-3. **Unify streaming filtering ([#1593](https://github.com/roryford/ManifoldKit/issues/1593))**
+3. **Unify streaming filtering ([#1593](https://github.com/ManifoldKit/ManifoldKit/issues/1593))**
    — after P0c, **before** the P1 moves; WWDC-independent. **Unify-then-decouple:** collapse
    the four duplicated chunk-boundary prefix-hold parsers (`ThinkingBlockFilter`,
    `ThinkingBlockManager`, the MLX/Llama tool-call parsers) into **one shared chunk-safe
@@ -404,7 +404,7 @@ Delete the `@_exported import` facades after the ≥2-minor deprecation window.
    first means the P1/P2 moves relocate call sites onto *one shared parser* instead of
    scattering four divergent copies across three tiers and re-unifying across the new
    boundaries afterward (the re-coupling trap). Gated behind P0c because chunk-boundary
-   handling is correctness-sensitive. Also tees up the [#1595](https://github.com/roryford/ManifoldKit/issues/1595)
+   handling is correctness-sensitive. Also tees up the [#1595](https://github.com/ManifoldKit/ManifoldKit/issues/1595)
    single-site fix (grammar-during-thinking).
 4. **P1** thin kernel — now, WWDC-independent; de-risks everything downstream.
 5. **— WWDC keynote 2026-06-08: re-confirm the rest —**

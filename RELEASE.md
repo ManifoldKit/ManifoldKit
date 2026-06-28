@@ -21,7 +21,7 @@ binds each artifact to:
 
 - the exact commit SHA the tag points at,
 - the workflow file that produced it (`release-provenance.yml`), and
-- the GitHub repository (`roryford/ManifoldKit`).
+- the GitHub repository (`ManifoldKit/ManifoldKit`).
 
 ## Verifying a release before pinning
 
@@ -33,14 +33,14 @@ TAG=v0.12.2   # replace with the release you want to verify
 gh release download "$TAG" \
     --pattern 'sbom.cdx.json' \
     --pattern 'dependency-tree.json' \
-    --repo roryford/ManifoldKit
+    --repo ManifoldKit/ManifoldKit
 
 gh attestation verify sbom.cdx.json \
-    --repo roryford/ManifoldKit \
+    --repo ManifoldKit/ManifoldKit \
     --predicate-type https://slsa.dev/provenance/v1
 
 gh attestation verify dependency-tree.json \
-    --repo roryford/ManifoldKit \
+    --repo ManifoldKit/ManifoldKit \
     --predicate-type https://slsa.dev/provenance/v1
 ```
 
@@ -50,22 +50,22 @@ this repository.
 
 If verification fails, treat the artifacts as untrusted and open a
 security advisory via
-[GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new).
+[GitHub Security Advisories](https://github.com/ManifoldKit/ManifoldKit/security/advisories/new).
 
 ## What the attestations do *not* cover
 
 - The source archive GitHub auto-generates from a tag (`zipball` /
   `tarball`) is not produced by this workflow and is not attested.
   Source-archive provenance and reproducible binary builds are tracked
-  under [#714](https://github.com/roryford/ManifoldKit/issues/714) and
-  [#728](https://github.com/roryford/ManifoldKit/issues/728).
+  under [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) and
+  [#728](https://github.com/ManifoldKit/ManifoldKit/issues/728).
 - The attestation does not vouch for upstream dependencies themselves;
   it only asserts that the SBOM accurately enumerates what was pinned
   at tag time. Cross-checking the SBOM's `swift:git-revision` properties
   against upstream tags is left to the consumer.
 - The `.xcframework` for `llama.swift` is consumed as a prebuilt
   binary blob from upstream; pinning it by SHA256 with a reproducibility
-  audit is the scope of [#728](https://github.com/roryford/ManifoldKit/issues/728).
+  audit is the scope of [#728](https://github.com/ManifoldKit/ManifoldKit/issues/728).
 
 ## Regenerating artifacts for an existing tag
 

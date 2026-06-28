@@ -219,8 +219,8 @@ want to show an onboarding sheet instead of auto-loading.
 ### Local GGUF (llama.cpp) and MLX
 
 Local models need the matching companion backend package —
-[manifold-llama](https://github.com/roryford/manifold-llama) for GGUF,
-[manifold-mlx](https://github.com/roryford/manifold-mlx) for MLX — registered
+[manifold-llama](https://github.com/ManifoldKit/manifold-llama) for GGUF,
+[manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) for MLX — registered
 via `quickStart(backends:)` (or `LlamaBackends.register(with:)` on a manual
 bootstrap), plus a downloaded weights file before the chat surface can
 generate. Use ``ManifoldUIModelManagement`` (a separate product) to give
@@ -302,7 +302,7 @@ Tagged release:
 // Package.swift — the cloud backends (Ollama, OpenAI, Anthropic, LM Studio)
 // always compile since v0.48; no traits needed.
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.62.0" // x-release-please-version
 )
 ```

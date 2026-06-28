@@ -11,8 +11,8 @@
 //     llama.cpp backend families moved to the manifold-mlx / manifold-llama
 //     companion packages, #1749). See docs/MIGRATION-0.48.md.
 //   - Local inference (MLX / GGUF) now lives in companion packages:
-//       https://github.com/roryford/manifold-mlx
-//       https://github.com/roryford/manifold-llama
+//       https://github.com/ManifoldKit/manifold-mlx
+//       https://github.com/ManifoldKit/manifold-llama
 //     Add one as a `.package` dependency and pass its registrar to
 //     `ManifoldKit.quickStart(backends:)`.
 
@@ -349,8 +349,8 @@ let package = Package(
         //
         // Since v0.48 (PR C2) the heavy local-inference families live in
         // companion packages: ManifoldMLX (+ vendored FluxSwift /
-        // StableDiffusion) at https://github.com/roryford/manifold-mlx and
-        // ManifoldLlama at https://github.com/roryford/manifold-llama
+        // StableDiffusion) at https://github.com/ManifoldKit/manifold-mlx and
+        // ManifoldLlama at https://github.com/ManifoldKit/manifold-llama
         // (#1749). Core retains Foundation + the cloud families (Ollama,
         // SaaS). Consumers that don't want SaaS code in a shipped binary
         // depend on the specific products they need instead of the umbrella

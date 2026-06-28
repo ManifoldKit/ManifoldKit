@@ -12,7 +12,7 @@ registry, and `GenerationConfig`.
 > becomes `chatVM.sendMessage(_:)`. Tools map onto `ToolDefinition` +
 > `ToolRegistry`. `@Generable` has **no macro equivalent yet** — use the raw
 > structured-output strategies (`GenerationConfig.structuredOutput`) and track
-> the ergonomic sugar in [#1915](https://github.com/roryford/ManifoldKit/issues/1915).
+> the ergonomic sugar in [#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915).
 
 ---
 
@@ -186,7 +186,7 @@ You then **decode the returned string yourself** (`JSONDecoder`) — ManifoldKit
 constrains the *generation*, but does not hand you a typed instance.
 
 > The `@Generable`/Codable → decoded-instance ergonomics are tracked in
-> [#1915](https://github.com/roryford/ManifoldKit/issues/1915). Until that
+> [#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915). Until that
 > ships, do **not** expect `let x: MyType = try await ...generate(...)` — it
 > does not exist. Map `@Generable` onto the raw strategy above.
 
@@ -213,7 +213,7 @@ constrains the *generation*, but does not hand you a typed instance.
 6. For a non-native provider AnyLanguageModel supports, add the
    [AnyLanguageModel bridge](PROVIDER-BRIDGE.md) and configure by URL scheme.
 
-[#1915]: https://github.com/roryford/ManifoldKit/issues/1915
+[#1915]: https://github.com/ManifoldKit/ManifoldKit/issues/1915
 
 ---
 

@@ -15,7 +15,7 @@ root.
 
 ## Reporting
 
-Use [GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/ManifoldKit/ManifoldKit/security/advisories/new)
 for private disclosure. **Do not** open public issues for security-impacting bugs.
 
 Full policy: [`SECURITY.md` § Reporting a vulnerability](../SECURITY.md#reporting-a-vulnerability).

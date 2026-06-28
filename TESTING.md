@@ -145,9 +145,9 @@ Available flags (from `ManifoldTestSupport/HardwareRequirements.swift`):
 The Xcode-hosted real-model MLX integration suites (`ManifoldMLXIntegrationTests`,
 the local model fixture conventions, and the MLX KV-cache reuse regression
 checks) moved with the backends to the
-[manifold-mlx](https://github.com/roryford/manifold-mlx) companion package in
+[manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package in
 v0.48; the real-GGUF llama.cpp E2E suites live in
-[manifold-llama](https://github.com/roryford/manifold-llama). See those repos'
+[manifold-llama](https://github.com/ManifoldKit/manifold-llama). See those repos'
 testing docs for fixtures and run commands.
 
 ---

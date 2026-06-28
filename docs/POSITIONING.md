@@ -14,7 +14,7 @@ persistence + multi-backend inference into one drop-in chat product.**
 
 **Category:** a full-stack, multi-backend, on-device + cloud AI chat framework
 for Apple platforms (iOS 18+ / macOS 15+). **Pre-1.0** — see the
-[latest release](https://github.com/roryford/ManifoldKit/releases/latest) for the
+[latest release](https://github.com/ManifoldKit/ManifoldKit/releases/latest) for the
 current version.
 
 Most "AI for Swift" libraries hand you one layer and leave the integration to
@@ -294,7 +294,7 @@ production reliability layer.
 If your problem is "give me clean access to many models," AnyLanguageModel is an
 excellent answer. If your problem is "give me a shippable chat app," reach for
 ManifoldKit — and notice that AnyLanguageModel is one of the engines under the
-hood. (Tracked: [#1638](https://github.com/roryford/ManifoldKit/issues/1638)
+hood. (Tracked: [#1638](https://github.com/ManifoldKit/ManifoldKit/issues/1638)
 graduates the bridge to a documented provider-breadth path.)
 
 ---
@@ -309,7 +309,7 @@ pretending otherwise:
   SwiftData stores deliberately rather than carry migration debt pre-1.0.
 - **RAG reranking is pending** — retrieval and citations ship today; the
   reranking stage is tracked in open issue
-  [#1637](https://github.com/roryford/ManifoldKit/issues/1637), not yet
+  [#1637](https://github.com/ManifoldKit/ManifoldKit/issues/1637), not yet
   implemented.
 - **Mid-stream resume is deferred and documented.** Retries cover connection
   setup, not mid-stream replay; once response bytes arrive, a failure surfaces

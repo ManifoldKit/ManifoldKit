@@ -43,11 +43,11 @@ Since v0.48 the heavy local backends ship as companion packages — core Manifol
 ```swift,no-build
 dependencies: [
     .package(
-        url: "https://github.com/roryford/ManifoldKit.git",
+        url: "https://github.com/ManifoldKit/ManifoldKit.git",
         from: "0.62.0" // x-release-please-version
     ),
-    .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),  // GGUF
-    // .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.2.13"), // MLX
+    .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF
+    // .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"), // MLX
 ],
 ```
 
@@ -89,7 +89,7 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/roryford/ManifoldKit.git",
+            url: "https://github.com/ManifoldKit/ManifoldKit.git",
             from: "0.62.0" // x-release-please-version
         ),
     ],
@@ -146,7 +146,7 @@ Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are 
 
 ## 2. Local GGUF via the Llama backend (macOS 15+)
 
-This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform. Since v0.48 it ships in the [`manifold-llama`](https://github.com/roryford/manifold-llama) companion package, so this example adds two `.package(...)` lines instead of one (which is why these snippets are not compile-checked against a core-only checkout).
+This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform. Since v0.48 it ships in the [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama) companion package, so this example adds two `.package(...)` lines instead of one (which is why these snippets are not compile-checked against a core-only checkout).
 
 **Get a model first.** Drop any GGUF file into `~/Documents/Models/`. SwiftUI hosts that use `ModelManagementSheet` discover both `~/Documents/Models` and the app-scoped Application Support directory — see [`docs/LOCAL-GGUF.md`](LOCAL-GGUF.md) for the full storage contract. Good starter picks:
 
@@ -154,9 +154,9 @@ This is the section that closes the "I'm on macOS 15 and want to evaluate Manifo
 - [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, fast, but emits `.thinkingToken` events before its final answer — see ["Reasoning models" below](#reasoning-models-thinking-tokens) before using
 - Any other GGUF you've downloaded via HuggingFace, Ollama, or LM Studio
 
-> **Llama-3 multi-turn:** Real Jinja chat templates (v0.54+, [#1898](https://github.com/roryford/ManifoldKit/issues/1898)) fixed the ChatML control-token leakage reported in [#1398](https://github.com/roryford/ManifoldKit/issues/1398). Still smoke-test long multi-turn sessions in your CLI — any regression is tracked at #1398.
+> **Llama-3 multi-turn:** Real Jinja chat templates (v0.54+, [#1898](https://github.com/ManifoldKit/ManifoldKit/issues/1898)) fixed the ChatML control-token leakage reported in [#1398](https://github.com/ManifoldKit/ManifoldKit/issues/1398). Still smoke-test long multi-turn sessions in your CLI — any regression is tracked at #1398.
 
-> **First-run stderr noise (Llama / Metal):** The first generation on a fresh build can emit thousands of `ggml_metal_library_compile_pipeline` lines on stderr while Metal kernels compile. That is llama.cpp logging, not model output — subsequent runs are much quieter. There is no consumer-facing silence knob yet ([#1399](https://github.com/roryford/ManifoldKit/issues/1399)).
+> **First-run stderr noise (Llama / Metal):** The first generation on a fresh build can emit thousands of `ggml_metal_library_compile_pipeline` lines on stderr while Metal kernels compile. That is llama.cpp logging, not model output — subsequent runs are much quieter. There is no consumer-facing silence knob yet ([#1399](https://github.com/ManifoldKit/ManifoldKit/issues/1399)).
 
 **`Package.swift`:**
 
@@ -172,11 +172,11 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/roryford/ManifoldKit.git",
+            url: "https://github.com/ManifoldKit/ManifoldKit.git",
             from: "0.62.0" // x-release-please-version
         ),
         // The GGUF backend lives in the manifold-llama companion package (v0.48).
-        .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),
+        .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
     ],
     targets: [
         .executableTarget(
@@ -359,7 +359,7 @@ for try await event in stream.events {
 
 #### What events you'll see
 
-The `switch` above only matches two cases — `.token` and `.thinkingToken` — and lets everything else fall through `default:`. That's deliberate: for a streaming-text CLI those are the only two events you have to render. But `GenerationEvent` has more cases, and once you build tool calling, usage reporting, or a progress UI you'll want to handle them explicitly. The full list (see [``GenerationEvent``](https://swiftpackageindex.com/roryford/ManifoldKit/main/documentation/manifoldinference/generationevent) on Swift Package Index for the rendered DocC page):
+The `switch` above only matches two cases — `.token` and `.thinkingToken` — and lets everything else fall through `default:`. That's deliberate: for a streaming-text CLI those are the only two events you have to render. But `GenerationEvent` has more cases, and once you build tool calling, usage reporting, or a progress UI you'll want to handle them explicitly. The full list (see [``GenerationEvent``](https://swiftpackageindex.com/ManifoldKit/ManifoldKit/main/documentation/manifoldinference/generationevent) on Swift Package Index for the rendered DocC page):
 
 | Case                                                                  | Meaning                                                                                  |
 |-----------------------------------------------------------------------|------------------------------------------------------------------------------------------|
@@ -417,7 +417,7 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/roryford/ManifoldKit.git",
+            url: "https://github.com/ManifoldKit/ManifoldKit.git",
             from: "0.62.0" // x-release-please-version
         ),
     ],
@@ -581,7 +581,7 @@ The same `readLine()` loop works for §1 (Foundation) and §2 (GGUF) — swap th
 
 ## 4. MLX via the `manifold-mlx` companion (Apple Silicon)
 
-MLX is ManifoldKit's fastest local backend on Apple Silicon (and the only one with on-device image generation). It ships in the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package.
+MLX is ManifoldKit's fastest local backend on Apple Silicon (and the only one with on-device image generation). It ships in the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package.
 
 > [!IMPORTANT]
 > **MLX cannot generate from a plain `swift run` CLI — it needs an Xcode-built `.app`.** mlx-swift compiles its Metal kernels into a `default.metallib` that is only produced by the Xcode / `xcodebuild` build path; a bare SwiftPM executable never builds or bundles it, so MLX aborts at model load with `MLX error: Failed to load the default metallib`. Discovery, classification, registration, and the load *plan* all work under `swift run` — only the generate step fails.
@@ -609,11 +609,11 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/roryford/ManifoldKit.git",
+            url: "https://github.com/ManifoldKit/ManifoldKit.git",
             from: "0.62.0" // x-release-please-version
         ),
         // The MLX backend lives in the manifold-mlx companion package (v0.48).
-        .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.2.13"),
+        .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),
     ],
     targets: [
         .executableTarget(
@@ -684,7 +684,7 @@ struct ChatCLIMLX {
 ggml-metal-device.m: GGML_ASSERT([rsets->data count] == 0) failed
 ```
 
-This is tracked at [#1394](https://github.com/roryford/ManifoldKit/issues/1394). Until it's fixed, give the Metal device a short window to drain before letting `main` return:
+This is tracked at [#1394](https://github.com/ManifoldKit/ManifoldKit/issues/1394). Until it's fixed, give the Metal device a short window to drain before letting `main` return:
 
 ```swift,no-build
 inference.unloadModel()

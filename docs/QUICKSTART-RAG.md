@@ -44,18 +44,18 @@ There are two retrieval modes, picked automatically:
 Keyword-fallback RAG needs nothing beyond core — `ManifoldRuntime` and
 `ManifoldPersistenceSwiftData` carry the whole pipeline. Semantic search needs
 the on-device `LlamaEmbeddingBackend` from `ManifoldLlama`, which since v0.48
-ships in the [`manifold-llama`](https://github.com/roryford/manifold-llama)
+ships in the [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama)
 companion package:
 
 ```swift,no-build
 dependencies: [
     .package(
-        url: "https://github.com/roryford/ManifoldKit.git",
+        url: "https://github.com/ManifoldKit/ManifoldKit.git",
         from: "0.62.0" // x-release-please-version
     ),
     // Only needed for semantic search (§3) / reranking (§4) —
     // keyword-fallback RAG works with core alone.
-    .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),
+    .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [

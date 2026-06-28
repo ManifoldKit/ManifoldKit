@@ -7,7 +7,7 @@
 # Local developer use only — never run in CI.
 #
 # Since v0.48 PR C2 the MLX and llama.cpp families live in companion packages
-# (https://github.com/roryford/manifold-mlx, https://github.com/roryford/manifold-llama).
+# (https://github.com/ManifoldKit/manifold-mlx, https://github.com/ManifoldKit/manifold-llama).
 # Benchmark those backends from the companion repos' own tooling; this script
 # covers the core graph only: raw Ollama HTTP, SDK→Ollama, server→Ollama, and
 # SDK→FoundationBackend.
