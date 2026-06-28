@@ -205,7 +205,7 @@ enum ChatHistoryHandoffResolver {
               let fromAgent = agents.first(where: { $0.id == previousAgentID })
         else { return nil }
 
-        return HandoffChipView(from: fromAgent, to: toAgent, payload: nil)
+        return HandoffChipView(from: fromAgent, to: toAgent)
     }
 }
 

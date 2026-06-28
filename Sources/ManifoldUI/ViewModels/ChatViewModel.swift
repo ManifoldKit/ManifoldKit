@@ -922,6 +922,15 @@ public final class ChatViewModel {
         coordinator.currentLoadPlanEnvironment = { [weak self] in
             self?.loadPlanEnvironment ?? .current
         }
+        // Feed the active session's persisted context-size override into the load
+        // path so `ChatSession.contextSizeOverride` (schema V9) actually shapes the
+        // requested context window — not just the token-budget estimate. Without
+        // this seam the field was read by ContextEstimator but never reached the
+        // model load, so an explicit override silently failed to enlarge the
+        // backend's real context.
+        coordinator.currentContextSizeOverride = { [weak self] in
+            self?.activeSession?.contextSizeOverride
+        }
 
         installRegistrySelectionSync()
         installSessionManagerClosures()

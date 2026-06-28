@@ -171,6 +171,12 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     /// `nil` until `loadModel` has been called at least once.
     public var loadModelCalledOnMainThread: Bool?
 
+    /// The most recent ``ModelLoadPlan`` passed to `loadModel`. Lets tests assert
+    /// on the *requested* context size the load path computed (e.g. that a
+    /// per-session `contextSizeOverride` actually shaped the load plan).
+    /// `nil` until `loadModel` has been called at least once.
+    public var lastLoadPlan: ModelLoadPlan?
+
     // Capture last generate arguments
     public var lastPrompt: String?
     public var lastSystemPrompt: String?
@@ -218,6 +224,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     public func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
         loadModelCallCount += 1
         loadModelCalledOnMainThread = pthread_main_np() != 0
+        lastLoadPlan = plan
         if let error = shouldThrowOnLoad { throw error }
         isModelLoaded = true
     }

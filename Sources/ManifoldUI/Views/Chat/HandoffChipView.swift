@@ -19,12 +19,10 @@ public struct HandoffChipView: View {
 
     public let from: Agent?
     public let to: Agent?
-    public let payload: String?
 
-    public init(from: Agent?, to: Agent?, payload: String? = nil) {
+    public init(from: Agent?, to: Agent?) {
         self.from = from
         self.to = to
-        self.payload = payload
     }
 
     public var body: some View {
@@ -61,7 +59,7 @@ public struct HandoffChipView: View {
     let agentA = Agent(name: "Researcher", systemPrompt: "", description: "")
     let agentB = Agent(name: "Writer", systemPrompt: "", description: "")
     return VStack {
-        HandoffChipView(from: agentA, to: agentB, payload: nil)
-        HandoffChipView(from: agentB, to: agentA, payload: "outline ready")
+        HandoffChipView(from: agentA, to: agentB)
+        HandoffChipView(from: agentB, to: agentA)
     }
 }

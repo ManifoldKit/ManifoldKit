@@ -381,7 +381,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: invert the transition check → chip renders for same-agent runs.
     func test_handoffChip_appearsAtAgentTransition() throws {
         let (from, to) = agentPair()
-        let chip = HandoffChipView(from: from, to: to, payload: nil)
+        let chip = HandoffChipView(from: from, to: to)
         _ = try chip.inspect().find(viewWithAccessibilityIdentifier: "handoff-chip-\(to.id.uuidString)")
     }
 
@@ -395,7 +395,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: render unconditionally → finder hits.
     func test_handoffChip_doesNotAppearOnFirstMessage() {
         let (_, to) = agentPair()
-        let chip = HandoffChipView(from: nil, to: to, payload: nil)
+        let chip = HandoffChipView(from: nil, to: to)
         XCTAssertThrowsError(
             try chip.inspect().find(viewWithAccessibilityIdentifier: "handoff-chip-\(to.id.uuidString)"),
             "No chip should render when from is nil (first message)."
@@ -411,7 +411,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: ignore nil and force-unwrap → would crash.
     func test_handoffChip_doesNotAppearWhenTargetUnresolved() throws {
         let (from, fromOther) = agentPair()
-        let chip = HandoffChipView(from: from, to: nil, payload: nil)
+        let chip = HandoffChipView(from: from, to: nil)
         // No handoff-chip-* identifier should be findable (neither agent's UUID).
         XCTAssertThrowsError(
             try chip.inspect().find(viewWithAccessibilityIdentifier: "handoff-chip-\(from.id.uuidString)")

@@ -64,6 +64,16 @@ public final class ModelLoadCoordinator {
     /// Returns the `ModelLoadPlan.Environment` to use for local-model load plans.
     public var currentLoadPlanEnvironment: @MainActor () -> ModelLoadPlan.Environment = { .current }
 
+    /// Returns the active session's per-session context-size override
+    /// (`ChatSession.contextSizeOverride`, persisted since schema V9), or `nil`
+    /// when no override is set. Wired by `ChatViewModel` from `activeSession`.
+    ///
+    /// A headless `ModelSelection` load deliberately leaves this at the default
+    /// (`nil`): a foreign surface should not raise the conservative ceiling on
+    /// behalf of a chat session it does not own — the chat VM is the only driver
+    /// that knows which session a load is for.
+    public var currentContextSizeOverride: @MainActor () -> Int? = { nil }
+
     // MARK: - Multi-observer load-status surface
 
     /// The most recent published load status. New subscribers receive this as their
@@ -209,15 +219,27 @@ public final class ModelLoadCoordinator {
     public func loadLocalModel(_ model: ModelInfo, generation: UInt64?) async {
         guard isCurrentLoadIntentGeneration(generation) else { return }
 
-        // Clamp the local-model context request. Some headers advertise a huge
+        // Resolve the local-model context request. Some headers advertise a huge
         // native context (e.g. Gemma 4 26B-A4B reports 262_144) and although
         // ModelLoadPlan further clamps based on system RAM, Metal command-buffer
         // / one-shot KV-cache allocations on Apple Silicon still fail at high
-        // ctx for large MoE GGUFs. 8192 is a safe ceiling for ~16 GB Q4 MoE on
-        // unified memory; sessions can opt back into longer contexts via
-        // contextSizeOverride once we surface a UI control.
+        // ctx for large MoE GGUFs. 8192 is a safe DEFAULT ceiling for ~16 GB Q4
+        // MoE on unified memory.
+        //
+        // A per-session `contextSizeOverride` (ChatSession, schema V9) is an
+        // explicit user opt-out of that conservative default: honour it up to the
+        // model's detected native maximum. This raises only the *request* — the
+        // ModelLoadPlan memory verdict below still clamps/denies against actual
+        // RAM and KV-cache headroom, so a too-large override surfaces a clean
+        // load error rather than an OOM. Without an override the conservative
+        // ceiling stands.
         let detected = model.detectedContextLength ?? 8_192
-        let requestedContext = min(detected, 8_192)
+        let requestedContext: Int
+        if let override = currentContextSizeOverride(), override > 0 {
+            requestedContext = min(override, detected)
+        } else {
+            requestedContext = min(detected, 8_192)
+        }
         let plan: ModelLoadPlan
         switch model.modelType {
         case .foundation:

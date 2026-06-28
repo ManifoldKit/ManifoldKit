@@ -95,10 +95,11 @@ public struct ManifoldConfiguration: Sendable {
     /// Opt-in flag for hardware-backed key wrapping via
     /// ``SecureEnclaveKeyManager``.
     ///
-    /// > Important: As of this release, no first-party ManifoldKit code path
-    /// > reads this flag — it is reserved for future framework wiring and for
-    /// > host apps that key their own SE-backed flows off a single setting.
-    /// > Apps that want SE-wrapped storage today should call
+    /// > Important: This flag is currently **inert** — as of this release no
+    /// > first-party ManifoldKit code path reads it, so setting it has no
+    /// > behavioural effect on its own. It is reserved for future framework
+    /// > wiring and for host apps that key their own SE-backed flows off a
+    /// > single setting. Apps that want SE-wrapped storage today must call
     /// > ``SecureEnclaveKeyManager/shared`` directly and gate on this flag
     /// > themselves.
     ///

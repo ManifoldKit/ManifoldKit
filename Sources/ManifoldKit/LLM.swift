@@ -54,9 +54,11 @@ import ManifoldUI
 /// For a ``ChatTemplate`` built from the hand-rolled enum fallback
 /// (`ChatTemplate(builtIn:)`) the override is applied to the live render path.
 /// An embedded-Jinja template (`ChatTemplate(embeddedJinja:)`) is **not** yet
-/// wired — the raw-template channel has no public injection seam (it is set only
-/// at model load). Passing one is harmless: construction succeeds and the
-/// model's own embedded template is used.
+/// wired as an override — the raw-template channel has no public injection seam
+/// (it is set only at model load). Passing one is harmless but inert: the
+/// override is discarded, the model's own embedded template is used, and a
+/// warning is logged (via `Log.prompt`) so the no-op is visible rather than
+/// silent.
 ///
 /// A built-in override is **re-asserted immediately before each turn** in
 /// ``respond(to:)``. This matters because `quickStart` dispatches the model load
@@ -101,8 +103,9 @@ public struct LLM {
     ///     selectable or no registered backend can load its type.
     ///   - template: Optional formatting override. A ``ChatTemplate(builtIn:)``
     ///     is applied to the render path; a ``ChatTemplate(embeddedJinja:)`` is
-    ///     accepted but not yet wired (see the type doc-comment). `nil` (the
-    ///     default) uses the model's embedded/default template.
+    ///     accepted but inert as an override (discarded with a logged warning —
+    ///     see the type doc-comment). `nil` (the default) uses the model's
+    ///     embedded/default template.
     ///   - backends: Backend registrars. Defaults to
     ///     ``ManifoldKit/defaultBackendRegistrars`` (cloud + Foundation). Pass a
     ///     companion-package registrar (e.g. `[LlamaBackends.self]`) for local
@@ -185,8 +188,22 @@ public struct LLM {
     /// reachable today via ``ChatViewModel/selectedPromptTemplate``. The embedded
     /// raw-Jinja channel (`selectedChatTemplateRaw`) is `private(set)` and set
     /// only at model load, so a full override there needs render-seam work.
+    ///
+    /// An embedded-Jinja override (``ChatTemplate/init(embeddedJinja:)``) is
+    /// therefore **inert here**: construction succeeds but the override is
+    /// discarded and the model's own embedded template is used. Rather than fail
+    /// silently — the exact "compiles but does nothing" trap this guards against —
+    /// we log a warning so a caller who expected the override to take effect is not
+    /// left wondering. (The `embeddedJinja` channel itself is *not* deprecated: the
+    /// engine constructs it live for a model's own template — see
+    /// `GenerationQueue.chatTemplate`. Only its use as an `LLM` *override* is inert,
+    /// pending render-seam work that is out of scope for #1942 D2.)
     private static func apply(template: ChatTemplate?, to viewModel: ChatViewModel) {
-        guard let promptTemplate = template?.builtInPromptTemplate else { return }
+        guard let template else { return }
+        guard let promptTemplate = template.builtInPromptTemplate else {
+            Log.prompt.warning("LLM template override ignored: the embedded-Jinja channel has no runtime injection seam (selectedChatTemplateRaw is load-only). The model's own template is used. Use ChatTemplate(builtIn:) to override formatting.")
+            return
+        }
         viewModel.selectedPromptTemplate = promptTemplate
     }
 
