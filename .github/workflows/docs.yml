@@ -87,12 +87,18 @@ jobs:
         # One plugin invocation builds every --target's page into a single
         # static-hostable site at ./docs-site, with a shared navigation sidebar.
         #
-        # Flag placement (SwiftPM is strict): `-Xswiftc -DBUILDING_DOCC` is a
-        # *package-manager* option and must precede the `generate-documentation`
-        # verb; `--allow-writing-to-directory`, `--enable-...`, `--target`, and
-        # `--transform-...` are *plugin* options and must follow it. Putting
-        # `--allow-writing-to-directory` before the verb makes SwiftPM reject
-        # `-Xswiftc` with "Unknown option".
+        # Flag placement / grant choice (the experimental combined-docs plugin is
+        # finicky about both — these were found by trial):
+        #   * `--disable-sandbox` and `-Xswiftc -DBUILDING_DOCC` are *package-manager*
+        #     options and must precede the `generate-documentation` verb; `--enable-...`,
+        #     `--target`, `--transform-...`, `--output-path` are *plugin* options and
+        #     follow it.
+        #   * We grant filesystem access with `--disable-sandbox`, NOT
+        #     `--allow-writing-to-directory`. With combined docs + root serving (no
+        #     `--hosting-base-path`, see below) the plugin leaks
+        #     `--allow-writing-to-directory` straight through to `docc convert`, which
+        #     rejects it ("Unknown option") and aborts. `--disable-sandbox` sidesteps
+        #     that path. (CI already runs untrusted-free on an ephemeral runner.)
         #
         # `-DBUILDING_DOCC` adds `@_documentation(visibility: internal)` to the
         # `@_exported import`s in Sources/ManifoldKit/Exports.swift (they stay
@@ -100,9 +106,12 @@ jobs:
         # graph stops absorbing the eight re-exported modules' ~776 symbols.
         #
         # The --target list MUST include every module referenced by an absolute
-        # `/Module/Symbol` link in ManifoldKit.docc/ManifoldKit.md (the curated
-        # hub), or that link 404s. Current set: the umbrella + the seven modules
-        # its curated Topics link into.
+        # `/Module/Symbol` link in ManifoldKit.docc/ManifoldKit.md (the curated hub),
+        # or that link 404s — AND every listed target must own a `.docc` catalog.
+        # A catalog-LESS target triggers a non-deterministic `docc convert` exit-64
+        # race ("No documentation directory exists at …") in combined mode, so
+        # ManifoldContract / ManifoldModelCatalog / ManifoldFoundation each carry a
+        # minimal landing-page catalog precisely so they can appear here safely.
         #
         # Best-effort *publish*, not a link gate: no `--warnings-as-errors` (the
         # per-module catalogs carry pre-existing DocC warnings that are out of scope
@@ -112,12 +121,12 @@ jobs:
           rm -rf ./docs-site
           # Root-served on the custom domain docs.manifoldkit.com (pinned via the
           # CNAME written below), so NO --hosting-base-path — that flag is only for
-          # project pages served under /<repo>/. Combined documentation publishes
-          # one page per --target into ./docs-site with a shared nav sidebar.
+          # project pages served under /<repo>/, and it would rewrite every asset URL
+          # under /ManifoldKit/. Omitting it yields root-relative asset paths.
           swift package \
+            --disable-sandbox \
             -Xswiftc -DBUILDING_DOCC \
             generate-documentation \
-            --allow-writing-to-directory ./docs-site \
             --enable-experimental-combined-documentation \
             --target ManifoldKit \
             --target ManifoldModelCatalog \
