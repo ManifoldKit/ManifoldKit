@@ -30,18 +30,18 @@ final class ModelInfoChatTemplateHashTests: XCTestCase {
     }
 
     /// A digest is 64 lowercase hex characters and stable across reads.
-    func test_chatTemplateSHA256_isStableLowercaseHex() {
+    func test_chatTemplateSHA256_isStableLowercaseHex() throws {
         let template = "{% for m in messages %}{{ m.role }}: {{ m.content }}{% endfor %}"
         let model = makeModel(chatTemplateRaw: template)
 
         let first = model.chatTemplateSHA256
         let second = model.chatTemplateSHA256
 
-        let digest = try? XCTUnwrap(first)
+        let digest = try XCTUnwrap(first)
         XCTAssertEqual(first, second, "Digest must be deterministic for the same template")
-        XCTAssertEqual(digest?.count, 64)
-        XCTAssertEqual(digest, digest?.lowercased(), "Digest must be lowercase hex")
-        XCTAssertTrue(digest?.allSatisfy(\.isHexDigit) ?? false)
+        XCTAssertEqual(digest.count, 64)
+        XCTAssertEqual(digest, digest.lowercased(), "Digest must be lowercase hex")
+        XCTAssertTrue(digest.allSatisfy(\.isHexDigit))
     }
 
     /// Distinct templates produce distinct digests (collision sanity).
