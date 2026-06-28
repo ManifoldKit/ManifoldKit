@@ -60,6 +60,17 @@ on:
       # Per CI path-filter self-validation rule: edits to the composite action
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
+  # Merge queue: when a PR is queued, GitHub builds a temp branch
+  # (main + earlier-queued PRs + this PR) and dispatches `merge_group`. The
+  # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.
+  # No `paths:` filter here — the queue branch is the real pre-merge state, so we
+  # always validate it. The `changes` job's `if:` already runs on non-pull_request
+  # events; we skip the dorny/paths-filter step on merge_group to FORCE a full run
+  # (deliberately not narrowing the final pre-merge gate). With it skipped the Tier 0
+  # resolver gets no changed paths and emits NONE, which the `test` job's "Compute
+  # test mode" step maps to mode=full → `test` runs the whole bundle on the queue branch.
+  merge_group:
+    types: [checks_requested]
 
 # Collapse concurrent runs, keyed differently per event:
 #   - pull_request → group per PR number, so a force-push cancels the PR's
@@ -74,7 +85,10 @@ on:
 #     readme-snippets gate already keys its push group on the ref the same way.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run: cancelling a queue validation mid-flight
+  # leaves the required check unreported and stalls the queue. For merge_group,
+  # github.ref is the unique queue branch, so each batch already gets its own group.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 permissions:
   contents: read
@@ -112,6 +126,15 @@ jobs:
         with:
           fetch-depth: 2
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+        # Skipped on merge_group to FORCE a full run on the queue branch rather
+        # than narrowing the final pre-merge gate. (paths-filter v4 natively
+        # SUPPORTS merge_group — it diffs merge_group.base_sha..head_sha — so this
+        # is a deliberate conservatism choice, NOT an error workaround; the same
+        # action is left live in the `test` job's deps-changed step on merge_group
+        # for exactly that reason.) With it skipped the Tier 0 resolver below gets
+        # no changed paths and emits NONE, which the `test` job's "Compute test
+        # mode" maps to mode=full, so `test` runs the whole bundle on the queue branch.
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           # `list-files: json` exposes the full changed-file list as

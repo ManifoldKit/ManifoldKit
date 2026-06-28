@@ -52,12 +52,21 @@ on:
       - "version.txt"
       - "scripts/check-readme.sh"
       - "scripts/audit-availability.sh"
+  # Merge queue: `lint` is a required check, so it MUST report on the queue's
+  # `merge_group` branch or the queue stalls. The content-check steps (actionlint,
+  # pin-audit, known-issue, availability, readme) run; PR-only steps (commitlint,
+  # changelog, dependency-review, dep-budget) self-skip on their `pull_request`
+  # guard; secret-scan is gated off merge_group (no base/head to diff — it already
+  # ran on the PR before queuing).
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   # Mirror the per-event/per-ref pattern the originals used so a force-push
   # cancels in-flight runs of the same PR / branch.
   group: lint-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Don't cancel a merge_group lint run mid-flight (would stall the queue).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 # Default to read-only. Steps that need more elevate via `permissions:` blocks
 # at workflow scope below — kept tight to the minimum each tool requires.
@@ -300,7 +309,10 @@ jobs:
 
       # ── secret-scan (trufflehog) ──────────────────────────────────────────
       - name: secret-scan — scan changed commits for leaked secrets
-        if: always()
+        # Gated off merge_group: trufflehog has no PR base/head to diff on the
+        # queue branch. Each PR is already secret-scanned on its pull_request run
+        # before being queued, so re-scanning the batch adds no coverage.
+        if: always() && github.event_name != 'merge_group'
         uses: trufflesecurity/trufflehog@30d5bb91af1a771378349dbbb0c82129392acf70 # v3.95.6
         with:
           # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.

@@ -190,7 +190,7 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         data.append(Data(repeating: 0xAA, count: 4092))
         try data.write(to: gguf)
 
-        let storage = ModelStorageService(baseDirectory: dir)
+        let storage = ModelStorageService(baseDirectory: dir, includeUserDocumentsFallback: false)
 
         let sync = storage.discoverModels()
         let asyncResult = await storage.discoverModelsOffMain()

@@ -128,6 +128,50 @@ public struct LLM {
         self.template = template
     }
 
+    /// Constructs a working chat runtime that registers **no cloud backends** —
+    /// the privacy / local-only / on-device front door.
+    ///
+    /// Mirrors ``init(from:template:backends:configuration:)`` but drives
+    /// ``ManifoldKit/localOnly(backends:configuration:seed:)``: only the
+    /// on-device Apple Foundation Models family plus any `backends` you pass are
+    /// registered, so no cloud backend can be selected or dispatched.
+    ///
+    /// ```swift
+    /// import ManifoldKit
+    /// import ManifoldLlama   // manifold-llama companion package
+    ///
+    /// let llm = try await LLM.localOnly(
+    ///     from: .recommendedSmallModel(),
+    ///     backends: [LlamaBackends.self]
+    /// )
+    /// ```
+    ///
+    /// - Important: This is *registration-level* exclusion (the chat cannot reach
+    ///   a cloud provider), not link-level — the cloud code is still linked via
+    ///   the `ManifoldKit` umbrella. For true link-time exclusion (FIPS) depend on
+    ///   the individual products; see docs/FIPS.md.
+    ///
+    /// - Parameters:
+    ///   - model: The model seed, as in ``init(from:template:backends:configuration:)``.
+    ///   - template: Optional formatting override, as in `init`.
+    ///   - backends: On-device registrars to register alongside Foundation
+    ///     (e.g. `[LlamaBackends.self]`). Defaults to empty.
+    ///   - configuration: Framework configuration. Defaults to
+    ///     `ManifoldConfiguration.default`.
+    public static func localOnly(
+        from model: QuickStartSeed,
+        template: ChatTemplate? = nil,
+        backends: [any BackendRegistrar.Type] = [],
+        configuration: ManifoldConfiguration = .default
+    ) async throws -> LLM {
+        let result = try await ManifoldKit.localOnly(
+            backends: backends,
+            configuration: configuration,
+            seed: model
+        )
+        return LLM(result: result, template: template)
+    }
+
     /// Test/host seam: wraps a pre-assembled ``QuickStartResult`` (e.g. one
     /// built over an in-memory bootstrap with a mock backend) without standing
     /// up a real model download. Production callers use ``init(from:template:backends:configuration:)``.

@@ -300,6 +300,73 @@ final class QuickStartBackendsTests: XCTestCase {
         )
     }
 
+    // MARK: - Local-only / replace-mode (includeDefaultBackends: false)
+
+    /// The privacy guarantee: with `includeDefaultBackends: false`, the cloud
+    /// families (Ollama + SaaS) must NOT reach the service — only the
+    /// caller-named registrars are wired. Asserted on the live registration
+    /// snapshot, not by inspection of the registration loop.
+    func test_includeDefaultBackendsFalse_registersNoCloudBackends() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            backends: [MockGGUFBackends.self],
+            includeDefaultBackends: false,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { _ in nil }
+        )
+
+        let snapshot = result.bootstrap.inferenceService.registeredBackendSnapshot()
+        XCTAssertTrue(snapshot.cloudProviders.isEmpty,
+            "includeDefaultBackends: false must register zero cloud providers — got \(snapshot.cloudProviders)")
+        XCTAssertFalse(snapshot.supportsCloudInference,
+            "A local-only runtime must report no cloud inference capability")
+        // The caller's own backend must still be wired (replace, not erase).
+        XCTAssertTrue(snapshot.supportsGGUF,
+            "The caller-supplied registrar must still register under includeDefaultBackends: false")
+    }
+
+    /// Counterpart proving the assertion above is meaningful: the DEFAULT path
+    /// (includeDefaultBackends defaults to true) DOES register cloud providers,
+    /// so existing-caller behaviour is provably unchanged.
+    func test_defaultPath_registersCloudBackends_behaviourUnchanged() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            backends: [MockGGUFBackends.self],
+            // includeDefaultBackends defaults to true — the existing behaviour.
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { _ in nil }
+        )
+
+        let snapshot = result.bootstrap.inferenceService.registeredBackendSnapshot()
+        XCTAssertTrue(snapshot.supportsCloudInference,
+            "The default path must keep registering the compiled-in cloud families (unchanged behaviour)")
+        XCTAssertFalse(snapshot.cloudProviders.isEmpty,
+            "The default path must register at least one cloud provider — got none")
+    }
+
+    /// `localOnly(backends:)` is the public convenience: it must register the
+    /// caller's on-device backend without any cloud provider.
+    func test_localOnly_registersNoCloudBackends() async throws {
+        // Drive the same assembly localOnly uses, with the mock GGUF backend
+        // standing in for a companion local registrar. (We exercise the
+        // mechanism directly rather than calling localOnly() so the on-device
+        // local backend is present regardless of the test host's OS / Apple
+        // Intelligence availability.)
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            backends: [MockGGUFBackends.self],
+            includeDefaultBackends: false,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { _ in nil }
+        )
+
+        let snapshot = result.bootstrap.inferenceService.registeredBackendSnapshot()
+        XCTAssertFalse(snapshot.supportsCloudInference,
+            "localOnly must never register a cloud backend")
+        XCTAssertTrue(snapshot.supportsLocalInference,
+            "localOnly with a local registrar must support local inference")
+    }
+
     /// The guard stays wired through the real assembly path: an injected
     /// local backend must produce a successful, fully-wired launch (and the
     /// healthy path must not throw noBackendsRegistered).
