@@ -127,7 +127,20 @@ extension ChatViewModel {
         }
 
         guard isModelLoaded else {
-            activeError = ChatError(kind: .configuration, message: "No model loaded. Select a model from the sidebar first.", recovery: .selectModel)
+            // Distinguish "nothing selected" from "selected but never loaded". The
+            // latter is the silent-inert-surface trap: setting `selectedModel` /
+            // `selectedEndpoint` only *records* a choice — a host must still call
+            // `dispatchSelectedLoad()` (or `loadSelectedModel()` /
+            // `loadSelectedEndpoint()`) to bring the backend up. A send that lands
+            // here with a live selection means that dispatch was missed, so make it
+            // loud (a warning + a distinct, actionable message) rather than the
+            // generic "select a model" text that misleads a host who already did.
+            if selectedModel != nil || selectedEndpoint != nil {
+                Log.ui.warning("sendMessage with a selected but unloaded model/endpoint — selection records intent only; call dispatchSelectedLoad() (or loadSelectedModel()/loadSelectedEndpoint()) before sending.")
+                activeError = ChatError(kind: .configuration, message: "A model is selected but not loaded yet. Load it before sending.", recovery: .selectModel)
+            } else {
+                activeError = ChatError(kind: .configuration, message: "No model loaded. Select a model from the sidebar first.", recovery: .selectModel)
+            }
             return
         }
 

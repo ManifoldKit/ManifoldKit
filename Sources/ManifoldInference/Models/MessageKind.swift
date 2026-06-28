@@ -12,8 +12,12 @@ public enum MessageKind: Hashable, Sendable {
     case memory(String)
     /// A host-defined annotation. Not sent to the backend by default.
     case annotation(String)
-    /// Reserved for tool-result receipts. Wiring is a follow-up; the case
-    /// exists now to avoid a second breaking enum change.
+    /// Reserved for tool-result receipts. Currently **inert**: no first-party
+    /// path emits this case, and it is filtered from both the wire payload
+    /// (``isWireVisible`` is `false`) and user-facing exports/UI
+    /// (``isUserVisible`` is `false`), so constructing one today has no
+    /// behavioural effect. The case exists now only so wiring it later is not a
+    /// second breaking enum change.
     case toolResult(callID: String)
     /// Escape hatch for host-defined kinds not covered by the named cases.
     /// Sent to the backend as a `system`-role message when `isWireVisible` is `true`.
