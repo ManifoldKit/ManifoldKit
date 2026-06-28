@@ -234,6 +234,9 @@ final class QuickStartTests: XCTestCase {
                 return nil
             }
         )
+        // quickStart() pre-registers the real OllamaBackends factory. Clear it
+        // so the mock below is the sole handler and the test stays hermetic.
+        result.bootstrap.inferenceService.clearEndpointBackendFactories()
         let cloudBackend = QuickStartCloudBackend()
         result.bootstrap.inferenceService.registerEndpointBackendFactory { provider in
             guard provider == .ollama else { return nil }
