@@ -78,6 +78,8 @@ final class ManifoldConfigurationTests: XCTestCase {
         XCTAssertTrue(features.showAdvancedSettings)
         XCTAssertTrue(features.showCloudAPIManagement)
         XCTAssertTrue(features.showUpgradeHint)
+        XCTAssertTrue(features.showAudioInput, "showAudioInput must default to true to preserve existing composer behavior")
+        XCTAssertTrue(features.showImageAttachment, "showImageAttachment must default to true to preserve existing composer behavior")
     }
 
     // MARK: - Features Custom Init
@@ -92,9 +94,13 @@ final class ManifoldConfigurationTests: XCTestCase {
             showGenerationSettings: true,
             showAdvancedSettings: false,
             showCloudAPIManagement: true,
-            showUpgradeHint: false
+            showUpgradeHint: false,
+            showAudioInput: false,
+            showImageAttachment: true
         )
 
+        XCTAssertFalse(features.showAudioInput)
+        XCTAssertTrue(features.showImageAttachment)
         XCTAssertFalse(features.showContextIndicator)
         XCTAssertTrue(features.showMemoryIndicator)
         XCTAssertFalse(features.showChatExport)

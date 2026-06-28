@@ -37,6 +37,8 @@ public struct PhotoAttachmentButton: View {
     @Environment(ChatViewModel.self) private var viewModel
     @State private var photoItem: PhotosPickerItem?
 
+    private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+
     public init() {}
 
     /// Returns `true` when there is already an image part staged on the draft.
@@ -48,17 +50,22 @@ public struct PhotoAttachmentButton: View {
     }
 
     public var body: some View {
-        PhotosPicker(selection: $photoItem, matching: .images) {
-            Image(systemName: "photo")
-                .font(.title2)
-                .foregroundStyle(hasImageStaged ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(hasImageStaged ? "Photo attached" : "Attach photo")
-        .help(hasImageStaged ? "Photo attached" : "Attach photo from library")
-        .onChange(of: photoItem) { _, newItem in
-            guard let newItem else { return }
-            loadPhoto(from: newItem)
+        // PhotosPicker is permission-gated: hide it when the host disabled image
+        // attachment or omitted NSPhotoLibraryUsageDescription so a tap can never
+        // SIGABRT a misconfigured host.
+        if ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features) {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "photo")
+                    .font(.title2)
+                    .foregroundStyle(hasImageStaged ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(hasImageStaged ? "Photo attached" : "Attach photo")
+            .help(hasImageStaged ? "Photo attached" : "Attach photo from library")
+            .onChange(of: photoItem) { _, newItem in
+                guard let newItem else { return }
+                loadPhoto(from: newItem)
+            }
         }
     }
 

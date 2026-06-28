@@ -68,6 +68,28 @@ struct MyChatApp: App {
 
 Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
+## Required Info.plist keys for ChatView
+
+`ChatView`'s composer ships permission-gated controls. iOS **hard-crashes the host process (SIGABRT)** the moment a permission API is invoked while its usage-description string is missing from your app's `Info.plist` — the crash happens before any framework `try`/`catch` can run, so it is unrecoverable. Declare the key for every capability you keep enabled:
+
+| Capability | Composer control | Required Info.plist key |
+|------------|------------------|-------------------------|
+| Microphone (record audio messages, iOS) | mic button in `ChatView` (on by default) | `NSMicrophoneUsageDescription` |
+| Photo attachment (iOS) | `VisionInputButton` / `PhotoAttachmentButton` composer accessories | `NSPhotoLibraryUsageDescription` |
+
+**Defense in depth.** ManifoldKit also hides each control automatically when its usage string is absent, so a missing key degrades to a no-op rather than a crash. You still need the key for the control to appear.
+
+**Turning controls off entirely.** Set the matching `ManifoldConfiguration.Features` flag to `false` at startup — the control is removed from the view tree and you don't need the corresponding key:
+
+```swift,no-build
+ManifoldConfiguration.shared.features = .init(
+    showAudioInput: false,       // remove the mic button (no NSMicrophoneUsageDescription needed)
+    showImageAttachment: false   // remove image-attachment controls (no NSPhotoLibraryUsageDescription needed)
+)
+```
+
+Both flags default to `true`, so existing apps keep today's composer; opt out only where you don't want the capability.
+
 > [!IMPORTANT]
 > **The backend cliff: no registered backend → a *runtime* throw, not a compile error.** If **zero** inference backends are registered when you call it, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause at the assembly boundary instead of a confusing "No model loaded" on the first turn. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a `quickStart()` build always has cloud support — the throw only fires if nothing was *registered* (e.g. you bypassed `quickStart()` and registered no backend yourself). For **local** inference add a companion package — [manifold-llama](https://github.com/ManifoldKit/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
 

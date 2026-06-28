@@ -43,6 +43,8 @@ public struct VisionInputButton: View {
     @State private var photoItem: PhotosPickerItem?
     #endif
 
+    private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+
     public init() {}
 
     /// Returns `true` when there is already an image part staged on the draft.
@@ -60,7 +62,9 @@ public struct VisionInputButton: View {
 
     public var body: some View {
         #if os(iOS)
-        if isVisionSupported {
+        // iOS PhotosPicker is permission-gated: hide it when the host disabled
+        // image attachment or omitted NSPhotoLibraryUsageDescription.
+        if isVisionSupported && ComposerPermissionGate.shouldShowPhotoLibraryInput(features: features) {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 Image(systemName: "photo.badge.plus")
                     .symbolVariant(.fill)
@@ -76,7 +80,9 @@ public struct VisionInputButton: View {
             }
         }
         #elseif os(macOS)
-        if isVisionSupported {
+        // The macOS NSOpenPanel needs no usage string, so only the feature flag
+        // gates it (alongside backend vision support).
+        if isVisionSupported && features.showImageAttachment {
             Button {
                 openImagePanel()
             } label: {
