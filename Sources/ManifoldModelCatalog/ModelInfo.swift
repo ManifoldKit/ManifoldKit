@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 // @_spi(BackendInternals): GGUFKVCacheEstimator was promoted from `package`
 // to SPI-public in v0.48 (PR C2) for the manifold-llama companion package.
@@ -39,6 +40,21 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     public var modelArchitecture: String?
     /// The raw Jinja chat template string from `tokenizer.chat_template`, if present.
     public var chatTemplateRaw: String?
+
+    /// SHA-256 (lowercase hex) of ``chatTemplateRaw``'s UTF-8 bytes, or `nil`
+    /// when no template is present.
+    ///
+    /// Computed — never stored — so it can never desync from the template it
+    /// describes. Recorded in the on-disk package manifest at download time; the
+    /// load path compares the recorded value against this digest to detect a
+    /// GGUF-embedded template that changed underneath a cached selection and
+    /// warn (it never alters rendering, which reads ``chatTemplateRaw`` directly).
+    /// See #1932.
+    public var chatTemplateSHA256: String? {
+        guard let chatTemplateRaw else { return nil }
+        let digest = SHA256.hash(data: Data(chatTemplateRaw.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
     /// Best-effort KV-cache bytes-per-token estimate derived from GGUF metadata.
     public var estimatedKVBytesPerToken: UInt64?
 

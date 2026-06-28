@@ -20,6 +20,19 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
     /// treat as full-precision.
     public let variant: PrecisionVariant?
 
+    /// SHA-256 (lowercase hex) of the package's embedded chat template, for
+    /// chat-template drift detection (#1932). Optional so manifests produced
+    /// before #1932 — and packages with no chat template — still decode.
+    ///
+    /// This is the **multi-file/package** recording home. Single-file GGUFs
+    /// instead use the per-file `ChatTemplateIntegritySidecar` (they have no
+    /// package directory). The load path reads the per-file sidecar first and
+    /// falls back to this field; a mismatch warns and proceeds, never gates.
+    /// Currently unwritten in core — multi-file/MLX coverage is a documented
+    /// follow-up (those types carry no load-time `chatTemplateRaw` without
+    /// altering rendering); kept so that coverage is an additive write.
+    public let chatTemplateSHA256: String?
+
     public init(
         packageKind: ModelPackageKind,
         id: String,
@@ -27,7 +40,8 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
         format: ImageModelFormat? = nil,
         huggingFaceRepoID: String? = nil,
         files: [String],
-        variant: PrecisionVariant? = nil
+        variant: PrecisionVariant? = nil,
+        chatTemplateSHA256: String? = nil
     ) {
         self.packageKind = packageKind
         self.id = id
@@ -36,6 +50,7 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
         self.huggingFaceRepoID = huggingFaceRepoID
         self.files = files
         self.variant = variant
+        self.chatTemplateSHA256 = chatTemplateSHA256
     }
 }
 
