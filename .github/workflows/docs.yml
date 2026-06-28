@@ -89,16 +89,20 @@ jobs:
         #
         # Flag placement / grant choice (the experimental combined-docs plugin is
         # finicky about both — these were found by trial):
-        #   * `--disable-sandbox` and `-Xswiftc -DBUILDING_DOCC` are *package-manager*
-        #     options and must precede the `generate-documentation` verb; `--enable-...`,
-        #     `--target`, `--transform-...`, `--output-path` are *plugin* options and
-        #     follow it.
-        #   * We grant filesystem access with `--disable-sandbox`, NOT
-        #     `--allow-writing-to-directory`. With combined docs + root serving (no
-        #     `--hosting-base-path`, see below) the plugin leaks
-        #     `--allow-writing-to-directory` straight through to `docc convert`, which
-        #     rejects it ("Unknown option") and aborts. `--disable-sandbox` sidesteps
-        #     that path. (CI already runs untrusted-free on an ephemeral runner.)
+        #   * `--allow-writing-to-package-directory` and `-Xswiftc -DBUILDING_DOCC`
+        #     are *package-manager* options and must precede the
+        #     `generate-documentation` verb; `--enable-...`, `--target`,
+        #     `--transform-...`, `--output-path` are *plugin* options and follow it.
+        #   * We grant filesystem access with `--allow-writing-to-package-directory`
+        #     (output lands in the `./docs-site` package subdir), NOT the blanket
+        #     sandbox-disable flag — that flag is banned in workflow scripts by the
+        #     macro-sandbox guard (ci.yml, issue #726), which greps every *.yml for
+        #     it (so it must not appear here even in a comment).
+        #     Crucially, the SwiftPM grant flag MUST sit *before* the verb: there it
+        #     is consumed by SwiftPM and never reaches the plugin. If placed *after*
+        #     the verb it falls into the plugin's pass-through args and leaks to
+        #     `docc convert`, which rejects it ("Unknown option") — that misordering,
+        #     not the grant flag itself, was the abort this comment used to describe.
         #
         # `-DBUILDING_DOCC` adds `@_documentation(visibility: internal)` to the
         # `@_exported import`s in Sources/ManifoldKit/Exports.swift (they stay
@@ -124,7 +128,7 @@ jobs:
           # project pages served under /<repo>/, and it would rewrite every asset URL
           # under /ManifoldKit/. Omitting it yields root-relative asset paths.
           swift package \
-            --disable-sandbox \
+            --allow-writing-to-package-directory \
             -Xswiftc -DBUILDING_DOCC \
             generate-documentation \
             --enable-experimental-combined-documentation \
