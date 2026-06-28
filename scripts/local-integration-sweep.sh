@@ -166,6 +166,7 @@ if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
     # deterministic benchmark model: a mid-size chat tag, else the first installed
     bench="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | grep -iE '[0-9]b' | head -1)"
     [ -n "$bench" ] || bench="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | head -1)"
+    bench="${bench%:latest}"   # match MATRIX_MODELS naming
     if [ -n "$bench" ]; then
       export MANIFOLD_BENCH_OLLAMA_MODEL="$bench"
       echo "MANIFOLD_BENCH_OLLAMA_MODEL (benchmark) <- $bench" >> "$REPORT"
