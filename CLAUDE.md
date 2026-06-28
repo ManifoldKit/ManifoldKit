@@ -241,6 +241,8 @@ Use **Prisma-style Highlights format** (adopted v0.11.2, PR #649): `### Highligh
 
 Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, amend + force-push, then merge via `gh api -X PUT repos/roryford/ManifoldKit/pulls/<N>/merge -f merge_method=squash`.
 
+**Pre-bump demo-app gate (mandatory before merging the release PR):** run `scripts/demo-apps-build.sh` — it builds both example apps (Advanced iOS, Minimal iOS + macOS) and must be green. The demos consume ManifoldKit by local path, so package drift (retired traits, renamed modules, iOS-unavailable symbols pulled in via the `ManifoldKit` umbrella) breaks them while `swift test` stays green — `swift test` builds for macOS only, so iOS-only API unavailability is invisible to it. This gate is **release-time, not per-PR**: demo breakage is rare and the xcodebuild runs are slow/10×-billed, so paying for them once per release (not per PR) is the right trade. Do not bump the version if it fails.
+
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 
 `changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.

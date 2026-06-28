@@ -13,10 +13,15 @@ public struct SkillLoader: Sendable {
     /// Default Claude-Code-compatible search paths in priority order
     /// (last wins on duplicate skill names).
     ///
-    /// Resolved lazily — iOS sandboxed builds with no `$HOME` would otherwise
-    /// crash at module init. The actual filesystem probe is gated by
-    /// `#if os(macOS)` inside `discover()`.
+    /// macOS-only: the home-relative paths use `homeDirectoryForCurrentUser`,
+    /// which is `API_UNAVAILABLE(ios)` — referencing it at all fails to *compile*
+    /// on iOS, so the body must be gated, not merely the runtime probe. On iOS
+    /// this returns `[]` to match `discover()`, which is itself `#if os(macOS)`
+    /// (iOS skill discovery requires an entitlement / app-group design that
+    /// hasn't shipped). Without this gate the `ManifoldKit` umbrella — which
+    /// re-exports `ManifoldSkills` — won't build for iOS at all.
     public static var defaultClaudeCodePaths: [URL] {
+        #if os(macOS)
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
         let pwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
@@ -27,6 +32,9 @@ public struct SkillLoader: Sendable {
             pwd.appendingPathComponent(".agents/skills", isDirectory: true),
             pwd.appendingPathComponent(".claude/skills", isDirectory: true),
         ]
+        #else
+        return []
+        #endif
     }
 
     public init(searchPaths: [URL] = SkillLoader.defaultClaudeCodePaths) {
