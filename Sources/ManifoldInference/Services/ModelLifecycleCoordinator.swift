@@ -324,27 +324,26 @@ final class ModelLifecycleCoordinator {
         }
 
         // Chat-template integrity (#1932): warn loudly if the model's embedded
-        // template changed since the hash recorded in its on-disk package
-        // manifest — a cached selection or preset may be pinned to the old
-        // template. This is an observability signal only: it never gates the
-        // load and never feeds the renderer (which reads `chatTemplateRaw`
-        // directly), so it cannot reintroduce the #1909 template→render coupling.
+        // template changed since the hash recorded on first observation — a
+        // cached selection or preset may be pinned to the old template. This is
+        // an observability signal only: it never gates the load and never feeds
+        // the renderer (which reads `chatTemplateRaw` directly), so it cannot
+        // reintroduce the #1909 template→render coupling.
         //
-        // ACTIVATION (Piece 1 reads; the writer is deferred): no production path
-        // yet records `chatTemplateSHA256` for a template-bearing package, so this
-        // mismatch branch is currently inert in the field. The only sidecar writers
-        // emit `.diffusion` packages (no chat template); text packages
-        // (`.mlxSnapshot` / single-file GGUF) carry templates but are written
-        // without a `.manifoldkit-package.json`. Detection goes live once the
-        // download path records the template digest for text packages (#1932
-        // Piece 2). The read path, tests, and warning ship now so the writer is a
-        // one-line populate when it lands. End-to-end coverage drives this branch
-        // via a hand-written sidecar (see ChatTemplateIntegrityTests).
+        // Live for single-file GGUF: its `chatTemplateRaw` comes from
+        // `GGUFMetadataReader` at BOTH record-time and load-time, so the recorded
+        // and compared digests hash byte-identical input — no false positives.
+        // The recorded hash lives in a per-file sidecar (see the writer below);
+        // the first load records it, every later load compares against it.
         if case let .mismatch(recorded, current) = chatTemplateIntegrityStatus(for: modelInfo) {
             Log.inference.warning(
-                "Chat template changed since the recorded manifest hash for model '\(modelInfo.name)' (recorded \(recorded, privacy: .public), now \(current, privacy: .public)). A cached selection or preset may target the old template; rendering proceeds with the current embedded template (#1932)."
+                "Chat template changed since the recorded hash for model '\(modelInfo.name)' (recorded \(recorded, privacy: .public), now \(current, privacy: .public)). A cached selection or preset may target the old template; rendering proceeds with the current embedded template (#1932)."
             )
         }
+        // Record-on-first-observation. Runs AFTER the comparison above so the very
+        // first load (no sidecar yet) stays silent and then establishes the
+        // baseline that subsequent loads check.
+        recordChatTemplateSHA256IfNeeded(for: modelInfo)
 
         try await runLoad(
             source: "local",
@@ -437,23 +436,71 @@ final class ModelLifecycleCoordinator {
             : .mismatch(recorded: recordedHash, current: currentHash)
     }
 
-    /// Reads the recorded chat-template SHA-256 from the `.manifoldkit-package.json`
-    /// sidecar next to `modelURL`, or `nil` when there is no sidecar, it cannot be
-    /// decoded, or it carries no recorded hash.
+    /// Reads the recorded chat-template SHA-256 for the model at `modelURL`, or
+    /// `nil` when no recorded hash exists.
     ///
-    /// A missing or legacy sidecar is the common case (single-file GGUFs have no
-    /// sidecar at all), so a read/decode failure is treated as "nothing to compare"
-    /// rather than an error — this is a trust-boundary read, kept deliberately quiet.
+    /// Checks the per-file ``ChatTemplateIntegritySidecar`` first (the live path
+    /// for single-file GGUF, keyed to the model filename so co-located models
+    /// never collide), then falls back to the multi-file package manifest
+    /// (`.manifoldkit-package.json`) for package models that record there.
+    ///
+    /// A missing sidecar is the common case, so a read/decode failure is treated
+    /// as "nothing to compare" — a trust-boundary read kept deliberately quiet.
     private func recordedChatTemplateSHA256(forModelAt modelURL: URL) -> String? {
+        if let hash = perFileChatTemplateSHA256(forModelAt: modelURL) { return hash }
+        return packageManifestChatTemplateSHA256(forModelAt: modelURL)
+    }
+
+    private func perFileChatTemplateSHA256(forModelAt modelURL: URL) -> String? {
+        let sidecarURL = ChatTemplateIntegritySidecar.sidecarURL(forModelAt: modelURL)
+        do {
+            let data = try Data(contentsOf: sidecarURL)
+            return try JSONDecoder().decode(ChatTemplateIntegritySidecar.self, from: data).chatTemplateSHA256
+        } catch {
+            return nil
+        }
+    }
+
+    private func packageManifestChatTemplateSHA256(forModelAt modelURL: URL) -> String? {
         let manifestURL = modelURL
             .deletingLastPathComponent()
             .appendingPathComponent(DownloadedModelPackageManifest.fileName)
         do {
             let data = try Data(contentsOf: manifestURL)
-            let manifest = try JSONDecoder().decode(DownloadedModelPackageManifest.self, from: data)
-            return manifest.chatTemplateSHA256
+            return try JSONDecoder().decode(DownloadedModelPackageManifest.self, from: data).chatTemplateSHA256
         } catch {
             return nil
+        }
+    }
+
+    /// Records the loaded model's chat-template digest into a per-file sidecar the
+    /// first time the model is observed, so a later load can detect a template
+    /// that changed underneath a cached selection (#1932).
+    ///
+    /// **Same-source-by-construction:** the recorded hash is captured from the
+    /// exact `GGUFMetadataReader`-sourced `chatTemplateRaw` the load path reads,
+    /// so write and compare hash byte-identical input — no spurious "changed"
+    /// warnings. **Idempotent:** only writes when no sidecar exists, so a real
+    /// drift keeps warning rather than being silently re-baselined. **Best-effort:**
+    /// a write failure (read-only models dir, sandboxing) is logged and the load
+    /// proceeds — integrity recording must never block bringing a model up.
+    ///
+    /// Scoped to single-file GGUF: only that type carries a load-time
+    /// `chatTemplateRaw` without routing a template through the renderer. MLX /
+    /// diffusion packages carry no load-time template here, so they are left
+    /// uncovered (the `chatTemplateSHA256 == nil` guard short-circuits them too).
+    private func recordChatTemplateSHA256IfNeeded(for modelInfo: ModelInfo) {
+        guard modelInfo.modelType == .gguf,
+              let hash = modelInfo.chatTemplateSHA256 else { return }
+        let sidecarURL = ChatTemplateIntegritySidecar.sidecarURL(forModelAt: modelInfo.url)
+        guard !FileManager.default.fileExists(atPath: sidecarURL.path) else { return }
+        do {
+            let data = try JSONEncoder().encode(ChatTemplateIntegritySidecar(chatTemplateSHA256: hash))
+            try data.write(to: sidecarURL, options: .atomic)
+        } catch {
+            Log.inference.warning(
+                "Chat-template integrity (#1932): could not record sidecar for model '\(modelInfo.name)' at \(sidecarURL.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public). Drift detection re-attempts on the next load."
+            )
         }
     }
 
