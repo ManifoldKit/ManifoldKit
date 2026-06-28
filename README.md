@@ -152,10 +152,12 @@ Table-stakes capabilities that ship today (verified in source):
 - **Token streaming** across every backend (`GenerationStream` / `GenerationEvent`).
 - **Multi-provider abstraction** — one `InferenceBackend` protocol, local + cloud.
 - **Tool / function calling** with a per-request tool ceiling guide for local models.
+- **Tool-call evaluation & conformance** — score how reliably a model calls tools (incl. a bundled BFCL AST track) via the `manifold-tools` CLI and `ConformanceScorer`; verdicts persist through the bootstrap-wired `ToolCallConformanceCache`. See [Beyond chat](#beyond-chat).
 - **Structured / typed output**, capability-routed by `StructuredOutputRouter` across GBNF, Foundation guided-generation, JSON-Schema, and JSON-prompting.
 - **Reasoning / thinking tokens** surfaced as first-class events.
 - **MCP client *and* server** ([ManifoldMCP](Sources/ManifoldMCP) + the `Server` trait).
-- **RAG with citations**, including an optional cross-encoder rerank stage (`Reranker` port; on-device `LlamaReranker` for `bge-reranker`-class GGUFs).
+- **On-device RAG with citations** — a full document subsystem (parse `.txt`/`.md`/`.pdf` → chunk → embed → retrieve), wired into the turn loop, with an optional cross-encoder rerank stage (`Reranker` port — on-device `LlamaReranker`, or cloud `CloudReranker` for Cohere / Jina) and a Document Library UI. See [docs/QUICKSTART-RAG.md](docs/QUICKSTART-RAG.md).
+- **Embeddings & semantic search** — `EmbeddingBackend` protocol with on-device `NLEmbeddingBackend` (Apple NaturalLanguage, no companion package) and an OpenAI-compatible `/v1/embeddings` server endpoint.
 - **Human-in-the-loop tool approval** via `ToolApprovalGate`.
 - **Metrics + cost estimation** for observability.
 - **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell) and `MLXDiffusionBackend` (SDXL Turbo), via the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package.
@@ -186,6 +188,8 @@ The same backend, model-management, persistence, and download infrastructure tha
 
   The full walkthrough lives with the generation backends in the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package docs; the `VideoGenerationBackend` protocol, `VideoGenerationService`, and persistence wiring above are core.
 - **Standalone speech-to-text / text-to-speech** — `ManifoldVoice` wraps Apple `Speech` + `AVFoundation` behind a chat-agnostic `VoiceConversationController` that anything (image-gen prompt fields, search bars, CLI dictation) can drive. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md).
+- **On-device embeddings, semantic search & RAG** — the `EmbeddingBackend` protocol with on-device `NLEmbeddingBackend` (Apple NaturalLanguage, zero extra dependencies) powers a complete retrieval subsystem: `RAGService.ingest(url:)` parses (`.txt`/`.md`/`.pdf`), chunks, embeds into a flat-file vector index, and retrieves the top passages before each turn (semantic when an embedding backend is loaded, keyword-fallback otherwise) — with inline `Citation`s in `ChatView`, an optional cross-encoder rerank, and a Document Library UI (`DocumentLibrarySheet`). Opt in via `ManifoldBootstrap(ragConfiguration:)`. The same `EmbeddingBackend` surface backs the OpenAI-compatible `/v1/embeddings` server endpoint. See [docs/QUICKSTART-RAG.md](docs/QUICKSTART-RAG.md) and [docs/RAG-TUNING.md](docs/RAG-TUNING.md).
+- **Tool-call evaluation & conformance** — measure how well a model actually calls tools before shipping. The `manifold-tools` CLI drives a bundled **BFCL** (Berkeley Function-Calling Leaderboard) AST slice against a live backend (`manifold-tools bfcl --model … --category simple`), and `ConformanceScorer` / `MatrixRenderer` (in the `ManifoldTools` library) render a deterministic conformance matrix you can gate on. Per-model verdicts persist through the bootstrap-wired `ToolCallConformanceCache`, so the model picker can surface "tool-calling: verified" without re-running the eval. The CLI lives at [`Sources/manifold-tools`](Sources/manifold-tools) and the scoring library at [`Sources/ManifoldTools`](Sources/ManifoldTools) (run `swift run manifold-tools bfcl --help`).
 - **CLI / server / non-SwiftUI consumers** — backends, model management, and persistence work without `ChatView`. See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md).
 
 ## Feature Matrix
