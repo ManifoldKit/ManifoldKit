@@ -52,6 +52,10 @@ on:
     - cron: "30 5 * * *"
   workflow_dispatch:
   pull_request:
+    # `ready_for_review` required so a draft→ready transition triggers this
+    # heavy macos-15 build (see CLAUDE.md §"Draft-PR review loop"); the job's
+    # draft guard keeps drafts a zero-CI staging area.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       # Package.resolved only (not Package.swift): a dep-version bump can break
@@ -85,6 +89,10 @@ permissions:
 jobs:
   macos-build-and-audit:
     name: ${{ matrix.mode }} (macOS build + audit)
+    # Draft PRs skip this 10×-billed build — CI runs once the PR is marked
+    # ready. The `event_name != 'pull_request'` clause keeps the nightly
+    # `schedule` and `workflow_dispatch` runs unconditional.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-15
     timeout-minutes: 35
     strategy:

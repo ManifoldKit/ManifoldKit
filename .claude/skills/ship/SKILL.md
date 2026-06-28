@@ -11,7 +11,7 @@ description: >-
 
 # /ship — draft-PR review-and-fix loop
 
-This repo gates CI to **skip draft PRs** (`ci.yml`/`readme-snippets.yml`/`cold-start-human.yml`
+This repo gates CI to **skip draft PRs** (`ci.yml`/`readme-snippets.yml`/`cold-start-human.yml`/`build-modes.yml`
 guard on `draft == false`, with `ready_for_review` in the trigger types). So a draft PR is a
 **zero-CI staging area**, and `gh pr ready` is the single, deliberate CI trigger. Use that window
 to catch green-but-wrong code *before* paying for a 10×-billed macOS run. See CLAUDE.md

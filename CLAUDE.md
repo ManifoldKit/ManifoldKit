@@ -258,7 +258,7 @@ CI must pass all suites before merge. `ManifoldBackendsTests` covers the cloud/F
 
 ### Draft-PR review loop (mandatory for non-trivial PRs)
 
-Every **non-trivial** PR goes through an adversarial review-and-fix loop **on a draft PR, before CI runs**. CI is gated to skip draft PRs (`ci.yml`/`readme-snippets.yml`/`cold-start-human.yml` guard the run on `draft == false`, with `ready_for_review` in the trigger types), so the draft is a **zero-CI staging area** and marking ready is the single, deliberate CI trigger. This keeps green-but-wrong code — and the re-run tax at 10× macOS billing — off CI. Invoke it with the `/ship` skill, or run it by hand:
+Every **non-trivial** PR goes through an adversarial review-and-fix loop **on a draft PR, before CI runs**. CI is gated to skip draft PRs (`ci.yml`/`readme-snippets.yml`/`cold-start-human.yml`/`build-modes.yml` guard the run on `draft == false`, with `ready_for_review` in the trigger types), so the draft is a **zero-CI staging area** and marking ready is the single, deliberate CI trigger. This keeps green-but-wrong code — and the re-run tax at 10× macOS billing — off CI. Invoke it with the `/ship` skill, or run it by hand:
 
 1. **Implement** in an isolated worktree off `origin/main` (never the current branch). Open a **draft** PR the moment it compiles (protect work early).
 2. **Review** — dispatch a skeptical reviewer subagent against the diff: correctness, the premise/assumptions, scope discipline, conventions, and *is the feature actually live or inert* (the #2064 lesson — a read path with no writer is dead code).
