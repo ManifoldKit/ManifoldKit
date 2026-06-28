@@ -182,6 +182,16 @@ public enum ManifoldKit {
     ///   - backends: Registrars to fold into the service after the compiled-in
     ///     defaults. Order follows array order; registering the same family
     ///     twice is harmless (last registration wins per model type).
+    ///   - includeDefaultBackends: When `true` (the default — unchanged
+    ///     behaviour for every existing caller) the compiled-in default cloud +
+    ///     Foundation families are registered before `backends`. Pass `false`
+    ///     for a **local-only / replace-mode** runtime in which *only* the
+    ///     registrars you name are wired, so the cloud families never reach the
+    ///     service. See ``localOnly(backends:configuration:seed:)`` for the
+    ///     on-device convenience built on this. Note: this is
+    ///     *registration-level* exclusion, not link-level — the cloud code is
+    ///     still linked through the `ManifoldKit` umbrella. For true link-time
+    ///     exclusion (FIPS) depend on the individual products; see docs/FIPS.md.
     ///   - configuration: Framework configuration. Defaults to
     ///     `ManifoldConfiguration.default`.
     ///   - seed: Optional starter-model seed, as in
@@ -191,12 +201,64 @@ public enum ManifoldKit {
     /// - Returns: A ``QuickStartResult`` as in ``quickStart(configuration:)``.
     public static func quickStart(
         backends: [any BackendRegistrar.Type],
+        includeDefaultBackends: Bool = true,
         configuration: ManifoldConfiguration = .default,
         seed: QuickStartSeed? = nil
     ) async throws -> QuickStartResult {
         try await _quickStart(
             configuration: configuration,
             backends: backends,
+            includeDefaultBackends: includeDefaultBackends,
+            seed: seed,
+            makeModelContainer: { try ModelContainerFactory.makeContainer() }
+        )
+    }
+
+    /// Bootstraps a working chat runtime that registers **no cloud backends** —
+    /// the privacy / local-only / on-device entry point.
+    ///
+    /// Unlike ``quickStart(backends:configuration:seed:)`` (which always folds in
+    /// the cloud families), this convenience registers only the on-device Apple
+    /// Foundation Models family plus any `backends` you pass — typically the
+    /// `manifold-llama` (GGUF) or `manifold-mlx` registrars for local inference
+    /// on OSes without Apple Intelligence. The Ollama and SaaS cloud families are
+    /// never registered, so no cloud backend can be selected or dispatched.
+    ///
+    /// ```swift
+    /// import ManifoldKit
+    /// import ManifoldLlama   // manifold-llama companion package
+    ///
+    /// // On-device only: Foundation Models (iOS 26 / macOS 26+) + local GGUF.
+    /// let kit = try await ManifoldKit.localOnly(backends: [LlamaBackends.self])
+    /// ```
+    ///
+    /// - Important: This is *registration-level* exclusion: the chat surface
+    ///   cannot reach a cloud provider, but the cloud code is still compiled and
+    ///   linked through the `ManifoldKit` umbrella. It does **not** guarantee the
+    ///   binary contains no networking/cloud symbols. For true link-time
+    ///   exclusion (e.g. a FIPS posture) depend on the individual products rather
+    ///   than the umbrella — see docs/FIPS.md.
+    ///
+    /// - Parameters:
+    ///   - backends: On-device registrars to register alongside Foundation
+    ///     (e.g. `[LlamaBackends.self]`). Defaults to empty — on iOS 26 / macOS
+    ///     26+ Foundation Models alone yields a working local chat.
+    ///   - configuration: Framework configuration. Defaults to
+    ///     `ManifoldConfiguration.default`.
+    ///   - seed: Optional starter-model seed, as in
+    ///     ``quickStart(backends:configuration:seed:)``.
+    /// - Returns: A ``QuickStartResult`` as in ``quickStart(configuration:)``.
+    public static func localOnly(
+        backends: [any BackendRegistrar.Type] = [],
+        configuration: ManifoldConfiguration = .default,
+        seed: QuickStartSeed? = nil
+    ) async throws -> QuickStartResult {
+        try await _quickStart(
+            configuration: configuration,
+            // Fold in the on-device Foundation family explicitly; everything
+            // else (the cloud families) is excluded by includeDefaultBackends.
+            backends: [FoundationBackends.self] + backends,
+            includeDefaultBackends: false,
             seed: seed,
             makeModelContainer: { try ModelContainerFactory.makeContainer() }
         )
@@ -228,6 +290,7 @@ public enum ManifoldKit {
     static func _quickStart(
         configuration: ManifoldConfiguration,
         backends: [any BackendRegistrar.Type] = [],
+        includeDefaultBackends: Bool = true,
         seed: QuickStartSeed? = nil,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer,
         downloadManagerOverride: (any BackgroundDownloadManaging)? = nil,
@@ -259,7 +322,8 @@ public enum ManifoldKit {
 
             let bootstrap = try await task.value
 
-            // Register the compiled-in defaults first, then any caller-supplied
+            // Register the compiled-in defaults first (unless the caller opted
+            // out via `includeDefaultBackends: false`), then any caller-supplied
             // registrars (companion packages, #1749). Both must run before the
             // registry refresh, the starter seed, and the selection policy —
             // all three consult the live registration state below.
@@ -267,7 +331,19 @@ public enum ManifoldKit {
             // Ollama + SaaS (cloud) + Foundation. The MLX / llama.cpp
             // registrars live in the manifold-mlx / manifold-llama companion
             // packages — pass them via `backends:`.
-            for registrar in ManifoldKit.defaultBackendRegistrars {
+            if !includeDefaultBackends {
+                // Local-only / replace-mode: only the caller's registrars are
+                // wired, so the cloud families never reach the service. This is
+                // *registration-level* exclusion — the privacy guarantee a host
+                // gets is "no cloud backend can be selected or dispatched" — NOT
+                // link-level: the cloud code is still compiled and linked through
+                // the `ManifoldKit` umbrella. For true link-time exclusion (e.g.
+                // FIPS) depend on the individual products instead of the umbrella;
+                // see docs/FIPS.md.
+                Log.quickStart.info("quickStart: includeDefaultBackends=false — registering only the \(backends.count, privacy: .public) caller-supplied backend(s); the default cloud families (Ollama + SaaS) are NOT registered. Registration-level exclusion only (the cloud code is still linked via the ManifoldKit umbrella) — see docs/FIPS.md for true link-time exclusion.")
+            }
+            let baseRegistrars = includeDefaultBackends ? ManifoldKit.defaultBackendRegistrars : []
+            for registrar in baseRegistrars {
                 registrar.register(with: bootstrap.inferenceService)
             }
             for registrar in backends {

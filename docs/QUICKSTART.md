@@ -101,7 +101,7 @@ struct SeedSessionExample {
 
 `quickStart()` registers every compiled-in backend with the inference service, but **it does not pick one for you**. The composer is enabled (a session exists), but no model is loaded — `ChatViewModel.isModelLoaded` is `false`, the composer placeholder reads "No model loaded", and the empty-state surfaces a "Select Model" button that flips the `showModelManagement` binding (see [`showModelManagement` binding](#showmodelmanagement-binding) below — by itself the binding doesn't present anything).
 
-This section shows the four documented paths to get a model loaded on first launch — starting with the new zero-setup seed path.
+This section shows the four documented paths to get a model loaded on first launch — starting with the new zero-setup seed path. To react to the user's choice (persist it, refresh UI) or to populate your own discovery list, see the `ModelRegistry.onSelectionChanged` / `foundationModelProvider` and `CuratedModel.all` rows in [Host configuration seams](#host-configuration-seams).
 
 ### Seeding a starter model (recommended for new apps)
 
@@ -354,6 +354,50 @@ Common profiles:
 | Cloud-only (no local models) | ManifoldKit alone — cloud is always compiled in |
 
 See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full capability table and [docs/MIGRATION-0.48.md](MIGRATION-0.48.md) if you're migrating from a trait-based 0.47 setup.
+
+### Local-only (privacy / on-device) runtime
+
+`quickStart()` and `quickStart(backends:)` always fold in the compiled-in cloud families (Ollama + SaaS) — convenient for most apps, but wrong for a privacy/on-device app that must never reach a cloud provider. Two opt-outs:
+
+```swift,no-build
+import ManifoldKit
+import ManifoldLlama   // manifold-llama companion package
+
+// Convenience: on-device Foundation Models + your local backends, no cloud.
+let kit = try await ManifoldKit.localOnly(backends: [LlamaBackends.self])
+
+// Or the general primitive — register ONLY the registrars you name:
+let kit2 = try await ManifoldKit.quickStart(
+    backends: [LlamaBackends.self],
+    includeDefaultBackends: false   // cloud families are NOT registered
+)
+```
+
+The value-typed front door has the matching `LLM.localOnly(from:backends:)`.
+
+> [!IMPORTANT]
+> **This is registration-level exclusion, not link-level.** `localOnly` / `includeDefaultBackends: false` guarantee no cloud backend can be *selected or dispatched* — but the cloud code is still compiled and linked through the `ManifoldKit` umbrella. For true link-time exclusion (e.g. a FIPS posture, or proving the binary contains no networking symbols) depend on the individual products instead of the umbrella — see [`docs/FIPS.md`](FIPS.md).
+
+On iOS 26 / macOS 26+, `localOnly()` with no `backends` still yields a working chat via Apple Foundation Models. On older OSes, pass a companion local registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`) or the runtime will have no selectable model. To also stop accidental network egress at runtime (e.g. from a misconfigured custom endpoint), flip the `URLSessionProvider.networkDisabled` kill-switch — see [Host configuration seams](#host-configuration-seams) below.
+
+## Host configuration seams
+
+ManifoldKit exposes a number of powerful extension points that most apps never need — but which are easy to miss because they live deep in the module graph rather than on the `quickStart` surface. The table below is the discoverable index; each is public today.
+
+| Seam | File | What it does | One-line example |
+|------|------|--------------|------------------|
+| `CuratedModel.all` | [`Sources/ManifoldHardware/CuratedModel.swift`](../Sources/ManifoldHardware/CuratedModel.swift) | Host-owned curated model list shown in discovery UI (empty by default; thread-safe public setter). | `CuratedModel.all = [myQwenEntry, myLlamaEntry]` |
+| `ModelRegistry.onSelectionChanged` | [`Sources/ManifoldInference/Services/ModelRegistry.swift`](../Sources/ManifoldInference/Services/ModelRegistry.swift) | Callback fired whenever the selected model changes — persist the choice, update UI, log. | `registry.onSelectionChanged = { model in save(model?.id) }` |
+| `ModelRegistry.foundationModelProvider` | [`Sources/ManifoldInference/Services/ModelRegistry.swift`](../Sources/ManifoldInference/Services/ModelRegistry.swift) | Closure reporting Apple Foundation availability so `refresh()` prepends the built-in model (`quickStart` wires this on 26+). | `registry.foundationModelProvider = { FoundationBackend.isAvailable }` |
+| `ConversationRuntimeOptions` | [`Sources/ManifoldRuntime/Services/ConversationRuntimeOptions.swift`](../Sources/ManifoldRuntime/Services/ConversationRuntimeOptions.swift) | Injection points threaded through `ManifoldBootstrap`: custom compression/history providers, generation hooks, per-turn context, an auxiliary model. | `var o = ConversationRuntimeOptions(); o.compressionPolicy = MyPolicy()` |
+| `PinnedSessionDelegate.pinnedHosts` | [`Sources/ManifoldCloudCore/PinnedSessionDelegate.swift`](../Sources/ManifoldCloudCore/PinnedSessionDelegate.swift) | TLS certificate/public-key pinning per host — set before any network request. | `PinnedSessionDelegate.pinnedHosts = ["api.example.com": [spkiHash]]` |
+| `URLSessionProvider.networkDisabled` | [`Sources/ManifoldCloudCore/URLSessionProvider.swift`](../Sources/ManifoldCloudCore/URLSessionProvider.swift) | Global runtime kill-switch — cloud sessions throw `CloudBackendError.networkDisabled` instead of issuing requests. Pairs with `localOnly`. | `URLSessionProvider.networkDisabled = true` |
+| `ChatViewModel.onFirstMessage` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Fired after the first user message in a session (`quickStart` uses it for auto-titling; replace to AI-title). | `vm.onFirstMessage = { session, text in await retitle(session, text) }` |
+| `ChatViewModel.onSessionBranched` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Fired when a session is branched (edit/regenerate fork) with the new session id. | `vm.onSessionBranched = { newID in await reload(newID) }` |
+| `ChatViewModel.onFirstLaunch` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Replaces the default first-run behaviour (invoked by `autoSelectFirstRunModel()`; skips default Foundation auto-selection) — present onboarding, choose your own first model. | `vm.onFirstLaunch = { showOnboarding = true }` |
+| `ChatViewModel.onUpgradeHintTriggered` | [`Sources/ManifoldUI/ViewModels/ChatViewModel.swift`](../Sources/ManifoldUI/ViewModels/ChatViewModel.swift) | Fired when the upgrade hint is first shown (e.g. suggesting a local model for longer context) — override the default banner with your own nudge. | `vm.onUpgradeHintTriggered = { showUpgradeSheet = true }` |
+
+> See also [Customizing backends](#customizing-backends) for the curated-model and backend-registration seams, and [First-launch backend selection](#first-launch-backend-selection) for the model-selection flow that `onSelectionChanged` / `foundationModelProvider` plug into.
 
 ### M5 Neural Accelerator (macOS 26.2+)
 
