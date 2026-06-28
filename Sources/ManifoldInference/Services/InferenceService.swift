@@ -239,6 +239,12 @@ public final class InferenceService {
         lifecycle.registerEndpointBackendFactory(factory)
     }
 
+    /// Removes all registered endpoint backend factories and clears the supported-provider set.
+    /// For test isolation only — not part of the public API contract.
+    package func clearEndpointBackendFactories() {
+        lifecycle.clearEndpointBackendFactories()
+    }
+
     public func declareSupport(for modelType: ModelType) {
         lifecycle.declareSupport(for: modelType)
     }
