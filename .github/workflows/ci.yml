@@ -60,6 +60,15 @@ on:
       # Per CI path-filter self-validation rule: edits to the composite action
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
+  # Merge queue: when a PR is queued, GitHub builds a temp branch
+  # (main + earlier-queued PRs + this PR) and dispatches `merge_group`. The
+  # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.
+  # No `paths:` filter here — the queue branch is the real pre-merge state, so we
+  # always validate it. The `changes` job's `if:` already runs on non-pull_request
+  # events; the dorny/paths-filter step is skipped on merge_group (no base SHA),
+  # which makes the Tier 0 resolver fall back to FULL → `test` runs the whole bundle.
+  merge_group:
+    types: [checks_requested]
 
 # Collapse concurrent runs, keyed differently per event:
 #   - pull_request → group per PR number, so a force-push cancels the PR's
@@ -74,7 +83,10 @@ on:
 #     readme-snippets gate already keys its push group on the ref the same way.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Never cancel a merge_group run: cancelling a queue validation mid-flight
+  # leaves the required check unreported and stalls the queue. For merge_group,
+  # github.ref is the unique queue branch, so each batch already gets its own group.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 permissions:
   contents: read
@@ -112,6 +124,12 @@ jobs:
         with:
           fetch-depth: 2
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+        # Skipped on merge_group: the queue branch has no base SHA to diff
+        # against and paths-filter would error (failing `changes` → skipping the
+        # required `test` job → stalling the queue). With it skipped, the Tier 0
+        # resolver below sees empty inputs and falls back to FULL, so `test` runs
+        # the whole bundle on the queue branch — the conservative, correct gate.
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           # `list-files: json` exposes the full changed-file list as
