@@ -258,6 +258,18 @@ All changes go through PRs — direct pushes to `main` are blocked.
 
 CI must pass all suites before merge. `ManifoldBackendsTests` covers the cloud/Foundation/mock surface — the MLX/Llama backend suites run in the companion repos' CI.
 
+### Draft-PR review loop (mandatory for non-trivial PRs)
+
+Every **non-trivial** PR goes through an adversarial review-and-fix loop **on a draft PR, before CI runs**. CI is gated to skip draft PRs (`ci.yml`/`readme-snippets.yml`/`cold-start-human.yml`/`build-modes.yml` guard the run on `draft == false`, with `ready_for_review` in the trigger types), so the draft is a **zero-CI staging area** and marking ready is the single, deliberate CI trigger. This keeps green-but-wrong code — and the re-run tax at 10× macOS billing — off CI. Invoke it with the `/ship` skill, or run it by hand:
+
+1. **Implement** in an isolated worktree off `origin/main` (never the current branch). Open a **draft** PR the moment it compiles (protect work early).
+2. **Review** — dispatch a skeptical reviewer subagent against the diff: correctness, the premise/assumptions, scope discipline, conventions, and *is the feature actually live or inert* (the #2064 lesson — a read path with no writer is dead code).
+3. **Fix** — apply findings, push to the same branch (still draft).
+4. **Local gate — the FULL affected test targets, not `--filter <featureSuite>`.** Cross-cutting audits (`TestSuiteSilentSkipAuditTest`, `SilentCatchAuditTest`, schema/codegen/snapshot guards) live *outside* feature suites, so a filtered run goes green while CI goes red (exactly how #2064's `try? XCTUnwrap` reached CI). Run the affected target(s) whole, plus the audit suites by name.
+5. **Mark ready** (`gh pr ready`) **only when review-clean and the local gate is green** — that flip is what triggers CI.
+
+**Non-trivial** = touches **2+ files** OR adds/changes **behavior or logic**. Trivial single-file mechanical edits (typo, version bump, comment/doc-only, pure rename) skip the loop and go straight to a normal PR. When in doubt, run the loop.
+
 ## Issue & PR hygiene
 
 CI is macOS-only (10× billing). Cost scales with **run count**, and each run pays an ~8-min cold `swift build` floor before any test executes. Caching is two-tiered (see the `actions/cache@v5` step in `ci.yml`): compiled **own-module** artifacts (`.build/debug`) are deliberately *not* cached — SwiftPM embeds paths in module fingerprints, so restored objects go stale on miss; tried and reverted twice (#961/#1045 → #1036, ~13% worse). But SwiftPM **dependency** material *is* cached and live — `.build/artifacts` holds the prebuilt ~100 MB llama.cpp xcframework (the real win), plus `.build/checkouts`/`.build/repositories` for the clone phase. The residual floor is local-module + test compile and test execution, neither cacheable. The dominant cost lever is therefore **run count**, not per-run speed. Recent baseline: 183 PRs merged in 14 days across **384 CI runs** (a 2.1× re-run tax). (Note: GitHub's native merge queue is org-only and unavailable on this personal-account repo, so batching is a discipline, not something CI enforces.)

@@ -19,6 +19,10 @@ name: README Snippets
 
 on:
   pull_request:
+    # `ready_for_review` required so a draft→ready transition triggers this
+    # gate (see CLAUDE.md §"Draft-PR review loop"); the job's draft guard keeps
+    # drafts a zero-CI staging area.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       # Any of these can invalidate a snippet:
@@ -57,6 +61,8 @@ permissions:
 
 jobs:
   readme-snippets:
+    # Skip on draft PRs — CI runs once the PR is marked ready.
+    if: github.event.pull_request.draft == false
     runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
 
     steps:

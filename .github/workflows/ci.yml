@@ -29,6 +29,13 @@ on:
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
   pull_request:
+    # `ready_for_review` is REQUIRED here: the default pull_request activity
+    # types omit it, so without it a draft→ready transition would fire no event
+    # and CI would never start until the next push. With it, marking a draft
+    # ready is the single trigger that starts the heavy macOS run — drafts stay
+    # a zero-CI staging area for the review-and-fix loop (see CLAUDE.md §"Draft-PR
+    # review loop"). The `changes` job's draft guard below does the actual gating.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "Sources/**"
@@ -77,6 +84,12 @@ jobs:
   # downstream job that needs it. Avoids spinning up a macOS runner (10× billed)
   # per push just to detect that no relevant files changed.
   changes:
+    # Draft PRs do not run CI: the review-and-fix loop happens on the draft, and
+    # CI fires once when the PR is marked ready (see CLAUDE.md §"Draft-PR review
+    # loop"). Every heavy job `needs: [changes]`, so skipping this gate cascades
+    # the skip to the whole workflow. The `event_name != 'pull_request'` clause
+    # keeps push-to-main runs unconditional (no PR context there).
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
       server: ${{ steps.filter.outputs.server }}
