@@ -161,6 +161,28 @@ final class AgentInstructionLoaderTests: XCTestCase {
         #endif
     }
 
+    func test_discover_currentDirectoryAboveStop_returnsEmpty() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let sub = root.appendingPathComponent("sub", isDirectory: true)
+        try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        try writeAgentsMd(content: "Root instructions.", in: root)
+        // currentDirectory is root, stopDirectory is sub → root is ABOVE sub.
+        // The loader must return empty and warn rather than silently walking
+        // all the way to the filesystem root.
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: root, stoppingAt: sub)
+
+        XCTAssertTrue(found.isEmpty)
+        // Sabotage-evidence: M1 remove the inversion guard → loader walks
+        // root → / and may pick up AGENTS.md files along the way, making
+        // found non-empty; M2 fix the guard to only warn without returning
+        // early → found would contain root's file.
+        #endif
+    }
+
     // MARK: - Merging
 
     func test_merged_returnsNilForEmptyInput() {

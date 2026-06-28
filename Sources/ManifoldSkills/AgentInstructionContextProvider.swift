@@ -18,7 +18,16 @@ import ManifoldInference
 ///
 /// The slot is placed at ``PromptSlotPosition/systemPreamble`` so it sits
 /// before conversation history and after any host-supplied system prompt.
-public final class AgentInstructionContextProvider: PromptContextProvider, @unchecked Sendable {
+///
+/// **Opt-in by design.** The session-level "current directory" scoping model
+/// (which directory to resolve `AGENTS.md` from, per session) is undesigned
+/// as of v1 (#1943). Hosts supply `currentDirectory` at construction time.
+///
+/// - Note: ``AgentInstructionLoader/discover(from:stoppingAt:)`` performs
+///   synchronous file I/O. `AGENTS.md` files are expected to be small
+///   (< 64 KB); the blocking duration is negligible. A future revision may
+///   add async file reading if this assumption changes.
+public struct AgentInstructionContextProvider: PromptContextProvider {
 
     private let loader: AgentInstructionLoader
     private let currentDirectory: URL

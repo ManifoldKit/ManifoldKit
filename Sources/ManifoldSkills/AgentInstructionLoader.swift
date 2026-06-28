@@ -50,16 +50,31 @@ public struct AgentInstructionLoader: Sendable {
     #if os(macOS)
     private func _discover(from currentDirectory: URL, stoppingAt stopDirectory: URL?) -> [AgentInstruction] {
         let fm = FileManager.default
-        let stop = stopDirectory?.standardizedFileURL
-            ?? fm.homeDirectoryForCurrentUser.standardizedFileURL
+        // Resolve symlinks on both sides for reliable equality (matches SkillReferenceResolver pattern).
+        let stop = (stopDirectory ?? fm.homeDirectoryForCurrentUser)
+            .resolvingSymlinksInPath().standardizedFileURL
+
+        let leaf = currentDirectory.resolvingSymlinksInPath().standardizedFileURL
+
+        // Guard: if currentDirectory is above stopDirectory the walk would
+        // proceed toward the filesystem root without ever matching stop.
+        // Treat this as an empty result and log so the caller can correct the
+        // anchor — silently returning everything above stop is worse than
+        // returning nothing.
+        if !leaf.path.hasPrefix(stop.path) {
+            Log.inference.warning(
+                "ManifoldSkills: currentDirectory '\(leaf.path, privacy: .public)' is not under stopDirectory '\(stop.path, privacy: .public)'; returning empty"
+            )
+            return []
+        }
 
         // Accumulate the walk path leaf → root, then reverse for root-to-leaf delivery.
         var walkPath: [URL] = []
-        var cursor = currentDirectory.standardizedFileURL
+        var cursor = leaf
         while true {
             walkPath.append(cursor)
             if cursor == stop { break }
-            let parent = cursor.deletingLastPathComponent().standardizedFileURL
+            let parent = cursor.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
             // Guard against the filesystem root creating an infinite loop.
             if parent.path == cursor.path { break }
             cursor = parent
