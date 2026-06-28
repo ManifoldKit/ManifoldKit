@@ -49,6 +49,11 @@ public struct SemanticSimilarityScorer: EvalScorer {
                 // NLEmbedding returns zeros for such input). No signal — not zero.
                 return Self.noSignal("zero-norm embedding (empty or unembeddable input)")
             }
+            // The contract guarantees equal length, but `dot`'s `zip` would
+            // silently truncate (→ a wrong cosine) if a custom backend violated it.
+            guard a.count == b.count else {
+                return Self.noSignal("embedding length mismatch: \(a.count) vs \(b.count)")
+            }
             let cosine = Double(Self.dot(a, b))
             let passed = cosine >= threshold
             return Score(

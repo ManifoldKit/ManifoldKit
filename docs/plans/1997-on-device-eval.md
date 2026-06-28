@@ -68,7 +68,7 @@ When it lands (separate effort, lockstep with a manifold-llama consumer):
 
 | # | Piece | Module | Notes |
 |---|---|---|---|
-| 1 | `ScoreValue` enum (`number`/`bool`/`category`) + `Score {value, answer, explanation, metadata}` | `ManifoldInference` | **Drop `dict`** — overlaps `metadata` until a consumer needs it. BFCL exercises `bool`+`category` on day one. `var doubleValue: Double?` convenience. |
+| 1 | `ScoreValue` enum (`number`/`bool`/`unavailable`) + `Score {value, answer, explanation, metadata}` | `ManifoldInference` | All three cases have a live consumer this PR: `number` (similarity cosine), `bool` (BFCL AST match), `unavailable` (similarity degenerate/no-signal — never `number(0)`). `category`/`dict` deferred (no consumer; additive when hygiene/ConformanceScorer migrates). `Score` intentionally not `Codable` yet. `var doubleValue: Double?` convenience. |
 | 2 | `EvalScorer { associatedtype Expected; func score(output:expected:) }` + `EvalRunOutput` projection | `ManifoldInference` | Expected-vs-actual only. Zero fuzz deps. |
 | 3 | `SemanticSimilarityScorer` (standalone, NOT tied to any gate) | `ManifoldInference` | Required `threshold`; internal L2-norm (don't assume `NLEmbedding` normalized); **detect zero-norm post-embed → explicit no-signal** (`NLEmbeddingBackend.embed` silently returns a zero vector for empty/unembeddable text, `NLEmbeddingBackend.swift:79` — cosine 0.0 must NOT read as "maximally wrong"). Ships the §6 caveat. |
 | 4 | **First real consumer:** BFCL **AST track** (`ASTMatcher`/`BFCLRunner`) emits `[Score]` | `ManifoldTools/BFCL` | Maps cleanly: per-case `Score{value: .bool(matched), explanation: bestFailures.first}`. Replaces inline `astMatched += 1` counters. Two scorers (AST + name-only) over the same output validate the heterogeneous-scorer design. **Leave `ConformanceScorer` on `ConfusionCounts`** — its set-valued confusion counts do NOT collapse to one `ScoreValue`; forcing it would be a fake conformance. |
@@ -115,7 +115,7 @@ separate, later, cross-repo-lockstep effort.
   (mock) / unverified (Ollama) + config-lossy re-drive. Moat moves cross-repo.
 - ✅ v2 placement split (scorers in Inference, gate in Fuzz) — holds; Fuzz→Inference edge exists
   (`Package.swift:920`). v3 keeps scorers in Inference and removes the in-core gate.
-- ✅ v2 `ScoreValue` enum — holds (BFCL exercises `bool`+`category`); trimmed `dict`.
+- ✅ v2 `ScoreValue` enum — holds, refined during impl to `number`/`bool`/`unavailable` (all three have a live consumer this PR; `unavailable` replaces a metadata flag for the similarity no-signal path). `category`/`dict` deferred until a real consumer exists.
 
 ## 9. Decision needed
 

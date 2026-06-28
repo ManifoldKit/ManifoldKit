@@ -29,12 +29,15 @@ private final class StubEmbeddingBackend: EmbeddingBackend, @unchecked Sendable 
 
 final class SemanticSimilarityScorerTests: XCTestCase {
 
-    private func cosine(of score: Score, file: StaticString = #filePath, line: UInt = #line) -> Double? {
+    /// The numeric cosine, or `nil` if the score isn't a `number` (e.g. it came
+    /// back `unavailable`). Call sites `try XCTUnwrap` so a non-numeric regression
+    /// FAILS the test rather than passing silently.
+    private func cosine(of score: Score) -> Double? {
         guard case .number(let value) = score.value else { return nil }
         return value
     }
 
-    func testIdenticalEmbeddingsScoreOne() async {
+    func testIdenticalEmbeddingsScoreOne() async throws {
         let backend = StubEmbeddingBackend([
             "the cat sat": [1, 0, 0],
             "the cat sat on the mat": [1, 0, 0],
@@ -43,12 +46,12 @@ final class SemanticSimilarityScorerTests: XCTestCase {
         let out = EvalRunOutput(visibleText: "the cat sat")
         let score = await scorer.score(output: out, expected: "the cat sat on the mat")
 
-        XCTAssertEqual(cosine(of: score), 1.0, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(cosine(of: score)), 1.0, accuracy: 1e-6)
         XCTAssertEqual(score.metadata["signal"], "ok")
         XCTAssertEqual(score.metadata["passed"], "true")
     }
 
-    func testOrthogonalEmbeddingsScoreZeroButHaveSignal() async {
+    func testOrthogonalEmbeddingsScoreZeroButHaveSignal() async throws {
         // cosine 0.0 is a real "dissimilar" verdict — distinct from `unavailable`.
         let backend = StubEmbeddingBackend([
             "apples": [1, 0, 0],
@@ -59,12 +62,12 @@ final class SemanticSimilarityScorerTests: XCTestCase {
             output: EvalRunOutput(visibleText: "apples"),
             expected: "quantum chromodynamics"
         )
-        XCTAssertEqual(cosine(of: score), 0.0, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(cosine(of: score)), 0.0, accuracy: 1e-6)
         XCTAssertEqual(score.metadata["signal"], "ok")
         XCTAssertEqual(score.metadata["passed"], "false")
     }
 
-    func testThresholdBoundaryIsInclusive() async {
+    func testThresholdBoundaryIsInclusive() async throws {
         // a=[1,0,0], b normalizes to [0.5, .866, 0] → cosine exactly 0.5.
         let backend = StubEmbeddingBackend([
             "a": [1, 0, 0],
@@ -75,7 +78,7 @@ final class SemanticSimilarityScorerTests: XCTestCase {
             output: EvalRunOutput(visibleText: "a"),
             expected: "b"
         )
-        XCTAssertEqual(cosine(of: score) ?? .nan, 0.5, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(cosine(of: score)), 0.5, accuracy: 1e-6)
         XCTAssertEqual(score.metadata["passed"], "true", "threshold compare is >=, so exactly-at-threshold passes")
     }
 
