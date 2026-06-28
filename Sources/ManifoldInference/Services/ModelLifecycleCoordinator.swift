@@ -175,6 +175,10 @@ final class ModelLifecycleCoordinator {
         cloudBackendFactories.append(factory)
     }
 
+    func clearEndpointBackendFactories() {
+        cloudBackendFactories.removeAll()
+    }
+
     func declareSupport(for modelType: ModelType) {
         supportedLocalModelTypes.insert(modelType)
     }
