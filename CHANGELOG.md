@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.63.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.62.0...v0.63.0) (2026-06-28)
+
+### Highlights
+
+**On-device LLM eval gets a real scorer surface — and BFCL's AST track is its first live consumer.** ManifoldKit now ships deterministic, on-device evaluation primitives in `ManifoldInference`: a `ScoreValue` (`.number` / `.bool` / `.category`) wrapped in a `Score` (value + optional answer/explanation + metadata), and an `EvalScorer<Expected>` protocol whose `score(output:expected:)` returns one. `SemanticSimilarityScorer` carries its caveat in the type, not the docs: it is cosine over Apple's general-purpose `NLEmbedding` — a topicality *screening signal* for free-form prose, never a graded verdict — and empty or unembeddable input yields an explicit no-signal score rather than a misleading `0.0`. The BFCL AST track adopts the surface on day one, so it ships as a live consumer rather than scaffolding ([#1997](https://github.com/ManifoldKit/ManifoldKit/issues/1997), [#2067](https://github.com/ManifoldKit/ManifoldKit/issues/2067)); a companion argument-level AST scorer grades BFCL tool calls down to individual arguments ([#2057](https://github.com/ManifoldKit/ManifoldKit/issues/2057)).
+
+```swift
+let scorer = SemanticSimilarityScorer(embedder: embedder, threshold: 0.75)
+let score = await scorer.score(
+    output: EvalRunOutput(visibleText: reply),
+    expected: "Paris"
+)
+// score.value == .number(cosine); score.metadata["passed"] == "true" / "false"
+```
+
+**Generation spans now export to any OTLP/HTTP backend via the optional `ManifoldTelemetryOTLP` product.** The streaming trace funnel (`TraceSink` + `GenSpan`) is wired into `SSECloudBackend` and `FoundationBackend`, so each generation emits a span without coupling the core to any exporter ([#2069](https://github.com/ManifoldKit/ManifoldKit/issues/2069)). The new `ManifoldTelemetryOTLP` product provides `OTLPTraceSink` — an OTLP/HTTP exporter you opt into by importing it and attaching it to a backend's `traceSink` hook, so spans land in Honeycomb / Tempo / Grafana with no core dependency on OpenTelemetry ([#2070](https://github.com/ManifoldKit/ManifoldKit/issues/2070)).
+
+```swift
+import ManifoldTelemetryOTLP
+
+// SSECloudBackend / FoundationBackend expose a `traceSink` hook:
+backend.traceSink = OTLPTraceSink(
+    endpoint: URL(string: "http://localhost:4318/v1/traces")!
+)
+// every generation now exports a GenSpan to your OTLP/HTTP collector
+```
+
+### Features
+
+* Add a local-only `quickStart` path plus documented host-configuration seams, so an app can reach a live chat runtime without hand-wiring a backend registrar ([#2075](https://github.com/ManifoldKit/ManifoldKit/issues/2075))
+* AGENTS.md ambient-instruction support — the skills subsystem discovers and applies repo-level `AGENTS.md` guidance ([#1943](https://github.com/ManifoldKit/ManifoldKit/issues/1943), [#2068](https://github.com/ManifoldKit/ManifoldKit/issues/2068))
+* Chat-template integrity hash for model management, so a model's chat template can be verified against a known-good hash before use ([#1932](https://github.com/ManifoldKit/ManifoldKit/issues/1932), [#2064](https://github.com/ManifoldKit/ManifoldKit/issues/2064))
+* Add composer feature flags and guard permission-gated controls in the chat UI ([#2077](https://github.com/ManifoldKit/ManifoldKit/issues/2077))
+
+### Fixes
+
+* Wire or deprecate inert public configuration surfaces, so the public API carries no read-only-but-dead knobs ([#2078](https://github.com/ManifoldKit/ManifoldKit/issues/2078))
+* Hermetic test isolation for endpoint-backend and model-discovery tests, removing cross-suite state bleed ([#2079](https://github.com/ManifoldKit/ManifoldKit/issues/2079))
+* Gate `SkillLoader` default paths to macOS so the iOS umbrella builds ([#2066](https://github.com/ManifoldKit/ManifoldKit/issues/2066))
+* Repair the Advanced demo build and harden `DemoNowTool` ([#2063](https://github.com/ManifoldKit/ManifoldKit/issues/2063))
+* Add store-reset recovery, export-Escape handling, and upgrade-hint timing to the example/UI ([#2062](https://github.com/ManifoldKit/ManifoldKit/issues/2062))
+
+### Documentation
+
+* Surface eval/conformance, RAG, and embeddings capabilities in the README ([#2071](https://github.com/ManifoldKit/ManifoldKit/issues/2071))
+* Add a model-management guide and cookbook, and fill positioning gaps ([#1940](https://github.com/ManifoldKit/ManifoldKit/issues/1940), [#2060](https://github.com/ManifoldKit/ManifoldKit/issues/2060))
+* Publish DocC as combined per-module sites and slim the umbrella page ([#2074](https://github.com/ManifoldKit/ManifoldKit/issues/2074))
+
 ## [0.62.0](https://github.com/roryford/ManifoldKit/compare/v0.61.0...v0.62.0) (2026-06-27)
 
 ### Highlights
