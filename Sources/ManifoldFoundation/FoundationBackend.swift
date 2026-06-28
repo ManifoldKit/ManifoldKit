@@ -211,6 +211,12 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// metrics without any configuration. Set to `nil` to disable metric emission.
     public var metricSink: (any InferenceMetricSink)? = InMemoryMetricSink.shared
 
+    /// Optional vendor-neutral trace sink for OpenTelemetry-compatible span export.
+    ///
+    /// When set, each completed generation emits a ``GenSpan`` of kind ``SpanKind/llm``
+    /// alongside the flat ``InferenceMetric``. Defaults to `nil` (no span export).
+    public var traceSink: (any TraceSink)?
+
     /// Structured conversation history installed by ``GenerationHistoryInstaller``
     /// through the ``StructuredHistoryReceiver`` opt-in.
     ///
@@ -527,6 +533,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // `defer` block when `generationTask` is nilled out on completion.
         let metricTracker = GenerationMetricTracker()
         let capturedMetricSink = withStateLock { metricSink }
+        let capturedTraceSink = withStateLock { traceSink }
         let task = Task { [self, generationStream] in
             var streamError: Error?
             defer {
@@ -536,19 +543,21 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         generationTask = nil
                     }
                 }
-                // Emit an InferenceMetric after every generation (success or
-                // failure). The Foundation Models framework does not expose
-                // token-level usage, so prompt/completion counts are zero.
-                if let sink = capturedMetricSink {
-                    SSEGenerationMetrics.record(
-                        to: sink,
-                        tracker: metricTracker,
+                // Emit an InferenceMetric (and optional GenSpan) after every
+                // generation (success or failure). Foundation Models does not
+                // expose token-level usage, so prompt/completion counts are zero.
+                let errorClass = streamError.map { String(describing: type(of: $0)) }
+                if capturedMetricSink != nil || capturedTraceSink != nil {
+                    let metric = metricTracker.buildMetric(
                         provider: "FoundationModels",
                         model: "apple-foundation",
                         promptTokens: 0,
+                        cachedPromptTokens: 0,
                         completionTokens: 0,
-                        errorClass: streamError.map { String(describing: type(of: $0)) }
+                        errorClass: errorClass
                     )
+                    if let sink = capturedMetricSink { Task { await sink.record(metric) } }
+                    if let sink = capturedTraceSink { Task { await sink.record(metric.asGenSpan()) } }
                 }
                 Self.logger.debug("Foundation generate finished")
             }

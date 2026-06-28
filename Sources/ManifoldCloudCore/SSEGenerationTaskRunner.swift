@@ -10,6 +10,7 @@ struct SSEGenerationTaskContext {
     let streamIdleTimeout: Duration?
     let validateEndpoint: @Sendable () async throws -> Void
     let metricSink: (any InferenceMetricSink)?
+    let traceSink: (any TraceSink)?
     let modelName: String
     let backendName: String
     let maxRetries: Int
@@ -109,18 +110,21 @@ struct SSEGenerationTaskRunner {
             }
         }
 
-        if let sink = context.metricSink {
-            let usage = context.readUsage()
-            SSEGenerationMetrics.record(
-                to: sink,
-                tracker: metricTracker,
-                provider: context.backendName,
-                model: context.modelName,
-                promptTokens: usage?.promptTokens ?? 0,
-                completionTokens: usage?.completionTokens ?? 0,
-                errorClass: streamError.map { SSECloudBackend.classifyError($0) }
-            )
-        }
+        let usage = context.readUsage()
+        let errorClass = streamError.map { SSECloudBackend.classifyError($0) }
+
+        guard context.metricSink != nil || context.traceSink != nil else { return }
+
+        let metric = metricTracker.buildMetric(
+            provider: context.backendName,
+            model: context.modelName,
+            promptTokens: usage?.promptTokens ?? 0,
+            cachedPromptTokens: 0,
+            completionTokens: usage?.completionTokens ?? 0,
+            errorClass: errorClass
+        )
+        if let sink = context.metricSink { Task { await sink.record(metric) } }
+        if let sink = context.traceSink { Task { await sink.record(metric.asGenSpan()) } }
     }
 
     /// Drives the parser while holding the stream at `.loading`, flipping to
