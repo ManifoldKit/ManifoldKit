@@ -38,11 +38,18 @@ final class ComposerPermissionGateTests: XCTestCase {
         )
     }
 
-    func test_shouldShowAudioInput_falseWhenFlagOff() {
+    func test_shouldShowAudioInput_falseWhenFlagOff() throws {
+        // Use a bundle that DOES declare the mic key so the flag is the sole
+        // reason the gate returns false. Reusing a key-less bundle here would
+        // confound the test: it would pass even if the flag condition were
+        // dropped, because the missing key alone forces `false`.
+        let bundle = try makeBundle(withInfoPlistKeys: [
+            ComposerPermissionGate.microphoneUsageKey: "Record audio messages.",
+        ])
         let features = ManifoldConfiguration.Features(showAudioInput: false)
         XCTAssertFalse(
-            ComposerPermissionGate.shouldShowAudioInput(features: features, bundle: bundleWithoutKeys),
-            "Mic button must be hidden when the showAudioInput flag is off"
+            ComposerPermissionGate.shouldShowAudioInput(features: features, bundle: bundle),
+            "Mic button must be hidden when the showAudioInput flag is off, even with the usage string present"
         )
     }
 
