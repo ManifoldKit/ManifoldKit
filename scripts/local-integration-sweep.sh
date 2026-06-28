@@ -127,6 +127,56 @@ run_lane() {
   echo
 } > "$REPORT"
 
+# ----- 0b. Ollama model selection (default the sweep's model env to INSTALLED
+# tags) ----------------------------------------------------------------------
+# WHY: the matrix lane's scenario default model is `llama3.1:8b` (the canonical
+# Ollama *registry* name). On a machine whose tags are custom-named (e.g. a
+# Modelfile build tagged `llama3.1-8b`), every scenario 404s ("Model not found")
+# and `matrix` renders a single garbage `renders-no-call` cell — silently
+# destroying the before/after comparison the sweep exists to produce. Discover
+# what is actually installed and pin the model env to it. Explicit caller values
+# always win. NOTE: OLLAMA_TEST_MODEL is deliberately NOT pinned here — the tool
+# E2E suite auto-discovers a tool-capable model, and a failure there (a model
+# that advertises `tools` via /api/show but renders no call) is a real
+# capability signal we must not mask.
+_ollama_tags() {
+  local json; json="$(curl -s --max-time 5 localhost:11434/api/tags 2>/dev/null)" || return 1
+  [ -n "$json" ] || return 1
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$json" | python3 -c 'import sys,json; print("\n".join(m["name"] for m in json.load(sys.stdin).get("models",[])))' 2>/dev/null
+  else
+    printf '%s' "$json" | grep -oE '"name":"[^"]+"' | sed 's/"name":"//; s/"$//'
+  fi
+}
+
+if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
+  # chat tags only (embedding models can't tool-call), sorted for order-stable
+  # selection regardless of /api/tags ordering.
+  OLLAMA_CHAT_TAGS="$(_ollama_tags | grep -ivE 'embed|minilm|nomic|bge|gte' | grep . | sort)"
+  { echo "## Model selection (auto)"; echo '```'; } >> "$REPORT"
+  if [ -z "${MATRIX_MODELS:-}" ] && [ -n "$OLLAMA_CHAT_TAGS" ]; then
+    # strip `:latest` so rows match the soak-baseline naming for clean diffs
+    MATRIX_MODELS="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | sed 's/:latest$//' | paste -sd, -)"
+    export MATRIX_MODELS
+    echo "MATRIX_MODELS (matrix lane) <- installed: $MATRIX_MODELS" >> "$REPORT"
+  else
+    echo "MATRIX_MODELS: caller-set or no installed tags ('${MATRIX_MODELS:-}')" >> "$REPORT"
+  fi
+  if [ -z "${MANIFOLD_BENCH_OLLAMA_MODEL:-}" ]; then
+    # deterministic benchmark model: a mid-size chat tag, else the first installed
+    bench="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | grep -iE '[0-9]b' | head -1)"
+    [ -n "$bench" ] || bench="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | head -1)"
+    bench="${bench%:latest}"   # match MATRIX_MODELS naming
+    if [ -n "$bench" ]; then
+      export MANIFOLD_BENCH_OLLAMA_MODEL="$bench"
+      echo "MANIFOLD_BENCH_OLLAMA_MODEL (benchmark) <- $bench" >> "$REPORT"
+    fi
+  else
+    echo "MANIFOLD_BENCH_OLLAMA_MODEL: caller-set ($MANIFOLD_BENCH_OLLAMA_MODEL)" >> "$REPORT"
+  fi
+  { echo '```'; echo; } >> "$REPORT"
+fi
+
 # ----- 1. core lane: real-Ollama E2E ----------------------------------------
 if have_lane core; then
   # Anchor to the Ollama real-inference suites only. The bare ManifoldE2ETests
