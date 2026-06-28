@@ -73,6 +73,11 @@ public struct BFCLRunner {
         var errored = 0
         var records: [BFCLRunRecord] = []
 
+        // The AST and name-only checks are real `EvalScorer`s over the emitted
+        // calls; the runner accounts for the run through their `Score` output.
+        let astScorer = BFCLASTScorer()
+        let nameScorer = BFCLNameOnlyScorer()
+
         for testCase in cases {
             let id = testCase.id.padding(toLength: 13, withPad: " ", startingAt: 0)
 
@@ -87,24 +92,27 @@ public struct BFCLRunner {
                 continue
             }
 
-            let score = ASTMatcher.scoreCase(emittedCalls: calls, groundTruth: testCase.groundTruth)
-            let nameOK = calls.contains { call in
-                testCase.groundTruth.contains { $0.functionName == call.toolName }
-            }
-            if score.matched { astMatched += 1 }
+            // A BFCL case is a tool-call eval: the projected output carries the
+            // emitted calls; visible/thinking text is legitimately empty here.
+            let output = EvalRunOutput(visibleText: "", toolCalls: calls)
+            let astScore = await astScorer.score(output: output, expected: testCase.groundTruth)
+            let nameScore = await nameScorer.score(output: output, expected: testCase.groundTruth)
+            let astOK = astScore.value == .bool(true)
+            let nameOK = nameScore.value == .bool(true)
+            if astOK { astMatched += 1 }
             if nameOK { nameMatched += 1 }
             records.append(BFCLRunRecord.make(
                 id: testCase.id,
                 model: modelLabel,
                 emittedCalls: calls,
-                astMatched: score.matched,
+                astMatched: astOK,
                 nameMatched: nameOK
             ))
 
-            let marker = score.matched ? "✓" : "✗"
+            let marker = astOK ? "✓" : "✗"
             let emitted = calls.first.map { "\($0.toolName) \($0.arguments)" } ?? "<no tool call>"
             var line = "  \(marker) \(id) \(emitted)"
-            if !score.matched, let reason = score.bestFailures.first {
+            if !astOK, let reason = astScore.explanation {
                 // Name matched but arguments wrong → exactly the gap the name-only
                 // scorer misses. Surface why.
                 line += "   ↳ \(reason)"
