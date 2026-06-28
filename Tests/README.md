@@ -34,7 +34,7 @@ Since v0.48 there are **no default traits** — plain `swift test` builds and ru
 | `Macros` | no | `@ToolSchema` macro plugin (swift-syntax) |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 
-The retired local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) died with the v0.48 companion-package split — the MLX and llama.cpp backend test suites (including the Xcode-hosted MLX integration tests) now live in [manifold-mlx](https://github.com/roryford/manifold-mlx) and [manifold-llama](https://github.com/roryford/manifold-llama). Family-backend test conventions are documented in those repos.
+The retired local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) died with the v0.48 companion-package split — the MLX and llama.cpp backend test suites (including the Xcode-hosted MLX integration tests) now live in [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) and [manifold-llama](https://github.com/ManifoldKit/manifold-llama). Family-backend test conventions are documented in those repos.
 
 ## Running a single suite
 
@@ -107,7 +107,7 @@ Reference adopters live alongside their target:
 
 ## Adding a new backend
 
-> Adding a *heavy local* backend family (new ML runtime)? That belongs in a companion package — follow [manifold-llama](https://github.com/roryford/manifold-llama) / [manifold-mlx](https://github.com/roryford/manifold-mlx) as the templates; they consume the same `ManifoldBackendTestKit` contract harness described below. The steps here cover backends that live in this repo (cloud families, Foundation-class bridges).
+> Adding a *heavy local* backend family (new ML runtime)? That belongs in a companion package — follow [manifold-llama](https://github.com/ManifoldKit/manifold-llama) / [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) as the templates; they consume the same `ManifoldBackendTestKit` contract harness described below. The steps here cover backends that live in this repo (cloud families, Foundation-class bridges).
 
 1. Implement `InferenceBackend` (and any opt-in protocols) in the relevant family target (e.g. a new `Sources/Manifold<Family>/` target, registered through the `ManifoldBackendsUmbrella` glue).
 2. Add a conformance test class under `Tests/ManifoldBackendsTests/Conformance/<YourBackend>ConformanceTests.swift`. Subclass `XCTestCase` and opt into the relevant contract mixins:

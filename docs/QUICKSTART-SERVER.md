@@ -9,7 +9,7 @@ Endpoints: `POST /v1/chat/completions` (streaming + non-streaming), `GET /v1/mod
 ## Install via Homebrew
 
 ```bash
-brew tap roryford/manifoldkit https://github.com/roryford/ManifoldKit.git
+brew tap manifoldkit/manifoldkit https://github.com/ManifoldKit/ManifoldKit.git
 brew install manifold-server
 ```
 
@@ -22,7 +22,7 @@ Each GitHub release includes a pre-built tar for Apple Silicon:
 ```bash
 # Replace TAG with the latest release tag, e.g. v0.46.0
 TAG=v0.46.0
-curl -L "https://github.com/roryford/ManifoldKit/releases/download/${TAG}/manifold-server-${TAG}-macos-arm64.tar.gz" \
+curl -L "https://github.com/ManifoldKit/ManifoldKit/releases/download/${TAG}/manifold-server-${TAG}-macos-arm64.tar.gz" \
   | tar -xz -C /usr/local/bin
 ```
 
@@ -37,7 +37,7 @@ xattr -dr com.apple.quarantine /usr/local/bin/manifold-server
 ## Build from source (SwiftPM)
 
 ```bash
-git clone https://github.com/roryford/ManifoldKit.git
+git clone https://github.com/ManifoldKit/ManifoldKit.git
 cd ManifoldKit
 swift build -c release --product ManifoldServer --traits Server
 .build/release/ManifoldServer --help
@@ -47,7 +47,7 @@ swift build -c release --product ManifoldServer --traits Server
 
 ## Running the server
 
-All examples use Ollama as the backend. Substitute `--backend foundation` for the on-device Apple model (macOS 26+). The `mlx` and `llama` selections fail with a pointer to the companion packages since v0.48 — the MLX and llama.cpp backends moved to [manifold-mlx](https://github.com/roryford/manifold-mlx) / [manifold-llama](https://github.com/roryford/manifold-llama) and are no longer compiled into `manifold-server`.
+All examples use Ollama as the backend. Substitute `--backend foundation` for the on-device Apple model (macOS 26+). The `mlx` and `llama` selections fail with a pointer to the companion packages since v0.48 — the MLX and llama.cpp backends moved to [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) / [manifold-llama](https://github.com/ManifoldKit/manifold-llama) and are no longer compiled into `manifold-server`.
 
 ### Minimal (no auth, localhost only)
 

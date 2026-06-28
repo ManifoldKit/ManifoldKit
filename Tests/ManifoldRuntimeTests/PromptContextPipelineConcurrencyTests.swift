@@ -14,7 +14,7 @@ import XCTest
 ///
 /// **History**: this was `PromptContextPipelineSequentialTests`, which pinned
 /// the ~150 ms sequential baseline as a perf-audit regression marker. Issue
-/// https://github.com/roryford/ManifoldKit/issues/1684 parallelized the fan-out;
+/// https://github.com/ManifoldKit/ManifoldKit/issues/1684 parallelized the fan-out;
 /// the assertion flipped from `>= 140 ms` to `< 120 ms`, proving the fan-out
 /// actually happened.
 ///
@@ -64,7 +64,7 @@ final class PromptContextPipelineConcurrencyTests: XCTestCase {
         // True fan-out lands near 1/3 of the sequential walk; a regression to
         // sequential execution lands near 1.0. 0.75 splits them with generous
         // jitter slack in both directions.
-        // Tracked by https://github.com/roryford/ManifoldKit/issues/1684
+        // Tracked by https://github.com/ManifoldKit/ManifoldKit/issues/1684
         let ratio = concurrent / sequential
         XCTAssertLessThan(
             ratio,

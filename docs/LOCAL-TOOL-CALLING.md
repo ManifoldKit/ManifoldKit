@@ -22,7 +22,7 @@ local prompt-template backends* (llama.cpp / MLX) and is the most common source 
 
 Types live in `ManifoldInference` (re-exported by `import ManifoldKit`). The
 llama.cpp envelope parser lives in the companion package
-[`manifold-llama`](https://github.com/roryford/manifold-llama).
+[`manifold-llama`](https://github.com/ManifoldKit/manifold-llama).
 
 ---
 
@@ -124,11 +124,11 @@ JSON object `{"name": …, "arguments": {…}}` using the listed argument names,
 with an explicit prohibition on Python-style positional calls. That format
 clause exists because templateless models (Phi-3.5, Mistral GGUF) reach the
 model through this preamble alone and otherwise improvise an unparseable
-`tool_call(value)` shape ([#2002](https://github.com/roryford/ManifoldKit/issues/2002)).
+`tool_call(value)` shape ([#2002](https://github.com/ManifoldKit/ManifoldKit/issues/2002)).
 In ManifoldKit's own product testing the imperative preamble lifted
 `llama3.1:8b` tool-recall from ~50% (no preamble) to 70–85%.
 
-> **Is this auto-injected?** **Yes, as of [#1856](https://github.com/roryford/ManifoldKit/issues/1856).**
+> **Is this auto-injected?** **Yes, as of [#1856](https://github.com/ManifoldKit/ManifoldKit/issues/1856).**
 > The queue calls `ToolSystemPromptBuilder.preferTools(for:)` (`.standard` style)
 > automatically for tool-capable backends whose template doesn't render tools
 > natively, prepending it to your system prompt. You no longer need to fold the
@@ -225,7 +225,7 @@ never overwrites a host-authored grammar).
 Notes:
 
 - `ToolGrammarBuilder` (issue
-  [#1859](https://github.com/roryford/ManifoldKit/issues/1859)) landed on `main`.
+  [#1859](https://github.com/ManifoldKit/ManifoldKit/issues/1859)) landed on `main`.
   If you pin a released tag, confirm it is in your version before relying on it;
   the prompt-steering path (Steps 1–2) is the floor that works everywhere.
 - Grammar makes the envelope *guaranteed parseable*, which lets you retire the
@@ -257,7 +257,7 @@ These are the real, observable failure modes on `main`. Several produce **no
 event at all**, which is why "my tool never fires" is hard to debug.
 
 1. **Tools never rendered → model emits prose.** *Largely closed by
-   [#1856](https://github.com/roryford/ManifoldKit/issues/1856).* This was the
+   [#1856](https://github.com/ManifoldKit/ManifoldKit/issues/1856).* This was the
    most common failure when the host had to fold the preamble in by hand and
    forgot. The queue now auto-injects `ToolSystemPromptBuilder.preferTools` for
    tool-capable backends whose template doesn't render tools natively, so passing
@@ -271,7 +271,7 @@ event at all**, which is why "my tool never fires" is hard to debug.
    **emitting nothing** — no `.toolCall`, no error, no diagnostic. The host
    cannot distinguish "model emitted a broken call" from "model emitted no call."
    A surfaced diagnostic event is requested in
-   [#1857](https://github.com/roryford/ManifoldKit/issues/1857) (**open**). Until
+   [#1857](https://github.com/ManifoldKit/ManifoldKit/issues/1857) (**open**). Until
    then, GBNF constraint (Step 3) is the best defense — it prevents the malformed
    body in the first place.
 
@@ -280,7 +280,7 @@ event at all**, which is why "my tool never fires" is hard to debug.
    never arrived, `ToolCallTransform.finalize()` **discards the entire buffered
    body** — the partial call vanishes with no `.token` and no `.toolCall`. An
    opt-in to flush the partial body is requested in
-   [#1858](https://github.com/roryford/ManifoldKit/issues/1858) (**open**).
+   [#1858](https://github.com/ManifoldKit/ManifoldKit/issues/1858) (**open**).
 
 4. **Runaway body → dropped at 256 KB.** A `<tool_call>` whose close tag never
    arrives buffers until it crosses a 256 KB cap, at which point the block is
@@ -321,5 +321,5 @@ This recipe deliberately does not cover Gemma, for two reasons that both reduce 
   `TypedToolExecutor`, approval gates, the backend-agnostic dispatch loop.
 - [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) — tool calling on bridged cloud
   providers.
-- [manifold-llama](https://github.com/roryford/manifold-llama) — the llama.cpp
+- [manifold-llama](https://github.com/ManifoldKit/manifold-llama) — the llama.cpp
   backend and the `LlamaToolMarkers` envelope parser.

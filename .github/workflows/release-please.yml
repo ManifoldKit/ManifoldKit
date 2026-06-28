@@ -87,8 +87,8 @@ jobs:
   # NOTE: the default `secrets.GITHUB_TOKEN` is scoped to THIS repository and
   # cannot fire repository_dispatch cross-repo. `COMPANION_DISPATCH_TOKEN`
   # must be a fine-grained PAT with `contents: read+write` (Repository
-  # dispatch falls under contents) on roryford/manifold-llama and
-  # roryford/manifold-mlx. Until the maintainer creates that secret this job
+  # dispatch falls under contents) on ManifoldKit/manifold-llama and
+  # ManifoldKit/manifold-mlx. Until the maintainer creates that secret this job
   # fails visibly rather than silently skipping the canaries.
   notify-companions:
     needs: release-please
@@ -102,10 +102,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::COMPANION_DISPATCH_TOKEN secret is not set — companion canaries will not re-resolve against $TAG_NAME. Create a fine-grained PAT with contents write on roryford/manifold-llama and roryford/manifold-mlx." >&2
+            echo "::error::COMPANION_DISPATCH_TOKEN secret is not set — companion canaries will not re-resolve against $TAG_NAME. Create a fine-grained PAT with contents write on ManifoldKit/manifold-llama and ManifoldKit/manifold-mlx." >&2
             exit 1
           fi
-          for repo in roryford/manifold-llama roryford/manifold-mlx; do
+          for repo in ManifoldKit/manifold-llama ManifoldKit/manifold-mlx; do
             gh api -X POST "repos/${repo}/dispatches" \
               -f event_type=core-release \
               -f "client_payload[tag]=${TAG_NAME}"

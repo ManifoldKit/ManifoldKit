@@ -311,7 +311,7 @@ Use this when responding to a procurement security review:
 
 ---
 
-*This document is part of Phase 5 of [#714](https://github.com/roryford/ManifoldKit/issues/714)
+*This document is part of Phase 5 of [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714)
 ("local-only build modes + privacy validation infra"). It is reviewed on each
 release that touches `Sources/**/*.swift` files importing `CryptoKit`,
 `CommonCrypto`, or `Security`.*

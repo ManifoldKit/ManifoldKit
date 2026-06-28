@@ -158,7 +158,7 @@ backend.keepAlive = "5m"   // free server VRAM sooner on a shared machine
 > **Not yet shipped.** The `Manifoldfile` — a declarative bundle format for
 > packaging a GGUF model, a system prompt, default `GenerationConfig`, and tool
 > definitions into a single distributable artifact — is tracked in
-> [#1932](https://github.com/roryford/ManifoldKit/issues/1932). This section
+> [#1932](https://github.com/ManifoldKit/ManifoldKit/issues/1932). This section
 > will be filled in when it lands.
 
 ---

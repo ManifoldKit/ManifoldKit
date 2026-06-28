@@ -30,7 +30,7 @@ you're making and follow the gates listed there. Cross-references point at
 ## Getting started
 
 ```bash
-git clone https://github.com/roryford/ManifoldKit.git
+git clone https://github.com/ManifoldKit/ManifoldKit.git
 cd ManifoldKit
 swift build
 swift test
@@ -38,8 +38,8 @@ swift test
 
 `swift build` resolves package dependencies on first run. Since v0.48 core has
 no heavy ML dependencies — the MLX and llama.cpp families live in the
-[manifold-mlx](https://github.com/roryford/manifold-mlx) /
-[manifold-llama](https://github.com/roryford/manifold-llama) companion
+[manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) /
+[manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion
 packages — so the initial fetch is light.
 
 There are **no default traits**: plain `swift build` / `swift test` is the full
@@ -133,8 +133,8 @@ A backend is anything that conforms to `InferenceBackend` and gets registered wi
 
 1. **Pick the right home** for the file. Heavy local backend families (new ML
    runtimes) belong in a **companion package** — follow
-   [manifold-llama](https://github.com/roryford/manifold-llama) /
-   [manifold-mlx](https://github.com/roryford/manifold-mlx) as the templates;
+   [manifold-llama](https://github.com/ManifoldKit/manifold-llama) /
+   [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) as the templates;
    they consume core's `ManifoldContract`/`ManifoldInference` and
    `ManifoldBackendTestKit` products from the outside.
 
@@ -221,7 +221,7 @@ dependency.
 
 3. **Binary dependencies** (xcframeworks): note that there is no SHA-256 checksum
    pin today, only revision pinning. Tracked under
-   [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5 — flag the
+   [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5 — flag the
    PR for security review.
 
 4. **SwiftPM plugins** (`.buildToolPlugin`, `.commandPlugin`) are **banned** by
@@ -284,7 +284,7 @@ shell privileges, so the rules are tighter:
    macro doesn't silently rewrite generated source.
 
 3. The macro plugin sandbox is on the Phase 5 roadmap
-   ([#714](https://github.com/roryford/ManifoldKit/issues/714)). Until then, every
+   ([#714](https://github.com/ManifoldKit/ManifoldKit/issues/714)). Until then, every
    macro change gets a manual security review.
 
 4. **Run before pushing:**
@@ -431,7 +431,7 @@ Don't open public issues for security-impacting bugs — see the next section.
 
 ## Reporting security vulnerabilities
 
-Use [GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/ManifoldKit/ManifoldKit/security/advisories/new)
 for private disclosure. Full policy in [SECURITY.md](SECURITY.md#reporting-a-vulnerability).
 
 ## License

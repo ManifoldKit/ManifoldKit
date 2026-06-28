@@ -130,7 +130,7 @@ defensible claim shape, when accurate for your build:
 > Inference runs on-device via Apple Foundation Models / MLX / llama.cpp.
 > The chat framework (ManifoldKit, MIT-licensed) ships with zero analytics
 > and zero outbound network by default; see
-> https://github.com/roryford/ManifoldKit and the bundled
+> https://github.com/ManifoldKit/ManifoldKit and the bundled
 > `PrivacyInfo.xcprivacy` for the audited surface.
 
 Pointing reviewers at ManifoldKit's `Templates/PrivacyInfo.xcprivacy`, the public
@@ -163,7 +163,7 @@ Submitting ManifoldKit to the [Swift Package Index](https://swiftpackageindex.co
 is a one-time maintainer task and lives outside this repo. The steps:
 
 1. Fork [`SwiftPackageIndex/PackageList`](https://github.com/SwiftPackageIndex/PackageList).
-2. Add `https://github.com/roryford/ManifoldKit.git` to `packages.json`,
+2. Add `https://github.com/ManifoldKit/ManifoldKit.git` to `packages.json`,
    keeping the file alphabetically sorted.
 3. Open a PR against `SwiftPackageIndex/PackageList`.
 4. After merge, update GitHub repo metadata:

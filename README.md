@@ -1,18 +1,18 @@
 # ManifoldKit
 
-[![CI](https://github.com/roryford/ManifoldKit/actions/workflows/ci.yml/badge.svg)](https://github.com/roryford/ManifoldKit/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/roryford/ManifoldKit?sort=semver)](https://github.com/roryford/ManifoldKit/releases/latest)
-[![License: MIT](https://img.shields.io/github/license/roryford/ManifoldKit)](LICENSE)
+[![CI](https://github.com/ManifoldKit/ManifoldKit/actions/workflows/ci.yml/badge.svg)](https://github.com/ManifoldKit/ManifoldKit/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ManifoldKit/ManifoldKit?sort=semver)](https://github.com/ManifoldKit/ManifoldKit/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/ManifoldKit/ManifoldKit)](LICENSE)
 [![Swift 6.1+](https://img.shields.io/badge/Swift-6.1%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%2018%2B%20%7C%20macOS%2015%2B-blue)](#requirements)
 [![SwiftPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen?logo=swift&logoColor=white)](#install)
-[![Documentation](https://img.shields.io/badge/Docs-DocC-blue?logo=swift&logoColor=white)](https://roryford.github.io/ManifoldKit/documentation/manifoldkit/)
+[![Documentation](https://img.shields.io/badge/Docs-DocC-blue?logo=swift&logoColor=white)](https://docs.manifoldkit.com/documentation/manifoldkit/)
 
 The only open-source Swift package that bundles UI, turn-loop runtime, persistence, and multi-backend inference into one drop-in chat product for Apple platforms.
 
 ![ManifoldKit assembled full-stack hero — one import gives you the SwiftUI ChatView, the ConversationRuntime turn loop, SwiftData persistence, model-management UI, and the in-core backends, with the manifold-mlx and manifold-llama companion packages adding on-device MLX and llama.cpp/GGUF](docs/images/product/layer-cake-hero.svg)
 
-**New here?** Start with **[Why ManifoldKit — and how it's built to last](docs/WHY-MANIFOLDKIT.md)** for the honest "what it solves and why trust it" narrative, or jump to the [docs index](docs/README.md) for the full guided path from install to first token. Prefer rendered API reference? The full **[DocC documentation site](https://roryford.github.io/ManifoldKit/documentation/manifoldkit/)** ties every module's reference together under one navigable root.
+**New here?** Start with **[Why ManifoldKit — and how it's built to last](docs/WHY-MANIFOLDKIT.md)** for the honest "what it solves and why trust it" narrative, or jump to the [docs index](docs/README.md) for the full guided path from install to first token. Prefer rendered API reference? The full **[DocC documentation site](https://docs.manifoldkit.com/documentation/manifoldkit/)** ties every module's reference together under one navigable root.
 
 ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS 15+. Import one umbrella package and you get a SwiftUI `ChatView`, the `ConversationRuntime` turn loop (send / regenerate / edit / cancel / branch), SwiftData persistence, model download and management UI, and inference backends spanning on-device (MLX, llama.cpp, Apple Foundation Models) and cloud (OpenAI, Anthropic, Ollama, LAN) — all behind one `InferenceBackend` protocol. Competitors ship a single layer; ManifoldKit ships the assembled product and the wiring between layers. It survives real failures — streaming retries, latest-wins model handoff, memory admission, certificate pinning, and a mock backend for app-level testing. See [docs/RELIABILITY.md](docs/RELIABILITY.md) for the source-backed contract, or [docs/POSITIONING.md](docs/POSITIONING.md) for the full "why ManifoldKit vs. the field" rationale.
 
@@ -21,8 +21,8 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 Three steps: add **ManifoldKit** (core) plus the **manifold-llama** companion package (the on-device GGUF backend), then drop this into your app entry point. `ManifoldKit.quickStart(backends:seed:)` builds the SwiftData container, registers the compiled-in backends plus the companion registrars you pass, and seeds a curated ~400 MB starter model on first launch — one call to a live, generating chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.61.0"), // x-release-please-version
-.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.2.14"),
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.61.0"), // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
 // target dependencies: "ManifoldKit", .product(name: "ManifoldLlama", package: "manifold-llama")
 ```
 
@@ -111,7 +111,7 @@ func twoLine() async throws -> String {
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.
 Building a CLI, server, or non-SwiftUI consumer? See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md) — compile-tested Foundation Models, local GGUF, and Ollama / OpenAI examples.
-Running ManifoldKit as a standalone OpenAI-compatible server (for Cursor, Continue, or any OpenAI SDK)? Install via `brew tap roryford/manifoldkit https://github.com/roryford/ManifoldKit.git && brew install manifold-server` and see [docs/QUICKSTART-SERVER.md](docs/QUICKSTART-SERVER.md).
+Running ManifoldKit as a standalone OpenAI-compatible server (for Cursor, Continue, or any OpenAI SDK)? Install via `brew tap manifoldkit/manifoldkit https://github.com/ManifoldKit/ManifoldKit.git && brew install manifold-server` and see [docs/QUICKSTART-SERVER.md](docs/QUICKSTART-SERVER.md).
 Want the inference layer with a fully custom SwiftUI UI (no `ChatView`)? See [docs/QUICKSTART-BRING-YOUR-OWN-UI.md](docs/QUICKSTART-BRING-YOUR-OWN-UI.md).
 Registering tools the model can call? See [docs/QUICKSTART-TOOLS.md](docs/QUICKSTART-TOOLS.md) — `ToolRegistry`, the local-model tool ceiling, approval gates, and streaming results.
 Exposing an `AppIntent` to the model? See [docs/QUICKSTART-APPINTENTS.md](docs/QUICKSTART-APPINTENTS.md).
@@ -123,8 +123,8 @@ As of v0.48 the heavy on-device backends ship as **companion packages**; everyth
 
 | You want | Module to import | Package |
 |---|---|---|
-| MLX on-device inference (+ image gen) | `ManifoldMLX` | [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) |
-| llama.cpp / GGUF on-device inference | `ManifoldLlama` | [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama) |
+| MLX on-device inference (+ image gen) | `ManifoldMLX` | [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) |
+| llama.cpp / GGUF on-device inference | `ManifoldLlama` | [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) |
 | Apple Foundation Models (iOS/macOS 26+) | `ManifoldKit` umbrella (or `ManifoldFoundation`) | ManifoldKit (core) |
 | OpenAI / Anthropic / LM Studio / custom endpoints | `ManifoldKit` umbrella (or `ManifoldCloudSaaS`) | ManifoldKit (core) |
 | Ollama / LAN | `ManifoldKit` umbrella (or `ManifoldOllama`) | ManifoldKit (core) |
@@ -160,7 +160,7 @@ Table-stakes capabilities that ship today (verified in source):
 - **Embeddings & semantic search** — `EmbeddingBackend` protocol with on-device `NLEmbeddingBackend` (Apple NaturalLanguage, no companion package) and an OpenAI-compatible `/v1/embeddings` server endpoint.
 - **Human-in-the-loop tool approval** via `ToolApprovalGate`.
 - **Metrics + cost estimation** for observability.
-- **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell) and `MLXDiffusionBackend` (SDXL Turbo), via the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package.
+- **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell) and `MLXDiffusionBackend` (SDXL Turbo), via the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package.
 
 **Status:** ManifoldKit is pre-1.0; breaking changes can land between minor versions. Deferred reliability features (e.g. mid-stream resume) are tracked in [docs/RELIABILITY.md](docs/RELIABILITY.md).
 
@@ -168,7 +168,7 @@ Table-stakes capabilities that ship today (verified in source):
 
 The same backend, model-management, persistence, and download infrastructure that powers the chat UI is reusable for non-chat consumers. The framing is "chat-first" because that's the most complete reference integration, but the public surface explicitly supports:
 
-- **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell, 1024×1024 in 4 steps) and `MLXDiffusionBackend` (SDXL Turbo) conform to `ImageGenerationBackend` and stream `ImageGenerationEvent`s exactly like text inference streams `GenerationEvent`. The diffusion backends ship in the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package — see its docs for the end-to-end walkthrough; the `ImageGenerationBackend` protocol and records stay in core.
+- **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell, 1024×1024 in 4 steps) and `MLXDiffusionBackend` (SDXL Turbo) conform to `ImageGenerationBackend` and stream `ImageGenerationEvent`s exactly like text inference streams `GenerationEvent`. The diffusion backends ship in the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package — see its docs for the end-to-end walkthrough; the `ImageGenerationBackend` protocol and records stay in core.
 - **Cloud video generation** — Any cloud service that conforms to `VideoGenerationBackend` wires into `VideoGenerationService` and `VideoGenerationRuntime`, which persist the result via `MessageStore` and expose real-time progress through `ChatViewModel.videoGenerationProgress`. The same `ManifoldBootstrap` init that accepts an `imageGenerationService` also accepts a `videoGenerationService`, so adding video is one extra parameter:
 
   ```swift,no-build
@@ -186,7 +186,7 @@ The same backend, model-management, persistence, and download infrastructure tha
   )
   ```
 
-  The full walkthrough lives with the generation backends in the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package docs; the `VideoGenerationBackend` protocol, `VideoGenerationService`, and persistence wiring above are core.
+  The full walkthrough lives with the generation backends in the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package docs; the `VideoGenerationBackend` protocol, `VideoGenerationService`, and persistence wiring above are core.
 - **Standalone speech-to-text / text-to-speech** — `ManifoldVoice` wraps Apple `Speech` + `AVFoundation` behind a chat-agnostic `VoiceConversationController` that anything (image-gen prompt fields, search bars, CLI dictation) can drive. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md).
 - **On-device embeddings, semantic search & RAG** — the `EmbeddingBackend` protocol with on-device `NLEmbeddingBackend` (Apple NaturalLanguage, zero extra dependencies) powers a complete retrieval subsystem: `RAGService.ingest(url:)` parses (`.txt`/`.md`/`.pdf`), chunks, embeds into a flat-file vector index, and retrieves the top passages before each turn (semantic when an embedding backend is loaded, keyword-fallback otherwise) — with inline `Citation`s in `ChatView`, an optional cross-encoder rerank, and a Document Library UI (`DocumentLibrarySheet`). Opt in via `ManifoldBootstrap(ragConfiguration:)`. The same `EmbeddingBackend` surface backs the OpenAI-compatible `/v1/embeddings` server endpoint. See [docs/QUICKSTART-RAG.md](docs/QUICKSTART-RAG.md) and [docs/RAG-TUNING.md](docs/RAG-TUNING.md).
 - **Tool-call evaluation & conformance** — measure how well a model actually calls tools before shipping. The `manifold-tools` CLI drives a bundled **BFCL** (Berkeley Function-Calling Leaderboard) AST slice against a live backend (`manifold-tools bfcl --model … --category simple`), and `ConformanceScorer` / `MatrixRenderer` (in the `ManifoldTools` library) render a deterministic conformance matrix you can gate on. A bootstrap-exposed, SwiftData-backed `ToolCallConformanceCache` port is available for persisting per-model verdicts — the seam a host needs to avoid re-running the eval — though no built-in UI consumes it yet. The CLI lives at [`Sources/manifold-tools`](Sources/manifold-tools) and the scoring library at [`Sources/ManifoldTools`](Sources/ManifoldTools) (run `swift run manifold-tools bfcl --help`).
@@ -196,7 +196,7 @@ The same backend, model-management, persistence, and download infrastructure tha
 
 Capabilities scope by **which products and companion packages you link**, not by traits. The full capability table is generated from `Sources/ManifoldKit/FeatureMatrix.swift` and rendered to [docs/FeatureMatrix.md](docs/FeatureMatrix.md).
 
-v0.48 retires the trait architecture in favour of library products. There are **no default traits** — plain `swift build` is the full core build. The surviving opt-in traits are `Server` and `Macros` (genuine build-cost levers: Hummingbird and swift-syntax respectively) plus the forward-declared WWDC stubs (`SystemAIProviderExtension`, `CoreAI`). Everything else is retired: `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, and `AnyLanguageModel` became always-compiled modules or explicit products, and the local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) died with the companion-package split — MLX and llama.cpp now arrive by adding [`manifold-mlx`](https://github.com/roryford/manifold-mlx) / [`manifold-llama`](https://github.com/roryford/manifold-llama). See [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md) for the full mapping and [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for install steps.
+v0.48 retires the trait architecture in favour of library products. There are **no default traits** — plain `swift build` is the full core build. The surviving opt-in traits are `Server` and `Macros` (genuine build-cost levers: Hummingbird and swift-syntax respectively) plus the forward-declared WWDC stubs (`SystemAIProviderExtension`, `CoreAI`). Everything else is retired: `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, and `AnyLanguageModel` became always-compiled modules or explicit products, and the local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) died with the companion-package split — MLX and llama.cpp now arrive by adding [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) / [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama). See [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md) for the full mapping and [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for install steps.
 
 For a quantified breakdown of what each trait costs in binary size, build time, and dependency weight — and why the checkout is large regardless of trait set — see [docs/TRAIT-COSTS.md](docs/TRAIT-COSTS.md).
 
@@ -221,7 +221,7 @@ Each row is genuinely strong at its own layer — a UI kit renders beautiful bub
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.62.0" // x-release-please-version
 )
 ```
@@ -256,7 +256,7 @@ Start with [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample) 
 
 ## Architecture
 
-ManifoldKit ships **28 libraries**, **3 executables**, and **1 macro plugin**. The core runtime stack is six libraries; the rest are optional sibling modules you link explicitly. The MLX and llama.cpp backend families live in the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) and [`manifold-llama`](https://github.com/roryford/manifold-llama) companion packages.
+ManifoldKit ships **28 libraries**, **3 executables**, and **1 macro plugin**. The core runtime stack is six libraries; the rest are optional sibling modules you link explicitly. The MLX and llama.cpp backend families live in the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) and [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama) companion packages.
 
 ```
 ManifoldVoice              ManifoldUIModelManagement
@@ -293,8 +293,8 @@ The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSa
 
 | Type | Backend | Format | Source | Image input |
 |------|---------|--------|--------|-------------|
-| GGUF | `LlamaBackend` (llama.cpp, via [`manifold-llama`](https://github.com/roryford/manifold-llama)) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/roryford/ManifoldKit/issues/416) |
-| MLX | `MLXBackend` (mlx-swift, via [`manifold-mlx`](https://github.com/roryford/manifold-mlx)) | Directory with `config.json` + `.safetensors` | HuggingFace, local | Vision models only |
+| GGUF | `LlamaBackend` (llama.cpp, via [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama)) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/ManifoldKit/ManifoldKit/issues/416) |
+| MLX | `MLXBackend` (mlx-swift, via [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx)) | Directory with `config.json` + `.safetensors` | HuggingFace, local | Vision models only |
 | Foundation | `FoundationBackend` | `ModelInfo.builtInFoundation` (built-in, no download) | Apple Intelligence | No public FoundationModels image-input API yet |
 | OpenAI | `OpenAIBackend` | Cloud API | api.openai.com | Vision-capable models |
 | Claude | `ClaudeBackend` | Cloud API | api.anthropic.com | Vision-capable models |
@@ -372,8 +372,8 @@ Honest expectations — ManifoldKit's MCP surface is **tool-and-resource first**
 | **Resources** (`resources/list`, `resources/read`) | ⚠️ partial | ✅ | Host serves list + read; client **detects** `supportsResources` but no outbound `resources/*` call is wired yet (only `tools/*` is consumed). |
 | **Prompts** (`prompts/list`, `prompts/get`) | ⚠️ partial | ❌ | Capability is **detected** (`supportsPrompts`) but not yet consumed — no client call wired. |
 | **OAuth 2.1** | ✅ | — | Authorization-server discovery, token exchange, PKCE, secured token store. |
-| **Sampling** (`sampling/createMessage`) | ❌ | ❌ | Not implemented — the MCP surface is text-passthrough. Tracked in [#1925](https://github.com/roryford/ManifoldKit/issues/1925). |
-| **Elicitation** | ❌ | ❌ | Not implemented. Tracked in [#1926](https://github.com/roryford/ManifoldKit/issues/1926). |
+| **Sampling** (`sampling/createMessage`) | ❌ | ❌ | Not implemented — the MCP surface is text-passthrough. Tracked in [#1925](https://github.com/ManifoldKit/ManifoldKit/issues/1925). |
+| **Elicitation** | ❌ | ❌ | Not implemented. Tracked in [#1926](https://github.com/ManifoldKit/ManifoldKit/issues/1926). |
 | **Transports** | stdio, streamable-HTTP (SSE) | stdio, streamable-HTTP | Both client and host support both transports. |
 
 ## Skills, Handoffs, and Hooks
@@ -449,8 +449,8 @@ For regulated deployments (healthcare, federal-adjacent, finance), see [docs/FIP
 
 Core ManifoldKit has **no pre-built binary dependencies** — the heavy xcframeworks moved out with the v0.48 companion-package split:
 
-- **llama.swift** (pre-built llama.cpp xcframework) is pinned by [`manifold-llama`](https://github.com/roryford/manifold-llama). For source-verified builds, follow the [llama.swift build instructions](https://github.com/mattt/llama.swift) to compile your own.
-- **mlx-swift** (Apple's MLX framework, pre-built xcframework from [ml-explore/mlx-swift](https://github.com/ml-explore/mlx-swift)) is pinned by [`manifold-mlx`](https://github.com/roryford/manifold-mlx). Source builds supported via that upstream repo.
+- **llama.swift** (pre-built llama.cpp xcframework) is pinned by [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama). For source-verified builds, follow the [llama.swift build instructions](https://github.com/mattt/llama.swift) to compile your own.
+- **mlx-swift** (Apple's MLX framework, pre-built xcframework from [ml-explore/mlx-swift](https://github.com/ml-explore/mlx-swift)) is pinned by [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx). Source builds supported via that upstream repo.
 
 Review each companion package's `Package.resolved` for the exact versions in use.
 
@@ -489,7 +489,7 @@ Coming from Apple's `LanguageModelSession` / `@Generable` or AnyLanguageModel's 
 
 This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL redirects, but:
 
-- Update SPM dependencies to `.package(url: "https://github.com/roryford/ManifoldKit.git", ...)` with `from: "0.62.0"` <!-- x-release-please-version -->
+- Update SPM dependencies to `.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", ...)` with `from: "0.62.0"` <!-- x-release-please-version -->
 - Update imports: `import BaseChatKit` → `import ManifoldKit` (and similarly for sub-modules).
 - Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/4/5` → `ManifoldSchemaV3/4/5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`.
 - **BREAKING — local SwiftData stores reset.** Apps upgrading from 0.19.x create fresh databases on first launch. We chose this clean break over preserving data with `@Model.originalName` because v0.20 is pre-1.0.

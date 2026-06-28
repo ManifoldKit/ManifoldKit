@@ -34,8 +34,8 @@ for arg in "$@"; do
             echo "  -h, --help   Show this help and forward to fuzz-chat -h"
             echo ""
             echo "MLX / llama.cpp campaigns moved to the companion packages (v0.48, #1749):"
-            echo "  https://github.com/roryford/manifold-mlx"
-            echo "  https://github.com/roryford/manifold-llama"
+            echo "  https://github.com/ManifoldKit/manifold-mlx"
+            echo "  https://github.com/ManifoldKit/manifold-llama"
             echo ""
             echo "Cloud (OpenAI-compatible, e.g. OpenRouter):"
             echo "  export OPENROUTER_API_KEY=sk-or-...   # preferred; or OPENAI_API_KEY"
@@ -90,8 +90,8 @@ fi
 
 if [[ "$REQUESTED_BACKEND" == "mlx" || "$REQUESTED_BACKEND" == "llama" ]]; then
     echo "scripts/fuzz.sh: --backend $REQUESTED_BACKEND moved to the companion packages in v0.48 (#1749):" >&2
-    echo "  mlx   → https://github.com/roryford/manifold-mlx" >&2
-    echo "  llama → https://github.com/roryford/manifold-llama" >&2
+    echo "  mlx   → https://github.com/ManifoldKit/manifold-mlx" >&2
+    echo "  llama → https://github.com/ManifoldKit/manifold-llama" >&2
     echo "Run the campaign from that repo, or use --backend ollama|openai|foundation|mock|chaos here." >&2
     exit 2
 fi

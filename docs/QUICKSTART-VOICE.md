@@ -20,7 +20,7 @@ consumer `Package.swift`:
 ```swift,no-build
 dependencies: [
     .package(
-        url: "https://github.com/roryford/ManifoldKit.git",
+        url: "https://github.com/ManifoldKit/ManifoldKit.git",
         from: "0.62.0" // x-release-please-version
         // Depending on just the ManifoldVoice product keeps the inference
         // stack out of your app graph — core has no heavy ML deps since v0.48.
@@ -191,7 +191,7 @@ isn't a chat surface.
 > **Not yet shipped.** Full-duplex conversation with voice activity detection
 > (VAD), barge-in interruption, Apple's `SpeechAnalyzer` framework, and
 > WhisperKit integration are tracked in
-> [#1928](https://github.com/roryford/ManifoldKit/issues/1928). The current
+> [#1928](https://github.com/ManifoldKit/ManifoldKit/issues/1928). The current
 > `ManifoldVoice` surface is half-duplex only — STT and TTS run in mutually
 > exclusive states, not simultaneously. See [design/voice-surface-scoping.md](design/voice-surface-scoping.md)
 > for the design notes.

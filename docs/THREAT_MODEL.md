@@ -120,7 +120,7 @@ considered hostile on the far side and what ManifoldKit validates as data crosse
   not SHA-256 — since v0.48 the binary ML xcframeworks live in the companion
   packages, shrinking core's binary-dependency surface to zero); macro plugin sandbox (`Sources/ManifoldMacrosPlugin/` has full
   filesystem + network access at build time); SLSA-style build provenance; SBOM.
-  All tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714)
+  All tracked under [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714)
   Phase 5.
 
 ### B4. User content ↔ model
@@ -209,9 +209,9 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
   through.
 - **Gaps:** xcframework checksum pinning, macro plugin sandbox, build-provenance
   attestation, SBOM. All tracked under
-  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5. Model
+  [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5. Model
   weight signature verification:
-  [#367](https://github.com/roryford/ManifoldKit/issues/367).
+  [#367](https://github.com/ManifoldKit/ManifoldKit/issues/367).
 
 ### Unintended local network leaks
 
@@ -233,7 +233,7 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
   `posix_spawn` from macro source until a sandbox is in place.
 - **Gaps:** The audit is a static check; a sufficiently motivated attacker can
   obfuscate. Macro plugin sandbox is on the Phase 5 roadmap
-  ([#714](https://github.com/roryford/ManifoldKit/issues/714)).
+  ([#714](https://github.com/ManifoldKit/ManifoldKit/issues/714)).
 
 ### `os_log` content escape via sysdiagnose
 
@@ -274,7 +274,7 @@ The procurement view: which mitigation, which mechanism, where it lives.
 
 Each item is either deferred to a tracked issue or explicitly out of scope.
 
-### Deferred (tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5 unless noted)
+### Deferred (tracked under [#714](https://github.com/ManifoldKit/ManifoldKit/issues/714) Phase 5 unless noted)
 
 - **Macro plugin sandbox.** `Sources/ManifoldMacrosPlugin/` runs at build time with
   full filesystem + network access. Audit Rule 2 currently bans network primitives
@@ -296,7 +296,7 @@ Each item is either deferred to a tracked issue or explicitly out of scope.
   does not guarantee zero-filling.
 - **SBOM.** No published Software Bill of Materials.
 - **GGUF signed-manifest verification.** Tracked separately at
-  [#367](https://github.com/roryford/ManifoldKit/issues/367).
+  [#367](https://github.com/ManifoldKit/ManifoldKit/issues/367).
 - **Reproducible builds.** Not validated.
 
 ### Explicitly out of scope

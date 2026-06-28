@@ -480,8 +480,8 @@ write_full_doc() {
 > **v0.48 (PR C2):** the MLX / Llama / HuggingFace / Fuzz / FoundationOnly traits
 > are retired. The heavy MLX and llama.cpp families (and their mlx-swift /
 > mlx-swift-lm / llama.swift / swift-transformers dependencies) moved to the
-> [manifold-mlx](https://github.com/roryford/manifold-mlx) and
-> [manifold-llama](https://github.com/roryford/manifold-llama) companion
+> [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) and
+> [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion
 > packages (#1749). A plain `swift build` of core no longer clones or compiles
 > any of them. Only two genuine build-cost levers remain.
 

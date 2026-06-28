@@ -11,8 +11,8 @@
 #
 # v0.48 PR C2 deleted the family sources from this repository — they now live
 # in the companion packages:
-#   https://github.com/roryford/manifold-mlx
-#   https://github.com/roryford/manifold-llama
+#   https://github.com/ManifoldKit/manifold-mlx
+#   https://github.com/ManifoldKit/manifold-llama
 #
 # There is nothing left in this repo to copy, so the proof can no longer run
 # here. The live equivalent is the companion repos' own CI, which builds the

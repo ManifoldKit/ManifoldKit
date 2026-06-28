@@ -15,11 +15,11 @@
 # dependency download + compilation. Subsequent installs reuse the cache.
 class ManifoldServer < Formula
   desc "OpenAI-compatible local inference server powered by ManifoldKit"
-  homepage "https://github.com/roryford/ManifoldKit"
-  url "https://github.com/roryford/ManifoldKit/archive/refs/tags/v0.46.0.tar.gz"
+  homepage "https://github.com/ManifoldKit/ManifoldKit"
+  url "https://github.com/ManifoldKit/ManifoldKit/archive/refs/tags/v0.46.0.tar.gz"
   sha256 "ea3d4d1100bf14e2c901a7a734e4c8e59208f006e3bc16991e2478b20dd94999"
   license "MIT"
-  head "https://github.com/roryford/ManifoldKit.git", branch: "main"
+  head "https://github.com/ManifoldKit/ManifoldKit.git", branch: "main"
 
   # ManifoldKit requires a Swift 6.1+ toolchain. Xcode 16.3+ ships Swift 6.1;
   # Xcode 16+ ships Swift 6.0 which is insufficient.

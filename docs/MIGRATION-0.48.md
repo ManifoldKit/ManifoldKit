@@ -3,8 +3,8 @@
 v0.48 retires the SwiftPM trait architecture in favour of **library products**, and moves
 the heavy local-inference backends (MLX, llama.cpp) into **companion packages**:
 
-- [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) — the `ManifoldMLX` module
-- [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama) — the `ManifoldLlama` module
+- [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) — the `ManifoldMLX` module
+- [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) — the `ManifoldLlama` module
 
 > **This release lands automatically if you depend on ManifoldKit with `from:`.**
 > SwiftPM's `from: "0.47.0"` resolves `0.47.0..<1.0.0` — there is no special pre-1.0
@@ -41,12 +41,12 @@ as an always-compiled module or as a product you import explicitly:
 
 ```swift,no-build
 // Before (v0.47):
-.package(url: "https://github.com/roryford/ManifoldKit.git",
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git",
          from: "0.47.0",
          traits: ["MCP", "Voice", "Ollama", "CloudSaaS", "AnyLanguageModel"])
 
 // After (v0.48): traits array gone (or holding only surviving traits)
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0")
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.48.0")
 ```
 
 For the AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter, …),
@@ -77,8 +77,8 @@ replacements differ:
 
 | Retired trait | v0.48 replacement |
 |---|---|
-| `MLX` | The MLX family moved to the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package — see [no such module 'ManifoldMLX'](#no-such-module-manifoldmlx) below for the install steps. |
-| `Llama` | The llama.cpp/GGUF family moved to [`manifold-llama`](https://github.com/roryford/manifold-llama) — see [no such module 'ManifoldLlama'](#no-such-module-manifoldllama) below. |
+| `MLX` | The MLX family moved to the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package — see [no such module 'ManifoldMLX'](#no-such-module-manifoldmlx) below for the install steps. |
+| `Llama` | The llama.cpp/GGUF family moved to [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama) — see [no such module 'ManifoldLlama'](#no-such-module-manifoldllama) below. |
 | `HuggingFace` | `ManifoldHuggingFace` (model search/download machinery) compiles unconditionally — drop the trait. |
 | `Fuzz` | `ManifoldFuzz` and the `fuzz-chat` CLI compile unconditionally — drop the trait. `fuzz-chat` now drives Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama); the MLX/Llama fuzz factories moved to the companions. |
 | `FoundationOnly` | The lean build is now the **default**: core has no heavy ML dependencies at all. Don't add the companion packages and you get the former `FoundationOnly` footprint without any flag. See [AppStoreSubmission.md](AppStoreSubmission.md). |
@@ -92,7 +92,7 @@ should delete from scripts and CI.
 ## no such module 'ManifoldMLX'
 
 The MLX backend lives in the companion package
-[`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) as of v0.48.
+[`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) as of v0.48.
 The module name is unchanged (`import ManifoldMLX` still compiles) — only the package
 that provides it moved, taking the ~700 MB mlx-swift dependency graph with it. Core
 ManifoldKit builds with no MLX checkout at all.
@@ -101,8 +101,8 @@ ManifoldKit builds with no MLX checkout at all.
 
 ```swift,no-build
 // Package.swift
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0"),
-.package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"),
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.48.0"),
+.package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.1.0"),
 
 // target dependencies:
 "ManifoldKit",
@@ -110,7 +110,7 @@ ManifoldKit builds with no MLX checkout at all.
 ```
 
 **Xcode:** File ▸ Add Package Dependencies… ▸ enter
-`https://github.com/roryford/manifold-mlx` ▸ Add Package ▸ tick the `ManifoldMLX`
+`https://github.com/ManifoldKit/manifold-mlx` ▸ Add Package ▸ tick the `ManifoldMLX`
 product for your app target. (Xcode consumers never edit a manifest — this is the
 whole migration.)
 
@@ -134,22 +134,22 @@ Bring-your-own-bootstrap consumers call `MLXBackends.register(with: service)` af
 ## no such module 'ManifoldLlama'
 
 Same move as MLX: the llama.cpp/GGUF backend lives in
-[`roryford/manifold-llama`](https://github.com/roryford/manifold-llama), module name
+[`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama), module name
 unchanged, taking the ~617 MB prebuilt llama.cpp xcframework out of core's resolve.
 
 **SwiftPM:**
 
 ```swift,no-build
 // Package.swift
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0"),
-.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.48.0"),
+.package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.1.0"),
 
 // target dependencies:
 "ManifoldKit",
 .product(name: "ManifoldLlama", package: "manifold-llama"),
 ```
 
-**Xcode:** File ▸ Add Package Dependencies… ▸ `https://github.com/roryford/manifold-llama`
+**Xcode:** File ▸ Add Package Dependencies… ▸ `https://github.com/ManifoldKit/manifold-llama`
 ▸ Add Package ▸ tick `ManifoldLlama` for your app target.
 
 **Then register:**
@@ -241,7 +241,7 @@ Pre-1.0, ManifoldKit can break between minors and `from:` auto-delivers those br
 To adopt v0.48 on your own schedule:
 
 ```swift,no-build
-.package(url: "https://github.com/roryford/ManifoldKit.git",
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git",
          .upToNextMinor(from: "0.47.0"))
 ```
 

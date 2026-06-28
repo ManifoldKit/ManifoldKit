@@ -8,7 +8,7 @@ shorter, recipe-shaped surface for *consumers*.
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.46.0")
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.46.0")
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
@@ -285,7 +285,7 @@ on every consumer:
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.46.0",
     traits: [.trait(name: "Macros")]
 )
@@ -364,7 +364,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 
 ```swift
 .package(
-    url: "https://github.com/roryford/ManifoldKit.git",
+    url: "https://github.com/ManifoldKit/ManifoldKit.git",
     from: "0.48.0"
 )
 ```
@@ -407,7 +407,7 @@ left:
 - **`Server` trait (default-off)** — gates the `manifold-server` executable and
   its Hummingbird dependency tree.
 - **MLX / llama.cpp are packages, not traits** — add
-  `https://github.com/roryford/manifold-mlx` / `…/manifold-llama` as separate
+  `https://github.com/ManifoldKit/manifold-mlx` / `…/manifold-llama` as separate
   `.package(...)` dependencies and pass their registrars to
   `quickStart(backends:)`. A `traits: ["MLX"]` / `["Llama"]` array now
   hard-errors at resolve time — see docs/MIGRATION-0.48.md.

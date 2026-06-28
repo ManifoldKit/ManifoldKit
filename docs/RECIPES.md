@@ -188,7 +188,7 @@ string yourself.
 > **No `@Generable` equivalent yet.** ManifoldKit constrains the *generation*
 > but does not hand back a decoded Swift instance. Decode with `JSONDecoder` after
 > the turn. The typed-instance ergonomics are tracked in
-> [#1915](https://github.com/roryford/ManifoldKit/issues/1915).
+> [#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915).
 
 ```swift,no-build
 import ManifoldKit

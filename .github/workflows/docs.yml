@@ -93,8 +93,8 @@ jobs:
 
       - name: Transform for static hosting
         # Pick the umbrella archive (named ManifoldKit.doccarchive) as the site
-        # root, then rewrite asset/reference paths for a project Pages site served
-        # from https://<user>.github.io/ManifoldKit/.
+        # root, then rewrite asset/reference paths for a root-served Pages site
+        # on the custom domain https://docs.manifoldkit.com/.
         run: |
           set -euo pipefail
           ARCHIVE=$(find "$RUNNER_TEMP/docc-dd" -type d -name 'ManifoldKit.doccarchive' | head -n 1)
@@ -105,12 +105,13 @@ jobs:
           fi
           echo "Using archive: $ARCHIVE"
           rm -rf ./docs-site
+          # Served at the root of the custom domain docs.manifoldkit.com, so no
+          # --hosting-base-path (that's only for project pages under /<repo>/).
           $(xcrun --find docc) process-archive transform-for-static-hosting \
             "$ARCHIVE" \
-            --output-path ./docs-site \
-            --hosting-base-path ManifoldKit
+            --output-path ./docs-site
           # Redirect the site root to the umbrella landing page so visiting
-          # https://<user>.github.io/ManifoldKit/ lands on ManifoldKit, not a 404.
+          # https://docs.manifoldkit.com/ lands on ManifoldKit, not a 404.
           cat > ./docs-site/index.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">
@@ -119,6 +120,9 @@ jobs:
           <link rel="canonical" href="documentation/manifoldkit/">
           <p>Redirecting to <a href="documentation/manifoldkit/">the ManifoldKit documentation</a>…</p>
           HTML
+          # Pin the custom domain into the artifact so GitHub Pages keeps serving
+          # docs.manifoldkit.com across every deploy (not just the one-time setting).
+          echo 'docs.manifoldkit.com' > ./docs-site/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
