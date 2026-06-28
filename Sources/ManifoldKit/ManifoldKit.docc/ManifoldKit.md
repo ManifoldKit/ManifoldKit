@@ -86,22 +86,24 @@ install to first token, follow the loose-markdown front door:
 
 ### The assembled surface
 
-`import ManifoldKit` re-exports these types from their home modules. DocC
-resolves symbol links only within the target it builds, so this umbrella page
-links the entry points it *owns* (see Topics below) and names the re-exports
-inline — follow each home-module catalog for the full reference:
+`import ManifoldKit` re-exports these types from their home modules. This site is
+built as combined documentation, so the curated entry points below link straight
+to each type's home-module page — follow any link, or the navigation sidebar, for
+the full per-module reference:
 
-- **Chat UI** (`ManifoldUI`): `ChatView`, `ChatViewModel`.
+- **Chat UI** (`ManifoldUI`): ``/ManifoldUI/ChatView``, ``/ManifoldUI/ChatViewModel``.
 - **Bring your own UI** (`ManifoldInference` / `ManifoldRuntime`):
-  `InferenceService`, `ConversationRuntime`, `ModelRegistry`.
+  ``/ManifoldInference/InferenceService``, ``/ManifoldRuntime/ConversationRuntime``,
+  ``/ManifoldInference/ModelRegistry``.
 - **Backends** (`ManifoldContract` + families): every engine sits behind one
-  `InferenceBackend` protocol. The cloud (OpenAI, Anthropic, Ollama, LAN) and
-  Apple `FoundationBackend` families compile in unconditionally; the on-device
-  MLX and llama.cpp families ship as companion packages (`manifold-mlx`,
-  `manifold-llama`) since v0.48 and are wired in by passing their registrars to
-  ``ManifoldKit/quickStart(backends:configuration:seed:)``.
+  ``/ManifoldContract/InferenceBackend`` protocol. The cloud (OpenAI, Anthropic,
+  Ollama, LAN) and Apple ``/ManifoldFoundation/FoundationBackend`` families compile
+  in unconditionally; the on-device MLX and llama.cpp families ship as companion
+  packages (`manifold-mlx`, `manifold-llama`) since v0.48 and are wired in by
+  passing their registrars to ``ManifoldKit/quickStart(backends:configuration:seed:)``.
 - **Persistence & bootstrap** (`ManifoldPersistenceSwiftData`):
-  `ManifoldBootstrap`, configured by `ManifoldConfiguration`.
+  ``/ManifoldPersistenceSwiftData/ManifoldBootstrap``, configured by
+  ``/ManifoldModelCatalog/ManifoldConfiguration``.
 
 ## Topics
 
@@ -112,35 +114,35 @@ inline — follow each home-module catalog for the full reference:
 - ``ManifoldKit/quickStart(backends:configuration:seed:)``
 - ``QuickStartResult``
 - ``QuickStartSeed``
-- ``ManifoldConfiguration``
-- ``ManifoldKitError``
+- ``/ManifoldModelCatalog/ManifoldConfiguration``
+- ``/ManifoldModelCatalog/ManifoldKitError``
 
 ### Build a Chat UI
 
-- ``ChatView``
-- ``ChatViewModel``
+- ``/ManifoldUI/ChatView``
+- ``/ManifoldUI/ChatViewModel``
 
 ### Bring Your Own UI
 
-- ``InferenceService``
-- ``ConversationRuntime``
-- ``ModelRegistry``
+- ``/ManifoldInference/InferenceService``
+- ``/ManifoldRuntime/ConversationRuntime``
+- ``/ManifoldInference/ModelRegistry``
 
 ### Backends
 
-Every engine sits behind one ``InferenceBackend`` protocol; the default
-registrars (`OllamaBackends`, `CloudSaaSBackends`, `FoundationBackends`, exposed
-as `ManifoldKit.defaultBackendRegistrars`) register the Foundation and cloud
-backends compiled into core. Cloud backends (OpenAI, Anthropic, Ollama, LAN)
+Every engine sits behind one ``/ManifoldContract/InferenceBackend`` protocol; the
+default registrars (`OllamaBackends`, `CloudSaaSBackends`, `FoundationBackends`,
+exposed as `ManifoldKit.defaultBackendRegistrars`) register the Foundation and
+cloud backends compiled into core. Cloud backends (OpenAI, Anthropic, Ollama, LAN)
 live in `ManifoldOllama` / `ManifoldCloudSaaS` and are always compiled in since
 v0.48 (the `CloudSaaS` / `Ollama` traits were retired). The local MLX and
 llama.cpp families ship in the `manifold-mlx` / `manifold-llama` companion
 packages since v0.48 — add the package and pass its registrar to
 `quickStart(backends:)`.
 
-- ``InferenceBackend``
-- ``FoundationBackend``
+- ``/ManifoldContract/InferenceBackend``
+- ``/ManifoldFoundation/FoundationBackend``
 
 ### Persistence & Bootstrap
 
-- ``ManifoldBootstrap``
+- ``/ManifoldPersistenceSwiftData/ManifoldBootstrap``
