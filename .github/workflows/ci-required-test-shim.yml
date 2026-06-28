@@ -1,0 +1,81 @@
+# Companion shim to ci.yml — keeps the required `test` status check reportable
+# on PRs that ci.yml's path filter excludes, so they stay mergeable AND can enter
+# the merge queue.
+#
+# WHY THIS EXISTS
+# `test` (in ci.yml) is a REQUIRED status check. ci.yml's pull_request trigger
+# has a `paths:` filter, so a PR that touches none of those paths (docs-only,
+# most workflow-only / Dependabot PRs) never runs ci.yml and the `test` context
+# never reports. Branch protection then leaves the PR un-mergeable, and the
+# native merge queue refuses it: queue ENTRY requires the PR-head required
+# checks to be satisfied — the merge_group re-test (ci.yml's merge_group trigger)
+# only runs AFTER a PR enters the queue. Without this shim such PRs are stuck.
+#
+# HOW IT WORKS
+# This job reports a green `test` for exactly those excluded PRs via the INVERSE
+# path set: `paths-ignore` mirrors ci.yml's pull_request `paths:`. The real test
+# still runs unconditionally on the merge_group branch, so the queue always
+# re-validates the actual squashed merge before it lands. A PR that genuinely
+# changes code therefore gets the real macOS suite on the queue branch; this
+# shim never substitutes for it there.
+#
+# WHY IT IS FAIL-SAFE
+# `paths` and `paths-ignore` are NOT strict complements: a PR touching BOTH a
+# filtered path (e.g. Sources/**) and an unfiltered one (e.g. README.md) trips
+# ci.yml's real `test` AND this shim. That is safe — GitHub uses the
+# latest-COMPLETED check run for a given context, and the real macOS suite
+# (minutes) always finishes after this echo (seconds), so the real result is the
+# authoritative `test`. If the lists below ever drift from ci.yml, the only
+# failure mode is a redundant echo or a false BLOCK (a missing `test`), never a
+# false PASS that lets untested code merge.
+#
+# DRIFT: keep `paths-ignore` below identical to ci.yml's pull_request `paths:`.
+name: CI Required Test Shim
+
+on:
+  pull_request:
+    # Mirror ci.yml's pull_request activity types — `ready_for_review` is what
+    # fires the check when a draft is marked ready (drafts are a zero-CI staging
+    # area; see the draft guard below).
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths-ignore:
+      # ↓↓↓ MUST stay identical to ci.yml's pull_request `paths:` ↓↓↓
+      - "Sources/**"
+      - "Tests/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - ".github/workflows/ci.yml"
+      - "scripts/test.sh"
+      - "scripts/ci-test-with-watchdog.sh"
+      - "scripts/example-ui-tests.sh"
+      - "scripts/cold-start*.sh"
+      - "scripts/test-ios-simulator.sh"
+      - "scripts/lint-no-new-force-unwraps.sh"
+      - "scripts/affected-suites.sh"
+      - "scripts/affected-suites-graph.json"
+      - "scripts/ci-selective-test.sh"
+      - ".swiftpm/xcode/xcshareddata/xcschemes/**"
+      - ".github/actions/setup-swift-ci/**"
+      # ↑↑↑ MUST stay identical to ci.yml's pull_request `paths:` ↑↑↑
+
+permissions:
+  contents: read
+
+jobs:
+  # Job name MUST be `test` so it reports the same required status-check context
+  # as ci.yml's heavy job. They are mutually exclusive on pure source / pure
+  # non-source PRs; see "WHY IT IS FAIL-SAFE" above for the mixed case.
+  test:
+    # Mirror ci.yml: a draft must NOT satisfy the required `test`, so the review
+    # loop happens before CI. When the draft is readied (`ready_for_review`),
+    # this runs and reports.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: No test-relevant changes
+        run: |
+          echo "This PR touches none of ci.yml's test-relevant paths, so the"
+          echo "macOS test suite is not built on the PR head. The required"
+          echo "'test' check is satisfied here without a build; the merge queue"
+          echo "re-runs the real suite on the merge_group branch before merge."
