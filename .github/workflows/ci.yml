@@ -105,6 +105,13 @@ jobs:
     # keeps push-to-main runs unconditional (no PR context there).
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # `contents: read` for checkout; `actions: read` for the "Skip post-merge
+    # re-test" step's Actions-API query. Scoped to this job (least privilege) —
+    # no other job queries the API. A job-level block overrides the workflow
+    # default, so `contents: read` must be restated here for the checkout.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       server: ${{ steps.filter.outputs.server }}
       macros: ${{ steps.filter.outputs.macros }}
@@ -121,6 +128,10 @@ jobs:
       api-cloudcore: ${{ steps.filter.outputs.api-cloudcore }}
       api-persistence: ${{ steps.filter.outputs.api-persistence }}
       api-ui: ${{ steps.filter.outputs.api-ui }}
+      # 'true' when this is a push to main whose exact SHA was already validated
+      # by a successful merge_group CI run (i.e. it landed via the merge queue).
+      # Consumed by the `test` job to skip the redundant post-merge re-test.
+      already-validated: ${{ steps.queue-validated.outputs.already-validated }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -244,8 +255,53 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Tier 0: affected=${affected}"
 
+      # When a PR lands via the merge queue, the `merge_group` CI run already ran
+      # the full `test` job on the exact commit that GitHub then fast-forwards onto
+      # main — empirically the merge_group head_sha equals the pushed SHA (verified
+      # on this repo's queue config). The subsequent push-to-main event re-runs the
+      # whole ~700s macOS `test` job on that identical SHA for zero added signal: a
+      # straight 10×-billed duplicate. This step detects a successful merge_group CI
+      # run for the pushed SHA and, if found, flags the `test` job to skip.
+      #
+      # Scope is deliberately ONLY the `test` job: on merge_group the server-tests/
+      # macros-tests/cold-start/ci-ios-file-protection jobs are skipped (paths-filter
+      # is bypassed there), so the queue never validated those surfaces — their
+      # post-merge push runs are NOT duplicates and must keep running.
+      #
+      # Safety: this only fires on `push`. Direct/admin/hotfix pushes (no
+      # merge_group run for the SHA) find no match and run the full gate as before;
+      # nightly-slow-tests.yml remains the 24h backstop. Any API hiccup defaults to
+      # "not validated" (runs the test) — the optimization is given up, never safety.
+      - name: Skip post-merge re-test if the merge queue already validated this SHA
+        id: queue-validated
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          # No --paginate: a single (head_sha, event=merge_group) pair realistically
+          # yields 1 run (a few with re-runs), well within page 1 (≤30), so a success
+          # run can never fall onto a later page.
+          count=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=merge_group" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | length' 2>/dev/null || echo 0)
+          # Guard against a non-numeric API response leaking into the comparison.
+          [[ "$count" =~ ^[0-9]+$ ]] || count=0
+          if [ "$count" -gt 0 ]; then
+            echo "already-validated=true" >> "$GITHUB_OUTPUT"
+            echo "Found ${count} successful merge_group CI run(s) for ${SHA} — skipping the redundant post-merge \`test\` job." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "already-validated=false" >> "$GITHUB_OUTPUT"
+            echo "No successful merge_group run for ${SHA} — running the full post-merge \`test\` gate." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
   test:
     needs: [changes]
+    # Skip the post-merge re-test when the merge queue already validated this exact
+    # SHA (see the changes job's "Skip post-merge re-test" step). On pull_request
+    # and merge_group the flag is empty, so '' != 'true' keeps the job running.
+    if: needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
 
     steps:
