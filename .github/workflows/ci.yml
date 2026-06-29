@@ -92,10 +92,6 @@ concurrency:
 
 permissions:
   contents: read
-  # The `changes` job queries the Actions API (workflow runs for this commit) to
-  # detect whether the merge queue already validated the pushed SHA — see the
-  # "Skip post-merge re-test" step. Read-only; no other job needs it.
-  actions: read
 
 jobs:
   # Single ubuntu-latest job that runs dorny/paths-filter once for every
@@ -109,6 +105,13 @@ jobs:
     # keeps push-to-main runs unconditional (no PR context there).
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # `contents: read` for checkout; `actions: read` for the "Skip post-merge
+    # re-test" step's Actions-API query. Scoped to this job (least privilege) —
+    # no other job queries the API. A job-level block overrides the workflow
+    # default, so `contents: read` must be restated here for the checkout.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       server: ${{ steps.filter.outputs.server }}
       macros: ${{ steps.filter.outputs.macros }}
@@ -277,6 +280,9 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -uo pipefail
+          # No --paginate: a single (head_sha, event=merge_group) pair realistically
+          # yields 1 run (a few with re-runs), well within page 1 (≤30), so a success
+          # run can never fall onto a later page.
           count=$(gh api \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=merge_group" \
             --jq '[.workflow_runs[] | select(.conclusion == "success")] | length' 2>/dev/null || echo 0)
