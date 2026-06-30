@@ -224,14 +224,51 @@ Framing: this is **divergence triage to focus human attention**, not automatic b
 This is the card that justifies the repo over the script. Deferred from #1997 precisely because it
 needs a real local backend with changing bytes — which this repo has (manifold-llama, real GGUF).
 
-- **Extract `RecordReDriver.reDrive(handle:record:) -> RunRecord`** from `Replayer.runOnce`'s body
-  (do **not** add `Replayer.reproduceOutput` — keep `findingsRoot`/drift-refusal/findings-layout out
-  of eval; eval composes `makeHandle + reDrive + score`).
-- **Fix the config-lossy re-drive:** plumb the recorded seed + `topK`/`repeatPenalty` into generation.
-- **`RegressionGate`:** re-drive a captured session against a *new* GGUF (re-quant / model upgrade),
-  score both, and flag **score movement**. This only earns its keep when bytes differ — i.e.
-  cross-quant, which is exactly what this repo can produce and core cannot. Lockstep with a
-  manifold-llama consumer.
+> **⚠️ v2.1 correction (2026-06-30, ground-truthed across all three repos).** The "extract
+> `Replayer.runOnce` → core `RecordReDriver` primitive, lockstep with manifold-llama" approach
+> below is **wrong on the facts and architecturally disallowed** — superseded by the revised plan
+> that follows. Kept for provenance.
+>
+> What the code actually shows:
+> - `RecordReDriver` is an **inert protocol with zero production conformers** (only a test mock) —
+>   the exact #2064 read-seam-with-no-writer trap the plan invoked to justify it. Closing the moat
+>   means **deleting/collapsing it**, not implementing it.
+> - `RegressionGate.check` consumes the re-driven leg purely as `RawRun.output` (scored) + a
+>   `promptSha256` invariant — **no `RunRecord`, no bytes, no backend handle. Any `RawRun` producer
+>   satisfies it.**
+> - manifold-eval **already** re-drives against a real GGUF: `LlamaRunnerDriver` shells the
+>   manifold-llama subprocess and decodes `RawRun` — the same shape as the stub seam.
+> - The `#121` runner **already accepts an arbitrary `--model <path.gguf>`** and records `quant`, so
+>   cross-quant re-drive is two invocations with two `--model` paths — **0 new llama code** for the
+>   greedy path. No lockstep PR.
+> - The core `runOnce` extraction **can't be the eval path**: it returns a `RunRecord` (not `RawRun`),
+>   drives an **in-process** handle, and manifold-eval's Package.swift forbids linking llama in-process
+>   (`llama_backend_init` once-per-process).
+
+**Revised P4 (one manifold-eval PR — finalizes draft #8, no lockstep):**
+
+- Add a **`replay`/`regress` CLI subcommand**: capture baseline → re-drive the same prompt against a
+  *different-quant* GGUF via the existing `LlamaRunnerDriver` → score both → `RegressionGate` → emit a
+  `DIVERGENCE`/verdict report. (Today `RegressionGate` has **no CLI consumer** — library-only,
+  reached solely by tests — so the moat isn't yet a usable product feature.)
+- Add the **real cross-quant verification**: same model at **Q4_K_M vs Q8_0** (the live test used two
+  *different models* as a proxy; cross-quant parity is still unproven). Assert `.stable` on
+  identical-quant re-drive and `.moved` on a prompt where the quants genuinely diverge.
+- **Delete the dead `RecordReDriver`** (or collapse the seam onto `LlamaRunnerDriver` as the single
+  real producer).
+- *Not needed for the deterministic greedy moat:* faithful non-greedy sampler flags. The differential
+  is greedy/temp=0 by intent (sidesteps Ollama's unreliable seed). Adding `--topk`/`--repeat-penalty`
+  flags to the llama runner (~30–50 LOC) is a later nicety, not a blocker.
+
+**Caveat:** a Q4-vs-Q8 output delta is *movement*, which the gate flags — calling it a *regression*
+is the human-in-loop step (quant drift vs genuine correctness loss). The gate surfaces; it does not
+adjudicate.
+
+**Decoupled core-hygiene fix (NOT the moat, separate `fix(fuzz):` PR, lower priority).** The
+`Replayer.runOnce` re-drive is genuinely broken independent of eval: it **never seeds generation**
+(default RNG despite the `supportsDeterministicReplay` gate), hardcodes `repeatPenalty: 1.1`, and
+`ConfigSnapshot` has **no `topK` field at all** (a record-schema gap, not just plumbing). Worth
+fixing as assurance-of-the-fuzzer, but off the eval moat's critical path.
 
 ---
 
@@ -285,8 +322,9 @@ the initial build-out of a greenfield repo whose tests mostly don't touch hosted
 | **P1** | ✅ **SHIPPED 2026-06-29** — repo live at `ManifoldKit/manifold-eval` (public). Separate-process `Collator` (with coreCommit / tooling-drift comparability guard) + `CrossRuntimeMatrix` + `manifold-eval collate` CLI; 9 tests; adversarially reviewed (zero-yield-leg + drift guards added). Depends only on ManifoldKit `exact("0.63.0")`. | manifold-eval |
 | **P2** | ✅ **SHIPPED 2026-06-29** — P2.1 harness (manifold-eval #1, `735c3a3`) + P2.2 raw-prompt runner (manifold-llama #121, `bc7ec0b`), both adversarially reviewed (B1 deadlock + triage-determinism fixes), full gates green, merged. **Credibility gate PASSED:** same Qwen3-0.6B GGUF on Ollama + manifold-llama → byte-identical deterministic output, classified `identical`. Differential oracle proven. See §13b. | manifold-eval + manifold-llama |
 | **P3** | ✅ **SHIPPED 2026-06-30** (overnight) — merged to manifold-eval main (green): `ExactMatchScorer` (#2), IFEval lane w/ real 541-case corpus (#4), MTEB-STS lane (#5), BFCL-full lane (#6). Each adversarially reviewed (caught: locale fold, IFEval verifier semantics, BFCL greedy→bipartite, MTEB tie-test gap) + fixed. **Follow-ups merged 2026-06-30:** CLI lane-runners `manifold-eval ifeval\|bfcl\|mteb` (#7); real corpora wired+verified (#9) — Gorilla v4 BFCL = 1,240 cases, STS-B = 1,379 pairs → nomic-embed Spearman 0.8425 (matches published ~0.85); corpora fetched to cache, not committed. | manifold-eval |
-| **P4** | `RecordReDriver` + `RegressionGate` replay moat (lockstep w/ manifold-llama) | manifold-eval + manifold-llama |
-| **P5** | core-bump.yml lockstep + rot-guard + cadence go-live | ManifoldKit + manifold-eval |
+| **P4** | Replay-regression moat — **revised (§8 v2.1):** ONE manifold-eval PR finalizing draft #8 (`replay` CLI subcommand + real Q4↔Q8 cross-quant verification + delete inert `RecordReDriver`). **No llama lockstep** (runner already takes arbitrary `--model`); core `runOnce` extraction is NOT on this path. | manifold-eval |
+| **P4-aux (decoupled)** | `fix(fuzz):` seed/`repeatPenalty`/`topK`-schema in `Replayer.runOnce` — real in-core replay bug (replay isn't actually seeded), independent of the eval moat. Lower priority. | ManifoldKit |
+| **P5** | core-bump.yml lockstep + (deferred per maintainer 2026-06-30) rot-guard + cadence go-live → **on-demand-only `workflow_dispatch` for now**, owner+cadence parked | ManifoldKit + manifold-eval |
 | **(later)** | Vision lane (gated on #416 for llama) | manifold-eval |
 
 P0 is a hard prerequisite (the scorer must exist in-core first). P1→P2 are the credibility gates: if
