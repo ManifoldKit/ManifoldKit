@@ -282,7 +282,10 @@ public actor SessionScriptRunner {
                 temperature: options.temperature,
                 topP: options.topP,
                 maxTokens: options.maxOutputTokens,
-                systemPrompt: systemPrompt
+                systemPrompt: systemPrompt,
+                // topK is left at the GenerationConfig default (nil) by the
+                // enqueue above, so the snapshot truthfully omits it.
+                repeatPenalty: options.repeatPenalty
             ),
             prompt: RunRecord.PromptSnapshot(
                 corpusId: corpusId,

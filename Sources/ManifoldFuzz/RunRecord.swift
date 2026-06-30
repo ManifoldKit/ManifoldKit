@@ -209,6 +209,13 @@ public struct RunRecord: Codable, Sendable, Equatable {
         public var seed: UInt64
         public var temperature: Float
         public var topP: Float
+        /// Top-k sampling cutoff used for this run. `nil` when the run left the
+        /// backend's default in place. Recorded so a deterministic replay can
+        /// re-drive with the same cutoff rather than the backend default.
+        public var topK: Int32?
+        /// Repetition penalty used for this run (1.0 = none). Recorded so replay
+        /// re-drives with the same penalty instead of a hardcoded fallback.
+        public var repeatPenalty: Float
         public var maxTokens: Int?
         public var systemPrompt: String?
         /// `auto` | `none` | `required` | `tool:<name>`. `nil` when this run did
@@ -228,11 +235,15 @@ public struct RunRecord: Codable, Sendable, Equatable {
             maxTokens: Int?,
             systemPrompt: String?,
             toolChoice: String? = nil,
-            contextLimit: Int? = nil
+            contextLimit: Int? = nil,
+            topK: Int32? = nil,
+            repeatPenalty: Float = 1.1
         ) {
             self.seed = seed
             self.temperature = temperature
             self.topP = topP
+            self.topK = topK
+            self.repeatPenalty = repeatPenalty
             self.maxTokens = maxTokens
             self.systemPrompt = systemPrompt
             self.toolChoice = toolChoice
@@ -240,7 +251,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case seed, temperature, topP, maxTokens, systemPrompt, toolChoice, contextLimit
+            case seed, temperature, topP, topK, repeatPenalty, maxTokens, systemPrompt, toolChoice, contextLimit
         }
 
         public init(from decoder: Decoder) throws {
@@ -248,6 +259,11 @@ public struct RunRecord: Codable, Sendable, Equatable {
             seed = try c.decode(UInt64.self, forKey: .seed)
             temperature = try c.decode(Float.self, forKey: .temperature)
             topP = try c.decode(Float.self, forKey: .topP)
+            // Additive fields (#fuzz-replay-seed-faithful): records written before
+            // these keys existed decode to the GenerationConfig defaults rather
+            // than failing, so old findings still replay.
+            topK = try c.decodeIfPresent(Int32.self, forKey: .topK)
+            repeatPenalty = try c.decodeIfPresent(Float.self, forKey: .repeatPenalty) ?? 1.1
             maxTokens = try c.decodeIfPresent(Int.self, forKey: .maxTokens)
             systemPrompt = try c.decodeIfPresent(String.self, forKey: .systemPrompt)
             toolChoice = try c.decodeIfPresent(String.self, forKey: .toolChoice)

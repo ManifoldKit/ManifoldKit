@@ -328,12 +328,19 @@ public struct Replayer: Sendable {
         let start = ContinuousClock.now
 
         let prompt = record.prompt.messages.map(\.text).joined(separator: "\n")
-        let cfg = GenerationConfig(
+        // Re-drive with the RECORDED sampler config — seed, topK, and
+        // repeatPenalty included. Threading the recorded seed is what makes the
+        // `supportsDeterministicReplay` gate honest: without it, replay sampled
+        // against the backend's default RNG and could not reproduce a
+        // seed-dependent finding.
+        var cfg = GenerationConfig(
             temperature: record.config.temperature,
             topP: record.config.topP,
-            repeatPenalty: 1.1,
+            repeatPenalty: record.config.repeatPenalty,
             maxOutputTokens: record.config.maxTokens
         )
+        cfg.seed = record.config.seed
+        cfg.topK = record.config.topK
 
         var capture: EventRecorder.Capture
         do {
@@ -401,7 +408,9 @@ public struct Replayer: Sendable {
                 temperature: record.config.temperature,
                 topP: record.config.topP,
                 maxTokens: record.config.maxTokens,
-                systemPrompt: record.config.systemPrompt
+                systemPrompt: record.config.systemPrompt,
+                topK: record.config.topK,
+                repeatPenalty: record.config.repeatPenalty
             ),
             prompt: RunRecord.PromptSnapshot(
                 corpusId: record.prompt.corpusId,

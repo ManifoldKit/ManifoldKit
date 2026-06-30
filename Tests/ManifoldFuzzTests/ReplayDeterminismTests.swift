@@ -32,6 +32,25 @@ final class ReplayDeterminismTests: XCTestCase {
         }
     }
 
+    /// Hands out a SHARED `MockInferenceBackend` so the test can introspect the
+    /// `GenerationConfig` the Replayer's re-drive actually passed to `generate`
+    /// via `MockInferenceBackend.lastConfig`. Defaults to deterministic-replay
+    /// capable so it clears the Replayer's `supportsDeterministicReplay` gate.
+    struct CapturingFactory: FuzzBackendFactory {
+        let backend: MockInferenceBackend
+
+        func makeHandle() async throws -> FuzzRunner.BackendHandle {
+            backend.isModelLoaded = true
+            return FuzzRunner.BackendHandle(
+                backend: backend,
+                modelId: "chaos-model",
+                modelURL: URL(string: "mem:chaos-model")!,
+                backendName: "chaos",
+                templateMarkers: nil
+            )
+        }
+    }
+
     private var tempDir: URL!
 
     override func setUpWithError() throws {
@@ -50,7 +69,11 @@ final class ReplayDeterminismTests: XCTestCase {
     }
 
     @discardableResult
-    private func seedLoopingRecord() throws -> String {
+    private func seedLoopingRecord(
+        seed: UInt64 = 1337,
+        topK: Int32? = nil,
+        repeatPenalty: Float = 1.1
+    ) throws -> String {
         let rendered = String(repeating: "ha ", count: 60)
         let trigger = String(rendered.suffix(120))
         let finding = Finding(
@@ -78,7 +101,15 @@ final class ReplayDeterminismTests: XCTestCase {
                 fileSHA256: nil,
                 tokenizerHash: nil
             ),
-            config: .init(seed: 1337, temperature: 0.0, topP: 1.0, maxTokens: 256, systemPrompt: nil),
+            config: .init(
+                seed: seed,
+                temperature: 0.0,
+                topP: 1.0,
+                maxTokens: 256,
+                systemPrompt: nil,
+                topK: topK,
+                repeatPenalty: repeatPenalty
+            ),
             prompt: .init(
                 corpusId: "test",
                 mutators: [],
@@ -122,7 +153,7 @@ final class ReplayDeterminismTests: XCTestCase {
                     "count": finding.count,
                 ],
                 "modelId": "chaos-model",
-                "seed": 1337,
+                "seed": seed,
                 "lastSeen": "2026-04-19T00:00:00Z",
             ]],
         ]
@@ -192,5 +223,39 @@ final class ReplayDeterminismTests: XCTestCase {
         let decoded = try JSONDecoder().decode(RunRecord.self, from: data)
         XCTAssertEqual(decoded.config.seed, 1337,
             "the original record's seed must be preserved on disk after replay")
+    }
+
+    /// The core regression guard: the recorded seed/topK/repeatPenalty must be
+    /// threaded into the `GenerationConfig` the re-drive hands to the backend's
+    /// `generate`. We assert at the config boundary (not on output) because
+    /// `MockInferenceBackend` ignores the seed for its token stream — only the
+    /// config plumbing is observable.
+    ///
+    /// Sabotage map (this test FAILS unless `runOnce` threads each field):
+    ///  - drop `cfg.seed = record.config.seed` → `lastConfig.seed` is nil ≠ 4242
+    ///  - drop `cfg.topK = record.config.topK` → `lastConfig.topK` is nil ≠ 7
+    ///  - hardcode `repeatPenalty: 1.1` → `lastConfig.repeatPenalty` is 1.1 ≠ 1.7
+    func test_runOnce_threadsRecordedSamplerConfig_intoReDriveGenerate() async throws {
+        let hash = try seedLoopingRecord(seed: 4242, topK: 7, repeatPenalty: 1.7)
+        let backend = MockInferenceBackend()
+        backend.tokensToYield = Array(repeating: "ha ", count: 60)
+        let factory = CapturingFactory(backend: backend)
+        let replayer = Replayer(
+            findingsRoot: tempDir,
+            factory: factory,
+            gitRevResolver: { "aaaaaaa" },
+            modelHashResolver: { _ in nil }
+        )
+
+        _ = try await replayer.replay(hash: hash, attempts: 1)
+
+        let used = try XCTUnwrap(backend.lastConfig,
+            "the re-drive must have called generate exactly once")
+        XCTAssertEqual(used.seed, 4242,
+            "recorded seed must be threaded into the re-drive config — without it replay samples against the backend default RNG")
+        XCTAssertEqual(used.topK, 7,
+            "recorded topK must be threaded into the re-drive config, not dropped")
+        XCTAssertEqual(used.repeatPenalty, 1.7, accuracy: 1e-6,
+            "recorded repeatPenalty must be threaded, not the hardcoded 1.1 fallback")
     }
 }

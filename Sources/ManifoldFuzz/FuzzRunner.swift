@@ -242,7 +242,9 @@ public actor FuzzRunner {
                 topP: topP,
                 maxTokens: maxTokens,
                 systemPrompt: entry.system,
-                toolChoice: toolDefs.isEmpty ? nil : encodeToolChoice(toolChoice)
+                toolChoice: toolDefs.isEmpty ? nil : encodeToolChoice(toolChoice),
+                topK: cfg.topK,
+                repeatPenalty: cfg.repeatPenalty
             ),
             prompt: RunRecord.PromptSnapshot(
                 corpusId: entry.id,
