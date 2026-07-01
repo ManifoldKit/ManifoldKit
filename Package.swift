@@ -987,6 +987,11 @@ let package = Package(
                 .copy("Scenarios/built-in"),
                 // BFCL argument-level scorer fixtures (simple-category slice).
                 .copy("BFCL/fixtures"),
+                // read_file / list_dir / sample_repo_search sandbox fixture tree
+                // (moved from Tests/Fixtures/manifold-tools, #C1) — ships inside
+                // Bundle.module so ToolFixtures.bundledRoot() resolves it
+                // regardless of CWD, mirroring the built-in scenario corpus.
+                .copy("Fixtures/manifold-tools"),
             ]
         ),
         // manifold-tools does NOT depend on the (retired) ManifoldBackends
