@@ -42,6 +42,15 @@ targets: [
 > **Info.plist.** Add both keys before recording, or authorization fails:
 > - `NSMicrophoneUsageDescription`
 > - `NSSpeechRecognitionUsageDescription`
+>
+> **A bare `swift run` executable can't carry these keys.** SwiftPM rejects a
+> bundled `Info.plist` as a resource (`resource 'Info.plist' … forbidden`), and a
+> command-line binary has no app bundle to hold usage strings — so microphone /
+> speech authorization can never be granted and `VoiceConversationController`
+> lands in `.failed(...)`. Voice needs an **Xcode `.app` target** (or an
+> `xcodebuild` app bundle) with these keys in its `Info.plist`. A SwiftUI app
+> target has one by default; a SwiftPM command-line tool does not — plan for an
+> `.app` if voice is in scope.
 
 ---
 

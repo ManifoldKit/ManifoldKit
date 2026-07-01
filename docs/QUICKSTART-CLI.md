@@ -13,7 +13,7 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 >
 > If you're on macOS 15 and want a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-15). Foundation Models will not load.
 
-Sections §1–§3b are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §3 is a one-shot smoke test; [§3b](#3b-interactive-repl-stdin-loop) is the multi-turn REPL most CLIs actually want. §4 (MLX) is the exception — it builds and loads under SwiftPM but **cannot generate from `swift run`** (it needs an Xcode `.app` build for its Metal kernels); see the callout in that section.
+Sections §1–§3b are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §3 is a one-shot smoke test; [§3b](#3b-interactive-repl-stdin-loop) is the multi-turn REPL most CLIs actually want. §4 (MLX) is the exception — from a bare `swift run` it generates only when the **Metal Toolchain** component is installed (otherwise MLX aborts at model load); see the callout in that section.
 
 > **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
 
@@ -584,9 +584,9 @@ The same `readLine()` loop works for §1 (Foundation) and §2 (GGUF) — swap th
 MLX is ManifoldKit's fastest local backend on Apple Silicon (and the only one with on-device image generation). It ships in the [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) companion package.
 
 > [!IMPORTANT]
-> **MLX cannot generate from a plain `swift run` CLI — it needs an Xcode-built `.app`.** mlx-swift compiles its Metal kernels into a `default.metallib` that is only produced by the Xcode / `xcodebuild` build path; a bare SwiftPM executable never builds or bundles it, so MLX aborts at model load with `MLX error: Failed to load the default metallib`. Discovery, classification, registration, and the load *plan* all work under `swift run` — only the generate step fails.
+> **MLX from a plain `swift run` CLI needs the Metal Toolchain component.** mlx-swift loads a precompiled `mlx.metallib` at GPU init; `manifold-mlx`'s `MLXMetallibPlugin` compiles it during `swift build` and `MLXMetallibStaging` colocates it next to the binary — **but only when the Metal Toolchain component is installed** (`xcodebuild -downloadComponent MetalToolchain`, or Xcode ▸ Settings ▸ Components). Without it the build still succeeds but emits no metallib, so MLX aborts at model load with `MLX error: Failed to load the default metallib`. Discovery, classification, registration, and the load *plan* all work regardless — only the GPU load (model load onward) needs the metallib.
 >
-> **So:** for a headless / `swift run` CLI, use the **GGUF/Llama backend (§2)** — it runs fine from SwiftPM. Reach for MLX from a **SwiftUI / Xcode app** (see [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends)), or from a CLI target built with `xcodebuild` rather than `swift run`. The recipe below is the wiring that an Xcode-built MLX target uses.
+> **So:** for the simplest headless CLI, the **GGUF/Llama backend (§2)** needs no Metal setup at all. To run MLX from `swift run`, install the Metal Toolchain component (above); otherwise build the target with `xcodebuild`, or reach for MLX from a **SwiftUI / Xcode app** (see [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends)). The recipe below is the wiring either path uses.
 
 **Get an MLX model first.** MLX loads a *directory* (`config.json` + `*.safetensors`), not a single file — point HuggingFace at an `mlx-community` repo and drop it under the auto-discovered `~/Documents/Models/`:
 
@@ -657,7 +657,8 @@ struct ChatCLIMLX {
             strategy: .mappable
         )
         // NOTE: under plain `swift run` this load throws the metallib error
-        // described in the callout above — build via xcodebuild / an .app to run it.
+        // described in the callout above unless the Metal Toolchain component is
+        // installed (or you build the target via xcodebuild / an .app).
         try await inference.loadModel(from: mlxModel, plan: plan)
 
         let stream = try inference.generate(messages: [("user", "Say hello in five words.")])
