@@ -44,6 +44,10 @@ on:
       - "Sources/ManifoldInference/**"
       - "Sources/ManifoldUI/**"
       - "scripts/cold-start-human.sh"
+      # scripts/cold-start-human.sh now sources this shared lib for its build
+      # step — list it explicitly so edits to it re-trigger this gate (per CI
+      # path-filter self-validation rule).
+      - "scripts/_lib/**"
       - ".github/workflows/cold-start-human.yml"
       - ".github/actions/setup-swift-ci/**"
 

@@ -56,6 +56,7 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
+      - "scripts/_lib/**"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       - "scripts/affected-suites.sh"
