@@ -12,43 +12,93 @@ import XCTest
 /// Llama / HuggingFace / Fuzz / FoundationOnly in PR C2 (the companion
 /// split, #1749).
 ///
-/// Post-C2 this audit enforces two invariants:
+/// ## #2095 rewrite: manifest-driven instead of a hardcoded table
 ///
-/// 1. **The surviving traits stay non-decorative.** `Server` and `Macros`
-///    are genuine build-cost levers (Hummingbird; swift-syntax ~647 files);
-///    their consumer edges must keep `condition: .when(traits:)` clauses.
-///    (The WWDC stub traits `SystemAIProviderExtension` / `CoreAI` are
-///    deliberately decorative by design — no targets exist yet.)
-/// 2. **No retired trait reappears.** Neither as a `.trait(name:)`
-///    declaration nor as a `.when(traits:)` condition. The MLX/Llama
-///    families live in the manifold-mlx / manifold-llama companion
-///    packages; resurrecting their traits in core means the split regressed.
+/// The original version of this test asserted against a hand-curated
+/// `expectedGates` table of 4 (module, trait) pairs. Because the table was a
+/// fixed set of *examples* rather than something derived from the manifest,
+/// it silently stopped covering new trait-gated edges as they were added —
+/// by the 2026-07-01 audit, 5 real gated edges existed that the table never
+/// knew about (`ManifoldServer→ManifoldFoundation`/`→ManifoldOllama`/`→HTTPTypes`,
+/// `ManifoldServerTests→HummingbirdTesting`/`→HTTPTypes`,
+/// `ManifoldInferenceTests→SwiftSyntaxMacrosTestSupport`). Any of those
+/// losing its gate tomorrow would have gone undetected.
 ///
-/// The assertions are intentionally substring-based and not AST-based: a
-/// syntactic check is enough to catch the regression class and avoids
+/// The rewrite enforces the same invariant two ways:
+///
+/// 1. **Family rule (fully generic, no table).** Certain external products
+///    and local targets exist in this package *solely* to serve one trait —
+///    nothing else could legitimately depend on them unconditionally. For
+///    these, the rule is: wherever the symbol appears as a dependency
+///    *anywhere* in the manifest, it must carry that trait's
+///    `condition: .when(traits:)`. This automatically covers future
+///    consumers without a test update. Covers the `swift-syntax`-derived
+///    products + `ManifoldMacrosPlugin` (Macros) and the `hummingbird` /
+///    `swift-http-types`-derived products (Server).
+/// 2. **Explicit dual-nature list (small, by necessity).** `ManifoldInference`,
+///    `ManifoldFoundation`, and `ManifoldOllama` are ordinary general-purpose
+///    targets consumed unconditionally almost everywhere — they are only
+///    trait-gated in the one specific case where `ManifoldServer` depends on
+///    them (so its trait-off build compiles a no-op stub). A blanket
+///    by-name rule would be wrong here (it would flag their legitimate
+///    unconditional uses elsewhere across dozens of other targets), so
+///    these three edges stay an explicit, reviewed list scoped to their
+///    specific consumer.
+///
+/// Post-C2 this audit also enforces the invariant carried over from the
+/// original version: **no retired trait reappears**, neither as a
+/// `.trait(name:)` declaration nor as a `.when(traits:)` condition. The
+/// MLX/Llama families live in the manifold-mlx / manifold-llama companion
+/// packages; resurrecting their traits in core means the split regressed.
+///
+/// The assertions are intentionally substring/brace-based and not AST-based:
+/// a syntactic check is enough to catch the regression class and avoids
 /// pulling SwiftSyntax into the default test build.
 final class PackageTraitGateAuditTest: XCTestCase {
 
-    /// Each entry is one expected `condition: .when(traits: [...])` clause
-    /// on a consumer→module dependency edge. The `description` is what gets
-    /// surfaced on failure.
-    private struct ExpectedGate {
-        let description: String
-        let module: String
+    // MARK: - Rule 1: family-based generic gate check
+
+    /// External-product / local-target names that exist in this package
+    /// *solely* to serve one trait. Wherever one of these names appears as a
+    /// dependency anywhere in the manifest, it must carry
+    /// `condition: .when(traits: ["<trait>"])` for the mapped trait — no
+    /// per-consumer entry needed, so a brand-new consumer of (say) a new
+    /// swift-syntax product is covered automatically.
+    private static let traitDefiningSymbols: [String: String] = [
+        // Macros — the @ToolSchema plugin is the only thing that pulls
+        // swift-syntax (~647 files) into the graph. ManifoldMacrosPlugin
+        // itself is single-purpose: nothing else could legitimately depend
+        // on a macro compiler plugin unconditionally.
+        "ManifoldMacrosPlugin": "Macros",
+        "SwiftSyntax": "Macros",
+        "SwiftSyntaxMacros": "Macros",
+        "SwiftSyntaxBuilder": "Macros",
+        "SwiftCompilerPlugin": "Macros",
+        "SwiftDiagnostics": "Macros",
+        "SwiftSyntaxMacrosTestSupport": "Macros",
+        // Server — Hummingbird / HTTPTypes exist in this graph only to
+        // serve the HTTP server executable.
+        "Hummingbird": "Server",
+        "HummingbirdTesting": "Server",
+        "HTTPTypes": "Server",
+    ]
+
+    /// A single (consumer target, dependency, trait) tuple for the explicit
+    /// dual-nature list below.
+    private struct ConsumerEdge {
+        let consumer: String
+        let dependency: String
         let trait: String
     }
 
-    private static let expectedGates: [ExpectedGate] = [
-        // Server: the executable's deps are Server-conditional so a trait-off
-        // build compiles the no-op stub without Hummingbird or the backend
-        // graph (PR #946 pattern).
-        .init(description: "ManifoldServer → ManifoldInference", module: "ManifoldInference", trait: "Server"),
-        .init(description: "ManifoldServer → Hummingbird", module: "Hummingbird", trait: "Server"),
-
-        // Macros: the @ToolSchema plugin is the only thing that pulls
-        // swift-syntax (~647 files) into the graph.
-        .init(description: "ManifoldInference → ManifoldMacrosPlugin", module: "ManifoldMacrosPlugin", trait: "Macros"),
-        .init(description: "ManifoldMacrosPlugin → SwiftSyntax", module: "SwiftSyntax", trait: "Macros"),
+    /// Dual-nature local targets: ordinary general-purpose targets consumed
+    /// unconditionally almost everywhere, but trait-gated in this ONE
+    /// specific consumer so its trait-off build stays a no-op stub. Cannot
+    /// be a blanket by-name rule (see class doc) — reviewed explicitly.
+    private static let dualNatureConsumerEdges: [ConsumerEdge] = [
+        .init(consumer: "ManifoldServer", dependency: "ManifoldInference", trait: "Server"),
+        .init(consumer: "ManifoldServer", dependency: "ManifoldFoundation", trait: "Server"),
+        .init(consumer: "ManifoldServer", dependency: "ManifoldOllama", trait: "Server"),
     ]
 
     /// The complete allowed trait set post-C2. Anything else in the manifest
@@ -72,30 +122,81 @@ final class PackageTraitGateAuditTest: XCTestCase {
         "MLX", "Llama", "HuggingFace", "Fuzz", "FoundationOnly", // PR C2
     ]
 
-    func test_packageManifestDeclaresExpectedTraitGates() throws {
+    func test_traitDefiningSymbolsAreGatedWhereverReferenced() throws {
         let manifestURL = try Self.locatePackageManifest()
         let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
 
         var violations: [String] = []
-        for gate in Self.expectedGates {
-            if !Self.manifest(manifest, declaresGate: gate) {
-                violations.append("\(gate.description) — missing `condition: .when(traits: [\"\(gate.trait)\"])` on the `name: \"\(gate.module)\"` edge")
+        for (idx, rawLine) in manifest.components(separatedBy: "\n").enumerated() {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+            for (symbol, trait) in Self.traitDefiningSymbols {
+                guard Self.lineIsDependencyReference(trimmed, to: symbol) else { continue }
+                let hasCondition = trimmed.contains("condition:")
+                    && trimmed.contains(".when(")
+                    && trimmed.contains("traits: [\"\(trait)\"]")
+                if !hasCondition {
+                    violations.append(
+                        "line \(idx + 1): `\(symbol)` referenced as a dependency without `condition: .when(traits: [\"\(trait)\"])` — \(trimmed)"
+                    )
+                }
             }
         }
 
         if !violations.isEmpty {
             let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
             XCTFail("""
-                Package.swift trait-gating regressed. The following consumer→module
-                edges no longer carry their expected `condition: .when(traits: [...])`
-                clause. See issue #951 and PR #946 for the established pattern.
+                Package.swift trait-gating regressed. The following trait-defining
+                symbols (products/targets that exist in this package solely to
+                serve one trait) are referenced without their required
+                `condition: .when(traits: [...])` clause.
+
+                Violations:
+                \(formatted)
+
+                If a symbol genuinely no longer belongs to a single trait, update
+                `traitDefiningSymbols` in this test in the same PR with a rationale.
+                """)
+        }
+    }
+
+    func test_dualNatureConsumerEdgesStayGated() throws {
+        let manifestURL = try Self.locatePackageManifest()
+        let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
+
+        var violations: [String] = []
+        for edge in Self.dualNatureConsumerEdges {
+            guard let block = Self.targetBlock(in: manifest, targetName: edge.consumer) else {
+                violations.append("could not locate a target block named \"\(edge.consumer)\" at all")
+                continue
+            }
+            var found = false
+            for rawLine in block.components(separatedBy: "\n") {
+                let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+                guard Self.lineIsDependencyReference(trimmed, to: edge.dependency) else { continue }
+                if trimmed.contains("condition:"), trimmed.contains(".when("),
+                   trimmed.contains("traits: [\"\(edge.trait)\"]") {
+                    found = true
+                }
+            }
+            if !found {
+                violations.append("\(edge.consumer) → \(edge.dependency) — missing `condition: .when(traits: [\"\(edge.trait)\"])`")
+            }
+        }
+
+        if !violations.isEmpty {
+            let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
+            XCTFail("""
+                Package.swift trait-gating regressed on a dual-nature consumer
+                edge (a general-purpose target that's only conditionally gated
+                in this one specific consumer). See issue #951 / PR #946 for the
+                established pattern.
 
                 Violations:
                 \(formatted)
 
                 If a gap is intentional (e.g. you renamed a target), update
-                `expectedGates` in this test in the same PR. DO NOT silently
-                drop entries.
+                `dualNatureConsumerEdges` in this test in the same PR. DO NOT
+                silently drop entries.
                 """)
         }
     }
@@ -144,23 +245,64 @@ final class PackageTraitGateAuditTest: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Whether `manifest` contains a dependency line that names `gate.module`
-    /// AND attaches `condition: .when(traits: ["<trait>"])`. The manifest
-    /// declaration spans one logical line in practice, so a single line scan
-    /// is sufficient. Matches both `.target(name:)` and `.product(name:)`.
-    private static func manifest(_ manifest: String, declaresGate gate: ExpectedGate) -> Bool {
-        let needleNamePart = "name: \"\(gate.module)\""
-        let needleTraitPart = "traits: [\"\(gate.trait)\"]"
+    /// `true` when `trimmed` is a dependency-list reference to `symbol` —
+    /// either the inline `.target(name: "X", ...)` / `.product(name: "X",
+    /// ...)` / `.testTarget(name: "X", ...)` / `.executableTarget(name: "X",
+    /// ...)` form (which always keeps the opening call and `name:` on one
+    /// line in this manifest's style), or a bare `"X",` string-literal
+    /// dependency entry. Top-level target *declarations* in this manifest
+    /// always split their opening keyword (`.target(`) and `name: "X",`
+    /// across two lines, so they never match this prefix check — only
+    /// dependency-array elements do.
+    private static func lineIsDependencyReference(_ trimmed: String, to symbol: String) -> Bool {
+        let explicitPrefixes = [
+            ".target(name: \"\(symbol)\"",
+            ".product(name: \"\(symbol)\"",
+            ".testTarget(name: \"\(symbol)\"",
+            ".executableTarget(name: \"\(symbol)\"",
+        ]
+        if explicitPrefixes.contains(where: trimmed.hasPrefix) { return true }
+        // Bare-string dependency entries (e.g. `"ManifoldRuntime",`) can
+        // never carry a condition — if a trait-defining symbol appears this
+        // way, it's unconditionally linked, which is itself the violation.
+        return trimmed == "\"\(symbol)\"," || trimmed == "\"\(symbol)\""
+    }
 
-        for rawLine in manifest.components(separatedBy: "\n") {
-            if rawLine.contains(needleNamePart),
-               rawLine.contains("condition:"),
-               rawLine.contains(".when("),
-               rawLine.contains(needleTraitPart) {
-                return true
+    /// Extracts the full text of a `.target(...)` / `.testTarget(...)` /
+    /// `.executableTarget(...)` / `.macro(...)` block whose `name:` argument
+    /// matches `targetName`, by brace-matching from the declaration keyword
+    /// to its closing paren. Mirrors the equivalent helper in
+    /// `TrafficBoundaryAuditTest`.
+    private static func targetBlock(in manifest: String, targetName: String) -> String? {
+        let markers = [".target(", ".testTarget(", ".executableTarget(", ".macro("]
+        for marker in markers {
+            var searchStart = manifest.startIndex
+            while let declStart = manifest.range(of: marker, range: searchStart..<manifest.endIndex)?.lowerBound {
+                var depth = 0
+                var end = declStart
+                var index = declStart
+                while index < manifest.endIndex {
+                    let character = manifest[index]
+                    if character == "(" {
+                        depth += 1
+                    } else if character == ")" {
+                        depth -= 1
+                        if depth == 0 {
+                            end = manifest.index(after: index)
+                            break
+                        }
+                    }
+                    index = manifest.index(after: index)
+                }
+                guard end > declStart else { break }
+                let block = String(manifest[declStart..<end])
+                if block.contains("name: \"\(targetName)\"") {
+                    return block
+                }
+                searchStart = end
             }
         }
-        return false
+        return nil
     }
 
     /// Parses `.trait(name: "X", ...)` declarations out of the manifest.
