@@ -15,6 +15,8 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 
 Sections §1–§3b are complete, compile-tested examples: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`. §3 is a one-shot smoke test; [§3b](#3b-interactive-repl-stdin-loop) is the multi-turn REPL most CLIs actually want. §4 (MLX) is the exception — from a bare `swift run` it generates only when the **Metal Toolchain** component is installed (otherwise MLX aborts at model load); see the callout in that section.
 
+> **First build is slow — that's the whole package graph resolving, not your target.** Depending on ManifoldKit pulls its full dependency closure (~15 packages: NIO, swift-syntax, huggingface, and more) at `swift package resolve`, even for the Foundation-only path in §1 that links none of them. Expect a multi-minute first `swift build`; subsequent builds are incremental and fast. Slimming your target's product list (as §1 does) trims *compile/link* time but not the one-time resolve.
+
 > **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
 
 ---
@@ -55,7 +57,7 @@ then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `Manif
 
 ### Granular vs umbrella imports for CLI targets
 
-The examples below depend on four core products — `ManifoldInference`, `ManifoldFoundation`, `ManifoldOllama`, and `ManifoldCloudSaaS` — and import them individually. That keeps a headless executable from linking `ManifoldUI` and `ManifoldPersistenceSwiftData`, which the `ManifoldKit` umbrella also re-exports.
+Most examples below depend on four core products — `ManifoldInference`, `ManifoldFoundation`, `ManifoldOllama`, and `ManifoldCloudSaaS` — and import them individually. That keeps a headless executable from linking `ManifoldUI` and `ManifoldPersistenceSwiftData`, which the `ManifoldKit` umbrella also re-exports. Link only the families you actually register: [§1](#1-foundation-models-macos-26) (Foundation-only) slims to two products, while §3 keeps all four so the same manifest works when you swap `.ollama` for `.openAI` or `.claude`.
 
 If you'd rather match the SwiftUI quickstarts and take the umbrella import, swap the target dependencies for a single product and write one import:
 
@@ -97,10 +99,11 @@ let package = Package(
         .executableTarget(
             name: "ChatCLIFoundation",
             dependencies: [
+                // Foundation-only is the leanest path: just the engine plus the
+                // Foundation family. Add ManifoldOllama / ManifoldCloudSaaS (see
+                // §3) only when you also want to reach an HTTP provider.
                 .product(name: "ManifoldInference", package: "ManifoldKit"),
                 .product(name: "ManifoldFoundation", package: "ManifoldKit"),
-                .product(name: "ManifoldOllama", package: "ManifoldKit"),
-                .product(name: "ManifoldCloudSaaS", package: "ManifoldKit"),
             ]
         ),
     ]
@@ -113,15 +116,14 @@ let package = Package(
 import Foundation
 import ManifoldInference
 import ManifoldFoundation
-import ManifoldOllama
-import ManifoldCloudSaaS
 @main
 @MainActor
 struct ChatCLIFoundation {
     static func main() async throws {
         let inference = InferenceService()
-        OllamaBackends.register(with: inference)
-        CloudSaaSBackends.register(with: inference)
+        // Register only the family you use. A Foundation-only CLI needs just
+        // this one call — §3 adds OllamaBackends / CloudSaaSBackends for HTTP
+        // providers, and each registrar is independent.
         FoundationBackends.register(with: inference)
         // .builtInFoundation is a sentinel ModelInfo that targets Apple's
         // on-device Foundation Models. .cloud() is the matching ModelLoadPlan
@@ -142,6 +144,8 @@ struct ChatCLIFoundation {
 
 Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are `@MainActor`-isolated — that's why the example's enclosing scope is annotated `@MainActor`. The compiler will reject a non-`@MainActor` call site with a region-isolation error in Swift 6 mode. (SwiftUI consumers never notice because `App.body` is already on the main actor.)
 
+> **Want a multi-turn REPL, not a one-shot?** The `readLine()` loop in [§3b](#3b-interactive-repl-stdin-loop) drops straight onto this Foundation setup — keep the two imports and single `FoundationBackends.register(with:)` above, then drop §3b's `APIEndpointRecord` construction and its `loadEndpointBackend(...)` call, replacing them with the `loadModel(from: .builtInFoundation, plan: .cloud())` line shown here. The stdin loop itself is unchanged.
+
 ---
 
 ## 2. Local GGUF via the Llama backend (macOS 15+)
@@ -151,8 +155,11 @@ This is the section that closes the "I'm on macOS 15 and want to evaluate Manifo
 **Get a model first.** Drop any GGUF file into `~/Documents/Models/`. SwiftUI hosts that use `ModelManagementSheet` discover both `~/Documents/Models` and the app-scoped Application Support directory — see [`docs/LOCAL-GGUF.md`](LOCAL-GGUF.md) for the full storage contract. Good starter picks:
 
 - [`Llama-3.2-3B-Instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF) — ~2 GB, instruction-tuned, no reasoning tokens — **the snippet below works with this model unchanged**
+- [`Phi-3.5-mini-instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF) — ~2.2 GB, plain instruct, no reasoning or tool-call tokens — another safe default for a naive REPL
 - [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, fast, but emits `.thinkingToken` events before its final answer — see ["Reasoning models" below](#reasoning-models-thinking-tokens) before using
 - Any other GGUF you've downloaded via HuggingFace, Ollama, or LM Studio
+
+> **Pick a plain instruct model for a first REPL.** The bare `if case .token` snippet below assumes conversational prose. Two model families surprise a naive host: **reasoning models** (Qwen3, DeepSeek-R1) emit `.thinkingToken` before their answer (see ["Reasoning models" below](#reasoning-models-thinking-tokens)), and **tool-tuned or larger instruct builds** (e.g. Llama-3.1-8B-Instruct) can emit tool-call JSON — `{"name": "...", "parameters": {...}}` — as plain text even when you pass no tools, because that behavior is baked into their chat template. That JSON is the model's template, not a ManifoldKit bug. If you see JSON or reasoning where you expected prose, swap in a plain instruct model like the Llama-3.2-3B or Phi-3.5 above before reaching for tool handling.
 
 > **Llama-3 multi-turn:** Real Jinja chat templates (v0.54+, [#1898](https://github.com/ManifoldKit/ManifoldKit/issues/1898)) fixed the ChatML control-token leakage reported in [#1398](https://github.com/ManifoldKit/ManifoldKit/issues/1398). Still smoke-test long multi-turn sessions in your CLI — any regression is tracked at #1398.
 
