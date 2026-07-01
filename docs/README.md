@@ -78,7 +78,6 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) | The AnyLanguageModel bridge — Gemini, xAI, Groq, Mistral, OpenRouter, and OpenAI/Anthropic-compatible endpoints. |
 | [CLOUD-OAUTH.md](CLOUD-OAUTH.md) | OAuth flows for cloud providers. |
 | [LOCAL-GGUF.md](LOCAL-GGUF.md) | Local model storage contract and discovery. |
-| [llama-runtime.md](llama-runtime.md) | Tombstone — the llama.cpp runtime-behaviour doc moved to [manifold-llama](https://github.com/ManifoldKit/manifold-llama). |
 | [LLAMA_CONTRACT.md](LLAMA_CONTRACT.md) | Tombstone — the llama.cpp C-API contract moved to [manifold-llama](https://github.com/ManifoldKit/manifold-llama). |
 | [SOURCEKIT_DIAGNOSTICS.md](SOURCEKIT_DIAGNOSTICS.md) | Non-destructive investigation of stale SourceKit module errors. |
 

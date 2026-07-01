@@ -25,7 +25,7 @@
 - **manifold-mlx #101** (merged `f3f72bd`): first MLX **render-side golden** corpus (model-free, byte-exact) — the deterministic regression net.
 - **manifold-mlx #102** (merged `862be1b`): **additive structural-tools threading** into `applyChatTemplate(messages:tools:)` + `supportsToolCalling` now `dialect != .unknown` + sorted JSON keys + Mistral prose gated off. Soak-verified: Llama-3.2 byte-identical (no regression); MLX-Mistral flipped silent→**emitting** `[TOOL_CALLS]`.
 - **manifold-mlx #104** (OPEN draft): Mistral `[TOOL_CALLS]` quote-normalizer (see decision #2).
-- **Matrix re-measure**: `docs/plans/runs/overnight-20260624-212539/MATRIX.md` — post-#2032/#2035. **llama.cpp-Mistral recovered** (render-fail→✅); **MLX-Mistral F3 confirmed still failing**; gemma3 renders-no-call (model fact); gemma4 still load-fails on llama.cpp (arch); `llama3.1-8b` + `qwen3.5-4b` GGUFs were **absent from disk** (not measured).
+- **Matrix re-measure**: `docs/plans/archive/runs/overnight-20260624-212539/MATRIX.md` — post-#2032/#2035. **llama.cpp-Mistral recovered** (render-fail→✅); **MLX-Mistral F3 confirmed still failing**; gemma3 renders-no-call (model fact); gemma4 still load-fails on llama.cpp (arch); `llama3.1-8b` + `qwen3.5-4b` GGUFs were **absent from disk** (not measured).
 - **Companion issue comments**: manifold-llama #67/#45, manifold-mlx #82/#100/#97 carry fresh re-measured evidence.
 
 ---

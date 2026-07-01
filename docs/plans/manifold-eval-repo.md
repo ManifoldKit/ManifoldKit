@@ -70,7 +70,7 @@ All six PRs landed on `main` (each reviewed by an adversarial worker before merg
 | #2046 | `MatrixRenderer` (records → `MATRIX.md`) + `matrix` CLI + `local-integration-sweep.sh` wiring |
 | #2047 | Matrix cell verdict derived from F1, not dominant failure subtype |
 
-**Validation (`docs/plans/runs/soak-20260626-100115/`):**
+**Validation (`docs/plans/archive/runs/soak-20260626-100115/`):**
 - **Smoke + soak** through the full chain (run → `score --emit-records` → `matrix`): 21 cells, 189 normalized Ollama records, one queried `MATRIX.md`. Within-run repeats were bit-identical (greedy sampling) — the overnight 0.10–0.12 F1 swings were cross-environment drift, not per-call noise.
 - **#2043 proven on real companion data:** the new scorer re-scored the exact llama.cpp Mistral transcript the overnight run wrongly reported as **F1=0.000** → **F1=0.810**. The cell that previously needed a human reading JSONL to override now scores correctly through the pipeline.
 - **Cross-runtime matrix** (`XRUNTIME_MATRIX.md`, Ollama + llama.cpp from existing transcripts) surfaces the gap the hand-written matrices hid: gemma4-e4b ✅ on Ollama vs 💥 load-fail on llama.cpp; gemma3-4b 0.000 on both (model fact); mistral-7b ~0.81–0.88 on both — with the honest "not evidence of a backend bug without a same-bytes control" caveat.
