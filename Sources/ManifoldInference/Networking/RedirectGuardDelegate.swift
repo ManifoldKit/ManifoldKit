@@ -65,6 +65,19 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
 
     // MARK: - Testing seam
 
+    /// Lock guarding the test-seam resolver override below. Separate from
+    /// ``lock`` (which guards ``hopCounts``, an instance property) since this
+    /// seam is static — a different lifetime and concern.
+    private static let testSeamLock = NSLock()
+
+    /// Lock-guarded backing storage for ``_synchronousResolverForTesting``.
+    /// The previous bare `nonisolated(unsafe) static var` raced when a real
+    /// redirect resolved a hostname on the session's delegate queue while a
+    /// test set/cleared the override from another thread (issue #2094) —
+    /// notably inconsistent with this same file's own ``lock``-guarded
+    /// ``hopCounts``. Mirrors `MCPSSRFPolicy._synchronousResolverForTesting`.
+    nonisolated(unsafe) private static var _synchronousResolverForTesting_storage: ((String) -> [String]?)? = nil
+
     /// Overrides the synchronous hostname resolver used by ``blockedHostReason(for:)``.
     ///
     /// `nil` (the default) uses the real `getaddrinfo` resolver. Set this in
@@ -72,7 +85,10 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
     /// resolution failure (the redirect will be blocked).
     ///
     /// - Warning: For testing only. Reset to `nil` in `tearDown`.
-    nonisolated(unsafe) static var _synchronousResolverForTesting: ((String) -> [String]?)? = nil
+    static var _synchronousResolverForTesting: ((String) -> [String]?)? {
+        get { testSeamLock.withLock { _synchronousResolverForTesting_storage } }
+        set { testSeamLock.withLock { _synchronousResolverForTesting_storage = newValue } }
+    }
 
     // MARK: - Init
 

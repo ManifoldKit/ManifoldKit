@@ -30,13 +30,23 @@ public enum DNSRebindingGuard {
 
     // MARK: - Testing seam
 
+    private static let overrideLock = NSLock()
+
+    /// Lock-guarded backing storage for ``_resolverForTesting``. The
+    /// previous bare `nonisolated(unsafe) static var` raced when a real
+    /// request resolved a hostname on one thread while a test set/cleared
+    /// the override on another (`swift test --parallel`, issue #2094).
+    /// Mirrors `MCPSSRFPolicy._resolverForTesting`.
+    nonisolated(unsafe) private static var _resolverForTesting_storage: ((String) async -> [String]?)? = nil
+
     /// Overrides the hostname resolver used by ``validate(url:)``.
     ///
     /// `nil` (the default) uses the real `getaddrinfo` resolver. Set this in
     /// tests to inject deterministic address lists without touching the network.
-    ///
-    /// - Warning: For testing only. Write this before any concurrent access.
-    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String]?)? = nil
+    static var _resolverForTesting: ((String) async -> [String]?)? {
+        get { overrideLock.withLock { _resolverForTesting_storage } }
+        set { overrideLock.withLock { _resolverForTesting_storage = newValue } }
+    }
 
     // MARK: - Public API
 
