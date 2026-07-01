@@ -64,7 +64,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | **Expose an App Intent to the model** | [QUICKSTART-APPINTENTS.md](QUICKSTART-APPINTENTS.md) |
 | **RAG — answer from your documents** | [QUICKSTART-RAG.md](QUICKSTART-RAG.md) — ingestion, semantic + keyword retrieval, reranking, and inline citations. |
 | **Voice (STT / TTS)** | [QUICKSTART-VOICE.md](QUICKSTART-VOICE.md) — usable standalone, not just in chat. |
-| **On-device image generation** | FLUX.1 Schnell / SDXL Turbo — the diffusion backends and their quickstart moved to the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package. |
+| **On-device image generation** | [QUICKSTART-IMAGE-GEN.md](QUICKSTART-IMAGE-GEN.md) — FLUX.1 Schnell / SDXL Turbo, download → load → generate. The diffusion backends ship in the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package. |
 | **Cloud video generation** | Moved to the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package docs (the `VideoGenerationBackend` protocol and persistence wiring stay in core). |
 | **Share Extension handoff** | [share-action-extension-recipe.md](share-action-extension-recipe.md) — ingest text/URLs from the system share sheet. |
 
