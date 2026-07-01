@@ -18,7 +18,7 @@ inference streams `GenerationEvent`.
 >
 > | Backend | Platforms | Memory |
 > |---|---|---|
-> | `FluxDiffusionBackend` | macOS 15+ only | ~7 GB unified-memory headroom |
+> | `FluxDiffusionBackend` | macOS 15+ (Apple Silicon) | ~7 GB headroom — a memory floor, not an API gate; impractical on iPhone |
 > | `MLXDiffusionBackend` | iOS 18+ / macOS 15+ | Checked at load time; throws `MLXDiffusionError.insufficientMemory` if the device can't fit the model |
 >
 > Bring-your-own URL — the backends take a **local directory** and do not
@@ -71,7 +71,7 @@ URL ▸ tick the `ManifoldMLX` product for your app target.)
 
 ## 2. End-to-end snippets
 
-### FluxDiffusionBackend (macOS only)
+### FluxDiffusionBackend (Apple Silicon Mac)
 
 `loadModel(from:)` is mandatory before the first `generate(prompt:config:)`
 call — calling `generate` on a fresh backend throws
@@ -292,7 +292,7 @@ running binary. How that library gets there depends on how you build:
   **provided the Metal Toolchain component is installed**
   (`xcodebuild -downloadComponent MetalToolchain`, or Xcode ▸ Settings ▸
   Components). Without that component the build still *succeeds* but emits no
-  metallib, and only the generate step aborts with the error above (discovery,
+  metallib, and MLX aborts at model load with the error above (discovery,
   classification, registration, and the load *plan* all still work).
 
 If you don't want to depend on the Metal Toolchain at all, the GGUF/llama.cpp
