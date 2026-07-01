@@ -18,6 +18,14 @@ on:
       - ".release-please-manifest.json"
   workflow_dispatch:
 
+# Cancelling in-progress runs is safe here — only the latest matters. Scoped
+# at the workflow level (not job level) for consistency with every other
+# workflow's concurrency block (ci.yml, lint.yml, nightly-slow-tests.yml,
+# codeql.yml) — cosmetic only, no functional change (#2099).
+concurrency:
+  group: release-please
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
@@ -25,10 +33,6 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
-    # Cancelling in-progress runs is safe here — only the latest matters.
-    concurrency:
-      group: release-please
-      cancel-in-progress: true
     outputs:
       release_created: ${{ steps.release-please.outputs.release_created }}
       tag_name: ${{ steps.release-please.outputs.tag_name }}

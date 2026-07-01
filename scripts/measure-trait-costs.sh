@@ -149,20 +149,35 @@ artifact_size_mb() {
 # in .build/checkouts after resolve, and that every heavy checkout (>5 MB) is
 # attributed somewhere.
 
-declare -A TRAIT_DEPS
-TRAIT_DEPS["Server"]="EventSource swift-nio swift-crypto swift-collections swift-atomics swift-system"
-TRAIT_DEPS["Macros"]="swift-syntax"
+# `declare -A` needs bash 4+; macOS ships bash 3.2 as /bin/bash. The trait key
+# set here is small and fixed (Server, Macros), so a `case` lookup function is
+# a direct bash-3.2-compatible substitute for an associative array (#2099).
+trait_deps() {
+    case "$1" in
+        Server) echo "EventSource swift-nio swift-crypto swift-collections swift-atomics swift-system" ;;
+        Macros) echo "swift-syntax" ;;
+        *) echo "" ;;
+    esac
+}
 
 # Modules added per trait (informational, shown in the table)
-declare -A TRAIT_MODULES
-TRAIT_MODULES["Server"]="ManifoldServer + Hummingbird"
-TRAIT_MODULES["Macros"]="ManifoldMacrosPlugin + @ToolSchema"
+trait_modules() {
+    case "$1" in
+        Server) echo "ManifoldServer + Hummingbird" ;;
+        Macros) echo "ManifoldMacrosPlugin + @ToolSchema" ;;
+        *) echo "" ;;
+    esac
+}
 
 # Trait flags used for each measurement (added on top of baseline).
 # Baseline = plain `swift build` — there are no default traits since v0.48.
-declare -A TRAIT_FLAGS
-TRAIT_FLAGS["Server"]="--traits Server"
-TRAIT_FLAGS["Macros"]="--traits Macros"
+trait_flags() {
+    case "$1" in
+        Server) echo "--traits Server" ;;
+        Macros) echo "--traits Macros" ;;
+        *) echo "" ;;
+    esac
+}
 
 # Ordered list of traits to measure. MLX/Llama/HuggingFace/Fuzz/FoundationOnly
 # were retired in v0.48 PR C2 (families moved to companion packages).
@@ -170,6 +185,22 @@ TRAITS_TO_MEASURE=(
     Server
     Macros
 )
+
+# trait_index NAME echoes NAME's position in TRAITS_TO_MEASURE (or -1). Used
+# to key the per-trait measurement arrays below by index instead of by name,
+# since those arrays are populated at runtime (unlike the fixed trait_deps/
+# trait_modules/trait_flags maps above) and bash 3.2 has no associative
+# arrays to key them by name directly (#2099).
+trait_index() {
+    local name="$1" i
+    for i in "${!TRAITS_TO_MEASURE[@]}"; do
+        if [[ "${TRAITS_TO_MEASURE[$i]}" == "$name" ]]; then
+            echo "$i"
+            return
+        fi
+    done
+    echo -1
+}
 
 # ─── main ─────────────────────────────────────────────────────────────────────
 
@@ -221,17 +252,19 @@ else
     fi
 
     # ── per-trait measurements ────────────────────────────────────────────────
-    # Build JSON entries for each trait
-    declare -A TRAIT_BINARY_KB
-    declare -A TRAIT_BINARY_DELTA_KB
-    declare -A TRAIT_BUILD_S
-    declare -A TRAIT_BUILD_DELTA_S
-    declare -A TRAIT_CHECKOUT_MB
-    declare -A TRAIT_ARTIFACT_MB
+    # Build JSON entries for each trait. Indexed arrays keyed by trait_index
+    # (see above) — `declare -A` needs bash 4+ (#2099).
+    TRAIT_BINARY_KB=()
+    TRAIT_BINARY_DELTA_KB=()
+    TRAIT_BUILD_S=()
+    TRAIT_BUILD_DELTA_S=()
+    TRAIT_CHECKOUT_MB=()
+    TRAIT_ARTIFACT_MB=()
 
     for trait in "${TRAITS_TO_MEASURE[@]}"; do
-        flags="${TRAIT_FLAGS[$trait]}"
-        deps="${TRAIT_DEPS[$trait]:-}"
+        idx=$(trait_index "$trait")
+        flags="$(trait_flags "$trait")"
+        deps="$(trait_deps "$trait")"
 
         # Checkout MB: sum attributed checkouts. (No binary artifacts remain
         # in core since v0.48 — the llama.cpp xcframework moved to the
@@ -242,40 +275,40 @@ else
             mb=$(checkout_size_mb "$dep")
             checkout_mb=$((checkout_mb + mb))
         done
-        TRAIT_CHECKOUT_MB[$trait]=$checkout_mb
-        TRAIT_ARTIFACT_MB[$trait]=$artifact_mb
+        TRAIT_CHECKOUT_MB[$idx]=$checkout_mb
+        TRAIT_ARTIFACT_MB[$idx]=$artifact_mb
 
         if [[ "$QUICK" -eq 0 ]]; then
             log "Measuring binary size for trait [$trait]..."
             binary_kb=$(measure_binary_kb "$flags" "$trait")
-            TRAIT_BINARY_KB[$trait]=$binary_kb
+            TRAIT_BINARY_KB[$idx]=$binary_kb
 
             if [[ "$binary_kb" == "BUILD_FAILED" || "$binary_kb" == "NOT_FOUND" ]]; then
-                TRAIT_BINARY_DELTA_KB[$trait]="N/A"
+                TRAIT_BINARY_DELTA_KB[$idx]="N/A"
             elif [[ "$BASELINE_KB" == "N/A" ]]; then
-                TRAIT_BINARY_DELTA_KB[$trait]="N/A"
+                TRAIT_BINARY_DELTA_KB[$idx]="N/A"
             else
                 delta=$((binary_kb - BASELINE_KB))
-                TRAIT_BINARY_DELTA_KB[$trait]=$delta
+                TRAIT_BINARY_DELTA_KB[$idx]=$delta
             fi
 
             log "Measuring build time for trait [$trait]..."
             build_s=$(measure_build_seconds "$flags")
-            TRAIT_BUILD_S[$trait]=$build_s
+            TRAIT_BUILD_S[$idx]=$build_s
 
             if [[ "$build_s" == "BUILD_FAILED" ]]; then
-                TRAIT_BUILD_DELTA_S[$trait]="N/A"
+                TRAIT_BUILD_DELTA_S[$idx]="N/A"
             elif [[ "$BASELINE_S" == "N/A" ]]; then
-                TRAIT_BUILD_DELTA_S[$trait]="N/A"
+                TRAIT_BUILD_DELTA_S[$idx]="N/A"
             else
                 delta_s=$((build_s - BASELINE_S))
-                TRAIT_BUILD_DELTA_S[$trait]=$delta_s
+                TRAIT_BUILD_DELTA_S[$idx]=$delta_s
             fi
         else
-            TRAIT_BINARY_KB[$trait]="N/A"
-            TRAIT_BINARY_DELTA_KB[$trait]="N/A"
-            TRAIT_BUILD_S[$trait]="N/A"
-            TRAIT_BUILD_DELTA_S[$trait]="N/A"
+            TRAIT_BINARY_KB[$idx]="N/A"
+            TRAIT_BINARY_DELTA_KB[$idx]="N/A"
+            TRAIT_BUILD_S[$idx]="N/A"
+            TRAIT_BUILD_DELTA_S[$idx]="N/A"
         fi
     done
 
@@ -285,7 +318,8 @@ else
     # Build JSON array
     JSON_ENTRIES=""
     for trait in "${TRAITS_TO_MEASURE[@]}"; do
-        deps_str="${TRAIT_DEPS[$trait]:-}"
+        idx=$(trait_index "$trait")
+        deps_str="$(trait_deps "$trait")"
         # Convert space-separated deps to JSON array
         deps_json="["
         first=1
@@ -296,11 +330,11 @@ else
         done
         deps_json+="]"
 
-        modules="${TRAIT_MODULES[$trait]:-}"
-        binary_delta="${TRAIT_BINARY_DELTA_KB[$trait]:-N/A}"
-        build_delta="${TRAIT_BUILD_DELTA_S[$trait]:-N/A}"
-        checkout_mb="${TRAIT_CHECKOUT_MB[$trait]:-0}"
-        artifact_mb="${TRAIT_ARTIFACT_MB[$trait]:-0}"
+        modules="$(trait_modules "$trait")"
+        binary_delta="${TRAIT_BINARY_DELTA_KB[$idx]:-N/A}"
+        build_delta="${TRAIT_BUILD_DELTA_S[$idx]:-N/A}"
+        checkout_mb="${TRAIT_CHECKOUT_MB[$idx]:-0}"
+        artifact_mb="${TRAIT_ARTIFACT_MB[$idx]:-0}"
 
         # JSON-escape strings
         modules_escaped="${modules//\"/\\\"}"

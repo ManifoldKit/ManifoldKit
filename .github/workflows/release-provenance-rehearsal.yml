@@ -9,6 +9,15 @@ on:
     - cron: "0 12 * * 1" # Mondays 12:00 UTC
   workflow_dispatch:
 
+# A scheduled run overlapping a manual workflow_dispatch (or a second manual
+# dispatch) would race on the same macos-15 runner's shared caches — the
+# exact cache-key hazard nightly-slow-tests.yml's own header comment
+# identifies and solves. Cancel the in-flight run so only one is ever active
+# (#2099).
+concurrency:
+  group: release-provenance-rehearsal
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

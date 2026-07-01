@@ -140,6 +140,24 @@ ALLOWLIST_PATHS=(
     # false-match was fixed in this PR; allowlist them now that they are visible.
     "ManifoldInference/Services/HuggingFaceProbe.swift"
     "ManifoldCloudSaaS/CloudReranker.swift"
+
+    # Subscript force-unwraps (`rules[name]!`, `properties[key]!`,
+    # `keyToRule[key]!`) — invisible to the detector before the regex widened
+    # to also match `]!` (#2099). ToolGrammarBuilder builds `rules`/`keyToRule`
+    # and the corresponding key list (`emittedOrder` / `sortedKeys` /
+    # `required + optional`) together in the same function, immediately before
+    # each unwrap site: every key read back via `!` was inserted into the
+    # matching dictionary earlier in the same call. Safe by local control flow,
+    # not by trusting external input.
+    "ManifoldInference/Services/ToolGrammarBuilder.swift"
+
+    # dict["items"]! — read only inside the `if case .object? = dict["items"]`
+    # branch immediately above, which already confirmed the key is present.
+    # Safe by local control flow. Only invisible to the detector before the
+    # `]!` regex widening (#2099); FoundationToolSchema.swift parses
+    # attacker-influenced JSON Schema, so review any *new* subscript unwrap
+    # here carefully rather than reflexively allowlisting it.
+    "ManifoldFoundation/Internal/FoundationToolSchema.swift"
 )
 
 # Build find-exclusion args from the allowlist paths
@@ -149,9 +167,14 @@ for p in "${ALLOWLIST_PATHS[@]}"; do
 done
 
 # Detect force-unwraps:
-#   - word char or ) followed by !
+#   - word char, ), or ] followed by !
 #   - exclude: comment-only lines (both // and /// forms), != operators,
 #     string/char literals containing !
+# The `]` alternative (added #2099) catches subscript force-unwraps
+# (`rules[name]!`, `dict["items"]!`) that were previously invisible to the
+# detector — a real gap since e.g. FoundationToolSchema.swift parses
+# attacker-influenced JSON Schema, where a future unsafe subscript unwrap
+# would otherwise ship with this lint reporting clean.
 # Comment exclusion is anchored to grep's "file:LINE:content" separator
 # (`:[0-9]+:[[:space:]]*//`) so it only drops lines whose *content* starts with
 # //.  The earlier unanchored `:[[:space:]]*//` false-matched the `://` inside
@@ -160,7 +183,7 @@ done
 # Note: find -print0 | xargs -0 is used throughout for bash 3.2 compatibility
 # (macOS ships bash 3.2; mapfile requires bash 4+).
 VIOLATIONS=$(find "$SOURCES_DIR" -name "*.swift" "${FIND_EXCLUDES[@]}" -print0 \
-    | xargs -0 grep -n '[a-zA-Z0-9_)]!' \
+    | xargs -0 grep -n '[]a-zA-Z0-9_)]!' \
     | grep -vE ':[0-9]+:[[:space:]]*//' \
     | grep -v ' != ' \
     | grep -v '"[^"]*!"' \
