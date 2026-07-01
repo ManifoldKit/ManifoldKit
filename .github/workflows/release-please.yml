@@ -18,14 +18,6 @@ on:
       - ".release-please-manifest.json"
   workflow_dispatch:
 
-# Cancelling in-progress runs is safe here — only the latest matters. Scoped
-# at the workflow level (not job level) for consistency with every other
-# workflow's concurrency block (ci.yml, lint.yml, nightly-slow-tests.yml,
-# codeql.yml) — cosmetic only, no functional change (#2099).
-concurrency:
-  group: release-please
-  cancel-in-progress: true
-
 permissions:
   contents: write
   pull-requests: write
@@ -33,6 +25,17 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # Concurrency is scoped to THIS job deliberately, NOT the whole workflow:
+    # cancelling the release-please detection job when a newer run supersedes
+    # it is safe (only the latest matters), but a workflow-level
+    # cancel-in-progress would also cancel the downstream notify-companions
+    # job mid-loop — it fires an external repository_dispatch POST to each
+    # companion repo (manifold-llama / manifold-mlx / manifold-eval) when a
+    # release is cut, and a partial cancellation leaves companions only
+    # partially notified. Never widen this to workflow scope (#2099).
+    concurrency:
+      group: release-please
+      cancel-in-progress: true
     outputs:
       release_created: ${{ steps.release-please.outputs.release_created }}
       tag_name: ${{ steps.release-please.outputs.tag_name }}
