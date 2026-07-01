@@ -26,6 +26,16 @@ import ManifoldBackendTestKit
 ///
 /// Tests that would require live model inference are gated with
 /// `XCTSkipUnless(HardwareRequirements.hasFoundationModels)`.
+///
+/// KNOWN GAP (#2096, documented + deferred): CI's `runs-on: macos-15` never
+/// satisfies the `ProcessInfo.isOperatingSystemAtLeast(26, ...)` guard in
+/// `setUp()` below — every test method in this class (and the rest of the
+/// `Foundation*` suites under `Tests/ManifoldBackendsTests/`) `XCTSkip`s on
+/// every PR, on every merge, because no GitHub-hosted macOS 26 runner exists.
+/// This is an accepted, permanent local-only gap, not a bug to silently fix
+/// here — see `docs/QA-PRACTICES.md` § "ManifoldFoundation CI coverage gap"
+/// for the rationale and the revisit trigger. Run this suite for real on
+/// Apple Silicon hardware actually running macOS 26.
 @available(iOS 26, macOS 26, *)
 final class FoundationBackendUnitTests: XCTestCase {
 
