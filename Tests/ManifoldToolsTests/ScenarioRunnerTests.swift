@@ -572,6 +572,71 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertEqual(bareObject["kind"] as? String, "final", "existing field names must be unchanged")
     }
 
+    /// #2088: re-running to an existing `--output` path must TRUNCATE by default,
+    /// never append a second run onto the first (which corrupts downstream scoring).
+    func test_transcriptLogger_truncatesExistingOutputByDefault() throws {
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("rerun-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        // First run writes three events. Scoped so its handle closes before re-open.
+        do {
+            let firstRun = try TranscriptLogger(url: path)
+            firstRun.append(.prompt(scenarioId: "s", system: "sys", user: "u", requiredTools: ["now"]))
+            firstRun.append(.toolCall(scenarioId: "s", name: "now", arguments: "{}"))
+            firstRun.append(.final(scenarioId: "s", text: "run one"))
+        }
+
+        // Re-run to the SAME path with the default (truncate) — the prior run must
+        // be gone, not concatenated.
+        do {
+            let secondRun = try TranscriptLogger(url: path)
+            secondRun.append(.final(scenarioId: "s", text: "run two"))
+        }
+
+        let text = try String(contentsOf: path, encoding: .utf8)
+        let lines = text.split(whereSeparator: \.isNewline)
+        XCTAssertEqual(lines.count, 1, "default --output must truncate: only the second run's single event remains")
+        XCTAssertTrue(text.contains("run two"), "the re-run's event must be present")
+        XCTAssertFalse(text.contains("run one"), "the prior run's events must be truncated away, not appended to")
+    }
+
+    /// The opt-in `append: true` path preserves a prior transcript — the escape
+    /// hatch that keeps the CLI's interleaved (scenario × model) runs in one file.
+    func test_transcriptLogger_appendPreservesPriorContent() throws {
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("append-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        do {
+            let firstRun = try TranscriptLogger(url: path)
+            firstRun.append(.final(scenarioId: "s", text: "run one"))
+        }
+        do {
+            let secondRun = try TranscriptLogger(url: path, append: true)
+            secondRun.append(.final(scenarioId: "s", text: "run two"))
+        }
+
+        let text = try String(contentsOf: path, encoding: .utf8)
+        let lines = text.split(whereSeparator: \.isNewline)
+        XCTAssertEqual(lines.count, 2, "append: true must keep the prior run and add the new one")
+        XCTAssertTrue(text.contains("run one") && text.contains("run two"))
+    }
+
     // MARK: - ConformanceScorer
 
     /// Builds a fixture transcript covering an all-pass, a partial, and an
