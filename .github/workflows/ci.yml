@@ -13,6 +13,11 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
+      # scripts/cold-start*.sh's glob does not reach the shared lib the
+      # cold-start gates source (scripts/_lib/consumer-scaffold.sh lives in a
+      # different directory) — list it explicitly so edits to it re-trigger
+      # CI (per CI path-filter self-validation rule).
+      - "scripts/_lib/**"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
@@ -47,6 +52,8 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
+      # See "scripts/_lib/**" comment in the push paths above.
+      - "scripts/_lib/**"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
@@ -179,6 +186,12 @@ jobs:
               - 'scripts/cold-start-specialised-mcp.sh'
               - 'scripts/cold-start-specialised-voice.sh'
               - 'scripts/cold-start-specialised-uimodelmanagement.sh'
+              # The six wrappers above delegate to this parametric core and its
+              # shared lib — list both explicitly, otherwise a change to either
+              # would silently skip the cold-start job (per CI path-filter
+              # self-validation rule).
+              - 'scripts/cold-start.sh'
+              - 'scripts/_lib/**'
               - 'Sources/ManifoldMCP/**'
               - 'Sources/ManifoldVoice/**'
               - 'Sources/ManifoldUIModelManagement/**'
