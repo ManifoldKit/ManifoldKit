@@ -64,7 +64,8 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic; depends on `ManifoldInference`. |
 | `ManifoldFuzzBackends` | Real-backend factory shim for `fuzz-chat` (Ollama / OpenAI / Foundation — the MLX/Llama factories moved to the companion packages). Depends on `ManifoldFuzz` + `ManifoldInference` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`). Unconditional since the `Fuzz` trait retired (PR C2). |
 | `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama). Compiles unconditionally. Run via `scripts/fuzz.sh`. |
-| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` directly (the now-retired `ManifoldBackends` umbrella was deliberately never used here — #982 dual-llama Xcode-scheme hazard). |
+| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` + `ManifoldCloudSaaS` directly (the now-retired `ManifoldBackends` umbrella was deliberately never used here — #982 dual-llama Xcode-scheme hazard). |
+| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter (added #2070). Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
 
 ### Test support targets
 
@@ -78,7 +79,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldModelCatalog` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI` + `ManifoldSkills`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. |
+| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI` + `ManifoldSkills` + `ManifoldHuggingFace` (the `quickStart(seed:)` background-download path). `ManifoldModelCatalog` is deliberately *not* a direct edge — no file in `Sources/ManifoldKit/` imports it; consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. |
 
 **Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter.
 

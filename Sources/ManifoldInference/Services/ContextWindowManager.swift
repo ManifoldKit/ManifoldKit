@@ -29,13 +29,14 @@ import Foundation
 ///   `(config.maxOutputTokens ?? 2048) + (config.maxThinkingTokens ?? 0)`.
 ///   `nil` on `maxThinkingTokens` reserves **zero** rather than a default slice
 ///   — see "Default policy" below.
-/// - `ManifoldBackends.OllamaBackend` reserves thinking budget at the wire layer
+/// - `ManifoldOllama.OllamaBackend` reserves thinking budget at the wire layer
 ///   by sending `num_predict = (maxOutputTokens ?? 2048) + (maxThinkingTokens ??
 ///   2048)`. That keeps the server from cutting a reasoning model off mid-think,
 ///   but does **not** feed back into the client-side prompt-trim budget above.
-/// - `ManifoldBackends.LlamaGenerationDriver` enforces `config.maxThinkingTokens`
-///   as a cap on emitted reasoning tokens only; it does not influence prompt
-///   trimming, which happens upstream in the coordinator.
+/// - The Llama backend family (manifold-llama companion package) enforces
+///   `config.maxThinkingTokens` as a cap on emitted reasoning tokens only; it
+///   does not influence prompt trimming, which happens upstream in the
+///   coordinator.
 /// - MLX and Foundation backends ignore `maxThinkingTokens` entirely.
 ///
 /// ### Default policy for `maxThinkingTokens == nil`

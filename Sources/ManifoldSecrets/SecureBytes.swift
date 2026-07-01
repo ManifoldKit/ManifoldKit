@@ -15,7 +15,7 @@ import Foundation
 /// copy and is not covered.
 ///
 /// `SecureBytes` is `package`-visible so that both `ManifoldInference`
-/// (``KeychainService``) and `ManifoldBackends` (``SSECloudBackend``) can use
+/// (``KeychainService``) and `ManifoldCloudCore` (``SSECloudBackend``) can use
 /// it without exposing it on the public API surface.
 package final class SecureBytes: @unchecked Sendable {
 

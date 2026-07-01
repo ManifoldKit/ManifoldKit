@@ -8,7 +8,7 @@ import Observation
 ///
 /// Populated by `DefaultBackends.register(with:)` and exposed through
 /// `FrameworkCapabilityService` so host apps can inspect backend availability
-/// without importing `ManifoldBackends` directly.
+/// without importing a backend-family target directly.
 public struct EnabledBackends: Sendable, Equatable {
 
     /// Local model types for which a backend factory was registered.

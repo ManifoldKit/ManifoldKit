@@ -988,10 +988,10 @@ let package = Package(
                 .copy("BFCL/fixtures"),
             ]
         ),
-        // manifold-tools does NOT depend on the ManifoldBackends umbrella:
-        // the CLI only drives Ollama (or the in-process mock), so it takes
-        // the ManifoldOllama family product directly (unconditional since
-        // the Ollama trait retired in PR A4).
+        // manifold-tools does NOT depend on the (retired) ManifoldBackends
+        // umbrella: it takes the ManifoldOllama and ManifoldCloudSaaS family
+        // products directly (both unconditional since the Ollama/CloudSaaS
+        // traits retired in PR A4).
         .executableTarget(
             name: "manifold-tools",
             dependencies: [

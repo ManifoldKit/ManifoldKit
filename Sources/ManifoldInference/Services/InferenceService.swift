@@ -33,7 +33,9 @@ public enum ModelLoadReadinessState: Equatable, Sendable {
 /// Backends are pluggable via `registerBackendFactory` and
 /// `registerCloudBackendFactory`. This keeps ManifoldCore free of any
 /// direct dependency on MLX, llama.cpp, Foundation Models, or cloud SDKs —
-/// those are registered by the app or the ManifoldBackends target at startup.
+/// those are registered by the app, by the backend-family registrars
+/// (`OllamaBackends`, `CloudSaaSBackends`, `FoundationBackends`), or by the
+/// companion-package registrars (`LlamaBackends`, `MLXBackends`) at startup.
 ///
 /// ## Load lifecycle guarantees
 ///

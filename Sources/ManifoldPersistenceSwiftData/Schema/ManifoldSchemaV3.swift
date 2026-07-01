@@ -345,7 +345,7 @@ public enum ManifoldSchemaV3: VersionedSchema {
         /// Only IP literals are inspected. DNS names are not resolved — validation
         /// is called synchronously from SwiftUI settings forms and must stay fast.
         /// DNS rebinding is mitigated at the request layer by
-        /// `ManifoldBackends.DNSRebindingGuard`, which resolves hostnames and
+        /// `ManifoldCloudCore.DNSRebindingGuard`, which resolves hostnames and
         /// rejects connections to private/reserved addresses at connect time.
         ///
         /// Classification logic is shared with ``PrivateIPClassifier`` to ensure a

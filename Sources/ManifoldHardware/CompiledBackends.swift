@@ -50,7 +50,7 @@ public enum BackendBuildProfile: String, CaseIterable, Codable, Sendable {
 ///
 /// Use this when a host app needs to decide what UI to present at startup
 /// (e.g. whether to show a model-download flow or cloud-endpoint settings)
-/// without importing `ManifoldBackends` or constructing backend instances.
+/// without importing a backend-family target or constructing backend instances.
 public struct CompiledBackends: Sendable, Equatable {
 
     /// The current binary's network/build profile.

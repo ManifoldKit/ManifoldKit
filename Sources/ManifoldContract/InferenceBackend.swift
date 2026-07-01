@@ -607,7 +607,7 @@ public struct GenerationConfig: Sendable, Codable {
 /// task. Conformers with mutable state **must** provide their own
 /// synchronization (e.g. `NSLock`, actor isolation).
 ///
-/// All concrete backends in `ManifoldBackends` conform as `@unchecked
+/// All concrete backends across the backend families conform as `@unchecked
 /// Sendable` and use either `NSLock` (`LlamaBackend`, `SSECloudBackend`)
 /// or actor isolation (`MLXModelContainer`) to protect mutable state.
 /// Custom conformers should follow the same pattern.

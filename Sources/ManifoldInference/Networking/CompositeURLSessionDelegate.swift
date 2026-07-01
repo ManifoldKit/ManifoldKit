@@ -5,7 +5,7 @@ import ManifoldNetworking
 ///
 /// `URLSession` accepts only a single `delegate:` reference at session-creation
 /// time, but the security model needs both certificate pinning (handled by
-/// ``PinnedSessionDelegate`` in ManifoldBackends) **and** redirect interception
+/// ``PinnedSessionDelegate`` in ManifoldCloudCore) **and** redirect interception
 /// (handled by ``RedirectGuardDelegate``) on the same session. This composite
 /// owns both delegates and forwards each callback to whichever child cares
 /// about it.
