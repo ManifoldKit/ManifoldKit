@@ -18,7 +18,9 @@ import XCTest
 ///
 /// Both patterns are pure footguns — neither has a legitimate use. The
 /// `Sources/`-scope `SilentCatchAuditTest` already covers production code;
-/// this test extends the coverage to `Tests/` with no allowlist.
+/// this test extends the coverage to `Tests/`. The only excluded files are
+/// this audit itself and the sabotage-coverage suite, both of which contain
+/// the tokens purely as inert text (see the exclusion set below).
 final class TestSuiteSilentSkipAuditTest: XCTestCase {
 
     private static let forbiddenPatterns: [String] = [
@@ -34,9 +36,17 @@ final class TestSuiteSilentSkipAuditTest: XCTestCase {
         let swiftFiles = try Self.enumerateSwiftFiles(under: testsURL)
         XCTAssertFalse(swiftFiles.isEmpty, "Tests directory yielded no .swift files — path probably wrong")
 
+        // Both excluded files contain the forbidden tokens only as inert text:
+        // this audit as needles/messages, and the sabotage-coverage suite as
+        // string-literal payloads that prove this audit still fires. Excluding
+        // them silences no real violation.
+        let excludedFileNames: Set<String> = [
+            "TestSuiteSilentSkipAuditTest.swift",
+            "AuditSabotageSuiteTests.swift",
+        ]
+
         for fileURL in swiftFiles {
-            // Skip this file — it deliberately mentions the forbidden tokens.
-            if fileURL.lastPathComponent == "TestSuiteSilentSkipAuditTest.swift" { continue }
+            if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
 
             let relativePath = fileURL.path.replacingOccurrences(of: testsURL.path + "/", with: "")
             let content = try String(contentsOf: fileURL, encoding: .utf8)

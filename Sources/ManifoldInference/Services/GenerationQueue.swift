@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// FIFO + priority queue and tool-dispatch transport for generation requests.
 ///
@@ -163,6 +164,21 @@ final class GenerationQueue {
 
     // MARK: - Test Seam
 
+    /// Lock-guarded backing storage for the four test-injection hooks below.
+    /// The previous bare `nonisolated(unsafe) static var`s raced when real
+    /// generation warned/logged on one thread while a test set/reset a hook
+    /// from another (issue #2094). Mirrors `CloudImageEncoding._encodeHook`,
+    /// which fixed the identical class of bug for this same
+    /// `toolDispatchLogHook` — that fix was never backported here until now.
+    nonisolated private static let _jsonModeUnsupportedWarningHookStorage =
+        OSAllocatedUnfairLock<(@Sendable (String, String) -> Void)?>(initialState: nil)
+    nonisolated private static let _toolsUnsupportedWarningHookStorage =
+        OSAllocatedUnfairLock<(@Sendable (String, String) -> Void)?>(initialState: nil)
+    nonisolated private static let _thinkingUnsupportedWarningHookStorage =
+        OSAllocatedUnfairLock<(@Sendable (String, String) -> Void)?>(initialState: nil)
+    nonisolated private static let _toolDispatchLogHookStorage =
+        OSAllocatedUnfairLock<(@Sendable (String, [String: String]) -> Void)?>(initialState: nil)
+
     /// Test-only hook invoked alongside `Log.inference.warning` when
     /// `jsonMode=true` is requested on a backend whose capabilities report
     /// `supportsNativeJSONMode == false`. Receives `(backendTypeName, message)`.
@@ -170,7 +186,10 @@ final class GenerationQueue {
     /// Production callers never set this; it exists so unit tests can verify
     /// the silent-ignore warning is emitted without standing up an OSLogStore
     /// reader. Tests must reset it in `tearDown` to avoid cross-test leakage.
-    nonisolated(unsafe) static var jsonModeUnsupportedWarningHook: (@Sendable (String, String) -> Void)?
+    nonisolated static var jsonModeUnsupportedWarningHook: (@Sendable (String, String) -> Void)? {
+        get { _jsonModeUnsupportedWarningHookStorage.withLock { $0 } }
+        set { _jsonModeUnsupportedWarningHookStorage.withLock { $0 = newValue } }
+    }
 
     /// Test-only hook invoked alongside `Log.inference.warning` when a request
     /// passes `tools` to a backend whose capabilities report
@@ -180,7 +199,10 @@ final class GenerationQueue {
     /// tools are silently dropped on incapable backends, and without a signal
     /// the model spins on "I cannot access tools" while the host wonders why
     /// its registry is never invoked. Tests must reset this in `tearDown`.
-    nonisolated(unsafe) static var toolsUnsupportedWarningHook: (@Sendable (String, String) -> Void)?
+    nonisolated static var toolsUnsupportedWarningHook: (@Sendable (String, String) -> Void)? {
+        get { _toolsUnsupportedWarningHookStorage.withLock { $0 } }
+        set { _toolsUnsupportedWarningHookStorage.withLock { $0 = newValue } }
+    }
 
     /// Test-only hook invoked alongside `Log.inference.warning` when a request
     /// passes thinking-only hints to a backend whose capabilities report
@@ -189,7 +211,10 @@ final class GenerationQueue {
     /// Unsupported thinking hints are not fatal because older callers may set
     /// a default budget globally, but they must never be silently ignored.
     /// Tests must reset this in `tearDown` to avoid cross-test leakage.
-    nonisolated(unsafe) static var thinkingUnsupportedWarningHook: (@Sendable (String, String) -> Void)?
+    nonisolated static var thinkingUnsupportedWarningHook: (@Sendable (String, String) -> Void)? {
+        get { _thinkingUnsupportedWarningHookStorage.withLock { $0 } }
+        set { _thinkingUnsupportedWarningHookStorage.withLock { $0 = newValue } }
+    }
 
     /// Test-only hook invoked alongside `Log.inference.info` for each tool
     /// dispatch lifecycle log line (`tool_dispatch_started` /
@@ -199,7 +224,10 @@ final class GenerationQueue {
     /// Production callers never set this; it exists so unit tests can verify
     /// the structured log output without standing up an OSLogStore reader.
     /// Tests must reset it in `tearDown` to avoid cross-test leakage.
-    nonisolated(unsafe) static var toolDispatchLogHook: (@Sendable (String, [String: String]) -> Void)?
+    nonisolated static var toolDispatchLogHook: (@Sendable (String, [String: String]) -> Void)? {
+        get { _toolDispatchLogHookStorage.withLock { $0 } }
+        set { _toolDispatchLogHookStorage.withLock { $0 = newValue } }
+    }
 
     // MARK: - Queue Types (Private)
 

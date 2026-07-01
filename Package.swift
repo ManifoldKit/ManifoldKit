@@ -664,11 +664,12 @@ let package = Package(
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax", condition: .when(traits: ["Macros"])),
             ],
-            // SilentCatchAuditTest reads `silent_catch_allowlist.txt` directly
-            // from its on-disk source location via `#filePath`, so we don't
-            // need to bundle it into the test binary — just tell SwiftPM to
-            // ignore it when collecting resources.
-            exclude: ["silent_catch_allowlist.txt"],
+            // SilentCatchAuditTest and UnlockedNonisolatedUnsafeTestSeamAuditTest
+            // (#2094) both read their allowlist directly from its on-disk source
+            // location via `#filePath`, so we don't need to bundle either into
+            // the test binary — just tell SwiftPM to ignore them when collecting
+            // resources.
+            exclude: ["silent_catch_allowlist.txt", "unlocked_nonisolated_unsafe_allowlist.txt"],
             // Chat-template byte-match goldens (#1938): real embedded Jinja
             // templates + transformers-generated expected output, copied into
             // the test bundle so ChatTemplateGoldenTests can read them.

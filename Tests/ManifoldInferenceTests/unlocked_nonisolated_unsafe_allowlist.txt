@@ -1,0 +1,108 @@
+# UnlockedNonisolatedUnsafeTestSeamAuditTest — path-based allowlist.
+#
+# `nonisolated(unsafe) static var` is not itself one of CLAUDE.md's six
+# originally-documented Swift 6 concurrency gotchas (it's now the 7th), so an
+# unguarded static test-injection seam had no other checklist protection.
+# Three real ones shipped before this audit existed (see issue #2094):
+# `DNSRebindingGuard._resolverForTesting`,
+# `RedirectGuardDelegate._synchronousResolverForTesting`, and four hooks on
+# `GenerationQueue`. All three are now lock-guarded via a computed property +
+# private backing store and no longer appear here as unguarded declarations
+# (though the DNSRebindingGuard/RedirectGuardDelegate backing storage vars
+# still carry `nonisolated(unsafe)` by necessity — see the "Lock-guarded"
+# section below — the same shape `MCPSSRFPolicy` already used correctly).
+#
+# Every entry below was read and verified at review time to be either:
+#   (a) demonstrably lock-guarded — every read/write of the backing store
+#       goes through a Lock (NSLock/OSAllocatedUnfairLock) in the same file, or
+#   (b) a genuinely write-once-before-any-reader flag with a doc comment
+#       explaining the boot-time contract.
+#
+# Format: one fingerprint per line, of the form
+#   <relative path under Sources/>:<trimmed source line>
+#
+# - Empty lines and `#`-prefixed lines are ignored.
+# - Entries must match the audit's fingerprint EXACTLY (the line content is
+#   the trimmed source line, not a regex).
+#
+# DO NOT add entries to make a failing test pass without actually verifying
+# the declaration is lock-guarded or genuinely write-once. If it's neither,
+# fix it — don't allowlist it.
+
+# ---------------------------------------------------------------------------
+# Lock-guarded — every read/write goes through a Lock in the same file
+# ---------------------------------------------------------------------------
+
+# _pinnedHosts and _defaultPinsLoaded are both guarded by the adjacent
+# _pinnedHostsLock (NSLock) — every access path (pinnedHosts getter/setter,
+# loadDefaultPins(), resetDefaultPinsForTesting()) locks first.
+ManifoldCloudCore/PinnedSessionDelegate.swift:private nonisolated(unsafe) static var _pinnedHosts: [String: Set<String>] = [:]
+ManifoldCloudCore/PinnedSessionDelegate.swift:private nonisolated(unsafe) static var _defaultPinsLoaded = false
+
+# Guarded by the adjacent overrideLock (NSLock) via the _resolverForTesting /
+# _synchronousResolverForTesting computed properties a few lines below each
+# (the reference implementation DNSRebindingGuard/RedirectGuardDelegate now
+# mirror — see issue #2094).
+ManifoldMCP/MCPSSRFPolicy.swift:nonisolated(unsafe) private static var _resolverForTesting_storage: ((String) async -> [String]?)? = nil
+ManifoldMCP/MCPSSRFPolicy.swift:nonisolated(unsafe) private static var _synchronousResolverForTesting_storage: ((String) -> [String]?)? = nil
+
+# Guarded by the adjacent overrideLock (NSLock) via the _resolverForTesting
+# computed property immediately below — fixed in #2094 to mirror
+# MCPSSRFPolicy's existing pattern above.
+ManifoldCloudCore/DNSRebindingGuard.swift:nonisolated(unsafe) private static var _resolverForTesting_storage: ((String) async -> [String]?)? = nil
+
+# Guarded by the adjacent testSeamLock (NSLock) via the
+# _synchronousResolverForTesting computed property immediately below — fixed
+# in #2094 to mirror MCPSSRFPolicy's existing pattern above. Deliberately a
+# separate lock from this file's instance-level `lock` (which guards the
+# per-task `hopCounts` dictionary) — different lifetime, different concern.
+ManifoldInference/Networking/RedirectGuardDelegate.swift:nonisolated(unsafe) private static var _synchronousResolverForTesting_storage: ((String) -> [String]?)? = nil
+
+# Guarded by the adjacent lock (NSLock) — attemptedRequests/didAttemptRequest/
+# reset()/register()/unregister() all lock before touching either var.
+ManifoldTestSupport/DenyAllURLProtocol.swift:private nonisolated(unsafe) static var _attemptedRequests: [URLRequest] = []
+ManifoldTestSupport/DenyAllURLProtocol.swift:private nonisolated(unsafe) static var _registeredCount = 0
+
+# Guarded by the adjacent lock (NSLock) — every public accessor
+# (capturedRequests, stub(url:response:), stubSequence(url:responses:), etc.)
+# locks before touching any of the three.
+ManifoldTestSupport/MockURLProtocol.swift:private nonisolated(unsafe) static var stubs: [String: StubbedResponse] = [:]
+ManifoldTestSupport/MockURLProtocol.swift:private nonisolated(unsafe) static var stubSequences: [String: [StubbedResponse]] = [:]
+ManifoldTestSupport/MockURLProtocol.swift:private nonisolated(unsafe) static var _capturedRequests: [URLRequest] = []
+
+# Guarded by the adjacent overrideLock (NSLock) via the directoryOverride
+# getter and setDefaultDirectoryOverride(_:) setter.
+ManifoldInference/Services/ToolSpillReaper.swift:nonisolated(unsafe) private static var _directoryOverride: URL?
+
+# Guarded by the adjacent resumeHMACLock (NSLock) — resumeHMACKey() locks
+# around both the fast-path read and the write-after-fetch.
+ManifoldHuggingFace/PendingDownloadStore.swift:private nonisolated(unsafe) static var _cachedResumeHMACKey: SymmetricKey?
+
+# Guarded by the adjacent claimsLock (NSLock) — recordCapabilityClaim(_:)
+# and resetCapabilityClaims(forBackend:) both lock. The process-global
+# nature of this registry (not the locking) is why contract suites that use
+# it must not run under `swift test --parallel` (see CLAUDE.md /
+# ManifoldBackendTestKit's DocC catalog) — a logical cross-suite-ordering
+# concern, not a data race this audit covers.
+ManifoldBackendTestKit/BackendContractChecks.swift:private nonisolated(unsafe) static var claims: Set<String> = []
+
+# ---------------------------------------------------------------------------
+# Genuinely write-once-before-any-reader (documented boot-time contract)
+# ---------------------------------------------------------------------------
+
+# Documented belt-and-suspenders network kill-switch: "Set at app startup if
+# needed... callers are expected to write this once at app startup before
+# any concurrent reader can observe it" (see the doc comment two lines above
+# in the source file).
+ManifoldCloudCore/URLSessionProvider.swift:public nonisolated(unsafe) static var networkDisabled: Bool = false
+
+# Mirrors ManifoldCloudCore/URLSessionProvider.swift's documented
+# networkDisabled boot-time-flag pattern above — same shape, same contract.
+ManifoldMCP/MCPURLSessionFactory.swift:internal nonisolated(unsafe) static var networkDisabled: Bool = false
+
+# Documented as protected by the caller's synchronisation guarantees:
+# ManifoldConfiguration's `shared` setter (which updates this) is itself
+# guarded by an OSAllocatedUnfairLock, and tests set it synchronously before
+# any KeychainService call (see the doc comment above this declaration in
+# the source file).
+ManifoldSecrets/KeychainService.swift:nonisolated(unsafe) package static var serviceNameProvider: @Sendable () -> String = {
