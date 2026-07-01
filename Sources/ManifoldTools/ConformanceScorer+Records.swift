@@ -195,7 +195,10 @@ extension ConformanceScorer {
         // the model (e.g. a 404 on a nonexistent Ollama tag) before any generation.
         // Scoring that as a measured `noCall` fabricates a false zero that pollutes
         // the conformance matrix (#2087). Emit a non-measured hole instead, keying it
-        // to the cell the transcript names.
+        // to the cell the transcript names. `errored` takes precedence: a run that
+        // produced a partial turn (some tokens / a tool call) and *then* threw is an
+        // interrupted generation, not a clean measurement, so the hole wins over the
+        // partial signal.
         if row.errored || !row.producedModelTurn {
             let cell = ExpectedCell(
                 backend: row.backend ?? "unknown",

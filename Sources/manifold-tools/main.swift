@@ -640,6 +640,15 @@ func runCLI() async -> Int32 {
                 // model with a 404) on stderr so they stand out from scenario output
                 // and aren't mistaken for a measured decline (#2087). The scorer reads
                 // such a run as a non-measured hole, never a zero.
+                //
+                // Note: a failure raised *inside* generation (after ScenarioRunner has
+                // written the `prompt`) also leaves an explicit `error` event in the
+                // transcript, so the scorer sees a positive `loadFail` hole. A failure
+                // raised *before* that — e.g. `makeService`'s `loadModel` 404 — writes
+                // no transcript group for this cell at all; it is surfaced only here on
+                // stderr. Combined-file matrix collation should therefore treat a cell
+                // with no record as an expected hole (drive it via
+                // `records(fileAt:expectedCell:)`), not as measured.
                 let message = "  ERROR \(cli.backend.rawValue)/\(model) — backend did not produce a run: \(error)\n"
                 FileHandle.standardError.write(Data(message.utf8))
             }
