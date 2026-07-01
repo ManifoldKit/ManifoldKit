@@ -34,7 +34,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldBackends` | **Retired in P7 (#1837).** The umbrella re-export shim and its `DefaultBackends` cross-family glue are gone — `import ManifoldBackends` no longer compiles. Import the families directly (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) or the `ManifoldKit` umbrella; pass an explicit registrar list to `ManifoldKit.quickStart(backends:)` (or call `OllamaBackends`/`CloudSaaSBackends`/`FoundationBackends` `.register(with:)`) instead of `DefaultBackends.register(...)`. See docs/MIGRATION-shims-retired.md. |
 | `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge (`AnyLanguageModelBackend` + URL resolver) for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own product since v0.48 (PR A5; the `AnyLanguageModel` trait is retired); unconditional dep on the external AnyLanguageModel package; opt in by importing. Depends on `ManifoldInference`. |
 
-**Companion packages (v0.48, PR C2 / #1749):** the heavy local-inference families live outside this repo. [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) hosts the MLX backend family (text inference, diffusion/image gen, video gen, vendored FluxSwift/StableDiffusion, MLX integration tests); [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) hosts the llama.cpp/GGUF family. Module names stay `ManifoldMLX` / `ManifoldLlama`. Consumers add the companion `.package(...)` and pass registrars: `try await ManifoldKit.quickStart(backends: [LlamaBackends.self])`. Their conventions, hardware constraints, and test docs live in those repos.
+**Companion packages (v0.48, PR C2 / #1749):** the heavy local-inference families live outside this repo. [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) hosts the MLX backend family (text inference, diffusion/image gen, video gen, vendored FluxSwift/StableDiffusion, MLX integration tests); [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) hosts the llama.cpp/GGUF family. Module names stay `ManifoldMLX` / `ManifoldLlama`. Consumers add the companion `.package(...)` and pass registrars: `try await ManifoldKit.quickStart(backends: [LlamaBackends.self])`. Their conventions, hardware constraints, and test docs live in those repos. Building a new companion package? See [docs/COMPANION-BACKENDS.md](docs/COMPANION-BACKENDS.md).
 
 ### MCP + tool + app-extension modules
 
@@ -167,6 +167,8 @@ The MLX and llama.cpp hardware constraints (global `llama_backend_init`, Metal-i
 
 - `FoundationBackend` requires iOS 26 / macOS 26. Gate accordingly.
 - Context window capped at 512 tokens in the simulator to avoid OOM.
+
+See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-repo consolidation (process-global `llama_backend_init`, the #982 dual-llama hazard, Swift Testing/XCTest process separation, toolchain ceiling, CI runner shape).
 
 ## Tooling
 

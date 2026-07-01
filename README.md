@@ -133,6 +133,8 @@ As of v0.48 the heavy on-device backends ship as **companion packages**; everyth
 
 Companion backends register through `quickStart(backends: [MLXBackends.self, LlamaBackends.self])` (or `MLXBackends.register(with:)` on a hand-assembled service). The `manifold-mlx` / `manifold-llama` packages tag 0.1.0 alongside the core v0.48.0 release.
 
+Building a new backend companion package? See [docs/COMPANION-BACKENDS.md](docs/COMPANION-BACKENDS.md) for the product/contract-adoption/release-lifecycle guide, and [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the cross-repo hardware/CI constraints.
+
 ## Why ManifoldKit
 
 **Full-stack altitude.** Import one umbrella package and ship a multi-backend chat app: SwiftUI `ChatView`, the `ConversationRuntime` turn loop, SwiftData persistence, model download/management UI, and the backends — already wired together. Most alternatives hand you one layer (a UI kit, an engine wrapper, or a thin cloud client) and leave the rest as an exercise. Here the integration is the product.
