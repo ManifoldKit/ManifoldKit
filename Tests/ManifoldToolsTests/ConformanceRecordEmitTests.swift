@@ -91,6 +91,57 @@ final class ConformanceRecordEmitTests: XCTestCase {
         XCTAssertEqual(rec.decoyLevel, 2, "two decoy_tool_* entries advertised")
     }
 
+    // MARK: (c) #2087 — a run that never produced a model turn is a hole, not a zero
+
+    /// A backend-rejected run (nonexistent model → 404) leaves a transcript with
+    /// only a `prompt` event. It must read as `.notMeasured` (🚫), NOT a measured
+    /// `noCall` false-zero indistinguishable from a model that ran and declined.
+    func testPromptOnlyTranscriptIsNotMeasuredNotNoCall() throws {
+        let jsonl = #"{"kind":"prompt","scenario":"04-list","backend":"ollama","model":"ghost-model","quant":"server","user":"list the files","requiredTools":["list_dir"]}"#
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "04-list")
+
+        guard case .notMeasured = rec.status else {
+            return XCTFail("a prompt-only transcript must read as .notMeasured, got \(rec.status)")
+        }
+        XCTAssertNil(rec.verdict, "an un-measured cell carries no verdict (never .fail)")
+        XCTAssertNil(rec.toolSelection, "an un-measured cell carries no Scores (never a zero)")
+        XCTAssertNotEqual(rec.failureClass, .noCall, "must NOT be a measured noCall false-zero (#2087)")
+    }
+
+    /// An explicit `error` event (ScenarioRunner records one on generation failure)
+    /// is a positive infra-failure signal → a `.loadFail` (💥) hole.
+    func testPromptPlusErrorEventIsLoadFail() throws {
+        let jsonl = """
+        {"kind":"prompt","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","user":"x","requiredTools":["list_dir"]}
+        {"kind":"error","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","message":"HTTP 404: model 'ghost' not found"}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "04-list")
+
+        guard case .loadFail = rec.status else {
+            return XCTFail("an explicit error event must read as .loadFail, got \(rec.status)")
+        }
+        XCTAssertEqual(rec.failureClass, .loadFail)
+        XCTAssertNil(rec.verdict, "an un-measured cell carries no verdict")
+        XCTAssertNil(rec.toolSelection)
+    }
+
+    /// The crux control: a model that DID run and produced a `final` but called no
+    /// tool is a *real, measured* decline — it must stay `.measured` / `.fail` /
+    /// `.noCall` and NOT be reclassified as a hole by the #2087 fix.
+    func testModelRanButDeclinedToolStaysMeasuredNoCall() throws {
+        let jsonl = """
+        {"kind":"prompt","scenario":"04-list","backend":"ollama","model":"real","quant":"server","user":"x","requiredTools":["list_dir"]}
+        {"kind":"final","scenario":"04-list","backend":"ollama","model":"real","quant":"server","text":"I don't think I need a tool for that."}
+        {"kind":"assertion","scenario":"04-list","backend":"ollama","model":"real","quant":"server","passed":false,"message":"Scenario requires `list_dir` to actually be dispatched — never dispatched"}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "04-list")
+
+        XCTAssertEqual(rec.status, .measured, "a model that ran and declined is a real measurement, not a hole")
+        XCTAssertEqual(rec.verdict, .fail)
+        XCTAssertEqual(rec.failureClass, .noCall, "declined-to-call is a measured noCall — preserved")
+        XCTAssertEqual(try XCTUnwrap(rec.toolSelection).f1, 0.0, accuracy: 1e-9)
+    }
+
     // MARK: (b) absence is not failure
 
     /// An empty transcript with a declared expected cell must produce a single
