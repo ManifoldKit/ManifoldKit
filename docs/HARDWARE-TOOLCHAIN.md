@@ -31,7 +31,7 @@ at `manifold-llama`'s copy. What's still true and visible from core:
 
 - **Flash Attention is disabled by default in the simulator.**
   `BackendLoadOptions.platformDefaultFlashAttention`
-  (`Sources/ManifoldInference/Models/BackendLoadOptions.swift:47,64`) returns
+  (`Sources/ManifoldInference/Models/BackendLoadOptions.swift:63,65`) returns
   `false` under `#if targetEnvironment(simulator)` because simulator Metal
   does not reliably support FA kernels; a local backend loader should honor
   an explicit simulator override the same way.
