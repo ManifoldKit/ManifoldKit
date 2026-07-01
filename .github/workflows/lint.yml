@@ -31,13 +31,14 @@ on:
   push:
     branches: [main]
     paths:
-      # On push to main, only four steps actually run (the rest are gated to
-      # pull_request): actionlint, known-issue-lint, readme-lint, secret-scan.
-      # This filter covers the union of what each step checks so a push that
-      # can't affect any of them (e.g. a Package.resolved Dependabot bump)
-      # doesn't spin up a runner.
+      # On push to main, only five steps actually run (the rest are gated to
+      # pull_request): actionlint, action-pin-audit, known-issue-lint,
+      # readme-lint, secret-scan. This filter covers the union of what each
+      # step checks so a push that can't affect any of them (e.g. a
+      # Package.resolved Dependabot bump) doesn't spin up a runner.
       #
       #   actionlint          → .github/workflows/**
+      #   action-pin-audit    → .github/workflows/**, .github/actions/**
       #   known-issue-lint    → Sources/**, Tests/**
       #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
       #   availability-audit  → Sources/**, scripts/audit-availability.sh
@@ -48,6 +49,7 @@ on:
       - "Sources/**"
       - "Tests/**"
       - ".github/workflows/**"
+      - ".github/actions/**"
       - "README.md"
       - "version.txt"
       - "scripts/check-readme.sh"
@@ -107,8 +109,15 @@ jobs:
       # pins weekly so this stays sustainable. Local (`./…`) and reusable
       # in-repo workflow refs are exempt — they are not third-party.
       #
-      # NOTE: the `push:` paths filter above includes `.github/workflows/**`, so
-      # this guard runs whenever a workflow changes (gate-validates-itself rule).
+      # Scans both `.github/workflows/**` (regular workflows) and
+      # `.github/actions/**` (composite actions) — a composite action's own
+      # `uses:` steps are just as third-party as a workflow's (#2099: this
+      # scope gap let `actions/cache@v5` slip through unpinned in
+      # setup-swift-ci/action.yml).
+      #
+      # NOTE: the `push:` paths filter above includes both directories, so
+      # this guard runs whenever a workflow or composite action changes
+      # (gate-validates-itself rule).
       - name: action-pin-audit — require SHA-pinned third-party actions
         if: always()
         run: |
@@ -116,7 +125,7 @@ jobs:
           # Match `uses: <ref>`, skipping local `./` refs. A pinned ref is
           # owner/repo[/path]@<40 hex chars>. Anything else (a `@vX` tag, a
           # branch, or a short SHA) is a finding.
-          violations=$(grep -rEn '^\s*-?\s*uses:\s*[^.]' .github/workflows/ \
+          violations=$(grep -rEn '^\s*-?\s*uses:\s*[^.]' .github/workflows/ .github/actions/ \
             | grep -vE 'uses:\s*\./' \
             | grep -vE 'uses:\s*[^@]+@[0-9a-fA-F]{40}(\s|$|#)' \
             || true)
@@ -346,13 +355,23 @@ jobs:
       # deliberate sign-off captured in the PR's history.
       - name: dep-budget — check Package.resolved pin delta
         if: always() && github.event_name == 'pull_request'
+        # PR_LABELS is routed through env: rather than interpolated inline as
+        # `${{ toJSON(...) }}` — GitHub Actions substitutes the expression into
+        # the run script's source *before* the shell ever parses it, so a label
+        # name containing a single quote would break out of the quoted string
+        # and inject shell commands (#2099). env: values are passed as
+        # ordinary process environment strings instead, immune to this class
+        # of template injection. Creating/applying labels requires
+        # triage/write access, capping the blast radius, but the fix is free.
+        env:
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
           git fetch origin "${{ github.base_ref }}" --depth=1
           new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
           echo "PR adds $new new package pin(s)."
           if [ "$new" -gt 2 ]; then
-            if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q 'deps-ok'; then
+            if printf '%s' "$PR_LABELS" | grep -q 'deps-ok'; then
               echo "::notice::PR adds $new new pins; 'deps-ok' label present, allowing."
               exit 0
             fi

@@ -123,11 +123,14 @@ if ! command -v jq >/dev/null 2>&1; then
   emit FULL
 fi
 
-# Read changed paths from stdin.
-mapfile -t CHANGED < <(grep -v '^[[:space:]]*$' || true)
-# `${arr[*]:-}` is the set -u-safe emptiness test: an empty (hence "unset") array
-# would make a bare `${#arr[@]}` trip nounset, so guard with the `:-` form.
-if [[ -z "${CHANGED[*]:-}" ]]; then
+# Read changed paths from stdin. `mapfile` needs bash 4+; macOS ships bash 3.2
+# as /bin/bash, so read line-by-line instead (#2099).
+CHANGED=()
+while IFS= read -r __line; do
+  [[ -n "$__line" ]] && CHANGED+=("$__line")
+done < <(grep -v '^[[:space:]]*$' || true)
+unset __line
+if [[ ${#CHANGED[@]} -eq 0 ]]; then
   log "no changed paths on stdin → NONE"
   emit NONE
 fi
@@ -164,21 +167,82 @@ for p in "${CHANGED[@]}"; do
   done
 done
 
-# ---- Load the committed graph into bash maps --------------------------------
-declare -A TYPE TPATH DEPS
+# ---- Load the committed graph into bash-3.2-compatible parallel arrays ------
+# `declare -A` needs bash 4+; macOS ships bash 3.2 as /bin/bash, so the graph
+# and every "set" below use indexed arrays + a linear-search lookup, or a
+# space-delimited string with `case " $set " in *" $item "*)` membership tests
+# (#2099). Target counts here are in the dozens, so the O(n) lookups this
+# trades away from O(1) hashing are not perf-relevant for a script this size.
+NODE_NAMES=()
+NODE_TYPE=()
+NODE_TPATH=()
+NODE_DEPS=()   # comma-separated local target names, parallel to NODE_NAMES
 while IFS=$'\t' read -r name type tpath deps; do
-  TYPE["$name"]="$type"
-  TPATH["$name"]="$tpath"
-  DEPS["$name"]="$deps"   # comma-separated local target names
+  NODE_NAMES+=("$name")
+  NODE_TYPE+=("$type")
+  NODE_TPATH+=("$tpath")
+  NODE_DEPS+=("$deps")
 done < <(jq -r '.targets | to_entries[] | "\(.key)\t\(.value.type)\t\(.value.path)\t\(.value.deps | join(","))"' "$GRAPH_FILE")
 
-if [[ ${#TYPE[@]} -eq 0 ]]; then
+if [[ ${#NODE_NAMES[@]} -eq 0 ]]; then
   log "graph snapshot parsed to 0 targets → FULL (conservative)"
   emit FULL
 fi
 
+# node_find NAME sets NODE_IDX to the matching index into NODE_NAMES/NODE_TYPE/
+# NODE_TPATH/NODE_DEPS, or -1 if NAME is not a known target.
+node_find() {
+  local name="$1" i
+  NODE_IDX=-1
+  for i in "${!NODE_NAMES[@]}"; do
+    if [[ "${NODE_NAMES[$i]}" == "$name" ]]; then
+      NODE_IDX=$i
+      return
+    fi
+  done
+}
+
+# ---- "Set" helpers over space-delimited strings (bash-3.2-safe stand-in for
+# associative-array keys) ------------------------------------------------------
+CHANGED_TARGETS=""
+changed_targets_add() {
+  case " $CHANGED_TARGETS " in
+    *" $1 "*) ;;
+    *) CHANGED_TARGETS="$CHANGED_TARGETS $1" ;;
+  esac
+}
+
+DIRECT_SUITES=""
+direct_suites_add() {
+  case " $DIRECT_SUITES " in
+    *" $1 "*) ;;
+    *) DIRECT_SUITES="$DIRECT_SUITES $1" ;;
+  esac
+}
+direct_suites_has() {
+  case " $DIRECT_SUITES " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+CHANGED_SOURCES=""
+changed_sources_add() {
+  case " $CHANGED_SOURCES " in
+    *" $1 "*) ;;
+    *) CHANGED_SOURCES="$CHANGED_SOURCES $1" ;;
+  esac
+}
+
+AFFECTED=""
+affected_add() {
+  case " $AFFECTED " in
+    *" $1 "*) ;;
+    *) AFFECTED="$AFFECTED $1" ;;
+  esac
+}
+
 # ---- Map each changed path to its owning target (longest path-prefix match) --
-declare -A CHANGED_TARGETS
 for p in "${CHANGED[@]}"; do
   # Only Sources/ and Tests/ paths can map to a target. Anything else (docs,
   # READMEs, …) cannot affect compiled test outcomes and is ignored.
@@ -187,57 +251,72 @@ for p in "${CHANGED[@]}"; do
     *) continue ;;
   esac
   best=""; best_len=-1
-  for name in "${!TPATH[@]}"; do
-    tp="${TPATH[$name]}"
+  for i in "${!NODE_NAMES[@]}"; do
+    tp="${NODE_TPATH[$i]}"
     if [[ "$p" == "$tp/"* || "$p" == "$tp" ]]; then
       len=${#tp}
-      if (( len > best_len )); then best="$name"; best_len=$len; fi
+      if (( len > best_len )); then best="${NODE_NAMES[$i]}"; best_len=$len; fi
     fi
   done
   if [[ -z "$best" ]]; then
     log "force-full: $p maps to no known target (conservative)"
     emit FULL
   fi
-  CHANGED_TARGETS["$best"]=1
+  changed_targets_add "$best"
   log "changed: $p → target $best"
 done
 
-if [[ -z "${CHANGED_TARGETS[*]:-}" ]]; then
+if [[ -z "$CHANGED_TARGETS" ]]; then
   log "no changed path maps to a target → NONE"
   emit NONE
 fi
 
 # Partition changed targets into directly-changed test suites vs source targets.
-declare -A CHANGED_SOURCES
-declare -A DIRECT_SUITES
-for t in "${!CHANGED_TARGETS[@]}"; do
-  if [[ "${TYPE[$t]}" == "test" ]]; then
-    DIRECT_SUITES["$t"]=1
+for t in $CHANGED_TARGETS; do
+  node_find "$t"
+  if [[ $NODE_IDX -ge 0 && "${NODE_TYPE[$NODE_IDX]}" == "test" ]]; then
+    direct_suites_add "$t"
   else
-    CHANGED_SOURCES["$t"]=1
+    changed_sources_add "$t"
   fi
 done
 
 # ---- Forward closure of a test target over local deps (BFS) -----------------
-# Returns (via global CLOSURE assoc array) every local target reachable from the
-# given test target, including itself.
-declare -A CLOSURE
+# Returns (via the global CLOSURE set string) every local target reachable
+# from the given test target, including itself.
+CLOSURE=""
+closure_has() {
+  case " $CLOSURE " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 closure_of() {
   local start="$1"
-  CLOSURE=()
+  CLOSURE=" $start "
   local -a queue=("$start")
-  CLOSURE["$start"]=1
   while (( ${#queue[@]} > 0 )); do
     local cur="${queue[0]}"
     queue=("${queue[@]:1}")
-    local deps="${DEPS[$cur]:-}"
+    node_find "$cur"
+    local deps=""
+    if [[ $NODE_IDX -ge 0 ]]; then
+      deps="${NODE_DEPS[$NODE_IDX]}"
+    fi
     [[ -z "$deps" ]] && continue
-    local IFS=','
+    # Split the comma-separated deps list without touching $IFS: a bash-3.2
+    # bug turns `"${!array[@]}"` (used by node_find, below) into a single
+    # unsplit token whenever a caller up the dynamic scope chain has a
+    # non-default IFS in effect (observed here — `local IFS=','` in this
+    # function silently corrupted the *next* iteration's `node_find` call
+    # under bash 3.2 only; bash 4/5 were unaffected). Substituting commas for
+    # spaces sidesteps IFS entirely (#2099).
+    local deps_spaced="${deps//,/ }"
     local d
-    for d in $deps; do
+    for d in $deps_spaced; do
       [[ -z "$d" ]] && continue
-      if [[ -z "${CLOSURE[$d]:-}" ]]; then
-        CLOSURE["$d"]=1
+      if ! closure_has "$d"; then
+        CLOSURE="$CLOSURE$d "
         queue+=("$d")
       fi
     done
@@ -245,32 +324,33 @@ closure_of() {
 }
 
 # ---- Reverse mapping: which test-job suites are affected --------------------
-declare -A AFFECTED
 for suite in "${TEST_JOB_SUITES[@]}"; do
   # A directly-changed test suite always runs.
-  if [[ -n "${DIRECT_SUITES[$suite]:-}" ]]; then
-    AFFECTED["$suite"]=1
+  if direct_suites_has "$suite"; then
+    affected_add "$suite"
     continue
   fi
   # Otherwise the suite is affected if its dependency closure includes any
   # changed source target.
-  [[ -z "${TYPE[$suite]:-}" ]] && continue   # suite not in graph; skip defensively
+  node_find "$suite"
+  [[ $NODE_IDX -lt 0 ]] && continue   # suite not in graph; skip defensively
   closure_of "$suite"
-  for src in "${!CHANGED_SOURCES[@]}"; do
-    if [[ -n "${CLOSURE[$src]:-}" ]]; then
-      AFFECTED["$suite"]=1
+  for src in $CHANGED_SOURCES; do
+    if closure_has "$src"; then
+      affected_add "$suite"
       break
     fi
   done
 done
 
-if [[ -z "${AFFECTED[*]:-}" ]]; then
+if [[ -z "$AFFECTED" ]]; then
   log "no test-job suite affected (change covered by sibling jobs or no test) → NONE"
   emit NONE
 fi
 
 # Stable, deterministic ordering for the output line. Safe to expand AFFECTED
 # unguarded here: the emptiness check above already returned for the empty case.
-result="$(printf '%s\n' "${!AFFECTED[@]}" | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-log "affected ${#AFFECTED[@]}/${#TEST_JOB_SUITES[@]} test-job suites: $result"
+result="$(printf '%s\n' $AFFECTED | sort -u | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+affected_count=$(printf '%s\n' $AFFECTED | sort -u | grep -c '.')
+log "affected ${affected_count}/${#TEST_JOB_SUITES[@]} test-job suites: $result"
 emit "$result"
