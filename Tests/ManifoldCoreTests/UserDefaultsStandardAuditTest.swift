@@ -42,7 +42,9 @@ import XCTest
 ///
 /// DO NOT add an allowlist to silence this test. The whole point of the
 /// audit is that one bare reference is enough to reintroduce the
-/// cross-process race.
+/// cross-process race. (The only excluded files are this audit itself and
+/// the sabotage-coverage suite, both of which contain the pattern purely as
+/// inert text — see the exclusion set below.)
 final class UserDefaultsStandardAuditTest: XCTestCase {
 
     func test_noDirectUserDefaultsStandardAccessInTests() throws {
@@ -51,13 +53,21 @@ final class UserDefaultsStandardAuditTest: XCTestCase {
 
         // The audit file itself mentions the string in code paths (the
         // search needle below) and in error messages. Scope the audit to
-        // every other file.
-        let auditFileName = (#filePath as NSString).lastPathComponent
+        // every other file. AuditSabotageSuiteTests.swift is the second
+        // exception: it is the sabotage-coverage suite that deliberately
+        // embeds every audit's forbidden pattern (as string-literal payloads,
+        // search needles, and error messages) to prove the audits still fire.
+        // Neither exclusion silences a real violation — both files contain the
+        // pattern only as inert text.
+        let excludedFileNames: Set<String> = [
+            (#filePath as NSString).lastPathComponent,
+            "AuditSabotageSuiteTests.swift",
+        ]
 
         var violations: [String] = []
 
         for fileURL in swiftFiles {
-            if fileURL.lastPathComponent == auditFileName { continue }
+            if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
 
             let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
             let hits = Self.findNonCommentHits(of: "UserDefaults.standard", in: content)
