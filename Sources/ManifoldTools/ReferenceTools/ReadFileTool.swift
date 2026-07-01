@@ -3,10 +3,11 @@ import ManifoldInference
 
 /// Reads a single file from the manifold-tools sandbox directory.
 ///
-/// Sandbox policy — the `path` argument is resolved against
-/// `Tests/Fixtures/manifold-tools/` (or an explicit root provided to
-/// ``makeExecutor(root:)``). Paths that escape the root after symlink
-/// resolution return `.permissionDenied`. Missing files return `.notFound`.
+/// Sandbox policy — the `path` argument is resolved against the bundled
+/// fixture tree (``ToolFixtures/bundledRoot()``), or an explicit root
+/// provided to ``makeExecutor(root:)``. Paths that escape the root after
+/// symlink resolution return `.permissionDenied`. Missing files return
+/// `.notFound`.
 public enum ReadFileTool {
 
     public struct Args: Decodable, Sendable {
@@ -21,9 +22,10 @@ public enum ReadFileTool {
     /// Creates the executor with a sandbox root.
     ///
     /// - Parameter root: The directory reads are confined to. Defaults to
-    ///   the repo-relative `Tests/Fixtures/manifold-tools/` — scenarios running
-    ///   from `swift run manifold-tools` start in the package root so this
-    ///   resolves correctly.
+    ///   ``ToolFixtures/bundledRoot()`` — the fixture tree shipped as a
+    ///   `.copy` resource on `ManifoldTools`, so this resolves identically
+    ///   under `swift run`, `swift test`, an installed CLI, or a downstream
+    ///   consumer, regardless of the process working directory.
     public static func makeExecutor(root: URL = defaultRoot()) -> any ToolExecutor {
         let definition = ToolDefinition(
             name: "read_file",
@@ -42,12 +44,11 @@ public enum ReadFileTool {
         return ReadFileExecutor(definition: definition, root: root)
     }
 
-    /// Default sandbox root — `Tests/Fixtures/manifold-tools/` relative to the
-    /// current working directory. Swift Package Manager invocations
-    /// (`swift run`, `swift test`) set CWD to the package root.
+    /// Default sandbox root — the bundled fixture tree resolved via
+    /// `Bundle.module` (see ``ToolFixtures/bundledRoot()``). Independent of
+    /// the process working directory.
     public static func defaultRoot() -> URL {
-        URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("Tests/Fixtures/manifold-tools", isDirectory: true)
+        ToolFixtures.bundledRoot()
     }
 
     struct ReadFileExecutor: ToolExecutor {

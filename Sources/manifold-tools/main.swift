@@ -25,15 +25,15 @@ struct CLI {
         case openaiCompat = "openai-compat"
     }
 
-    var scenarioFilter: String = "all"
+    /// Flags shared with the companion CLIs (manifold-tools-mlx,
+    /// manifold-tools-llama) — parsed by ``ScenarioCLIHarness``.
+    var common: ScenarioCLIHarness.Options
     var backend: BackendChoice = .ollama
     var modelOverrides: [String] = []
-    var output: URL = defaultOutputURL()
     /// When false (default), the `--output` file is truncated on the first run of
     /// this invocation so a re-run overwrites rather than concatenates (#2088).
     /// `--append` preserves an existing transcript and appends to it.
     var append: Bool = false
-    var list: Bool = false
     var realNetwork: Bool = false
     var ollamaBaseURL: URL = URL(string: "http://localhost:11434")!
     /// Base URL for the OpenAI-compatible endpoint (e.g. https://openrouter.ai/api).
@@ -41,9 +41,12 @@ struct CLI {
     var openAICompatBaseURL: URL = URL(string: "https://openrouter.ai/api")!
     /// Name of the environment variable that holds the API key.
     var apiKeyEnvVar: String = "OPENROUTER_API_KEY"
-    /// Number of plausible-but-irrelevant decoy tools to register alongside the
-    /// real reference tools.  Zero (default) means no distractor pressure.
-    var extraTools: Int = 0
+
+    var scenarioFilter: String { common.scenarioFilter }
+    var output: URL { common.output }
+    var list: Bool { common.list }
+    var extraTools: Int { common.extraTools }
+    var fixturesRoot: URL? { common.fixturesRoot }
 
     static func defaultOutputURL() -> URL {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -59,65 +62,62 @@ struct CLI {
         exit(2)
     }
 
+    /// Parses the flags common to every scenario-CLI harness consumer via
+    /// ``ScenarioCLIHarness``, then walks the remainder for this CLI's own
+    /// backend-selection flags (`--backend`, `--model`, `--append`,
+    /// `--real-network`, `--ollama-base-url`, `--base-url`, `--api-key-env`).
     static func parse(_ argv: [String]) -> CLI {
-        var cli = CLI()
+        let commonOptions: ScenarioCLIHarness.Options
+        let remainder: [String]
+        switch ScenarioCLIHarness.parseCommonFlags(argv, defaultOutput: defaultOutputURL()) {
+        case .options(let options, let rest):
+            commonOptions = options
+            remainder = rest
+        case .helpRequested:
+            printUsage()
+            exit(0)
+        case .failure(let message):
+            fail(message)
+        }
+
+        var cli = CLI(common: commonOptions)
         var i = 0
-        while i < argv.count {
-            let arg = argv[i]
+        while i < remainder.count {
+            let arg = remainder[i]
             switch arg {
-            case "--scenario":
-                i += 1
-                guard i < argv.count else { fail("--scenario requires a value") }
-                cli.scenarioFilter = argv[i]
             case "--backend":
                 i += 1
-                guard i < argv.count else { fail("--backend requires a value") }
-                guard let b = BackendChoice(rawValue: argv[i]) else {
-                    fail("unknown backend '\(argv[i])' — must be ollama, mock, or openai-compat")
+                guard i < remainder.count else { fail("--backend requires a value") }
+                guard let b = BackendChoice(rawValue: remainder[i]) else {
+                    fail("unknown backend '\(remainder[i])' — must be ollama, mock, or openai-compat")
                 }
                 cli.backend = b
             case "--model":
                 i += 1
-                guard i < argv.count else { fail("--model requires a value") }
-                cli.modelOverrides = argv[i].split(separator: ",").map(String.init)
-            case "--output":
-                i += 1
-                guard i < argv.count else { fail("--output requires a value") }
-                cli.output = URL(fileURLWithPath: argv[i])
+                guard i < remainder.count else { fail("--model requires a value") }
+                cli.modelOverrides = remainder[i].split(separator: ",").map(String.init)
             case "--append":
                 cli.append = true
-            case "--list":
-                cli.list = true
             case "--real-network":
                 cli.realNetwork = true
             case "--ollama-base-url":
                 i += 1
-                guard i < argv.count else { fail("--ollama-base-url requires a value") }
-                guard let u = URL(string: argv[i]), let scheme = u.scheme, !scheme.isEmpty else {
-                    fail("--ollama-base-url value '\(argv[i])' is not a valid URL (missing scheme?)")
+                guard i < remainder.count else { fail("--ollama-base-url requires a value") }
+                guard let u = URL(string: remainder[i]), let scheme = u.scheme, !scheme.isEmpty else {
+                    fail("--ollama-base-url value '\(remainder[i])' is not a valid URL (missing scheme?)")
                 }
                 cli.ollamaBaseURL = u
             case "--base-url":
                 i += 1
-                guard i < argv.count else { fail("--base-url requires a value") }
-                guard let u = URL(string: argv[i]), let scheme = u.scheme, !scheme.isEmpty else {
-                    fail("--base-url value '\(argv[i])' is not a valid URL (missing scheme?)")
+                guard i < remainder.count else { fail("--base-url requires a value") }
+                guard let u = URL(string: remainder[i]), let scheme = u.scheme, !scheme.isEmpty else {
+                    fail("--base-url value '\(remainder[i])' is not a valid URL (missing scheme?)")
                 }
                 cli.openAICompatBaseURL = u
             case "--api-key-env":
                 i += 1
-                guard i < argv.count else { fail("--api-key-env requires a value") }
-                cli.apiKeyEnvVar = argv[i]
-            case "--extra-tools":
-                i += 1
-                guard i < argv.count else { fail("--extra-tools requires a value") }
-                guard let n = Int(argv[i]), n >= 0 else {
-                    fail("--extra-tools value '\(argv[i])' must be a non-negative integer")
-                }
-                cli.extraTools = n
-            case "--help", "-h":
-                printUsage()
-                exit(0)
+                guard i < remainder.count else { fail("--api-key-env requires a value") }
+                cli.apiKeyEnvVar = remainder[i]
             default:
                 fail("unknown argument: \(arg)")
             }
@@ -151,6 +151,8 @@ struct CLI {
                                 Truncated (overwritten) on each run by default so a re-run
                                 does not concatenate onto a stale transcript.
           --append              Append to an existing --output transcript instead of truncating it.
+          --fixtures-root <dir> Root for read_file / list_dir / repo_search tools.
+                                Default: the fixtures bundled with ManifoldTools.
           --real-network        Allow HttpGetFixtureTool to hit the real internet (requires
                                 MANIFOLD_TOOLS_ALLOW_NETWORK=1). Default: off.
           --ollama-base-url     Override the Ollama base URL. Default: http://localhost:11434.
@@ -549,6 +551,10 @@ func runCLI() async -> Int32 {
     }
     let cli = CLI.parse(argv)
 
+    // `ScenarioLoader.loadBuiltIn()` resolves the bundled corpus via
+    // `Bundle.module` (#2042) — independent of CWD, so no vendored copy is
+    // needed by this executable or by a companion package that depends on
+    // the `ManifoldTools` library product.
     let scenarios: [Scenario]
     do {
         scenarios = try ScenarioLoader.loadBuiltIn()
@@ -566,24 +572,22 @@ func runCLI() async -> Int32 {
     }
 
     let filtered: [Scenario]
-    if cli.scenarioFilter == "all" {
-        filtered = scenarios
-    } else {
-        filtered = scenarios.filter { $0.id == cli.scenarioFilter }
-        if filtered.isEmpty {
-            FileHandle.standardError.write(Data("no scenario matches id '\(cli.scenarioFilter)'\n".utf8))
-            return 1
-        }
+    do {
+        filtered = try ScenarioCLIHarness.filterScenarios(scenarios, matching: cli.scenarioFilter)
+    } catch {
+        FileHandle.standardError.write(Data("\(error)\n".utf8))
+        return 1
     }
 
     print("Logging to \(cli.output.path)")
 
+    let fixturesRoot = ScenarioCLIHarness.resolveFixturesRoot(cli.fixturesRoot)
     let registry = ToolRegistry()
     registry.register(NowTool.makeExecutor())
     registry.register(CalcTool.makeExecutor())
-    registry.register(ReadFileTool.makeExecutor())
-    registry.register(ListDirTool.makeExecutor())
-    registry.register(SampleRepoSearchTool.makeExecutor(root: ReadFileTool.defaultRoot()))
+    registry.register(ReadFileTool.makeExecutor(root: fixturesRoot))
+    registry.register(ListDirTool.makeExecutor(root: fixturesRoot))
+    registry.register(SampleRepoSearchTool.makeExecutor(root: fixturesRoot))
     registry.register(HttpGetFixtureTool.makeExecutor(allowRealNetwork: cli.realNetwork))
 
     // Decoy tools — plausible-but-irrelevant distractors injected to raise the
@@ -596,72 +600,48 @@ func runCLI() async -> Int32 {
         }
     }
 
-    var allPassed = true
     // Track the first logger of this invocation so only it truncates `--output`
     // (unless `--append` was given). Every later (scenario × model) run appends to
     // the same file so the runs interleave into one transcript rather than each
     // wiping the last (#2088).
     var isFirstRun = true
-    for scenario in filtered {
-        let models = cli.modelOverrides.isEmpty ? [scenario.backend.model] : cli.modelOverrides
-        for model in models {
-            print("\n── \(scenario.id) via \(cli.backend.rawValue)/\(model) ──")
-            do {
-                // One logger per (backend, model) run, all writing to the same file.
-                // Per-record attribution makes the interleaved transcript scorable
-                // per-model without parsing stdout. The first run truncates a stale
-                // `--output` (unless `--append`); the rest append to this run's file.
-                let logger = try TranscriptLogger(
-                    url: cli.output,
-                    backend: cli.backend.rawValue,
-                    model: model,
-                    quant: quantLabel(from: model),
-                    append: cli.append || !isFirstRun
-                )
-                isFirstRun = false
-                let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
-                let runner = ScenarioRunner(
-                    service: service,
-                    logger: logger,
-                    passAllRegisteredTools: cli.extraTools > 0
-                )
-                let outcome = try await runner.run(scenario)
-                for assertion in outcome.assertions {
-                    let marker = assertion.passed ? "  PASS" : "  FAIL"
-                    print("\(marker) \(assertion.message)")
-                }
-                if !outcome.passed {
-                    allPassed = false
-                    print("  final answer: \(outcome.finalAnswer.prefix(200))")
-                }
-            } catch {
-                allPassed = false
-                // Surface infra failures (e.g. the backend rejecting a nonexistent
-                // model with a 404) on stderr so they stand out from scenario output
-                // and aren't mistaken for a measured decline (#2087). The scorer reads
-                // such a run as a non-measured hole, never a zero.
-                //
-                // Note: a failure raised *inside* generation (after ScenarioRunner has
-                // written the `prompt`) also leaves an explicit `error` event in the
-                // transcript, so the scorer sees a positive `loadFail` hole. A failure
-                // raised *before* that — e.g. `makeService`'s `loadModel` 404 — writes
-                // no transcript group for this cell at all; it is surfaced only here on
-                // stderr. Combined-file matrix collation should therefore treat a cell
-                // with no record as an expected hole (drive it via
-                // `records(fileAt:expectedCell:)`), not as measured.
-                let message = "  ERROR \(cli.backend.rawValue)/\(model) — backend did not produce a run: \(error)\n"
-                FileHandle.standardError.write(Data(message.utf8))
-            }
-        }
+    let allPassed = await ScenarioCLIHarness.runAll(
+        scenarios: filtered,
+        displayName: cli.backend.rawValue,
+        modelsFor: { scenario in cli.modelOverrides.isEmpty ? [scenario.backend.model] : cli.modelOverrides }
+    ) { scenario, model in
+        // One logger per (backend, model) run, all writing to the same file.
+        // Per-record attribution makes the interleaved transcript scorable
+        // per-model without parsing stdout. The first run truncates a stale
+        // `--output` (unless `--append`); the rest append to this run's file.
+        let logger = try TranscriptLogger(
+            url: cli.output,
+            backend: cli.backend.rawValue,
+            model: model,
+            quant: quantLabel(from: model),
+            append: cli.append || !isFirstRun
+        )
+        isFirstRun = false
+        // Surface infra failures (e.g. the backend rejecting a nonexistent model
+        // with a 404) via the thrown error — `ScenarioCLIHarness.runAll` prints it
+        // to stderr so it stands out from scenario output and isn't mistaken for a
+        // measured decline (#2087). A failure raised *inside* generation (after
+        // `ScenarioRunner` has written the `prompt`) also leaves an explicit
+        // `error` event in the transcript, so the scorer sees a positive
+        // `loadFail` hole; a failure raised earlier (e.g. `loadModel`'s 404)
+        // writes no transcript group for this cell at all and is surfaced only on
+        // stderr — combined-file matrix collation treats a cell with no record as
+        // an expected hole, not as measured.
+        let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
+        let runner = ScenarioRunner(
+            service: service,
+            logger: logger,
+            passAllRegisteredTools: cli.extraTools > 0
+        )
+        return try await runner.run(scenario)
     }
 
-    if allPassed {
-        print("\nAll scenarios passed.")
-        return 0
-    } else {
-        print("\nOne or more scenarios failed — see \(cli.output.path)")
-        return 1
-    }
+    return ScenarioCLIHarness.finish(allPassed: allPassed, transcriptPath: cli.output)
 }
 
 /// Best-effort quantization label derived from a model id. Recognises the
