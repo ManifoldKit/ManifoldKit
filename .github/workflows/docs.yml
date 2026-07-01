@@ -88,11 +88,22 @@ jobs:
         # static-hostable site at ./docs-site, with a shared navigation sidebar.
         #
         # Flag placement / grant choice (the experimental combined-docs plugin is
-        # finicky about both — these were found by trial):
-        #   * `--allow-writing-to-package-directory` and `-Xswiftc -DBUILDING_DOCC`
+        # finicky about both):
+        #   * `-Xswiftc -DBUILDING_DOCC` and `--allow-writing-to-package-directory`
         #     are *package-manager* options and must precede the
         #     `generate-documentation` verb; `--enable-...`, `--target`,
         #     `--transform-...`, `--output-path` are *plugin* options and follow it.
+        #   * ORDER AMONG THE PM OPTIONS MATTERS: `-Xswiftc` (a global build
+        #     option) MUST come *before* `--allow-writing-to-package-directory`.
+        #     The permission flag switches SwiftPM into its plugin-permission
+        #     sub-parser (usage: `swift package default-command
+        #     [--allow-writing-to-package-directory] [--allow-writing-to-directory]
+        #     [--allow-network-connections] [--package]`), which does NOT accept
+        #     global build options — so any `-Xswiftc` appearing *after* the grant
+        #     is rejected with `error: Unknown option '-Xswiftc'` (exit 64). #2081:
+        #     PR #2074 introduced this invocation with the grant first and never ran
+        #     it (it replaced an `xcodebuild docbuild` step), so the misordering
+        #     shipped straight to `main` and every publish aborted at the parse.
         #   * We grant filesystem access with `--allow-writing-to-package-directory`
         #     (output lands in the `./docs-site` package subdir), NOT the blanket
         #     sandbox-disable flag — that flag is banned in workflow scripts by the
@@ -128,8 +139,8 @@ jobs:
           # project pages served under /<repo>/, and it would rewrite every asset URL
           # under /ManifoldKit/. Omitting it yields root-relative asset paths.
           swift package \
-            --allow-writing-to-package-directory \
             -Xswiftc -DBUILDING_DOCC \
+            --allow-writing-to-package-directory \
             generate-documentation \
             --enable-experimental-combined-documentation \
             --target ManifoldKit \
