@@ -8,8 +8,8 @@ This doc consolidates which **local models** have been exercised against each ba
 
 | Source | What it covers |
 |--------|----------------|
-| `docs/plans/runs/20260622-232839/MATRIX.md` (PR #2033) | Cross-backend tool-call conformance, **pre-#2032** (Mistral cells flagged re-measure-pending) |
-| `docs/plans/runs/overnight-20260624-212539/MATRIX.md` | **Re-measure** on post-#2035 core — authoritative for tool-calling cells |
+| `docs/plans/archive/runs/20260622-232839/MATRIX.md` (PR #2033) | Cross-backend tool-call conformance, **pre-#2032** (Mistral cells flagged re-measure-pending) |
+| `docs/plans/archive/runs/overnight-20260624-212539/MATRIX.md` | **Re-measure** on post-#2035 core — authoritative for tool-calling cells |
 | `manifold-llama` `Tests/ManifoldLlamaTests/Conformance/` | 5-family GBNF + tool-call E2E, embeddings, tokenization |
 | `manifold-mlx` integration tests + `MLXModelProbe.swift` | Text, vision/VLM, image-gen/diffusion |
 

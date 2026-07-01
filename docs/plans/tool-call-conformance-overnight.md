@@ -14,7 +14,7 @@ The 2026-06-22 train landed almost all of the original build-out:
 
 - **v0.59.0:** `ModelInfo.toolCallClaim` static capability (#2009), `RenderConsistencyChecker` render round-trip (#2022), templateless image/tool-result threading (#2014).
 - **v0.60.0 (cut 2026-06-22):** `ToolCallConformance` port + value type + **in-memory** cache (#2030, Step 3 — *SwiftData adapter still deferred*), tool-call **dialect** on `BackendCapabilities` (#2029, Step 4 core seam), transcript attribution + `ConformanceScorer` + `manifold-tools score` (#2027), `openai-compat` backend + `--extra-tools` decoy flag (#2031), parallel concurrent-safe tool dispatch + transient-error retry (#2026), public JSON-Schema → GBNF surface (#1992/#2025), **Mistral system-prompt-fold renderer fix (#2032)**.
-- **Eval:** the first full cross-backend matrix ran — `docs/plans/runs/20260622-232839/MATRIX.md` (+ scored CSVs) in PR **#2033**. Lane 2, the decoy ladder (Lane 3a), the OpenRouter cloud lane (3b), and the failure taxonomy (3d) are all in it.
+- **Eval:** the first full cross-backend matrix ran — `docs/plans/archive/runs/20260622-232839/MATRIX.md` (+ scored CSVs) in PR **#2033**. Lane 2, the decoy ladder (Lane 3a), the OpenRouter cloud lane (3b), and the failure taxonomy (3d) are all in it.
 - **Companions on v0.60.0:** manifold-llama `0.2.12` + manifold-mlx `0.2.10` release PRs are staged (changelogs rewritten); the MLX VL-SIGSEGV graceful-error fix merged as manifold-mlx **#89**.
 
 So the spine exists and has been measured. This run acts on what it found.

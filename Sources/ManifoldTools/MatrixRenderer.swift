@@ -2,7 +2,7 @@ import Foundation
 
 /// Renders a cross-backend tool-calling conformance matrix as Markdown from a
 /// flat `[ConformanceRecord]` corpus — the rendered-query replacement for the
-/// hand-assembled `MATRIX.md` files under `docs/plans/runs/`.
+/// hand-assembled `MATRIX.md` files under `docs/plans/archive/runs/`.
 ///
 /// Pure and deterministic: it does no I/O, takes no model/backend dependency,
 /// and the same records always render byte-identical (every grouping is
