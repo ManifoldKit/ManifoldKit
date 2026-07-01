@@ -18,7 +18,8 @@ import Foundation
     /// Stateless variant for callers that don't hold a `HeuristicTokenizer`
     /// instance (e.g. `LlamaBackend.tokenCount(_:)` fallback when no
     /// vocabulary is loaded). Keeps the `chars / 4` heuristic in one place
-    /// across `ManifoldInference` and `ManifoldBackends`.
+    /// across `ManifoldInference` and the backend families (including the
+    /// manifold-mlx / manifold-llama companion packages).
     public static func tokenCount(_ text: String) -> Int {
         max(1, text.count / 4)
     }

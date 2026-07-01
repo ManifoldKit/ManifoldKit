@@ -19,9 +19,9 @@ import ManifoldNetworking
 ///   wires the redirect guard alongside the caller's
 ///   `URLSessionDownloadDelegate`.
 ///
-/// Tighter trait-gated factories (``URLSessionProvider/pinned`` for SaaS
+/// Tighter factories (``URLSessionProvider/pinned`` for SaaS
 /// API hosts, ``URLSessionProvider/unpinned`` for LAN servers) live in
-/// `ManifoldBackends`. They wrap this factory and add certificate-pinning
+/// `ManifoldCloudCore`. They wrap this factory and add certificate-pinning
 /// + the runtime kill-switch.
 public enum URLSessionFactory {
 

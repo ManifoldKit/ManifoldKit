@@ -73,8 +73,18 @@ considered hostile on the far side and what ManifoldKit validates as data crosse
     rate ≤ 5,000 events/sec).
   - Error bodies sanitised by `CloudErrorSanitizer.sanitize(_:host:)` before
     surfacing to the UI or `Log.*`.
-- **Not mitigated:** DNS rebinding (validation runs at endpoint persist time, not
-  request time); user-installed MITM root CAs (corporate proxies, jailbreak
+  - DNS rebinding mitigated at request time: `DNSRebindingGuard.validate(url:)`
+    (`Sources/ManifoldCloudCore/DNSRebindingGuard.swift`) resolves the hostname
+    immediately before every outbound connection and fails closed on a
+    private/link-local/reserved address (defense-in-depth also covers IP
+    literals via `PrivateIPClassifier`, bypassing DNS resolution). Structural
+    validation at endpoint persist time (`APIEndpoint.validate()`) only checks
+    IP literals and does not resolve DNS names — this guard is what closes the
+    "domain re-pointed after save" gap. `ConnectAddressPinningDelegate`
+    (#1756) closes the residual TOCTOU window between the guard's pre-flight
+    resolution and `URLSession`'s own connect-time resolution by inspecting
+    the address actually connected to and cancelling the task on a mismatch.
+- **Not mitigated:** user-installed MITM root CAs (corporate proxies, jailbreak
   tweaks); compromised pinning trust store.
 
 ### B2. Disk ↔ process

@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Mirrors the IP-classification subset of ``APIEndpointValidationReason`` so that the
 /// identical policy can be enforced from both `ManifoldCore` (URL validation) and
-/// `ManifoldBackends` (DNS-resolved address checks) without duplicating the rules.
+/// `ManifoldCloudCore` (DNS-resolved address checks) without duplicating the rules.
 package enum BlockedAddressCategory: Sendable, CustomStringConvertible {
     /// RFC1918 private IPv4 range (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
     case privateHost
@@ -36,7 +36,7 @@ package enum BlockedAddressCategory: Sendable, CustomStringConvertible {
 ///
 /// Used by:
 /// - `ManifoldCore.APIEndpoint.validate()` — structural URL validation at config time.
-/// - `ManifoldBackends.DNSRebindingGuard` — request-time check of DNS-resolved addresses.
+/// - `ManifoldCloudCore.DNSRebindingGuard` — request-time check of DNS-resolved addresses.
 ///
 /// Only IP literals are inspected. **DNS names are never resolved here.** Callers that
 /// need to guard against DNS rebinding must resolve the hostname first (e.g. via
