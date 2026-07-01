@@ -144,7 +144,7 @@ struct ChatCLIFoundation {
 
 Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are `@MainActor`-isolated — that's why the example's enclosing scope is annotated `@MainActor`. The compiler will reject a non-`@MainActor` call site with a region-isolation error in Swift 6 mode. (SwiftUI consumers never notice because `App.body` is already on the main actor.)
 
-> **Want a multi-turn REPL, not a one-shot?** The `readLine()` loop in [§3b](#3b-interactive-repl-stdin-loop) drops straight onto this Foundation setup — keep the two imports and single `FoundationBackends.register(with:)` above, then replace the `loadEndpointBackend(...)` call in that loop with the `loadModel(from: .builtInFoundation, plan: .cloud())` line shown here.
+> **Want a multi-turn REPL, not a one-shot?** The `readLine()` loop in [§3b](#3b-interactive-repl-stdin-loop) drops straight onto this Foundation setup — keep the two imports and single `FoundationBackends.register(with:)` above, then drop §3b's `APIEndpointRecord` construction and its `loadEndpointBackend(...)` call, replacing them with the `loadModel(from: .builtInFoundation, plan: .cloud())` line shown here. The stdin loop itself is unchanged.
 
 ---
 
@@ -155,8 +155,11 @@ This is the section that closes the "I'm on macOS 15 and want to evaluate Manifo
 **Get a model first.** Drop any GGUF file into `~/Documents/Models/`. SwiftUI hosts that use `ModelManagementSheet` discover both `~/Documents/Models` and the app-scoped Application Support directory — see [`docs/LOCAL-GGUF.md`](LOCAL-GGUF.md) for the full storage contract. Good starter picks:
 
 - [`Llama-3.2-3B-Instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF) — ~2 GB, instruction-tuned, no reasoning tokens — **the snippet below works with this model unchanged**
+- [`Phi-3.5-mini-instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF) — ~2.2 GB, plain instruct, no reasoning or tool-call tokens — another safe default for a naive REPL
 - [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, fast, but emits `.thinkingToken` events before its final answer — see ["Reasoning models" below](#reasoning-models-thinking-tokens) before using
 - Any other GGUF you've downloaded via HuggingFace, Ollama, or LM Studio
+
+> **Pick a plain instruct model for a first REPL.** The bare `if case .token` snippet below assumes conversational prose. Two model families surprise a naive host: **reasoning models** (Qwen3, DeepSeek-R1) emit `.thinkingToken` before their answer (see ["Reasoning models" below](#reasoning-models-thinking-tokens)), and **tool-tuned or larger instruct builds** (e.g. Llama-3.1-8B-Instruct) can emit tool-call JSON — `{"name": "...", "parameters": {...}}` — as plain text even when you pass no tools, because that behavior is baked into their chat template. That JSON is the model's template, not a ManifoldKit bug. If you see JSON or reasoning where you expected prose, swap in a plain instruct model like the Llama-3.2-3B or Phi-3.5 above before reaching for tool handling.
 
 > **Llama-3 multi-turn:** Real Jinja chat templates (v0.54+, [#1898](https://github.com/ManifoldKit/ManifoldKit/issues/1898)) fixed the ChatML control-token leakage reported in [#1398](https://github.com/ManifoldKit/ManifoldKit/issues/1398). Still smoke-test long multi-turn sessions in your CLI — any regression is tracked at #1398.
 
