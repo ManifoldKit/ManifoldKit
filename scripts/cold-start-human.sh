@@ -38,6 +38,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=_lib/consumer-scaffold.sh
+source "${REPO_ROOT}/scripts/_lib/consumer-scaffold.sh"
 README="${REPO_ROOT}/README.md"
 
 if [[ ! -f "${README}" ]]; then
@@ -196,14 +198,6 @@ EOF
 mkdir -p "${WORK}/Sources/HelloWorldApp"
 cp "${snippet_file}" "${WORK}/Sources/HelloWorldApp/HelloWorld.swift"
 
-# Some developer machines set `safe.bareRepository=explicit`; SwiftPM stores
-# checkouts as bare repositories, so allow bare repos only for these subprocesses.
-SWIFT_ENV=(
-    GIT_CONFIG_COUNT=1
-    GIT_CONFIG_KEY_0=safe.bareRepository
-    GIT_CONFIG_VALUE_0=all
-)
-
 # Optional persistent build cache. When MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR is
 # set we redirect SwiftPM's build path to that directory so a CI cache step can
 # warm-restore it across runs. The tmpdir-based consumer's *Package.swift* and
@@ -215,18 +209,25 @@ SWIFT_ENV=(
 # PR body for the measurement of where the win lands. (Pre-v0.48-C2 the big
 # win was the llama.cpp xcframework artifact; that dependency now lives in the
 # manifold-llama companion package.)
-BUILD_PATH_FLAG=()
+#
+# The build itself (bare-repository git env override + tail-60 of the captured
+# output) is shared with tiers 1-3 / the specialised-module gates via
+# cs_swift_build (scripts/_lib/consumer-scaffold.sh) — this used to be its own
+# copy of the same ~15 lines with a Bash-3.2 empty-array footgun
+# (`${arr[@]+"${arr[@]}"}`) that the shared helper's `if [[ "${1:-}" ==
+# --build-path ]]` branch sidesteps entirely.
+echo "==> swift build (Hello World snippet from README)"
 if [[ -n "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR:-}" ]]; then
     mkdir -p "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}"
-    BUILD_PATH_FLAG=(--build-path "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}")
     echo "    Using persistent build cache: ${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}"
+    build_ok=1
+    cs_swift_build "${WORK}" --build-path "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}" || build_ok=0
+else
+    build_ok=1
+    cs_swift_build "${WORK}" || build_ok=0
 fi
 
-echo "==> swift build (Hello World snippet from README)"
-# Bash 3.2 (the CI runner shell) errors under `set -u` when expanding an empty
-# array as "${arr[@]}". BUILD_PATH_FLAG is empty unless a build cache is set, so
-# guard the expansion with the ${arr[@]+...} portable idiom.
-if ! env "${SWIFT_ENV[@]}" swift build --package-path "${WORK}" ${BUILD_PATH_FLAG[@]+"${BUILD_PATH_FLAG[@]}"} 2>&1 | tail -60; then
+if [[ "${build_ok}" -ne 1 ]]; then
     echo "::error file=README.md,line=${first_h2_line}::The Hello World snippet does not compile against the current ManifoldKit public API."
     echo "    Either the snippet drifted (e.g. deleted symbol, renamed type) or"
     echo "    a public symbol it relies on was removed without updating the README."
