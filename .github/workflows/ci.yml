@@ -561,6 +561,19 @@ jobs:
       #   the heavy MLX/Llama families live in the manifold-mlx /
       #   manifold-llama companion packages.
       # - ManifoldBackendsTests runs the surviving cloud/Foundation/mock tests.
+      #
+      # KNOWN GAP (#2096, documented + deferred — do not "fix" without re-opening
+      # that decision): the `Foundation*` suites inside ManifoldBackendsTests
+      # (FoundationBackendUnitTests, FoundationBackendToolCallingTests,
+      # FoundationLocalBackendContractTests, FoundationBackendMetricEmissionTests,
+      # Conformance/FoundationBackendContractTests, etc.) compile here — this
+      # runner has an iOS/macOS 26 SDK — but every test method's setUp() throws
+      # `XCTSkip` at runtime because `runs-on: macos-15` is macOS 15, and
+      # `FoundationBackend` requires the macOS 26 OS (not just SDK) to be
+      # actually running. No GitHub-hosted macos-26 runner exists yet, so this
+      # backend family's suite has never asserted anything in CI, on any PR, on
+      # any merge. See docs/QA-PRACTICES.md § "ManifoldFoundation CI coverage
+      # gap" for the accepted-gap rationale and the revisit trigger.
       # - Server tests run in the sibling `server-tests` job behind a paths
       #   filter so Hummingbird only compiles when server code changes.
       # - Macro tests run in the sibling `macros-tests` job behind a paths
@@ -684,6 +697,13 @@ jobs:
       # registers before any meta-contract assertion executes.
       # In selective mode this suite runs via ci-selective-test.sh when it appears in
       # the affected set; the full-mode step below is therefore scoped to full runs.
+      #
+      # KNOWN GAP (#2096): this step compiles and registers the ManifoldFoundation
+      # (`Foundation*`) test classes, but every one of them XCTSkips at runtime —
+      # this runner is macos-15, and FoundationBackend needs macOS 26 actually
+      # running, not just SDK-available. No macOS 26 GitHub-hosted runner exists,
+      # so ManifoldFoundation has never had a real pass/fail assertion in CI.
+      # Documented + deferred, not tracked as a TODO — see docs/QA-PRACTICES.md.
       - name: Test — ManifoldBackendsTests (serial, claims-registry safe) [full]
         id: test-backends
         if: ${{ steps.test-mode.outputs.mode == 'full' && (success() || failure()) }}
