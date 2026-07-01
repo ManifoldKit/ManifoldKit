@@ -173,6 +173,12 @@ public enum ConformanceScorer {
         let assertionsPassed: Int
         let assertionsFailed: Int
         let errored: Bool
+        /// Reason from an explicit `error` event, when the transcript carried one.
+        let errorMessage: String?
+        /// Whether the model took any turn (saw a `final`/`tool_call`/`assertion`/…).
+        /// `false` means the group carried only a `prompt` — an un-measured hole,
+        /// not a measured `noCall` (#2087).
+        let producedModelTurn: Bool
         let toolCallCount: Int
         /// Resolved expected set (prompt `requiredTools`, else assertion recovery).
         let expectedTools: [String]
@@ -203,6 +209,14 @@ public enum ConformanceScorer {
             var assertionsPassed = 0
             var assertionsFailed = 0
             var errored = false
+            /// Human-readable reason from an explicit `error` event, when present.
+            var errorMessage: String?
+            /// Whether the model actually took a turn — any `final`, `tool_call`,
+            /// `tool_result`, `token_delta`, or `assertion` event. A group that saw
+            /// only a `prompt` (backend rejected the model before generation) never
+            /// produced a measurement and must NOT be scored as a measured `noCall`
+            /// false-zero (#2087).
+            var producedModelTurn = false
             var toolCallCount = 0
             var expectedTools: [String] = []
             /// Full advertised tool set forwarded to the model (real + decoys).
@@ -267,6 +281,9 @@ public enum ConformanceScorer {
                     groups[key]?.advertisedTools = advertised
                 }
             case "assertion":
+                // An assertion is emitted only after the model generated, so its
+                // presence proves the model took a turn (even a declined one).
+                groups[key]?.producedModelTurn = true
                 if (object["passed"] as? Bool) == true {
                     groups[key]?.assertionsPassed += 1
                 } else {
@@ -288,14 +305,24 @@ public enum ConformanceScorer {
                     }
                 }
             case "tool_call":
+                groups[key]?.producedModelTurn = true
                 groups[key]?.toolCallCount += 1
                 if let name = object["name"] as? String {
                     groups[key]?.calledTools.insert(name)
                 }
+            case "final", "token_delta", "tool_result":
+                // Any of these proves the model produced output this run, so the
+                // cell was genuinely measured (a `final` with no `tool_call` is a
+                // real, measured `noCall` — not a hole).
+                groups[key]?.producedModelTurn = true
             case "error":
-                // Not emitted by the current logger, but tolerated so a future
-                // explicit error record is honoured by the scorer.
+                // An explicit infra/harness error (e.g. the backend rejected the
+                // model). Marks the cell as errored so the record emitter maps it to
+                // a non-measured `loadFail` hole rather than a measured zero (#2087).
                 groups[key]?.errored = true
+                if let message = object["message"] as? String {
+                    groups[key]?.errorMessage = message
+                }
             default:
                 break
             }
@@ -325,6 +352,8 @@ public enum ConformanceScorer {
                 assertionsPassed: acc.assertionsPassed,
                 assertionsFailed: acc.assertionsFailed,
                 errored: acc.errored,
+                errorMessage: acc.errorMessage,
+                producedModelTurn: acc.producedModelTurn,
                 toolCallCount: acc.toolCallCount,
                 expectedTools: expectedTools,
                 advertisedTools: acc.advertisedTools,

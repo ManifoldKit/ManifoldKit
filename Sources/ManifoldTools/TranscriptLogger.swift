@@ -1,11 +1,18 @@
 import Foundation
 
-/// Append-only JSONL logger for scenario runs.
+/// JSONL logger for scenario runs.
 ///
 /// Each event is encoded as one line of JSON with a `kind` discriminator so
 /// downstream tooling (CI dashboards, regression diffs) can filter without
-/// knowing the full schema. The file is opened on first write and flushed on
-/// every append — crash-safe enough for a test harness.
+/// knowing the full schema. Writes are flushed on every append — crash-safe
+/// enough for a test harness.
+///
+/// The destination is **truncated (overwritten) on open by default**: a fresh
+/// `--output` path must reflect exactly one run, never concatenate a re-run onto
+/// a stale transcript (which corrupts downstream scoring — #2088). Pass
+/// `append: true` to preserve existing content and seek to end instead — the CLI
+/// uses that for the *second and later* loggers of a single invocation so the
+/// per-(scenario × model) runs interleave into one file without wiping each other.
 public final class TranscriptLogger {
 
     public enum Event {
@@ -15,6 +22,12 @@ public final class TranscriptLogger {
         case tokenDelta(scenarioId: String, text: String)
         case final(scenarioId: String, text: String)
         case assertion(scenarioId: String, passed: Bool, message: String)
+        /// A harness/infra error that aborted the run before (or during) a model
+        /// turn — e.g. the backend rejected the model (404). Recorded so the scorer
+        /// can positively distinguish an infra failure from a model that ran and
+        /// declined to call a tool (#2087), rather than reading a bare prompt-only
+        /// transcript as a measured zero.
+        case error(scenarioId: String, message: String)
     }
 
     private let fileHandle: FileHandle?
@@ -37,11 +50,15 @@ public final class TranscriptLogger {
     ///     existing callers keep compiling; when set, every record carries it.
     ///   - model: Model id driving the run (e.g. "qwen3.5-9b"). Optional.
     ///   - quant: Quantization label when derivable (e.g. "Q4_K_M"). May be nil.
+    ///   - append: When `false` (the default) the destination is truncated to
+    ///     empty on open so a re-run overwrites rather than concatenates (#2088).
+    ///     When `true`, existing content is preserved and writes seek to the end.
     public init(
         url: URL,
         backend: String? = nil,
         model: String? = nil,
-        quant: String? = nil
+        quant: String? = nil,
+        append: Bool = false
     ) throws {
         self.url = url
         self.backend = backend
@@ -49,11 +66,22 @@ public final class TranscriptLogger {
         self.quant = quant
         let parent = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: url.path) {
+        if append {
+            // Preserve any existing transcript and append to its end. Used for the
+            // second+ loggers of one CLI invocation so per-(scenario × model) runs
+            // interleave into one file.
+            if !FileManager.default.fileExists(atPath: url.path) {
+                FileManager.default.createFile(atPath: url.path, contents: nil)
+            }
+            self.fileHandle = try FileHandle(forWritingTo: url)
+            try self.fileHandle?.seekToEnd()
+        } else {
+            // Truncate-on-open: `createFile(atPath:contents:)` replaces any existing
+            // file with a fresh empty one, so a re-run to the same path starts clean
+            // instead of appending a second run onto the first (#2088).
             FileManager.default.createFile(atPath: url.path, contents: nil)
+            self.fileHandle = try FileHandle(forWritingTo: url)
         }
-        self.fileHandle = try FileHandle(forWritingTo: url)
-        try self.fileHandle?.seekToEnd()
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.sortedKeys]
         self.isoFormatter = ISO8601DateFormatter()
@@ -157,6 +185,13 @@ public final class TranscriptLogger {
                 "kind": "assertion",
                 "scenario": id,
                 "passed": passed,
+                "message": message
+            ]
+        case .error(let id, let message):
+            return [
+                "ts": timestamp,
+                "kind": "error",
+                "scenario": id,
                 "message": message
             ]
         }

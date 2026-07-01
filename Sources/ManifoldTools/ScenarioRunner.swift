@@ -117,59 +117,74 @@ public final class ScenarioRunner {
         // loop runs every tool iteration internally and surfaces each turn's
         // `.toolCall` / `.toolResult` events on this one stream — the runner
         // does not loop or dispatch.
-        let (_, stream) = try service.enqueue(
-            structuredMessages: messages,
-            systemPrompt: scenario.systemPrompt,
-            config: config
-        )
+        //
+        // If enqueue or the stream throws (e.g. the backend rejected the model with
+        // a 404), record an explicit `error` event before rethrowing. Without it the
+        // transcript carries only the `prompt` above, which the scorer would
+        // otherwise have to treat as an un-measured hole by absence; the event makes
+        // the infra failure positive so it can never be mistaken for a model that ran
+        // and declined to call a tool (#2087).
+        do {
+            let (_, stream) = try service.enqueue(
+                structuredMessages: messages,
+                systemPrompt: scenario.systemPrompt,
+                config: config
+            )
 
-        for try await event in stream.events {
-            switch event {
-            case .token(let text):
-                accumulatedText += text
-                logger?.append(.tokenDelta(scenarioId: scenario.id, text: text))
+            for try await event in stream.events {
+                switch event {
+                case .token(let text):
+                    accumulatedText += text
+                    logger?.append(.tokenDelta(scenarioId: scenario.id, text: text))
 
-            case .toolCall(let call):
-                toolCallsExecuted.append(call.toolName)
-                toolNameByCallID[call.id] = call.toolName
-                logger?.append(.toolCall(scenarioId: scenario.id, name: call.toolName, arguments: call.arguments))
+                case .toolCall(let call):
+                    toolCallsExecuted.append(call.toolName)
+                    toolNameByCallID[call.id] = call.toolName
+                    logger?.append(.toolCall(scenarioId: scenario.id, name: call.toolName, arguments: call.arguments))
 
-            case .toolResult(let result):
-                let name = toolNameByCallID[result.callId] ?? ""
-                toolResults.append(ToolResultRecord(
-                    toolName: name,
-                    content: result.content,
-                    errorKind: result.errorKind?.rawValue
-                ))
-                logger?.append(.toolResult(
-                    scenarioId: scenario.id,
-                    name: name,
-                    content: result.content,
-                    errorKind: result.errorKind?.rawValue
-                ))
+                case .toolResult(let result):
+                    let name = toolNameByCallID[result.callId] ?? ""
+                    toolResults.append(ToolResultRecord(
+                        toolName: name,
+                        content: result.content,
+                        errorKind: result.errorKind?.rawValue
+                    ))
+                    logger?.append(.toolResult(
+                        scenarioId: scenario.id,
+                        name: name,
+                        content: result.content,
+                        errorKind: result.errorKind?.rawValue
+                    ))
 
-            case .generationCompleted:
-                // Terminal marker — the orchestrator finished the whole turn
-                // (all tool iterations included); the stream finishes right
-                // after, so the `for await` loop ends on its own.
-                continue
+                case .generationCompleted:
+                    // Terminal marker — the orchestrator finished the whole turn
+                    // (all tool iterations included); the stream finishes right
+                    // after, so the `for await` loop ends on its own.
+                    continue
 
-            case .prefillProgress, .promptRendered, .usage, .thinkingToken,
-                 .thinkingCompleted, .thinkingSignature, .kvCacheReuse,
-                 .throttleDiagnostic, .toolCallStart, .toolCallArgumentsDelta,
-                 .toolProgress, .toolDispatchStarted, .toolDispatchCompleted,
-                 .toolCallApproved, .toolCallParseFailed, .toolCallTruncated,
-                 .handoffRequested, .toolIterationLimitExceeded,
-                 .runTokenBudgetExceeded:
-                // Observational / lifecycle markers. Tool accounting flows
-                // through `.toolCall` / `.toolResult`; the runner reconstructs
-                // its Outcome from those alone. Stay exhaustive so a new
-                // GenerationEvent case forces a compile error here.
-                continue
+                case .prefillProgress, .promptRendered, .usage, .thinkingToken,
+                     .thinkingCompleted, .thinkingSignature, .kvCacheReuse,
+                     .throttleDiagnostic, .toolCallStart, .toolCallArgumentsDelta,
+                     .toolProgress, .toolDispatchStarted, .toolDispatchCompleted,
+                     .toolCallApproved, .toolCallParseFailed, .toolCallTruncated,
+                     .handoffRequested, .toolIterationLimitExceeded,
+                     .runTokenBudgetExceeded:
+                    // Observational / lifecycle markers. Tool accounting flows
+                    // through `.toolCall` / `.toolResult`; the runner reconstructs
+                    // its Outcome from those alone. Stay exhaustive so a new
+                    // GenerationEvent case forces a compile error here.
+                    continue
+                }
             }
-        }
 
-        logger?.append(.final(scenarioId: scenario.id, text: accumulatedText))
+            logger?.append(.final(scenarioId: scenario.id, text: accumulatedText))
+        } catch {
+            // Generation failed mid-stream (e.g. the backend rejected the model, or
+            // the connection dropped). Record it positively so the scorer reads an
+            // infra hole, not a measured zero (#2087), then propagate.
+            logger?.append(.error(scenarioId: scenario.id, message: "\(error)"))
+            throw error
+        }
 
         var assertionOutcomes: [AssertionOutcome] = []
         for assertion in scenario.assertions {

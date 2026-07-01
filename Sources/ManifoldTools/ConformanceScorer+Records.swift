@@ -185,6 +185,35 @@ extension ConformanceScorer {
     /// single transcript yields one row per cell. A caller running repeats writes
     /// separate transcripts and stamps the index at collation time.
     static func record(from row: ResolvedRow, context: RecordContext) -> ConformanceRecord {
+        // Decoy pressure = the count of decoy distractors advertised this run. The
+        // harness names them `decoy_tool_<n>_<base>`; everything else in the
+        // advertised set is a real reference tool, so a prefix filter isolates them.
+        let decoyLevel = row.advertisedTools.filter { $0.hasPrefix("decoy_tool_") }.count
+
+        // Absence is not failure. A group that never produced a model turn — or that
+        // recorded an explicit infra error — was not measured: the backend rejected
+        // the model (e.g. a 404 on a nonexistent Ollama tag) before any generation.
+        // Scoring that as a measured `noCall` fabricates a false zero that pollutes
+        // the conformance matrix (#2087). Emit a non-measured hole instead, keying it
+        // to the cell the transcript names.
+        if row.errored || !row.producedModelTurn {
+            let cell = ExpectedCell(
+                backend: row.backend ?? "unknown",
+                model: row.model ?? "unknown",
+                quant: row.quant ?? "unknown",
+                scenario: row.scenario,
+                decoyLevel: decoyLevel,
+                repeatIndex: 0
+            )
+            // An explicit `error` event is a positive infra-failure signal → a
+            // `loadFail` (💥) hole. A bare prompt-only transcript is the same failure
+            // observed only by absence → `notMeasured` (🚫).
+            let status: CellStatus = row.errored
+                ? .loadFail(row.errorMessage ?? "backend reported an error before a model turn")
+                : .notMeasured("transcript has a prompt but no model turn — the backend rejected the model before generation (#2087)")
+            return notMeasuredRecord(cell, context: context, status: status)
+        }
+
         let verdict = row.verdict
         let toolSelection: Scores? = row.isToolBearing
             ? Scores(
@@ -193,10 +222,6 @@ extension ConformanceScorer {
                 f1: row.confusion.f1
             )
             : nil
-        // Decoy pressure = the count of decoy distractors advertised this run. The
-        // harness names them `decoy_tool_<n>_<base>`; everything else in the
-        // advertised set is a real reference tool, so a prefix filter isolates them.
-        let decoyLevel = row.advertisedTools.filter { $0.hasPrefix("decoy_tool_") }.count
         return ConformanceRecord(
             backend: row.backend ?? "unknown",
             model: row.model ?? "unknown",

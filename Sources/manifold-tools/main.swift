@@ -29,6 +29,10 @@ struct CLI {
     var backend: BackendChoice = .ollama
     var modelOverrides: [String] = []
     var output: URL = defaultOutputURL()
+    /// When false (default), the `--output` file is truncated on the first run of
+    /// this invocation so a re-run overwrites rather than concatenates (#2088).
+    /// `--append` preserves an existing transcript and appends to it.
+    var append: Bool = false
     var list: Bool = false
     var realNetwork: Bool = false
     var ollamaBaseURL: URL = URL(string: "http://localhost:11434")!
@@ -80,6 +84,8 @@ struct CLI {
                 i += 1
                 guard i < argv.count else { fail("--output requires a value") }
                 cli.output = URL(fileURLWithPath: argv[i])
+            case "--append":
+                cli.append = true
             case "--list":
                 cli.list = true
             case "--real-network":
@@ -133,7 +139,7 @@ struct CLI {
 
         USAGE
           manifold-tools [--scenario <id|all>] [--backend ollama|mock|openai-compat] [--model A,B]
-                    [--output path.jsonl] [--real-network] [--extra-tools N] [--list]
+                    [--output path.jsonl] [--append] [--real-network] [--extra-tools N] [--list]
           manifold-tools test-uplift status|pause|resume|stop
 
         FLAGS
@@ -142,6 +148,9 @@ struct CLI {
                                 'openai-compat' (OpenAI Chat Completions–compatible endpoint).
           --model <list>        Comma-separated model overrides; each scenario runs once per model.
           --output <path>       Transcript JSONL destination. Default: tmp/manifold-tools/<iso>.jsonl.
+                                Truncated (overwritten) on each run by default so a re-run
+                                does not concatenate onto a stale transcript.
+          --append              Append to an existing --output transcript instead of truncating it.
           --real-network        Allow HttpGetFixtureTool to hit the real internet (requires
                                 MANIFOLD_TOOLS_ALLOW_NETWORK=1). Default: off.
           --ollama-base-url     Override the Ollama base URL. Default: http://localhost:11434.
@@ -588,20 +597,28 @@ func runCLI() async -> Int32 {
     }
 
     var allPassed = true
+    // Track the first logger of this invocation so only it truncates `--output`
+    // (unless `--append` was given). Every later (scenario × model) run appends to
+    // the same file so the runs interleave into one transcript rather than each
+    // wiping the last (#2088).
+    var isFirstRun = true
     for scenario in filtered {
         let models = cli.modelOverrides.isEmpty ? [scenario.backend.model] : cli.modelOverrides
         for model in models {
             print("\n── \(scenario.id) via \(cli.backend.rawValue)/\(model) ──")
             do {
-                // One logger per (backend, model) run, all appending to the same
-                // file. Per-record attribution makes the interleaved transcript
-                // scorable per-model without parsing stdout.
+                // One logger per (backend, model) run, all writing to the same file.
+                // Per-record attribution makes the interleaved transcript scorable
+                // per-model without parsing stdout. The first run truncates a stale
+                // `--output` (unless `--append`); the rest append to this run's file.
                 let logger = try TranscriptLogger(
                     url: cli.output,
                     backend: cli.backend.rawValue,
                     model: model,
-                    quant: quantLabel(from: model)
+                    quant: quantLabel(from: model),
+                    append: cli.append || !isFirstRun
                 )
+                isFirstRun = false
                 let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
                 let runner = ScenarioRunner(
                     service: service,
@@ -619,7 +636,12 @@ func runCLI() async -> Int32 {
                 }
             } catch {
                 allPassed = false
-                print("  ERROR \(error)")
+                // Surface infra failures (e.g. the backend rejecting a nonexistent
+                // model with a 404) on stderr so they stand out from scenario output
+                // and aren't mistaken for a measured decline (#2087). The scorer reads
+                // such a run as a non-measured hole, never a zero.
+                let message = "  ERROR \(cli.backend.rawValue)/\(model) — backend did not produce a run: \(error)\n"
+                FileHandle.standardError.write(Data(message.utf8))
             }
         }
     }
