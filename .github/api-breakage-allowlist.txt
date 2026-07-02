@@ -146,3 +146,4 @@ API breakage: constructor ScenarioRunner.init(service:logger:maxIterations:) has
 API breakage: var HandoffChipView.payload has been removed
 API breakage: constructor HandoffChipView.init(from:to:payload:) has been removed
 API breakage: struct SemanticSimilarityScorer has been removed
+API breakage: func ChatViewModel.switchToSession(_:) has been renamed to func switchToSession(_:scrollToMessageID:)
