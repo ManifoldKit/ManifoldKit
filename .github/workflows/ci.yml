@@ -102,8 +102,8 @@ permissions:
 
 jobs:
   # Single ubuntu-latest job that runs dorny/paths-filter once for every
-  # downstream job that needs it. Avoids spinning up a macOS runner (10× billed)
-  # per push just to detect that no relevant files changed.
+  # downstream job that needs it. Avoids spinning up a macOS runner (org-wide
+  # concurrency-capped) per push just to detect that no relevant files changed.
   changes:
     # Draft PRs do not run CI: the review-and-fix loop happens on the draft, and
     # CI fires once when the PR is marked ready (see CLAUDE.md §"Draft-PR review
@@ -137,8 +137,16 @@ jobs:
       api-ui: ${{ steps.filter.outputs.api-ui }}
       # 'true' when this is a push to main whose exact SHA was already validated
       # by a successful merge_group CI run (i.e. it landed via the merge queue).
-      # Consumed by the `test` job to skip the redundant post-merge re-test.
+      # Consumed by every macOS test job to skip its post-merge push re-run —
+      # `test` because the queue ran it on this exact SHA (true duplicate), the
+      # satellites because their merged-tree signal moved to the nightly backstop
+      # (see the queue-validated step's comment below) — and by `cache-prime` to
+      # refresh the main-branch dep cache the skipped jobs would have saved.
       already-validated: ${{ steps.queue-validated.outputs.already-validated }}
+      # 'true' when the dependency graph (Package.swift / Package.resolved)
+      # changed. Consumed by `cache-prime` — see that job for why this can't
+      # reuse the `test` job's own deps-changed step.
+      deps: ${{ steps.filter.outputs.deps }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -162,6 +170,12 @@ jobs:
           filters: |
             all:
               - '**'
+            # Dependency-graph filter for `cache-prime` (duplicates the `test`
+            # job's deps-changed step because that job is skipped on
+            # queue-validated pushes — exactly when cache-prime must run).
+            deps:
+              - 'Package.swift'
+              - 'Package.resolved'
             server:
               - 'Sources/ManifoldServer*/**'
               - 'Tests/ManifoldServerTests/**'
@@ -273,13 +287,20 @@ jobs:
       # main — empirically the merge_group head_sha equals the pushed SHA (verified
       # on this repo's queue config). The subsequent push-to-main event re-runs the
       # whole ~700s macOS `test` job on that identical SHA for zero added signal: a
-      # straight 10×-billed duplicate. This step detects a successful merge_group CI
-      # run for the pushed SHA and, if found, flags the `test` job to skip.
+      # pure duplicate holding macOS concurrency slots. This step detects a
+      # successful merge_group CI run for the pushed SHA and, if found, flags the
+      # macOS jobs to skip.
       #
-      # Scope is deliberately ONLY the `test` job: on merge_group the server-tests/
-      # macros-tests/cold-start/ci-ios-file-protection jobs are skipped (paths-filter
-      # is bypassed there), so the queue never validated those surfaces — their
-      # post-merge push runs are NOT duplicates and must keep running.
+      # Scope: all five macOS jobs consume this flag, with two distinct
+      # justifications. `test` ran on the queue branch itself, so its push re-run
+      # is a true duplicate. The satellites (server-tests / macros-tests /
+      # cold-start / ci-ios-file-protection) never run on merge_group (paths-filter
+      # is bypassed there), so for them the skip trades post-merge re-validation of
+      # the merged tree for a ≤24h nightly backstop: nightly-slow-tests.yml runs
+      # cold-start unconditionally (its `cold-start` job) and the other three via
+      # its `queue-merge-backstop` job — same signal-latency trade as the
+      # push-burst collapse (#1871). Do NOT extend this flag to a new macOS job
+      # without also adding that job's surface to the nightly backstop.
       #
       # Safety: this only fires on `push`. Direct/admin/hotfix pushes (no
       # merge_group run for the SHA) find no match and run the full gate as before;
@@ -308,6 +329,51 @@ jobs:
             echo "already-validated=false" >> "$GITHUB_OUTPUT"
             echo "No successful merge_group run for ${SHA} — running the full post-merge \`test\` gate." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+  # Refresh the main-branch SwiftPM dependency cache when a queue-validated
+  # merge changed the dependency graph.
+  #
+  # Why this job exists: PR and merge_group runs restore the dep cache from
+  # `refs/heads/main`'s cache entries (GitHub Actions cache scoping — a branch
+  # reads its own caches plus the default branch's). Caches SAVED by merge_group
+  # runs are scoped to the throwaway `gh-readonly-queue/...` ref and die with it,
+  # and a queue-validated push skips every macOS test job above/below — so
+  # without this job, nothing on main would ever save the cache under the new
+  # Package.resolved hash. Every subsequent PR would then pay the restore-keys
+  # fallback (partial hit + incremental re-fetch) until the stale entry evicts.
+  #
+  # Cost: one macOS runner for ~2-4 min (resolve only, no build), and ONLY on
+  # queue-validated pushes that touched Package.swift / Package.resolved. On
+  # non-queue pushes the full `test` job runs and saves the cache itself, as
+  # before. On pull_request / merge_group, `already-validated` is empty → skipped.
+  #
+  # Known gap (accepted): push runs share the ref-keyed concurrency group with
+  # cancel-in-progress, so a merge landing while this job is mid-resolve cancels
+  # it, and the successor push's own diff range may have deps=false — the new
+  # Package.resolved key then isn't saved on main until nightly-slow-tests.yml's
+  # setup-swift-ci cache step saves it (≤24h of restore-keys partial hits;
+  # self-heals). Not worth exempting from burst collapse.
+  cache-prime:
+    needs: [changes]
+    if: >-
+      github.event_name == 'push' &&
+      needs.changes.outputs.already-validated == 'true' &&
+      needs.changes.outputs.deps == 'true'
+    runs-on: macos-15  # must match the test jobs' runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Restores under the OLD Package.resolved key via restore-keys (partial
+      # hit keeps the resolve below incremental), then the action's post step
+      # saves .build/artifacts + checkouts + repositories under the NEW key.
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+
+      - name: Resolve dependencies to populate the cache
+        timeout-minutes: 15
+        run: swift package resolve
 
   test:
     needs: [changes]
@@ -453,8 +519,8 @@ jobs:
 
       - name: Verify Package.resolved is up to date
         # Was a separate `resolve-check` job on its own macos-15 runner; folding
-        # it into `test` removes one 10×-billed runner per PR and eliminates the
-        # second queue wait that `needs: [resolve-check]` imposed.
+        # it into `test` removes one macOS runner spin-up per PR and eliminates
+        # the second queue wait that `needs: [resolve-check]` imposed.
         # Gated on the deps-changed filter: Package.resolved can only go stale
         # when Package.swift is edited, so skipping when neither file changed
         # avoids ~47s of wasted resolve work on the typical PR (~15% of total CI).
@@ -805,7 +871,11 @@ jobs:
   # the compile cost — and only when server code or the dep graph changes.
   server-tests:
     needs: [changes]
-    if: needs.changes.outputs.server == 'true'
+    # Path-gated, and skipped on a queue-validated push to main. NOTE: the queue
+    # validated `test` + `lint` on the merged tree, not this suite (satellites
+    # never run on merge_group) — this suite's merged-tree signal comes from the
+    # nightly backstop instead (≤24h; see the queue-validated step's comment).
+    if: needs.changes.outputs.server == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -857,7 +927,11 @@ jobs:
   # only when macro code or the dep graph changes.
   macros-tests:
     needs: [changes]
-    if: needs.changes.outputs.macros == 'true'
+    # Path-gated, and skipped on a queue-validated push to main. NOTE: the queue
+    # validated `test` + `lint` on the merged tree, not this suite (satellites
+    # never run on merge_group) — this suite's merged-tree signal comes from the
+    # nightly backstop instead (≤24h; see the queue-validated step's comment).
+    if: needs.changes.outputs.macros == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -920,7 +994,11 @@ jobs:
   # sources). Nightly runs all six unconditionally every day.
   cold-start:
     needs: [changes]
-    if: needs.changes.outputs.cold-start == 'true'
+    # Path-gated, and skipped on a queue-validated push to main. NOTE: the queue
+    # validated `test` + `lint` on the merged tree, not this suite (satellites
+    # never run on merge_group) — this suite's merged-tree signal comes from the
+    # nightly backstop instead (≤24h; see the queue-validated step's comment).
+    if: needs.changes.outputs.cold-start == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -998,7 +1076,11 @@ jobs:
   # keep runtime short.  See scripts/test-ios-simulator.sh for the full rationale.
   ci-ios-file-protection:
     needs: [changes]
-    if: needs.changes.outputs.persistence == 'true'
+    # Path-gated, and skipped on a queue-validated push to main. NOTE: the queue
+    # validated `test` + `lint` on the merged tree, not this suite (satellites
+    # never run on merge_group) — this suite's merged-tree signal comes from the
+    # nightly backstop instead (≤24h; see the queue-validated step's comment).
+    if: needs.changes.outputs.persistence == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner
 
     steps:

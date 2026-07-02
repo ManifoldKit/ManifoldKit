@@ -284,6 +284,43 @@ jobs:
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
 
+  # Merged-tree backstop for the trait-gated / simulator suites that the merge
+  # queue never validates. On merge_group ci.yml bypasses the paths-filter, so
+  # server-tests / macros-tests / ci-ios-file-protection never run on the queue
+  # branch, and since the queue-validated post-merge skip (#2115) they no longer
+  # re-run on push-to-main either. Their last run is the PR-level check against
+  # the merge-ref at ready time — this job re-runs all three daily against
+  # actual main, so a cross-PR semantic conflict in these surfaces is caught
+  # within 24h (same trade as the push-burst collapse, #1871, and doc-gates
+  # below). cold-start already has its own unconditional nightly job above.
+  # Steps use `if: success() || failure()` so one failure doesn't mask the rest.
+  queue-merge-backstop:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+        with:
+          verify-toolchain: "true"
+
+      - name: Test — Server suite (Server trait)
+        timeout-minutes: 15
+        run: scripts/test.sh --filter ManifoldServerTests --traits Server --skip-update --min-passed 1
+
+      - name: Test — @ToolSchema macro suite (Macros trait)
+        if: success() || failure()
+        timeout-minutes: 15
+        run: scripts/test.sh --filter ToolSchemaMacro --traits Macros --skip-update --min-passed 1
+
+      - name: Test — ModelContainerFileProtectionTests (iOS Simulator)
+        if: success() || failure()
+        timeout-minutes: 15
+        run: scripts/test-ios-simulator.sh --ci
+
   # Doc-snippet + human-path cold-start gates — the 24h post-merge backstop.
   # readme-snippets.yml and cold-start-human.yml run these scripts on PRs (via
   # their source `paths:` filters), but as of PR #1870 those workflows dropped
