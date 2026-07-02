@@ -13,6 +13,7 @@ public struct SessionListView: View {
     @State private var sessionToDelete: ChatSession?
     @State private var sessionToRename: ChatSession?
     @State private var renameText: String = ""
+    @State private var sessionToExport: ChatSession?
     @State private var errorMessage: String?
 
     @State private var searchText: String = ""
@@ -86,6 +87,9 @@ public struct SessionListView: View {
         } message: {
             if let errorMessage { Text(errorMessage) }
         }
+        .sheet(item: $sessionToExport) { session in
+            SessionExportSheet(session: session)
+        }
     }
 
     // MARK: - Subtrees
@@ -154,6 +158,7 @@ public struct SessionListView: View {
             .contextMenu {
                 unpinButton(for: session)
                 renameButton(for: session)
+                exportButton(for: session)
                 deleteButton(for: session)
             }
     }
@@ -173,6 +178,7 @@ public struct SessionListView: View {
             .contextMenu {
                 pinButton(for: session)
                 renameButton(for: session)
+                exportButton(for: session)
                 deleteButton(for: session)
             }
             .onAppear {
@@ -215,6 +221,14 @@ public struct SessionListView: View {
             }
         } label: {
             Label("Pin", systemImage: "pin")
+        }
+    }
+
+    private func exportButton(for session: ChatSession) -> some View {
+        Button {
+            sessionToExport = session
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
         }
     }
 
