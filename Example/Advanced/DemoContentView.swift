@@ -274,7 +274,11 @@ struct DemoContentView: View {
                 // mid-stream, wiping the ingested reply. Only re-activate
                 // if the view model is currently on a different session.
                 if viewModel.activeSession?.id != session.id {
-                    Task { await viewModel.switchToSession(session) }
+                    // Consuming (rather than just reading) clears the target
+                    // so re-activating the same session later — an ordinary
+                    // open — does not re-trigger the jump.
+                    let scrollTarget = sessionManager.consumeSearchScrollTarget(for: session.id)
+                    Task { await viewModel.switchToSession(session, scrollToMessageID: scrollTarget) }
                 }
             }
         }

@@ -7,7 +7,14 @@ import ManifoldInference
 extension ChatViewModel {
 
     /// Switches to a different chat session, loading its messages and settings.
-    public func switchToSession(_ session: ChatSession) async {
+    ///
+    /// - Parameter scrollToMessageID: When non-nil, scrolls the chat to this
+    ///   message once its messages have finished loading. Pass the value
+    ///   returned by `SessionManagerViewModel.consumeSearchScrollTarget(for:)`
+    ///   to jump straight to the message a `.messages`-scope search result
+    ///   matched, instead of landing at the bottom of the conversation. The
+    ///   default `nil` preserves the ordinary "open at bottom" behavior.
+    public func switchToSession(_ session: ChatSession, scrollToMessageID: ChatMessage.ID? = nil) async {
         // Drive the UI back to idle synchronously so the toolbar/stop button
         // observes the transition immediately. The runtime handle and queue
         // tear-down are awaited by `sessionManager.teardown` before any
@@ -47,6 +54,14 @@ extension ChatViewModel {
         clearDraftAttachments()
         await loadMessages()
         updateContextEstimate()
+
+        // Fire only after `loadMessages()` above has populated `messages` —
+        // requesting a scroll before the target message exists in the list
+        // is a no-op (`ChatHistoryScrollBehavior.canConsumeScrollToMessageRequest`
+        // requires the id to already be present).
+        if let scrollToMessageID {
+            requestScrollToMessage(id: scrollToMessageID, anchor: .center)
+        }
 
         Log.ui.info("Switched to session: \(session.title, privacy: .private)")
 

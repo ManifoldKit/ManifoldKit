@@ -46,6 +46,7 @@ public final class SessionManagerViewModel {
             // `--parallel` test runs do not collide on `UserDefaults.standard`.
             guard oldValue?.id != activeSession?.id else { return }
             lastActiveStore.write(activeSession?.id)
+            updatePendingSearchScrollTarget()
         }
     }
 
@@ -55,6 +56,17 @@ public final class SessionManagerViewModel {
     public private(set) var messageHitsBySession: [UUID: [MessageSearchHit]] = [:]
     public private(set) var titleMatches: [ChatSession] = []
     public private(set) var messageMatchSessions: [ChatSession] = []
+
+    /// The `messageID` of the most recent match for the currently active
+    /// session, when it was activated by tapping a `.messages`-scope search
+    /// result (#search-jump-to-message). `nil` for an ordinary session open.
+    ///
+    /// Set automatically by ``activeSession``'s `didSet` — no dedicated
+    /// selection method is required because the sidebar's `List(selection:)`
+    /// binding writes ``activeSession`` directly. A coordinating host reads
+    /// this via ``consumeSearchScrollTarget(for:)`` after handing the session
+    /// to a `ChatViewModel`.
+    public private(set) var pendingSearchScrollMessageID: UUID?
 
     /// Optional diagnostics sink for non-fatal operational failures.
     public private(set) var diagnostics: DiagnosticsService?
@@ -433,11 +445,45 @@ public final class SessionManagerViewModel {
     /// Clears search state and falls back to the unfiltered session list.
     ///
     /// Resets ``searchScope`` to `.titles` so the scope tab snaps back when
-    /// the user clears a query entered while on the Messages tab.
+    /// the user clears a query entered while on the Messages tab. Also drops
+    /// any pending search-jump target so a later ordinary session open does
+    /// not incorrectly trigger a scroll.
     public func clearSearch() {
         searchQuery = ""
         searchScope = .titles
+        pendingSearchScrollMessageID = nil
         service?.clearSearch()
+    }
+
+    /// Returns (and clears) the pending search-jump target recorded by
+    /// ``activeSession``'s selection, if `sessionID` matches the currently
+    /// active session.
+    ///
+    /// Call this once, immediately before switching a `ChatViewModel` to
+    /// `sessionID`, and forward the result to
+    /// `ChatViewModel.switchToSession(_:scrollToMessageID:)`. Consuming
+    /// clears the target so re-activating the same session later (an
+    /// ordinary open) does not re-trigger the jump.
+    public func consumeSearchScrollTarget(for sessionID: UUID) -> UUID? {
+        guard let pendingSearchScrollMessageID, activeSession?.id == sessionID else { return nil }
+        self.pendingSearchScrollMessageID = nil
+        return pendingSearchScrollMessageID
+    }
+
+    /// Recomputes ``pendingSearchScrollMessageID`` whenever ``activeSession``
+    /// changes. Only sets a target when the selection happened while an
+    /// active `.messages`-scope search is showing a hit for the newly
+    /// activated session — an ordinary sidebar tap (scope `.titles`, or no
+    /// query) always clears it.
+    private func updatePendingSearchScrollTarget() {
+        guard searchScope == .messages,
+              !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let sessionID = activeSession?.id,
+              let mostRecentHit = messageHitsBySession[sessionID]?.first else {
+            pendingSearchScrollMessageID = nil
+            return
+        }
+        pendingSearchScrollMessageID = mostRecentHit.messageID
     }
 
     // MARK: - Initial-session selection (#1464)
