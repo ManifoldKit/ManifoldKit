@@ -506,6 +506,7 @@ struct DemoContentView: View {
         switch policy {
         case .alwaysAsk: return "Always ask"
         case .askOncePerSession: return "Once / session"
+        case .askOncePerTool: return "Once / tool"
         case .autoApprove: return "Auto"
         }
     }
