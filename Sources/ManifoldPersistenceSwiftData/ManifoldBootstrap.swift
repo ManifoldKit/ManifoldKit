@@ -172,6 +172,9 @@ public final class ManifoldBootstrap {
     public let modelContainer: ModelContainer
     public let persistence: SwiftDataPersistenceProvider
     public let samplerPresetStore: SwiftDataSamplerPresetStore
+    /// Persists the persona/prompt library (saved, named system prompts).
+    /// Backed by ``Persona`` (``ManifoldSchemaV12``).
+    public let personaStore: SwiftDataPersonaStore
     public let benchmarkCache: SwiftDataBenchmarkCache
     /// Persists measured tool-call conformance verdicts keyed by
     /// `(model × quant × backend)`. Host apps can read cached verdicts via
@@ -322,6 +325,7 @@ public final class ManifoldBootstrap {
             let resolvedPersistence = SwiftDataPersistenceProvider(modelContext: mainContext)
             self.persistence = resolvedPersistence
             self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
+            self.personaStore = SwiftDataPersonaStore(modelContext: mainContext)
             self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
             self.toolCallConformanceCache = SwiftDataToolCallConformanceCache(modelContext: mainContext)
             self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
@@ -393,6 +397,7 @@ public final class ManifoldBootstrap {
         modelContainer: ModelContainer,
         persistence: SwiftDataPersistenceProvider,
         samplerPresetStore: SwiftDataSamplerPresetStore,
+        personaStore: SwiftDataPersonaStore,
         benchmarkCache: SwiftDataBenchmarkCache,
         toolCallConformanceCache: SwiftDataToolCallConformanceCache,
         endpointStore: SwiftDataEndpointStore,
@@ -413,6 +418,7 @@ public final class ManifoldBootstrap {
         self.modelContainer = modelContainer
         self.persistence = persistence
         self.samplerPresetStore = samplerPresetStore
+        self.personaStore = personaStore
         self.benchmarkCache = benchmarkCache
         self.toolCallConformanceCache = toolCallConformanceCache
         self.endpointStore = endpointStore
@@ -619,6 +625,7 @@ public final class ManifoldBootstrap {
                 let mainContext = container.mainContext
                 let persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
                 let samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
+                let personaStore = SwiftDataPersonaStore(modelContext: mainContext)
                 let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
                 let toolCallConformanceCache = SwiftDataToolCallConformanceCache(modelContext: mainContext)
                 let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
@@ -640,6 +647,7 @@ public final class ManifoldBootstrap {
                     modelContainer: container,
                     persistence: persistence,
                     samplerPresetStore: samplerPresetStore,
+                    personaStore: personaStore,
                     benchmarkCache: benchmarkCache,
                     toolCallConformanceCache: toolCallConformanceCache,
                     endpointStore: endpointStore,

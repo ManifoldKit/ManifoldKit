@@ -70,6 +70,7 @@ If your test hits SwiftData, it's an integration test — name and place it acco
 | `SessionStoreContract` | `SessionStore` — insert/fetch/update/delete, most-recently-updated ordering, `deleteAll`, pagination |
 | `EndpointStoreContract` | `EndpointStore` — insert/fetch/update/delete, most-recently-created ordering |
 | `SamplerPresetStoreContract` | `SamplerPresetStore` — insert/fetch/delete, most-recently-created ordering |
+| `PersonaStoreContract` | `PersonaStore` — insert/fetch/delete, most-recently-created ordering |
 | `BenchmarkCacheContract` | `BenchmarkCache` — upsert/fetchAll, replacement semantics, multi-key isolation |
 
 `ManifoldMCPTests/Contracts/MCPToolSourceContractTests.swift` covers `MCPToolSource` behavioral invariants (not a mixin — `ManifoldMCP` is not a dependency of `ManifoldTestSupport`).
@@ -103,6 +104,7 @@ Reference adopters live alongside their target:
 | `ManifoldRuntimeTests/SessionStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `SessionStoreContract` via in-memory double |
 | `ManifoldRuntimeTests/EndpointStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `EndpointStoreContract` via in-memory double |
 | `ManifoldRuntimeTests/SamplerPresetStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `SamplerPresetStoreContract` via in-memory double |
+| `ManifoldRuntimeTests/PersonaStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `PersonaStoreContract` via in-memory double |
 | `ManifoldRuntimeTests/BenchmarkCacheContractAdopterTests.swift` | `ManifoldRuntimeTests` | `BenchmarkCacheContract` via in-memory double |
 
 ## Adding a new backend
