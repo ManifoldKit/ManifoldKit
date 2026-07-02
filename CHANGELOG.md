@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.64.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.63.0...v0.64.0) (2026-07-02)
+
+### Highlights
+
+**Sticky "approve for the run" tool approval reaches the shipping gate.** `ToolApprovalPolicy` / `ToolApprovalStickyCache` / `ToolApprovalHook` shipped as a parallel, unreferenced mechanism sitting next to the `UIToolApprovalGate` path production actually used. `UIToolApprovalGate` now holds a run-scoped sticky cache and gains a new `.askOncePerTool` policy that delegates to the hook, so a host can approve a specific tool once and have it stick for the rest of the run — reaching the engine through the existing gate seam `GenerationToolDispatchLoop` already consults ([#2107](https://github.com/ManifoldKit/ManifoldKit/issues/2107)).
+
+```swift
+let gate = UIToolApprovalGate(policy: .askOncePerTool)
+let service = InferenceService(toolRegistry: registry, toolApprovalGate: gate)
+// first call to `read_file` prompts once; every later call to that tool this run auto-approves
+```
+
+**The tool-call conformance harness ships its fixture tree and CLI shape as public API.** `ManifoldTools` already published its scenario corpus via `Bundle.module` (#2042); this closes the remaining gap so the manifold-mlx and manifold-llama companion CLIs stop hand-rolling the fixture tree, VL-model pre-flight detection, and the scenario-run loop. `ToolFixtures.bundledRoot()` resolves the sandbox fixture tree via `Bundle.module` regardless of working directory, `VLModelDetector.isVisionLanguageModel(at:)` centralizes a marker-file check three call sites had duplicated, and `ScenarioCLIHarness` is the shared flag-parsing/run-loop/exit-code shape every hand-rolled `main.swift` reimplemented. Core's own `manifold-tools` executable is the live consumer ([#2111](https://github.com/ManifoldKit/ManifoldKit/issues/2111)).
+
+```swift
+import ManifoldTools
+
+let fixturesRoot = ToolFixtures.bundledRoot()                  // sandbox fixture tree, CWD-independent
+let isVL = VLModelDetector.isVisionLanguageModel(at: modelDir)  // preprocessor_config.json family check
+```
+
+### Fixes
+
+* Lock four unsynchronized `nonisolated(unsafe) static var` test seams (two guarding SSRF/DNS-rebinding checks) against a real cross-thread race under `swift test --parallel`, and close a coverage gap where 13 of 20 audit tests had no sabotage-suite verification ([#2103](https://github.com/ManifoldKit/ManifoldKit/issues/2103))
+* Truncate `--output` by default instead of appending (a re-run corrupted downstream scoring by concatenating two transcripts), and stop scoring backend-rejected runs as a measured `noCall` false zero — they now read as `notMeasured`/`loadFail` ([#2092](https://github.com/ManifoldKit/ManifoldKit/issues/2092))
+
+### Documentation
+
+* Add companion-backend onboarding and hardware/toolchain guides ([#2110](https://github.com/ManifoldKit/ManifoldKit/issues/2110))
+* Slim the CLI quickstart's §1 Foundation section to a genuine minimal path ([#2101](https://github.com/ManifoldKit/ManifoldKit/issues/2101))
+* Document ManifoldFoundation CI coverage gap ([#2096](https://github.com/ManifoldKit/ManifoldKit/issues/2096), [#2104](https://github.com/ManifoldKit/ManifoldKit/issues/2104))
+* Add the manifold-eval repo override plan (v2) ([#2084](https://github.com/ManifoldKit/ManifoldKit/issues/2084))
+* Fix CLAUDE.md target-table drift, stale ManifoldBackends comments, and THREAT_MODEL.md DNS-rebinding claim ([#2105](https://github.com/ManifoldKit/ManifoldKit/issues/2105)), closes [#2098](https://github.com/ManifoldKit/ManifoldKit/issues/2098)
+* Restore image-gen quickstart and reconcile MLX metallib guidance ([#2102](https://github.com/ManifoldKit/ManifoldKit/issues/2102))
+
+### Tests
+
+* Make PromptContextPipeline concurrency assertion deterministic ([#2091](https://github.com/ManifoldKit/ManifoldKit/issues/2091)), closes [#2085](https://github.com/ManifoldKit/ManifoldKit/issues/2085)
+
+### Continuous Integration
+
+* Dispatch core-release to manifold-eval on MK release (P5/U4) ([#2089](https://github.com/ManifoldKit/ManifoldKit/issues/2089))
+* Fix the DocC build workflow being rejected with Unknown option '-Xswiftc' ([#2090](https://github.com/ManifoldKit/ManifoldKit/issues/2090)), closes [#2081](https://github.com/ManifoldKit/ManifoldKit/issues/2081)
+* Extend action-pin-audit to .github/actions/, fix force-unwrap regex gap, fix label-name shell interpolation ([#2106](https://github.com/ManifoldKit/ManifoldKit/issues/2106))
+* Skip redundant post-merge test re-run when merge queue validated the SHA ([#2083](https://github.com/ManifoldKit/ManifoldKit/issues/2083))
+
+### Code Refactoring
+
+* Remove the unused SemanticSimilarityScorer from the eval scorer surface ([#2093](https://github.com/ManifoldKit/ManifoldKit/issues/2093))
+
 ## [0.63.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.62.0...v0.63.0) (2026-06-28)
 
 ### Highlights
