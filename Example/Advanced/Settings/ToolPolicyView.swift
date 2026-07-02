@@ -21,6 +21,7 @@ struct ToolPolicyView: View {
                     Picker("Tool approval", selection: binding) {
                         Text("Always ask").tag(UIToolApprovalGate.Policy.alwaysAsk)
                         Text("Ask once per session").tag(UIToolApprovalGate.Policy.askOncePerSession)
+                        Text("Ask once per tool").tag(UIToolApprovalGate.Policy.askOncePerTool)
                         Text("Auto-approve").tag(UIToolApprovalGate.Policy.autoApprove)
                     }
                     .pickerStyle(.inline)
