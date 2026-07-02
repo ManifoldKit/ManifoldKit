@@ -139,6 +139,24 @@ final class SidebarAndSheetControlTests: XCTestCase {
         )
     }
 
+    func test_sessionListView_withSessions_rowContextMenuContainsExportOption() async throws {
+        let container = try makeInMemoryContainer()
+        let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
+        let sessionManager = SessionManagerViewModel()
+        sessionManager.configure(persistence: persistence, autoLoad: false)
+        try await sessionManager.createSession(title: "Exportable Session")
+
+        let dump = ViewHierarchyDumper.dump(
+            SessionListView()
+                .environment(sessionManager)
+        )
+
+        XCTAssertTrue(
+            dump.contains("Export"),
+            "SessionListView row context menu must offer an Export action"
+        )
+    }
+
     // MARK: - ChatExportSheet: Form Content
 
     func test_chatExportSheet_showsFormatSection() {
@@ -252,6 +270,75 @@ final class SidebarAndSheetControlTests: XCTestCase {
         XCTAssertTrue(
             dump.contains("NavigationTitleKey"),
             "ChatExportSheet must set a navigation title"
+        )
+    }
+
+    // MARK: - SessionExportSheet: Form Content
+
+    private func makeSessionExportSheetDump() -> String {
+        ViewHierarchyDumper.dump(
+            SessionExportSheet(session: ChatSession(id: UUID(), title: "Preview Chat"))
+                .environment(SessionManagerViewModel())
+        )
+    }
+
+    func test_sessionExportSheet_showsFormatSection() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("Format"),
+            "SessionExportSheet must contain the Format section"
+        )
+    }
+
+    func test_sessionExportSheet_showsMarkdownOption() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("Markdown"),
+            "SessionExportSheet must list Markdown as an export format"
+        )
+    }
+
+    func test_sessionExportSheet_showsPlainTextOption() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("Plain Text"),
+            "SessionExportSheet must list Plain Text as an export format"
+        )
+    }
+
+    func test_sessionExportSheet_showsJSONOption() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("JSON"),
+            "SessionExportSheet must list JSON as an export format"
+        )
+    }
+
+    func test_sessionExportSheet_usesSegmentedPicker() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("SegmentedPickerStyle"),
+            "SessionExportSheet format picker must use segmented style"
+        )
+    }
+
+    func test_sessionExportSheet_containsToolbarItems() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("ToolbarItem"),
+            "SessionExportSheet must have toolbar items (Cancel + Share)"
+        )
+    }
+
+    func test_sessionExportSheet_containsNavigationTitle() {
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("NavigationTitleKey"),
+            "SessionExportSheet must set a navigation title"
+        )
+    }
+
+    func test_sessionExportSheet_showsProgressViewWhileExportPending() {
+        // The file write is async I/O (unlike ChatExportSheet's synchronous
+        // in-memory string export), so at initial layout — before the
+        // `.task` has a chance to complete — the sheet must show a
+        // ProgressView rather than a ShareLink for a not-yet-ready file.
+        XCTAssertTrue(
+            makeSessionExportSheetDump().contains("ProgressView"),
+            "SessionExportSheet must show a ProgressView before the export completes"
         )
     }
 
