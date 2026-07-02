@@ -2,13 +2,14 @@ import XCTest
 @testable import ManifoldRuntime
 import ManifoldInference
 
-/// Locks the ``ConversationExportFormat`` protocol contract: the two built-in
-/// formats (``MarkdownExportFormat`` and ``JSONLExportFormat``) round-trip a
-/// minimal session+messages snapshot to non-empty bytes whose decoded text
-/// preserves user content. Format-internal structure is exercised in detail
-/// by ``MarkdownExportFormatTests`` and ``JSONLExportFormatTests``; this file
+/// Locks the ``ConversationExportFormat`` protocol contract: the three
+/// built-in formats (``MarkdownExportFormat``, ``PlainTextExportFormat``, and
+/// ``JSONLExportFormat``) round-trip a minimal session+messages snapshot to
+/// non-empty bytes whose decoded text preserves user content. Format-internal
+/// structure is exercised in detail by ``MarkdownExportFormatTests``,
+/// ``PlainTextExportFormatTests``, and ``JSONLExportFormatTests``; this file
 /// only defends the protocol's required surface (`fileExtension`,
-/// `contentType`, `export`) so adding a third format does not silently break
+/// `contentType`, `export`) so adding another format does not silently break
 /// the contract.
 final class ConversationExportFormatContractTests: XCTestCase {
 
@@ -63,6 +64,10 @@ final class ConversationExportFormatContractTests: XCTestCase {
 
     func test_jsonlFormat_satisfiesProtocolContract() throws {
         try assertContract(JSONLExportFormat(), expectedExtension: "jsonl")
+    }
+
+    func test_plainTextFormat_satisfiesProtocolContract() throws {
+        try assertContract(PlainTextExportFormat(), expectedExtension: "txt")
     }
 
     /// Defends the documented "we don't re-sort" rule on the protocol: callers

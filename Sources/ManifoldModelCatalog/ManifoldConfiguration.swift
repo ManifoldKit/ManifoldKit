@@ -236,8 +236,12 @@ extension ManifoldConfiguration {
 
         /// Shows the chat export button (share icon) in the chat toolbar.
         ///
-        /// When enabled, users can export conversations as Markdown, JSON, or
-        /// plain text. Disable for locked-down or single-purpose deployments.
+        /// When enabled, users can export the active conversation as Markdown
+        /// or plain text from the toolbar. Per-session export — including
+        /// JSON — is also available from the session list's row context menu
+        /// regardless of this flag. Disable this flag for locked-down or
+        /// single-purpose deployments that want to hide the toolbar
+        /// affordance.
         public var showChatExport: Bool
 
         // MARK: - Model Management
