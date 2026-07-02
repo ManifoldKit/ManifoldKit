@@ -20,6 +20,11 @@ public struct SessionListView: View {
     @State private var searchScope: SessionSearchScope = .titles
     @State private var debounceTask: Task<Void, Never>?
 
+    // Mirrors the accessor pattern used elsewhere in ManifoldUI (e.g. ChatView,
+    // ChatInputBar) — reads the live global configuration rather than
+    // threading a `features` init parameter through every view.
+    private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+
     public init() {}
 
     public var body: some View {
@@ -224,11 +229,22 @@ public struct SessionListView: View {
         }
     }
 
-    private func exportButton(for session: ChatSession) -> some View {
-        Button {
-            sessionToExport = session
-        } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
+    // `internal` (not `private`) so `@testable import ManifoldUI` can dump
+    // this view in isolation — `.contextMenu` content closures are evaluated
+    // lazily by SwiftUI (on long-press/right-click), so they never appear in
+    // ViewHierarchyDumper's static NSHostingController snapshot of the full
+    // row; testing the gate requires calling this builder directly.
+    @ViewBuilder
+    func exportButton(for session: ChatSession) -> some View {
+        // Honors `showChatExport` the same way the chat toolbar's export
+        // button does (ChatShellViews.swift) — hosts that lock export down
+        // for this flag must not have it leak back in via the sidebar.
+        if features.showChatExport {
+            Button {
+                sessionToExport = session
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
         }
     }
 

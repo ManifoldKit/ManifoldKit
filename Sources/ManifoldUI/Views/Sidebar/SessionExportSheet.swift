@@ -15,11 +15,17 @@ public enum SessionExportFormatOption: String, CaseIterable, Identifiable, Senda
     public var id: String { rawValue }
 
     /// Display text for the segmented picker.
+    ///
+    /// Labeled "JSONL" (not "JSON") because `.json` is backed by
+    /// `JSONLExportFormat` and produces a `.jsonl` file — one JSON object per
+    /// line, not a single JSON document. The enum case name stays `.json` to
+    /// avoid rippling the rename through call sites; only the user-visible
+    /// label needs to be honest.
     public var title: String {
         switch self {
         case .markdown: "Markdown"
         case .plainText: "Plain Text"
-        case .json: "JSON"
+        case .json: "JSONL"
         }
     }
 

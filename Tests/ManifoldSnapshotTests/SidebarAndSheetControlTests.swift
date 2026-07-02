@@ -157,6 +157,46 @@ final class SidebarAndSheetControlTests: XCTestCase {
         )
     }
 
+    // `.contextMenu` content closures are evaluated lazily by SwiftUI
+    // (on long-press/right-click) — they never materialize in
+    // ViewHierarchyDumper's static NSHostingController snapshot of the full
+    // row (verified: a full-row dump is byte-identical whether or not the
+    // gate is open, aside from incidental SwiftData ordering/UUIDs). So the
+    // `showChatExport` gate is tested by dumping `exportButton(for:)` in
+    // isolation, which `SessionListView` exposes at `internal` visibility
+    // for exactly this purpose.
+    func test_sessionListView_exportButton_hiddenWhenShowChatExportDisabled() {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+        var configuration = originalConfiguration
+        configuration.features.showChatExport = false
+        ManifoldConfiguration.shared = configuration
+
+        let session = ChatSession(id: UUID(), title: "Locked Down Session")
+        let dump = ViewHierarchyDumper.dump(SessionListView().exportButton(for: session))
+
+        XCTAssertFalse(
+            dump.contains("\"Export\""),
+            "Sidebar export button must not render when showChatExport is false"
+        )
+    }
+
+    func test_sessionListView_exportButton_shownWhenShowChatExportEnabled() {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+        var configuration = originalConfiguration
+        configuration.features.showChatExport = true
+        ManifoldConfiguration.shared = configuration
+
+        let session = ChatSession(id: UUID(), title: "Unlocked Session")
+        let dump = ViewHierarchyDumper.dump(SessionListView().exportButton(for: session))
+
+        XCTAssertTrue(
+            dump.contains("\"Export\""),
+            "Sidebar export button must render when showChatExport is true"
+        )
+    }
+
     // MARK: - ChatExportSheet: Form Content
 
     func test_chatExportSheet_showsFormatSection() {
@@ -303,10 +343,13 @@ final class SidebarAndSheetControlTests: XCTestCase {
         )
     }
 
-    func test_sessionExportSheet_showsJSONOption() {
+    func test_sessionExportSheet_showsJSONLOption() {
+        // Labeled "JSONL" (not "JSON") — the option is backed by
+        // JSONLExportFormat and produces a `.jsonl` file, so the label must
+        // say so rather than implying a single JSON document.
         XCTAssertTrue(
-            makeSessionExportSheetDump().contains("JSON"),
-            "SessionExportSheet must list JSON as an export format"
+            makeSessionExportSheetDump().contains("JSONL"),
+            "SessionExportSheet must list JSONL as an export format"
         )
     }
 
