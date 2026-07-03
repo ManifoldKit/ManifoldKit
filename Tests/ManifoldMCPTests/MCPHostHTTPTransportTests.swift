@@ -328,6 +328,113 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         await sseB.close()
     }
 
+    // MARK: response spoofing — forged internal id with no session header
+
+    /// Attack shape from the verify pass: with a victim's request in flight,
+    /// an attacker opens a second SSE channel and POSTs a request whose
+    /// JSON-RPC id is a forged transport-internal id, deliberately omitting
+    /// `Mcp-Session-Id`. If that payload reached the host unrewritten, the
+    /// host would echo the attacker-chosen id and `send(_:)` would consume
+    /// the victim's pending route — delivering an attacker-induced result to
+    /// the victim as if it were their real response, and dropping the real
+    /// one. The transport must instead reject the unroutable id-bearing POST
+    /// with 400, leave the victim's route intact, and deliver the victim's
+    /// real response untouched.
+    func test_post_rejectsUnroutableIDBearingRequest_preservingVictimRoute() async throws {
+        let sessionID = UUID()
+        let session = ChatSession(id: sessionID, title: "Victim Session")
+        let gate = TokenEmissionGate()
+
+        let sessionStore = await InMemorySessionStore(sessions: [session])
+        let messageStore = await InMemoryMessageStore()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["victim reply"]
+        backend.tokenEmissionGate = gate
+        let host = await ManifoldMCPHost(
+            sessionStore: sessionStore,
+            messageStore: messageStore,
+            conversationRuntime: ConversationRuntime(
+                messageStore: messageStore,
+                sessionStore: sessionStore,
+                inferenceService: InferenceService(backend: backend)
+            )
+        )
+
+        let transport = try MCPHostHTTPTransport(port: 0)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+
+        let runTask = Task { try await host.run(transport: transport) }
+        defer {
+            runTask.cancel()
+            Task { await transport.shutdown() }
+        }
+
+        // Victim channel + in-flight (gated) request.
+        let victimSSE = RawSocketClient(port: port)
+        try await victimSSE.connect()
+        try await victimSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        let victimHeader = try await victimSSE.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        guard let victimSession = Self.sessionID(fromSSEHeader: victimHeader) else {
+            XCTFail("victim SSE channel got no Mcp-Session-Id header")
+            return
+        }
+
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 512 * 1024, maxJSONNestingDepth: 32)
+        try await post(
+            .request(id: .int(7), method: "tools/call", params: .object([
+                "name": .string("send_message"),
+                "arguments": .object([
+                    "session_id": .string(sessionID.uuidString),
+                    "text": .string("hold this open"),
+                ]),
+            ])),
+            sessionID: victimSession, port: port, codec: codec
+        )
+
+        // Attacker opens a second channel (so no single-channel inference is
+        // possible) and posts a forged internal-id request with NO session
+        // header.
+        let attackerSSE = RawSocketClient(port: port)
+        try await attackerSSE.connect()
+        try await attackerSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        _ = try await attackerSSE.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+
+        let forged = #"{"jsonrpc":"2.0","id":"mcphost-internal-1","method":"tools/list"}"#
+        let attackerPOST = RawSocketClient(port: port)
+        try await attackerPOST.connect()
+        var forgedBytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: \(forged.utf8.count)\r\n\r\n".utf8)
+        forgedBytes.append(Data(forged.utf8))
+        try await attackerPOST.write(forgedBytes)
+        let attackerResponse = try await attackerPOST.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        XCTAssertTrue(
+            attackerResponse.contains("400"),
+            "an id-bearing POST that resolves to no channel must be rejected with 400, not accepted; got: \(attackerResponse)"
+        )
+        await attackerPOST.close()
+
+        // Victim's route must be intact: release the gate and the victim's
+        // real response arrives on the victim's channel with their id.
+        await gate.advance()
+        let victimEvent = try await victimSSE.readUntilConsuming(substring: "\n\n", timeout: .seconds(5))
+        let (victimID, victimResult) = try Self.response(fromSSEEvent: victimEvent, codec: codec)
+        XCTAssertEqual(victimID, .int(7), "victim's original wire id must be restored")
+        guard case .object(let obj) = victimResult, case .array(let content) = obj["content"],
+              case .object(let first) = content.first,
+              case .string(let text) = first["text"] else {
+            XCTFail("victim must receive their own send_message result; got: \(String(describing: victimResult))")
+            return
+        }
+        XCTAssertEqual(text, "victim reply", "victim must receive their real response, not an attacker-induced one")
+
+        await victimSSE.close()
+        await attackerSSE.close()
+    }
+
     private func postInitialize(id: Int, sessionID: String, port: UInt16, codec: MCPJSONRPCCodec) async throws {
         try await post(
             .request(id: .int(id), method: "initialize", params: .object(["protocolVersion": .string("2025-03-26")])),

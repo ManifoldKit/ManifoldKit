@@ -21,9 +21,11 @@ import os
 /// - A client **POST** carries a JSON-RPC request body, optionally with an
 ///   `Mcp-Session-Id` header naming the channel that should receive the
 ///   response (required when more than one channel is open; with a single
-///   open channel it's inferred). The body is decoded by ``ManifoldMCPHost``
-///   exactly as it would be over stdio; the matching response is routed back
-///   to that specific SSE channel — never broadcast to other clients.
+///   open channel it's inferred; an id-bearing request that resolves to no
+///   channel is rejected with 400). The body is decoded by
+///   ``ManifoldMCPHost`` exactly as it would be over stdio; the matching
+///   response is routed back to that specific SSE channel — never broadcast
+///   to other clients.
 ///
 /// Instantiate, `start()`, then hand to ``ManifoldMCPHost/run(transport:)``:
 ///
@@ -71,11 +73,11 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     /// clients that both POST `id: 1` (virtually every JSON-RPC client counts
     /// from 1) get distinct internal ids and can never overwrite each other's
     /// route. Populated in `handlePOST`, consumed (and removed) in `send(_:)`,
-    /// purged on channel teardown.
+    /// purged on channel teardown. An entry for a request the host never
+    /// answers (e.g. one its codec rejects *after* the rewrite) lingers until
+    /// its channel closes or the transport shuts down — bounded by channel
+    /// lifetime, deliberately, rather than adding a timeout wheel.
     private var pendingRequestRoutes: [MCPRequestID: (channelID: UUID, wireID: MCPRequestID)] = [:]
-    /// Monotonic source for internal request ids. Never resets for the life of
-    /// the transport, so internal ids are unique across all channels.
-    private var nextInternalRequestID = 0
     private var didStart = false
 
     // MARK: Init
@@ -362,22 +364,40 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
         // response. A client that already knows its session id (from a prior
         // SSE channel's `Mcp-Session-Id` response header) sends it back on
         // `Mcp-Session-Id`; otherwise, when exactly one SSE channel is open,
-        // that's the only sane target (the common single-client case). With
-        // zero or multiple channels open and no session header, there is
-        // nothing safe to guess — the response will simply be dropped
-        // (logged) rather than broadcast to every client, which is the leak
-        // this routing exists to close.
+        // that's the only sane target (the common single-client case).
         //
-        // When a channel is resolvable and the payload carries an id, the id
-        // is rewritten to a transport-unique internal id before the host sees
-        // it (see `rewriteRequestID(in:sessionID:)`): client-chosen wire ids
-        // collide across clients, so they cannot key the route map. The host
+        // Every id-bearing payload the host sees has had its id rewritten to
+        // a transport-unique, unguessable internal id (see
+        // `rewriteRequestID(in:sessionID:)`): client-chosen wire ids collide
+        // across clients, so they cannot key the route map — and letting a
+        // client-chosen id through verbatim would let it impersonate an
+        // internal id and hijack another client's pending route. The host
         // only ever sees — and echoes — the internal id; `send(_:)` restores
         // the wire id on the way back out. Notifications (no id) pass through
         // untouched: they get no response to route.
+        //
+        // An id-bearing request that cannot be resolved to a channel is
+        // rejected up front with 400: accepting it (202) while knowing its
+        // response is undeliverable would be dishonest, and passing it
+        // through unrewritten is the impersonation vector above.
         let sessionID = resolveSessionID(for: request)
         var payloadForHost = body
-        if let sessionID, let rewritten = rewriteRequestID(in: body, sessionID: sessionID) {
+        if Self.peekRequestID(in: body) != nil {
+            guard let sessionID else {
+                respondAndClose(
+                    connection,
+                    status: "400 Bad Request",
+                    body: "cannot correlate request to an SSE response channel; open a GET event stream and echo its Mcp-Session-Id header on this POST"
+                )
+                return
+            }
+            guard let rewritten = rewriteRequestID(in: body, sessionID: sessionID) else {
+                // peekRequestID parsed an id, so a failed rewrite means the
+                // payload could not be re-serialized — effectively
+                // unreachable, but never forward an unrewritten id.
+                respondAndClose(connection, status: "400 Bad Request", body: "malformed JSON-RPC request body")
+                return
+            }
             payloadForHost = rewritten
         }
 
@@ -422,13 +442,15 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     /// `send(_:)` can deliver the eventual response to the right channel with
     /// the client's id restored.
     ///
-    /// Returns `nil` — leaving the payload untouched and unrouted — when the
-    /// payload is not a JSON object, carries no usable id (a notification),
-    /// or cannot be re-serialized. In those cases the host processes the
-    /// original bytes and any response falls back to `send(_:)`'s
-    /// single-channel delivery. The rewrite happens *before* the host decodes
-    /// the message, so even the host's error responses for malformed-but-
-    /// id-bearing requests echo the internal id and round-trip correctly.
+    /// Returns `nil` when the payload is not a JSON object, carries no usable
+    /// id (a notification), or cannot be re-serialized. `handlePOST` only
+    /// calls this for payloads `peekRequestID` already found an id in, and
+    /// rejects the request (400) on a `nil` return — an id-bearing payload
+    /// must never reach the host unrewritten, or its client-chosen id could
+    /// impersonate an internal id and hijack another client's pending route.
+    /// The rewrite happens *before* the host decodes the message, so even the
+    /// host's error responses for malformed-but-id-bearing requests echo the
+    /// internal id and round-trip correctly.
     private func rewriteRequestID(in payload: Data, sessionID: UUID) -> Data? {
         guard var object = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
             return nil
@@ -442,8 +464,10 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             return nil
         }
 
-        nextInternalRequestID += 1
-        let internalID = "mcphost-internal-\(nextInternalRequestID)"
+        // UUID-based so internal ids are unguessable as well as unique: a
+        // predictable (e.g. monotonic) id would let another client forge a
+        // request whose echoed id consumes a victim's pending route.
+        let internalID = "mcphost-internal-\(UUID().uuidString)"
         object["id"] = internalID
 
         do {
