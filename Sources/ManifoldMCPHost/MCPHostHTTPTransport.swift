@@ -57,16 +57,25 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     private var listener: NWListener?
     /// Open SSE response channels keyed by a server-assigned session id
     /// (returned to the client as the `Mcp-Session-Id` response header when
-    /// the channel is opened). A streamable-HTTP client typically keeps
-    /// exactly one channel open, but the map supports multiple concurrent
-    /// clients on the same transport instance.
+    /// the channel is opened). Multiple channels can be open at once — the
+    /// host's run loop still services requests strictly serially, so this is
+    /// transport-level connection multiplexing, not concurrent request
+    /// processing.
     private var sseChannels: [UUID: NWConnection] = [:]
-    /// Maps an in-flight JSON-RPC request id to the SSE channel that should
-    /// receive its response, so `send(_:)` can route a response to the
-    /// originating client instead of broadcasting it to every open channel
-    /// (a cross-client data leak when more than one channel is open).
-    /// Populated in `handlePOST`, consumed (and removed) in `send(_:)`.
-    private var pendingRequestChannels: [MCPRequestID: UUID] = [:]
+    /// Routes an in-flight request to the SSE channel that should receive its
+    /// response, keyed by the *transport-synthesized* internal JSON-RPC id
+    /// (see `rewriteRequestID(in:sessionID:)`). The value carries the channel
+    /// plus the client's original wire id so `send(_:)` can restore it before
+    /// delivery. Keying by a synthesized globally-unique id — rather than the
+    /// client-chosen wire id — is what makes routing collision-proof: two
+    /// clients that both POST `id: 1` (virtually every JSON-RPC client counts
+    /// from 1) get distinct internal ids and can never overwrite each other's
+    /// route. Populated in `handlePOST`, consumed (and removed) in `send(_:)`,
+    /// purged on channel teardown.
+    private var pendingRequestRoutes: [MCPRequestID: (channelID: UUID, wireID: MCPRequestID)] = [:]
+    /// Monotonic source for internal request ids. Never resets for the life of
+    /// the transport, so internal ids are unique across all channels.
+    private var nextInternalRequestID = 0
     private var didStart = false
 
     // MARK: Init
@@ -163,7 +172,7 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             connection.cancel()
         }
         sseChannels.removeAll()
-        pendingRequestChannels.removeAll()
+        pendingRequestRoutes.removeAll()
         listener?.cancel()
         listener = nil
         continuation.finish()
@@ -174,15 +183,21 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     /// Writes a JSON-RPC response payload to the SSE channel that originated
     /// the matching request, as a `data:`-framed Server-Sent Event.
     ///
-    /// Routing is by JSON-RPC request id, correlated against the mapping
-    /// `handlePOST` recorded when the request arrived (see
-    /// `pendingRequestChannels`). This prevents a response meant for one
-    /// client from being broadcast to every open channel when more than one
-    /// client is connected. If the response cannot be correlated to a
-    /// specific channel (id missing/unparseable, e.g. a malformed payload)
-    /// it still broadcasts when exactly one channel is open — the common
-    /// single-client case this transport was written for — and is otherwise
-    /// dropped (logged) rather than risk leaking it to the wrong client.
+    /// Routing works by internal-id correlation: `handlePOST` rewrote the
+    /// incoming request's JSON-RPC id to a transport-synthesized unique id
+    /// before the host ever saw the payload, so the host's response echoes
+    /// that internal id. Here the route is looked up (and consumed), the
+    /// client's original wire id is restored into the payload, and the frame
+    /// is delivered only to the originating channel. This prevents a response
+    /// meant for one client from being broadcast to — or misrouted to —
+    /// another client, even when multiple clients choose colliding wire ids
+    /// (e.g. every client counting from `id: 1`).
+    ///
+    /// Payloads with no correlatable id (host-initiated notifications, or a
+    /// response to a request that arrived without a resolvable channel) still
+    /// deliver when exactly one channel is open — the common single-client
+    /// case — and are otherwise dropped (logged) rather than risk leaking
+    /// them to the wrong client.
     ///
     /// Actor isolation serialises concurrent sends so writes to a channel never
     /// interleave across concurrent MCP responses.
@@ -194,17 +209,27 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             return
         }
 
-        let frame = Self.sseFrame(payload)
-
-        if let requestID = Self.peekRequestID(in: payload),
-           let sessionID = pendingRequestChannels.removeValue(forKey: requestID),
-           let connection = sseChannels[sessionID] {
-            write(frame, to: connection, sessionID: sessionID)
+        if let internalID = Self.peekRequestID(in: payload),
+           let route = pendingRequestRoutes.removeValue(forKey: internalID) {
+            guard let connection = sseChannels[route.channelID] else {
+                // Originating channel closed while the request was in flight.
+                // The response belongs to nobody else — drop it.
+                Log.inference.debug("MCPHostHTTPTransport: dropping response — originating SSE channel closed")
+                return
+            }
+            guard let restored = Self.replaceRequestID(in: payload, with: route.wireID) else {
+                // The host codec produced this payload, so a re-encode failure
+                // here is effectively unreachable; never deliver a frame whose
+                // id the client cannot correlate.
+                Log.inference.warning("MCPHostHTTPTransport: dropping response — could not restore the client's wire id")
+                return
+            }
+            write(Self.sseFrame(restored), to: connection, sessionID: route.channelID)
             return
         }
 
         if sseChannels.count == 1, let (sessionID, connection) = sseChannels.first {
-            write(frame, to: connection, sessionID: sessionID)
+            write(Self.sseFrame(payload), to: connection, sessionID: sessionID)
             return
         }
 
@@ -334,23 +359,32 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
         }
 
         // Correlate this request to the SSE channel that should receive its
-        // response (see `pendingRequestChannels`). A client that already
-        // knows its session id (from a prior SSE channel's `Mcp-Session-Id`
-        // response header) sends it back on `Mcp-Session-Id`; otherwise, when
-        // exactly one SSE channel is open, that's the only sane target (the
-        // common single-client case). With zero or multiple channels open and
-        // no session header, there is nothing safe to guess — the response
-        // will simply be dropped (logged) rather than broadcast to every
-        // client, which is the leak this routing exists to close.
+        // response. A client that already knows its session id (from a prior
+        // SSE channel's `Mcp-Session-Id` response header) sends it back on
+        // `Mcp-Session-Id`; otherwise, when exactly one SSE channel is open,
+        // that's the only sane target (the common single-client case). With
+        // zero or multiple channels open and no session header, there is
+        // nothing safe to guess — the response will simply be dropped
+        // (logged) rather than broadcast to every client, which is the leak
+        // this routing exists to close.
+        //
+        // When a channel is resolvable and the payload carries an id, the id
+        // is rewritten to a transport-unique internal id before the host sees
+        // it (see `rewriteRequestID(in:sessionID:)`): client-chosen wire ids
+        // collide across clients, so they cannot key the route map. The host
+        // only ever sees — and echoes — the internal id; `send(_:)` restores
+        // the wire id on the way back out. Notifications (no id) pass through
+        // untouched: they get no response to route.
         let sessionID = resolveSessionID(for: request)
-        if let sessionID, let requestID = Self.peekRequestID(in: body) {
-            pendingRequestChannels[requestID] = sessionID
+        var payloadForHost = body
+        if let sessionID, let rewritten = rewriteRequestID(in: body, sessionID: sessionID) {
+            payloadForHost = rewritten
         }
 
         // Hand the JSON-RPC payload to the host's run loop. The matching
         // response is written back over the correlated SSE channel by
         // `send(_:)`.
-        continuation.yield(body)
+        continuation.yield(payloadForHost)
 
         // Per the streamable-HTTP spec a POST may be answered with 202 Accepted
         // when the response is delivered out-of-band over the SSE stream.
@@ -378,7 +412,69 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
         // Any requests still awaiting a response on this now-closed channel
         // can never be delivered — drop them rather than leak them to a
         // different channel that later becomes the sole survivor.
-        pendingRequestChannels = pendingRequestChannels.filter { $0.value != id }
+        pendingRequestRoutes = pendingRequestRoutes.filter { $0.value.channelID != id }
+    }
+
+    // MARK: Request-id remapping
+
+    /// Rewrites the payload's top-level JSON-RPC `id` to a transport-unique
+    /// internal id and records the route (channel + original wire id) so
+    /// `send(_:)` can deliver the eventual response to the right channel with
+    /// the client's id restored.
+    ///
+    /// Returns `nil` — leaving the payload untouched and unrouted — when the
+    /// payload is not a JSON object, carries no usable id (a notification),
+    /// or cannot be re-serialized. In those cases the host processes the
+    /// original bytes and any response falls back to `send(_:)`'s
+    /// single-channel delivery. The rewrite happens *before* the host decodes
+    /// the message, so even the host's error responses for malformed-but-
+    /// id-bearing requests echo the internal id and round-trip correctly.
+    private func rewriteRequestID(in payload: Data, sessionID: UUID) -> Data? {
+        guard var object = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
+            return nil
+        }
+        let wireID: MCPRequestID
+        if let intID = object["id"] as? Int {
+            wireID = .int(intID)
+        } else if let stringID = object["id"] as? String {
+            wireID = .string(stringID)
+        } else {
+            return nil
+        }
+
+        nextInternalRequestID += 1
+        let internalID = "mcphost-internal-\(nextInternalRequestID)"
+        object["id"] = internalID
+
+        do {
+            let rewritten = try JSONSerialization.data(withJSONObject: object)
+            pendingRequestRoutes[.string(internalID)] = (channelID: sessionID, wireID: wireID)
+            return rewritten
+        } catch {
+            Log.inference.warning("MCPHostHTTPTransport: failed to rewrite request id; falling back to unrouted delivery: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Replaces the payload's top-level JSON-RPC `id` with `wireID` —
+    /// the inverse of `rewriteRequestID(in:sessionID:)`, applied to the
+    /// host's response on its way back to the client.
+    private static func replaceRequestID(in payload: Data, with wireID: MCPRequestID) -> Data? {
+        guard var object = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
+            return nil
+        }
+        switch wireID {
+        case .int(let value):
+            object["id"] = value
+        case .string(let value):
+            object["id"] = value
+        }
+        do {
+            return try JSONSerialization.data(withJSONObject: object)
+        } catch {
+            Log.inference.warning("MCPHostHTTPTransport: failed to restore wire id on response: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     // MARK: HTTP helpers

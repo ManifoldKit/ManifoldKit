@@ -21,6 +21,14 @@ import os
 /// `ManifoldConfiguration.shared` so a `ManifoldServerRequestContext` created
 /// before any `ServerApp.makeApplication()` call (e.g. in an isolated unit
 /// test) still gets a sane default.
+///
+/// Known limitation: the box is process-wide, so two `ServerApp` instances
+/// running **concurrently in one process** would clobber each other's limit —
+/// last `makeApplication()` wins for all subsequent requests. That is
+/// acceptable for the current reality (the `manifold-server` CLI runs exactly
+/// one `ServerApp` per process; tests build apps serially). Revisit with a
+/// per-router mechanism (e.g. a body-limit middleware) if multi-instance
+/// hosting in one process ever becomes a supported shape.
 private let maxUploadSizeBox = OSAllocatedUnfairLock<Int>(
     initialState: ManifoldConfiguration.shared.maxServerRequestBodyBytes
 )

@@ -414,6 +414,76 @@ final class ManifoldMCPHostTests: XCTestCase {
         XCTAssertTrue(responseText.contains("send_message failed"), "failure text should identify the failing tool; got: \(responseText)")
     }
 
+    func test_toolCall_listSessions_reportsStoreFailureViaIsError() async throws {
+        struct StoreBoom: Error, LocalizedError {
+            var errorDescription: String? { "session store exploded" }
+        }
+        let fixture = makeRuntimeHost()
+        fixture.sessionStore.fetchError = StoreBoom()
+
+        let result = try await sendRequest(
+            method: "tools/call",
+            params: .object([
+                "name": .string("list_sessions"),
+                "arguments": .object([:]),
+            ]),
+            to: fixture.host
+        )
+
+        guard case .object(let response) = result,
+              case .array(let content) = response["content"],
+              case .object(let first) = content.first,
+              case .string(let responseText) = first["text"] else {
+            XCTFail("Expected MCP content text")
+            return
+        }
+        XCTAssertEqual(response["isError"], .bool(true))
+        XCTAssertTrue(responseText.contains("list_sessions failed"), "failure text should identify the failing tool; got: \(responseText)")
+    }
+
+    func test_toolCall_searchDocuments_reportsRetrievalFailureViaIsError() async throws {
+        let sessionStore = StubSessionStore()
+        let messageStore = StubMessageStore()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let runtime = ConversationRuntime(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: InferenceService(backend: backend)
+        )
+        // No embedding backend → RAGService's dense stage goes straight to the
+        // vector store's keyword search, which this stub makes throw.
+        let ragService = RAGService(
+            documentStore: StubDocumentStore(),
+            vectorStore: ThrowingVectorStore()
+        )
+        let host = ManifoldMCPHost(
+            sessionStore: sessionStore,
+            messageStore: messageStore,
+            conversationRuntime: runtime,
+            ragService: ragService
+        )
+
+        let result = try await sendRequest(
+            method: "tools/call",
+            params: .object([
+                "name": .string("search_documents"),
+                "arguments": .object(["query": .string("anything")]),
+            ]),
+            to: host
+        )
+
+        guard case .object(let response) = result,
+              case .array(let content) = response["content"],
+              case .object(let first) = content.first,
+              case .string(let responseText) = first["text"] else {
+            XCTFail("Expected MCP content text")
+            return
+        }
+        XCTAssertEqual(response["isError"], .bool(true))
+        XCTAssertTrue(responseText.contains("search_documents failed"), "failure text should identify the failing tool; got: \(responseText)")
+    }
+
     // MARK: - Init: serverName × configuration precedence
 
     func test_init_explicitServerNameOverridesConfigurationServerName() async throws {
@@ -493,6 +563,9 @@ final class ManifoldMCPHostTests: XCTestCase {
 @MainActor
 private final class StubSessionStore: SessionStore, @unchecked Sendable {
     private var sessions: [ChatSession]
+    /// When set, `fetchSessions` throws instead of returning — exercises the
+    /// host's tool-level failure reporting (`isError: true`).
+    var fetchError: Error?
 
     init(sessions: [ChatSession] = []) {
         self.sessions = sessions
@@ -508,7 +581,10 @@ private final class StubSessionStore: SessionStore, @unchecked Sendable {
     func deleteSession(_ sessionID: UUID) async throws {
         sessions.removeAll { $0.id == sessionID }
     }
-    func fetchSessions() async throws -> [ChatSession] { sessions }
+    func fetchSessions() async throws -> [ChatSession] {
+        if let fetchError { throw fetchError }
+        return sessions
+    }
 }
 
 /// Simple in-memory MessageStore for test purposes.
@@ -538,6 +614,28 @@ private final class StubMessageStore: MessageStore, @unchecked Sendable {
     func deleteMessages(for sessionID: UUID) async throws {
         messages.removeAll { $0.sessionID == sessionID }
     }
+}
+
+/// Minimal DocumentStore for the search_documents failure-path test.
+@MainActor
+private final class StubDocumentStore: DocumentStore, @unchecked Sendable {
+    func insertDocument(_ record: DocumentRecord) async throws {}
+    func fetchDocuments() async throws -> [DocumentRecord] { [] }
+    func fetchDocument(id: UUID) async throws -> DocumentRecord? { nil }
+    func deleteDocument(id: UUID) async throws {}
+}
+
+/// VectorStore whose search paths always throw — drives RAGService.retrieve
+/// into its failure path so the host's in-band isError reporting is exercised.
+private struct ThrowingVectorStore: VectorStore {
+    struct VectorBoom: Error, LocalizedError {
+        var errorDescription: String? { "vector store exploded" }
+    }
+    func insert(chunks: [DocumentChunk], documentTitle: String, embeddings: [[Float]]) async throws {}
+    func search(embedding: [Float], limit: Int) async throws -> [VectorSearchHit] { throw VectorBoom() }
+    func keywordSearch(query: String, limit: Int) async throws -> [VectorSearchHit] { throw VectorBoom() }
+    func delete(documentID: UUID) async throws {}
+    func deleteAll() async throws {}
 }
 
 /// Error emitted by the test helper when the server returns a JSON-RPC error frame.
