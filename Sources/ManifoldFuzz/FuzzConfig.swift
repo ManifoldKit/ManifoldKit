@@ -5,7 +5,6 @@ public enum BackendChoice: String, Sendable, CaseIterable {
     case llama
     case foundation
     case mlx
-    case all
     /// OpenAI-Chat-Completions-compatible cloud endpoint (OpenRouter, OpenAI,
     /// Together, …) driven via `OpenAIBackend`.
     case openai

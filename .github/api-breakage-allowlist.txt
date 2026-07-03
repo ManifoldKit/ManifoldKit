@@ -152,3 +152,34 @@ API breakage: var GenerationStreamAccumulator.tokenUsage has declared type chang
 API breakage: accessor GenerationStreamAccumulator.tokenUsage.Get() has return type change from (promptTokens: Swift.Int, completionTokens: Swift.Int)? to (promptTokens: Swift.Int, completionTokens: Swift.Int, cachedInputTokens: Swift.Int?, cacheWriteTokens: Swift.Int?)?
 API breakage: constructor GenerationStreamAccumulator.init(visibleText:isEmptyResponse:tokenUsage:) has parameter 2 type change from (promptTokens: Swift.Int, completionTokens: Swift.Int)? to (promptTokens: Swift.Int, completionTokens: Swift.Int, cachedInputTokens: Swift.Int?, cacheWriteTokens: Swift.Int?)?
 API breakage: func GenerationStreamAccumulator.recordUsage(prompt:completion:) has been renamed to func recordUsage(prompt:completion:cachedInputTokens:cacheWriteTokens:)
+API breakage: var CloudHTTPProviderAdapter.toolCallShape has been removed
+API breakage: var CloudHTTPProviderAdapter.imageInputShape has been removed
+API breakage: var CloudHTTPProviderAdapter.structuredOutputShape has been removed
+API breakage: var CloudHTTPProviderAdapter.toolResultEncoding has been removed
+API breakage: var CloudHTTPProviderAdapter.promptCacheShape has been removed
+API breakage: struct CredentialToken has been removed
+API breakage: struct KeychainTokenProvider has been removed
+API breakage: protocol ToolCallShape has been removed
+API breakage: struct OpenAIDeltaToolCalls has been removed
+API breakage: struct AnthropicBlockToolCalls has been removed
+API breakage: struct OllamaWholeToolCalls has been removed
+API breakage: struct InlineMarkerToolCalls has been removed
+API breakage: protocol ImageInputShape has been removed
+API breakage: struct OpenAIImageURL has been removed
+API breakage: struct AnthropicImageBlock has been removed
+API breakage: struct OllamaImagesField has been removed
+API breakage: struct NoImageInput has been removed
+API breakage: protocol StructuredOutputShape has been removed
+API breakage: struct OpenAIJSONSchema has been removed
+API breakage: struct AnthropicPromptedJSON has been removed
+API breakage: struct OllamaFormatField has been removed
+API breakage: struct NoStructuredOutput has been removed
+API breakage: protocol ToolResultEncoding has been removed
+API breakage: struct OpenAIToolResult has been removed
+API breakage: struct AnthropicToolResult has been removed
+API breakage: struct OllamaToolResult has been removed
+API breakage: protocol PromptCacheShape has been removed
+API breakage: struct AnthropicExplicitBreakpoints has been removed
+API breakage: struct OpenAIPrefixStableCache has been removed
+API breakage: struct NoPromptCache has been removed
+API breakage: enum SecondaryBackendBuilder has been removed

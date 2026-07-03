@@ -47,7 +47,7 @@ Common flags:
 
 | Flag | Purpose |
 |------|---------|
-| `--backend <name>` | `ollama` (default), `openai`, `foundation`, `mock`, `chaos`. The `llama` / `mlx` selections error with a companion-package pointer since v0.48 (see Backends below). `all` still parses but is not implemented — it fails fast with "run one backend per campaign". |
+| `--backend <name>` | `ollama` (default), `openai`, `foundation`, `mock`, `chaos`. The `llama` / `mlx` selections error with a companion-package pointer since v0.48 (see Backends below). One backend per campaign — the former `all` value was removed in v0.64 (it never ran). |
 | `--minutes N` | Wall-clock budget. Default 5. |
 | `--iterations N` | Iteration cap; runs until either budget is hit. |
 | `--single` | One iteration then exit — useful with `--seed`. |
@@ -122,7 +122,6 @@ Worker safety is backend-specific:
 |---------|--------------|--------|
 | `mock`, `chaos`, `ollama` | 4 | Safe to isolate per child process. |
 | `foundation` | 1 | Apple Intelligence availability/resource transitions should stay single-worker until calibrated. |
-| `all` | 1 | `--backend all` is not implemented — it fails fast; run one backend per campaign. |
 
 Iteration budgets are partitioned deterministically across workers: `--iterations 10 --workers 3` becomes `[4, 3, 3]`, with the remainder assigned to the lowest worker index. Time budgets are not divided; `--minutes 5 --workers 4` runs four five-minute workers so elapsed wall time remains close to five minutes while total backend coverage increases.
 
@@ -351,7 +350,7 @@ All ten single-turn detectors are implemented and covered by the calibration cor
 - **`--shrink`** — minimise a failing prompt to the smallest input that still fires the detector.
 - **Multi-turn** — opt-in via `--session-scripts`. The harness drives bundled `SessionScript` JSONs through `InferenceService.enqueue`, exercising the queue, cancellation, and latest-wins load paths that single-turn fuzzing can't reach. Three multi-turn detectors ship alongside: `turn-boundary-kv-state`, `cancellation-race`, and `session-context-leak`. Single-turn remains the default ([#492](https://github.com/ManifoldKit/ManifoldKit/issues/492)).
 - **Slash command** — `/fuzz` shortcut to run `scripts/fuzz.sh` from inside Claude Code.
-- **Multi-backend factory fleet** — `FuzzRunner` accepts a `FuzzBackendFactory` protocol (landed via [#496](https://github.com/ManifoldKit/ManifoldKit/issues/496)) and `FoundationFuzzFactory` shipped, but `--backend all` was never implemented ([#501](https://github.com/ManifoldKit/ManifoldKit/issues/501)) — it fails fast today, and the Llama/MLX factories moved to the companion packages (v0.48, #1749), so an in-repo "all" campaign could only ever cover the local families. Run one backend per campaign.
+- **Multi-backend factory fleet** — `FuzzRunner` accepts a `FuzzBackendFactory` protocol (landed via [#496](https://github.com/ManifoldKit/ManifoldKit/issues/496)) and `FoundationFuzzFactory` shipped, but a true all-backends campaign was never implemented ([#501](https://github.com/ManifoldKit/ManifoldKit/issues/501)) — the unwired `--backend all` placeholder value was removed in v0.64, and the Llama/MLX factories moved to the companion packages (v0.48, #1749), so an in-repo campaign could only ever cover the local families anyway. Run one backend per campaign.
 
 ---
 
