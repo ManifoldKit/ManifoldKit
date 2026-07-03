@@ -115,9 +115,26 @@ jobs:
             echo "::error::COMPANION_DISPATCH_TOKEN secret is not set — companion canaries will not re-resolve against $TAG_NAME. Create a fine-grained PAT with contents write on ManifoldKit/manifold-llama, ManifoldKit/manifold-mlx, and ManifoldKit/manifold-eval." >&2
             exit 1
           fi
+
+          # Attempt ALL three companions regardless of individual failures — a
+          # single failed dispatch (transient 5xx, one repo's token scope
+          # missing) must NOT leave the other companions un-notified. We drop
+          # the errexit trap around each POST, record per-repo PASS/FAIL, and
+          # fail the step at the END if any dispatch failed (with a summary).
+          failed=""
           for repo in ManifoldKit/manifold-llama ManifoldKit/manifold-mlx ManifoldKit/manifold-eval; do
-            gh api -X POST "repos/${repo}/dispatches" \
-              -f event_type=core-release \
-              -f "client_payload[tag]=${TAG_NAME}"
-            echo "Dispatched core-release (${TAG_NAME}) to ${repo}"
+            if gh api -X POST "repos/${repo}/dispatches" \
+                 -f event_type=core-release \
+                 -f "client_payload[tag]=${TAG_NAME}"; then
+              echo "PASS: dispatched core-release (${TAG_NAME}) to ${repo}"
+            else
+              echo "::error::FAIL: could not dispatch core-release (${TAG_NAME}) to ${repo}"
+              failed="${failed} ${repo}"
+            fi
           done
+
+          if [ -n "$failed" ]; then
+            echo "::error::core-release dispatch failed for:${failed}. These companions did not re-resolve against ${TAG_NAME} and may need a manual dispatch (gh api -X POST repos/<repo>/dispatches -f event_type=core-release -f client_payload[tag]=${TAG_NAME})."
+            exit 1
+          fi
+          echo "All companion repos dispatched successfully for ${TAG_NAME}."

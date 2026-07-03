@@ -107,3 +107,71 @@ secrets at compile time.
 
 The script reads `Package.resolved` directly, so it is offline and
 deterministic — no network access, no SwiftPM resolution required.
+
+## Release runbook
+
+The verified end-to-end sequence for cutting a coordinated ManifoldKit +
+companions release. Release Please opens the core release PR automatically
+after a `feat:`/`fix:` merge; this runbook covers everything from there.
+
+> **Never edit the release PR's body or title.** Release Please matches its
+> own PR by the generated body/title; rewriting either loses that match and
+> **breaks the version-tag creation on merge**. Rewrite only `CHANGELOG.md`.
+
+1. **Pre-bump demo gate (mandatory).** Run `scripts/demo-apps-build.sh` — it
+   builds both example apps (Advanced iOS, Minimal iOS + macOS) against the
+   local package. It **must be green**; do not bump the version if it fails.
+   `swift test` builds macOS-only and cannot catch iOS-unavailable symbols
+   pulled in via the umbrella, so this is the only gate that catches package
+   drift before it ships.
+
+2. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
+   branch in its worktree (`release-please--branches--main`) and rewrite the
+   newest section's auto-generated bullets into **Prisma-style Highlights**
+   (`### Highlights` with verb-led headlines, 2–3 sentences of context, a
+   runnable snippet for new/changed public APIs). Validate locally with:
+
+   ```bash
+   bash scripts/changelog-lint.sh CHANGELOG.md   # must exit 0
+   ```
+
+   Then `git commit --amend` and **force-push** the branch. This is the same
+   check CI runs in `.github/workflows/lint.yml`; running it locally avoids a
+   red CI round-trip.
+
+3. **Enqueue the release PR.** ManifoldKit `main` **requires the merge
+   queue**, so a direct `gh api -X PUT .../pulls/<N>/merge` returns HTTP 405
+   ("Changes must be made through the merge queue"). Route it through the
+   queue instead and wait for it to actually land:
+
+   ```bash
+   gh pr merge <N> --squash --auto        # queues; do NOT use --admin / gh api direct
+   gh pr view <N> --json state -q .state   # poll until: MERGED
+   ```
+
+4. **Verify the tag and post-merge jobs.** Once merged, Release Please pushes
+   the version tag and cuts the GitHub release:
+
+   ```bash
+   gh release view vX.Y.Z                   # must exist
+   gh run list --workflow=release-please.yml --limit 3   # release-please + notify-companions green
+   ```
+
+   `sync-release-notes` copies the rewritten CHANGELOG section onto the GitHub
+   release; `notify-companions` fires a `core-release` `repository_dispatch` to
+   manifold-llama / manifold-mlx / manifold-eval (each dispatch is now
+   independent — a single failure no longer blocks the others, and the job
+   summary names any that failed for a manual re-dispatch).
+
+5. **Companion releases.**
+   - **MINOR bump:** each companion's `core-bump` workflow (triggered by the
+     `repository_dispatch`) auto-merges its core-pin PR. Then rewrite + merge
+     each companion's own release PR — **llama and mlx have release-please**, so
+     they get a tagged release the same way core does. **manifold-eval has no
+     release-please and needs no tagged release** (it only re-resolves its
+     exact core pin). Companion repos do **not** have a merge queue, so a
+     direct `gh api -X PUT .../merge -f merge_method=squash` (or
+     `gh pr merge <N> --squash`) still works there.
+   - **PATCH bump:** llama/mlx float automatically on their `.upToNextMinor`
+     core pin — no companion release needed. Only manifold-eval's exact core
+     pin needs a manual bump.
