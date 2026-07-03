@@ -96,14 +96,19 @@ public struct TemplateTokenLeakDetector: Detector {
     /// these from both the model's echo and the original input before the
     /// containment check keeps the echo-guard aligned regardless of which
     /// side a backend's own normalization happens to touch.
-    static let invisibleCharacters: Set<Character> = {
-        var chars = Set(UnicodeInjectMutator.payloads)
-        chars.formUnion(["\u{200B}", "\u{200C}"]) // ZERO WIDTH SPACE, ZERO WIDTH NON-JOINER
-        return chars
+    /// Filtering must operate on unicode SCALARS, not `Character`: Swift
+    /// merges ZWJ/ZWNJ (Extend-class scalars) into the preceding grapheme
+    /// cluster, so `"m\u{200D}"` is ONE `Character` and a `Character`-level
+    /// set lookup against a standalone ZWJ never matches — the exact
+    /// characters this guard exists to strip would survive it.
+    static let invisibleScalars: Set<Unicode.Scalar> = {
+        var scalars = Set(UnicodeInjectMutator.payloads.flatMap { $0.unicodeScalars })
+        scalars.formUnion(["\u{200B}", "\u{200C}"]) // ZERO WIDTH SPACE, ZERO WIDTH NON-JOINER
+        return scalars
     }()
 
     static func stripInvisibleCharacters(_ s: String) -> String {
-        String(s.filter { !invisibleCharacters.contains($0) })
+        String(String.UnicodeScalarView(s.unicodeScalars.filter { !invisibleScalars.contains($0) }))
     }
 
     /// Removes triple-backtick fenced blocks and single-backtick spans so

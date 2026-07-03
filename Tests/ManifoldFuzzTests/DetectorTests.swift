@@ -367,9 +367,9 @@ final class DetectorTests: XCTestCase {
         // ZWNJ) that aren't in UnicodeInjectMutator's own payload set but
         // are equally capable of surviving in one side of the comparison
         // and not the other.
-        let obfuscatedToken = "<|end\u{200B}_of\u{200C}_turn|>"
+        let obfuscatedToken = "<|end\u{200B}_of\u{200C}_turn>"
         let r = makeRecord(
-            raw: "The answer is forty-two.<|end_of_turn|>",
+            raw: "The answer is forty-two.<|end_of_turn>",
             userPrompt: "Explain the \(obfuscatedToken) delimiter"
         )
         let findings = TemplateTokenLeakDetector().inspect(r)
