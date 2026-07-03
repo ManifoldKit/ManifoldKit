@@ -34,6 +34,17 @@ public actor SessionScriptRunner {
         /// the `sessionLabel` field pins the id so the service's request-scoped
         /// discard/cancel semantics apply.
         public var requestGroupID: UUID?
+        /// Tool definitions advertised on every `.send` / `.regenerate` step.
+        /// Empty by default (no tools). Pairs with the `--tools` CLI flag via
+        /// `SessionFuzzRunner`, mirroring the single-turn `FuzzRunner` path.
+        public var toolDefinitions: [ToolDefinition]
+        /// The backend's context-window limit in tokens, when known. Feeds
+        /// `RunRecord.ConfigSnapshot.contextLimit` — see `FuzzRunner.runSingle`
+        /// for the single-turn twin of this wiring.
+        public var contextLimit: Int?
+        /// Per-model memory budget in bytes, when the factory can supply one.
+        /// Feeds `RunRecord.ModelSnapshot.memoryBudgetBytes`.
+        public var memoryBudgetBytes: UInt64?
 
         public init(
             modelId: String = "mock-model",
@@ -44,7 +55,10 @@ public actor SessionScriptRunner {
             topP: Float = 0.9,
             repeatPenalty: Float = 1.1,
             maxOutputTokens: Int? = 256,
-            requestGroupID: UUID? = nil
+            requestGroupID: UUID? = nil,
+            toolDefinitions: [ToolDefinition] = [],
+            contextLimit: Int? = nil,
+            memoryBudgetBytes: UInt64? = nil
         ) {
             self.modelId = modelId
             self.modelURL = modelURL
@@ -55,6 +69,9 @@ public actor SessionScriptRunner {
             self.repeatPenalty = repeatPenalty
             self.maxOutputTokens = maxOutputTokens
             self.requestGroupID = requestGroupID
+            self.toolDefinitions = toolDefinitions
+            self.contextLimit = contextLimit
+            self.memoryBudgetBytes = memoryBudgetBytes
         }
     }
 
@@ -209,6 +226,11 @@ public actor SessionScriptRunner {
         let start = ContinuousClock.now
 
         let tuples: [(role: String, content: String)] = messages.map { ($0.role, $0.text) }
+        // Same character-based estimate `FuzzRunner.runSingle` uses — populates
+        // `ContextExhaustionSilentDetector`'s suppression guard on this path too
+        // (#39 in the 2026-07 inert-code audit).
+        let estimatedPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt ?? "")
+            + tuples.reduce(0) { $0 + ContextWindowManager.estimateTokenCount($1.content) }
 
         // Enqueue on MainActor (InferenceService is MainActor-isolated).
         let enqueueResult: Result<(GenerationRequestToken, GenerationStream), Error> = await MainActor.run { [service, options] in
@@ -220,15 +242,20 @@ public actor SessionScriptRunner {
                     default: return .user(tuple.content)
                     }
                 }
+                var cfg = GenerationConfig(
+                    temperature: options.temperature,
+                    topP: options.topP,
+                    repeatPenalty: options.repeatPenalty,
+                    maxOutputTokens: options.maxOutputTokens
+                )
+                if !options.toolDefinitions.isEmpty {
+                    cfg.tools = options.toolDefinitions
+                    cfg.toolChoice = .auto
+                }
                 let r = try service.enqueue(
                     messages: messageValues,
                     systemPrompt: systemPrompt,
-                    config: GenerationConfig(
-                        temperature: options.temperature,
-                        topP: options.topP,
-                        repeatPenalty: options.repeatPenalty,
-                        maxOutputTokens: options.maxOutputTokens
-                    ),
+                    config: cfg,
                     priority: .normal,
                     requestGroupID: requestGroupID
                 )
@@ -275,19 +302,23 @@ public actor SessionScriptRunner {
                 id: options.modelId,
                 url: options.modelURL.absoluteString,
                 fileSHA256: nil,
-                tokenizerHash: nil
+                tokenizerHash: nil,
+                memoryBudgetBytes: options.memoryBudgetBytes
             ),
             config: RunRecord.ConfigSnapshot(
                 seed: seed,
                 temperature: options.temperature,
                 topP: options.topP,
                 maxTokens: options.maxOutputTokens,
-                systemPrompt: systemPrompt
+                systemPrompt: systemPrompt,
+                toolChoice: options.toolDefinitions.isEmpty ? nil : encodeToolChoice(.auto),
+                contextLimit: options.contextLimit
             ),
             prompt: RunRecord.PromptSnapshot(
                 corpusId: corpusId,
                 mutators: [],
-                messages: [.init(role: "user", text: lastUser)]
+                messages: [.init(role: "user", text: lastUser)],
+                estimatedPromptTokens: estimatedPromptTokens
             ),
             events: capture.events,
             raw: capture.raw,
@@ -308,7 +339,10 @@ public actor SessionScriptRunner {
             ),
             phase: capture.phase,
             error: capture.error,
-            stopReason: capture.stopReason
+            stopReason: capture.stopReason,
+            toolCalls: capture.toolCalls,
+            toolResults: capture.toolResults,
+            toolDefinitions: options.toolDefinitions
         )
     }
 

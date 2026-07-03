@@ -7,27 +7,31 @@ import ManifoldInference
 ///
 /// The audit's ground-truth claim is "VLM sessions pay full prompt-prefill on
 /// every turn because `MLXBackend` ANDs `enableKVCacheReuse` with
-/// `!routeThroughVLMFactory`." This scenario captures the empirical evidence
-/// for that claim against a real MLX VLM via ``MLXFuzzFactory`` and stores it
-/// in ``ScenarioOutcome/events`` so a follow-up summary script can compare
-/// pre- and post-gate-removal runs.
+/// `!routeThroughVLMFactory`." This scenario is *designed* to capture the
+/// empirical evidence for that claim against a real MLX VLM, stashing it in
+/// ``ScenarioOutcome/events`` so a follow-up summary script could compare
+/// pre- and post-gate-removal runs — but nothing currently supplies that
+/// factory (see below), so today it only ever exercises the skip branch.
 ///
 /// **When the gate is removed in a future PR**, the scenario starts seeing
 /// `.kvCacheReuse(promptTokensReused: > 0)` on the second turn and the
 /// invariant in ``run()`` will need to flip from "must be empty" to "must
-/// fire on turn 2". Until then a held invariant means the gate is intact.
+/// fire on turn 2". Until then a held invariant means either the gate is
+/// intact *or* the scenario was skipped — see the caveat below.
 ///
-/// The scenario is skip-only when no factory is supplied, which is how the
-/// default registry registration works — `ManifoldFuzz` cannot import
-/// `MLXFuzzFactory` directly because `ManifoldFuzz` has no MLX dependency.
-/// The fuzz CLI and the Xcode-hosted MLX harness construct the scenario
-/// explicitly with a real factory when it's their turn to run.
-///
-/// **For the gate-detection invariant to be meaningful**, the supplied
-/// factory must produce an MLX backend constructed with
-/// `enableKVCacheReuse: true`. A reuse-disabled backend would also emit zero
-/// `.kvCacheReuse` events and would falsely confirm an "intact" gate. The
-/// canonical wiring lives next to `MLXFuzzFactory` in the manifold-mlx companion package (v0.48, PR C2).
+/// **As of 2026-07 this scenario is unwired and effectively inert.**
+/// `ScenarioRegistry.all` registers it with the default `factory: nil`, so
+/// `run()` always takes the skip-only path and trivially reports
+/// `invariantHeld: true` without ever driving a backend. Neither
+/// `Sources/fuzz-chat/FuzzChatCLI.swift` nor `Sources/ManifoldFuzzBackends`
+/// references this scenario or a type named `MLXFuzzFactory` — no such type
+/// exists anywhere in this repo or in the manifold-mlx companion package
+/// (checked 2026-07). Making the invariant meaningful again requires the
+/// manifold-mlx repo (or a future MLX-aware fuzz driver) to construct
+/// `MLXVLMGateScenario(factory:)` explicitly with a real
+/// `FuzzBackendFactory` whose backend was built with
+/// `enableKVCacheReuse: true` — a reuse-disabled backend would also emit
+/// zero `.kvCacheReuse` events and falsely confirm an "intact" gate.
 public struct MLXVLMGateScenario: FuzzScenario {
     public let id = "mlx-vlm-gate"
     public let humanName = "MLX VLM gate currently disables KV-cache reuse"
@@ -64,7 +68,7 @@ public struct MLXVLMGateScenario: FuzzScenario {
             return ScenarioOutcome(
                 scenarioId: id,
                 invariantHeld: true,
-                failureReason: "skipped: no FuzzBackendFactory supplied (wire MLXFuzzFactory to record VLM-gate events)",
+                failureReason: "skipped: no FuzzBackendFactory supplied — see this type's doc comment; nothing in-repo wires one today",
                 events: []
             )
         }

@@ -14,19 +14,28 @@ public actor FuzzRunner {
         public let modelURL: URL
         public let backendName: String
         public let templateMarkers: RunRecord.MarkerSnapshot?
+        /// Per-model memory budget in bytes, when the factory can supply one
+        /// (e.g. a companion MLX/Llama factory reporting the loaded weights'
+        /// file size). `nil` for factories with no real per-model ceiling to
+        /// report (mock, chaos, Ollama, cloud) — `MemoryGrowthDetector`'s
+        /// budget-exceeded branch stays a no-op for those, honestly, rather
+        /// than fabricating a number.
+        public let memoryBudgetBytes: UInt64?
 
         public init(
             backend: any InferenceBackend,
             modelId: String,
             modelURL: URL,
             backendName: String,
-            templateMarkers: RunRecord.MarkerSnapshot?
+            templateMarkers: RunRecord.MarkerSnapshot?,
+            memoryBudgetBytes: UInt64? = nil
         ) {
             self.backend = backend
             self.modelId = modelId
             self.modelURL = modelURL
             self.backendName = backendName
             self.templateMarkers = templateMarkers
+            self.memoryBudgetBytes = memoryBudgetBytes
         }
     }
 
@@ -176,6 +185,15 @@ public actor FuzzRunner {
         let start = ContinuousClock.now
 
         let prompt = entry.turns.map(\.text).joined(separator: "\n")
+        // Populates `ContextExhaustionSilentDetector`'s false-trigger suppression
+        // guard, which was permanently dead without a live `contextLimit` /
+        // `estimatedPromptTokens` pair (#39 in the 2026-07 inert-code audit).
+        // The character-based estimate is the same heuristic
+        // `PromptAssembler`/`ContextWindowManager` use elsewhere in the absence
+        // of a real tokenizer — advisory, not exact.
+        let contextLimit = handle.backend.capabilities.contextWindowSize
+        let estimatedPromptTokens = ContextWindowManager.estimateTokenCount(entry.system ?? "")
+            + ContextWindowManager.estimateTokenCount(prompt)
         let toolDefs: [ToolDefinition] = config.tools ? SyntheticToolset.definitions : []
         // `.auto` keeps the model honest — `.required` would mask the
         // toolchoice-violation sub-check during the day-one campaign. When the
@@ -234,7 +252,8 @@ public actor FuzzRunner {
                 id: handle.modelId,
                 url: handle.modelURL.absoluteString,
                 fileSHA256: nil,
-                tokenizerHash: nil
+                tokenizerHash: nil,
+                memoryBudgetBytes: handle.memoryBudgetBytes
             ),
             config: RunRecord.ConfigSnapshot(
                 seed: config.seed,
@@ -242,12 +261,14 @@ public actor FuzzRunner {
                 topP: topP,
                 maxTokens: maxTokens,
                 systemPrompt: entry.system,
-                toolChoice: toolDefs.isEmpty ? nil : encodeToolChoice(toolChoice)
+                toolChoice: toolDefs.isEmpty ? nil : encodeToolChoice(toolChoice),
+                contextLimit: contextLimit
             ),
             prompt: RunRecord.PromptSnapshot(
                 corpusId: entry.id,
                 mutators: appliedMutators,
-                messages: entry.turns.map { .init(role: $0.role, text: $0.text) }
+                messages: entry.turns.map { .init(role: $0.role, text: $0.text) },
+                estimatedPromptTokens: estimatedPromptTokens
             ),
             events: capture.events,
             raw: capture.raw,

@@ -125,6 +125,23 @@ final class ConformanceRecordEmitTests: XCTestCase {
         XCTAssertNil(rec.toolSelection)
     }
 
+    /// 2026-07 inert-code audit, finding #24: an `error` event whose message
+    /// carries `PromptRenderer`'s literal failure prefix must route to
+    /// `.renderFail` — the only distinguishable "no usable prompt" signal
+    /// available today — not the generic `.loadFail` bucket.
+    func testPromptRendererErrorEventIsRenderFail() throws {
+        let jsonl = """
+        {"kind":"prompt","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","user":"x","requiredTools":["list_dir"]}
+        {"kind":"error","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","message":"PromptRenderer: the model's embedded chat template could not be rendered and tools were requested"}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "04-list")
+
+        XCTAssertEqual(rec.status, .renderFail, "a PromptRenderer failure message must route to .renderFail")
+        XCTAssertEqual(rec.failureClass, .renderFail)
+        XCTAssertNil(rec.verdict, "an un-measured cell carries no verdict")
+        XCTAssertNil(rec.toolSelection)
+    }
+
     /// The crux control: a model that DID run and produced a `final` but called no
     /// tool is a *real, measured* decline — it must stay `.measured` / `.fail` /
     /// `.noCall` and NOT be reclassified as a hole by the #2087 fix.

@@ -24,6 +24,10 @@ public final class ScriptedBackend: InferenceBackend, ConversationHistoryReceive
     private var cursor: Int = 0
     private var nextCallId: Int = 0
     public private(set) var receivedHistories: [[(role: String, content: String)]] = []
+    /// Every `GenerationConfig` this backend was asked to `generate(...)` with,
+    /// in call order — lets tests assert on config wiring (e.g. `seed`)
+    /// without needing a real backend to observe it on the wire.
+    public private(set) var receivedConfigs: [GenerationConfig] = []
 
     public init(turns: [Turn]) {
         self.turns = turns
@@ -44,6 +48,7 @@ public final class ScriptedBackend: InferenceBackend, ConversationHistoryReceive
     }
 
     public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        receivedConfigs.append(config)
         let turn: Turn
         if cursor < turns.count {
             turn = turns[cursor]

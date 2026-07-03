@@ -5,7 +5,6 @@ public enum BackendChoice: String, Sendable, CaseIterable {
     case llama
     case foundation
     case mlx
-    case all
     /// OpenAI-Chat-Completions-compatible cloud endpoint (OpenRouter, OpenAI,
     /// Together, …) driven via `OpenAIBackend`.
     case openai
@@ -23,6 +22,14 @@ public struct FuzzConfig: Sendable {
     public let modelHint: String?
     public let detectorFilter: Set<String>?
     public let outputDir: URL
+    /// **Dead knob (2026-07 inert-code audit, finding #40).** Threaded through
+    /// this public initializer but never read by `FuzzRunner`, `SessionFuzzRunner`,
+    /// or any detector/sink — the one in-repo call site (`fuzz-chat`) hardcodes
+    /// `false`, and there is no CLI flag to set it `true` even if a reader
+    /// existed. Kept for source compatibility since `FuzzConfig` is a public
+    /// type in the `ManifoldFuzz` library product; slated for removal in the
+    /// next breaking-change batch rather than here. Do not add a reader for
+    /// this — decide wire-vs-remove before relying on it.
     public let calibrate: Bool
     public let quiet: Bool
     /// When `true`, the harness drives multi-turn scripts through

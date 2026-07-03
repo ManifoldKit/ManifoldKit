@@ -113,6 +113,89 @@ final class SessionScriptRunnerTests: XCTestCase {
         ])
     }
 
+    // MARK: - 2026-07 inert-code audit findings #39 / #45
+
+    /// `--tools` (`Options.toolDefinitions`) must reach `GenerationConfig.tools`
+    /// on the session-scripts path — previously silently ignored there while
+    /// working on the single-turn `FuzzRunner` path. Needs a tool-capable mock
+    /// backend — `MockInferenceBackend`'s default `supportsToolCalling: false`
+    /// makes `GenerationQueue` reject a tool-carrying enqueue before `generate`
+    /// is ever called, which would otherwise mask this exact wiring gap.
+    func test_toolDefinitions_reachGenerationConfig() async throws {
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP, .repeatPenalty],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false
+        ))
+        mock.tokensToYield = ["ok"]
+        mock.isModelLoaded = true
+        let service = InferenceService(backend: mock, name: "SessionRunnerTest")
+        let tools = SyntheticToolset.definitions
+        XCTAssertFalse(tools.isEmpty, "test precondition: SyntheticToolset must declare at least one tool")
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(modelId: "mock-1", toolDefinitions: tools)
+        )
+        let script = SessionScript(id: "tools", steps: [.send(text: "hi")])
+        _ = await runner.execute(script)
+
+        XCTAssertEqual(mock.lastConfig?.tools.map(\.name), tools.map(\.name))
+        XCTAssertEqual(mock.lastConfig?.toolChoice, .auto)
+    }
+
+    /// No tools configured → `GenerationConfig.tools` stays empty, matching the
+    /// single-turn path's default (no tool-choice constraint imposed).
+    func test_noToolDefinitions_leavesGenerationConfigToolsEmpty() async throws {
+        let (service, mock) = makeService(replying: ["ok"])
+        let runner = SessionScriptRunner(service: service, options: .init(modelId: "mock-1"))
+        let script = SessionScript(id: "no-tools", steps: [.send(text: "hi")])
+        _ = await runner.execute(script)
+
+        XCTAssertEqual(mock.lastConfig?.tools, [])
+    }
+
+    /// `Options.contextLimit` / `Options.memoryBudgetBytes` must land on the
+    /// captured `RunRecord`'s `ConfigSnapshot.contextLimit` /
+    /// `ModelSnapshot.memoryBudgetBytes` — feeding
+    /// `ContextExhaustionSilentDetector` / `MemoryGrowthDetector`'s previously
+    /// permanently-dead branches. `PromptSnapshot.estimatedPromptTokens` must
+    /// be populated too, independent of whether a limit/budget was supplied.
+    func test_capturesContextLimitAndMemoryBudgetOnRunRecord() async throws {
+        let (service, _) = makeService(replying: ["ok"])
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(modelId: "mock-1", contextLimit: 4096, memoryBudgetBytes: 1_000_000)
+        )
+        let script = SessionScript(id: "budget", steps: [.send(text: "hello there")])
+        let capture = await runner.execute(script)
+        let record = try XCTUnwrap(capture.steps[0].record)
+
+        XCTAssertEqual(record.config.contextLimit, 4096)
+        XCTAssertEqual(record.model.memoryBudgetBytes, 1_000_000)
+        XCTAssertNotNil(record.prompt.estimatedPromptTokens)
+        XCTAssertGreaterThan(try XCTUnwrap(record.prompt.estimatedPromptTokens), 0)
+    }
+
+    /// Without an explicit `contextLimit`/`memoryBudgetBytes`, both stay `nil` —
+    /// no fabricated defaults — while `estimatedPromptTokens` is still computed
+    /// (it only needs the message text, not backend metadata).
+    func test_omittedContextLimitAndMemoryBudgetStayNil() async throws {
+        let (service, _) = makeService(replying: ["ok"])
+        let runner = SessionScriptRunner(service: service, options: .init(modelId: "mock-1"))
+        let script = SessionScript(id: "no-budget", steps: [.send(text: "hello there")])
+        let capture = await runner.execute(script)
+        let record = try XCTUnwrap(capture.steps[0].record)
+
+        XCTAssertNil(record.config.contextLimit)
+        XCTAssertNil(record.model.memoryBudgetBytes)
+        XCTAssertNotNil(record.prompt.estimatedPromptTokens)
+    }
+
     func test_turnRecords_filtersNonExecutedSteps() async {
         let (service, _) = makeService(replying: ["r"])
         let runner = SessionScriptRunner(service: service)

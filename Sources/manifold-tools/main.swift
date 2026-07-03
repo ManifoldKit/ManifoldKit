@@ -610,18 +610,6 @@ func runCLI() async -> Int32 {
         displayName: cli.backend.rawValue,
         modelsFor: { scenario in cli.modelOverrides.isEmpty ? [scenario.backend.model] : cli.modelOverrides }
     ) { scenario, model in
-        // One logger per (backend, model) run, all writing to the same file.
-        // Per-record attribution makes the interleaved transcript scorable
-        // per-model without parsing stdout. The first run truncates a stale
-        // `--output` (unless `--append`); the rest append to this run's file.
-        let logger = try TranscriptLogger(
-            url: cli.output,
-            backend: cli.backend.rawValue,
-            model: model,
-            quant: quantLabel(from: model),
-            append: cli.append || !isFirstRun
-        )
-        isFirstRun = false
         // Surface infra failures (e.g. the backend rejecting a nonexistent model
         // with a 404) via the thrown error — `ScenarioCLIHarness.runAll` prints it
         // to stderr so it stands out from scenario output and isn't mistaken for a
@@ -631,8 +619,25 @@ func runCLI() async -> Int32 {
         // `loadFail` hole; a failure raised earlier (e.g. `loadModel`'s 404)
         // writes no transcript group for this cell at all and is surfaced only on
         // stderr — combined-file matrix collation treats a cell with no record as
-        // an expected hole, not as measured.
-        let service = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
+        // an expected hole, not as measured. When the primary model fails to
+        // load and `scenario.backend.fallbackModel` is set, `makeService` retries
+        // once with the fallback before giving up — resolved *before* the logger
+        // is created so the transcript is always tagged with the model that
+        // actually ran, never the one that failed to load.
+        let (service, resolvedModel) = try await makeService(cli: cli, scenario: scenario, model: model, registry: registry)
+
+        // One logger per (backend, model) run, all writing to the same file.
+        // Per-record attribution makes the interleaved transcript scorable
+        // per-model without parsing stdout. The first run truncates a stale
+        // `--output` (unless `--append`); the rest append to this run's file.
+        let logger = try TranscriptLogger(
+            url: cli.output,
+            backend: cli.backend.rawValue,
+            model: resolvedModel,
+            quant: quantLabel(from: resolvedModel),
+            append: cli.append || !isFirstRun
+        )
+        isFirstRun = false
         let runner = ScenarioRunner(
             service: service,
             logger: logger,
@@ -670,15 +675,23 @@ func quantLabel(from model: String) -> String? {
     return nil
 }
 
+/// Builds the `InferenceService` for one (scenario, model) run, loading the
+/// backend's model. When the primary `model` fails to load and the scenario
+/// declares a `fallbackModel`, retries once with the fallback before giving
+/// up — a note goes to stderr either way so a substitution is never silent.
+/// Returns the model that actually loaded, since it may differ from the
+/// requested one; callers must use it (not the input `model`) for anything
+/// that labels the run (transcript, quant label).
 @MainActor
 func makeService(
     cli: CLI,
     scenario: Scenario,
     model: String,
     registry: ToolRegistry
-) async throws -> InferenceService {
+) async throws -> (service: InferenceService, resolvedModel: String) {
     let backend: any InferenceBackend
     let name: String
+    var resolvedModel = model
     switch cli.backend {
     case .mock:
         backend = MockFactory.make(for: scenario)
@@ -686,7 +699,15 @@ func makeService(
     case .ollama:
         let ollama = OllamaBackend(_registrar: ())
         ollama.configure(baseURL: cli.ollamaBaseURL, modelName: model)
-        try await ollama.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
+        do {
+            try await ollama.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
+        } catch {
+            guard let fallback = scenario.backend.fallbackModel, fallback != model else { throw error }
+            FileHandle.standardError.write(Data("manifold-tools: model '\(model)' failed to load (\(error)); retrying with fallbackModel '\(fallback)'\n".utf8))
+            ollama.configure(baseURL: cli.ollamaBaseURL, modelName: fallback)
+            try await ollama.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
+            resolvedModel = fallback
+        }
         backend = ollama
         name = "ollama"
     case .openaiCompat:
@@ -695,7 +716,15 @@ func makeService(
         let apiKey = ProcessInfo.processInfo.environment[cli.apiKeyEnvVar] ?? ""
         let openAI = OpenAIBackend()
         openAI.configure(baseURL: cli.openAICompatBaseURL, apiKey: apiKey, modelName: model)
-        try await openAI.loadModel(from: cli.openAICompatBaseURL, plan: .cloud())
+        do {
+            try await openAI.loadModel(from: cli.openAICompatBaseURL, plan: .cloud())
+        } catch {
+            guard let fallback = scenario.backend.fallbackModel, fallback != model else { throw error }
+            FileHandle.standardError.write(Data("manifold-tools: model '\(model)' failed to load (\(error)); retrying with fallbackModel '\(fallback)'\n".utf8))
+            openAI.configure(baseURL: cli.openAICompatBaseURL, apiKey: apiKey, modelName: fallback)
+            try await openAI.loadModel(from: cli.openAICompatBaseURL, plan: .cloud())
+            resolvedModel = fallback
+        }
         backend = openAI
         name = "openai-compat"
     }
@@ -704,7 +733,8 @@ func makeService(
     // path. That path is the only one that renders the prompt template and
     // injects tool definitions, so the model is actually told the tools exist
     // (#1983). Driving the raw backend directly would dispatch zero tools.
-    return InferenceService(backend: backend, name: name, modelName: model, toolRegistry: registry)
+    let service = InferenceService(backend: backend, name: name, modelName: resolvedModel, toolRegistry: registry)
+    return (service, resolvedModel)
 }
 
 /// Generates plausible-but-irrelevant decoy tools for distractor-pressure
