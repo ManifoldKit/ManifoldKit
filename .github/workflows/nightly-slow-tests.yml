@@ -48,21 +48,39 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history + tags: the API baseline below is resolved via
+          # `git describe --tags`, which needs every tag ref plus the tag
+          # commit's tree objects present locally. A shallow, tagless clone
+          # (the actions/checkout default) can neither resolve nor diff
+          # against a tag. fetch-tags is redundant once fetch-depth is 0 (a
+          # full fetch pulls tags regardless) but is set explicitly so the
+          # dependency is obvious without reading the checkout-action docs.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Swift CI environment
         uses: ./.github/actions/setup-swift-ci
 
       - name: Capture API baseline SHA
-        # Captured once, immediately at checkout, so the api-check step below
-        # (which runs ~26 min into the job) diffs against a fixed commit
-        # instead of re-resolving the floating `origin/main` ref live. If a
-        # PR merges to main between this checkout and that later fetch, the
-        # floating ref moves newer than the checked-out tree and
-        # diagnose-api-breaking-changes reports inverted (spurious) API
-        # breakages — this exact race fired in run 28574236073 (#2113).
-        # Pinning here guarantees BASELINE_SHA == HEAD on a scheduled trunk
-        # run, making the check a deterministic HEAD-vs-HEAD no-op backstop.
-        run: echo "BASELINE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        # The nightly api-check (below) diffs the current tree against the
+        # latest release tag — not against `origin/main` and not against
+        # this job's own HEAD. A floating branch ref re-resolved live,
+        # ~26 min into the job, races any PR that merges to main in the
+        # meantime: the moving ref can end up newer than the checked-out
+        # tree, and diagnose-api-breaking-changes reports inverted
+        # (spurious) breakages. That race fired in run 28574236073 (#2113).
+        # A release tag is immutable once cut, so resolving it once here —
+        # right after checkout, while tags are guaranteed present (see the
+        # Checkout step's fetch-depth/fetch-tags) — and reusing the SHA for
+        # the rest of the job is race-free by construction, with no
+        # HEAD-vs-HEAD degenerate case.
+        run: |
+          set -euo pipefail
+          BASELINE_TAG=$(git describe --tags --abbrev=0)
+          BASELINE_SHA=$(git rev-parse "$BASELINE_TAG")
+          echo "Baseline: $BASELINE_TAG ($BASELINE_SHA)"
+          echo "BASELINE_SHA=$BASELINE_SHA" >> "$GITHUB_ENV"
 
       - name: Test — LargeSessionListPerformanceTests
         id: test-large-session-list
@@ -146,10 +164,35 @@ jobs:
           scripts/check-coverage.sh
 
       - name: Public API source-compatibility check (full — all five modules)
-        # Full unconditional check across all five trait-free public targets.
-        # The per-PR gate in ci.yml only runs on modules that changed in the PR
-        # and skips entirely on doc/test/script-only changes — this step
-        # catches any API break that slipped through, within 24 h.
+        # Full unconditional check across all five trait-free public targets,
+        # diffed against $BASELINE_SHA — the latest release tag, resolved
+        # once in "Capture API baseline SHA" above — not a live-reresolved
+        # `origin/main` ref and not this job's own HEAD.
+        #
+        # Why a release tag and not `origin/main`: `origin/main` is a
+        # floating ref. Re-resolving it live, ~26 min into this job, races
+        # any PR that merges to main in the meantime — the ref can move
+        # newer than the checked-out tree, and diagnose-api-breaking-changes
+        # reports inverted (spurious) breakages. That race fired in run
+        # 28574236073 (#2113). Pinning to HEAD-at-checkout closed the race
+        # but made the diff a permanent HEAD-vs-HEAD no-op — every run
+        # compared the tree to itself, so this check could never actually
+        # fail. A release tag is immutable once cut, giving a fixed,
+        # meaningfully-different baseline with no re-resolution race.
+        #
+        # Why this step exists at all, given ci.yml's per-PR gate: that gate
+        # only runs on modules that changed in the PR, skips entirely on
+        # doc/test/script-only changes, and does not run on `merge_group`
+        # events at all — so queue-merged trees are never digester-checked
+        # by it. This nightly run is the only place that coverage lives; it
+        # is the 24h backstop that catches whatever the per-PR gate's path
+        # filters, merge_group skip, or an admin merge let through.
+        # Intentional breaking changes are covered the same way they always
+        # were: the PR that makes the change adds a permanent entry to
+        # .github/api-breakage-allowlist.txt (see ci.yml for why the
+        # allowlist exists — it also absorbs false-positive "removed"
+        # reports from downward type relocations behind `@_exported`
+        # re-export shims, P2a Contract extraction, #1719/#1723).
         #
         # `--targets` is kept (rather than whole-package mode) for scope
         # control; the historical blocker — the trait-gated `llama` C module
@@ -163,27 +206,6 @@ jobs:
         id: api-check
         run: |
           set -euo pipefail
-          # diagnose-api-breaking-changes checks out the baseline tree object.
-          # A shallow clone (actions/checkout default) omits those objects and
-          # causes "unable to read tree" (#1723). --unshallow converts the
-          # shallow clone to a full one; fall back to a plain fetch if the
-          # repo is already full-depth (e.g. local runs).
-          git fetch --unshallow origin main 2>/dev/null || git fetch origin main
-          # Diff against $BASELINE_SHA, captured once at checkout (see the
-          # "Capture API baseline SHA" step above) — NOT a live-reresolved
-          # `origin/main` ref. Re-resolving `origin/main` here races a mid-job
-          # merge to main: the floating ref can move newer than the checked-
-          # out tree, producing inverted (spurious) breakage reports (#2113,
-          # run 28574236073). BASELINE_SHA is guaranteed to equal the checked-
-          # out HEAD on a scheduled trunk run, so this is a deterministic
-          # HEAD-vs-HEAD no-op backstop by design — it exists to catch a
-          # regression sneaking through the per-PR gate, not to compare
-          # against a moving target.
-          #
-          # See ci.yml for why the allowlist exists: it absorbs the false-positive
-          # "removed" reports from downward type relocations behind `@_exported`
-          # re-export shims (P2a Contract extraction, #1719/#1723). Entries
-          # self-expire once the relocation lands on main.
           swift package diagnose-api-breaking-changes "$BASELINE_SHA" \
             --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore \
             --targets ManifoldPersistenceSwiftData --targets ManifoldUI \
