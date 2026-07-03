@@ -25,7 +25,8 @@ final class ManifoldMCPHostTests: XCTestCase {
     private func makeRuntimeHost(
         sessions: [ChatSession] = [],
         messages: [ChatMessage] = [],
-        tokensToYield: [String] = ["Hello", " world"]
+        tokensToYield: [String] = ["Hello", " world"],
+        streamError: Error? = nil
     ) -> (
         host: ManifoldMCPHost,
         runtime: ConversationRuntime,
@@ -37,6 +38,7 @@ final class ManifoldMCPHostTests: XCTestCase {
         let backend = MockInferenceBackend()
         backend.isModelLoaded = true
         backend.tokensToYield = tokensToYield
+        backend.shouldThrowInsideStream = streamError
         let inferenceService = InferenceService(backend: backend)
         let runtime = ConversationRuntime(
             messageStore: messageStore,
@@ -376,6 +378,110 @@ final class ManifoldMCPHostTests: XCTestCase {
         let finalText = await observedFinalText.value
         XCTAssertEqual(finalText, "MCP reply")
         XCTAssertEqual(response["isError"], .bool(false))
+    }
+
+    func test_toolCall_sendMessage_reportsStreamFailureViaIsError() async throws {
+        struct StreamBoom: Error, LocalizedError {
+            var errorDescription: String? { "stream exploded" }
+        }
+        let sessionID = UUID()
+        let session = ChatSession(id: sessionID, title: "MCP Session")
+        let fixture = makeRuntimeHost(sessions: [session], streamError: StreamBoom())
+
+        let result = try await sendRequest(
+            method: "tools/call",
+            params: .object([
+                "name": .string("send_message"),
+                "arguments": .object([
+                    "session_id": .string(sessionID.uuidString),
+                    "text": .string("Hello over MCP"),
+                ]),
+            ]),
+            to: fixture.host
+        )
+
+        guard case .object(let response) = result,
+              case .array(let content) = response["content"],
+              case .object(let first) = content.first,
+              case .string(let responseText) = first["text"] else {
+            XCTFail("Expected MCP content text")
+            return
+        }
+
+        // The documented MCP signaling mechanism for tool failure is
+        // isError: true — a failed turn must not be shaped like a success.
+        XCTAssertEqual(response["isError"], .bool(true))
+        XCTAssertTrue(responseText.contains("send_message failed"), "failure text should identify the failing tool; got: \(responseText)")
+    }
+
+    // MARK: - Init: serverName × configuration precedence
+
+    func test_init_explicitServerNameOverridesConfigurationServerName() async throws {
+        let sessionStore = StubSessionStore()
+        let messageStore = StubMessageStore()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let runtime = ConversationRuntime(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: InferenceService(backend: backend)
+        )
+        // Pre-fix, a non-nil configuration silently discarded serverName.
+        let host = ManifoldMCPHost(
+            sessionStore: sessionStore,
+            messageStore: messageStore,
+            conversationRuntime: runtime,
+            serverName: "My App",
+            configuration: .init(maxMessageBytes: 8_000_000)
+        )
+
+        let result = try await sendRequest(
+            method: "initialize",
+            params: .object(["protocolVersion": .string("2025-03-26")]),
+            to: host
+        )
+
+        guard case .object(let r) = result,
+              case .object(let serverInfo) = r["serverInfo"],
+              case .string(let name) = serverInfo["name"] else {
+            XCTFail("Expected serverInfo.name in initialize result")
+            return
+        }
+        XCTAssertEqual(name, "My App")
+    }
+
+    func test_init_configurationServerNameUsedWhenServerNameOmitted() async throws {
+        let sessionStore = StubSessionStore()
+        let messageStore = StubMessageStore()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let runtime = ConversationRuntime(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: InferenceService(backend: backend)
+        )
+        var configuration = ManifoldMCPHost.Configuration()
+        configuration.serverName = "Configured Name"
+        let host = ManifoldMCPHost(
+            sessionStore: sessionStore,
+            messageStore: messageStore,
+            conversationRuntime: runtime,
+            configuration: configuration
+        )
+
+        let result = try await sendRequest(
+            method: "initialize",
+            params: .object(["protocolVersion": .string("2025-03-26")]),
+            to: host
+        )
+
+        guard case .object(let r) = result,
+              case .object(let serverInfo) = r["serverInfo"],
+              case .string(let name) = serverInfo["name"] else {
+            XCTFail("Expected serverInfo.name in initialize result")
+            return
+        }
+        XCTAssertEqual(name, "Configured Name")
     }
 }
 

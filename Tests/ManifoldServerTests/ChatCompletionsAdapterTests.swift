@@ -76,6 +76,48 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertTrue(config.jsonMode)
     }
 
+    func testJsonSchemaResponseFormatStagesStructuredOutput() throws {
+        // A json_schema response_format must reach GenerationConfig.structuredOutput
+        // (the field the engine's structured-output router consults) — not just
+        // flip jsonMode and drop the schema.
+        let schema = JSONSchemaValue.object([
+            "type": .string("object"),
+            "properties": .object([
+                "answer": .object(["type": .string("string")])
+            ]),
+        ])
+        let request = ChatCompletionRequest(
+            model: "m",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")],
+            responseFormat: ChatCompletionResponseFormat(
+                type: .jsonSchema,
+                jsonSchema: .init(name: "answer_shape", schema: schema)
+            )
+        )
+
+        let config = try DefaultChatCompletionsAdapter().generationConfig(for: request)
+
+        XCTAssertTrue(config.jsonMode)
+        guard case .jsonSchema(let staged) = config.structuredOutput else {
+            XCTFail("Expected structuredOutput to be staged as .jsonSchema; got \(String(describing: config.structuredOutput))")
+            return
+        }
+        XCTAssertTrue(staged.contains("\"answer\""), "staged schema should carry the client's schema content; got: \(staged)")
+    }
+
+    func testJsonObjectResponseFormatDoesNotStageStructuredOutput() throws {
+        let request = ChatCompletionRequest(
+            model: "m",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")],
+            responseFormat: ChatCompletionResponseFormat(type: .jsonObject)
+        )
+
+        let config = try DefaultChatCompletionsAdapter().generationConfig(for: request)
+
+        XCTAssertTrue(config.jsonMode)
+        XCTAssertNil(config.structuredOutput)
+    }
+
     func testTokenEventsMapToContentDeltaChunks() async throws {
         let backend = MockInferenceBackend()
         backend.isModelLoaded = true

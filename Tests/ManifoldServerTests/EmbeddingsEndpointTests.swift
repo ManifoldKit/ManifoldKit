@@ -74,6 +74,82 @@ final class EmbeddingsEndpointTests: XCTestCase {
         }
     }
 
+    // MARK: - dimensions (truncate + renormalize)
+
+    func testDimensionsTruncatesAndRenormalizes() async throws {
+        // 4-dim native vector; requesting 2 must return the first two
+        // components L2-renormalized: [3, 4] → norm 5 → [0.6, 0.8].
+        let provider = FakeEmbeddingProvider(vectors: [[3.0, 4.0, 5.0, 6.0]])
+        let app = ServerApp(backendProvider: provider).makeApplication()
+
+        try await app.test(.router) { client in
+            let body = try requestBody(EmbedRequest(model: "m", input: .string("hi"), dimensions: 2))
+            try await client.execute(uri: "/v1/embeddings", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .ok)
+                let embedResponse = try JSONDecoder().decode(EmbedResponse.self, from: Data(buffer: response.body))
+                XCTAssertEqual(embedResponse.data.count, 1)
+                let vector = embedResponse.data[0].embedding
+                XCTAssertEqual(vector.count, 2)
+                XCTAssertEqual(vector[0], 0.6, accuracy: 0.0001)
+                XCTAssertEqual(vector[1], 0.8, accuracy: 0.0001)
+            }
+        }
+    }
+
+    func testDimensionsLargerThanNativeSizeReturns400() async throws {
+        let provider = FakeEmbeddingProvider(vectors: [[0.1, 0.2]])
+        let app = ServerApp(backendProvider: provider).makeApplication()
+
+        try await app.test(.router) { client in
+            let body = try requestBody(EmbedRequest(model: "m", input: .string("hi"), dimensions: 16))
+            try await client.execute(uri: "/v1/embeddings", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .badRequest)
+                let envelope = try JSONDecoder().decode(ChatCompletionErrorEnvelope.self, from: Data(buffer: response.body))
+                XCTAssertTrue(envelope.error.message.contains("dimensions"), "error must name the offending param; got: \(envelope.error.message)")
+            }
+        }
+    }
+
+    // MARK: - encoding_format
+
+    func testBase64EncodingFormatReturnsBase64Payload() async throws {
+        let vector: [Float] = [0.25, -1.5]
+        let provider = FakeEmbeddingProvider(vectors: [vector])
+        let app = ServerApp(backendProvider: provider).makeApplication()
+
+        try await app.test(.router) { client in
+            let body = try requestBody(EmbedRequest(model: "m", input: .string("hi"), encodingFormat: "base64"))
+            try await client.execute(uri: "/v1/embeddings", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .ok)
+                // The embedding field must be a base64 JSON string, not an array.
+                let json = try JSONSerialization.jsonObject(with: Data(buffer: response.body)) as? [String: Any]
+                let data = json?["data"] as? [[String: Any]]
+                guard let encoded = data?.first?["embedding"] as? String else {
+                    XCTFail("expected embedding to be a base64 string")
+                    return
+                }
+                XCTAssertEqual(encoded, EmbedObject.base64String(from: vector))
+                // Round-trip: our own decoder must recover the float vector.
+                let decoded = try JSONDecoder().decode(EmbedResponse.self, from: Data(buffer: response.body))
+                XCTAssertEqual(decoded.data[0].embedding, vector)
+            }
+        }
+    }
+
+    func testUnsupportedEncodingFormatReturns400() async throws {
+        let provider = FakeEmbeddingProvider(vectors: [[0.1]])
+        let app = ServerApp(backendProvider: provider).makeApplication()
+
+        try await app.test(.router) { client in
+            let body = try requestBody(EmbedRequest(model: "m", input: .string("hi"), encodingFormat: "hexadecimal"))
+            try await client.execute(uri: "/v1/embeddings", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .badRequest)
+                let envelope = try JSONDecoder().decode(ChatCompletionErrorEnvelope.self, from: Data(buffer: response.body))
+                XCTAssertTrue(envelope.error.message.contains("encoding_format"), "error must name the offending param; got: \(envelope.error.message)")
+            }
+        }
+    }
+
     // MARK: - 503 when no embedding backend
 
     func testNoEmbeddingBackendReturns503() async throws {
