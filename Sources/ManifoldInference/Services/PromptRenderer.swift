@@ -1,6 +1,6 @@
 import Foundation
 
-public extension InferenceError {
+package extension InferenceError {
     /// Canonical prefix on the `inferenceFailure` message ``PromptRenderer``
     /// throws when prompt rendering cannot produce a usable prompt (embedded
     /// template unrenderable + tools requested + enum fallback can't carry
