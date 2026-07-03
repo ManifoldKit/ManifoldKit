@@ -12,6 +12,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV9.self,
             ManifoldSchemaV10.self,
             ManifoldSchemaV11.self,
+            ManifoldSchemaV12.self,
         ]
     }
 
@@ -37,6 +38,10 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             // verdicts (follow-up to #2030). One new @Model type, purely additive
             // — no existing column changes, no data motion.
             .lightweight(fromVersion: ManifoldSchemaV10.self, toVersion: ManifoldSchemaV11.self),
+            // V12 adds Persona for the persona/prompt library (saved, named
+            // system prompts). One new @Model type, purely additive — no
+            // existing column changes, no data motion.
+            .lightweight(fromVersion: ManifoldSchemaV11.self, toVersion: ManifoldSchemaV12.self),
         ]
     }
 }

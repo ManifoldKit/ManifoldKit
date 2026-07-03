@@ -72,6 +72,9 @@ public struct GenerationSettingsView<APIConfig: View>: View {
                     }
                 }
 
+                // MARK: Basic — Persona library
+                PersonaPickerView()
+
                 // MARK: Basic — Appearance
                 Section("Appearance") {
                     Picker("Color Scheme", selection: Binding(

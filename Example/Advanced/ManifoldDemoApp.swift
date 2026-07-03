@@ -233,6 +233,7 @@ struct ManifoldDemoApp: App {
                     .environment(modelManagementViewModel)
                     .environment(sessionManager)
                     .environment(\.samplerPresetStore, runtime.samplerPresetStore)
+                    .environment(\.personaStore, runtime.personaStore)
                     .environment(\.endpointStore, runtime.endpointStore)
                     #if os(macOS)
                     .frame(minWidth: 600, minHeight: 400)

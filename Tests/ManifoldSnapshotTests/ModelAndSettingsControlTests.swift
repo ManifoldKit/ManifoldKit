@@ -294,6 +294,14 @@ final class ModelAndSettingsControlTests: XCTestCase {
         )
     }
 
+    func test_generationSettings_hasPersonaPicker() {
+        let dump = generationSettingsDump()
+        XCTAssertTrue(
+            dump.contains("PersonaPickerView"),
+            "Settings should contain the PersonaPickerView type reference"
+        )
+    }
+
     func test_generationSettings_hasAPIConfigurationView() {
         // APIConfigurationView is wired through a .sheet closure — lazy content
         // is never instantiated until presented, so it can't appear in the view
