@@ -486,6 +486,47 @@ public final class SessionManagerViewModel {
         pendingSearchScrollMessageID = mostRecentHit.messageID
     }
 
+    // MARK: - Export
+
+    /// Exports a session's full message history to a shareable file via the
+    /// rich file-based export pipeline (``ConversationExporter``).
+    ///
+    /// Reads through ``MessageStore/fetchMessages(for:)`` on the injected
+    /// persistence provider rather than requiring a SwiftData
+    /// `PersistedChatSession` handle — this view model only ever holds the
+    /// storage-agnostic ``ChatSession`` snapshot, so this overload is the one
+    /// that fits without widening the VM's dependency surface.
+    ///
+    /// - Parameters:
+    ///   - session: The session to export. Does not need to be ``activeSession``.
+    ///   - format: The serializer — ``MarkdownExportFormat``,
+    ///     ``PlainTextExportFormat``, ``JSONLExportFormat``, or a custom
+    ///     ``ConversationExportFormat``.
+    ///   - directory: Override for the write destination. Defaults to a
+    ///     unique subdirectory of the system temp directory (see
+    ///     ``ConversationExporter``).
+    /// - Returns: A ``ShareableFile`` suitable for `ShareLink`.
+    /// - Throws: ``ChatPersistenceError/providerNotConfigured`` if persistence
+    ///   was never injected, or any error raised while fetching messages,
+    ///   serializing, or writing the file.
+    public func exportSession(
+        _ session: ChatSession,
+        format: ConversationExportFormat,
+        directory: URL? = nil
+    ) async throws -> ShareableFile {
+        guard let persistence = _persistence else {
+            Log.persistence.warning("exportSession called before persistence was configured")
+            throw ChatPersistenceError.providerNotConfigured
+        }
+        let messages = try await persistence.fetchMessages(for: session.id)
+        return try ConversationExporter.export(
+            session: session,
+            messages: messages,
+            format: format,
+            directory: directory
+        )
+    }
+
     // MARK: - Initial-session selection (#1464)
 
     /// Picks the session a relaunching host should restore as ``activeSession``.
