@@ -126,4 +126,53 @@ final class AllowedToolsEnforcementTests: XCTestCase {
         // — the exact "resets to unrestricted after relaunch" bug finding 36
         // describes — and the assertion fails.
     }
+
+    /// Review round 1, finding 3: rehydration must fail CLOSED. If the persisted
+    /// `activeSkillName` no longer resolves in the registry (skill deleted or
+    /// renamed between relaunches), returning nil would lift containment to
+    /// unrestricted — contradicting the file's own policy ("strong containment
+    /// beats accidentally re-enabling"). The correct behavior is deny-all (the
+    /// same empty-set signal a prompt-only skill carries).
+    func test_allowedToolNames_persistedSkillNoLongerInRegistry_failsClosed() async {
+        let survivor = Skill(
+            name: "survivor",
+            description: "still installed",
+            allowedTools: ["read_file"],
+            promptTemplate: "body",
+            sourcePath: URL(fileURLWithPath: "/tmp/survivor/SKILL.md")
+        )
+        let registry = SkillRegistry()
+        await registry.load([survivor])
+        let source = SkillToolSource(registry: registry)
+        // Session resumed with a persisted active skill that was since removed.
+        let session = ChatSession(
+            id: UUID(),
+            title: "resumed-with-ghost-skill",
+            activeSkillName: "ghost-skill"
+        )
+
+        let allowed = await source.allowedToolNames(for: session)
+
+        XCTAssertEqual(
+            allowed, Set<String>(),
+            "A rehydrated active skill missing from the registry must deny-all, not silently unrestrict"
+        )
+        // Sabotage-evidence: reverting the registry-miss branch to `return nil`
+        // (the pre-review behavior) makes this return nil — fail-open — and the
+        // assertion fails.
+    }
+
+    /// The fail-closed branch applies equally to a live (in-process) active
+    /// skill whose registry entry disappears — same hazard, same containment.
+    func test_allowedToolNames_liveActiveSkillRemovedFromRegistry_failsClosed() async {
+        let registry = SkillRegistry()
+        // Empty registry: nothing resolves.
+        let source = SkillToolSource(registry: registry)
+        let session = ChatSession(id: UUID(), title: "live-ghost")
+        await source.markActive(skillName: "vanished", for: session.id)
+
+        let allowed = await source.allowedToolNames(for: session)
+
+        XCTAssertEqual(allowed, Set<String>())
+    }
 }

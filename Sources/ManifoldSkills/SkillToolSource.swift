@@ -127,10 +127,23 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
         // containment silently reset to unrestricted after every relaunch.
         await storage.rehydrateIfNeeded(persisted: session.activeSkillName, for: session.id)
 
-        guard let activeName = await storage.activeSkill(for: session.id),
-              let skill = await registry.skill(named: activeName)
-        else {
+        guard let activeName = await storage.activeSkill(for: session.id) else {
             return nil
+        }
+        guard let skill = await registry.skill(named: activeName) else {
+            // Fail CLOSED. An active-skill name (live or rehydrated from the
+            // persisted record) that no longer resolves in the registry means
+            // we can't know what the skill would have allowed — returning nil
+            // here would silently lift containment to unrestricted, the exact
+            // failure mode this file's policy rejects ("strong containment
+            // beats accidentally re-enabling"). Deny-all (the same signal an
+            // empty `allowedTools` array carries) is the minimal consistent
+            // behavior; the host clears the stale scope via `markActive(nil)`
+            // or a fresh skill dispatch.
+            Log.inference.warning(
+                "ManifoldSkills: active skill '\(activeName)' not found in registry — failing closed (deny-all)"
+            )
+            return []
         }
         // `allowedTools == nil` on the skill means no restriction. An empty
         // array is the deny-all signal (skill is prompt-only) and we

@@ -134,6 +134,80 @@ final class DownloadStateMachineTests: XCTestCase {
         XCTAssertEqual(machine.snapshotTaskIDs(modelID: modelB.id), [2])
     }
 
+    // MARK: - snapshotTaskIDsToCancel (self-sufficient sibling cancel)
+
+    /// Review round 1, blocking finding: the eager reconciliation lands two async
+    /// hops after `reconnectBackgroundSession()`, but a sibling that failed while
+    /// the app was suspended has its `didCompleteWithError` delivered the instant
+    /// the delegate re-attaches — possibly BEFORE reconciliation writes any task
+    /// IDs. This simulates exactly that ordering: metadata restored, reconciliation
+    /// NOT yet run (registered set empty — what `snapshotTaskIDs` returns in that
+    /// window), failure callback computing the cancel set. The decode-based path
+    /// must still identify both siblings.
+    func test_snapshotTaskIDsToCancel_failureBeforeReconciliation_stillFindsSiblings() {
+        var machine = DownloadStateMachine()
+        let model = makeModel(repoID: "mlx-community/Race", fileName: "Race")
+        machine.restoreSnapshotDownload(
+            modelID: model.id,
+            model: model,
+            files: makeSnapshotFiles(),
+            stagingDirectory: URL(fileURLWithPath: "/tmp/staging-race")
+        )
+        // Deliberately NO reconcileSnapshotTasks call — the failure raced ahead.
+        XCTAssertTrue(
+            machine.snapshotTaskIDs(modelID: model.id).isEmpty,
+            "Precondition: reconciliation has not run, registered set is empty"
+        )
+
+        let liveSiblings: [(taskID: Int, taskDescription: String?)] = [
+            (taskID: 20, taskDescription: encodedDescription(machine: machine, modelID: model.id, relativePath: "config.json")),
+            (taskID: 21, taskDescription: encodedDescription(machine: machine, modelID: model.id, relativePath: "weights/model.safetensors")),
+        ]
+
+        let toCancel = machine.snapshotTaskIDsToCancel(
+            modelID: model.id,
+            registeredTaskIDs: machine.snapshotTaskIDs(modelID: model.id),
+            liveTasks: liveSiblings
+        )
+
+        XCTAssertEqual(
+            toCancel, [20, 21],
+            "The cancel path must be self-sufficient: siblings are identified by decoding their persisted taskDescription, not by trusting the (possibly still-empty) registered set"
+        )
+        // Sabotage-evidence: making snapshotTaskIDsToCancel return only
+        // `registeredTaskIDs` (dropping the decode loop) returns [] here — the
+        // failure-raced-reconciliation window where sibling-cancel silently
+        // no-ops, i.e. finding 27 reintroduced one async hop later.
+    }
+
+    func test_snapshotTaskIDsToCancel_excludesOtherModelsTasks_andUnionsRegisteredIDs() {
+        var machine = DownloadStateMachine()
+        let target = makeModel(repoID: "mlx-community/Target", fileName: "Target")
+        let other = makeModel(repoID: "mlx-community/Other", fileName: "Other")
+        machine.restoreSnapshotDownload(
+            modelID: target.id, model: target, files: makeSnapshotFiles(),
+            stagingDirectory: URL(fileURLWithPath: "/tmp/staging-target")
+        )
+
+        let liveTasks: [(taskID: Int, taskDescription: String?)] = [
+            (taskID: 30, taskDescription: encodedDescription(machine: machine, modelID: target.id, relativePath: "config.json")),
+            (taskID: 31, taskDescription: encodedDescription(machine: machine, modelID: other.id, relativePath: "config.json")),
+            (taskID: 32, taskDescription: nil),
+        ]
+
+        // A registered ID with no decodable live description must survive via the union.
+        let toCancel = machine.snapshotTaskIDsToCancel(
+            modelID: target.id,
+            registeredTaskIDs: [99],
+            liveTasks: liveTasks
+        )
+
+        XCTAssertEqual(
+            toCancel, [30, 99],
+            "Only the target model's decoded tasks plus the pre-captured registered IDs should be cancelled — never another model's tasks"
+        )
+    }
+
     /// Confirms the fresh-start path (`startSnapshotDownload` calling
     /// `registerSnapshotTasks` directly) still behaves as before — this fix only
     /// adds a second call site (`reconcileSnapshotTasks`) for the relaunch path.

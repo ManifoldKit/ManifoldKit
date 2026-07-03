@@ -428,6 +428,15 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // startSnapshotDownload does on the fresh-start path. Without this,
         // failSnapshotDownload(cancelRemainingTasks: true) finds an empty taskIDs
         // set after a relaunch and cancels no sibling files.
+        //
+        // ORDER MATTERS: this must run AFTER restorePendingDownloads() above.
+        // registerSnapshotTasks silently no-ops for a modelID with no snapshot
+        // context, so registration performed before the metadata restore would be
+        // dropped on the floor — reordering these two calls silently reintroduces
+        // the finding-27 bug for the common (reconcile-wins-the-race) case.
+        // (The failSnapshotDownload cancel path is additionally self-sufficient —
+        // see snapshotTaskIDsToCancel — so even a lost race here degrades to the
+        // decode-based fallback rather than a silent no-op.)
         restoreSnapshotTaskRegistrations()
 
         // Reclaim disk from any temp files leaked by a prior crash. Capture the
@@ -810,10 +819,39 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         if snapshot.isCancelling { return }
 
         if cancelRemainingTasks {
-            let activeTaskIDs = downloadStateMachine.snapshotTaskIDs(modelID: modelID)
-            sessionCoordinator.getAllTasks { tasks in
-                for task in tasks where activeTaskIDs.contains(task.taskIdentifier) {
-                    task.cancel()
+            // Capture the registered set synchronously — removeSnapshotDownload
+            // below tears the snapshot context down before the async getAllTasks
+            // callback runs, so it can't be re-read later.
+            let registeredTaskIDs = downloadStateMachine.snapshotTaskIDs(modelID: modelID)
+            // Self-sufficient cancel: do NOT trust registeredTaskIDs alone. A
+            // sibling that failed while the app was suspended has its
+            // didCompleteWithError delivered the moment reconnectBackgroundSession()
+            // re-attaches the delegate — possibly before the eager
+            // restoreSnapshotTaskRegistrations() reconciliation lands, in which
+            // window registeredTaskIDs is still empty. Decoding each live task's
+            // persisted taskDescription (via snapshotTaskIDsToCancel) identifies
+            // the siblings regardless of registration state. getAllTasks calls
+            // back on the delegate queue; hop to @MainActor for the state-machine
+            // read (same pattern as cancelDownload), then cancel — thread-safe.
+            sessionCoordinator.getAllTasks { [weak self] tasks in
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        // Manager torn down: no decoder available, but the
+                        // registered IDs were captured before teardown — cancel those.
+                        for task in tasks where registeredTaskIDs.contains(task.taskIdentifier) {
+                            task.cancel()
+                        }
+                        return
+                    }
+                    let liveTasks = tasks.map { (taskID: $0.taskIdentifier, taskDescription: $0.taskDescription) }
+                    let idsToCancel = self.downloadStateMachine.snapshotTaskIDsToCancel(
+                        modelID: modelID,
+                        registeredTaskIDs: registeredTaskIDs,
+                        liveTasks: liveTasks
+                    )
+                    for task in tasks where idsToCancel.contains(task.taskIdentifier) {
+                        task.cancel()
+                    }
                 }
             }
         }
