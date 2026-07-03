@@ -115,6 +115,36 @@ internal struct DownloadStateMachine: Sendable {
         snapshotDownloads[modelID] = snapshot
     }
 
+    /// Reconciles per-snapshot task-ID sets with a background session's actual
+    /// live tasks after a relaunch.
+    ///
+    /// `restoreSnapshotDownload(modelID:model:files:stagingDirectory:)` only
+    /// restores snapshot *metadata* from the persisted pending-downloads JSON —
+    /// it has no live `URLSessionTask` objects, so a snapshot restored that way
+    /// starts with an empty `taskIDs` set. Without this reconciliation,
+    /// `failSnapshotDownload(cancelRemainingTasks: true)` would find nothing to
+    /// cancel for a snapshot download resumed across a relaunch, leaving sibling
+    /// files downloading after one file fails (finding 27).
+    ///
+    /// Each entry's `taskDescription` is expected to be the same encoded
+    /// `TaskContext` JSON `startSnapshotDownload` wrote at task-creation time —
+    /// the OS persists it on the task across relaunch — so `taskContext(for:)`
+    /// can decode the owning `modelID` purely from what the live session reports,
+    /// with no dependency on this process's (empty, post-relaunch) in-memory
+    /// `taskContexts` dictionary.
+    internal mutating func reconcileSnapshotTasks(
+        liveTasks: [(taskID: Int, taskDescription: String?)]
+    ) {
+        var taskIDsByModel: [String: Set<Int>] = [:]
+        for (taskID, description) in liveTasks {
+            guard let context = taskContext(for: taskID, taskDescription: description) else { continue }
+            taskIDsByModel[context.modelID, default: []].insert(taskID)
+        }
+        for (modelID, taskIDs) in taskIDsByModel {
+            registerSnapshotTasks(modelID: modelID, taskIDs: taskIDs)
+        }
+    }
+
     internal mutating func updateSnapshotProgress(
         modelID: String,
         relativePath: String,

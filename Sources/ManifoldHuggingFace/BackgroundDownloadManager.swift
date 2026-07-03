@@ -422,12 +422,42 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // Re-populate activeDownloads from persisted pending downloads.
         restorePendingDownloads()
 
+        // restorePendingDownloads() only restores snapshot *metadata* (files,
+        // staging directory) from the persisted JSON — it has no live
+        // URLSessionTask objects, so it can't call registerSnapshotTasks the way
+        // startSnapshotDownload does on the fresh-start path. Without this,
+        // failSnapshotDownload(cancelRemainingTasks: true) finds an empty taskIDs
+        // set after a relaunch and cancels no sibling files.
+        restoreSnapshotTaskRegistrations()
+
         // Reclaim disk from any temp files leaked by a prior crash. Capture the
         // active-path snapshot here on @MainActor, then run the filesystem scan
         // in a low-priority task so it does not delay the session reconnect path.
         let excluded = activeTempPaths
         Task(priority: .utility) { [weak self] in
             self?.cleanupStaleTempFiles(now: Date(), excluding: excluded)
+        }
+    }
+
+    /// Reconciles `DownloadStateMachine`'s per-snapshot task-ID sets with the
+    /// background session's actual live tasks after a relaunch.
+    ///
+    /// Each snapshot file's `URLSessionDownloadTask.taskDescription` was set at
+    /// creation time (`startSnapshotDownload`) to an encoded `TaskContext` that
+    /// includes the owning `modelID` — the OS persists that description on the
+    /// task across relaunch, so `DownloadStateMachine.reconcileSnapshotTasks`
+    /// can decode it back without needing anything from the pre-relaunch process.
+    /// `getAllTasks` delivers its callback on the URLSession delegate queue (a
+    /// background thread); hop back to `@MainActor` before touching
+    /// `downloadStateMachine`, mirroring `cancelDownload`'s existing
+    /// getAllTasks-then-hop pattern.
+    @MainActor private func restoreSnapshotTaskRegistrations() {
+        sessionCoordinator.getAllTasks { [weak self] tasks in
+            guard self != nil else { return }
+            let liveTasks = tasks.map { (taskID: $0.taskIdentifier, taskDescription: $0.taskDescription) }
+            Task { @MainActor [weak self] in
+                self?.downloadStateMachine.reconcileSnapshotTasks(liveTasks: liveTasks)
+            }
         }
     }
 

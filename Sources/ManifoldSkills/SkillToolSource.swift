@@ -1,6 +1,8 @@
 // v2: skill scope persistence — needs SessionStore mutator wired through
 // ConversationRuntime so `activeSkillName` actually flips on the session
-// record. v1 ships the closure injection point and a read-only path.
+// record. v1 shipped the closure injection point and a read-only path; the
+// round-trip back (rehydrating `SkillToolSourceStorage` from the persisted
+// `ChatSession.activeSkillName` on session load/resume) landed below.
 
 import Foundation
 import ManifoldInference
@@ -48,7 +50,8 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
     /// Test seam: marks a skill as active for `sessionID` so the
     /// `allowedToolNames(for:)` containment path is exercisable without
     /// driving an end-to-end resolve. Production code reaches the same state
-    /// via `resolve(...)`.
+    /// via `resolve(...)` or the automatic rehydration in
+    /// `allowedToolNames(for:)`.
     public func markActive(skillName: String?, for sessionID: UUID) async {
         await storage.setActive(skillName: skillName, for: sessionID)
     }
@@ -116,6 +119,14 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
     }
 
     public func allowedToolNames(for session: ChatSession) async -> Set<String>? {
+        // Rehydrate from the persisted value the first time this process sees
+        // `session.id`. Without this, a host that fully wires `setActiveSkill`
+        // still gets a broken round-trip: the forward write reaches
+        // `ChatSession.activeSkillName` (schema V9), but nothing ever fed it
+        // back into `SkillToolSourceStorage` on session load/resume, so
+        // containment silently reset to unrestricted after every relaunch.
+        await storage.rehydrateIfNeeded(persisted: session.activeSkillName, for: session.id)
+
         guard let activeName = await storage.activeSkill(for: session.id),
               let skill = await registry.skill(named: activeName)
         else {
@@ -222,7 +233,12 @@ public enum SkillDispatchError: Error, Equatable, Sendable {
 private actor SkillToolSourceStorage {
     private var activeBySessionID: [UUID: String] = [:]
 
+    /// Session IDs that have already been seeded from a persisted value (or
+    /// have a live `setActive` write) — see `rehydrateIfNeeded(persisted:for:)`.
+    private var rehydratedSessionIDs: Set<UUID> = []
+
     func setActive(skillName: String?, for sessionID: UUID) {
+        rehydratedSessionIDs.insert(sessionID)
         if let name = skillName {
             activeBySessionID[sessionID] = name
         } else {
@@ -232,5 +248,20 @@ private actor SkillToolSourceStorage {
 
     func activeSkill(for sessionID: UUID) -> String? {
         activeBySessionID[sessionID]
+    }
+
+    /// Seeds `activeBySessionID` from `ChatSession.activeSkillName` (schema V9)
+    /// the first time this session ID is seen in this process. A no-op on every
+    /// subsequent call — once `setActive` has run for a session (whether from
+    /// this rehydration or from a live `resolve(...)` dispatch), the in-memory
+    /// table is authoritative for the remainder of the process's lifetime, so a
+    /// stale `session.activeSkillName` snapshot passed in later can't clobber a
+    /// more recent in-process change (e.g. a deliberate deactivation).
+    func rehydrateIfNeeded(persisted skillName: String?, for sessionID: UUID) {
+        guard !rehydratedSessionIDs.contains(sessionID) else { return }
+        rehydratedSessionIDs.insert(sessionID)
+        if let skillName {
+            activeBySessionID[sessionID] = skillName
+        }
     }
 }
