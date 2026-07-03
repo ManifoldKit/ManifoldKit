@@ -85,10 +85,22 @@ func canLoad(_ model: ModelInfo, contextSize: Int = 8_192) -> Bool {
 }
 ```
 
-The context window cap defaults to the model's declared `contextLength` (from
-GGUF metadata), floored to `ManifoldConfiguration.shared.minimumContextSize`
-(512 on the simulator). Passing a smaller `requestedContextSize` can flip a
-`.deny` to `.warn` or `.allow` — useful when your use case only needs 4K context.
+The effective context window is the tightest of three ceilings computed by
+`ModelLoadPlan.compute`: the model's declared `contextLength` (from GGUF
+metadata), an absolute ceiling (128K tokens by default), and a memory-derived
+ceiling based on available KV-cache budget. There is no
+`ManifoldConfiguration.shared.minimumContextSize` — no such property exists.
+Passing a smaller `requestedContextSize` can flip a `.deny` to `.warn` or
+`.allow` — useful when your use case only needs 4K context.
+
+On the iOS Simulator, `BackendLoadOptions.platformDefaultFlashAttention`
+disables Flash Attention (simulator Metal doesn't reliably support the FA
+kernels), and callers conventionally pass a small `requestedContextSize`
+(512 tokens is the convention used throughout this repo's own tests and the
+llama/MLX companion packages) to keep simulator model loads within the
+simulator's tighter memory ceiling — but this is a caller convention, not an
+enforced floor: nothing in `ModelLoadPlan` or `ManifoldConfiguration`
+automatically raises a smaller `requestedContextSize` on the simulator.
 
 `ModelSelection.loadSelected()` runs this check internally and surfaces
 `ModelLoadError.loadPlanDenied(plan:)` if the verdict is `.deny` — you only need

@@ -213,7 +213,6 @@ public final class ScenarioRunner {
             topP: 0.9,
             repeatPenalty: 1.1,
             topK: scenario.backend.topK.map(Int32.init),
-            typicalP: nil,
             maxOutputTokens: 1024,
             tools: tools,
             toolChoice: .auto,

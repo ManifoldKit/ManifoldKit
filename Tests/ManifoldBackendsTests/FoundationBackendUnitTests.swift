@@ -589,10 +589,6 @@ final class FoundationBackendUnitTests: XCTestCase {
             caps.supportedParameters.contains(.repeatPenalty),
             "repeatPenalty is dropped by generate() — must not be advertised as supported"
         )
-        XCTAssertFalse(
-            caps.supportedParameters.contains(.typicalP),
-            "typicalP is dropped by generate() — must not be advertised as supported"
-        )
         // Belt-and-braces: visibleParameters is what the UI renders; it must also
         // exclude the dropped parameters.
         XCTAssertEqual(

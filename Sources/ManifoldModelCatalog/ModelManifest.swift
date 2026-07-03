@@ -15,8 +15,15 @@ import ManifoldHardware
 /// is a UI-facing "what knobs should we render" enum that includes
 /// llama.cpp-only sampler families (DRY, XTC, Mirostat). The manifest set is
 /// the request-building counterpart: which generic OpenAI-shaped parameters
-/// (`seed`, `presence_penalty`, `frequency_penalty`, `logit_bias`,
+/// (`seed`, `presence_penalty`, `frequency_penalty`,
 /// `repeat_penalty`, `stop`) the loaded model honours.
+///
+/// > Note: `.logitBias` (formerly `1 << 5`) was removed in the v0.64
+/// > inert-surface sweep — `GenerationConfig` never had a `logitBias` field
+/// > to carry a value, so the bit was structurally incapable of affecting a
+/// > request even in principle. `1 << 5` is retired, not reused, so any
+/// > persisted raw values that happened to set it decode harmlessly (the bit
+/// > is simply not represented by a named option anymore).
 public struct SamplingParameterSet: OptionSet, Sendable, Hashable, Codable {
     public let rawValue: UInt32
 
@@ -29,7 +36,6 @@ public struct SamplingParameterSet: OptionSet, Sendable, Hashable, Codable {
     public static let topK              = SamplingParameterSet(rawValue: 1 << 2)
     public static let presencePenalty   = SamplingParameterSet(rawValue: 1 << 3)
     public static let frequencyPenalty  = SamplingParameterSet(rawValue: 1 << 4)
-    public static let logitBias         = SamplingParameterSet(rawValue: 1 << 5)
     public static let stopSequences     = SamplingParameterSet(rawValue: 1 << 6)
     public static let repeatPenalty     = SamplingParameterSet(rawValue: 1 << 7)
 }

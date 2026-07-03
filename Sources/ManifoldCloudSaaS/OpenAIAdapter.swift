@@ -22,11 +22,6 @@ public struct OpenAIAdapter: CloudHTTPProviderAdapter {
     public let payloadHandler: CloudPayloadHandler
     public let framedTransport: any FramedTransport
     public let streamFinalizer: any StreamFinalizer
-    public let toolCallShape: any ToolCallShape
-    public let imageInputShape: any ImageInputShape
-    public let structuredOutputShape: any StructuredOutputShape
-    public let toolResultEncoding: any ToolResultEncoding
-    public let promptCacheShape: any PromptCacheShape
     public let errorBodyDecoder: any ErrorBodyDecoder
     public let capabilities: BackendCapabilities
 
@@ -54,11 +49,6 @@ public struct OpenAIAdapter: CloudHTTPProviderAdapter {
         self.payloadHandler = payloadHandler
         self.framedTransport = framedTransport
         self.streamFinalizer = streamFinalizer
-        self.toolCallShape = OpenAIDeltaToolCalls()
-        self.imageInputShape = OpenAIImageURL()
-        self.structuredOutputShape = OpenAIJSONSchema()
-        self.toolResultEncoding = OpenAIToolResult()
-        self.promptCacheShape = OpenAIPrefixStableCache()
         self.errorBodyDecoder = DefaultErrorBodyDecoder()
         self.requestBuilder = requestBuilder
     }

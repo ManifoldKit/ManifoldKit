@@ -3,14 +3,22 @@ import ManifoldInference
 
 /// Composition root for cloud HTTP backends.
 ///
-/// An adapter holds the seven essential per-provider divergences identified
+/// An adapter holds the essential per-provider divergences identified
 /// by the cross-backend audit — message encoding, payload handling,
-/// tool-call shape, image-input shape, structured-output shape, tool-result
-/// encoding, prompt-cache shape, error-body decoding, framing transport,
-/// stream finalization — plus a static capability declaration. Each is a
-/// small `Sendable` value (closed-enum or witness protocol) so the adapter
-/// itself is a Sendable value type. `SSECloudBackend` then composes one
-/// adapter and stops branching on the provider.
+/// error-body decoding, framing transport, stream finalization — plus a
+/// static capability declaration. Each is a small `Sendable` value
+/// (closed-enum or witness protocol) so the adapter itself is a Sendable
+/// value type. `SSECloudBackend` then composes one adapter and stops
+/// branching on the provider.
+///
+/// > Note: An earlier revision of this protocol also declared five
+/// > "wire-shape witness" properties (`toolCallShape`, `imageInputShape`,
+/// > `structuredOutputShape`, `toolResultEncoding`, `promptCacheShape`).
+/// > They were removed in the v0.64 inert-surface sweep: every adapter
+/// > constructed a witness, but nothing ever read one back to make an
+/// > encoding decision — the wire-encoding logic they were meant to
+/// > eventually front still lives directly in each backend's
+/// > `buildRequest`/payload-handler pair.
 ///
 /// > Note: Phase 2/A ships the protocol and the OpenAI witness composition
 /// > (`OpenAIAdapter`). `SSECloudBackend.parseResponseStream` is **not**
@@ -44,21 +52,6 @@ public protocol CloudHTTPProviderAdapter: Sendable {
 
     /// Stream-termination decoder.
     var streamFinalizer: any StreamFinalizer { get }
-
-    /// Tool-call wire shape.
-    var toolCallShape: any ToolCallShape { get }
-
-    /// Image-input wire shape.
-    var imageInputShape: any ImageInputShape { get }
-
-    /// Structured-output wire shape.
-    var structuredOutputShape: any StructuredOutputShape { get }
-
-    /// Tool-result encoding shape for multi-turn replay.
-    var toolResultEncoding: any ToolResultEncoding { get }
-
-    /// Prompt-cache surface shape.
-    var promptCacheShape: any PromptCacheShape { get }
 
     /// Error-body decoder for non-2xx responses.
     var errorBodyDecoder: any ErrorBodyDecoder { get }

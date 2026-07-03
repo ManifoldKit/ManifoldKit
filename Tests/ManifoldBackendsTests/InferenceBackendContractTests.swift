@@ -257,34 +257,16 @@ final class InferenceBackendContractTests: XCTestCase {
     }
 
     /// Tool-call event emission today lives in `OpenAIBackend.processToolCalls...`,
-    /// not in the per-payload handler. The Phase 2/B/ii widen of
-    /// `SSECloudBackend` to consume the adapter will hoist that logic into
-    /// the `ToolCallShape` witness so this scenario can assert at the
-    /// handler level. Until then we assert that:
-    ///   (a) the adapter's witness label is the expected shape, and
-    ///   (b) the fixture corpus carries a `tool-calls/simple/` directory so
-    ///       a future runtime test has a concrete capture to replay.
-    func test_toolCalls_simple_witnessShapeIsDeclared() throws {
+    /// not in the per-payload handler. The five `CloudHTTPProviderAdapter`
+    /// wire-shape witness properties (`toolCallShape` et al.) that this test
+    /// used to assert against were removed in the v0.64 inert-surface sweep
+    /// — nothing ever read them back to make an encoding decision. This test
+    /// keeps only the still-useful half: confirming the fixture corpus
+    /// carries a `tool-calls/simple/` directory so a future runtime test has
+    /// a concrete capture to replay.
+    func test_toolCalls_simple_fixtureExists() throws {
         for p in Self.participants where p.capabilities.supportsToolCalling {
-            // Verify the fixture exists; gives the future runtime test a
-            // concrete file to load without re-deriving paths.
             _ = try fixtureURL(for: p, scenario: "tool-calls/simple", file: p.wireFormat.fileName)
-            switch p.label {
-            case "openai.chat_completions":
-                let shape = OpenAIDeltaToolCalls()
-                XCTAssertEqual(shape.shapeName, "openai.delta")
-            case "openai.responses":
-                let shape = OpenAIResponsesItemIdToolCalls()
-                XCTAssertEqual(shape.shapeName, "openai_responses.item_id")
-            case "ollama.chat":
-                let shape = OllamaWholeToolCalls()
-                XCTAssertEqual(shape.shapeName, "ollama.whole")
-            case "anthropic.messages":
-                let shape = AnthropicBlockToolCalls()
-                XCTAssertEqual(shape.shapeName, "anthropic.block")
-            default:
-                XCTFail("[\(p.label)] no witness shape assertion declared")
-            }
         }
     }
 

@@ -266,8 +266,6 @@ struct FuzzChatCLI {
             )
         case .mlx:
             fail("The MLX fuzz factory moved to the manifold-mlx companion package (v0.48, #1749). Run the fuzzer from that repo, or use --backend ollama|openai|foundation|mock|chaos here.")
-        case .all:
-            fail("--backend all is not implemented; run one backend per campaign (ollama|openai|foundation|mock|chaos).")
         }
 
         // Shrink mode: greedy-delta-debug the recorded trigger down to a
@@ -309,7 +307,6 @@ struct FuzzChatCLI {
             modelHint: modelHint,
             detectorFilter: detectorFilter,
             outputDir: outputDir,
-            calibrate: false,
             quiet: quiet,
             sessionScripts: sessionScripts,
             corpusSubset: corpusSubset,

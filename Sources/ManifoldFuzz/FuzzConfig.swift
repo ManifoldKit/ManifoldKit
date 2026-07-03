@@ -5,12 +5,6 @@ public enum BackendChoice: String, Sendable, CaseIterable {
     case llama
     case foundation
     case mlx
-    /// Not implemented: `fuzz-chat` fails fast with an actionable message when
-    /// this is selected — run one backend per campaign instead. Kept on the
-    /// public enum because removing a case is a source-breaking change for
-    /// `ManifoldFuzz` library consumers; its removal is batched with the next
-    /// breaking-change release (2026-07 inert-code audit, finding #43).
-    case all
     /// OpenAI-Chat-Completions-compatible cloud endpoint (OpenRouter, OpenAI,
     /// Together, …) driven via `OpenAIBackend`.
     case openai
@@ -28,15 +22,6 @@ public struct FuzzConfig: Sendable {
     public let modelHint: String?
     public let detectorFilter: Set<String>?
     public let outputDir: URL
-    /// **Dead knob (2026-07 inert-code audit, finding #40).** Threaded through
-    /// this public initializer but never read by `FuzzRunner`, `SessionFuzzRunner`,
-    /// or any detector/sink — the one in-repo call site (`fuzz-chat`) hardcodes
-    /// `false`, and there is no CLI flag to set it `true` even if a reader
-    /// existed. Kept for source compatibility since `FuzzConfig` is a public
-    /// type in the `ManifoldFuzz` library product; slated for removal in the
-    /// next breaking-change batch rather than here. Do not add a reader for
-    /// this — decide wire-vs-remove before relying on it.
-    public let calibrate: Bool
     public let quiet: Bool
     /// When `true`, the harness drives multi-turn scripts through
     /// ``SessionFuzzRunner`` instead of the single-turn ``FuzzRunner``.
@@ -62,7 +47,6 @@ public struct FuzzConfig: Sendable {
         modelHint: String? = nil,
         detectorFilter: Set<String>? = nil,
         outputDir: URL = URL(fileURLWithPath: "tmp/fuzz", isDirectory: true),
-        calibrate: Bool = false,
         quiet: Bool = false,
         sessionScripts: Bool = false,
         corpusSubset: Corpus.Subset = .full,
@@ -76,7 +60,6 @@ public struct FuzzConfig: Sendable {
         self.modelHint = modelHint
         self.detectorFilter = detectorFilter
         self.outputDir = outputDir
-        self.calibrate = calibrate
         self.quiet = quiet
         self.sessionScripts = sessionScripts
         self.corpusSubset = corpusSubset

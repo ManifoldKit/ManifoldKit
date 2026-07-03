@@ -119,7 +119,7 @@ public enum CloudModelManifestTable {
     // MARK: - Manifest Builders
 
     /// OpenAI Chat Completions chat model — accepts seed, presence/frequency
-    /// penalties, logit_bias, stop sequences, top_k.
+    /// penalties, stop sequences, top_k.
     private static func chat(name: String, contextWindow: Int) -> ModelManifest {
         ModelManifest(
             contextWindow: contextWindow,
@@ -130,7 +130,7 @@ public enum CloudModelManifestTable {
             supportedSamplingParameters: [
                 .temperature, .topP, .topK,
                 .presencePenalty, .frequencyPenalty,
-                .logitBias, .stopSequences,
+                .stopSequences,
             ],
             modelIdentifier: name,
             producerKind: .cloud

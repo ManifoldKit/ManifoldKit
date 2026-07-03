@@ -13,12 +13,10 @@ import ManifoldCloudCore
 ///   `item_id` (`response.output_item.added` →
 ///   `response.function_call_arguments.delta` →
 ///   `response.function_call_arguments.done`) rather than Chat
-///   Completions' per-index delta shape. Captured by the
-///   ``OpenAIResponsesItemIdToolCalls`` witness.
+///   Completions' per-index delta shape.
 /// - **Tool-result encoding**: tool turns serialise as
 ///   `function_call` / `function_call_output` *items* on the request's
-///   `input[]` rather than as `role:"tool"` *messages*. Captured by the
-///   ``OpenAIResponsesFunctionCallItems`` witness.
+///   `input[]` rather than as `role:"tool"` *messages*.
 /// - **Framing transport**: ``NamedSSETransport`` because reasoning vs.
 ///   visible-text classification depends on the `event:` name.
 /// - **Stream finaliser**: ``OpenAIResponsesEventFinalizer`` —
@@ -38,11 +36,6 @@ public struct OpenAIResponsesAdapter: CloudHTTPProviderAdapter {
     public let payloadHandler: CloudPayloadHandler
     public let framedTransport: any FramedTransport
     public let streamFinalizer: any StreamFinalizer
-    public let toolCallShape: any ToolCallShape
-    public let imageInputShape: any ImageInputShape
-    public let structuredOutputShape: any StructuredOutputShape
-    public let toolResultEncoding: any ToolResultEncoding
-    public let promptCacheShape: any PromptCacheShape
     public let errorBodyDecoder: any ErrorBodyDecoder
     public let capabilities: BackendCapabilities
 
@@ -66,11 +59,6 @@ public struct OpenAIResponsesAdapter: CloudHTTPProviderAdapter {
         self.payloadHandler = payloadHandler
         self.framedTransport = framedTransport
         self.streamFinalizer = streamFinalizer
-        self.toolCallShape = OpenAIResponsesItemIdToolCalls()
-        self.imageInputShape = OpenAIImageURL()
-        self.structuredOutputShape = OpenAIJSONSchema()
-        self.toolResultEncoding = OpenAIResponsesFunctionCallItems()
-        self.promptCacheShape = OpenAIPrefixStableCache()
         self.errorBodyDecoder = DefaultErrorBodyDecoder()
         self.requestBuilder = requestBuilder
     }
@@ -83,21 +71,4 @@ public struct OpenAIResponsesAdapter: CloudHTTPProviderAdapter {
     ) throws -> URLRequest {
         try requestBuilder(prompt, systemPrompt, config, history)
     }
-}
-
-// MARK: - Responses-specific witnesses
-
-/// Responses API tool-call transport: per-item streaming keyed by
-/// `item_id`. Distinct from Chat Completions' per-index delta shape.
-public struct OpenAIResponsesItemIdToolCalls: ToolCallShape {
-    public init() {}
-    public var shapeName: String { "openai_responses.item_id" }
-}
-
-/// Responses API tool-result encoding: `function_call` /
-/// `function_call_output` items on the request body's `input[]` array,
-/// not `role:"tool"` messages.
-public struct OpenAIResponsesFunctionCallItems: ToolResultEncoding {
-    public init() {}
-    public var encodingName: String { "openai_responses.function_call_items" }
 }
