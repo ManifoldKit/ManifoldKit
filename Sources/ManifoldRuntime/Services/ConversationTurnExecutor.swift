@@ -1248,7 +1248,22 @@ package struct ConversationTurnExecutor: Sendable {
     ) async throws -> PreparedTurnHistory {
         let canonicalHistory: [ChatMessage]
         do {
-            canonicalHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            // Heal orphan tool calls (process killed mid-tool, result never
+            // persisted) before anything downstream sees the transcript.
+            // Unconditional and always-on: this is protocol correctness (the
+            // #629 cloud-API rejection for an unanswered tool_use), not a
+            // host policy choice, so it must not depend on a HistoryShaper
+            // being installed. Running it here — immediately after fetch,
+            // before token/message-count estimation, the optional
+            // HistoryShaper, and context-window assembly — means every
+            // downstream stage (compression, trimming) operates on an
+            // already-well-formed transcript. TranscriptHealer inserts the
+            // synthesised ToolResult into the same ChatMessage as the orphan
+            // call (never a new message), so message-granularity trimming
+            // can't re-split a call from its synthesised result.
+            canonicalHistory = TranscriptHealer.heal(
+                try await persistence.fetchMessages(sessionID: sessionID)
+            )
         } catch {
             throw TurnPreparationFailure.persistence(error)
         }
