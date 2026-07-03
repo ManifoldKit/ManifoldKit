@@ -96,6 +96,16 @@ public struct ModelSelectionProfile: Sendable, Equatable {
 /// ordered list as downloadable upgrades (described by `DownloadableModel`). Without
 /// this, Tier 0 would have to live in a separate code path and could never be
 /// compared head-to-head against a model the user could download.
+///
+/// > Not yet wired: as of the 2026-07-03 inert-surface audit, no production
+/// > code path constructs a `.resident` case. `Sources/ManifoldKit/QuickStartSeed.swift`
+/// > maps every seed to `.downloadable(...)`, so `ModelFitScorer.scoreResident(...)`
+/// > and the `.resident` branches of `score(candidate:)`/`rank(candidates:)` never
+/// > run in the shipped app. The "Apple Foundation Models as instant Tier-0"
+/// > unified ranking described in `ManifoldUIModelManagement`'s
+/// > `DeviceAwareModelRecommendations.md` DocC article is not yet a live
+/// > capability — a host must construct `.resident(ModelSelectionProfile(...))`
+/// > itself to exercise this path.
 public enum ModelSelectionCandidate: Sendable {
     /// A model already usable now — OS-resident or on disk — with its profile.
     case resident(ModelSelectionProfile)

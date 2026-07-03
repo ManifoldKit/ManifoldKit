@@ -99,8 +99,12 @@ public final class OllamaModelListService: Sendable {
 
     private struct OllamaTagsResponse: Decodable {
         struct Model: Decodable {
+            struct Details: Decodable {
+                let family: String?
+            }
             let name: String
             let size: Int64?
+            let details: Details?
             // digest, modified_at etc. ignored
         }
         let models: [Model]?
@@ -117,7 +121,8 @@ public final class OllamaModelListService: Sendable {
                 return RemoteModelInfo(
                     name: model.name,
                     sizeBytes: model.size,
-                    quantization: quantization
+                    quantization: quantization,
+                    familyTag: model.details?.family
                 )
             }
             .sorted { $0.name < $1.name }

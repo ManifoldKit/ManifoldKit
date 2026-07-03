@@ -79,7 +79,7 @@ enum PublicSurfaceConsumer {
         // host apps and backends rely on.
         let caps = BackendCapabilities(
             supportedParameters: [.temperature, .topP, .repeatPenalty, .topK,
-                                  .typicalP, .minP, .repetitionPenalty,
+                                  .minP, .repetitionPenalty,
                                   .presencePenalty, .frequencyPenalty,
                                   .llamaDRY, .llamaXTC, .llamaMirostatV2],
             maxContextTokens: 4096,

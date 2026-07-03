@@ -12,22 +12,6 @@ import ManifoldCloudCore
 ///   - **Stream finalizer**: `OllamaDoneFlagFinalizer` — reads
 ///     `prompt_eval_count` / `eval_count` / `done_reason` off the terminal
 ///     `"done":true` line.
-///   - **Tool-call shape**: `OllamaWholeToolCalls` — entire
-///     `message.tool_calls[]` array arrives in one NDJSON line, not streamed
-///     by index. The extractor synthesises a uniform
-///     `.toolCallStart` → `.toolCallArgumentsDelta` → `.toolCall` triple
-///     per call so downstream consumers stay on a single code path.
-///   - **Image input**: `OllamaImagesField` — base-64 image bytes at the
-///     message level (`{"role":"user","content":"...","images":["..."]}`),
-///     not in content parts. Today `OllamaBackend.buildRequest` does not
-///     emit `images[]` — vision support is deferred to a follow-up; the
-///     witness is declared so audits surface the capability gap.
-///   - **Structured output**: `OllamaFormatField` — legacy `format: "json"`
-///     (and post-0.5 JSON-schema), gated by `config.jsonMode`.
-///   - **Tool-result encoding**: `OllamaToolResult` — `{role:"tool",
-///     content}` with no `id` correlation (positional in the message array).
-///   - **Prompt-cache**: `NoPromptCache` — Ollama has no explicit cache
-///     surface.
 ///   - **Error-body decoder**: ``OllamaErrorBodyDecoder`` — Ollama's flat
 ///     `{"error": "message"}` shape (string at top level, not nested
 ///     `{error: {message:…}}` like OpenAI/Anthropic).
@@ -51,11 +35,6 @@ public struct OllamaAdapter: CloudHTTPProviderAdapter {
     public let payloadHandler: CloudPayloadHandler
     public let framedTransport: any FramedTransport
     public let streamFinalizer: any StreamFinalizer
-    public let toolCallShape: any ToolCallShape
-    public let imageInputShape: any ImageInputShape
-    public let structuredOutputShape: any StructuredOutputShape
-    public let toolResultEncoding: any ToolResultEncoding
-    public let promptCacheShape: any PromptCacheShape
     public let errorBodyDecoder: any ErrorBodyDecoder
     public let capabilities: BackendCapabilities
 
@@ -79,11 +58,6 @@ public struct OllamaAdapter: CloudHTTPProviderAdapter {
         self.payloadHandler = payloadHandler
         self.framedTransport = framedTransport
         self.streamFinalizer = streamFinalizer
-        self.toolCallShape = OllamaWholeToolCalls()
-        self.imageInputShape = OllamaImagesField()
-        self.structuredOutputShape = OllamaFormatField()
-        self.toolResultEncoding = OllamaToolResult()
-        self.promptCacheShape = NoPromptCache()
         self.errorBodyDecoder = OllamaErrorBodyDecoder()
         self.requestBuilder = requestBuilder
     }

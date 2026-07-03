@@ -20,7 +20,7 @@ final class ModelManifestTests: XCTestCase {
         let original: SamplingParameterSet = [
             .temperature, .topP, .topK,
             .presencePenalty, .frequencyPenalty,
-            .logitBias, .stopSequences, .repeatPenalty,
+            .stopSequences, .repeatPenalty,
         ]
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(SamplingParameterSet.self, from: data)

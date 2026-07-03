@@ -6,7 +6,6 @@ public enum GenerationParameter: String, CaseIterable, Sendable, Codable {
     case topP
     case repeatPenalty
     case topK
-    case typicalP
     case minP
     case repetitionPenalty
     case presencePenalty

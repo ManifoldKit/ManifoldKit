@@ -119,7 +119,6 @@ public struct GenerationConfig: Sendable, Codable {
     public var topP: Float
     public var repeatPenalty: Float
     public var topK: Int32?
-    public var typicalP: Float?
 
     /// Min-p sampling threshold relative to the highest-probability token.
     ///
@@ -411,7 +410,6 @@ public struct GenerationConfig: Sendable, Codable {
         topP: Float = 0.9,
         repeatPenalty: Float = 1.1,
         topK: Int32? = nil,
-        typicalP: Float? = nil,
         minP: Float? = nil,
         repetitionPenalty: Float? = nil,
         repetitionContextSize: Int? = nil,
@@ -443,7 +441,6 @@ public struct GenerationConfig: Sendable, Codable {
         self.topP = topP
         self.repeatPenalty = repeatPenalty
         self.topK = topK
-        self.typicalP = typicalP
         self.minP = minP
         self.repetitionPenalty = repetitionPenalty
         self.repetitionContextSize = repetitionContextSize
@@ -475,7 +472,7 @@ public struct GenerationConfig: Sendable, Codable {
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
-        case temperature, topP, repeatPenalty, topK, typicalP, maxOutputTokens
+        case temperature, topP, repeatPenalty, topK, maxOutputTokens
         case tools, toolChoice, maxThinkingTokens, maxToolIterations, grammar, stopSequences
         case yieldEveryNTokens
         case streamPrefillProgress
@@ -495,7 +492,6 @@ public struct GenerationConfig: Sendable, Codable {
         topP = try c.decode(Float.self, forKey: .topP)
         repeatPenalty = try c.decode(Float.self, forKey: .repeatPenalty)
         topK = try c.decodeIfPresent(Int32.self, forKey: .topK)
-        typicalP = try c.decodeIfPresent(Float.self, forKey: .typicalP)
         maxOutputTokens = try c.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         // New fields added after the original shape; absent from older payloads.
         tools = (try c.decodeIfPresent([ToolDefinition].self, forKey: .tools)) ?? []
@@ -554,7 +550,6 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encode(topP, forKey: .topP)
         try c.encode(repeatPenalty, forKey: .repeatPenalty)
         try c.encodeIfPresent(topK, forKey: .topK)
-        try c.encodeIfPresent(typicalP, forKey: .typicalP)
         try c.encodeIfPresent(maxOutputTokens, forKey: .maxOutputTokens)
         try c.encode(tools, forKey: .tools)
         try c.encode(toolChoice, forKey: .toolChoice)

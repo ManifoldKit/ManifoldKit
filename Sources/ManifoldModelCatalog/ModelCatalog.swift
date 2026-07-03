@@ -7,6 +7,16 @@ import ManifoldHardware
 /// The catalog stores metadata that is not reliably derivable from the model
 /// artifact itself: source provenance, download time, last-used time, expected
 /// integrity hash, and quantization labels.
+///
+/// > Not yet wired: as of the 2026-07-03 inert-surface audit, no production
+/// > code path constructs a `ModelCatalog`. `ManifoldBootstrap`,
+/// > `ModelManagementViewModel`, and `ModelRegistry` all use
+/// > `ModelStorageService` directly and never reference this type. `.touch(_:)`
+/// > (which CHANGELOG v0.22.0 describes as "called automatically on every
+/// > successful model load") has zero production call sites — only this
+/// > type's own tests construct and exercise a `ModelCatalog`. A host that
+/// > wants the sidecar-manifest behavior (download provenance, LRU
+/// > disk-budget eviction) must construct and drive one itself.
 public actor ModelCatalog {
 
     public static let manifestFileName = ".manifold-catalog.json"

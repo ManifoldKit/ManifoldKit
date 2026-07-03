@@ -5,17 +5,35 @@ import Foundation
 /// All fields have safe defaults, so a backend that does not advertise anything
 /// specific reports ``EmbeddingCapabilities/default``. Consumers should treat a
 /// `nil` bound as "unspecified / unbounded" rather than zero.
+///
+/// > Not yet wired: as of the 2026-07-03 inert-surface audit, no in-repo
+/// > consumer reads these three fields back to alter behavior. `RAGService`
+/// > calls `backend.embed(_:)` with the full, unsplit input array regardless
+/// > of `maxBatchSize`/`maxInputLength`, and the vector store consuming
+/// > embeddings (`FlatFileVectorStore`) unconditionally L2-normalizes every
+/// > embedding itself rather than trusting `producesNormalizedVectors`.
+/// > Setting these fields on a backend is currently advisory metadata only.
 public struct EmbeddingCapabilities: Sendable, Codable, Equatable, Hashable {
     /// Maximum number of texts accepted in a single ``EmbeddingBackend/embed(_:)``
     /// call. `nil` means unspecified / unbounded.
+    ///
+    /// Not currently read by any consumer in this repo — see the type-level
+    /// note above.
     public var maxBatchSize: Int?
 
     /// Maximum number of tokens per input text. `nil` means unspecified.
+    ///
+    /// Not currently read by any consumer in this repo — see the type-level
+    /// note above.
     public var maxInputLength: Int?
 
     /// Whether the backend returns L2-normalized (unit-length) vectors. Defaults
     /// to `false`; consumers that require normalized vectors must normalize
     /// themselves when this is `false`.
+    ///
+    /// Not currently read by any consumer in this repo — `FlatFileVectorStore`
+    /// normalizes unconditionally regardless of this flag. See the type-level
+    /// note above.
     public var producesNormalizedVectors: Bool
 
     public init(

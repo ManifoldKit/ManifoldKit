@@ -155,7 +155,6 @@ public struct BFCLRunner {
             topP: 0.9,
             repeatPenalty: 1.1,
             topK: 1,
-            typicalP: nil,
             maxOutputTokens: 512,
             tools: testCase.tools,
             toolChoice: .auto,

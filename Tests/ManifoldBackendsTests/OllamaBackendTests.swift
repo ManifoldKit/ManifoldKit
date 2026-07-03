@@ -1978,6 +1978,30 @@ struct OllamaModelListServiceTests {
         #expect(models.first?.quantization == "8b-q4_0")
     }
 
+    @Test func fetchModels_extractsFamilyTag() async throws {
+        let (service, baseURL) = makeService()
+        let tagsURL = baseURL.appendingPathComponent("api/tags")
+
+        let response = #"{"models":[{"name":"llama3.2:8b","size":4294967296,"details":{"family":"llama"}}]}"#
+        MockURLProtocol.stub(url: tagsURL, response: .immediate(data: Data(response.utf8), statusCode: 200))
+        defer { MockURLProtocol.unstub(url: tagsURL) }
+
+        let models = try await service.fetchModels(from: baseURL)
+        #expect(models.first?.familyTag == "llama")
+    }
+
+    @Test func fetchModels_missingDetails_familyTagIsNil() async throws {
+        let (service, baseURL) = makeService()
+        let tagsURL = baseURL.appendingPathComponent("api/tags")
+
+        let response = #"{"models":[{"name":"llama3.2:8b","size":4294967296}]}"#
+        MockURLProtocol.stub(url: tagsURL, response: .immediate(data: Data(response.utf8), statusCode: 200))
+        defer { MockURLProtocol.unstub(url: tagsURL) }
+
+        let models = try await service.fetchModels(from: baseURL)
+        #expect(models.first?.familyTag == nil)
+    }
+
     @Test func fetchModels_emptyList_returnsEmpty() async throws {
         let (service, baseURL) = makeService()
         let tagsURL = baseURL.appendingPathComponent("api/tags")
