@@ -841,8 +841,13 @@ package struct ConversationTurnExecutor: Sendable {
                         InferenceError.inferenceFailure("Tool-call loop stopped after reaching the run-level token budget (used \(tokensUsed) of \(limit) tokens).")
                     )))
 
-                case .recordUsage(let prompt, let completion):
-                    accumulator.recordUsage(prompt: prompt, completion: completion)
+                case .recordUsage(let prompt, let completion, let cachedInputTokens, let cacheWriteTokens):
+                    accumulator.recordUsage(
+                        prompt: prompt,
+                        completion: completion,
+                        cachedInputTokens: cachedInputTokens,
+                        cacheWriteTokens: cacheWriteTokens
+                    )
 
                 case .recordHandoff(let handoff):
                     // Persist the active-agent swap and emit the typed
@@ -943,11 +948,16 @@ package struct ConversationTurnExecutor: Sendable {
         // sends do not cross-contaminate prompt/completion counts. Read on
         // the main actor — `InferenceService.lastTokenUsage` is MainActor-
         // isolated.
-        let usage: (promptTokens: Int, completionTokens: Int)?
+        let usage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)?
         if let recordedUsage = accumulator.tokenUsage {
             usage = recordedUsage
+        } else if let fallback = await readLastTokenUsage() {
+            // The fallback reads `TokenUsageProvider.lastUsage`, a
+            // prompt/completion-only tracker predating cache-token
+            // accounting — no cache fields available on this path.
+            usage = (fallback.promptTokens, fallback.completionTokens, nil, nil)
         } else {
-            usage = await readLastTokenUsage()
+            usage = nil
         }
         if let usage {
             assistantMessage.promptTokens = usage.promptTokens
@@ -1144,7 +1154,9 @@ package struct ConversationTurnExecutor: Sendable {
                 endpointID: endpointID,
                 modelIdentifier: backendName ?? "unknown",
                 promptTokens: usage.promptTokens,
-                completionTokens: usage.completionTokens
+                completionTokens: usage.completionTokens,
+                cachedInputTokens: usage.cachedInputTokens,
+                cacheWriteTokens: usage.cacheWriteTokens
             )
             do {
                 try await usageStore.record(record)

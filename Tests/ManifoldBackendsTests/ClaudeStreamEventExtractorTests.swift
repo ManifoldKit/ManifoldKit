@@ -135,6 +135,61 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
         XCTAssertEqual(usages.first?.1, 48, "completion tokens from message_delta")
     }
 
+    // MARK: - Prompt-cache token usage (inert-code audit finding 9)
+    //
+    // `message_start` carries `cache_creation_input_tokens` /
+    // `cache_read_input_tokens` alongside `input_tokens`. Prior to this fix
+    // the extractor parsed them (`ClaudePayloadParser.parseCacheUsage`) only
+    // to log them at debug level — the merged `.usage(TokenUsage)` event
+    // emitted on `message_delta` never carried the cache fields, so every
+    // downstream consumer (and ultimately `TurnUsage` persistence) saw nil.
+    func test_extractor_usageWithCacheTokens_emitsMergedUsageCarryingCacheFields() throws {
+        let extractor = ClaudeStreamEventExtractor()
+        let messageStart = """
+        {"type":"message_start","message":{"usage":{"input_tokens":12,"cache_creation_input_tokens":64,"cache_read_input_tokens":380}}}
+        """
+        let messageDelta = """
+        {"type":"message_delta","usage":{"output_tokens":48}}
+        """
+
+        var events = extractor.consume(payload: messageStart)
+        events.append(contentsOf: extractor.consume(payload: messageDelta))
+        events.append(contentsOf: extractor.finish())
+
+        let usages: [TokenUsage] = events.compactMap {
+            if case .usage(let u) = $0 { return u } else { return nil }
+        }
+        XCTAssertEqual(usages.count, 1, "expected exactly one merged .usage event, saw \(usages)")
+        let usage = try XCTUnwrap(usages.first)
+        XCTAssertEqual(usage.promptTokens, 12)
+        XCTAssertEqual(usage.completionTokens, 48)
+        XCTAssertEqual(usage.cachedInputTokens, 380, "cache-read tokens must reach the .usage event, not just a debug log")
+        XCTAssertEqual(usage.cacheWriteTokens, 64, "cache-write tokens must reach the .usage event, not just a debug log")
+    }
+
+    /// A stream with no cache activity must not fabricate cache fields —
+    /// they stay nil, matching "not reported" rather than a reported zero.
+    func test_extractor_usageWithoutCacheTokens_leavesCacheFieldsNil() {
+        let extractor = ClaudeStreamEventExtractor()
+        let messageStart = """
+        {"type":"message_start","message":{"usage":{"input_tokens":12}}}
+        """
+        let messageDelta = """
+        {"type":"message_delta","usage":{"output_tokens":48}}
+        """
+
+        var events = extractor.consume(payload: messageStart)
+        events.append(contentsOf: extractor.consume(payload: messageDelta))
+        events.append(contentsOf: extractor.finish())
+
+        let usages: [TokenUsage] = events.compactMap {
+            if case .usage(let u) = $0 { return u } else { return nil }
+        }
+        XCTAssertEqual(usages.count, 1)
+        XCTAssertNil(usages.first?.cachedInputTokens)
+        XCTAssertNil(usages.first?.cacheWriteTokens)
+    }
+
     // MARK: - Cross-stream isolation
 
     func test_extractor_isFreshPerInstance_finalisationGuardDoesNotLeakAcrossStreams() throws {

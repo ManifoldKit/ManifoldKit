@@ -94,10 +94,10 @@ public struct ToolCallMarker: Sendable {
 ///   the scanner drains the whole body to the stream end and `finalize()` parses
 ///   it, emitting `.toolCall`s (or `.toolCallParseFailed`) — see `finalize()`.
 /// - On the body-size cap or an unterminated block at `finalize()`, the partial
-///   body is discarded by default. Constructing the transform with
-///   `surfaceTruncatedToolBody: true` instead emits a non-fatal
-///   `.toolCallTruncated(rawBody:)` diagnostic so a mid-stream truncation is
-///   observable (#1858, opt-in — default behavior is unchanged).
+///   body is surfaced as a non-fatal `.toolCallTruncated(rawBody:)` diagnostic
+///   by default (#1858, `surfaceTruncatedToolBody` defaults to `true`) so a
+///   mid-stream truncation is observable; construct with
+///   `surfaceTruncatedToolBody: false` to restore the historical silent-drop.
 /// - Partial open/close markers straddling a chunk boundary are held back via
 ///   the shared `overlap` primitives — the open-tag holdback is the max
 ///   overlap across *all* candidate opens.
@@ -116,11 +116,21 @@ public struct ToolCallTransform: StreamTransform {
     /// below a memory-pressure threat.
     private static let maxBodyBytes = 256 * 1024
 
-    /// Opt-in: surface the buffered body of an unterminated tool-call block as a
-    /// non-fatal `.toolCallTruncated(rawBody:)` diagnostic instead of discarding
-    /// it. Defaults to `false` so the historical silent-discard behavior is
-    /// unchanged (#1858). Applies both to the `finalize()` flush of an open
-    /// block and to the body-size-cap drop of a runaway unclosed body.
+    /// Surface the buffered body of an unterminated tool-call block as a
+    /// non-fatal `.toolCallTruncated(rawBody:)` diagnostic instead of silently
+    /// discarding it. Applies both to the `finalize()` flush of an open block
+    /// and to the body-size-cap drop of a runaway unclosed body.
+    ///
+    /// Defaults to `true` as of the inert-code audit fix (2026-07): this is
+    /// part of the 1.0 frozen `GenerationEvent` vocabulary, so the diagnostic
+    /// should be uniformly observable across dialect families rather than
+    /// silently discarded for callers that don't opt in. Originally added as
+    /// opt-in-off-by-default (#1858) so the historical silent-discard
+    /// behavior stayed unchanged for existing callers; every in-repo and
+    /// companion-repo construction site was audited before the flip (the
+    /// llama.cpp family already passed `true` explicitly and is unaffected;
+    /// the MLX family relied on the default and now gets the diagnostic for
+    /// free). Pass `false` explicitly to opt back out.
     public let surfaceTruncatedToolBody: Bool
 
     private var buffer = ""
@@ -130,7 +140,7 @@ public struct ToolCallTransform: StreamTransform {
     /// Body text buffered since the active open tag.
     private var bodyBuffer = ""
 
-    public init(markers: [ToolCallMarker], surfaceTruncatedToolBody: Bool = false) {
+    public init(markers: [ToolCallMarker], surfaceTruncatedToolBody: Bool = true) {
         self.markers = markers
         self.surfaceTruncatedToolBody = surfaceTruncatedToolBody
     }
@@ -277,12 +287,13 @@ public struct ToolCallTransform: StreamTransform {
     /// `surfaceTruncatedToolBody`, which governs only the truncation of genuine
     /// close-tag dialects.
     ///
-    /// An incomplete (unclosed) close-tag tool-call block is discarded by
-    /// default — partial body text cannot produce a valid `ToolCall` — matching
-    /// both legacy parsers. When the transform was constructed with
-    /// `surfaceTruncatedToolBody: true`, the partial body is instead surfaced as
-    /// a non-fatal `.toolCallTruncated(rawBody:)` diagnostic so a mid-tool-call
-    /// stream truncation is observable (#1858).
+    /// An incomplete (unclosed) close-tag tool-call block cannot produce a
+    /// valid `ToolCall`, so by default (`surfaceTruncatedToolBody == true`)
+    /// the partial body is surfaced as a non-fatal
+    /// `.toolCallTruncated(rawBody:)` diagnostic so a mid-tool-call stream
+    /// truncation is observable (#1858). Construct with
+    /// `surfaceTruncatedToolBody: false` to restore the historical silent
+    /// discard that matched both legacy parsers.
     public mutating func finalize() -> [GenerationEvent] {
         var events: [GenerationEvent] = []
         if let active = activeMarker {
@@ -294,7 +305,8 @@ public struct ToolCallTransform: StreamTransform {
             } else if surfaceTruncatedToolBody {
                 // Inside an unterminated block: the held-back `buffer` is a partial
                 // close suffix that still belongs to the body, so fold it in before
-                // surfacing. Default behavior (flag off) discards silently.
+                // surfacing. Passing `surfaceTruncatedToolBody: false` opts back
+                // into the historical silent discard instead.
                 let partial = bodyBuffer + buffer
                 if !partial.isEmpty {
                     events.append(.toolCallTruncated(rawBody: partial))

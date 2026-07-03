@@ -310,19 +310,38 @@ final class OutputParserSessionTests: XCTestCase {
             "A parse failure must not poison a following well-formed call")
     }
 
-    // MARK: - #1858: opt-in truncated-body diagnostic at finalize
+    // MARK: - #1858 / inert-code-audit-2026-07 finding 5: truncated-body diagnostic at finalize
 
-    func test_finalize_unterminatedToolBlock_default_dropsSilently() {
-        // Default behavior is unchanged: an unterminated block is discarded with
-        // NO new event.
+    /// `surfaceTruncatedToolBody` defaults to `true` (flipped 2026-07 — was
+    /// `false` at #1858) so the `.toolCallTruncated` diagnostic is uniformly
+    /// observable without every family target having to opt in explicitly.
+    /// No ToolCall is produced either way — a partial body cannot form one.
+    func test_finalize_unterminatedToolBlock_default_surfacesTruncation() {
         var transform = ToolCallTransform(markers: [jsonMarker()])
         var events = transform.process([.token("text<tool_call>{\"name\":\"f\",\"arg")])
         events += transform.finalize()
 
         XCTAssertTrue(toolCalls(events).isEmpty)
-        XCTAssertTrue(truncations(events).isEmpty,
-            "With the opt-in OFF, a truncated tool block must NOT emit a diagnostic (default unchanged)")
+        XCTAssertEqual(truncations(events), ["{\"name\":\"f\",\"arg"],
+            "The default (surfaceTruncatedToolBody == true) must surface the truncation diagnostic")
         XCTAssertEqual(visible(events), "text")
+    }
+
+    /// Passing `surfaceTruncatedToolBody: false` explicitly restores the
+    /// historical silent-discard behavior for callers that want it.
+    func test_finalize_unterminatedToolBlock_optedOut_dropsSilently() {
+        var transform = ToolCallTransform(markers: [jsonMarker()], surfaceTruncatedToolBody: false)
+        var events = transform.process([.token("text<tool_call>{\"name\":\"f\",\"arg")])
+        events += transform.finalize()
+
+        XCTAssertTrue(toolCalls(events).isEmpty)
+        XCTAssertTrue(truncations(events).isEmpty,
+            "With the opt-in explicitly OFF, a truncated tool block must NOT emit a diagnostic")
+        XCTAssertEqual(visible(events), "text")
+
+        // Sabotage check: dropping the `surfaceTruncatedToolBody: false`
+        // argument above (falling back to the new default) makes
+        // `truncations(events)` non-empty and this assertion fails.
     }
 
     func test_finalize_unterminatedToolBlock_optIn_surfacesPartialBody() {

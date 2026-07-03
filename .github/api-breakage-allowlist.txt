@@ -147,3 +147,8 @@ API breakage: var HandoffChipView.payload has been removed
 API breakage: constructor HandoffChipView.init(from:to:payload:) has been removed
 API breakage: struct SemanticSimilarityScorer has been removed
 API breakage: func ChatViewModel.switchToSession(_:) has been renamed to func switchToSession(_:scrollToMessageID:)
+API breakage: enumelement GenerationStreamConsumer.StreamAction.recordUsage has declared type change from (ManifoldInference.GenerationStreamConsumer.StreamAction.Type) -> (Swift.Int, Swift.Int) -> ManifoldInference.GenerationStreamConsumer.StreamAction to (ManifoldInference.GenerationStreamConsumer.StreamAction.Type) -> (Swift.Int, Swift.Int, Swift.Int?, Swift.Int?) -> ManifoldInference.GenerationStreamConsumer.StreamAction
+API breakage: var GenerationStreamAccumulator.tokenUsage has declared type change from (promptTokens: Swift.Int, completionTokens: Swift.Int)? to (promptTokens: Swift.Int, completionTokens: Swift.Int, cachedInputTokens: Swift.Int?, cacheWriteTokens: Swift.Int?)?
+API breakage: accessor GenerationStreamAccumulator.tokenUsage.Get() has return type change from (promptTokens: Swift.Int, completionTokens: Swift.Int)? to (promptTokens: Swift.Int, completionTokens: Swift.Int, cachedInputTokens: Swift.Int?, cacheWriteTokens: Swift.Int?)?
+API breakage: constructor GenerationStreamAccumulator.init(visibleText:isEmptyResponse:tokenUsage:) has parameter 2 type change from (promptTokens: Swift.Int, completionTokens: Swift.Int)? to (promptTokens: Swift.Int, completionTokens: Swift.Int, cachedInputTokens: Swift.Int?, cacheWriteTokens: Swift.Int?)?
+API breakage: func GenerationStreamAccumulator.recordUsage(prompt:completion:) has been renamed to func recordUsage(prompt:completion:cachedInputTokens:cacheWriteTokens:)

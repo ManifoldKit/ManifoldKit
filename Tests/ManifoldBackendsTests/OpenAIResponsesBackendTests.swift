@@ -58,6 +58,36 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         Data("event: \(name)\ndata: \(data)\n\n".utf8)
     }
 
+    /// Extracts the JSON body of a captured request. `URLSession` sometimes
+    /// moves `httpBody` into an `httpBodyStream` for the request object the
+    /// protocol actually observes, so both must be handled (mirrors
+    /// `ClaudeStructuredReplayTests.extractRequestJSON`).
+    private func capturedRequestJSON(url: URL) throws -> [String: Any] {
+        let captured = try XCTUnwrap(
+            MockURLProtocol.capturedRequests.last(where: { $0.url == url }),
+            "expected a captured request to \(url)"
+        )
+        let data: Data
+        if let direct = captured.httpBody {
+            data = direct
+        } else if let stream = captured.httpBodyStream {
+            var buffer = Data()
+            stream.open()
+            let ptr = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
+            defer { ptr.deallocate() }
+            while stream.hasBytesAvailable {
+                let read = stream.read(ptr, maxLength: 4096)
+                if read > 0 { buffer.append(ptr, count: read) }
+            }
+            stream.close()
+            data = buffer
+        } else {
+            XCTFail("No request body captured for \(url)")
+            return [:]
+        }
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
     private enum EventCategory: Equatable {
         case thinkingToken(String)
         case thinkingCompleted
@@ -323,6 +353,74 @@ final class OpenAIResponsesBackendTests: XCTestCase {
             body?["reasoning"],
             "maxThinkingTokens == 0 means 'disable thinking'; reasoning block must be omitted"
         )
+    }
+
+    /// Structured-output honesty (inert-code audit findings 11/14):
+    /// `OpenAIResponsesBackend` advertises `supportsStructuredOutput: true`
+    /// (and, since this fix, `supportsStrictSchema: true`), which makes
+    /// `StructuredOutputRouter` pick the `.jsonSchema` strategy and leave
+    /// `config.structuredOutput` set for the backend to honor on the wire.
+    /// Prior to this fix `buildRequest` never read it back, silently
+    /// dropping the caller's schema. This drives a real `generate()` call
+    /// through `MockURLProtocol` and inspects the captured outgoing request
+    /// body for the Responses-API `text.format` json_schema shape.
+    func test_generate_withStructuredOutput_emitsTextFormatJSONSchemaOnWire() async throws {
+        let (backend, url) = makeBackend()
+        try await load(backend)
+
+        let chunks: [Data] = [
+            sseEvent("response.output_text.delta", data: #"{"delta":"{}"}"#),
+            sseEvent("response.completed", data: "{}"),
+        ]
+        MockURLProtocol.stub(url: url, response: .sse(chunks: chunks, statusCode: 200))
+
+        let schema = #"{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}"#
+        var config = GenerationConfig()
+        config.structuredOutput = .jsonSchema(schema)
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: config)
+        for try await _ in stream.events { }
+
+        let body = try capturedRequestJSON(url: url)
+
+        XCTAssertNil(body["response_format"], "Responses API nests structured output under `text`, not `response_format`")
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        XCTAssertEqual(format["type"] as? String, "json_schema")
+        XCTAssertEqual(format["strict"] as? Bool, true)
+        let wireSchema = try XCTUnwrap(format["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(wireSchema["properties"] as? [String: Any])
+        XCTAssertNotNil(properties["answer"], "the caller's schema must reach the wire, not be silently dropped")
+
+        // Sabotage check: asserting the schema is ABSENT would fail here,
+        // confirming the assertions above are actually exercising the fix
+        // rather than passing vacuously.
+        XCTAssertNotNil(format["schema"])
+    }
+
+    /// `GenerationConfig.jsonMode` (no explicit schema) still maps to the
+    /// Responses API's `text.format: {type: "json_object"}` — the
+    /// unconstrained sibling of the strict-schema path above.
+    func test_generate_withJSONMode_emitsTextFormatJSONObjectOnWire() async throws {
+        let (backend, url) = makeBackend()
+        try await load(backend)
+
+        let chunks: [Data] = [
+            sseEvent("response.output_text.delta", data: #"{"delta":"{}"}"#),
+            sseEvent("response.completed", data: "{}"),
+        ]
+        MockURLProtocol.stub(url: url, response: .sse(chunks: chunks, statusCode: 200))
+
+        var config = GenerationConfig()
+        config.jsonMode = true
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: config)
+        for try await _ in stream.events { }
+
+        let body = try capturedRequestJSON(url: url)
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        XCTAssertEqual(format["type"] as? String, "json_object")
     }
 
     /// Stream errors that fire while the parser is still inside a thinking
