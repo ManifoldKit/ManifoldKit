@@ -370,9 +370,9 @@ The `switch` above only matches two cases — `.token` and `.thinkingToken` — 
 
 | Case                                                                  | Meaning                                                                                  |
 |-----------------------------------------------------------------------|------------------------------------------------------------------------------------------|
-| `.prefillProgress(nPast: Int, nTotal: Int, tokensPerSecond: Double)`  | Prompt-eval progress before the first generated token (Llama / MLX).                     |
+| `.prefillProgress(tokensProcessed: Int, tokensTotal: Int, tokensPerSecond: Double)` | Prompt-eval progress before the first generated token (Llama / MLX).          |
 | `.token(String)`                                                      | A fragment of generated text — usually one token. The thing you print.                   |
-| `.usage(prompt: Int, completion: Int)`                                | Token usage reported by the backend (cloud backends only today).                         |
+| `.usage(TokenUsage)`                                                  | Token usage reported by the backend (`promptTokens` / `completionTokens`, cloud backends only today). |
 | `.toolCall(ToolCall)`                                                 | The model asked to call a tool. The host runs it and feeds back a `ToolResult`.          |
 | `.toolCallStart(callId: String, name: String)`                        | Streaming providers only — beginning of a tool call whose arguments stream as deltas.    |
 | `.toolCallArgumentsDelta(callId: String, textDelta: String)`          | JSON-arguments fragment for an in-flight streamed tool call.                             |

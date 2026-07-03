@@ -1,5 +1,11 @@
 # Migrating to ManifoldKit v0.48 — "The Packaging Release"
 
+> **Partially superseded.** The `ManifoldBackends` umbrella shim and `DefaultBackends` cross-family
+> glue that this guide still shows as importable were **removed in P7 (#1837)** — `import ManifoldBackends`
+> and `import ManifoldCloud` no longer compile. For the current import/registrar model see
+> [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). This document is retained as the canonical
+> v0.47 → v0.48 map; treat its shim examples as historical.
+
 v0.48 retires the SwiftPM trait architecture in favour of **library products**, and moves
 the heavy local-inference backends (MLX, llama.cpp) into **companion packages**:
 

@@ -63,9 +63,12 @@ security advisory via
   it only asserts that the SBOM accurately enumerates what was pinned
   at tag time. Cross-checking the SBOM's `swift:git-revision` properties
   against upstream tags is left to the consumer.
-- The `.xcframework` for `llama.swift` is consumed as a prebuilt
-  binary blob from upstream; pinning it by SHA256 with a reproducibility
-  audit is the scope of [#728](https://github.com/ManifoldKit/ManifoldKit/issues/728).
+- Core no longer depends on the `llama.swift` `.xcframework` — the
+  llama.cpp family moved to the [manifold-llama](https://github.com/ManifoldKit/manifold-llama)
+  companion package in v0.48, so that prebuilt binary blob (and the SHA256
+  reproducibility audit scoped by
+  [#728](https://github.com/ManifoldKit/ManifoldKit/issues/728)) is now that
+  repo's provenance concern, not this SBOM's.
 
 ## Regenerating artifacts for an existing tag
 

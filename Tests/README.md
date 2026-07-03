@@ -111,7 +111,7 @@ Reference adopters live alongside their target:
 
 > Adding a *heavy local* backend family (new ML runtime)? That belongs in a companion package — follow [manifold-llama](https://github.com/ManifoldKit/manifold-llama) / [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) as the templates; they consume the same `ManifoldBackendTestKit` contract harness described below. The steps here cover backends that live in this repo (cloud families, Foundation-class bridges).
 
-1. Implement `InferenceBackend` (and any opt-in protocols) in the relevant family target (e.g. a new `Sources/Manifold<Family>/` target, registered through the `ManifoldBackendsUmbrella` glue).
+1. Implement `InferenceBackend` (and any opt-in protocols) in the relevant family target (e.g. a new `Sources/Manifold<Family>/` target) and expose a registrar for it — per-family registrars (`OllamaBackends` / `CloudSaaSBackends` / `FoundationBackends`) each register their backends with an `InferenceService`; consumers pass the registrar list to `ManifoldKit.quickStart(backends:)`.
 2. Add a conformance test class under `Tests/ManifoldBackendsTests/Conformance/<YourBackend>ConformanceTests.swift`. Subclass `XCTestCase` and opt into the relevant contract mixins:
 
    ```swift

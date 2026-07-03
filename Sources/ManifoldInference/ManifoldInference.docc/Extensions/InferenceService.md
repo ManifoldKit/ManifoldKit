@@ -39,7 +39,3 @@
 ### Tokenization
 
 - ``tokenizer``
-
-### Deprecated
-
-- ``generationDidFinish()``
