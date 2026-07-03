@@ -1,6 +1,7 @@
 import XCTest
 import SwiftData
 @testable import ManifoldPersistenceSwiftData
+import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
 
@@ -183,6 +184,69 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         // Unknown endpoint should yield zeros.
         let sUnknown = try await sut.summary(forEndpoint: UUID(), sinceDays: 30)
         XCTAssertEqual(sUnknown.turnCount, 0)
+    }
+
+    // MARK: - Production writer path (inert-code audit finding 9)
+    //
+    // Prior to this fix, `TokenUsage` (the payload on `GenerationEvent.usage`)
+    // carried only `promptTokens`/`completionTokens`. Anthropic's
+    // `cache_read_input_tokens`/`cache_creation_input_tokens` were parsed off
+    // the wire (`ClaudeStreamEventExtractor`) but only logged — the value
+    // never reached `GenerationStreamConsumer` → `GenerationStreamAccumulator`
+    // → `TurnUsage`, so every production write stored nil. This test drives
+    // the exact production writer path (event → action → accumulator →
+    // TurnUsage → SwiftDataUsageStore) end to end.
+    func test_cacheTokenUsage_flowsThroughProductionWriterPath_toPersistedColumns() async throws {
+        var consumer = GenerationStreamConsumer()
+        var accumulator = GenerationStreamAccumulator()
+
+        let event = GenerationEvent.usage(TokenUsage(
+            promptTokens: 500,
+            completionTokens: 120,
+            cachedInputTokens: 380,
+            cacheWriteTokens: 64
+        ))
+
+        // Mirrors `GenerationStreamConsumer.handle` → `.recordUsage` handling
+        // in `ConversationTurnExecutor`'s drain loop.
+        let action = consumer.handle(event)
+        guard case .recordUsage(let prompt, let completion, let cachedInputTokens, let cacheWriteTokens) = action else {
+            XCTFail("Expected .recordUsage action, got \(action)")
+            return
+        }
+        accumulator.recordUsage(
+            prompt: prompt,
+            completion: completion,
+            cachedInputTokens: cachedInputTokens,
+            cacheWriteTokens: cacheWriteTokens
+        )
+
+        let usage = try XCTUnwrap(accumulator.tokenUsage)
+
+        // Mirrors the `TurnUsage(...)` construction in
+        // `ConversationTurnExecutor`'s best-effort usage-recording block.
+        let record = TurnUsage(
+            sessionID: UUID(),
+            endpointID: nil,
+            modelIdentifier: "claude-sonnet-4-6",
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            cachedInputTokens: usage.cachedInputTokens,
+            cacheWriteTokens: usage.cacheWriteTokens
+        )
+        try await sut.record(record)
+
+        let recentRecords = try await sut.recentRecords(limit: 1)
+        let fetched = try XCTUnwrap(recentRecords.first)
+        XCTAssertEqual(fetched.promptTokens, 500)
+        XCTAssertEqual(fetched.completionTokens, 120)
+        XCTAssertEqual(fetched.cachedInputTokens, 380, "cache-read tokens must reach the persisted column, not nil")
+        XCTAssertEqual(fetched.cacheWriteTokens, 64, "cache-write tokens must reach the persisted column, not nil")
+
+        // Sabotage check: a regression back to the old 2-field TokenUsage
+        // would make `usage.cachedInputTokens` uncompilable/nil; this
+        // assertion would fail rather than silently pass.
+        XCTAssertNotNil(fetched.cachedInputTokens)
     }
 
     // MARK: - Schema V5→V6 migration

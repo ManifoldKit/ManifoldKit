@@ -281,7 +281,7 @@ struct GenerationToolDispatchLoop {
                 // event). Fold it into the run-level accumulator so the
                 // iteration-boundary ceiling can abort the turn, then forward
                 // the raw event verbatim for upstream consumers (metrics, UI).
-                case .recordUsage(let prompt, let completion):
+                case .recordUsage(let prompt, let completion, _, _):
                     cumulativeRunTokens += prompt + completion
                     yieldEvent(event)
 

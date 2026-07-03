@@ -24,8 +24,25 @@ public struct TokenUsage: Sendable, Equatable, Hashable {
     /// request.
     public let completionTokens: Int
 
-    public init(promptTokens: Int, completionTokens: Int) {
+    /// Tokens served from a provider's prompt cache on this request
+    /// (Anthropic: `cache_read_input_tokens`). `nil` for backends that don't
+    /// report prompt-cache metrics — distinct from a reported `0`.
+    public let cachedInputTokens: Int?
+
+    /// Tokens written to a provider's prompt cache on this request
+    /// (Anthropic: `cache_creation_input_tokens`). `nil` for backends that
+    /// don't report prompt-cache metrics — distinct from a reported `0`.
+    public let cacheWriteTokens: Int?
+
+    public init(
+        promptTokens: Int,
+        completionTokens: Int,
+        cachedInputTokens: Int? = nil,
+        cacheWriteTokens: Int? = nil
+    ) {
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.cacheWriteTokens = cacheWriteTokens
     }
 }

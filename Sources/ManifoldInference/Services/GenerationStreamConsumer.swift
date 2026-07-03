@@ -31,7 +31,12 @@ public struct GenerationStreamConsumer: Sendable {
             return .appendText(text)
 
         case .usage(let usage):
-            return .recordUsage(prompt: usage.promptTokens, completion: usage.completionTokens)
+            return .recordUsage(
+                prompt: usage.promptTokens,
+                completion: usage.completionTokens,
+                cachedInputTokens: usage.cachedInputTokens,
+                cacheWriteTokens: usage.cacheWriteTokens
+            )
 
         case .toolCall(let call):
             return .dispatchToolCall(call)
@@ -128,7 +133,7 @@ public struct GenerationStreamConsumer: Sendable {
         /// Append the text to the current assistant message.
         case appendText(String)
         /// Record token usage on the current assistant message.
-        case recordUsage(prompt: Int, completion: Int)
+        case recordUsage(prompt: Int, completion: Int, cachedInputTokens: Int? = nil, cacheWriteTokens: Int? = nil)
         /// Execute the requested tool call and feed a ``ToolResult`` back into the conversation.
         case dispatchToolCall(ToolCall)
         /// A previously dispatched tool call cleared the approval gate and is
@@ -180,7 +185,7 @@ public struct GenerationStreamConsumer: Sendable {
 public struct GenerationStreamAccumulator: Sendable {
     public private(set) var visibleText: String
     public private(set) var isEmptyResponse: Bool
-    public private(set) var tokenUsage: (promptTokens: Int, completionTokens: Int)?
+    public private(set) var tokenUsage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)?
     public var currentThinkingText: String { thinkingText }
 
     private var thinkingText: String
@@ -189,7 +194,7 @@ public struct GenerationStreamAccumulator: Sendable {
     public init(
         visibleText: String = "",
         isEmptyResponse: Bool = true,
-        tokenUsage: (promptTokens: Int, completionTokens: Int)? = nil
+        tokenUsage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)? = nil
     ) {
         self.visibleText = visibleText
         self.isEmptyResponse = isEmptyResponse
@@ -208,8 +213,13 @@ public struct GenerationStreamAccumulator: Sendable {
         visibleText += text
     }
 
-    public mutating func recordUsage(prompt: Int, completion: Int) {
-        tokenUsage = (prompt, completion)
+    public mutating func recordUsage(
+        prompt: Int,
+        completion: Int,
+        cachedInputTokens: Int? = nil,
+        cacheWriteTokens: Int? = nil
+    ) {
+        tokenUsage = (prompt, completion, cachedInputTokens, cacheWriteTokens)
     }
 
     /// Appends reasoning text and returns whether this opened a new block.

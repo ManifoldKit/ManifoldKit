@@ -142,6 +142,11 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         supportsVision: false,
         streamsToolCallArguments: true,
         supportsParallelToolCalls: true,
+        // The Responses API honors `text.format: {type: "json_schema",
+        // strict: true}` the same way Chat Completions honors
+        // `response_format` — see the strict-structured-output block in
+        // `buildRequest` below.
+        supportsStrictSchema: true,
         // Responses API sends structured input items on the wire, so
         // `.promptRendered` carries only the latest user message — partial (#1905).
         rendersFullPrompt: false
@@ -191,6 +196,9 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             supportsVision: BackendVisionCapability.openAIResponsesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true,
+            // See `defaultAdapterCapabilities` — the Responses API honors
+            // `text.format: {type: "json_schema", strict: true}`.
+            supportsStrictSchema: true,
             // Structured input items on the wire → partial `.promptRendered` (#1905).
             rendersFullPrompt: false
         )
@@ -281,6 +289,32 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         if !config.tools.isEmpty {
             body["tools"] = CloudMessageEncoder.openAIResponses.encodeTools(config.tools)
             OpenAIToolEncoding.applyToolChoice(config.toolChoice, into: &body)
+        }
+
+        // Strict structured output — the Responses API equivalent of Chat
+        // Completions' `response_format` (see `OpenAIBackend.buildRequest`).
+        // `GenerationQueue`'s `StructuredOutputRouter` selects `.jsonSchema`
+        // whenever `capabilities.supportsStructuredOutput` is true and leaves
+        // the schema on `config.structuredOutput` for the backend to honor on
+        // the wire; this backend previously never read it back, silently
+        // dropping the caller's schema. The Responses API expects the format
+        // nested under `text.format` rather than a top-level
+        // `response_format` key.
+        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: config.structuredOutput)
+        let strictRequested = capabilities.supportsStrictSchema && strictSchemaString != nil
+        if strictRequested,
+           let schemaString = strictSchemaString,
+           let strictSchema = OpenAIBackend.strictResponseFormatSchema(from: schemaString) {
+            body["text"] = [
+                "format": [
+                    "type": "json_schema",
+                    "name": "response",
+                    "strict": true,
+                    "schema": strictSchema,
+                ] as [String: Any],
+            ]
+        } else if config.jsonMode {
+            body["text"] = ["format": ["type": "json_object"]]
         }
 
         // Only request a reasoning summary when the caller asks for thinking

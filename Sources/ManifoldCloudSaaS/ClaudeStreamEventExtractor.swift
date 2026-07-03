@@ -338,6 +338,12 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
     // behaviour the routed path replaces.
     private var pendingPromptTokens: Int?
     private var emittedUsage = false
+    // Prompt-cache counts arrive on the same `message_start` frame as
+    // `pendingPromptTokens`. Stashed here so the single `.usage(TokenUsage)`
+    // emitted on `message_delta` carries the cache fields instead of
+    // discarding them after a debug log (#audit finding 9).
+    private var pendingCachedInputTokens: Int?
+    private var pendingCacheWriteTokens: Int?
 
     public init() {}
 
@@ -467,6 +473,18 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
         //    `ClaudeBackend.parseResponseStream` semantics (which got the
         //    same merge for free via `SSECloudBackend.handleUsage`'s
         //    bookkeeping).
+        // Prompt-cache hit/creation counts (Anthropic-only; `message_start`
+        // only). Stashed alongside `pendingPromptTokens` so the `.usage`
+        // event emitted below carries them through to persistence instead of
+        // being logged and discarded.
+        if let cacheUsage = ClaudePayloadParser.parseCacheUsage(from: payload) {
+            pendingCachedInputTokens = cacheUsage.cacheReadInputTokens
+            pendingCacheWriteTokens = cacheUsage.cacheCreationInputTokens
+            Log.inference.debug(
+                "Claude prompt cache: creation=\(cacheUsage.cacheCreationInputTokens) read=\(cacheUsage.cacheReadInputTokens)"
+            )
+        }
+
         if let usage = ClaudePayloadParser.parseUsage(from: payload) {
             if let prompt = usage.promptTokens {
                 pendingPromptTokens = prompt
@@ -474,20 +492,14 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
             if let completion = usage.completionTokens,
                let prompt = pendingPromptTokens,
                !emittedUsage {
-                out.append(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
+                out.append(.usage(TokenUsage(
+                    promptTokens: prompt,
+                    completionTokens: completion,
+                    cachedInputTokens: pendingCachedInputTokens,
+                    cacheWriteTokens: pendingCacheWriteTokens
+                )))
                 emittedUsage = true
             }
-        }
-
-        // Prompt-cache hit/creation counts (Anthropic-only; message_start
-        // only). Logged at debug for operator visibility — matches the
-        // inline parser's behaviour and remains side-effect-only (no event
-        // surface today; structured exposure tracked in TokenUsage
-        // extension work).
-        if let cacheUsage = ClaudePayloadParser.parseCacheUsage(from: payload) {
-            Log.inference.debug(
-                "Claude prompt cache: creation=\(cacheUsage.cacheCreationInputTokens) read=\(cacheUsage.cacheReadInputTokens)"
-            )
         }
 
         return out
