@@ -175,10 +175,14 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
 
     private func performSummarisation(sessionID: UUID) async {
         // Fetch current history — if this fails, log and bail. Preserving
-        // existing history is always the right fallback.
+        // existing history is always the right fallback. Generation-bound
+        // fetch: folded turns are handed to the summariser's backend call,
+        // so orphan tool calls must be healed first (#629); deletion targets
+        // below resolve by message ID, which healing preserves. See
+        // HealedHistoryFetch.swift.
         let history: [ChatMessage]
         do {
-            history = try await messageStore.fetchMessages(for: sessionID)
+            history = try await messageStore.fetchHealedMessages(for: sessionID)
         } catch {
             Log.inference.warning(
                 "SummarisationHook: fetchMessages failed, skipping summarisation (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"

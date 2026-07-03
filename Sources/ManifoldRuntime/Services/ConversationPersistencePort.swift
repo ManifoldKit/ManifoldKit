@@ -58,6 +58,15 @@ struct ConversationPersistencePort: Sendable {
         try await messageStore.fetchMessages(for: sessionID)
     }
 
+    /// Generation-bound fetch: canonical history with orphan tool calls
+    /// healed. Use this — not ``fetchMessages(sessionID:)`` — whenever the
+    /// result feeds a backend `generate()` call. See `HealedHistoryFetch.swift`
+    /// for the seam contract and the caller list.
+    @MainActor
+    func fetchHealedMessages(sessionID: UUID) async throws -> [ChatMessage] {
+        try await messageStore.fetchHealedMessages(for: sessionID)
+    }
+
     @MainActor
     func insertSession(_ session: ChatSession) async throws {
         guard let sessionStore else { return }

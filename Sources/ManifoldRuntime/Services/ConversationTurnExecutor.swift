@@ -1248,7 +1248,12 @@ package struct ConversationTurnExecutor: Sendable {
     ) async throws -> PreparedTurnHistory {
         let canonicalHistory: [ChatMessage]
         do {
-            canonicalHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            // Generation-bound fetch: heals orphan tool calls (turn cancelled
+            // or process killed mid-tool) before token estimation, the
+            // optional HistoryShaper, and context-window assembly run —
+            // otherwise the unanswered tool_use reproduces the #629 cloud-API
+            // rejection. See HealedHistoryFetch.swift for the seam contract.
+            canonicalHistory = try await persistence.fetchHealedMessages(sessionID: sessionID)
         } catch {
             throw TurnPreparationFailure.persistence(error)
         }
