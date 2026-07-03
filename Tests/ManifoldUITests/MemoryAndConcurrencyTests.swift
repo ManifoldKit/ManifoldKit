@@ -112,6 +112,51 @@ final class MemoryAndConcurrencyTests: XCTestCase {
         )
     }
 
+    // MARK: - Test 2b: startMemoryMonitoring wires real OS pressure events automatically
+
+    /// Finding 2 (2026-07 inert-code audit): `handleMemoryPressure()` implemented a
+    /// complete mitigation path, but nothing called it when the OS actually raised
+    /// pressure — only tests calling it directly. `startMemoryMonitoring()` now
+    /// observes `MemoryPressureHandler.pressureLevel` and invokes
+    /// `handleMemoryPressure()` itself. This drives the handler's `pressureLevel`
+    /// directly (the real `DispatchSourceMemoryPressure` callback does exactly
+    /// this on the actual OS event — see `MemoryPressureHandler.startMonitoring()`)
+    /// without calling `vm.handleMemoryPressure()` manually, and polls with a tight
+    /// deadline for the unload side effect that only the automatic wiring can produce.
+    func test_startMemoryMonitoring_realPressureEvent_triggersMitigationAutomatically() async throws {
+        let handler = MemoryPressureHandler()
+        let (vm, mock, _) = await makeViewModel(handler: handler)
+
+        XCTAssertEqual(mock.unloadCallCount, 0)
+
+        vm.startMemoryMonitoring()
+        defer { vm.stopMemoryMonitoring() }
+
+        // Simulate the OS raising critical pressure — bypasses the real
+        // DispatchSource (unavailable/unreliable in a test process) but exercises
+        // the exact `@Observable` change notification the real callback relies on.
+        handler.pressureLevel = .critical
+
+        // The observation loop re-installs via `withObservationTracking`'s
+        // `onChange`, which hops through `Task { @MainActor in ... }` — poll with
+        // a tight deadline rather than assuming a fixed number of run-loop turns.
+        let deadline = Date().addingTimeInterval(2)
+        while mock.unloadCallCount == 0 && Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(
+            mock.unloadCallCount, 1,
+            "startMemoryMonitoring() must wire real pressure-level changes into handleMemoryPressure() without a manual call"
+        )
+        XCTAssertNotNil(vm.errorMessage, "The automatic mitigation path should surface the same error handleMemoryPressure() sets")
+        // Sabotage-evidence: removing the `observeMemoryPressureChanges()` call
+        // from `startMemoryMonitoring()` (ChatViewModel+MemoryPressure.swift)
+        // leaves `mock.unloadCallCount` at 0 until the deadline expires and this
+        // assertion fails — the exact "monitoring is on but nothing ever calls
+        // handleMemoryPressure()" bug finding 2 describes.
+    }
+
     // MARK: - Test 3: Memory Pressure Nominal After Critical
 
     /// After critical pressure clears back to nominal, the error message should be cleared.

@@ -115,6 +115,73 @@ internal struct DownloadStateMachine: Sendable {
         snapshotDownloads[modelID] = snapshot
     }
 
+    /// Reconciles per-snapshot task-ID sets with a background session's actual
+    /// live tasks after a relaunch.
+    ///
+    /// `restoreSnapshotDownload(modelID:model:files:stagingDirectory:)` only
+    /// restores snapshot *metadata* from the persisted pending-downloads JSON —
+    /// it has no live `URLSessionTask` objects, so a snapshot restored that way
+    /// starts with an empty `taskIDs` set. Without this reconciliation,
+    /// `failSnapshotDownload(cancelRemainingTasks: true)` would find nothing to
+    /// cancel for a snapshot download resumed across a relaunch, leaving sibling
+    /// files downloading after one file fails (finding 27).
+    ///
+    /// Each entry's `taskDescription` is expected to be the same encoded
+    /// `TaskContext` JSON `startSnapshotDownload` wrote at task-creation time —
+    /// the OS persists it on the task across relaunch — so `taskContext(for:)`
+    /// can decode the owning `modelID` purely from what the live session reports,
+    /// with no dependency on this process's (empty, post-relaunch) in-memory
+    /// `taskContexts` dictionary.
+    internal mutating func reconcileSnapshotTasks(
+        liveTasks: [(taskID: Int, taskDescription: String?)]
+    ) {
+        var taskIDsByModel: [String: Set<Int>] = [:]
+        for (taskID, description) in liveTasks {
+            guard let context = taskContext(for: taskID, taskDescription: description) else { continue }
+            taskIDsByModel[context.modelID, default: []].insert(taskID)
+        }
+        for (modelID, taskIDs) in taskIDsByModel {
+            registerSnapshotTasks(modelID: modelID, taskIDs: taskIDs)
+        }
+    }
+
+    /// Computes the set of live task IDs belonging to `modelID`'s snapshot that
+    /// a failing sibling should cancel — WITHOUT trusting the registered
+    /// `taskIDs` set to be populated.
+    ///
+    /// The eager reconciliation in `reconcileSnapshotTasks` lands two async hops
+    /// after `reconnectBackgroundSession()` (getAllTasks callback → MainActor
+    /// hop), but a sibling that failed while the app was suspended has its
+    /// `didCompleteWithError` delivered the instant the session delegate
+    /// re-attaches — possibly *before* reconciliation writes any task IDs. If
+    /// `failSnapshotDownload` only consulted `snapshotTaskIDs(modelID:)` in that
+    /// window it would find an empty set and sibling-cancel would silently no-op
+    /// (the exact finding-27 scenario, one async hop later). So the cancel path
+    /// is self-sufficient: it decodes every live task's persisted
+    /// `taskDescription` (same decode `reconcileSnapshotTasks` uses) and matches
+    /// by owning `modelID`, unioned with `registeredTaskIDs` as belt-and-braces
+    /// for any task whose description was lost.
+    ///
+    /// `registeredTaskIDs` is passed in (rather than read via
+    /// `snapshotTaskIDs(modelID:)`) because the caller captures it synchronously
+    /// *before* `removeSnapshotDownload` tears the context down — by the time
+    /// the async getAllTasks callback runs this method, the snapshot entry is
+    /// already gone.
+    internal func snapshotTaskIDsToCancel(
+        modelID: String,
+        registeredTaskIDs: Set<Int>,
+        liveTasks: [(taskID: Int, taskDescription: String?)]
+    ) -> Set<Int> {
+        var ids = registeredTaskIDs
+        for (taskID, description) in liveTasks {
+            guard let context = taskContext(for: taskID, taskDescription: description) else { continue }
+            if context.modelID == modelID {
+                ids.insert(taskID)
+            }
+        }
+        return ids
+    }
+
     internal mutating func updateSnapshotProgress(
         modelID: String,
         relativePath: String,

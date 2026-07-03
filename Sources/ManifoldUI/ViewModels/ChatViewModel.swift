@@ -738,6 +738,12 @@ public final class ChatViewModel {
     // MARK: - Private State
 
     var lastPressureLevel: MemoryPressureLevel = .nominal
+
+    /// Guards `observeMemoryPressureChanges()` (`ChatViewModel+MemoryPressure.swift`)
+    /// against installing a second self-reinstalling `withObservationTracking` chain
+    /// if `startMemoryMonitoring()` is called more than once before a matching
+    /// `stopMemoryMonitoring()`.
+    var isObservingMemoryPressureChanges = false
     private var isSynchronizingSelection = false
 
     /// Forwarded to ``ChatSessionManager/isRestoringSession`` so that

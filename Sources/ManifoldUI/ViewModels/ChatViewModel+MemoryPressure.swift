@@ -10,10 +10,38 @@ extension ChatViewModel {
 
     public func startMemoryMonitoring() {
         memoryPressure.startMonitoring()
+        guard !isObservingMemoryPressureChanges else { return }
+        isObservingMemoryPressureChanges = true
+        observeMemoryPressureChanges()
     }
 
     public func stopMemoryMonitoring() {
         memoryPressure.stopMonitoring()
+        isObservingMemoryPressureChanges = false
+    }
+
+    /// Bridges real OS memory-pressure events into ``handleMemoryPressure()``.
+    ///
+    /// `MemoryPressureHandler.pressureLevel` is `@Observable` but nothing was ever
+    /// watching it — the mitigation path (stop generation, unload model, invalidate
+    /// caches, surface an error) was reachable only from tests calling
+    /// `handleMemoryPressure()` directly. This mirrors the self-reinstalling
+    /// `withObservationTracking` pattern already used by
+    /// `InferenceService.ModelLoadReadinessObserver.emitAndTrack()`
+    /// (`Sources/ManifoldInference/Services/InferenceService.swift`): `onChange`
+    /// fires once per registration, so each firing re-installs itself before acting,
+    /// which keeps every subsequent OS-driven level change live. `stopMemoryMonitoring()`
+    /// clears `isObservingMemoryPressureChanges`, which stops the chain from re-arming.
+    private func observeMemoryPressureChanges() {
+        withObservationTracking {
+            _ = memoryPressure.pressureLevel
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, self.isObservingMemoryPressureChanges else { return }
+                self.handleMemoryPressure()
+                self.observeMemoryPressureChanges()
+            }
+        }
     }
 
     public func handleMemoryPressure() {
