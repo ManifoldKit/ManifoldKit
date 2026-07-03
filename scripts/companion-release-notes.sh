@@ -56,7 +56,7 @@ tmp=$(mktemp)
 #   - right after the 1st "## [" header line, emit the Highlights block
 #   - inside that section, capitalize a leading-lowercase "* x" bullet -> "* X"
 awk -v ver="$mk_version" '
-  BEGIN { n = 0; injected = 0 }
+  BEGIN { n = 0 }
   /^## \[/ {
     n++
     print
@@ -65,7 +65,6 @@ awk -v ver="$mk_version" '
       print "### Highlights"
       print ""
       print "**Tracks ManifoldKit " ver "** — re-resolved, built, and tested green against the new core."
-      injected = 1
     }
     next
   }
