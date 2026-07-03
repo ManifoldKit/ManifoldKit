@@ -8,11 +8,11 @@ shorter, recipe-shaped surface for *consumers*.
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.46.0")
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.64.0") // x-release-please-version
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
-> pin to a specific tag (`exact: "0.46.0"`) and read [CHANGELOG.md](CHANGELOG.md)
+> pin to a specific tag (`exact: "0.64.0"`) and read [CHANGELOG.md](CHANGELOG.md)
 > before bumping. The `0.x` line stabilises pieces incrementally; `1.0.0` will
 > be the freeze point.
 
@@ -105,7 +105,7 @@ struct MyChatApp: App {
             let bootstrap = try await task.value
 
             // Register the compiled-in default families. The `ManifoldBackends`
-            // umbrella and `DefaultBackends` were retired in 1.0 (see
+            // umbrella and `DefaultBackends` were retired in P7 (pre-1.0; see
             // docs/MIGRATION-shims-retired.md); `quickStart()` folds these for
             // you, the manual path registers them explicitly.
             OllamaBackends.register(with: bootstrap.inferenceService)
@@ -286,7 +286,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.46.0",
+    from: "0.64.0", // x-release-please-version
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -365,7 +365,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.48.0"
+    from: "0.64.0" // x-release-please-version
 )
 ```
 

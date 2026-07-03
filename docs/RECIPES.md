@@ -65,7 +65,7 @@ let (_, stream) = try inference.enqueue(
 for try await event in stream.events {
     switch event {
     case .token(let t):      print(t, terminator: "")
-    case .toolCall(let c):   print("\n[calling \(c.name)]")
+    case .toolCall(let c):   print("\n[calling \(c.toolName)]")
     case .toolResult(let r): print("[result: \(r.content)]")
     default: break
     }

@@ -151,7 +151,7 @@ struct CustomChatView: View {
 | `.token(String)` | A content chunk. Append to the visible reply. |
 | `.thinkingToken(String)` | A reasoning/thinking chunk (models that emit a separate thinking channel). Render separately or drop. |
 | `.toolCall(ToolCall)` | The model asked to invoke a tool. See [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md). |
-| `.usage(prompt:completion:)` | Token accounting for the turn. |
+| `.usage(TokenUsage)` | Token accounting for the turn (`promptTokens` / `completionTokens`). |
 
 The full case list lives in [`Sources/ManifoldContract/GenerationEvent.swift`](../Sources/ManifoldContract/GenerationEvent.swift). The enum is non-frozen, so an exhaustive `switch` should keep a `default` branch.
 

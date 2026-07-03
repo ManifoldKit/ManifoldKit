@@ -705,6 +705,16 @@ The 26 SwiftUI previews compile but are not snapshot-tested. Adding snapshot tes
 
 ## Classification audit — 2026-04-19
 
+> **Historical snapshot (2026-04-19).** This audit predates the v0.48 "Packaging Release", which
+> moved the MLX and llama.cpp backend families — and their test suites — out of this repo into the
+> [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) and
+> [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion packages. The
+> `#if MLX`/`#if Llama` guards and the `MLX*`/`Llama*` test files referenced below (e.g.
+> `MLXBackendTests.swift`, `LlamaBackendTests.swift`, `ManifoldMLXIntegrationTests/MLXModelE2ETests.swift`)
+> **no longer exist in core** — their current classification lives in those repos' own test docs.
+> The non-MLX/Llama findings (SwiftData, Ollama-mock, Foundation, cloud-SSE) remain accurate. Kept
+> as a decision record; not rewritten row-by-row so the point-in-time audit stays faithful.
+
 Full `Tests/**/*Tests.swift` walk (173 files) against the CLAUDE.md taxonomy:
 
 - **Unit** — no external process, no network, no filesystem beyond `Bundle.module`, no `localhost` services, no real model loading, no SwiftData.

@@ -1,5 +1,10 @@
 # Scope Decision — ManifoldKit 0.6.0
 
+> **Historical (0.6.0-era) decision record.** Some scoping calls below were later reversed:
+> tool calling (`ManifoldTools` / `ToolRegistry`) and the `@ToolSchema` macro engine are **live,
+> first-class public surfaces** at v0.64, and the `ManifoldInference` extraction (deferred "to 0.7.0"
+> here) is long done. Read this as a snapshot of the 0.6.0 slimming rationale, not current scope.
+
 ## Why we slimmed ManifoldKit
 
 Consumer audits of ManifoldKit's two known consumers — a private internal app and the public [ChatbotUI-iOS](https://github.com/roryford/ChatbotUI-iOS) demo — showed that less than half of the codebase had any real demand. Several large subsystems had zero consumers at all, and several more had a single consumer that used only a narrow slice of the public API. The April 2026 feature-expansion plan that introduced most of this surface area was built without this data, so 0.6.0 is the correction: we are deleting what nobody used and repositioning ManifoldKit around what actually makes it valuable to the apps that ship it.

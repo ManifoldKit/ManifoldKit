@@ -10,6 +10,10 @@
     },
     {
       "type": "generic",
+      "path": "AGENTS.md"
+    },
+    {
+      "type": "generic",
       "path": "docs/QUICKSTART.md"
     },
     {
