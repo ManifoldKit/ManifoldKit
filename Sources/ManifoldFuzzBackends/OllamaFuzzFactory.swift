@@ -45,10 +45,18 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
         // Use the markers the probe auto-detected from the model's chat template
         // (e.g. Gemma 4 uses `<|turn>think\n` / `<|end_of_turn>`, not `<think>`).
-        // Fall back to Qwen3-style tags only when the probe found nothing.
+        //
+        // Deliberately do NOT fall back to a hardcoded Qwen3-style `<think>`
+        // marker when the probe finds nothing: a `nil` snapshot tells
+        // `ThinkingClassificationDetector` this model declares no native
+        // thinking markers, so its marker-based sub-checks skip entirely.
+        // A synthetic fallback used to defeat that guard for genuinely
+        // non-thinking models (gemma3, mistral, llama3.1, …) — any corpus
+        // scenario that discusses `<think>` in prose (without the model
+        // ever emitting a real marker) then misfired as a leak/misclassification
+        // false positive. See the 228-iteration campaign triage (19 FPs).
         let autoMarkers = backend.manifest?.thinkingMarkers
         let markers = autoMarkers.map { RunRecord.MarkerSnapshot(open: $0.open, close: $0.close) }
-            ?? RunRecord.MarkerSnapshot(open: "<think>", close: "</think>")
         return FuzzRunner.BackendHandle(
             backend: backend,
             modelId: model,

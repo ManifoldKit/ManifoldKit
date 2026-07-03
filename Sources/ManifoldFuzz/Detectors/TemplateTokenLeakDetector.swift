@@ -57,13 +57,25 @@ public struct TemplateTokenLeakDetector: Detector {
         // (expected for Foundation's no-template pass-through and for seeds /
         // mutators that deliberately inject template tokens like
         // TemplateTokenInjectMutator).
-        let inputText = r.prompt.messages.map(\.text).joined()
+        //
+        // `UnicodeInjectMutator` deliberately splices invisible/format
+        // characters (RTL override, ZWJ, BOM, …) into the input to probe
+        // tokenizer edges. Some backends echo the input back with those
+        // characters silently dropped by their own normalization, which
+        // desyncs the raw containment check below: `inputText.contains`
+        // sees the obfuscated fragment, `scannable.contains` sees the
+        // de-obfuscated one, and the echo-guard fails to recognize them as
+        // the same fragment — producing a false "spontaneous leak" finding.
+        // Strip the same invisible-character set from both sides before
+        // comparing so an echoed-and-de-obfuscated fragment still matches.
+        let inputText = Self.stripInvisibleCharacters(r.prompt.messages.map(\.text).joined())
+        let normalizedScannable = Self.stripInvisibleCharacters(scannable)
 
         var findings: [Finding] = []
         var seen: Set<String> = []
         for fragment in Self.templateFragments {
             guard !seen.contains(fragment),
-                  scannable.contains(fragment),
+                  normalizedScannable.contains(fragment),
                   !inputText.contains(fragment)   // skip echoed-input fragments
             else { continue }
             seen.insert(fragment)
@@ -76,6 +88,22 @@ public struct TemplateTokenLeakDetector: Detector {
             ))
         }
         return findings
+    }
+
+    /// Invisible/format Unicode scalars that `UnicodeInjectMutator` splices
+    /// into corpus input as tokenizer-edge probes, plus the two common
+    /// zero-width characters it doesn't already cover (ZWSP, ZWNJ). Stripping
+    /// these from both the model's echo and the original input before the
+    /// containment check keeps the echo-guard aligned regardless of which
+    /// side a backend's own normalization happens to touch.
+    static let invisibleCharacters: Set<Character> = {
+        var chars = Set(UnicodeInjectMutator.payloads)
+        chars.formUnion(["\u{200B}", "\u{200C}"]) // ZERO WIDTH SPACE, ZERO WIDTH NON-JOINER
+        return chars
+    }()
+
+    static func stripInvisibleCharacters(_ s: String) -> String {
+        String(s.filter { !invisibleCharacters.contains($0) })
     }
 
     /// Removes triple-backtick fenced blocks and single-backtick spans so
