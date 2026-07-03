@@ -164,12 +164,19 @@ public actor SessionFuzzRunner {
         let service = await MainActor.run { [serviceFactory] in
             serviceFactory(handle.backend, handle.backendName)
         }
+        // Mirrors the single-turn `FuzzRunner.runSingle` wiring: `--tools`
+        // injects the same `SyntheticToolset` on every turn so
+        // `ToolCallValidityDetector` has invariants to check on this path too
+        // (previously silently ignored here — #45 in the 2026-07 inert-code audit).
         let opts = SessionScriptRunner.Options(
             modelId: handle.modelId,
             modelURL: handle.modelURL,
             backendName: handle.backendName,
             templateMarkers: handle.templateMarkers,
-            maxOutputTokens: 256
+            maxOutputTokens: 256,
+            toolDefinitions: config.tools ? SyntheticToolset.definitions : [],
+            contextLimit: handle.backend.capabilities.contextWindowSize,
+            memoryBudgetBytes: handle.memoryBudgetBytes
         )
         let runner = SessionScriptRunner(
             service: service,

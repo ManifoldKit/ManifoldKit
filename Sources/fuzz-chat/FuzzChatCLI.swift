@@ -7,6 +7,7 @@ import Foundation
 import ManifoldFuzz
 import ManifoldInference
 import ManifoldFuzzBackends
+import ManifoldTestSupport
 
 @main
 @MainActor
@@ -54,6 +55,12 @@ struct FuzzChatCLI {
         // while protecting throughput. Ignored for local backends.
         var requestTimeout: TimeInterval = 90
         var requestTimeoutProvided = false
+        // ChaosBackend failure-mode selection for `--backend chaos`. Defaults
+        // to `.none` (happy path) so an unadorned `--backend chaos` campaign
+        // stays signal-light, matching the prior hardcoded behavior.
+        var chaosMode: ChaosBackend.FailureMode = .none
+        var chaosModeSpecArg: String?
+        var corpusSubsetProvided = false
 
         var i = argv.startIndex
         while i < argv.endIndex {
@@ -145,6 +152,15 @@ struct FuzzChatCLI {
                     fail("--corpus-subset must be one of: full, smoke")
                 }
                 corpusSubset = subset
+                corpusSubsetProvided = true
+            case "--chaos-mode":
+                i = argv.index(after: i)
+                guard i < argv.endIndex else { fail("--chaos-mode requires a value; see --help") }
+                guard let mode = ChaosFuzzFactory.parseMode(argv[i]) else {
+                    fail("--chaos-mode '\(argv[i])' is not a recognised spec; see --help")
+                }
+                chaosMode = mode
+                chaosModeSpecArg = argv[i]
             default:
                 fail("unknown argument: \(arg)")
             }
@@ -159,6 +175,18 @@ struct FuzzChatCLI {
         // backends generate in-process with no per-request socket timeout.
         if requestTimeoutProvided && backend != .openai {
             FileHandle.standardError.write(Data("fuzz-chat: note — --request-timeout only applies to --backend openai; ignoring for \(backend.rawValue).\n".utf8))
+        }
+
+        // `--chaos-mode` only has an effect on --backend chaos.
+        if chaosMode != .none && backend != .chaos {
+            FileHandle.standardError.write(Data("fuzz-chat: note — --chaos-mode only applies to --backend chaos; ignoring for \(backend.rawValue).\n".utf8))
+        }
+
+        // Session scripts are a fixed bundled set (Sources/ManifoldFuzz/SessionScript.swift),
+        // not a subsettable corpus — `--corpus-subset` has no meaning there. Fail
+        // fast instead of silently accepting a flag with zero effect.
+        if sessionScripts && corpusSubsetProvided {
+            fail("--corpus-subset is not supported with --session-scripts (session scripts are a fixed bundled set, not a subsettable corpus). Omit --corpus-subset.")
         }
 
         // Default termination if neither flag passed: 5 minutes.
@@ -190,7 +218,8 @@ struct FuzzChatCLI {
                         tools: tools,
                         rotateEvery: rotateEvery,
                         outputDir: outputDir,
-                        requestTimeout: requestTimeout
+                        requestTimeout: requestTimeout,
+                        chaosModeSpec: chaosModeSpecArg
                     ),
                     slices: slices
                 )
@@ -215,7 +244,7 @@ struct FuzzChatCLI {
         case .mock:
             factory = MockFuzzFactory()
         case .chaos:
-            factory = ChaosFuzzFactory()
+            factory = ChaosFuzzFactory(mode: chaosMode)
         case .llama:
             fail("The llama.cpp fuzz factory moved to the manifold-llama companion package (v0.48, #1749). Run the fuzzer from that repo, or use --backend ollama|openai|foundation|mock|chaos here.")
         case .foundation:
@@ -238,7 +267,7 @@ struct FuzzChatCLI {
         case .mlx:
             fail("The MLX fuzz factory moved to the manifold-mlx companion package (v0.48, #1749). Run the fuzzer from that repo, or use --backend ollama|openai|foundation|mock|chaos here.")
         case .all:
-            fail("all backend not yet wired in CLI.")
+            fail("--backend all is not implemented; run one backend per campaign (ollama|openai|foundation|mock|chaos).")
         }
 
         // Shrink mode: greedy-delta-debug the recorded trigger down to a
@@ -316,6 +345,9 @@ struct FuzzChatCLI {
         var rotateEvery: Int
         var outputDir: URL
         var requestTimeout: TimeInterval
+        /// Raw `--chaos-mode` spec string, forwarded verbatim to each worker
+        /// (nil when the flag was not passed — workers default to `.none`).
+        var chaosModeSpec: String?
     }
 
     struct WorkerProcess {
@@ -409,8 +441,13 @@ struct FuzzChatCLI {
             "--backend", options.backend.rawValue,
             "--seed", "\(slice.seed)",
             "--output-dir", outputDir.path,
-            "--corpus-subset", options.corpusSubset.rawValue,
         ]
+        // `--corpus-subset` is meaningless for session scripts (a fixed bundled
+        // set, not a subsettable corpus) — forwarding it there would trip the
+        // fail-fast guard in each worker's own flag parsing.
+        if !options.sessionScripts {
+            args += ["--corpus-subset", options.corpusSubset.rawValue]
+        }
         if let iterations = slice.iterations {
             args += ["--iterations", "\(iterations)"]
         }
@@ -440,6 +477,11 @@ struct FuzzChatCLI {
         // (and would otherwise log a spurious "ignoring" note per worker).
         if options.backend == .openai {
             args += ["--request-timeout", "\(options.requestTimeout)"]
+        }
+        // Forward the chaos failure-mode spec so each worker injects the same
+        // failure, not the `.none` default. Only for the chaos backend.
+        if options.backend == .chaos, let spec = options.chaosModeSpec {
+            args += ["--chaos-mode", spec]
         }
         return args
     }
@@ -608,7 +650,7 @@ struct FuzzChatCLI {
             "Usage: swift run fuzz-chat [options]",
             "",
             "Options:",
-            "  --backend ollama|mock|chaos|foundation|openai|all   default: ollama",
+            "  --backend ollama|mock|chaos|foundation|openai   default: ollama",
             "                      llama / mlx moved to the manifold-llama / manifold-mlx",
             "                      companion packages (v0.48, #1749) — fuzz them from those repos.",
             "                      mock   = MockInferenceBackend (hardware-free, used by PR-tier CI)",
@@ -643,6 +685,18 @@ struct FuzzChatCLI {
             "                      abandoning. Slow/free OpenRouter models otherwise hang the",
             "                      full 300s session default per request; detectors already",
             "                      flag >60s, so 90s loses no signal. Ignored for local backends.",
+            "  --chaos-mode <spec> ChaosBackend failure mode (default: none). One of:",
+            "                      none | drop-mid-stream[:afterTokens] |",
+            "                      slow-first-token[:delayMs] |",
+            "                      burst-then-stall[:burstSize:stallMs] |",
+            "                      network-error[:afterTokens] |",
+            "                      idle-timeout[:afterTokens:silenceMs] |",
+            "                      malformed-tool-call[:tokensBefore] |",
+            "                      parallel-tool-calls[:count]",
+            "                      Params are positional integers; leave a segment empty",
+            "                      to keep its default (burst-then-stall::5000 = default",
+            "                      burstSize, 5000 ms stall).",
+            "                      Only applies to --backend chaos.",
             "  --detector ids      comma-separated detector ids to run",
             "  --single            shorthand for --iterations 1",
             "  --quiet             suppress live output (still prints findings)",
@@ -655,8 +709,11 @@ struct FuzzChatCLI {
             "                      exercises queue, cancellation, session scoping).",
             "  --tools             inject `SyntheticToolset` so tool-aware backends",
             "                      have something to call. Pairs with the",
-            "                      tool-call-validity detector (#627).",
-            "  --corpus-subset full|smoke  default: full.",
+            "                      tool-call-validity detector (#627). Works on both",
+            "                      the single-turn and --session-scripts paths.",
+            "  --corpus-subset full|smoke  default: full. Single-turn corpus only —",
+            "                      incompatible with --session-scripts (a fixed",
+            "                      bundled script set, not a subsettable corpus).",
             "                      `smoke` loads the small deterministic seed set",
             "                      used by the PR-tier CI fuzz job.",
             "  -h, --help          this help",

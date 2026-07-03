@@ -484,6 +484,55 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertEqual(outcome.toolCallsExecuted.count, 2, "should dispatch exactly maxIterations tool calls")
     }
 
+    // MARK: - GenerationConfig wiring (2026-07 inert-code audit, finding #25)
+
+    /// `Scenario.BackendSpec.seed` must reach `GenerationConfig.seed` — it was
+    /// previously decoded and silently dropped by `ScenarioRunner`.
+    func test_runner_threadsScenarioSeedIntoGenerationConfig() async throws {
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "now", arguments: "{}"),
+            .tokens([NowTool.defaultFixture])
+        ])
+        let scenario = Scenario(
+            id: "test-seed",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "what time is it?",
+            requiredTools: ["now"],
+            assertions: [
+                Scenario.Assertion(kind: "containsLiteral", value: NowTool.defaultFixture, values: nil, message: nil)
+            ],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: 42, topK: nil)
+        )
+        _ = try await makeRunner(backend: backend, registry: registry).run(scenario)
+        XCTAssertEqual(backend.receivedConfigs.first?.seed, 42, "scenario.backend.seed must reach GenerationConfig.seed")
+    }
+
+    /// A scenario with no `seed` must leave `GenerationConfig.seed` nil rather
+    /// than substituting a default — nil is the documented "let the backend
+    /// pick" signal.
+    func test_runner_leavesGenerationConfigSeedNilWhenScenarioOmitsIt() async throws {
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "now", arguments: "{}"),
+            .tokens([NowTool.defaultFixture])
+        ])
+        let scenario = Scenario(
+            id: "test-no-seed",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "what time is it?",
+            requiredTools: ["now"],
+            assertions: [
+                Scenario.Assertion(kind: "containsLiteral", value: NowTool.defaultFixture, values: nil, message: nil)
+            ],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        _ = try await makeRunner(backend: backend, registry: registry).run(scenario)
+        XCTAssertNil(backend.receivedConfigs.first?.seed)
+    }
+
     private func builtInScenario(_ id: String) throws -> Scenario {
         let scenarios = try ScenarioLoader.loadBuiltIn()
         return try XCTUnwrap(scenarios.first { $0.id == id }, "missing built-in scenario \(id)")

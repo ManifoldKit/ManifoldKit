@@ -208,7 +208,7 @@ public final class ScenarioRunner {
     }
 
     private func makeConfig(for scenario: Scenario, tools: [ToolDefinition]) -> GenerationConfig {
-        GenerationConfig(
+        var config = GenerationConfig(
             temperature: Float(scenario.backend.temperature ?? 0.0),
             topP: 0.9,
             repeatPenalty: 1.1,
@@ -222,5 +222,26 @@ public final class ScenarioRunner {
             thinkingMarkers: nil,
             maxToolIterations: maxIterations
         )
+        // Advisory hint only — `GenerationConfig.seed` is silently ignored by
+        // backends that don't support it (see its doc comment). Today
+        // `manifold-tools` always drives `OllamaBackend`, which explicitly does
+        // not honor it (Sources/ManifoldOllama/OllamaBackend.swift:
+        // `supportsSeed: false` — "Ollama's /api/chat ignores seed in current
+        // releases"), so this remains a no-op there; it takes effect the day
+        // this harness drives a backend that does honor it (e.g. OpenAI-
+        // compatible via `--backend openai-compat`).
+        if let rawSeed = scenario.backend.seed {
+            if let seed = UInt64(exactly: rawSeed) {
+                config.seed = seed
+            } else {
+                // A negative seed can't be represented as the UInt64 the
+                // contract carries — dropping it silently would fake
+                // reproducibility, so say it out loud.
+                Log.inference.warning(
+                    "ScenarioRunner: scenario '\(scenario.id, privacy: .public)' declares seed \(rawSeed, privacy: .public), which is not representable as UInt64; dropping it — this run is UNSEEDED."
+                )
+            }
+        }
+        return config
     }
 }

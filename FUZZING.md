@@ -47,7 +47,7 @@ Common flags:
 
 | Flag | Purpose |
 |------|---------|
-| `--backend <name>` | `ollama` (default), `openai`, `foundation`, `mock`, `chaos`, `all`. The `llama` / `mlx` selections error with a companion-package pointer since v0.48 (see Backends below); `all` is not yet implemented. |
+| `--backend <name>` | `ollama` (default), `openai`, `foundation`, `mock`, `chaos`. The `llama` / `mlx` selections error with a companion-package pointer since v0.48 (see Backends below). `all` still parses but is not implemented — it fails fast with "run one backend per campaign". |
 | `--minutes N` | Wall-clock budget. Default 5. |
 | `--iterations N` | Iteration cap; runs until either budget is hit. |
 | `--single` | One iteration then exit — useful with `--seed`. |
@@ -57,7 +57,8 @@ Common flags:
 | `--model <substr>` | Ollama: pin to the first installed model containing `<substr>`; pass `all` (or omit) to rotate through every installed Ollama model. |
 | `--detector <ids>` | Comma-separated detector IDs to enable. |
 | `--quiet` | Suppress the per-iteration log line. |
-| `--tools` | Inject `SyntheticToolset` so tool-aware backends have something to call. Pairs with `tool-call-validity` ([#627](https://github.com/ManifoldKit/ManifoldKit/issues/627)). |
+| `--tools` | Inject `SyntheticToolset` so tool-aware backends have something to call. Pairs with `tool-call-validity` ([#627](https://github.com/ManifoldKit/ManifoldKit/issues/627)). Works on both the single-turn and `--session-scripts` paths. |
+| `--chaos-mode <spec>` | `--backend chaos` only: select the injected `ChaosBackend.FailureMode`. One of `none` (default), `drop-mid-stream[:afterTokens]`, `slow-first-token[:delayMs]`, `burst-then-stall[:burstSize:stallMs]`, `network-error[:afterTokens]`, `idle-timeout[:afterTokens:silenceMs]`, `malformed-tool-call[:tokensBefore]`, `parallel-tool-calls[:count]`. Params are positional integers; leave a segment empty to keep its default (`burst-then-stall::5000`). |
 
 ---
 
@@ -121,7 +122,7 @@ Worker safety is backend-specific:
 |---------|--------------|--------|
 | `mock`, `chaos`, `ollama` | 4 | Safe to isolate per child process. |
 | `foundation` | 1 | Apple Intelligence availability/resource transitions should stay single-worker until calibrated. |
-| `all` | 1 | `--backend all` is not wired yet. |
+| `all` | 1 | `--backend all` is not implemented — it fails fast; run one backend per campaign. |
 
 Iteration budgets are partitioned deterministically across workers: `--iterations 10 --workers 3` becomes `[4, 3, 3]`, with the remainder assigned to the lowest worker index. Time budgets are not divided; `--minutes 5 --workers 4` runs four five-minute workers so elapsed wall time remains close to five minutes while total backend coverage increases.
 
@@ -350,7 +351,7 @@ All ten single-turn detectors are implemented and covered by the calibration cor
 - **`--shrink`** — minimise a failing prompt to the smallest input that still fires the detector.
 - **Multi-turn** — opt-in via `--session-scripts`. The harness drives bundled `SessionScript` JSONs through `InferenceService.enqueue`, exercising the queue, cancellation, and latest-wins load paths that single-turn fuzzing can't reach. Three multi-turn detectors ship alongside: `turn-boundary-kv-state`, `cancellation-race`, and `session-context-leak`. Single-turn remains the default ([#492](https://github.com/ManifoldKit/ManifoldKit/issues/492)).
 - **Slash command** — `/fuzz` shortcut to run `scripts/fuzz.sh` from inside Claude Code.
-- **Multi-backend factory fleet** — `FuzzRunner` now accepts a `FuzzBackendFactory` protocol (landed via [#496](https://github.com/ManifoldKit/ManifoldKit/issues/496)). Ship `LlamaFuzzFactory`, `FoundationFuzzFactory`, and `MLXFuzzFactory` to feed `--backend all` ([#501](https://github.com/ManifoldKit/ManifoldKit/issues/501)).
+- **Multi-backend factory fleet** — `FuzzRunner` accepts a `FuzzBackendFactory` protocol (landed via [#496](https://github.com/ManifoldKit/ManifoldKit/issues/496)) and `FoundationFuzzFactory` shipped, but `--backend all` was never implemented ([#501](https://github.com/ManifoldKit/ManifoldKit/issues/501)) — it fails fast today, and the Llama/MLX factories moved to the companion packages (v0.48, #1749), so an in-repo "all" campaign could only ever cover the local families. Run one backend per campaign.
 
 ---
 

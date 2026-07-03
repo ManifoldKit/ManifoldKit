@@ -209,11 +209,23 @@ extension ConformanceScorer {
                 repeatIndex: 0
             )
             // An explicit `error` event is a positive infra-failure signal → a
-            // `loadFail` (💥) hole. A bare prompt-only transcript is the same failure
-            // observed only by absence → `notMeasured` (🚫).
-            let status: CellStatus = row.errored
-                ? .loadFail(row.errorMessage ?? "backend reported an error before a model turn")
-                : .notMeasured("transcript has a prompt but no model turn — the backend rejected the model before generation (#2087)")
+            // `loadFail` (💥) hole, unless the message carries the one
+            // distinguishable prompt-rendering-failure signal available today:
+            // `PromptRenderer.render` throws `InferenceError.inferenceFailure`
+            // prefixed with `InferenceError.promptRenderFailurePrefix` when an
+            // embedded chat template can't be rendered and the enum fallback
+            // can't carry the requested tools. That case routes to `.renderFail`
+            // instead, so the matrix distinguishes "no usable prompt" from a
+            // generic backend/infra error. A bare prompt-only transcript is the
+            // same failure observed only by absence → `notMeasured` (🚫).
+            let status: CellStatus
+            if row.errored, let message = row.errorMessage, message.contains(InferenceError.promptRenderFailurePrefix) {
+                status = .renderFail
+            } else if row.errored {
+                status = .loadFail(row.errorMessage ?? "backend reported an error before a model turn")
+            } else {
+                status = .notMeasured("transcript has a prompt but no model turn — the backend rejected the model before generation (#2087)")
+            }
             return notMeasuredRecord(cell, context: context, status: status)
         }
 
