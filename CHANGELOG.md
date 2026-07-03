@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.65.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.64.0...v0.65.0) (2026-07-03)
+
+### Highlights
+
+**Reusable persona / prompt library.** Save and reuse named system prompts across sessions instead of retyping them — a first-class library surface with persistence, wired into the runtime and UI ([#2117](https://github.com/ManifoldKit/ManifoldKit/issues/2117)).
+
+**Rich per-session conversation export.** Export any session to structured JSON or plain text from the runtime, capturing messages, tool calls, and metadata for archival or downstream processing ([#2116](https://github.com/ManifoldKit/ManifoldKit/issues/2116)).
+
+```swift
+let export = try await chatExportService.export(session: session, format: .json)   // or .plainText
+try export.write(to: url)
+```
+
+**Cloud backends now honor advertised structured-output and cache-usage capabilities.** When a provider advertises structured output or prompt caching, those paths are now actually exercised, and token accounting surfaces cache reads/writes. **Breaking:** `GenerationStreamConsumer.StreamAction.recordUsage` grows from 2 to 4 associated values (adding `cachedInputTokens` / `cacheWriteTokens`, both defaulted), and `GenerationStreamAccumulator.tokenUsage` / `init(tokenUsage:)` / `recordUsage(prompt:completion:)` widen to match. Construction sites are unaffected by the defaults; external *pattern-matchers* must add two bindings. Companion repos (manifold-mlx, manifold-llama, manifold-eval) verified unaffected — none consume these types ([#2124](https://github.com/ManifoldKit/ManifoldKit/issues/2124)).
+
+```swift
+// External pattern-matchers add the two new bindings:
+case .recordUsage(let prompt, let completion, _, _):
+    …
+```
+
+**Removed dead public surface from the inert-code audit.** **Breaking:** several public symbols that were never read back are removed. Each was inert — if you constructed or referenced one, delete the call; there is no behavioral migration ([#2122](https://github.com/ManifoldKit/ManifoldKit/issues/2122)).
+
+### Features
+
+* Jump to the matched message when opening a search result ([#2118](https://github.com/ManifoldKit/ManifoldKit/issues/2118))
+* Make the scenario-runner and fuzz CLI knobs honest ([#2125](https://github.com/ManifoldKit/ManifoldKit/issues/2125))
+
+### Bug Fixes
+
+* Apply `TranscriptHealer` on the live turn path ([#2120](https://github.com/ManifoldKit/ManifoldKit/issues/2120))
+* Activate dormant memory-pressure, download-cancel, and skill-resume paths ([#2123](https://github.com/ManifoldKit/ManifoldKit/issues/2123))
+* Honor documented MCP and server protocol semantics ([#2121](https://github.com/ManifoldKit/ManifoldKit/issues/2121))
+* Stop fallback thinking-markers and zero-width obfuscation from defeating fuzz detector guards ([#2129](https://github.com/ManifoldKit/ManifoldKit/issues/2129))
+
+### Documentation
+
+* Fix stale API references, DocC links, and count drift before release ([#2130](https://github.com/ManifoldKit/ManifoldKit/issues/2130))
+
 ## [0.64.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.63.0...v0.64.0) (2026-07-02)
 
 ### Highlights
