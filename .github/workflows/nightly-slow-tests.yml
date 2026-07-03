@@ -52,6 +52,18 @@ jobs:
       - name: Setup Swift CI environment
         uses: ./.github/actions/setup-swift-ci
 
+      - name: Capture API baseline SHA
+        # Captured once, immediately at checkout, so the api-check step below
+        # (which runs ~26 min into the job) diffs against a fixed commit
+        # instead of re-resolving the floating `origin/main` ref live. If a
+        # PR merges to main between this checkout and that later fetch, the
+        # floating ref moves newer than the checked-out tree and
+        # diagnose-api-breaking-changes reports inverted (spurious) API
+        # breakages — this exact race fired in run 28574236073 (#2113).
+        # Pinning here guarantees BASELINE_SHA == HEAD on a scheduled trunk
+        # run, making the check a deterministic HEAD-vs-HEAD no-op backstop.
+        run: echo "BASELINE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Test — LargeSessionListPerformanceTests
         id: test-large-session-list
         env:
@@ -151,17 +163,28 @@ jobs:
         id: api-check
         run: |
           set -euo pipefail
-          # diagnose-api-breaking-changes checks out the baseline tree object
-          # from origin/main. A shallow clone (actions/checkout default) omits
-          # those objects and causes "unable to read tree" (#1723). --unshallow
-          # converts the shallow clone to a full one; fall back to a plain fetch
-          # if the repo is already full-depth (e.g. local runs).
+          # diagnose-api-breaking-changes checks out the baseline tree object.
+          # A shallow clone (actions/checkout default) omits those objects and
+          # causes "unable to read tree" (#1723). --unshallow converts the
+          # shallow clone to a full one; fall back to a plain fetch if the
+          # repo is already full-depth (e.g. local runs).
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # Diff against $BASELINE_SHA, captured once at checkout (see the
+          # "Capture API baseline SHA" step above) — NOT a live-reresolved
+          # `origin/main` ref. Re-resolving `origin/main` here races a mid-job
+          # merge to main: the floating ref can move newer than the checked-
+          # out tree, producing inverted (spurious) breakage reports (#2113,
+          # run 28574236073). BASELINE_SHA is guaranteed to equal the checked-
+          # out HEAD on a scheduled trunk run, so this is a deterministic
+          # HEAD-vs-HEAD no-op backstop by design — it exists to catch a
+          # regression sneaking through the per-PR gate, not to compare
+          # against a moving target.
+          #
           # See ci.yml for why the allowlist exists: it absorbs the false-positive
           # "removed" reports from downward type relocations behind `@_exported`
           # re-export shims (P2a Contract extraction, #1719/#1723). Entries
           # self-expire once the relocation lands on main.
-          swift package diagnose-api-breaking-changes origin/main \
+          swift package diagnose-api-breaking-changes "$BASELINE_SHA" \
             --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore \
             --targets ManifoldPersistenceSwiftData --targets ManifoldUI \
             --breakage-allowlist-path .github/api-breakage-allowlist.txt
