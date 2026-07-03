@@ -103,12 +103,22 @@ public actor ManifoldMCPHost {
 
     // MARK: - Init
 
+    /// - Parameters:
+    ///   - serverName: Human-readable server name. When explicitly supplied
+    ///     (non-`nil`), it takes precedence over `configuration.serverName`
+    ///     — it overwrites that one field on the given configuration rather
+    ///     than being silently discarded. Leave it `nil` (the default) to
+    ///     use `configuration.serverName` (or `Configuration`'s own default,
+    ///     `"ManifoldKit MCP Host"`, when `configuration` is also `nil`).
+    ///   - configuration: Full configuration bundle (message-size caps, JSON
+    ///     nesting depth, protocol/server version, etc). Defaults to
+    ///     `Configuration()` when omitted.
     public init(
         sessionStore: any SessionStore,
         messageStore: any MessageStore,
         conversationRuntime: ConversationRuntime,
         ragService: RAGService? = nil,
-        serverName: String = "ManifoldKit MCP Host",
+        serverName: String? = nil,
         configuration: Configuration? = nil
     ) {
         self.sessionStore = sessionStore
@@ -116,7 +126,7 @@ public actor ManifoldMCPHost {
         self.conversationRuntime = conversationRuntime
         self.ragService = ragService
         var config = configuration ?? Configuration()
-        if configuration == nil {
+        if let serverName {
             config.serverName = serverName
         }
         self.configuration = config
@@ -474,21 +484,35 @@ public actor ManifoldMCPHost {
     // MARK: Tool: list_sessions
 
     private func toolListSessions() async throws -> JSONSchemaValue? {
-        let sessions = try await sessionStore.fetchSessions()
-        let list: [JSONSchemaValue] = sessions.map { session in
-            .object([
-                "id": .string(session.id.uuidString),
-                "title": .string(session.title),
-                "updatedAt": .string(ISO8601DateFormatter().string(from: session.updatedAt)),
+        // Fetch failures are reported in-band via `isError` (per the MCP tool
+        // result convention) rather than as a JSON-RPC protocol error, so a
+        // client/LLM can see and potentially recover from a store failure
+        // instead of the request simply failing opaquely.
+        do {
+            let sessions = try await sessionStore.fetchSessions()
+            let list: [JSONSchemaValue] = sessions.map { session in
+                .object([
+                    "id": .string(session.id.uuidString),
+                    "title": .string(session.title),
+                    "updatedAt": .string(ISO8601DateFormatter().string(from: session.updatedAt)),
+                ])
+            }
+            let text = jsonStringify(.array(list))
+            return .object([
+                "content": .array([
+                    .object(["type": .string("text"), "text": .string(text)])
+                ]),
+                "isError": .bool(false),
+            ])
+        } catch {
+            Log.inference.warning("ManifoldMCPHost: list_sessions failed: \(error.localizedDescription, privacy: .public)")
+            return .object([
+                "content": .array([
+                    .object(["type": .string("text"), "text": .string("list_sessions failed: \(error.localizedDescription)")])
+                ]),
+                "isError": .bool(true),
             ])
         }
-        let text = jsonStringify(.array(list))
-        return .object([
-            "content": .array([
-                .object(["type": .string("text"), "text": .string(text)])
-            ]),
-            "isError": .bool(false),
-        ])
     }
 
     // MARK: Tool: send_message
@@ -509,24 +533,37 @@ public actor ManifoldMCPHost {
         )
 
         let turn = try await conversationRuntime.processTurnWithOutcome(input)
-        let reply: String?
-        if let turn,
-           let outcome = await collectOutcome(from: turn, timeout: .seconds(120)),
-           outcome.error == nil,
-           outcome.reason != .cancelled {
-            reply = outcome.finalText.isEmpty ? nil : outcome.finalText
-        } else {
-            if let turn {
+        let replyText: String
+        let isError: Bool
+        if let turn {
+            if let outcome = await collectOutcome(from: turn, timeout: .seconds(120)) {
+                if let error = outcome.error {
+                    replyText = "send_message failed: \(error.localizedDescription)"
+                    isError = true
+                } else if outcome.reason == .cancelled {
+                    replyText = "send_message was cancelled before it produced a reply."
+                    isError = true
+                } else {
+                    replyText = outcome.finalText.isEmpty ? "(no response)" : outcome.finalText
+                    isError = false
+                }
+            } else {
+                // Timed out waiting for a terminal outcome — the turn is still
+                // running server-side; cancel it so it doesn't leak.
                 await conversationRuntime.cancel(turn.streamHandle)
+                replyText = "send_message timed out waiting for a reply after 120s."
+                isError = true
             }
-            reply = nil
+        } else {
+            replyText = "send_message could not start a turn for this session."
+            isError = true
         }
 
         return .object([
             "content": .array([
-                .object(["type": .string("text"), "text": .string(reply ?? "(no response)")])
+                .object(["type": .string("text"), "text": .string(replyText)])
             ]),
-            "isError": .bool(false),
+            "isError": .bool(isError),
         ])
     }
 
@@ -569,18 +606,28 @@ public actor ManifoldMCPHost {
             limit = 5
         }
 
-        let result = try await ragService.retrieve(query: query, limit: limit)
-        let passages = result.citations.map { citation in
-            "[\(citation.documentTitle)]\n\(citation.snippet)"
-        }.joined(separator: "\n\n---\n\n")
+        do {
+            let result = try await ragService.retrieve(query: query, limit: limit)
+            let passages = result.citations.map { citation in
+                "[\(citation.documentTitle)]\n\(citation.snippet)"
+            }.joined(separator: "\n\n---\n\n")
 
-        let responseText = passages.isEmpty ? "No relevant passages found." : passages
-        return .object([
-            "content": .array([
-                .object(["type": .string("text"), "text": .string(responseText)])
-            ]),
-            "isError": .bool(false),
-        ])
+            let responseText = passages.isEmpty ? "No relevant passages found." : passages
+            return .object([
+                "content": .array([
+                    .object(["type": .string("text"), "text": .string(responseText)])
+                ]),
+                "isError": .bool(false),
+            ])
+        } catch {
+            Log.inference.warning("ManifoldMCPHost: search_documents failed: \(error.localizedDescription, privacy: .public)")
+            return .object([
+                "content": .array([
+                    .object(["type": .string("text"), "text": .string("search_documents failed: \(error.localizedDescription)")])
+                ]),
+                "isError": .bool(true),
+            ])
+        }
     }
 
     // MARK: - JSON helpers

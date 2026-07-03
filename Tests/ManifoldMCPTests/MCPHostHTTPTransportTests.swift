@@ -129,6 +129,369 @@ final class MCPHostHTTPTransportTests: XCTestCase {
         await post.close()
     }
 
+    // MARK: response routing — cross-client isolation
+
+    /// Two clients each open their own SSE channel and POST their own request
+    /// (echoing the `Mcp-Session-Id` the channel's 200 header assigned). Each
+    /// response must arrive ONLY on the channel that originated the matching
+    /// request — the pre-fix transport broadcast every response to every open
+    /// channel, leaking one client's data to the other.
+    func test_send_routesResponsesToOriginatingChannelOnly() async throws {
+        let host = await makeHost()
+        let transport = try MCPHostHTTPTransport(port: 0)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+
+        let runTask = Task { try await host.run(transport: transport) }
+        defer {
+            runTask.cancel()
+            Task { await transport.shutdown() }
+        }
+
+        // Open two SSE channels and capture each one's session id.
+        let sseA = RawSocketClient(port: port)
+        try await sseA.connect()
+        try await sseA.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        let headerA = try await sseA.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        guard let sessionA = Self.sessionID(fromSSEHeader: headerA) else {
+            XCTFail("SSE channel A got no Mcp-Session-Id header: \(headerA)")
+            return
+        }
+
+        let sseB = RawSocketClient(port: port)
+        try await sseB.connect()
+        try await sseB.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        let headerB = try await sseB.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        guard let sessionB = Self.sessionID(fromSSEHeader: headerB) else {
+            XCTFail("SSE channel B got no Mcp-Session-Id header: \(headerB)")
+            return
+        }
+        XCTAssertNotEqual(sessionA, sessionB, "each SSE channel must get its own session id")
+
+        // Client A: initialize with id 101; Client B: initialize with id 202.
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 512 * 1024, maxJSONNestingDepth: 32)
+        try await postInitialize(id: 101, sessionID: sessionA, port: port, codec: codec)
+        try await postInitialize(id: 202, sessionID: sessionB, port: port, codec: codec)
+
+        // Each channel must receive exactly its own response.
+        let eventA = try await sseA.readUntilConsuming(substring: "\n\n", timeout: .seconds(5))
+        let idA = try Self.responseID(fromSSEEvent: eventA, codec: codec)
+        XCTAssertEqual(idA, .int(101), "channel A must receive the response to A's request")
+
+        let eventB = try await sseB.readUntilConsuming(substring: "\n\n", timeout: .seconds(5))
+        let idB = try Self.responseID(fromSSEEvent: eventB, codec: codec)
+        XCTAssertEqual(idB, .int(202), "channel B must receive the response to B's request")
+
+        // Neither channel may receive the other's response (the broadcast bug
+        // delivered both frames to both channels — a second event would be
+        // sitting in the buffer).
+        do {
+            let leaked = try await sseA.readUntilConsuming(substring: "\n\n", timeout: .milliseconds(500))
+            XCTFail("channel A received a second (leaked) SSE event: \(leaked)")
+        } catch {
+            // Timeout is the pass condition: no extra frame arrived on A.
+        }
+        do {
+            let leaked = try await sseB.readUntilConsuming(substring: "\n\n", timeout: .milliseconds(500))
+            XCTFail("channel B received a second (leaked) SSE event: \(leaked)")
+        } catch {
+            // Timeout is the pass condition: no extra frame arrived on B.
+        }
+
+        await sseA.close()
+        await sseB.close()
+    }
+
+    /// Two clients on separate channels both POST `id: 1` — the wire-id
+    /// collision virtually every JSON-RPC client produces (they all count
+    /// from 1) — with **guaranteed-overlapping** lifetimes: channel A's
+    /// `send_message` is held open by a token-emission gate on the mock
+    /// backend, so channel B's `tools/list` POST arrives (and registers its
+    /// route) while A's request is still in flight. Only then is the gate
+    /// released. Each channel must receive exactly its own method's response,
+    /// with its original wire id (1) restored — nothing cross-delivered,
+    /// nothing dropped. A route map keyed by the bare client wire id fails
+    /// this deterministically: B's registration overwrites A's entry while A
+    /// is gated, A's response is misrouted to B, and B's own response is
+    /// dropped as uncorrelatable.
+    func test_send_routesCollidingWireIDsToTheirOwnChannels() async throws {
+        let sessionID = UUID()
+        let session = ChatSession(id: sessionID, title: "Collision Session")
+        let gate = TokenEmissionGate()
+
+        let sessionStore = await InMemorySessionStore(sessions: [session])
+        let messageStore = await InMemoryMessageStore()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["gated reply"]
+        backend.tokenEmissionGate = gate
+        let host = await ManifoldMCPHost(
+            sessionStore: sessionStore,
+            messageStore: messageStore,
+            conversationRuntime: ConversationRuntime(
+                messageStore: messageStore,
+                sessionStore: sessionStore,
+                inferenceService: InferenceService(backend: backend)
+            )
+        )
+
+        let transport = try MCPHostHTTPTransport(port: 0)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+
+        let runTask = Task { try await host.run(transport: transport) }
+        defer {
+            runTask.cancel()
+            Task { await transport.shutdown() }
+        }
+
+        let sseA = RawSocketClient(port: port)
+        try await sseA.connect()
+        try await sseA.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        let headerA = try await sseA.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        guard let sessionA = Self.sessionID(fromSSEHeader: headerA) else {
+            XCTFail("SSE channel A got no Mcp-Session-Id header: \(headerA)")
+            return
+        }
+
+        let sseB = RawSocketClient(port: port)
+        try await sseB.connect()
+        try await sseB.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        let headerB = try await sseB.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        guard let sessionB = Self.sessionID(fromSSEHeader: headerB) else {
+            XCTFail("SSE channel B got no Mcp-Session-Id header: \(headerB)")
+            return
+        }
+
+        // A's send_message goes out first and blocks server-side on the token
+        // gate; B's tools/list (same wire id!) is posted while A is in flight.
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 512 * 1024, maxJSONNestingDepth: 32)
+        try await post(
+            .request(id: .int(1), method: "tools/call", params: .object([
+                "name": .string("send_message"),
+                "arguments": .object([
+                    "session_id": .string(sessionID.uuidString),
+                    "text": .string("hold this open"),
+                ]),
+            ])),
+            sessionID: sessionA, port: port, codec: codec
+        )
+        try await post(
+            .request(id: .int(1), method: "tools/list", params: nil),
+            sessionID: sessionB, port: port, codec: codec
+        )
+        // Both routes are registered; only now may A's generation complete.
+        await gate.advance()
+
+        // Channel A: exactly one response, id 1 restored, send_message-shaped.
+        let eventA = try await sseA.readUntilConsuming(substring: "\n\n", timeout: .seconds(5))
+        let (idA, resultA) = try Self.response(fromSSEEvent: eventA, codec: codec)
+        XCTAssertEqual(idA, .int(1), "channel A's original wire id must be restored")
+        guard case .object(let objA) = resultA, case .array(let contentA) = objA["content"],
+              case .object(let firstA) = contentA.first,
+              case .string(let textA) = firstA["text"] else {
+            XCTFail("channel A must receive its own send_message result; got: \(String(describing: resultA))")
+            return
+        }
+        XCTAssertEqual(textA, "gated reply", "channel A must receive its own tool response, not B's")
+
+        // Channel B: exactly one response, id 1 restored, tools/list-shaped.
+        let eventB = try await sseB.readUntilConsuming(substring: "\n\n", timeout: .seconds(5))
+        let (idB, resultB) = try Self.response(fromSSEEvent: eventB, codec: codec)
+        XCTAssertEqual(idB, .int(1), "channel B's original wire id must be restored")
+        guard case .object(let objB) = resultB, objB["tools"] != nil else {
+            XCTFail("channel B must receive its own tools/list result; got: \(String(describing: resultB))")
+            return
+        }
+
+        // No cross-delivery: neither channel may see a second frame.
+        do {
+            let leaked = try await sseA.readUntilConsuming(substring: "\n\n", timeout: .milliseconds(500))
+            XCTFail("channel A received a second (leaked) SSE event: \(leaked)")
+        } catch {
+            // Timeout is the pass condition.
+        }
+        do {
+            let leaked = try await sseB.readUntilConsuming(substring: "\n\n", timeout: .milliseconds(500))
+            XCTFail("channel B received a second (leaked) SSE event: \(leaked)")
+        } catch {
+            // Timeout is the pass condition.
+        }
+
+        await sseA.close()
+        await sseB.close()
+    }
+
+    // MARK: response spoofing — forged internal id with no session header
+
+    /// Attack shape from the verify pass: with a victim's request in flight,
+    /// an attacker opens a second SSE channel and POSTs a request whose
+    /// JSON-RPC id is a forged transport-internal id, deliberately omitting
+    /// `Mcp-Session-Id`. If that payload reached the host unrewritten, the
+    /// host would echo the attacker-chosen id and `send(_:)` would consume
+    /// the victim's pending route — delivering an attacker-induced result to
+    /// the victim as if it were their real response, and dropping the real
+    /// one. The transport must instead reject the unroutable id-bearing POST
+    /// with 400, leave the victim's route intact, and deliver the victim's
+    /// real response untouched.
+    func test_post_rejectsUnroutableIDBearingRequest_preservingVictimRoute() async throws {
+        let sessionID = UUID()
+        let session = ChatSession(id: sessionID, title: "Victim Session")
+        let gate = TokenEmissionGate()
+
+        let sessionStore = await InMemorySessionStore(sessions: [session])
+        let messageStore = await InMemoryMessageStore()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["victim reply"]
+        backend.tokenEmissionGate = gate
+        let host = await ManifoldMCPHost(
+            sessionStore: sessionStore,
+            messageStore: messageStore,
+            conversationRuntime: ConversationRuntime(
+                messageStore: messageStore,
+                sessionStore: sessionStore,
+                inferenceService: InferenceService(backend: backend)
+            )
+        )
+
+        let transport = try MCPHostHTTPTransport(port: 0)
+        try await transport.start()
+        guard let port = await transport.boundPort else {
+            XCTFail("transport did not bind a port")
+            return
+        }
+
+        let runTask = Task { try await host.run(transport: transport) }
+        defer {
+            runTask.cancel()
+            Task { await transport.shutdown() }
+        }
+
+        // Victim channel + in-flight (gated) request.
+        let victimSSE = RawSocketClient(port: port)
+        try await victimSSE.connect()
+        try await victimSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        let victimHeader = try await victimSSE.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        guard let victimSession = Self.sessionID(fromSSEHeader: victimHeader) else {
+            XCTFail("victim SSE channel got no Mcp-Session-Id header")
+            return
+        }
+
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 512 * 1024, maxJSONNestingDepth: 32)
+        try await post(
+            .request(id: .int(7), method: "tools/call", params: .object([
+                "name": .string("send_message"),
+                "arguments": .object([
+                    "session_id": .string(sessionID.uuidString),
+                    "text": .string("hold this open"),
+                ]),
+            ])),
+            sessionID: victimSession, port: port, codec: codec
+        )
+
+        // Attacker opens a second channel (so no single-channel inference is
+        // possible) and posts a forged internal-id request with NO session
+        // header.
+        let attackerSSE = RawSocketClient(port: port)
+        try await attackerSSE.connect()
+        try await attackerSSE.write(Data("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n".utf8))
+        _ = try await attackerSSE.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+
+        let forged = #"{"jsonrpc":"2.0","id":"mcphost-internal-1","method":"tools/list"}"#
+        let attackerPOST = RawSocketClient(port: port)
+        try await attackerPOST.connect()
+        var forgedBytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: \(forged.utf8.count)\r\n\r\n".utf8)
+        forgedBytes.append(Data(forged.utf8))
+        try await attackerPOST.write(forgedBytes)
+        let attackerResponse = try await attackerPOST.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        XCTAssertTrue(
+            attackerResponse.contains("400"),
+            "an id-bearing POST that resolves to no channel must be rejected with 400, not accepted; got: \(attackerResponse)"
+        )
+        await attackerPOST.close()
+
+        // Victim's route must be intact: release the gate and the victim's
+        // real response arrives on the victim's channel with their id.
+        await gate.advance()
+        let victimEvent = try await victimSSE.readUntilConsuming(substring: "\n\n", timeout: .seconds(5))
+        let (victimID, victimResult) = try Self.response(fromSSEEvent: victimEvent, codec: codec)
+        XCTAssertEqual(victimID, .int(7), "victim's original wire id must be restored")
+        guard case .object(let obj) = victimResult, case .array(let content) = obj["content"],
+              case .object(let first) = content.first,
+              case .string(let text) = first["text"] else {
+            XCTFail("victim must receive their own send_message result; got: \(String(describing: victimResult))")
+            return
+        }
+        XCTAssertEqual(text, "victim reply", "victim must receive their real response, not an attacker-induced one")
+
+        await victimSSE.close()
+        await attackerSSE.close()
+    }
+
+    private func postInitialize(id: Int, sessionID: String, port: UInt16, codec: MCPJSONRPCCodec) async throws {
+        try await post(
+            .request(id: .int(id), method: "initialize", params: .object(["protocolVersion": .string("2025-03-26")])),
+            sessionID: sessionID, port: port, codec: codec
+        )
+    }
+
+    private func post(_ message: MCPJSONRPCMessage, sessionID: String, port: UInt16, codec: MCPJSONRPCCodec) async throws {
+        let payload = try codec.encode(message)
+        let post = RawSocketClient(port: port)
+        try await post.connect()
+        var bytes = Data("POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nMcp-Session-Id: \(sessionID)\r\nContent-Length: \(payload.count)\r\n\r\n".utf8)
+        bytes.append(payload)
+        try await post.write(bytes)
+        let response = try await post.readUntilConsuming(substring: "\r\n\r\n", timeout: .seconds(3))
+        XCTAssertTrue(response.contains("202"), "POST should be accepted with 202; got: \(response)")
+        await post.close()
+    }
+
+    private static func response(fromSSEEvent event: String, codec: MCPJSONRPCCodec) throws -> (MCPRequestID?, JSONSchemaValue?) {
+        guard let dataLine = event.split(separator: "\n").first(where: { $0.hasPrefix("data:") }) else {
+            XCTFail("no data: line in SSE event: \(event)")
+            return (nil, nil)
+        }
+        let json = dataLine.dropFirst("data:".count).drop(while: { $0 == " " })
+        let decoded = try codec.decode(Data(String(json).utf8))
+        guard case .result(let id, let result) = decoded else {
+            XCTFail("expected a result frame, got \(decoded)")
+            return (nil, nil)
+        }
+        return (id, result)
+    }
+
+    private static func sessionID(fromSSEHeader header: String) -> String? {
+        for line in header.components(separatedBy: "\r\n") {
+            let lower = line.lowercased()
+            if lower.hasPrefix("mcp-session-id:") {
+                return line.dropFirst("mcp-session-id:".count).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
+
+    private static func responseID(fromSSEEvent event: String, codec: MCPJSONRPCCodec) throws -> MCPRequestID? {
+        guard let dataLine = event.split(separator: "\n").first(where: { $0.hasPrefix("data:") }) else {
+            XCTFail("no data: line in SSE event: \(event)")
+            return nil
+        }
+        let json = dataLine.dropFirst("data:".count).drop(while: { $0 == " " })
+        let decoded = try codec.decode(Data(String(json).utf8))
+        guard case .result(let id, _) = decoded else {
+            XCTFail("expected a result frame, got \(decoded)")
+            return nil
+        }
+        return id
+    }
+
     // MARK: unsupported method
 
     func test_unsupportedHTTPMethod_returns405() async throws {

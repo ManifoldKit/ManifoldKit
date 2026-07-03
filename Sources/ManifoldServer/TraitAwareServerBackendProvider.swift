@@ -51,7 +51,7 @@ internal struct ServerBackendSelection: Equatable, Sendable {
                 throw ServerError.invalidConfiguration("--ollama-base-url must be a valid URL.")
             }
         case .cloud:
-            throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use mlx, llama, foundation, or ollama.")
+            throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use --backend foundation or --backend ollama (the only two selections that currently load a backend in this build).")
         }
     }
 
@@ -144,7 +144,7 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
         case .ollama:
             backend = try await loadOllamaBackend(modelOverride: request.model)
         case .cloud:
-            throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; configure a local or self-hosted backend instead.")
+            throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use --backend foundation or --backend ollama (the only two selections that currently load a backend in this build).")
         }
         cachedBackend = backend
         loadedModelID = modelID(for: request)
@@ -209,6 +209,26 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
         backend.configure(baseURL: baseURL, modelName: modelName)
         try await backend.loadModel(from: baseURL, plan: .cloud(requestedContextSize: 8192))
         return backend
+    }
+
+    /// No `--backend` selection currently vends an `EmbeddingBackend`.
+    ///
+    /// `ManifoldOllama` has no production `EmbeddingBackend` conformance —
+    /// the only implementation that talks to Ollama's `/api/embed` is
+    /// `ManifoldTestSupport.OllamaEmbeddingBackend`, which is explicitly
+    /// documented as demo/test-only (it lives outside any shipped backend
+    /// family on purpose). `mlx`/`llama` don't load at all in this build
+    /// (moved to the companion packages, #1749); `foundation`/`cloud` have
+    /// no embedding surface either. Returning `nil` here (the
+    /// `ServerBackendProvider` default) makes `POST /v1/embeddings` fail
+    /// honestly via `ServerError.backendUnavailable` rather than silently
+    /// pretending to serve an unsupported request.
+    ///
+    /// A host app that needs `/v1/embeddings` to actually work should supply
+    /// its own `ServerBackendProvider` overriding this method — e.g. with the
+    /// manifold-llama companion package's `LlamaEmbeddingBackend`.
+    internal func embeddingBackend(for request: ServerBackendRequest) async -> (any EmbeddingBackend)? {
+        nil
     }
 }
 

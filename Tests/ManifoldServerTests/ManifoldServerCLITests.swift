@@ -118,7 +118,7 @@ final class TraitAwareServerBackendProviderTests: XCTestCase {
             _ = try await provider.backend(for: ServerBackendRequest())
             XCTFail("Expected cloud backend to be deferred for v1")
         } catch {
-            XCTAssertEqual(error as? ServerError, .notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use mlx, llama, foundation, or ollama."))
+            XCTAssertEqual(error as? ServerError, .notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use --backend foundation or --backend ollama (the only two selections that currently load a backend in this build)."))
         }
     }
 

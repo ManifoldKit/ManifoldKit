@@ -595,8 +595,39 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
             maxOutputTokens: request.maxCompletionTokens ?? request.maxTokens,
             tools: tools,
             toolChoice: toolChoice,
-            jsonMode: request.responseFormat?.type == .jsonObject || request.responseFormat?.type == .jsonSchema
+            jsonMode: request.responseFormat?.type == .jsonObject || request.responseFormat?.type == .jsonSchema,
+            structuredOutput: try structuredOutputStrategy(for: request.responseFormat)
         )
+    }
+
+    /// Converts an OpenAI-shaped `response_format.json_schema.schema` into the
+    /// `StructuredOutputStrategy` the generation engine actually consults.
+    ///
+    /// `ServerApp.validateRequestCapabilities` already requires
+    /// `capabilities.supportsStructuredOutput` for `response_format.type ==
+    /// .jsonSchema`, implying the schema will constrain generation. Without
+    /// staging it here, `GenerationQueue.respond` (which reads
+    /// `GenerationConfig.structuredOutput` to pick GBNF / native-JSON-schema /
+    /// prompt-fallback per backend capability) never sees the schema and the
+    /// request is generated unconstrained.
+    private func structuredOutputStrategy(
+        for responseFormat: ChatCompletionResponseFormat?
+    ) throws -> StructuredOutputStrategy? {
+        guard responseFormat?.type == .jsonSchema, let schema = responseFormat?.jsonSchema?.schema else {
+            return nil
+        }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(schema)
+            return .jsonSchema(String(decoding: data, as: UTF8.self))
+        } catch {
+            throw ServerError.invalidRequest(
+                message: "response_format.json_schema.schema could not be encoded: \(error.localizedDescription)",
+                param: "response_format",
+                code: "invalid_json_schema"
+            )
+        }
     }
 
     internal func response(
