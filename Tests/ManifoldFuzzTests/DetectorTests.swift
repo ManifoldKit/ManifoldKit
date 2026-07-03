@@ -334,6 +334,69 @@ final class DetectorTests: XCTestCase {
         )
     }
 
+    // MARK: - TemplateTokenLeakDetector — zero-width obfuscation echo guard
+
+    // `UnicodeInjectMutator` (`template-token-injection` scenario family)
+    // splices invisible/format characters (RTL override, ZWJ, BOM, …) into
+    // the user prompt as tokenizer-edge probes. Some backends echo the
+    // prompt back with those characters silently normalized away, which used
+    // to desync the echo-guard's plain `contains` check: the input side still
+    // carried the obfuscation, the output side didn't, so the two strings
+    // never compared equal and a genuinely-echoed token fired a false
+    // "spontaneous leak" finding.
+
+    func test_templateTokenLeak_zeroWidthObfuscatedEcho_suppressesFinding() {
+        // Input carries a ZWJ (U+200D) spliced into the middle of the
+        // template token; the model's echo de-obfuscates it (as many
+        // tokenizers/normalizers do) and reproduces the clean token. This is
+        // still an echo of user-supplied content, not a spontaneous leak.
+        let obfuscatedToken = "<|im\u{200D}_start|>"
+        let r = makeRecord(
+            raw: "The capital is <|im_start|>Paris.",
+            userPrompt: "What is \(obfuscatedToken) the capital of France?"
+        )
+        let findings = TemplateTokenLeakDetector().inspect(r)
+        XCTAssertFalse(
+            findings.contains { $0.subCheck == "template-fragment" },
+            "A zero-width-obfuscated echoed token must not be flagged as a spontaneous leak"
+        )
+    }
+
+    func test_templateTokenLeak_zeroWidthSpaceAndNonJoinerObfuscatedEcho_suppressesFinding() {
+        // Same shape using the two common zero-width characters (ZWSP,
+        // ZWNJ) that aren't in UnicodeInjectMutator's own payload set but
+        // are equally capable of surviving in one side of the comparison
+        // and not the other.
+        let obfuscatedToken = "<|end\u{200B}_of\u{200C}_turn>"
+        let r = makeRecord(
+            raw: "The answer is forty-two.<|end_of_turn>",
+            userPrompt: "Explain the \(obfuscatedToken) delimiter"
+        )
+        let findings = TemplateTokenLeakDetector().inspect(r)
+        XCTAssertFalse(
+            findings.contains { $0.subCheck == "template-fragment" },
+            "ZWSP/ZWNJ-obfuscated echoed tokens must not be flagged as a spontaneous leak"
+        )
+    }
+
+    // Sabotage/counter-test: a fragment obfuscated in the OUTPUT that never
+    // appeared anywhere in the input at all (obfuscated or not) is a genuine
+    // spontaneous leak and must still fire — the normalization must not
+    // blanket-suppress the detector.
+    func test_templateTokenLeak_zeroWidthObfuscatedSpontaneousLeak_stillFires() {
+        let obfuscatedLeak = "<|im\u{200D}_start|>"
+        let r = makeRecord(
+            raw: "The capital is \(obfuscatedLeak) Paris.",
+            userPrompt: "What is the capital of France?"
+        )
+        let findings = TemplateTokenLeakDetector().inspect(r)
+        XCTAssertTrue(
+            findings.contains { $0.subCheck == "template-fragment" && $0.trigger == "<|im_start|>" },
+            "A spontaneous leak must still fire even when normalization strips " +
+            "invisible characters from the raw output — got: \(findings)"
+        )
+    }
+
     // MARK: - ThinkingClassificationDetector — stopReason gating
 
     // MARK: - MemoryGrowthDetector — growth-budget branch
