@@ -167,7 +167,12 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    - **MINOR bump:** each companion's `core-bump` workflow (triggered by the
      `repository_dispatch`) auto-merges its core-pin PR. Then rewrite + merge
      each companion's own release PR — **llama and mlx have release-please**, so
-     they get a tagged release the same way core does. **manifold-eval has no
+     they get a tagged release the same way core does. To rewrite a companion
+     release PR's notes without hand-authoring, run
+     `scripts/companion-release-notes.sh <companion-release-worktree> <mk-version>`
+     (inserts a `### Highlights` "Tracks ManifoldKit X.Y" block and preserves any
+     extra bullets), then amend + force-push the release branch (CHANGELOG.md only,
+     never the PR body). **manifold-eval has no
      release-please and needs no tagged release** (it only re-resolves its
      exact core pin). Companion repos do **not** have a merge queue, so a
      direct `gh api -X PUT .../merge -f merge_method=squash` (or
