@@ -1,4 +1,5 @@
 import XCTest
+import ManifoldInference
 @testable import ManifoldTools
 
 /// Verifies ``ConformanceScorer`` emits the normalized ``ConformanceRecord``
@@ -126,13 +127,14 @@ final class ConformanceRecordEmitTests: XCTestCase {
     }
 
     /// 2026-07 inert-code audit, finding #24: an `error` event whose message
-    /// carries `PromptRenderer`'s literal failure prefix must route to
-    /// `.renderFail` — the only distinguishable "no usable prompt" signal
-    /// available today — not the generic `.loadFail` bucket.
+    /// carries `InferenceError.promptRenderFailurePrefix` (the shared constant
+    /// `PromptRenderer` throws with) must route to `.renderFail` — the only
+    /// distinguishable "no usable prompt" signal available today — not the
+    /// generic `.loadFail` bucket.
     func testPromptRendererErrorEventIsRenderFail() throws {
         let jsonl = """
         {"kind":"prompt","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","user":"x","requiredTools":["list_dir"]}
-        {"kind":"error","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","message":"PromptRenderer: the model's embedded chat template could not be rendered and tools were requested"}
+        {"kind":"error","scenario":"04-list","backend":"ollama","model":"ghost","quant":"server","message":"\(InferenceError.promptRenderFailurePrefix) the model's embedded chat template could not be rendered and tools were requested"}
         """
         let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "04-list")
 

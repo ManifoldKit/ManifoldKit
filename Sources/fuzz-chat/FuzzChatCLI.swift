@@ -266,6 +266,8 @@ struct FuzzChatCLI {
             )
         case .mlx:
             fail("The MLX fuzz factory moved to the manifold-mlx companion package (v0.48, #1749). Run the fuzzer from that repo, or use --backend ollama|openai|foundation|mock|chaos here.")
+        case .all:
+            fail("--backend all is not implemented; run one backend per campaign (ollama|openai|foundation|mock|chaos).")
         }
 
         // Shrink mode: greedy-delta-debug the recorded trigger down to a
@@ -691,6 +693,9 @@ struct FuzzChatCLI {
             "                      idle-timeout[:afterTokens:silenceMs] |",
             "                      malformed-tool-call[:tokensBefore] |",
             "                      parallel-tool-calls[:count]",
+            "                      Params are positional integers; leave a segment empty",
+            "                      to keep its default (burst-then-stall::5000 = default",
+            "                      burstSize, 5000 ms stall).",
             "                      Only applies to --backend chaos.",
             "  --detector ids      comma-separated detector ids to run",
             "  --single            shorthand for --iterations 1",

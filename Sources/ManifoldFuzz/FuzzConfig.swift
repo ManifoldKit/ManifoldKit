@@ -5,6 +5,12 @@ public enum BackendChoice: String, Sendable, CaseIterable {
     case llama
     case foundation
     case mlx
+    /// Not implemented: `fuzz-chat` fails fast with an actionable message when
+    /// this is selected — run one backend per campaign instead. Kept on the
+    /// public enum because removing a case is a source-breaking change for
+    /// `ManifoldFuzz` library consumers; its removal is batched with the next
+    /// breaking-change release (2026-07 inert-code audit, finding #43).
+    case all
     /// OpenAI-Chat-Completions-compatible cloud endpoint (OpenRouter, OpenAI,
     /// Together, …) driven via `OpenAIBackend`.
     case openai

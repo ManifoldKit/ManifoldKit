@@ -230,7 +230,18 @@ public final class ScenarioRunner {
         // releases"), so this remains a no-op there; it takes effect the day
         // this harness drives a backend that does honor it (e.g. OpenAI-
         // compatible via `--backend openai-compat`).
-        config.seed = scenario.backend.seed.flatMap { UInt64(exactly: $0) }
+        if let rawSeed = scenario.backend.seed {
+            if let seed = UInt64(exactly: rawSeed) {
+                config.seed = seed
+            } else {
+                // A negative seed can't be represented as the UInt64 the
+                // contract carries — dropping it silently would fake
+                // reproducibility, so say it out loud.
+                Log.inference.warning(
+                    "ScenarioRunner: scenario '\(scenario.id, privacy: .public)' declares seed \(rawSeed, privacy: .public), which is not representable as UInt64; dropping it — this run is UNSEEDED."
+                )
+            }
+        }
         return config
     }
 }

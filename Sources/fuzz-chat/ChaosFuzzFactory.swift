@@ -27,11 +27,24 @@ public struct ChaosFuzzFactory: FuzzBackendFactory {
     /// ``ManifoldTestSupport/ChaosBackend/FailureMode``. Every mode is
     /// reachable from the CLI; modes with more than one or two parameters take
     /// fixed, documented defaults for the remainder to keep the flag syntax
-    /// small. Returns `nil` on an unrecognised name or a malformed numeric
-    /// parameter; the caller is expected to `fail()` with ``usage``.
+    /// small.
+    ///
+    /// Grammar: colon-separated positional integer parameters after the mode
+    /// name. An **empty** segment keeps that position's default — so
+    /// `burst-then-stall::5000` means "default burstSize, 5000 ms stall"
+    /// (splitting must NOT omit empty subsequences, or the 5000 would silently
+    /// shift into the burstSize slot). Returns `nil` on an unrecognised name
+    /// or a malformed numeric parameter; the caller is expected to `fail()`
+    /// with ``usage``.
     public static func parseMode(_ spec: String) -> ChaosBackend.FailureMode? {
-        let parts = spec.split(separator: ":").map(String.init)
-        func int(_ i: Int, default def: Int) -> Int? { parts.count > i ? Int(parts[i]) : def }
+        let parts = spec.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        // Positional parameter accessor: absent or empty segment → the mode's
+        // documented default; a non-empty segment must parse as Int or the
+        // whole spec is rejected (nil).
+        func int(_ i: Int, default def: Int) -> Int? {
+            guard parts.count > i, !parts[i].isEmpty else { return def }
+            return Int(parts[i])
+        }
         switch parts.first {
         case "none": return .none
         case "drop-mid-stream":
@@ -69,6 +82,9 @@ public struct ChaosFuzzFactory: FuzzBackendFactory {
                               idle-timeout[:afterTokens:silenceMs] |
                               malformed-tool-call[:tokensBefore] |
                               parallel-tool-calls[:count]
+                              Params are positional integers; leave a segment
+                              empty to keep its default (burst-then-stall::5000
+                              = default burstSize, 5000 ms stall).
                               Only applies to --backend chaos.
         """
 

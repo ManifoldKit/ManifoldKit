@@ -1,5 +1,17 @@
 import Foundation
 
+public extension InferenceError {
+    /// Canonical prefix on the `inferenceFailure` message ``PromptRenderer``
+    /// throws when prompt rendering cannot produce a usable prompt (embedded
+    /// template unrenderable + tools requested + enum fallback can't carry
+    /// them). Downstream tooling keys "render failure" classification off this
+    /// literal — `ManifoldTools`' `ConformanceScorer` maps matching error
+    /// events to `CellStatus.renderFail`. Reference this constant on both
+    /// sides (thrower and matcher) so a wording change is a single edit point;
+    /// mirrors the `ContextExhaustionSilentDetector.errorNeedle` pattern.
+    static let promptRenderFailurePrefix = "PromptRenderer:"
+}
+
 /// Single decision point for "how do we wrap chat messages into a prompt string
 /// for a prompt-template backend?"
 ///
@@ -193,7 +205,7 @@ struct PromptRenderer {
             // loses the actual reason (e.g. the alternation constraint text).
             let reason = renderError.map { " (underlying template error: \(String(describing: $0)))" } ?? ""
             throw InferenceError.inferenceFailure(
-                "PromptRenderer: the model's embedded chat template could not be "
+                "\(InferenceError.promptRenderFailurePrefix) the model's embedded chat template could not be "
                     + "rendered\(reason), and the \(String(describing: template)) text-only "
                     + "fallback cannot carry the \(tools.count) requested tool "
                     + "definition(s). Refusing to send a tool-less prompt that would "
