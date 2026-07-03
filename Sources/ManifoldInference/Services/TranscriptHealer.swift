@@ -5,11 +5,13 @@ import Foundation
 ///
 /// Cloud APIs (OpenAI, Anthropic, Ollama) reject a follow-up turn whose
 /// history contains an unanswered ``ToolCall`` with `"missing tool_result for
-/// tool_use id …"`. Orphans appear when a process is killed mid-tool — the
-/// model emitted a tool call, the registry started executing, but the host
-/// terminated before the result was persisted. On the next session reload the
-/// transcript still references the call, the next user turn is sent to the
-/// API, and the request bounces.
+/// tool_use id …"`. Orphans appear whenever a turn ends between the call and
+/// its result being persisted — the process was killed mid-tool, or the user
+/// cancelled the turn after the model emitted the call but before the
+/// executor's result landed (cancellation persists the assistant's tool-call
+/// parts as a normal, non-crash outcome). Either way the transcript still
+/// references the call, the next turn is sent to the API, and the request
+/// bounces.
 ///
 /// Re-dispatching the original tool is unsafe: tools have side effects (file
 /// writes, HTTP POSTs, payments) and the previous attempt may have already

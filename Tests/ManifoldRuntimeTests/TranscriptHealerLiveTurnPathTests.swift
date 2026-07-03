@@ -12,7 +12,9 @@ import ManifoldTestSupport
 ///
 /// Reproduces the #629 shape: a session whose history ends with an assistant
 /// `tool_use` that never received a matching `tool_result` (the process was
-/// killed mid-tool). Drives a real turn through `ConversationRuntime` with an
+/// killed — or the turn cancelled — mid-tool; cancellation persists the
+/// orphan call as a normal non-crash outcome). Drives a real turn through
+/// `ConversationRuntime` with an
 /// in-memory `MessageStore` (never a mock persistence layer — CLAUDE.md) and
 /// `MockInferenceBackend`, then asserts the structured history the backend
 /// actually received contains a synthesised terminal `ToolResult` for the
@@ -146,5 +148,98 @@ final class TranscriptHealerLiveTurnPathTests: XCTestCase {
             }),
             "Healing must not mutate persistence — only the prompt-visible history sent to the backend"
         )
+    }
+
+    // MARK: - Pre-turn compression path (review round 1)
+
+    /// Captures the history `TurnCompressionCoordinator` hands to the
+    /// pre-turn policy — whose `generate` closure drives a real backend call —
+    /// so the test can prove that generation-bound fetch was healed too.
+    actor CapturingPreTurnPolicy: PreTurnCompressionPolicy {
+        private var receivedHistory: [ChatMessage]?
+
+        func snapshotReceivedHistory() -> [ChatMessage]? {
+            receivedHistory
+        }
+
+        nonisolated func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool {
+            true
+        }
+
+        func compressBeforeTurn(
+            history: [ChatMessage],
+            sessionID: UUID,
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            receivedHistory = history
+            return history
+        }
+    }
+
+    func test_preTurnCompression_receivesHealedHistory() async throws {
+        let store = InMemoryMessageStore()
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["ok"]
+        mock.isModelLoaded = true
+
+        let sessionID = UUID()
+        let orphanCallID = "orphan-compress-\(UUID().uuidString)"
+        let orphanCall = ToolCall(
+            id: orphanCallID,
+            toolName: "search",
+            arguments: "{\"q\":\"tides\"}"
+        )
+        try await store.insertMessage(ChatMessage(
+            role: .user,
+            content: "Check the tides",
+            timestamp: Date(),
+            sessionID: sessionID
+        ))
+        try await store.insertMessage(ChatMessage(
+            role: .assistant,
+            contentParts: [.toolCall(orphanCall)],
+            timestamp: Date().addingTimeInterval(1),
+            sessionID: sessionID
+        ))
+
+        let policy = CapturingPreTurnPolicy()
+        let inference = InferenceService(backend: mock, name: "Mock")
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            pipeline: nil,
+            generationHooks: [],
+            compressionPolicy: nil,
+            preTurnCompressionPolicy: policy
+        )
+
+        let maybeHandle = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Any update?", attachments: []),
+            config: TurnConfig()
+        ))
+        let handle = try XCTUnwrap(maybeHandle)
+        let outcome = try await withTimeout { await handle.outcome }
+        XCTAssertNil(outcome.error)
+
+        let capturedHistory = await policy.snapshotReceivedHistory()
+        let received = try XCTUnwrap(capturedHistory)
+        let assistantMessage = received.first { message in
+            message.contentParts.contains { part in
+                if case .toolCall(let call) = part { return call.id == orphanCallID }
+                return false
+            }
+        }
+        XCTAssertNotNil(assistantMessage)
+        let synthesised: ToolResult? = assistantMessage?.contentParts.compactMap {
+            if case .toolResult(let result) = $0, result.callId == orphanCallID { return result }
+            return nil
+        }.first
+        XCTAssertNotNil(
+            synthesised,
+            "Pre-turn compression's generation-bound history must arrive healed — " +
+            "the policy's generate closure sends it to a real backend (#629)."
+        )
+        XCTAssertEqual(synthesised?.errorKind, .cancelled)
     }
 }

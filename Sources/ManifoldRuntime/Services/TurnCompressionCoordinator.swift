@@ -69,7 +69,10 @@ struct TurnCompressionCoordinator: Sendable {
         guard let preTurnPolicy else { return }
         let existingHistory: [ChatMessage]
         do {
-            existingHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            // Generation-bound fetch: the policy's summarisation `generate`
+            // closure sends this history to a real backend, so orphan tool
+            // calls must be healed first (#629). See HealedHistoryFetch.swift.
+            existingHistory = try await persistence.fetchHealedMessages(sessionID: sessionID)
         } catch {
             throw ConversationError.persistence(error)
         }
@@ -140,7 +143,10 @@ struct TurnCompressionCoordinator: Sendable {
 
         let history: [ChatMessage]
         do {
-            history = try await persistence.fetchMessages(sessionID: sessionID)
+            // Generation-bound fetch: the policy's summarisation `generate`
+            // closure sends this history to a real backend, so orphan tool
+            // calls must be healed first (#629). See HealedHistoryFetch.swift.
+            history = try await persistence.fetchHealedMessages(sessionID: sessionID)
         } catch {
             Log.inference.warning("CompressionPolicy: fetchMessages failed, skipping compression: \(error.localizedDescription, privacy: .public)")
             return
