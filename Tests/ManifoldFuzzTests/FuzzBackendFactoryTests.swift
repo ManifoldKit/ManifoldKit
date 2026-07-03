@@ -33,7 +33,6 @@ final class FuzzBackendFactoryTests: XCTestCase {
             modelHint: nil,
             detectorFilter: nil,
             outputDir: outputDir,
-            calibrate: false,
             quiet: true
         )
     }

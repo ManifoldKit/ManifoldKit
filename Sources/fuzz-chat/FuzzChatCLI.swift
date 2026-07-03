@@ -309,7 +309,6 @@ struct FuzzChatCLI {
             modelHint: modelHint,
             detectorFilter: detectorFilter,
             outputDir: outputDir,
-            calibrate: false,
             quiet: quiet,
             sessionScripts: sessionScripts,
             corpusSubset: corpusSubset,
