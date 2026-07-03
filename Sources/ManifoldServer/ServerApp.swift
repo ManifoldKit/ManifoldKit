@@ -3,8 +3,27 @@ import ManifoldInference
 import Foundation
 import Hummingbird
 import HTTPTypes
+import os
 
 // MARK: - Custom request context with configurable body-size limit
+
+/// Publishes the currently-running ``ServerApp``'s configured
+/// `maxServerRequestBodyBytes` to per-request context creation.
+///
+/// Hummingbird constructs a `RequestContext` per request via
+/// `Self.init(source:)` — a static requirement with no access to the
+/// `ServerApp` instance that built the router. `ServerApp.makeApplication()`
+/// publishes its instance's `configuration.maxServerRequestBodyBytes` here
+/// before constructing the router, so the limit actually enforced matches
+/// the `ServerConfiguration` passed to that instance rather than always
+/// falling back to the process-global `ManifoldConfiguration.shared` default.
+/// `OSAllocatedUnfairLock` makes the box `Sendable`; the box is seeded from
+/// `ManifoldConfiguration.shared` so a `ManifoldServerRequestContext` created
+/// before any `ServerApp.makeApplication()` call (e.g. in an isolated unit
+/// test) still gets a sane default.
+private let maxUploadSizeBox = OSAllocatedUnfairLock<Int>(
+    initialState: ManifoldConfiguration.shared.maxServerRequestBodyBytes
+)
 
 /// A Hummingbird `RequestContext` that enforces the server's configured
 /// maximum upload size. Hummingbird rejects bodies larger than
@@ -15,10 +34,7 @@ internal struct ManifoldServerRequestContext: RequestContext {
 
     internal init(source: Source) {
         self.coreContext = .init(source: source)
-        // Read the limit once per request from the global configuration. This
-        // avoids threading the value through every handler while still letting
-        // host apps reconfigure it before the first request arrives.
-        self.maxUploadSize = ManifoldConfiguration.shared.maxServerRequestBodyBytes
+        self.maxUploadSize = maxUploadSizeBox.withLock { $0 }
     }
 }
 
@@ -65,6 +81,11 @@ internal struct ServerApp: Sendable {
     internal func health() -> ServerHealth { ServerHealth() }
 
     internal func makeApplication() -> some ApplicationProtocol {
+        // Publish this instance's configured body-size limit before the
+        // router (and therefore per-request `ManifoldServerRequestContext`
+        // creation) is built — see `maxUploadSizeBox`'s doc comment.
+        maxUploadSizeBox.withLock { $0 = configuration.maxServerRequestBodyBytes }
+
         let router = Router(context: ManifoldServerRequestContext.self)
         router.add(middleware: corsMiddleware())
 

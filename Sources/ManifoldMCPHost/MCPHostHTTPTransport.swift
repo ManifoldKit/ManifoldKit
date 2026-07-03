@@ -1,6 +1,7 @@
 #if os(macOS) && !targetEnvironment(macCatalyst)
 import Foundation
 import ManifoldInference
+import ManifoldMCP
 import Network
 import os
 
@@ -14,11 +15,15 @@ import os
 /// the other half:
 ///
 /// - A client **GET** with `Accept: text/event-stream` opens a long-lived SSE
-///   response channel. Server-originated JSON-RPC responses are written to it
-///   as `data:`-framed Server-Sent Events.
-/// - A client **POST** carries a JSON-RPC request body. The body is decoded by
-///   ``ManifoldMCPHost`` exactly as it would be over stdio; the matching
-///   response is delivered over the open SSE channel.
+///   response channel. The response carries an `Mcp-Session-Id` header
+///   identifying that channel. Server-originated JSON-RPC responses are
+///   written to it as `data:`-framed Server-Sent Events.
+/// - A client **POST** carries a JSON-RPC request body, optionally with an
+///   `Mcp-Session-Id` header naming the channel that should receive the
+///   response (required when more than one channel is open; with a single
+///   open channel it's inferred). The body is decoded by ``ManifoldMCPHost``
+///   exactly as it would be over stdio; the matching response is routed back
+///   to that specific SSE channel — never broadcast to other clients.
 ///
 /// Instantiate, `start()`, then hand to ``ManifoldMCPHost/run(transport:)``:
 ///
@@ -50,10 +55,18 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
 
     private var listener: NWListener?
-    /// Open SSE response channels keyed by a per-connection id. A server
-    /// response is fanned out to every open channel; a streamable-HTTP client
-    /// keeps exactly one open, so in practice this is single-entry.
-    private var sseChannels: [ObjectIdentifier: NWConnection] = [:]
+    /// Open SSE response channels keyed by a server-assigned session id
+    /// (returned to the client as the `Mcp-Session-Id` response header when
+    /// the channel is opened). A streamable-HTTP client typically keeps
+    /// exactly one channel open, but the map supports multiple concurrent
+    /// clients on the same transport instance.
+    private var sseChannels: [UUID: NWConnection] = [:]
+    /// Maps an in-flight JSON-RPC request id to the SSE channel that should
+    /// receive its response, so `send(_:)` can route a response to the
+    /// originating client instead of broadcasting it to every open channel
+    /// (a cross-client data leak when more than one channel is open).
+    /// Populated in `handlePOST`, consumed (and removed) in `send(_:)`.
+    private var pendingRequestChannels: [MCPRequestID: UUID] = [:]
     private var didStart = false
 
     // MARK: Init
@@ -150,6 +163,7 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             connection.cancel()
         }
         sseChannels.removeAll()
+        pendingRequestChannels.removeAll()
         listener?.cancel()
         listener = nil
         continuation.finish()
@@ -157,8 +171,18 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
 
     // MARK: MCPHostTransport.send
 
-    /// Writes a JSON-RPC response payload to every open SSE channel as a
-    /// `data:`-framed Server-Sent Event.
+    /// Writes a JSON-RPC response payload to the SSE channel that originated
+    /// the matching request, as a `data:`-framed Server-Sent Event.
+    ///
+    /// Routing is by JSON-RPC request id, correlated against the mapping
+    /// `handlePOST` recorded when the request arrived (see
+    /// `pendingRequestChannels`). This prevents a response meant for one
+    /// client from being broadcast to every open channel when more than one
+    /// client is connected. If the response cannot be correlated to a
+    /// specific channel (id missing/unparseable, e.g. a malformed payload)
+    /// it still broadcasts when exactly one channel is open — the common
+    /// single-client case this transport was written for — and is otherwise
+    /// dropped (logged) rather than risk leaking it to the wrong client.
     ///
     /// Actor isolation serialises concurrent sends so writes to a channel never
     /// interleave across concurrent MCP responses.
@@ -169,15 +193,33 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             Log.inference.debug("MCPHostHTTPTransport: dropping response — no open SSE channel")
             return
         }
+
         let frame = Self.sseFrame(payload)
-        for (id, connection) in sseChannels {
-            connection.send(content: frame, completion: .contentProcessed { [weak self] error in
-                if let error {
-                    Task { await self?.removeChannel(id) }
-                    Log.inference.debug("MCPHostHTTPTransport: SSE write failed: \(error.localizedDescription, privacy: .public)")
-                }
-            })
+
+        if let requestID = Self.peekRequestID(in: payload),
+           let sessionID = pendingRequestChannels.removeValue(forKey: requestID),
+           let connection = sseChannels[sessionID] {
+            write(frame, to: connection, sessionID: sessionID)
+            return
         }
+
+        if sseChannels.count == 1, let (sessionID, connection) = sseChannels.first {
+            write(frame, to: connection, sessionID: sessionID)
+            return
+        }
+
+        Log.inference.warning(
+            "MCPHostHTTPTransport: dropping response — could not correlate it to a single SSE channel while \(self.sseChannels.count) are open"
+        )
+    }
+
+    private func write(_ frame: Data, to connection: NWConnection, sessionID: UUID) {
+        connection.send(content: frame, completion: .contentProcessed { [weak self] error in
+            if let error {
+                Task { await self?.removeChannel(sessionID) }
+                Log.inference.debug("MCPHostHTTPTransport: SSE write failed: \(error.localizedDescription, privacy: .public)")
+            }
+        })
     }
 
     // MARK: Connection handling
@@ -259,21 +301,22 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
     }
 
     private func openSSEChannel(on connection: NWConnection) {
+        let sessionID = UUID()
         let header = "HTTP/1.1 200 OK\r\n"
             + "Content-Type: text/event-stream\r\n"
             + "Cache-Control: no-cache\r\n"
             + "Connection: keep-alive\r\n"
             + "Access-Control-Allow-Origin: *\r\n"
+            + "Mcp-Session-Id: \(sessionID.uuidString)\r\n"
             + "\r\n"
         connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in })
-        let id = ObjectIdentifier(connection)
-        sseChannels[id] = connection
+        sseChannels[sessionID] = connection
 
         // Drop the channel when the peer closes.
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .cancelled, .failed:
-                Task { await self?.removeChannel(id) }
+                Task { await self?.removeChannel(sessionID) }
             default:
                 break
             }
@@ -289,8 +332,24 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
             respondAndClose(connection, status: "413 Payload Too Large", body: "request too large")
             return
         }
+
+        // Correlate this request to the SSE channel that should receive its
+        // response (see `pendingRequestChannels`). A client that already
+        // knows its session id (from a prior SSE channel's `Mcp-Session-Id`
+        // response header) sends it back on `Mcp-Session-Id`; otherwise, when
+        // exactly one SSE channel is open, that's the only sane target (the
+        // common single-client case). With zero or multiple channels open and
+        // no session header, there is nothing safe to guess — the response
+        // will simply be dropped (logged) rather than broadcast to every
+        // client, which is the leak this routing exists to close.
+        let sessionID = resolveSessionID(for: request)
+        if let sessionID, let requestID = Self.peekRequestID(in: body) {
+            pendingRequestChannels[requestID] = sessionID
+        }
+
         // Hand the JSON-RPC payload to the host's run loop. The matching
-        // response is written back over the open SSE channel by `send(_:)`.
+        // response is written back over the correlated SSE channel by
+        // `send(_:)`.
         continuation.yield(body)
 
         // Per the streamable-HTTP spec a POST may be answered with 202 Accepted
@@ -298,10 +357,28 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
         respondAndClose(connection, status: "202 Accepted", body: "")
     }
 
-    private func removeChannel(_ id: ObjectIdentifier) {
+    /// Resolves which open SSE channel a POST request's response should be
+    /// routed to, per the precedence described in `handlePOST`.
+    private func resolveSessionID(for request: HTTPRequest) -> UUID? {
+        if let header = request.headers["mcp-session-id"],
+           let headerID = UUID(uuidString: header),
+           sseChannels[headerID] != nil {
+            return headerID
+        }
+        if sseChannels.count == 1 {
+            return sseChannels.keys.first
+        }
+        return nil
+    }
+
+    private func removeChannel(_ id: UUID) {
         if let connection = sseChannels.removeValue(forKey: id) {
             connection.cancel()
         }
+        // Any requests still awaiting a response on this now-closed channel
+        // can never be delivered — drop them rather than leak them to a
+        // different channel that later becomes the sole survivor.
+        pendingRequestChannels = pendingRequestChannels.filter { $0.value != id }
     }
 
     // MARK: HTTP helpers
@@ -321,6 +398,26 @@ public actor MCPHostHTTPTransport: MCPHostTransport {
         connection.send(content: response, completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    /// Best-effort extraction of the top-level JSON-RPC `id` field from a raw
+    /// payload, used only for request/response correlation (routing). This is
+    /// deliberately lighter than `MCPJSONRPCCodec.decode` — a malformed or
+    /// unparseable payload here just means the response can't be correlated
+    /// (falls back to the single-channel case, or is dropped); the codec
+    /// inside `ManifoldMCPHost` remains the sole source of truth for actually
+    /// validating and dispatching the message.
+    private static func peekRequestID(in payload: Data) -> MCPRequestID? {
+        guard let object = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
+            return nil
+        }
+        if let intID = object["id"] as? Int {
+            return .int(intID)
+        }
+        if let stringID = object["id"] as? String {
+            return .string(stringID)
+        }
+        return nil
     }
 
     /// Frames a JSON-RPC payload as a single SSE event.

@@ -4,6 +4,8 @@
 
 Endpoints: `POST /v1/chat/completions` (streaming + non-streaming), `GET /v1/models`, `POST /v1/embeddings`, `GET /health`, `GET /metrics`.
 
+**`POST /v1/embeddings` has no working backend out of the box.** None of the built-in `--backend` selections (`foundation`, `ollama`, `mlx`, `llama`, `cloud`) currently vend an `EmbeddingBackend`, so the endpoint always returns 503. To serve embeddings, embed `ManifoldServer` in a host app and supply a custom `ServerBackendProvider` that overrides `embeddingBackend(for:)` — for example with the [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion package's `LlamaEmbeddingBackend`.
+
 ---
 
 ## Install via Homebrew
@@ -47,7 +49,7 @@ swift build -c release --product ManifoldServer --traits Server
 
 ## Running the server
 
-All examples use Ollama as the backend. Substitute `--backend foundation` for the on-device Apple model (macOS 26+). The `mlx` and `llama` selections fail with a pointer to the companion packages since v0.48 — the MLX and llama.cpp backends moved to [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) / [manifold-llama](https://github.com/ManifoldKit/manifold-llama) and are no longer compiled into `manifold-server`.
+All examples use Ollama as the backend. Substitute `--backend foundation` for the on-device Apple model (macOS 26+). `foundation` and `ollama` are the only two selections that actually work: the `mlx` and `llama` selections fail with a pointer to the companion packages since v0.48 — the MLX and llama.cpp backends moved to [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) / [manifold-llama](https://github.com/ManifoldKit/manifold-llama) and are no longer compiled into `manifold-server` — and `--backend cloud` always fails too (Cloud SaaS backend loading is not implemented for ManifoldServer v1; there is no working configuration for it despite it being a listed `ServerBackendKind` case).
 
 ### Minimal (no auth, localhost only)
 
@@ -144,7 +146,7 @@ In `~/.continue/config.json`:
 | `--port` | `8080` | TCP port. |
 | `--api-key` | _(none)_ | Require this key in `Authorization: Bearer` headers. Omit for unauthenticated localhost. |
 | `--parallel` | `1` | Maximum concurrent generation requests. |
-| `--backend` | `foundation` | `foundation`, `ollama`, or `cloud`. (`mlx` / `llama` error with a companion-package pointer since v0.48.) |
+| `--backend` | `foundation` | `foundation` or `ollama` — the only selections that actually load a backend. (`mlx` / `llama` error with a companion-package pointer since v0.48; `cloud` always errors with `ServerError.notImplemented` — Cloud SaaS backend loading isn't implemented for ManifoldServer v1.) |
 | `--model` | _(none)_ | Model name or HuggingFace repo ID for the selected backend. |
 | `--model-path` | _(none)_ | Local model path (only meaningful for backends compiled into the server). |
 | `--ollama-base-url` | `http://localhost:11434` | Ollama server URL. |
