@@ -124,6 +124,7 @@ jobs:
       macros: ${{ steps.filter.outputs.macros }}
       cold-start: ${{ steps.filter.outputs.cold-start }}
       persistence: ${{ steps.filter.outputs.persistence }}
+      mcp-fixtures: ${{ steps.filter.outputs.mcp-fixtures }}
       # Tier 0 (issue #1588): the affected per-PR test-job suite list, or the
       # sentinel FULL / NONE. DRY-RUN — published for a later PR to wire into the
       # test --filter; nothing consumes it to change execution yet.
@@ -218,6 +219,13 @@ jobs:
               - 'Package.resolved'
               - '.github/workflows/ci.yml'
               - 'scripts/test-ios-simulator.sh'
+            # MCP provider fixture drift guard (scripts/regenerate-mcp-fixtures.sh
+            # --check). Pure bash, no Swift toolchain needed, so it runs on the
+            # ubuntu `mcp-fixture-check` job rather than a macOS runner.
+            mcp-fixtures:
+              - 'Tests/ManifoldMCPTests/Fixtures/Providers/**'
+              - 'scripts/regenerate-mcp-fixtures.sh'
+              - '.github/workflows/ci.yml'
             # Per-module API surface filters — used to gate and narrow the
             # per-PR diagnose-api-breaking-changes check to only the targets
             # that actually changed. Intentionally omit Package.swift /
@@ -975,6 +983,25 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
+
+  # MCP provider fixture drift guard — verifies the checked-in
+  # Tests/ManifoldMCPTests/Fixtures/Providers/**/*.json fixtures still match
+  # scripts/regenerate-mcp-fixtures.sh's generator (i.e. nobody hand-edited a
+  # fixture, or changed the generator without regenerating). Pure bash, no
+  # Swift toolchain, so this runs on ubuntu-latest rather than a macOS runner.
+  # Path-gated on the fixture directory / generator script / this workflow.
+  mcp-fixture-check:
+    needs: [changes]
+    if: needs.changes.outputs.mcp-fixtures == 'true' && needs.changes.outputs.already-validated != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Check MCP provider fixtures are up to date
+        run: scripts/regenerate-mcp-fixtures.sh --check
 
   # Cold-start conformance — all six gate scripts on a single runner.
   #
