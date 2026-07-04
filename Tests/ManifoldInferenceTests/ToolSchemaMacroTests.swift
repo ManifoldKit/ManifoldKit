@@ -81,6 +81,32 @@ final class ToolSchemaMacroTests: XCTestCase {
         )
     }
 
+    func testLongFormOptionalFieldOmittedFromRequired() {
+        // Long-form `Optional<T>` routes through the generic-argument-clause branch of
+        // unwrapOptional(_:) (swift-syntax 601+ `GenericArgumentSyntax.Argument`), unlike
+        // the `T?` shorthand which uses OptionalTypeSyntax. Pins the migrated path.
+        assertMacroExpansion(
+            """
+            @ToolSchema
+            struct BLong {
+                let city: String
+                let zip: Optional<String>
+            }
+            """,
+            expandedSource: """
+            struct BLong {
+                let city: String
+                let zip: Optional<String>
+
+                public static var jsonSchema: ManifoldInference.JSONSchemaValue {
+                    ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("object"), "properties": ManifoldInference.JSONSchemaValue.object(["city": ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("string")]), "zip": ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("string")])]), "required": ManifoldInference.JSONSchemaValue.array([ManifoldInference.JSONSchemaValue.string("city")])])
+                }
+            }
+            """,
+            macros: testMacros
+        )
+    }
+
     // MARK: Enum (String raw type)
 
     func testStringEnumExpansion() {
@@ -140,6 +166,30 @@ final class ToolSchemaMacroTests: XCTestCase {
             expandedSource: """
             struct C {
                 let tags: [String]
+
+                public static var jsonSchema: ManifoldInference.JSONSchemaValue {
+                    ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("object"), "properties": ManifoldInference.JSONSchemaValue.object(["tags": ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("array"), "items": ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("string")])])]), "required": ManifoldInference.JSONSchemaValue.array([ManifoldInference.JSONSchemaValue.string("tags")])])
+                }
+            }
+            """,
+            macros: testMacros
+        )
+    }
+
+    func testLongFormArrayOfPrimitives() {
+        // Long-form `Array<T>` routes through the generic-argument-clause branch of
+        // schemaExpression(for:) (swift-syntax 601+ `GenericArgumentSyntax.Argument`),
+        // unlike the `[T]` shorthand which uses ArrayTypeSyntax. Pins the migrated path.
+        assertMacroExpansion(
+            """
+            @ToolSchema
+            struct CLong {
+                let tags: Array<String>
+            }
+            """,
+            expandedSource: """
+            struct CLong {
+                let tags: Array<String>
 
                 public static var jsonSchema: ManifoldInference.JSONSchemaValue {
                     ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("object"), "properties": ManifoldInference.JSONSchemaValue.object(["tags": ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("array"), "items": ManifoldInference.JSONSchemaValue.object(["type": ManifoldInference.JSONSchemaValue.string("string")])])]), "required": ManifoldInference.JSONSchemaValue.array([ManifoldInference.JSONSchemaValue.string("tags")])])

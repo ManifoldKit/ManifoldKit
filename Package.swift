@@ -150,12 +150,13 @@ let package = Package(
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.
         .package(url: "https://github.com/nalexn/ViewInspector", from: "0.10.3"),
-        // swift-syntax for the @ToolSchema macro plugin. Pinned to 600.0.x to
-        // match the version mlx-swift-lm pulls in transitively — a wider range
-        // would produce a duplicate-dependency resolution conflict. 600.x ships
-        // ABI-compatible macro APIs for Swift 5.10 / 6.0 and builds fine on
-        // Swift 6.1+. Do not bump beyond what the installed toolchain supports.
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"601.0.0"),
+        // swift-syntax for the @ToolSchema macro plugin. Widened to 602.0.0..<604.0.0
+        // to match what mlx-swift-lm 3.31.4 (companion manifold-mlx) now requires
+        // transitively — a narrower range produces a duplicate-dependency resolution
+        // conflict against the companion package. 602/603 correspond to Swift 6.2/6.3
+        // macro ABI and build fine on the current toolchain (CI = Xcode 26.3 / Swift
+        // 6.3.x). Do not bump beyond what the installed toolchain supports.
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", "602.0.0"..<"604.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         // swift-http-types: HTTPFields, HTTPField, HTTPResponse.Status types used directly
         // in ManifoldServer (ServerApp.swift). Hummingbird 2.x depends on it transitively

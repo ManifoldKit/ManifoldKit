@@ -211,11 +211,16 @@ public struct ToolSchemaMacro: MemberMacro {
         if let optional = type.as(OptionalTypeSyntax.self) {
             return (true, optional.wrappedType)
         }
+        // swift-syntax 601+: `GenericArgumentSyntax.argument` is a
+        // `GenericArgumentSyntax.Argument` enum (added for parameter packs), not a
+        // bare `TypeSyntax` — extract the type case, falling through to the
+        // "leave as-is" path when it isn't a plain type argument.
         if let identifier = type.as(IdentifierTypeSyntax.self),
            identifier.name.text == "Optional",
            let generic = identifier.genericArgumentClause,
-           let first = generic.arguments.first {
-            return (true, first.argument)
+           let first = generic.arguments.first,
+           let innerType = first.argument.as(TypeSyntax.self) {
+            return (true, innerType)
         }
         return (false, type)
     }
@@ -266,9 +271,10 @@ public struct ToolSchemaMacro: MemberMacro {
         if let ident = type.as(IdentifierTypeSyntax.self),
            ident.name.text == "Array",
            let generic = ident.genericArgumentClause,
-           let first = generic.arguments.first {
+           let first = generic.arguments.first,
+           let elementType = first.argument.as(TypeSyntax.self) {
             let inner = schemaExpression(
-                for: first.argument,
+                for: elementType,
                 description: nil,
                 defaultValue: nil,
                 fieldNode: fieldNode,
