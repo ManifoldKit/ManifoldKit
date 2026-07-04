@@ -80,6 +80,13 @@ struct CLI {
             fail(message)
         }
 
+        // The retired inline catalogue cycled to satisfy any N; the shared pool
+        // clamps. Fail loudly (like every other bad argument) rather than
+        // silently advertising fewer decoys than the sweep asked for.
+        if commonOptions.extraTools > DecoyTools.maxCount {
+            fail("--extra-tools \(commonOptions.extraTools) exceeds the shared decoy pool (max \(DecoyTools.maxCount))")
+        }
+
         var cli = CLI(common: commonOptions)
         var i = 0
         while i < remainder.count {
@@ -593,9 +600,13 @@ func runCLI() async -> Int32 {
     // Decoy tools — plausible-but-irrelevant distractors injected to raise the
     // bar on tool selection. They should never be the correct answer for any
     // built-in scenario; their executors return a canned string if the model
-    // mistakenly invokes one, so scoring will catch the error.
+    // mistakenly invokes one, so scoring will catch the error. `DecoyTools`
+    // (in `ManifoldTools`) is the shared, deterministic pool the companion
+    // CLIs (`manifold-tools-mlx`, `manifold-tools-llama`) also consume —
+    // this repo used to hand-roll its own 20-entry catalogue inline, which is
+    // exactly the drift the shared pool now closes.
     if cli.extraTools > 0 {
-        for executor in DecoyTools.makeExecutors(count: cli.extraTools) {
+        for executor in DecoyTools.executors(cli.extraTools) {
             registry.register(executor)
         }
     }
@@ -735,76 +746,6 @@ func makeService(
     // (#1983). Driving the raw backend directly would dispatch zero tools.
     let service = InferenceService(backend: backend, name: name, modelName: resolvedModel, toolRegistry: registry)
     return (service, resolvedModel)
-}
-
-/// Generates plausible-but-irrelevant decoy tools for distractor-pressure
-/// testing.  Each decoy has a realistic name and description but should never
-/// be the correct tool for any built-in scenario.  The executor returns a
-/// canned string so a misfiring invocation shows up clearly in the transcript.
-enum DecoyTools {
-
-    /// Metadata table — add entries here when expanding the ladder.
-    private static let catalogue: [(name: String, description: String, paramKey: String, paramDesc: String)] = [
-        ("get_weather", "Returns current weather conditions for a given city name.", "city", "The name of the city to retrieve weather for."),
-        ("translate_text", "Translates a text string from one language to another using a cloud translation service.", "text", "The text to translate."),
-        ("convert_units", "Converts a numeric value between physical units such as miles to kilometres or Fahrenheit to Celsius.", "value", "The numeric value to convert."),
-        ("send_email", "Sends an email to a recipient address with a subject and body. Requires prior user authorisation.", "recipient", "The destination email address."),
-        ("lookup_stock_price", "Fetches the latest closing price for a stock ticker symbol from a financial data feed.", "ticker", "The stock ticker symbol, e.g. AAPL."),
-        ("create_calendar_event", "Creates a new calendar event with a title, start time, and duration.", "title", "The event title."),
-        ("summarise_url", "Downloads and summarises the text content at the given URL using an extractive summarisation model.", "url", "The URL of the page to summarise."),
-        ("run_sql_query", "Executes a read-only SQL SELECT statement against the configured analytics database.", "query", "The SQL SELECT statement to run."),
-        ("get_exchange_rate", "Returns the current exchange rate between two ISO 4217 currency codes.", "from_currency", "The source currency code, e.g. USD."),
-        ("resize_image", "Resizes an image file to the specified dimensions and returns the path to the resized file.", "path", "The path to the source image file."),
-        ("check_dns", "Performs a DNS lookup for a hostname and returns the resolved IP addresses.", "hostname", "The hostname to resolve."),
-        ("fetch_git_log", "Returns the most recent commits from a git repository at the given path.", "repo_path", "The path to the git repository."),
-        ("list_s3_objects", "Lists objects in an S3 bucket with an optional key prefix filter.", "bucket", "The S3 bucket name."),
-        ("ping_host", "Sends ICMP echo requests to a host and returns round-trip latency statistics.", "host", "The hostname or IP address to ping."),
-        ("parse_csv", "Parses a CSV file and returns the first N rows as a JSON array.", "path", "The path to the CSV file."),
-        ("hash_file", "Computes the SHA-256 hash of a file and returns it as a hex string.", "path", "The path to the file to hash."),
-        ("get_system_uptime", "Returns the current system uptime in human-readable format.", "format", "The output format: 'human' or 'seconds'."),
-        ("fetch_rss_feed", "Fetches an RSS feed from the given URL and returns the latest N items.", "url", "The URL of the RSS feed."),
-        ("diff_files", "Computes a unified diff between two text files.", "file_a", "The path to the first file."),
-        ("validate_json", "Validates a JSON string against an optional JSON Schema and returns a pass/fail result.", "json", "The JSON string to validate."),
-    ]
-
-    /// Returns `count` decoy ``ToolExecutor`` values drawn in order from the
-    /// catalogue, cycling if `count` exceeds the catalogue size.
-    static func makeExecutors(count: Int) -> [any ToolExecutor] {
-        guard count > 0 else { return [] }
-        return (0..<count).map { i in
-            let entry = catalogue[i % catalogue.count]
-            let definition = ToolDefinition(
-                name: "decoy_tool_\(i + 1)_\(entry.name)",
-                description: entry.description,
-                parameters: .object([
-                    "type": .string("object"),
-                    "properties": .object([
-                        entry.paramKey: .object([
-                            "type": .string("string"),
-                            "description": .string(entry.paramDesc)
-                        ])
-                    ]),
-                    "required": .array([.string(entry.paramKey)])
-                ])
-            )
-            return DecoyExecutor(definition: definition)
-        }
-    }
-
-    /// Minimal executor that returns a fixed canned string.  If this executor
-    /// is ever called it means the model chose a decoy over a real tool —
-    /// which is a tool-selection failure that will surface in scoring.
-    private struct DecoyExecutor: ToolExecutor {
-        let definition: ToolDefinition
-        var supportsConcurrentDispatch: Bool { true }
-        var requiresApproval: Bool { false }
-        func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
-            ToolResult(
-                callId: "",
-                content: "[decoy] This tool is a test distractor and has no real implementation."
-            )
-        }
-    }
 }
 
 enum MockFactory {

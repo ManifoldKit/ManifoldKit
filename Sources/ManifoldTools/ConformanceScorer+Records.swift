@@ -185,10 +185,19 @@ extension ConformanceScorer {
     /// single transcript yields one row per cell. A caller running repeats writes
     /// separate transcripts and stamps the index at collation time.
     static func record(from row: ResolvedRow, context: RecordContext) -> ConformanceRecord {
-        // Decoy pressure = the count of decoy distractors advertised this run. The
-        // harness names them `decoy_tool_<n>_<base>`; everything else in the
-        // advertised set is a real reference tool, so a prefix filter isolates them.
-        let decoyLevel = row.advertisedTools.filter { $0.hasPrefix("decoy_tool_") }.count
+        // Decoy pressure = the count of decoy distractors advertised this run.
+        // Current transcripts advertise decoys under their real names, so
+        // membership in the shared `DecoyTools` pool isolates them (the pool is
+        // disjoint from the six reference tools by contract — see DecoyTools).
+        // Transcripts recorded before the shared pool used a `decoy_tool_<n>_<base>`
+        // name prefix instead; keep that prefix check as a legacy fallback so old
+        // transcripts still score. The two name families are disjoint (no pool
+        // entry starts with `decoy_tool_`), so summing the counts is exact for
+        // both generations and for any mixed transcript.
+        let poolNames = Set(DecoyTools.names(DecoyTools.maxCount))
+        let decoyLevel = row.advertisedTools.filter {
+            poolNames.contains($0) || $0.hasPrefix("decoy_tool_")
+        }.count
 
         // Absence is not failure. A group that never produced a model turn — or that
         // recorded an explicit infra error — was not measured: the backend rejected
