@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -28,8 +29,26 @@ public final class VoiceConversationController {
     /// behaviour; set it to control continuous read-aloud.
     @ObservationIgnored public var speechOptions: SpeechOptions = SpeechOptions()
 
+    /// When `true`, the controller listens for the user speaking *while the
+    /// assistant is reading a reply aloud* and interrupts playback the moment it
+    /// hears speech onset (barge-in), handing off to recording. Defaults to
+    /// `false` — push-to-talk stays the default interaction. A host opts in by
+    /// setting this before playback; it only takes effect when a barge-in
+    /// listener is available (the production one requires a real microphone).
+    @ObservationIgnored public var isBargeInEnabled: Bool
+
     @ObservationIgnored private let transcriber: any SpeechTranscribing
     @ObservationIgnored private let synthesizer: any SpeechSynthesizing
+    @ObservationIgnored private let voiceActivityDetector: any VoiceActivityDetector
+    @ObservationIgnored private let bargeInListener: any AudioFrameStream
+    /// Whether the barge-in mic monitor is currently armed (running during
+    /// playback). Guards against double-arming across enqueued utterances and
+    /// against feeding frames once playback has ended.
+    @ObservationIgnored private var isMonitoringForBargeIn = false
+    @ObservationIgnored private static let log = Logger(
+        subsystem: "com.manifoldkit.voice",
+        category: "barge-in"
+    )
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
     @ObservationIgnored private var activeUtterances = 0
     /// Monotonic playback-generation token. A replace-mode `startPlayback`
@@ -43,10 +62,16 @@ public final class VoiceConversationController {
 
     public init(
         transcriber: (any SpeechTranscribing)? = nil,
-        synthesizer: (any SpeechSynthesizing)? = nil
+        synthesizer: (any SpeechSynthesizing)? = nil,
+        voiceActivityDetector: (any VoiceActivityDetector)? = nil,
+        bargeInListener: (any AudioFrameStream)? = nil,
+        isBargeInEnabled: Bool = false
     ) {
         self.transcriber = transcriber ?? AppleSpeechTranscriber()
         self.synthesizer = synthesizer ?? AppleSpeechSynthesizer()
+        self.voiceActivityDetector = voiceActivityDetector ?? EnergyVoiceActivityDetector()
+        self.bargeInListener = bargeInListener ?? AVAudioEngineFrameStream()
+        self.isBargeInEnabled = isBargeInEnabled
     }
 
     public var isRecording: Bool {
@@ -214,6 +239,10 @@ public final class VoiceConversationController {
         let generation = playbackGeneration
         activeUtterances += 1
         isSpeaking = true
+        // Arm the barge-in mic monitor for the duration of playback so the user
+        // can interrupt by simply talking. No-op unless opted in; idempotent
+        // across enqueued utterances.
+        armBargeInMonitoringIfNeeded()
 
         let options = speechOptions
         // Each utterance owns its own task so an enqueued readback survives the
@@ -240,6 +269,8 @@ public final class VoiceConversationController {
             if self.activeUtterances == 0 {
                 self.isSpeaking = false
                 self.playbackTask = nil
+                // Playback finished on its own — stop listening for barge-in.
+                self.stopBargeInMonitoring()
             }
         }
         playbackTask = task
@@ -254,6 +285,57 @@ public final class VoiceConversationController {
         playbackGeneration += 1
         activeUtterances = 0
         isSpeaking = false
+        stopBargeInMonitoring()
+    }
+
+    // MARK: - Barge-in
+
+    /// Start the mic monitor for the duration of playback, when opted in. Silent
+    /// no-op when barge-in is off, already armed, or VoiceOver is running (the
+    /// screen reader already owns the audio channel, and we don't read aloud over
+    /// it — see ``startPlayback(of:enqueue:)``). If the listener can't start
+    /// (simulator, audio-session contention) barge-in is simply not armed —
+    /// playback the user asked for still proceeds; they can stop it manually.
+    private func armBargeInMonitoringIfNeeded() {
+        guard isBargeInEnabled, !isMonitoringForBargeIn, !isVoiceOverRunning else { return }
+        voiceActivityDetector.reset()
+        do {
+            try bargeInListener.startCapturing { [weak self] frame in
+                self?.handleBargeInFrame(frame)
+            }
+            isMonitoringForBargeIn = true
+        } catch {
+            isMonitoringForBargeIn = false
+            Self.log.info("Barge-in monitor did not arm: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Stop the mic monitor and reset the detector. Idempotent.
+    private func stopBargeInMonitoring() {
+        guard isMonitoringForBargeIn else { return }
+        isMonitoringForBargeIn = false
+        bargeInListener.stopCapturing()
+        voiceActivityDetector.reset()
+    }
+
+    /// Feed one captured frame to the detector while the assistant is speaking and
+    /// interrupt playback on speech onset.
+    private func handleBargeInFrame(_ frame: AudioFrame) {
+        // Self-barge-in guard: never let the assistant's own looped-back output
+        // (echo) drive the detector, or it would cut itself off mid-sentence.
+        // `.voiceChat` AEC removes most echo upstream; this refuses any that is
+        // explicitly tagged.
+        guard !frame.isEcho else { return }
+        // A frame may still be in flight after monitoring stopped; ignore it.
+        guard isMonitoringForBargeIn, isSpeaking else { return }
+        guard voiceActivityDetector.ingest(frame) == .speechStart else { return }
+
+        // Barge-in. Interrupt playback synchronously so `isSpeaking` and the mic
+        // monitor are observably torn down immediately (`stopSpeaking` bumps
+        // `playbackGeneration`, reusing the existing stale-task race guard), then
+        // hand off to recording asynchronously.
+        stopSpeaking()
+        Task { await self.startRecording() }
     }
 
     private func setFailure(_ error: Error, recovery: VoiceRecoveryAffordance? = nil) {
