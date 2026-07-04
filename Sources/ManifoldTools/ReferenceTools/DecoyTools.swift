@@ -59,14 +59,29 @@ public enum DecoyTools {
     }
 
     /// Ready-to-register no-op executors for the first `n` decoys. Each
-    /// accepts any arguments (``EmptyArgs`` is permissive) and returns a fixed
-    /// marker so a wrong-tool dispatch is visible in the transcript without
-    /// crashing the run.
-    public static func executors(_ n: Int) -> [TypedToolExecutor<EmptyArgs, Result>] {
-        take(n).map { definition in
-            TypedToolExecutor(definition: definition) { _ in
-                Result(note: "decoy tool '\(definition.name)' is not the right tool for this task")
-            }
+    /// accepts any arguments and returns a fixed marker so a wrong-tool
+    /// dispatch is visible in the transcript without crashing the run.
+    ///
+    /// Decoys are stateless, so they opt into concurrent batch dispatch —
+    /// registering one must never force an otherwise-parallel multi-call
+    /// round into sequential dispatch (`TypedToolExecutor` cannot express
+    /// this; it inherits the protocol's `false` default, hence the bespoke
+    /// executor type).
+    public static func executors(_ n: Int) -> [any ToolExecutor] {
+        take(n).map { DecoyExecutor(definition: $0) }
+    }
+
+    /// Inert executor for one decoy definition. Ignores its arguments —
+    /// decoys exist to be advertised, never legitimately dispatched.
+    private struct DecoyExecutor: ToolExecutor {
+        let definition: ToolDefinition
+        var supportsConcurrentDispatch: Bool { true }
+
+        func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
+            let payload = Result(note: "decoy tool '\(definition.name)' is not the right tool for this task")
+            let data = try JSONEncoder().encode(payload)
+            let content = String(data: data, encoding: .utf8) ?? ""
+            return ToolResult(callId: "", content: content, errorKind: nil)
         }
     }
 

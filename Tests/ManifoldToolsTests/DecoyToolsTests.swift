@@ -67,6 +67,15 @@ final class DecoyToolsTests: XCTestCase {
         XCTAssertEqual(executors.count, 6)
     }
 
+    func test_executors_optIntoConcurrentDispatch() {
+        // Decoys are stateless; registering one must never force an
+        // otherwise-parallel multi-call round into sequential dispatch.
+        for executor in DecoyTools.executors(DecoyTools.maxCount) {
+            XCTAssertTrue(executor.supportsConcurrentDispatch,
+                          "\(executor.definition.name) should support concurrent dispatch")
+        }
+    }
+
     func test_executor_returnsInertMarkerAndNeverErrors() async throws {
         guard let executor = DecoyTools.executors(1).first else {
             return XCTFail("expected at least one decoy executor")

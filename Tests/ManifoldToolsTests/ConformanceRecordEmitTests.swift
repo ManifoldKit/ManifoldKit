@@ -81,7 +81,9 @@ final class ConformanceRecordEmitTests: XCTestCase {
         XCTAssertEqual(scores.f1, 0.0, accuracy: 1e-9)
     }
 
-    /// Decoy pressure is recovered from the advertised set (`decoy_tool_*`).
+    /// Decoy pressure is recovered from the advertised set. Pre-shared-pool
+    /// transcripts named decoys `decoy_tool_<n>_<base>` — the legacy prefix
+    /// fallback must keep scoring them.
     func testDecoyLevelDerivedFromAdvertisedTools() throws {
         let jsonl = """
         {"kind":"prompt","scenario":"dec","user":"x","requiredTools":["now"],"advertisedTools":["now","calc","decoy_tool_1_get_weather","decoy_tool_2_send_email"]}
@@ -90,6 +92,24 @@ final class ConformanceRecordEmitTests: XCTestCase {
         """
         let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "dec")
         XCTAssertEqual(rec.decoyLevel, 2, "two decoy_tool_* entries advertised")
+    }
+
+    /// Binds the shared ``DecoyTools`` pool to the scorer: decoys now advertise
+    /// under their real names (no `decoy_tool_` prefix), so `decoyLevel` must be
+    /// derived by pool membership — a prefix-only derivation would emit
+    /// `decoyLevel: 0` for every pressured run and pollute the d0 baseline.
+    func testDecoyLevelDerivedFromSharedPoolNames() throws {
+        let n = 3
+        let decoys = DecoyTools.names(n)
+        XCTAssertEqual(decoys.count, n, "pool must satisfy the requested pressure level")
+        let advertised = (["now", "calc"] + decoys).map { "\"\($0)\"" }.joined(separator: ",")
+        let jsonl = """
+        {"kind":"prompt","scenario":"dec-pool","user":"x","requiredTools":["now"],"advertisedTools":[\(advertised)]}
+        {"kind":"tool_call","scenario":"dec-pool","name":"now","arguments":"{}"}
+        {"kind":"assertion","scenario":"dec-pool","passed":true,"message":"Scenario requires `now` to actually be dispatched — dispatched"}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "dec-pool")
+        XCTAssertEqual(rec.decoyLevel, n, "pool-named decoys must count toward decoy pressure")
     }
 
     // MARK: (c) #2087 — a run that never produced a model turn is a hole, not a zero

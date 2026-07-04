@@ -80,6 +80,13 @@ struct CLI {
             fail(message)
         }
 
+        // The retired inline catalogue cycled to satisfy any N; the shared pool
+        // clamps. Fail loudly (like every other bad argument) rather than
+        // silently advertising fewer decoys than the sweep asked for.
+        if commonOptions.extraTools > DecoyTools.maxCount {
+            fail("--extra-tools \(commonOptions.extraTools) exceeds the shared decoy pool (max \(DecoyTools.maxCount))")
+        }
+
         var cli = CLI(common: commonOptions)
         var i = 0
         while i < remainder.count {
