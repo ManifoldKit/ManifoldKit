@@ -405,6 +405,20 @@ jobs:
         with:
           verify-toolchain: "true"
 
+      - name: Pre-fetch newly pinned dependency commits (deps changed on a PR)
+        # The test steps below run with --skip-update (no per-run git-remote
+        # contact). A brand-new dependency version's commit — e.g. a dep bumped in
+        # this PR — is absent from the restored SwiftPM cache, since cache-prime
+        # (the only fetching resolve) is push-only. Without a fetch here,
+        # --skip-update cannot check out the new pin and dies with "unable to read
+        # tree". Resolve once when Package.swift/Package.resolved changed; the lock
+        # is already consistent so this only fetches, it does not mutate versions.
+        # Also fire on merge_group: the `changes` filter is skipped there, so
+        # `deps` is empty, but the queue branch still runs against a cache that
+        # lacks a dep bumped in this PR — the final gate must fetch it too.
+        if: needs.changes.outputs.deps == 'true' || github.event_name == 'merge_group'
+        run: swift package resolve
+
       # .build/debug is intentionally NOT cached. Tried twice (#961, #1045), reverted
       # twice (#1036, this PR) — measured median 13% worse than no cache because SwiftPM
       # embeds paths in module fingerprints, making restored objects invalid on miss
@@ -893,6 +907,16 @@ jobs:
         with:
           verify-toolchain: "true"
 
+      - name: Pre-fetch newly pinned dependency commits (deps changed on a PR)
+        # See the `test` job's identical step: --skip-update below cannot fetch a
+        # brand-new dependency commit absent from the restored cache (cache-prime
+        # is push-only), so resolve once here when the dep graph changed.
+        # Also fire on merge_group: the `changes` filter is skipped there, so
+        # `deps` is empty, but the queue branch still runs against a cache that
+        # lacks a dep bumped in this PR — the final gate must fetch it too.
+        if: needs.changes.outputs.deps == 'true' || github.event_name == 'merge_group'
+        run: swift package resolve
+
       - name: Test — Server suite (Server trait)
         id: test-server
         timeout-minutes: 12
@@ -948,6 +972,16 @@ jobs:
         uses: ./.github/actions/setup-swift-ci
         with:
           verify-toolchain: "true"
+
+      - name: Pre-fetch newly pinned dependency commits (deps changed on a PR)
+        # See the `test` job's identical step: --skip-update below cannot fetch a
+        # brand-new dependency commit absent from the restored cache (cache-prime
+        # is push-only), so resolve once here when the dep graph changed.
+        # Also fire on merge_group: the `changes` filter is skipped there, so
+        # `deps` is empty, but the queue branch still runs against a cache that
+        # lacks a dep bumped in this PR — the final gate must fetch it too.
+        if: needs.changes.outputs.deps == 'true' || github.event_name == 'merge_group'
+        run: swift package resolve
 
       - name: Test — @ToolSchema macro suite (Macros trait)
         id: test-macros
