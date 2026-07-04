@@ -30,6 +30,11 @@ on:
       # the gate would bypass it (per CI path-filter self-validation rule).
       - "scripts/ci-selective-test.sh"
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
+      # MCP fixture drift guard (mcp-fixture-check job). Listed so an edit to
+      # the generator script re-triggers CI — otherwise a generator-only change
+      # would bypass its own gate (per CI path-filter self-validation rule).
+      # The fixture JSON itself is already covered by Tests/**.
+      - "scripts/regenerate-mcp-fixtures.sh"
       # Per CI path-filter self-validation rule: edits to the composite action
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
@@ -64,6 +69,8 @@ on:
       # Tier 2 selective CI (issue #1590). See push section above.
       - "scripts/ci-selective-test.sh"
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
+      # MCP fixture drift guard (mcp-fixture-check job). See push section above.
+      - "scripts/regenerate-mcp-fixtures.sh"
       # Per CI path-filter self-validation rule: edits to the composite action
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
