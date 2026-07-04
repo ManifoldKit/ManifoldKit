@@ -331,14 +331,15 @@ jobs:
 
   # Merged-tree backstop for the trait-gated / simulator suites that the merge
   # queue never validates. On merge_group ci.yml bypasses the paths-filter, so
-  # server-tests / macros-tests / ci-ios-file-protection never run on the queue
-  # branch, and since the queue-validated post-merge skip (#2115) they no longer
-  # re-run on push-to-main either. Their last run is the PR-level check against
-  # the merge-ref at ready time — this job re-runs all three daily against
-  # actual main, so a cross-PR semantic conflict in these surfaces is caught
-  # within 24h (same trade as the push-burst collapse, #1871, and doc-gates
-  # below). cold-start already has its own unconditional nightly job above.
-  # Steps use `if: success() || failure()` so one failure doesn't mask the rest.
+  # server-tests / macros-tests / ci-ios-file-protection / mcp-fixture-check
+  # never run on the queue branch, and since the queue-validated post-merge skip
+  # (#2115) they no longer re-run on push-to-main either. Their last run is the
+  # PR-level check against the merge-ref at ready time — this job re-runs all
+  # four daily against actual main, so a cross-PR semantic conflict in these
+  # surfaces is caught within 24h (same trade as the push-burst collapse, #1871,
+  # and doc-gates below). cold-start already has its own unconditional nightly
+  # job above. Steps use `if: success() || failure()` so one failure doesn't
+  # mask the rest.
   queue-merge-backstop:
     runs-on: macos-15
     timeout-minutes: 60
@@ -365,6 +366,11 @@ jobs:
         if: success() || failure()
         timeout-minutes: 15
         run: scripts/test-ios-simulator.sh --ci
+
+      - name: Check MCP provider fixtures are up to date
+        if: success() || failure()
+        timeout-minutes: 5
+        run: scripts/regenerate-mcp-fixtures.sh --check
 
   # Doc-snippet + human-path cold-start gates — the 24h post-merge backstop.
   # readme-snippets.yml and cold-start-human.yml run these scripts on PRs (via

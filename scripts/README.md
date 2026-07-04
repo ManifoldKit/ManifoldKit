@@ -69,8 +69,7 @@ from *outside* the monorepo. See [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.m
 
 | Script | Purpose | Invocation context |
 |--------|---------|---------------------|
-| `regenerate-mcp-fixtures.sh` | Generates deterministic, offline MCP provider fixtures (github/linear/notion) used by `ManifoldMCPTests`. `--check` mode verifies fixtures are up to date without writing. | Manual / operational (no workflow caller found; run by hand when provider fixtures need regenerating) |
-| `validate-mcp-fixtures.sh` | Runs `regenerate-mcp-fixtures.sh --check` then validates fixture JSON shape with a Python script. | Manual / operational (no workflow caller found) |
+| `regenerate-mcp-fixtures.sh` | Generates deterministic, offline MCP provider fixtures (github/linear/notion) used by `ManifoldMCPTests`. `--check` mode verifies fixtures are up to date without writing. | CI (`ci.yml`'s `mcp-fixture-check` job, path-gated on the fixture directory / this script; nightly `queue-merge-backstop` runs it unconditionally as the merged-tree backstop) + manual (run by hand when provider fixtures need regenerating) |
 
 ## Docs & metrics generation
 

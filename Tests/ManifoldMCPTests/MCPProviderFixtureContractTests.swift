@@ -72,6 +72,42 @@ final class MCPProviderFixtureContractTests: XCTestCase {
         }
     }
 
+    func test_toolsListFixtureToolsDeclareInputSchema() throws {
+        for provider in providers {
+            let toolsResult = try loadResultFixture(provider: provider, file: "tools.list.result.json")
+            guard case .object(let root) = toolsResult,
+                  case .array(let tools)? = root["tools"] else {
+                throw FixtureError.invalidFixture("tools/list result missing tools array for \(provider)")
+            }
+
+            for (idx, tool) in tools.enumerated() {
+                guard case .object(let object) = tool else {
+                    XCTFail("\(provider) tools[\(idx)] is not an object")
+                    continue
+                }
+                let hasInputSchema: Bool
+                if case .object(let schema)? = object["inputSchema"] {
+                    hasInputSchema = !schema.isEmpty
+                } else {
+                    hasInputSchema = false
+                }
+                let hasParameters: Bool
+                if case .object(let parameters)? = object["parameters"] {
+                    hasParameters = !parameters.isEmpty
+                } else {
+                    hasParameters = false
+                }
+                XCTAssertTrue(
+                    hasInputSchema || hasParameters,
+                    "\(provider) tools[\(idx)] must declare a non-empty inputSchema or parameters object"
+                )
+            }
+            // Sabotage: removing the "inputSchema" field from any tool entry in a
+            // provider's tools.list.result.json fixture (without adding "parameters")
+            // would make both hasInputSchema and hasParameters false, failing this assertion.
+        }
+    }
+
     func test_serverFixturesMatchBuiltinCatalogContracts() throws {
         for provider in providers {
             let fixture = try loadServerFixture(provider: provider)

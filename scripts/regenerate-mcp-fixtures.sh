@@ -69,7 +69,7 @@ render() {
     "dataDisclosure": "Tool calls may send prompt content and selected arguments to GitHub.",
     "transport": {
       "type": "streamable-http",
-      "endpoint": "https://mcp.github.com/v1/sse"
+      "endpoint": "https://api.githubcopilot.com/mcp/"
     },
     "oauth": {
       "issuer": "https://github.com",
@@ -147,7 +147,7 @@ JSON
     "dataDisclosure": "Tool calls may send prompt content and selected arguments to Linear.",
     "transport": {
       "type": "streamable-http",
-      "endpoint": "https://mcp.linear.app/v1/sse"
+      "endpoint": "https://mcp.linear.app/mcp"
     },
     "oauth": {
       "issuer": "https://linear.app",
@@ -224,7 +224,7 @@ JSON
     "dataDisclosure": "Tool calls may send prompt content and selected arguments to Notion.",
     "transport": {
       "type": "streamable-http",
-      "endpoint": "https://mcp.notion.com/v1/sse"
+      "endpoint": "https://mcp.notion.com/mcp"
     },
     "oauth": {
       "issuer": "https://notion.com",
