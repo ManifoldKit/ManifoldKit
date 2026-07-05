@@ -17,12 +17,17 @@ public struct AudioFrame: Sendable, Equatable {
     /// Whether this frame is known to be the assistant's own synthesized output
     /// looping back into the microphone (acoustic echo).
     ///
-    /// A full-duplex capture path with echo cancellation suppresses echo before
-    /// it reaches here; this flag is the explicit belt-and-suspenders seam for a
-    /// capture path that *can* tag residual echo (and the hook the barge-in loop
-    /// tests exercise). The controller refuses to feed an echo frame to the
-    /// detector, so the assistant can never "barge in on itself" (self-barge-in).
-    /// Defaults to `false`.
+    /// The *primary* self-barge-in mitigation is Apple's `.voiceChat` acoustic
+    /// echo cancellation (see ``VoiceAudioSessionCoordinator/activateDuplex()``),
+    /// which removes most of the assistant's own output before it reaches a
+    /// detector — but AEC is **best-effort**: on a route where it underperforms
+    /// (loud speaker output, some Bluetooth paths) residual bleed can still read
+    /// as speech onset. This flag is a *secondary*, explicit guard for a capture
+    /// path that can label echo — the controller refuses to feed a tagged frame
+    /// to the detector. The production ``AVAudioEngineFrameStream`` does not
+    /// currently tag echo (it relies on AEC), so today the flag is exercised by
+    /// the barge-in tests and reserved for a future capture path that can label
+    /// residual echo. Defaults to `false`.
     public let isEcho: Bool
 
     public init(samples: [Float], sampleRate: Double, isEcho: Bool = false) {

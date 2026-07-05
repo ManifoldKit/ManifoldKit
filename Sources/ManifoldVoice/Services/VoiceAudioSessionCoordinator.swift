@@ -32,6 +32,12 @@ final class VoiceAudioSessionCoordinator {
     /// the primary self-barge-in mitigation. On macOS there is no `AVAudioSession`
     /// (echo cancellation is handled by the OS audio stack), so this is a no-op
     /// and the shared deactivation applies only on iOS.
+    ///
+    /// - Note: barge-in arms this *during* playback, so on iOS the shared session
+    ///   category/mode is reconfigured while `AVSpeechSynthesizer` is already
+    ///   speaking. Whether that briefly glitches the in-flight utterance is
+    ///   route-dependent runtime behavior — a device-validation item, not
+    ///   observable in `swift test`.
     func activateDuplex() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
