@@ -106,13 +106,14 @@ public struct LlamaMirostatV2SamplerOptions: Sendable, Codable, Equatable {
 /// ## Codable round-trip is intentionally lossy
 ///
 /// `GenerationConfig` conforms to `Codable` so it can be persisted (e.g. as a
-/// sampler preset), but **five** fields are per-request runtime hints that
+/// sampler preset), but **six** fields are per-request runtime hints that
 /// are never encoded and always decode back to their defaults:
 /// ``GenerationConfig/jsonMode`` (decodes to `false`),
 /// ``GenerationConfig/thinkingMarkers`` (decodes to `nil`),
 /// ``GenerationConfig/structuredOutput`` (decodes to `nil`),
-/// ``GenerationConfig/documents`` (decodes to `[]`), and
-/// ``GenerationConfig/maxRunTokens`` (decodes to `nil`). They are absent
+/// ``GenerationConfig/documents`` (decodes to `[]`),
+/// ``GenerationConfig/maxRunTokens`` (decodes to `nil`), and
+/// ``GenerationConfig/captureRenderedPrompt`` (decodes to `false`). They are absent
 /// from the `CodingKeys`, so an encode-then-decode cycle silently drops them.
 /// Do not rely on Codable round-trip to preserve these fields — carry them
 /// alongside the persisted config at the call site if you need them to survive.

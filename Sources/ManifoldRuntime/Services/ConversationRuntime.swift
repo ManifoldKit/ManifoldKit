@@ -54,9 +54,11 @@ import ManifoldInference
 /// `edit`/`branch` and their old per-flow input structs were collapsed into
 /// this unified shape (see ``TurnConfig``'s doc comment) and no shim survives
 /// for them. Per-verb convenience methods live one layer up, on
-/// `ChatViewModel` (`sendMessage`, `regenerateLastResponse`, `editMessage`,
-/// `stopGeneration`, `branch(from:)`), which construct the appropriate
-/// ``TurnInput`` and call through to this type.
+/// `ChatViewModel`: `sendMessage`, `regenerateLastResponse`, `editMessage`,
+/// and `branch(from:)` construct the appropriate ``TurnInput`` and call
+/// through to this type, while `stopGeneration` is the cancellation entry
+/// point — it routes to ``cancel(_:)`` (and the inference service), not
+/// ``processTurn(_:)``.
 public final class ConversationRuntime: Sendable {
 
     // MARK: Ports
