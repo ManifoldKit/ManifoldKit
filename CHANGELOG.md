@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.66.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.65.0...v0.66.0) (2026-07-06)
+
+### Highlights
+
+**Golden behavior tests for your app — the new `ManifoldAppEval` module.** Apps built on ManifoldKit can now define declarative golden scenarios (turns + checkpoints in JSON) and run them through the real `ConversationRuntime` turn loop headlessly: a scripted, hermetic deterministic lane for CI (no model, no network) and a live lane for nightly model checks. Checkpoints cover content, event subsequences, tool calls, and compression/context payloads; apps plug domain-specific scoring in via `CheckpointScorer` and capture app state after each turn with a `ScenarioStateProbe`. Reports are deterministic Markdown with verdict-shaped exit codes, plus an append-only `history.jsonl` ledger. See [docs/APP-EVAL.md](docs/APP-EVAL.md) for the adoption walkthrough — including a from-scratch path for apps with no test target yet ([#2140](https://github.com/ManifoldKit/ManifoldKit/issues/2140)).
+
+```swift
+import ManifoldAppEval
+
+let fixture = try GoldenTaskLoader.load(from: fixtureURL)   // turns + checkpoints (JSON)
+let outcome = await AppEvalRunner.run([fixture])             // scripted, hermetic
+print(AppEvalMarkdownRenderer.render(outcome))               // deterministic report
+exit(outcome.verdict.exitCode)                               // 0 pass · 1 fail · 2 error
+```
+
+**LLM-judge seam for the fuzzy 10% — `EvalJudge`.** Machine-checkable assertions stay the default; for genuinely fuzzy checkpoints you can now register an `EvalJudge` (bring your own judge — the first production conformer is Fireside's Claude-CLI judge) with a required `minScore` pass bar, so a judge score always reduces to a real verdict. A content-addressed `CachingJudge` decorator dedupes repeat judgments so reruns never re-bill ([#2146](https://github.com/ManifoldKit/ManifoldKit/issues/2146)).
+
+### Features
+
+* Make `GenerationConfig` `Equatable`; fix stale turn-loop and Codable doc contracts ([#2143](https://github.com/ManifoldKit/ManifoldKit/issues/2143))
+* Publish shared `DecoyTools` pool for companion CLIs ([#2134](https://github.com/ManifoldKit/ManifoldKit/issues/2134))
+
+### Fixes
+
+* Lock-guard `URLSessionProvider.networkDisabled` against concurrent access ([#2142](https://github.com/ManifoldKit/ManifoldKit/issues/2142))
+
+### Documentation
+
+* Add API-DESIGN.md — standing public-surface policy (toolkit-first, visibility, layer ownership) ([#2141](https://github.com/ManifoldKit/ManifoldKit/issues/2141))
+* Commit pre-1.0 API program plans and overnight run-log ([#2149](https://github.com/ManifoldKit/ManifoldKit/issues/2149))
+* Platform compatibility matrix + Foundation-only minimal quickstart snippet ([#2144](https://github.com/ManifoldKit/ManifoldKit/issues/2144))
+
+### Continuous Integration
+
+* Extend api-digester gate to all library-product targets ([#2145](https://github.com/ManifoldKit/ManifoldKit/issues/2145))
+* Harden release tooling (local changelog-lint, PR-title quote guard, resilient companion fanout, merge-queue docs) ([#2131](https://github.com/ManifoldKit/ManifoldKit/issues/2131))
+
 ## [0.65.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.64.0...v0.65.0) (2026-07-03)
 
 ### Highlights

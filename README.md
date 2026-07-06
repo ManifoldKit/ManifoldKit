@@ -21,7 +21,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 Three steps: add **ManifoldKit** (core) plus the **manifold-llama** companion package (the on-device GGUF backend), then drop this into your app entry point. `ManifoldKit.quickStart(backends:seed:)` builds the SwiftData container, registers the compiled-in backends plus the companion registrars you pass, and seeds a curated ~400 MB starter model on first launch — one call to a live, generating chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.65.0"), // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.66.0"), // x-release-please-version
 .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
 // target dependencies: "ManifoldKit", .product(name: "ManifoldLlama", package: "manifold-llama")
 ```
@@ -224,7 +224,7 @@ Each row is genuinely strong at its own layer — a UI kit renders beautiful bub
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.65.0" // x-release-please-version
+    from: "0.66.0" // x-release-please-version
 )
 ```
 
@@ -502,7 +502,7 @@ Coming from Apple's `LanguageModelSession` / `@Generable` or AnyLanguageModel's 
 
 This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL redirects, but:
 
-- Update SPM dependencies to `.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", ...)` with `from: "0.65.0"` <!-- x-release-please-version -->
+- Update SPM dependencies to `.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", ...)` with `from: "0.66.0"` <!-- x-release-please-version -->
 - Update imports: `import BaseChatKit` → `import ManifoldKit` (and similarly for sub-modules).
 - Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/4/5` → `ManifoldSchemaV3/4/5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`.
 - **BREAKING — local SwiftData stores reset.** Apps upgrading from 0.19.x create fresh databases on first launch. We chose this clean break over preserving data with `@Model.originalName` because v0.20 is pre-1.0.
