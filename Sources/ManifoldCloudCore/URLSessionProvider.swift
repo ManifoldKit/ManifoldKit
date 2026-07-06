@@ -1,5 +1,6 @@
 import Foundation
 import ManifoldInference
+import os
 
 /// Centralized factory for URLSession instances used by cloud backends.
 ///
@@ -55,15 +56,22 @@ public enum URLSessionProvider {
     /// reason. Useful for a regulated runtime that wants to lock network
     /// even in a `full`-trait build.
     ///
-    /// Defaults to `false`. Set at app startup if needed; flipping it after
-    /// sessions are already cached only affects callers that obtain a fresh
-    /// session via the throwing factories below.
-    ///
-    /// `nonisolated(unsafe)` matches the project pattern for boot-time
-    /// configuration flags (see `DNSRebindingGuard._resolverForTesting`):
-    /// callers are expected to write this once at app startup before any
-    /// concurrent reader can observe it.
-    public nonisolated(unsafe) static var networkDisabled: Bool = false
+    /// Defaults to `false`. Callers may flip it at any point during the
+    /// process lifetime, not only at boot — flipping it after sessions are
+    /// already cached only affects callers that obtain a fresh session via
+    /// the throwing factories below. Because a flip can happen at any time,
+    /// not provably-before any reader, this is a genuine runtime toggle, not
+    /// a write-once boot flag; a concurrent reader on another thread can race
+    /// a writer. Lock-guarded storage below makes every read/write atomic
+    /// without an actor hop; the public name and call sites are unchanged.
+    /// Mirrors `CloudImageEncoding._encodeHook` (`OSAllocatedUnfairLock`,
+    /// available below the macOS 15 / iOS 18 floor).
+    private static let _networkDisabledLock = OSAllocatedUnfairLock<Bool>(initialState: false)
+
+    public static var networkDisabled: Bool {
+        get { _networkDisabledLock.withLock { $0 } }
+        set { _networkDisabledLock.withLock { $0 = newValue } }
+    }
 
     /// Default redirect hop cap for sessions built by this provider. Used
     /// by ``pinned``, ``unpinned``, and ``background(identifier:hopCap:additionalDownloadDelegate:)``
