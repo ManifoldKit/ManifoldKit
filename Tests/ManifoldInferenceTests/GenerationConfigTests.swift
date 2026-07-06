@@ -465,4 +465,20 @@ final class GenerationConfigTests: XCTestCase {
 
         XCTAssertEqual(decoded.stopSequences, [])
     }
+
+    // MARK: - Equatable
+
+    func test_equatable_identicalConfigs_areEqual() {
+        let lhs = GenerationConfig(temperature: 0.5, topP: 0.8, maxOutputTokens: 1024)
+        let rhs = GenerationConfig(temperature: 0.5, topP: 0.8, maxOutputTokens: 1024)
+
+        XCTAssertEqual(lhs, rhs)
+    }
+
+    func test_equatable_oneFieldVariation_isUnequal() {
+        let lhs = GenerationConfig(temperature: 0.5, topP: 0.8, maxOutputTokens: 1024)
+        let rhs = GenerationConfig(temperature: 0.9, topP: 0.8, maxOutputTokens: 1024)
+
+        XCTAssertNotEqual(lhs, rhs)
+    }
 }
