@@ -41,11 +41,18 @@ public enum AppEvalVerdict: Sendable, Equatable {
         }
     }
 
-    /// Derives a verdict from a set of scores: any failing `.bool(false)`
-    /// (or a `.number` that the caller has already reduced to fail/pass —
-    /// this harness's built-in scorers only ever produce `.bool`) yields
+    /// Derives a verdict from a set of scores: only `.bool(false)` yields
     /// ``fail``; `.unavailable` is absence, not failure, and does not by
     /// itself downgrade ``pass``.
+    ///
+    /// **Invariant: a raw `.number` carries no verdict weight here.** Every
+    /// verdict-bearing scorer in this module reduces to `.bool` before its
+    /// score reaches aggregation — the built-ins produce `.bool` directly,
+    /// and `JudgedCheckpointScorer` reduces its judge's continuous score
+    /// against the payload's required `minScore` bar. A scorer that emitted
+    /// a bare `.number` into a gate would be verdict-inert (a `0.0` that
+    /// still exits `0`); keep this invariant true when adding scorers, or
+    /// extend this aggregation with an explicit threshold policy first.
     public static func aggregate(_ scores: some Sequence<Score>) -> AppEvalVerdict {
         for score in scores {
             switch score.value {

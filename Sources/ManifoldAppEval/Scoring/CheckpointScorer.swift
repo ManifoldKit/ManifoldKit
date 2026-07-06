@@ -19,6 +19,13 @@ import ManifoldRuntime
 /// / `expectedContextSlots` scorers have something to read without inventing
 /// a parallel output type.
 public struct CheckpointEvaluationContext: Sendable {
+    /// The id of the ``GoldenTaskFixture`` being evaluated, supplied by
+    /// ``GoldenTaskRunner`` — so scorers that need a stable per-fixture
+    /// identity (e.g. ``JudgedCheckpointScorer``'s diagnostic request ids)
+    /// read it from the run itself rather than trusting a constructor
+    /// parameter that could silently drift from the fixture actually running.
+    /// Empty only for hand-built contexts (unit tests) that don't set it.
+    public let fixtureID: String
     /// Read-only projection of the run's output up to this checkpoint.
     public let output: EvalRunOutput
     /// The app-supplied state snapshot, or `nil` when no ``ScenarioStateProbe``
@@ -45,8 +52,10 @@ public struct CheckpointEvaluationContext: Sendable {
         eventKinds: [ConversationEventKind],
         producedMessageCount: Int,
         lastContextAssembledSlotCount: Int?,
-        lastCompressionInsertedRecordCount: Int?
+        lastCompressionInsertedRecordCount: Int?,
+        fixtureID: String = ""
     ) {
+        self.fixtureID = fixtureID
         self.output = output
         self.snapshot = snapshot
         self.checkpoint = checkpoint
