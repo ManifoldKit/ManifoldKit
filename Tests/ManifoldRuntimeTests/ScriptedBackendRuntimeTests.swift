@@ -4,6 +4,8 @@ import Foundation
 @testable import ManifoldInference
 import ManifoldTestSupport
 import ManifoldContractTestSupport
+// ScriptedGenerationBackend relocated to ManifoldAppEval (app-eval harness wave 1).
+import ManifoldAppEval
 
 // MARK: - ScriptedBackendRuntimeTests
 

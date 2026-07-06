@@ -6,6 +6,9 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldTestSupport
 import ManifoldContractTestSupport
+// RuntimeScenarioRunner / ContextWindowPreTurnCompressionPolicy relocated to
+// ManifoldAppEval (app-eval harness wave 1).
+import ManifoldAppEval
 
 /// Live integration coverage for the Glass Box flagship research-session
 /// scenario wired against the **real** RAG stack (#1575).

@@ -111,16 +111,18 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
     public var capabilities: BackendCapabilities
 
     /// Optional per-token emission gate. When non-nil, the backend awaits
-    /// ``TokenEmissionGate/waitForAdvance()`` BEFORE yielding each
+    /// ``AppEvalTokenEmissionGate/waitForAdvance()`` BEFORE yielding each
     /// `.token(_:)` event. The driver releases tokens one at a time so a
     /// scenario can deterministically cancel a turn after observing exactly N
     /// `.tokenEmitted` events — without racing the unbounded stream buffer that
     /// would otherwise let the terminal `streamFinished(.stop)` overtake the
-    /// cancel call. Mirrors ``MockInferenceBackend/tokenEmissionGate``.
+    /// cancel call. Mirrors ``MockInferenceBackend/tokenEmissionGate`` in
+    /// `ManifoldTestSupport` (a deliberately separate type — see
+    /// ``AppEvalTokenEmissionGate``'s doc comment).
     ///
     /// Captured into a local at `generate` entry, so clearing it after a turn
     /// does not disturb an in-flight turn.
-    public var tokenEmissionGate: TokenEmissionGate?
+    public var tokenEmissionGate: AppEvalTokenEmissionGate?
 
     /// The number of `generate` calls made so far.
     public private(set) var generateCallCount: Int = 0

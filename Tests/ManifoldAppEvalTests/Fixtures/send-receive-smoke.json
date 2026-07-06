@@ -1,0 +1,15 @@
+{
+  "id": "send-receive-smoke",
+  "turns": [
+    { "kind": "send", "text": "Hello, world.", "cannedResponse": "Hello! How can I help?" }
+  ],
+  "checkpoints": [
+    {
+      "afterTurnIndex": 0,
+      "label": "greets back",
+      "requiredContent": ["Hello"],
+      "forbiddenContent": ["goodbye"],
+      "expectedEvents": ["streamStarted", "tokenEmitted", "streamFinished"]
+    }
+  ]
+}

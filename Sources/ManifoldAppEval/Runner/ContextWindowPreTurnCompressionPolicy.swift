@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import ManifoldInference
 import ManifoldRuntime
@@ -75,4 +74,3 @@ public struct ContextWindowPreTurnCompressionPolicy: PreTurnCompressionPolicy {
         )]
     }
 }
-#endif

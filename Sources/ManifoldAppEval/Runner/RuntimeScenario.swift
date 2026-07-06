@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import ManifoldInference
 import ManifoldRuntime
@@ -128,6 +127,14 @@ public struct RuntimeScenario: Sendable {
     /// ``ConversationEvent/contextAssembled`` event for the same turn.
     public let preTurnCompressionPolicy: (any PreTurnCompressionPolicy)?
 
+    /// Optional system prompt, plumbed through to each turn's ``TurnConfig/systemPrompt``.
+    ///
+    /// Added for ManifoldAppEval (app-facing goldens routinely need a fixed
+    /// system prompt to make model behaviour reproducible) — MK's own
+    /// built-in scenarios all leave this `nil`, matching their historical
+    /// no-system-prompt behaviour.
+    public let systemPrompt: String?
+
     /// Convenience initializer for send-only scenarios: each user message is a
     /// `.send` turn driving exactly one backend script. The two arrays must be
     /// equal in count.
@@ -138,7 +145,8 @@ public struct RuntimeScenario: Sendable {
         userMessages: [String],
         scriptedTurns: [ScriptedGenerationBackend.TurnScript],
         expectedSubsequence: [ConversationEventKind],
-        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
+        systemPrompt: String? = nil
     ) {
         precondition(
             userMessages.count == scriptedTurns.count,
@@ -152,6 +160,7 @@ public struct RuntimeScenario: Sendable {
         self.expectedSubsequence = expectedSubsequence
         self.toolExecutors = []
         self.preTurnCompressionPolicy = preTurnCompressionPolicy
+        self.systemPrompt = systemPrompt
     }
 
     /// Designated initializer for scenarios that mix turn kinds (send /
@@ -168,7 +177,8 @@ public struct RuntimeScenario: Sendable {
         scriptedTurns: [ScriptedGenerationBackend.TurnScript],
         expectedSubsequence: [ConversationEventKind],
         toolExecutors: [any ToolExecutor] = [],
-        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
+        systemPrompt: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -178,6 +188,6 @@ public struct RuntimeScenario: Sendable {
         self.expectedSubsequence = expectedSubsequence
         self.toolExecutors = toolExecutors
         self.preTurnCompressionPolicy = preTurnCompressionPolicy
+        self.systemPrompt = systemPrompt
     }
 }
-#endif

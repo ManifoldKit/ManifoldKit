@@ -1,9 +1,6 @@
-#if DEBUG
 import Foundation
-import XCTest
 import ManifoldInference
 import ManifoldRuntime
-import ManifoldTestSupport
 
 /// Executes a ``RuntimeScenario`` in either scripted (hermetic CI) or live
 /// (real backend) mode and returns the recorded trace + assertion outcomes.
@@ -18,6 +15,11 @@ import ManifoldTestSupport
 ///
 /// Both modes use a bare ``ConversationRuntime`` with an in-memory
 /// ``MessageStore`` so no SwiftData stack is required.
+///
+/// This type does not depend on XCTest — it returns a ``Result`` describing
+/// pass/fail plus a diagnostic reason. `ManifoldContractTestSupport` adds a
+/// thin `assert(result:)` XCTest adapter as an extension so MK's own test
+/// suites keep calling `RuntimeScenarioRunner.assert(result:)` unchanged.
 @MainActor
 public enum RuntimeScenarioRunner {
 
@@ -129,7 +131,8 @@ public enum RuntimeScenarioRunner {
                 turn,
                 runtime: runtime,
                 scriptedBackend: scriptedBackend,
-                sessionID: sessionID
+                sessionID: sessionID,
+                systemPrompt: scenario.systemPrompt
             )
         }
 
@@ -137,25 +140,19 @@ public enum RuntimeScenarioRunner {
         await drainTask.value
 
         let trace = await ConversationEventTrace(recorder: recorder)
-        let (passed, reason) = checkSubsequence(trace.kinds, against: scenario.expectedSubsequence)
+        let checkResult = EventSubsequenceChecker.check(trace.kinds, against: scenario.expectedSubsequence)
 
-        let producedMessages: [ChatMessage]
-        do {
-            producedMessages = try await store.fetchMessages(for: sessionID)
-        } catch {
-            // Surface store-read failures instead of silently swallowing them —
-            // a failed fetch would otherwise mask citation/compression assertions
-            // in live runs (SilentCatchAuditTest).
-            XCTFail("RuntimeScenarioRunner: failed to fetch produced messages: \(error)")
-            producedMessages = []
-        }
+        // Let a store-read failure propagate rather than swallow it — a
+        // failed fetch would otherwise mask citation/compression assertions
+        // in live runs (SilentCatchAuditTest bans exactly this shape).
+        let producedMessages = try await store.fetchMessages(for: sessionID)
 
         return Result(
             scenario: scenario,
             mode: modeKind,
             trace: trace,
-            subsequencePassed: passed,
-            subsequenceFailureReason: reason,
+            subsequencePassed: checkResult.passed,
+            subsequenceFailureReason: checkResult.failureReason,
             producedMessages: producedMessages
         )
     }
@@ -173,14 +170,13 @@ public enum RuntimeScenarioRunner {
         _ turn: RuntimeScenario.ScenarioTurn,
         runtime: ConversationRuntime,
         scriptedBackend: ScriptedGenerationBackend?,
-        sessionID: UUID
+        sessionID: UUID,
+        systemPrompt: String?
     ) async throws {
-        let config: TurnConfig
-        if let limit = turn.streamingBatchCharacterLimit {
-            config = TurnConfig(streamingBatchCharacterLimit: limit)
-        } else {
-            config = TurnConfig()
-        }
+        let config = TurnConfig(
+            systemPrompt: systemPrompt,
+            streamingBatchCharacterLimit: turn.streamingBatchCharacterLimit ?? 128
+        )
 
         let kind: TurnKind
         switch turn.action {
@@ -212,7 +208,7 @@ public enum RuntimeScenarioRunner {
             return
         }
 
-        let gate = TokenEmissionGate()
+        let gate = AppEvalTokenEmissionGate()
         scriptedBackend.tokenEmissionGate = gate
         defer { scriptedBackend.tokenEmissionGate = nil }
 
@@ -270,36 +266,6 @@ public enum RuntimeScenarioRunner {
         }
         _ = await handle.outcome
         await driver.value
-    }
-
-    /// Calls `XCTFail` if `result.subsequencePassed` is `false`.
-    public static func assert(
-        result: Result,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        guard !result.subsequencePassed, let reason = result.subsequenceFailureReason else { return }
-        XCTFail("Scenario '\(result.scenario.id)' failed: \(reason)", file: file, line: line)
-    }
-
-    // MARK: - Subsequence check (mirrors XCTAssertEventSubsequence logic)
-
-    private static func checkSubsequence(
-        _ kinds: [ConversationEventKind],
-        against expected: [ConversationEventKind]
-    ) -> (passed: Bool, reason: String?) {
-        var idx = expected.startIndex
-        for kind in kinds {
-            guard idx < expected.endIndex else { break }
-            if kind == expected[idx] { idx = expected.index(after: idx) }
-        }
-        if idx < expected.endIndex {
-            let matched = expected[..<idx].map(\.rawValue).joined(separator: ", ")
-            let missing = expected[idx...].map(\.rawValue).joined(separator: ", ")
-            let traceDesc = kinds.map(\.rawValue).joined(separator: ", ")
-            return (false, "Matched: [\(matched)] — Missing: [\(missing)] — Trace: [\(traceDesc)]")
-        }
-        return (true, nil)
     }
 }
 
@@ -378,4 +344,3 @@ private final class ScenarioMessageStore: MessageStore, @unchecked Sendable {
         hooks.append(hook)
     }
 }
-#endif

@@ -1,0 +1,24 @@
+{
+  "id": "research-session-compression",
+  "turns": [
+    { "kind": "send", "text": "What is photosynthesis?", "cannedResponse": "Photosynthesis converts light to energy." },
+    { "kind": "send", "text": "How does the light-dependent reaction work?", "cannedResponse": "Light-dependent reactions use ATP." },
+    { "kind": "send", "text": "What role does chlorophyll play?", "cannedResponse": "Chlorophyll absorbs light." },
+    { "kind": "send", "text": "Summarise everything you've told me so far.", "cannedResponse": "Summary: photosynthesis, reactions, chlorophyll." }
+  ],
+  "checkpoints": [
+    {
+      "afterTurnIndex": 2,
+      "label": "history compressed before turn 3",
+      "requiredContent": ["Chlorophyll"],
+      "expectedEvents": ["streamFinished", "historyCompressed", "contextAssembled", "streamFinished"],
+      "expectedCompression": { "maxRetainedMessages": 3, "minInsertedRecords": 1 }
+    },
+    {
+      "afterTurnIndex": 3,
+      "label": "final summary turn completes",
+      "requiredContent": ["Summary"],
+      "expectedEvents": ["streamFinished"]
+    }
+  ]
+}

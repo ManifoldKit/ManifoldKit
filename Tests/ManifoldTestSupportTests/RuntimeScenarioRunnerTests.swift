@@ -4,6 +4,9 @@ import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
 import ManifoldContractTestSupport
+// RuntimeScenario / RuntimeScenarioRegistry / RuntimeScenarioRunner relocated
+// to ManifoldAppEval (app-eval harness wave 1).
+import ManifoldAppEval
 
 // MARK: - RuntimeScenarioRunnerTests
 
