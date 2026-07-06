@@ -163,11 +163,11 @@ jobs:
             --skip-update
           scripts/check-coverage.sh
 
-      - name: Public API source-compatibility check (full — all five modules)
-        # Full unconditional check across all five trait-free public targets,
-        # diffed against $BASELINE_SHA — the latest release tag, resolved
-        # once in "Capture API baseline SHA" above — not a live-reresolved
-        # `origin/main` ref and not this job's own HEAD.
+      - name: Public API source-compatibility check (full — all library-product targets)
+        # Full unconditional check across every `.library()` product in
+        # Package.swift, diffed against $BASELINE_SHA — the latest release
+        # tag, resolved once in "Capture API baseline SHA" above — not a
+        # live-reresolved `origin/main` ref and not this job's own HEAD.
         #
         # Why a release tag and not `origin/main`: `origin/main` is a
         # floating ref. Re-resolving it live, ~26 min into this job, races
@@ -181,34 +181,70 @@ jobs:
         # meaningfully-different baseline with no re-resolution race.
         #
         # Why this step exists at all, given ci.yml's per-PR gate: that gate
-        # only runs on modules that changed in the PR, skips entirely on
-        # doc/test/script-only changes, and does not run on `merge_group`
-        # events at all — so queue-merged trees are never digester-checked
-        # by it. This nightly run is the only place that coverage lives; it
-        # is the 24h backstop that catches whatever the per-PR gate's path
-        # filters, merge_group skip, or an admin merge let through.
-        # Intentional breaking changes are covered the same way they always
-        # were: the PR that makes the change adds a permanent entry to
-        # .github/api-breakage-allowlist.txt (see ci.yml for why the
-        # allowlist exists — it also absorbs false-positive "removed"
-        # reports from downward type relocations behind `@_exported`
-        # re-export shims, P2a Contract extraction, #1719/#1723).
+        # skips entirely on doc/test/script-only changes and does not run on
+        # `merge_group` events at all — so queue-merged trees are never
+        # digester-checked by it. This nightly run is the only place that
+        # coverage lives unconditionally; it is the 24h backstop that catches
+        # whatever the per-PR gate's path filter, merge_group skip, or an
+        # admin merge let through. Intentional breaking changes are covered
+        # the same way they always were: the PR that makes the change adds a
+        # permanent entry to .github/api-breakage-allowlist.txt (see ci.yml
+        # for why the allowlist exists — it also absorbs false-positive
+        # "removed" reports from downward type relocations behind
+        # `@_exported` re-export shims, P2a Contract extraction, #1719/#1723).
         #
         # `--targets` is kept (rather than whole-package mode) for scope
         # control; the historical blocker — the trait-gated `llama` C module
         # ("missing required module 'llama'") — left with the C2 companion
         # split, so whole-package mode may work again; revisit in C4.
         #
-        # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed: the
-        # five targets below cover everything `import ManifoldKit` consumers
-        # touch except the backend families, which are pinned via the backend
-        # seam freeze fixture + companion contract suites.
+        # The list below is every `.library(...)` product in Package.swift —
+        # including the `ManifoldKit` umbrella itself — per
+        # docs/plans/api-review-2026-07.md item 0.0: the prior 5-target list
+        # was never actually complete (it covered only the modules ci.yml's
+        # old per-module path filters happened to gate on), and swift-api-
+        # digester analyzes each target's own emitted interface without
+        # following `@_exported import` re-exports, so targets like
+        # ManifoldContract and ManifoldHardware were silently unchecked here
+        # too. Executables (fuzz-chat, manifold-tools, ManifoldServer) and the
+        # ManifoldMacrosPlugin build plugin aren't `.library()` products and
+        # have no digestible module interface, so they're excluded. Keep this
+        # list in sync with Package.swift's products: array and with the
+        # per-PR step in ci.yml when a product is added/removed/renamed.
         id: api-check
         run: |
           set -euo pipefail
-          swift package diagnose-api-breaking-changes "$BASELINE_SHA" \
-            --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore \
-            --targets ManifoldPersistenceSwiftData --targets ManifoldUI \
+          TARGETS=(
+            --targets ManifoldKit
+            --targets ManifoldInference
+            --targets ManifoldContract
+            --targets ManifoldNetworking
+            --targets ManifoldSecrets
+            --targets ManifoldHardware
+            --targets ManifoldModelCatalog
+            --targets ManifoldMCP
+            --targets ManifoldMCPHost
+            --targets ManifoldRuntime
+            --targets ManifoldPersistenceSwiftData
+            --targets ManifoldCloudCore
+            --targets ManifoldFoundation
+            --targets ManifoldOllama
+            --targets ManifoldCloudSaaS
+            --targets ManifoldAnyLanguageModel
+            --targets ManifoldUI
+            --targets ManifoldUIModelManagement
+            --targets ManifoldHuggingFace
+            --targets ManifoldVoice
+            --targets ManifoldFuzz
+            --targets ManifoldTestSupport
+            --targets ManifoldBackendTestKit
+            --targets ManifoldTools
+            --targets ManifoldAppIntents
+            --targets ManifoldSkills
+            --targets ManifoldTelemetryOTLP
+            --targets ManifoldAppEval
+          )
+          swift package diagnose-api-breaking-changes "$BASELINE_SHA" "${TARGETS[@]}" \
             --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
       - name: Stage test diagnostics
