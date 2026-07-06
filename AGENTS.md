@@ -11,7 +11,7 @@ audiences:
   dependency rules, testing, and the release/PR workflow for an assistant
   changing ManifoldKit itself.
 
-`CLAUDE.md` is a stub that imports this file (`@AGENTS.md`) plus a few
+`CLAUDE.md` is a stub that imports this file (`@AGENTS.md`) and adds only
 Claude-harness-specific notes — never duplicate content between the two.
 
 # Part 1 — Using ManifoldKit (consumers)
