@@ -19,9 +19,10 @@
 // ManifoldHardware instead of physically relocating to ManifoldContract
 // (considered and ruled out during the pre-1.0 API review, 2026-07):
 // ManifoldHardware's own sources already consume them load-bearingly —
-// `StructuredOutputStrategy` takes `JSONSchemaValue` and `BackendCapabilities`
-// parameters, `PromptTemplate` serialises `ToolDefinition` into dialect
-// prompts, and `GenerationCapabilityRequirement.satisfies(_:)` extends
+// `StructuredOutputTarget`/`StructuredOutputRouter` take `JSONSchemaValue`
+// and `BackendCapabilities` parameters, `PromptTemplate` serialises
+// `ToolDefinition` into dialect prompts, and
+// `GenerationCapabilityRequirement.satisfies(_:)` extends
 // `BackendCapabilities` directly. Moving the types up to ManifoldContract
 // would make ManifoldHardware depend on a module that depends on
 // ManifoldHardware — a cycle. Per the API-review posture, this is fine: the
