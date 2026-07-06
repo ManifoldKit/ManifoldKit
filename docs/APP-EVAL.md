@@ -152,6 +152,50 @@ A checkpoint routes to `MyGraphScorer` by declaring
 
 ---
 
+## 4b. Judge-scored assertions (last resort, not first choice)
+
+For a genuinely fuzzy assertion no combination of the built-ins or a
+deterministic `CheckpointScorer` can express — "is this extraction as good as
+the reference", not "does this substring appear" — route a checkpoint through
+a registered `EvalJudge` via `JudgedCheckpointScorer`:
+
+```swift
+import ManifoldAppEval
+
+struct MyJudge: EvalJudge {
+    func judge(_ request: JudgeRequest) async throws -> JudgeVerdict {
+        // Call out to whatever grades this (a subprocess, an HTTP endpoint —
+        // ManifoldAppEval has no opinion; see fireside's ClaudeCodeJudge for
+        // the reference conformer this seam was generalized from).
+    }
+}
+
+let cachedJudge = CachingJudge(
+    underlying: MyJudge(),
+    directory: myAppSupportDirectory.appendingPathComponent("judge-cache")
+)
+
+let outcome = try await GoldenTaskRunner.run(
+    fixture,
+    customScorers: [
+        JudgedCheckpointScorer(id: "judge:extraction-quality", fixtureID: fixture.id, judge: cachedJudge)
+    ]
+)
+```
+
+A checkpoint routes to it by declaring
+`"custom": { "judge:extraction-quality": { "candidate": "...", "reference": "...", "rubric": "..." } }`.
+No judge wired in yet (`judge: nil`), or a judge call that throws, both score
+`.unavailable` — never a fabricated pass or a `0.0` — so a fixture can declare
+a judge-scored checkpoint before the app has a real conformer without
+poisoning the aggregate verdict.
+
+`CachingJudge` content-addresses responses by a SHA-256 of the request's
+canonical serialization, so re-running the same fixture (CI re-run, local
+iteration) never re-invokes the judge for a request it's already graded.
+
+---
+
 ## 5. Beyond the schema: assert on the trace directly
 
 The JSON schema covers the portable 80%. For anything else — a very specific
@@ -252,4 +296,5 @@ across runs — neither is required for the gate itself, which is just
 - `GoldenTaskFixture` / `GoldenTurn` / `GoldenCheckpoint` — the JSON schema (`Sources/ManifoldAppEval/Schema/`)
 - `GoldenTaskRunner` — drives fixtures and scores checkpoints (`Sources/ManifoldAppEval/Scoring/`)
 - `AppEvalOutcome` / `AppEvalMarkdownRenderer` / `AppEvalHistoryLedger` — reporting (`Sources/ManifoldAppEval/Report/`)
+- `EvalJudge` / `JudgeRequest` / `JudgeVerdict` / `CachingJudge` / `JudgedCheckpointScorer` — the judge seam, last resort for genuinely fuzzy assertions (`Sources/ManifoldAppEval/Judge/`)
 - The module's DocC page — the ManifoldAppEval vs. manifold-eval boundary, the honest pitch, and the machine-checkable-first policy in full.

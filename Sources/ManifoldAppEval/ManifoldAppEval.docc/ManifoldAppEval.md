@@ -38,16 +38,28 @@ scorers, plugged in via ``CheckpointScorer``, are for). Most apps' bug
 history is dominated by exactly the former (a dependency bump changing
 behavior underneath them), which is why the honest pitch is still a real one.
 
-### Machine-checkable first, judge later
+### Machine-checkable first, judge only for genuinely fuzzy assertions
 
 Every built-in assertion (`requiredContent`, `forbiddenContent`,
 `expectedEvents`, `expectedToolCalls`, `expectedCompression`,
 `expectedContextSlots`) is exact and deterministic — string containment,
-event-kind subsequence matching, payload counts. There is **no LLM-judge
-seam in wave 1**: a judge protocol only ships once a real conformer exists to
-prove it against (see the module's design doc, wave 2). Prefer a
-machine-checkable assertion over a fuzzy one every time one is expressible;
-reach for ``CheckpointScorer`` and a real domain scorer only when it isn't.
+event-kind subsequence matching, payload counts. Prefer a machine-checkable
+assertion over a fuzzy one every time one is expressible; reach for
+``CheckpointScorer`` and a real domain scorer before considering a judge, and
+reach for ``EvalJudge`` (via ``JudgedCheckpointScorer``) only when neither can
+express the assertion — e.g. grading whether an extraction is "as good as" a
+structurally-different-but-semantically-equivalent reference.
+
+**Wave 2a (this module) ships the judge *seam*** — ``EvalJudge``,
+``JudgeRequest``/``JudgeVerdict``, the content-addressed ``CachingJudge``
+decorator, and the ``JudgedCheckpointScorer`` adapter — generalized out of
+fireside's `ClaudeCodeJudge` (subprocess `claude -p`, prompt template,
+JSON-envelope parsing, SHA-256 response cache). **It ships with no production
+conformer in this repo**: the first one, fireside's `ClaudeCodeJudge` itself
+reworked to conform to ``EvalJudge``, lands in a lockstep fireside PR
+referenced from roryford/estate#1 Wave 2b. Until that PR merges, the seam is
+proven end-to-end in this repo's own tests via a fake conformer — a real app
+wires a real judge in exactly the same shape.
 
 ### Import discipline
 
@@ -93,6 +105,15 @@ it is the common path, not the only path.
 - ``CheckpointEvaluationContext``
 - ``BuiltInCheckpointScorers``
 - ``GoldenTaskRunner``
+
+### Judge
+
+- ``EvalJudge``
+- ``JudgeRequest``
+- ``JudgeVerdict``
+- ``CachingJudge``
+- ``JudgeCacheKey``
+- ``JudgedCheckpointScorer``
 
 ### Report
 
