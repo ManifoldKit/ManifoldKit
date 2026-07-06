@@ -400,7 +400,7 @@ The value-typed front door has the matching `LLM.localOnly(from:backends:)`.
 > [!IMPORTANT]
 > **This is registration-level exclusion, not link-level.** `localOnly` / `includeDefaultBackends: false` guarantee no cloud backend can be *selected or dispatched* — but the cloud code is still compiled and linked through the `ManifoldKit` umbrella. For true link-time exclusion (e.g. a FIPS posture, or proving the binary contains no networking symbols) depend on the individual products instead of the umbrella — see [`docs/FIPS.md`](FIPS.md).
 
-On iOS 26 / macOS 26+, `localOnly()` with no `backends` still yields a working chat via Apple Foundation Models. On older OSes, pass a companion local registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`) or the runtime will have no selectable model. To also stop accidental network egress at runtime (e.g. from a misconfigured custom endpoint), flip the `URLSessionProvider.networkDisabled` kill-switch — see [Host configuration seams](#host-configuration-seams) below.
+On iOS 26 / macOS 26+, `localOnly()` with no `backends` still yields a working chat via Apple Foundation Models. On older OSes, pass a companion local registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`) — with no registrar that can serve the OS, `localOnly()` throws `ManifoldKitError.noBackendsRegistered` at bootstrap rather than launching a chat with no selectable model. To also stop accidental network egress at runtime (e.g. from a misconfigured custom endpoint), flip the `URLSessionProvider.networkDisabled` kill-switch — see [Host configuration seams](#host-configuration-seams) below.
 
 ### Foundation-only quickstart (no cloud, no companion packages)
 
@@ -428,6 +428,14 @@ struct MyChatApp: App {
             } else {
                 ProgressView().task {
                     do {
+                        // Below the Foundation Models floor this registrar yields
+                        // no usable backend and quickStart throws
+                        // .noBackendsRegistered — gate the call (or add a
+                        // fallback registrar for older OSes; see note below).
+                        guard #available(iOS 26, macOS 26, *) else {
+                            error = .noBackendsRegistered
+                            return
+                        }
                         result = try await ManifoldKit.quickStart(
                             backends: [FoundationBackends.self],
                             includeDefaultBackends: false
@@ -442,7 +450,9 @@ struct MyChatApp: App {
 }
 ```
 
-`FoundationBackends` is re-exported by the `ManifoldKit` umbrella (`@_exported import` — see `Sources/ManifoldKit/Exports.swift`), so no extra product or import is needed beyond `ManifoldKit` itself. This is the same registration-level exclusion as `localOnly()` above, just spelled out with the general `quickStart(backends:includeDefaultBackends:)` primitive and an explicit registrar list of one. On iOS 18–25 / macOS 15–25 this compiles and runs, but yields no selectable model until the OS reaches the Foundation Models floor — see the [compatibility matrix](../README.md#compatibility-matrix) in the README. Headless (non-SwiftUI) consumers get an even leaner dependency set — just `ManifoldInference` + `ManifoldFoundation`, no `ManifoldKit` umbrella at all — via [`QUICKSTART-CLI.md` §1](QUICKSTART-CLI.md#1-foundation-models-macos-26).
+`FoundationBackends` is re-exported by the `ManifoldKit` umbrella (`@_exported import` — see `Sources/ManifoldKit/Exports.swift`), so no extra product or import is needed beyond `ManifoldKit` itself. This is the same registration-level exclusion as `localOnly()` above, just spelled out with the general `quickStart(backends:includeDefaultBackends:)` primitive and an explicit registrar list of one.
+
+On iOS 18–25 / macOS 15–25 the snippet *compiles and links* fine, but the unguarded `quickStart` call **throws `ManifoldKitError.noBackendsRegistered`**: below the Foundation Models floor `FoundationBackends` registers a factory that can never produce a usable backend, and `quickStart` fails fast rather than launching a chat that can never generate. A Foundation-only app must therefore gate the call with `#available(iOS 26, macOS 26, *)` (as the snippet does) or include a fallback registrar for older OSes — a companion local registrar (`LlamaBackends.self` / `MLXBackends.self`) or the compiled-in cloud families. See the [compatibility matrix](../README.md#compatibility-matrix) in the README. Headless (non-SwiftUI) consumers get an even leaner dependency set — just `ManifoldInference` + `ManifoldFoundation`, no `ManifoldKit` umbrella at all — via [`QUICKSTART-CLI.md` §1](QUICKSTART-CLI.md#1-foundation-models-macos-26).
 
 ## Host configuration seams
 
