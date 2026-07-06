@@ -14,3 +14,13 @@ public protocol BackendError: LocalizedError, Sendable {
 
 extension InferenceError: BackendError {}
 extension CloudBackendError: BackendError {}
+
+// `ManifoldKitError` is defined in `ManifoldModelCatalog`, which
+// `ManifoldContract` already `@_exported import`s (see
+// `ManifoldContractLeafExports.swift`) — declaring the conformance here
+// mirrors the `CloudBackendError` precedent above rather than adding a new
+// cross-module edge. See docs/error-boundary escapable-types table (DocC:
+// ManifoldRuntime "Error handling at the boundary") for why this is one of
+// the ~escapable set: it is the terminal wrap-everything rim thrown by
+// `ManifoldKit.quickStart(configuration:)`.
+extension ManifoldKitError: BackendError {}

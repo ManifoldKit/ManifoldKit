@@ -87,14 +87,51 @@ public struct ExponentialBackoffStrategy: RetryStrategy, Sendable {
 ///
 /// Wraps the last error encountered so callers can distinguish "failed after
 /// retries" from a single failure.
-public struct RetryExhaustedError: Error, LocalizedError {
+public struct RetryExhaustedError: Error, LocalizedError, Sendable {
     /// The error from the final retry attempt.
     public let lastError: any Error
     /// Total number of attempts made (initial + retries).
     public let attempts: Int
 
+    /// Public structs don't get a synthesized `public` memberwise
+    /// initializer (only `internal`) — this one is needed so cross-module
+    /// callers (the `BackendError` audit test, any consumer that constructs
+    /// one directly) can build a value.
+    public init(lastError: any Error, attempts: Int) {
+        self.lastError = lastError
+        self.attempts = attempts
+    }
+
     public var errorDescription: String? {
         "Operation failed after \(attempts) attempts: \(lastError.localizedDescription)"
+    }
+}
+
+// MARK: - RetryExhaustedError + BackendError
+//
+// `withRetry(strategy:sleeper:operation:)` is the retry helper
+// `SSEGenerationTaskRunner.openConnection(streamBox:)` wraps its connection
+// attempt in (`ManifoldCloudCore/SSEGenerationTaskRunner.swift`) — the shared
+// SSE infrastructure both the Ollama and CloudSaaS backend families use. Its
+// outer `catch` block rethrows raw (no rewrap into `CloudBackendError`), so a
+// `RetryExhaustedError` from a connection-retry budget running out reaches
+// `InferenceService.enqueue`/`.generate`'s `GenerationStream.events` as its
+// own concrete type — it belongs in the escapable set alongside
+// `InferenceError`/`CloudBackendError`.
+extension RetryExhaustedError: BackendError {
+    /// Whether retrying the same call, unchanged, has a reasonable chance of
+    /// succeeding.
+    ///
+    /// `withRetry` only reaches this terminal state after it already retried
+    /// `lastError` as many times as the strategy allowed, so a bare "try
+    /// again" is not automatically useful. Defer to `lastError`'s own
+    /// ``BackendError/isRetryable`` when it conforms — a fresh call restarts
+    /// the retry budget from zero, so if the underlying failure was itself
+    /// transient (rate limit, network blip) a new attempt sequence can
+    /// reasonably succeed even though this one didn't. Fall back to `false`
+    /// for an unrecognised underlying type rather than guessing.
+    public var isRetryable: Bool {
+        (lastError as? any BackendError)?.isRetryable ?? false
     }
 }
 
