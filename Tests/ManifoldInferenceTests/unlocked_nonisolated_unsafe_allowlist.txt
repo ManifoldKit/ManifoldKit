@@ -90,14 +90,23 @@ ManifoldBackendTestKit/BackendContractChecks.swift:private nonisolated(unsafe) s
 # Genuinely write-once-before-any-reader (documented boot-time contract)
 # ---------------------------------------------------------------------------
 
-# Documented belt-and-suspenders network kill-switch: "Set at app startup if
-# needed... callers are expected to write this once at app startup before
-# any concurrent reader can observe it" (see the doc comment two lines above
-# in the source file).
-ManifoldCloudCore/URLSessionProvider.swift:public nonisolated(unsafe) static var networkDisabled: Bool = false
-
-# Mirrors ManifoldCloudCore/URLSessionProvider.swift's documented
-# networkDisabled boot-time-flag pattern above — same shape, same contract.
+# `ManifoldCloudCore/URLSessionProvider.swift`'s `networkDisabled` used to be
+# allowlisted here under this "write-once boot flag" exception. Plan item 1.3
+# (docs/plans/api-review-2026-07.md) found the premise false: the property's
+# own doc explicitly supports flipping it after startup (not just once before
+# any reader), and `URLSessionProviderNetworkDisabledTests` toggles it
+# repeatedly across test methods — the opposite of write-once. It is now
+# `OSAllocatedUnfairLock`-backed (mirrors `CloudImageEncoding._encodeHook`)
+# and no longer appears in Sources/ as an unlocked `nonisolated(unsafe)`
+# declaration, so it drops out of this allowlist entirely.
+#
+# `ManifoldMCP/MCPURLSessionFactory.networkDisabled` below was allowlisted as
+# a mirror of the (former) URLSessionProvider entry above — same shape, same
+# "write once at boot" claim, same contradiction: `AuthMCPOAuthAuthorizationTests`
+# and `MCPStreamableHTTPTransportTests` also toggle it repeatedly across test
+# methods. Out of scope for plan item 1.3 (different module, different test
+# target/gate), but the same lock-guarding fix applies — tracked as a
+# follow-up, not fixed here.
 ManifoldMCP/MCPURLSessionFactory.swift:internal nonisolated(unsafe) static var networkDisabled: Bool = false
 
 # Documented as protected by the caller's synchronisation guarantees:
