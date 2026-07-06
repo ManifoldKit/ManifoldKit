@@ -247,6 +247,17 @@ Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`
 
 ManifoldKit follows an **n-1 platform policy**: the current Apple OS release and the one immediately before it. When Apple ships a new major OS each September, both minimums bump by one. See [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy) for the rationale.
 
+### Compatibility matrix
+
+Most of the surface builds and runs down to the package floor (iOS 18 / macOS 15). A few modules and symbols carry a higher floor because they wrap OS-26-only frameworks — they still **compile and link** fine on older deployment targets; only *using* the gated symbol requires an OS check.
+
+| Module / symbol | Min iOS | Min macOS | Notes |
+|---|---|---|---|
+| Package floor (`ManifoldKit`, `ManifoldInference`, `ManifoldRuntime`, `ManifoldUI`, …) | 18 | 15 | The n-1 baseline everything below is measured against. |
+| `ManifoldFoundation` / `FoundationBackend` | 26 | 26 | Re-exported by the `ManifoldKit` umbrella, so apps targeting iOS 18–25 / macOS 15–25 link it fine — but `FoundationBackends.register(with:)` registers a factory that yields no usable backend below the floor, and `quickStart` with *only* this registrar throws `ManifoldKitError.noBackendsRegistered` on iOS 18–25 / macOS 15–25. Guard usage with `if #available(iOS 26, macOS 26, *)`. |
+| `ManifoldAppIntents` — `AppIntentToolExecutor` (the ToolExecutor bridge) | 26 | 26 | Separate opt-in product (not re-exported by the umbrella). Gate registration behind `#available(iOS 26, macOS 26, *)`. |
+| `ManifoldAppIntents` — `AskManifoldIntent` / `AskManifoldHandler` | 18 | 15 | Same opt-in product as above, but the sample intent and its handler protocol only need the package floor. |
+
 ## Demo
 
 <p align="center">
