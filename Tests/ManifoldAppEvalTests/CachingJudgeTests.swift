@@ -44,15 +44,37 @@ final class CachingJudgeTests: XCTestCase {
         XCTAssertEqual(secondCallCount, 1, "a cache hit must never re-invoke the underlying judge")
     }
 
-    func test_differentRequests_bothInvokeUnderlying() async throws {
+    func test_differentContent_bothInvokeUnderlying() async throws {
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 0.5, rationale: "n/a"))
         let caching = CachingJudge(underlying: judge, directory: cacheDirectory)
 
-        _ = try await caching.judge(request(id: "a"))
-        _ = try await caching.judge(request(id: "b"))
+        var second = request()
+        second = JudgeRequest(id: second.id, content: second.content, candidate: "different candidate", reference: second.reference, rubric: second.rubric)
+        _ = try await caching.judge(request())
+        _ = try await caching.judge(second)
 
         let callCount = await judge.callCount
-        XCTAssertEqual(callCount, 2, "distinct requests must not collide in the cache")
+        XCTAssertEqual(callCount, 2, "content-distinct requests must not collide in the cache")
+    }
+
+    /// The `id` is a diagnostic label, not content: two requests identical
+    /// in every content field but differing in `id` (e.g. a renamed fixture
+    /// or two checkpoints grading identical content) must share one cache
+    /// entry — the second call is a hit, never a re-bill.
+    func test_idIsExcludedFromCacheKey_renamedRequestHitsCache() async throws {
+        let judge = RecordingJudge(verdict: JudgeVerdict(score: 0.6, rationale: "cached"))
+        let caching = CachingJudge(underlying: judge, directory: cacheDirectory)
+
+        let original = request(id: "old-fixture#checkpoint")
+        let renamed = request(id: "renamed-fixture#other-checkpoint")
+        XCTAssertEqual(JudgeCacheKey.hash(for: original), JudgeCacheKey.hash(for: renamed))
+
+        _ = try await caching.judge(original)
+        let second = try await caching.judge(renamed)
+        XCTAssertEqual(second.score, 0.6)
+
+        let callCount = await judge.callCount
+        XCTAssertEqual(callCount, 1, "an id-only difference must be a cache hit, not a re-bill")
     }
 
     // MARK: - Corrupt-entry tolerance
@@ -87,23 +109,7 @@ final class CachingJudgeTests: XCTestCase {
         XCTAssertEqual(key1, key2)
     }
 
-    /// Two independently-constructed requests with identical field *values*
-    /// (built via different code paths / argument orderings, the only
-    /// "ordering" a fixed-shape struct admits) must hash identically — the
-    /// canonicalization must not depend on construction order.
-    func test_canonicalHash_sameFieldValues_sameKey_regardlessOfConstructionPath() {
-        let a = JudgeRequest(id: "x", content: "c", candidate: "cand", reference: "ref", rubric: "r")
-        // Constructed via a different route (defaulted then explicit
-        // re-derivation) to prove the hash is a pure function of field
-        // values, not of how the struct got built.
-        let fields = (id: "x", content: "c", candidate: "cand", reference: Optional("ref"), rubric: "r")
-        let b = JudgeRequest(id: fields.id, content: fields.content, candidate: fields.candidate, reference: fields.reference, rubric: fields.rubric)
-
-        XCTAssertEqual(a, b)
-        XCTAssertEqual(JudgeCacheKey.hash(for: a), JudgeCacheKey.hash(for: b))
-    }
-
-    func test_canonicalHash_differsWhenAnyFieldDiffers() {
+    func test_canonicalHash_differsWhenAnyContentFieldDiffers() {
         let base = JudgeRequest(id: "x", content: "c", candidate: "cand", reference: "ref", rubric: "r")
         let differentCandidate = JudgeRequest(id: "x", content: "c", candidate: "cand2", reference: "ref", rubric: "r")
         let differentReference = JudgeRequest(id: "x", content: "c", candidate: "cand", reference: nil, rubric: "r")

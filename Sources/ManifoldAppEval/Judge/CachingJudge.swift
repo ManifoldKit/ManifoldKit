@@ -22,6 +22,12 @@ public enum JudgeCacheKey {
     /// `JudgeRequest`'s declaration order or of any particular encoder's
     /// (non-)deterministic key ordering — identical field *values* always
     /// hash identically.
+    ///
+    /// **Content fields only** — ``JudgeRequest/id`` is deliberately
+    /// excluded: it is a diagnostic label, not content, and folding it in
+    /// would re-bill identical judgments whenever a fixture or checkpoint is
+    /// renamed (and bill twice for two checkpoints grading identical
+    /// content).
     public static func hash(for request: JudgeRequest) -> String {
         let canonical = canonicalString(for: request)
         let digest = SHA256.hash(data: Data(canonical.utf8))
@@ -33,7 +39,6 @@ public enum JudgeCacheKey {
     /// filename.
     static func canonicalString(for request: JudgeRequest) -> String {
         let fields: [String: String] = [
-            "id": request.id,
             "content": request.content,
             "candidate": request.candidate,
             "hasReference": request.reference != nil ? "true" : "false",
@@ -72,6 +77,16 @@ public enum JudgeCacheKey {
 /// judge is invoked, its verdict overwrites the corrupt file, and a `Log.*`
 /// warning records the corruption. Always `do`/`catch` with a warning — never
 /// `try?` — matching `SilentCatchAuditTest`'s standing rule.
+///
+/// ## Concurrency
+///
+/// Concurrent identical requests are **safe but not coalesced**: writes are
+/// atomic and a corrupt/partial read falls back to a miss, so parallel
+/// callers can never see torn data — but two in-flight `judge(_:)` calls for
+/// the same request will *both* invoke the underlying judge (double-bill)
+/// before one of them wins the write. Sequential eval runs — this module's
+/// intended use — never hit that window; add your own single-flight layer if
+/// you fan judge calls out in parallel.
 public struct CachingJudge<Underlying: EvalJudge>: EvalJudge {
     private let underlying: Underlying
     private let directory: URL

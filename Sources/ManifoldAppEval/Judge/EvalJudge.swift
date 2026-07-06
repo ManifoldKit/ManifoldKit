@@ -25,12 +25,12 @@ import Foundation
 /// module's DocC page, "Machine-checkable first, judge only for genuinely
 /// fuzzy assertions."
 public struct JudgeRequest: Sendable, Equatable {
-    /// Stable identifier for this request, folded into the cache key
-    /// (``CachingJudge``) alongside the content fields — typically
-    /// `"\(fixtureID)#\(checkpointLabel)"` so cache entries are
-    /// distinguishable in debugging output. Two requests with the same `id`
-    /// but different content/candidate/reference/rubric still hash to
-    /// different cache keys; `id` does not stand in for content equality.
+    /// Diagnostic label for this request — typically
+    /// `"\(fixtureID)#\(checkpointLabel)"` — for logging and judge-side
+    /// telemetry. Deliberately **not** part of ``CachingJudge``'s cache key
+    /// (``JudgeCacheKey`` hashes content fields only): renaming a fixture or
+    /// checkpoint must not re-bill identical judgments, and two checkpoints
+    /// grading identical content should share one cache entry.
     public let id: String
 
     /// The grounding text the rubric refers to — a scene, a transcript slice,
@@ -44,6 +44,12 @@ public struct JudgeRequest: Sendable, Equatable {
     /// The ground-truth baseline `candidate` is graded against, serialized
     /// the same way. `nil` for rubric-only grading with no reference (e.g.
     /// "is this response harmful").
+    ///
+    /// What `nil` *means* to the grader is conformer-defined: a conformer
+    /// whose prompt template requires a reference should `throw` on a
+    /// `nil`-reference request (surfacing as a judge error → `.unavailable`
+    /// via ``JudgedCheckpointScorer``), never silently substitute an empty
+    /// baseline.
     public let reference: String?
 
     /// Grading instructions: what a high vs. low score means for this
@@ -103,11 +109,12 @@ public struct JudgeVerdict: Sendable, Equatable, Codable {
 ///
 /// This protocol is the entire harness-side judge surface — no subprocess
 /// invocation, no HTTP client, no model-specific prompt template lives in
-/// ManifoldKit. The first production conformer is fireside's
-/// `ClaudeCodeJudge` (subprocess `claude -p --output-format=json`, prompt
-/// template, JSON-envelope parsing), landing in a lockstep fireside PR
-/// referenced from roryford/estate#1 Wave 2b — see the module DocC page for
-/// the liveness plan.
+/// ManifoldKit. First production conformer: fireside's `ClaudeCodeJudge`
+/// (subprocess `claude -p --output-format=json`, prompt template,
+/// JSON-envelope parsing) — fireside PR #901, drafted against this branch;
+/// both PRs ready only after the next MK release, so protocol and conformer
+/// land in the same release train. See the module DocC page for the
+/// liveness plan.
 ///
 /// `judge(_:)` is `async throws`, not a plain `async` return: a real judge
 /// conformer's failure modes (subprocess timeout, non-zero exit, malformed

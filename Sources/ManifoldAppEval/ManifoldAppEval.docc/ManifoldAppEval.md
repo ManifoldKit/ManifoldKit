@@ -55,11 +55,18 @@ structurally-different-but-semantically-equivalent reference.
 decorator, and the ``JudgedCheckpointScorer`` adapter — generalized out of
 fireside's `ClaudeCodeJudge` (subprocess `claude -p`, prompt template,
 JSON-envelope parsing, SHA-256 response cache). **It ships with no production
-conformer in this repo**: the first one, fireside's `ClaudeCodeJudge` itself
-reworked to conform to ``EvalJudge``, lands in a lockstep fireside PR
-referenced from roryford/estate#1 Wave 2b. Until that PR merges, the seam is
-proven end-to-end in this repo's own tests via a fake conformer — a real app
-wires a real judge in exactly the same shape.
+conformer in this repo.** First production conformer: fireside's
+`ClaudeCodeJudge` reworked to conform to ``EvalJudge`` (fireside PR #901,
+drafted against this branch); both PRs ready only after the next MK release —
+protocol and conformer land in the same release train. Until then, the seam
+is proven end-to-end in this repo's own tests via a fake conformer — a real
+app wires a real judge in exactly the same shape.
+
+A judged checkpoint's `custom` payload must declare a **`minScore` pass bar**;
+``JudgedCheckpointScorer`` reduces the judge's continuous score to
+pass/fail against it, so a judge score always carries verdict weight (a bare
+`.number` is invisible to ``AppEvalVerdict/aggregate(_:)`` — see that
+method's invariant note).
 
 ### Import discipline
 

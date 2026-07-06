@@ -113,7 +113,7 @@ public enum GoldenTaskRunner {
             )
             let runResult = try await RuntimeScenarioRunner.run(prefixScenario)
 
-            let context = evaluationContext(for: checkpoint, runResult: runResult)
+            let context = evaluationContext(for: checkpoint, runResult: runResult, fixtureID: fixture.id)
             let snapshot = await probe?.snapshot(after: checkpoint, runResult: runResult)
             let contextWithSnapshot = CheckpointEvaluationContext(
                 output: context.output,
@@ -122,7 +122,8 @@ public enum GoldenTaskRunner {
                 eventKinds: context.eventKinds,
                 producedMessageCount: context.producedMessageCount,
                 lastContextAssembledSlotCount: context.lastContextAssembledSlotCount,
-                lastCompressionInsertedRecordCount: context.lastCompressionInsertedRecordCount
+                lastCompressionInsertedRecordCount: context.lastCompressionInsertedRecordCount,
+                fixtureID: context.fixtureID
             )
 
             var scores: [String: Score] = [:]
@@ -241,7 +242,8 @@ public enum GoldenTaskRunner {
 
     private static func evaluationContext(
         for checkpoint: GoldenCheckpoint,
-        runResult: RuntimeScenarioRunner.Result
+        runResult: RuntimeScenarioRunner.Result,
+        fixtureID: String
     ) -> CheckpointEvaluationContext {
         let events = runResult.trace.events
 
@@ -277,7 +279,8 @@ public enum GoldenTaskRunner {
             eventKinds: runResult.trace.kinds,
             producedMessageCount: runResult.producedMessages.count,
             lastContextAssembledSlotCount: lastContextAssembledSlotCount,
-            lastCompressionInsertedRecordCount: lastCompressionInsertedRecordCount
+            lastCompressionInsertedRecordCount: lastCompressionInsertedRecordCount,
+            fixtureID: fixtureID
         )
     }
 
