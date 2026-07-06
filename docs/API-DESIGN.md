@@ -22,6 +22,10 @@ Why: five real local consumer apps were surveyed (plan Part B.2) — every hand-
 constructs `InferenceService` and registrars explicitly; `LLM` has zero adopters among them.
 The toolkit shape is what people actually build with.
 
+Decay hook: any PR that adds new public surface to the *secondary* identity (the
+ChatView/quickStart framework tier) must cite this ranking in its PR body — the previous
+ranking (SCOPE_DECISION.md, 2026-04) rotted silently because nothing forced the citation.
+
 ## 2. Layer-ownership map
 
 Each tier owns a distinct class of knob. **A knob exists at exactly one layer.** Before
@@ -45,6 +49,10 @@ sampling was contract-tier property. Don't repeat this: if you're about to add a
 field to anything above `GenerationConfig`, that's the tripwire — thread the existing type
 through instead.
 
+Decided refactor for the contract tier (2026-07-06, plan 2.3 Option C): the 5 lossy
+non-persisted `GenerationConfig` fields extract into a non-Codable per-request hints
+struct; the config stays flat and becomes fully, honestly Codable.
+
 ## 3. Visibility policy
 
 New declarations default to `package`. A PR must claim `public` explicitly in its body if
@@ -52,23 +60,33 @@ it is claiming the declaration as API — visibility is a design decision, not w
 compiler accepted.
 
 **Caveat — `package` never crosses a package boundary.** Anything a companion package
-(`manifold-mlx`, `manifold-llama`, `manifold-fuzz`, `manifold-tools`) or a consumer app
-conforms to, calls, or constructs must stay `public`, full stop. This includes types with
-zero in-repo conformers: the opt-in protocols in
-`Sources/ManifoldContract/BackendOptInProtocols.swift` (`ImageGenerationBackend`,
-`VideoGenerationBackend`, `TokenProvider`, `SessionToolSource`, `CancellableModelLoading`,
-`MultimodalProjectorConfigurable`) look unused from a grep of `Sources/` — their real
-conformers are `LlamaBackend`/MLX backends in the companion repos plus app-side conformers
-(plan Part B.2). "Zero in-repo conformers" is never sufficient evidence to demote a
-protocol; grep the companion checkouts and the local consumer apps first.
+(`manifold-mlx`, `manifold-llama`; plus `manifold-fuzz` and `manifold-tools` — extraction
+decided 2026-07-06, pending) or a consumer app conforms to, calls, or constructs must stay
+`public`, full stop. Two grep traps when screening a demotion candidate:
+
+- **Zero in-repo conformers does not mean dead.** The opt-in protocols in
+  `Sources/ManifoldContract/BackendOptInProtocols.swift` (`CancellableModelLoading`,
+  `MultimodalProjectorConfigurable`) have no conformers in `Sources/` — their only real
+  conformers are `LlamaBackend`/MLX backends in the companion repos. The same holds for
+  the scattered opt-in seams `ImageGenerationBackend` (`ManifoldContract`),
+  `VideoGenerationBackend` (`ManifoldInference`), `TokenProvider` (`ManifoldCloudCore`),
+  which have app-side conformers (plan Part B.2).
+- **In-repo counts must be verified per-protocol, not assumed.** `SessionToolSource`
+  (`Sources/ManifoldRuntime/Services/SessionToolSource.swift`) looks like the same shape
+  but has 5+ in-repo production conformers (`SkillToolSource`, `WebSearchToolSource`,
+  `ImageGenerationToolSource`, `VideoGenerationToolSource`, `HandoffToolSource`) — plus
+  app-side ones.
+
+Before any demotion: grep the companion checkouts and the local consumer apps, per-protocol.
 
 ## 4. Pre-1.0 evolution policy
 
 Breaking is cheap and encouraged, on purpose, through scheduled `feat!:` waves. Pre-1.0:
 **delete, don't deprecate.** Deprecation is a post-1.0 tool for a package that has made a
 stability promise; this one hasn't yet, and running a post-1.0 process pre-1.0 is what
-fossilized the three 15-19 param `enqueue` builders and their shadow typealiases
-(`InferenceService.swift:547,598,645`).
+fossilized the three deprecated 15-19 param `enqueue` builders
+(`InferenceService.swift:547,598,645`) and the `ChatSessionRecord`/`ChatMessageRecord`
+shadow typealiases (`Sources/ManifoldInference/Models/ConversationRecords.swift:219,222`).
 
 Every removal ships a migration note in the same PR. No exceptions — a breaking wave
 without a migration note is how three of the five surveyed local apps ended up broken
@@ -120,8 +138,8 @@ api-digester gate slowing that down.
 Every non-trivial PR's reviewer brief (the `/ship` skeptical-review step) carries this
 question verbatim:
 
-> Does this diff add a public symbol, overload, or knob — and does that knob already exist
-> at another layer?
+> does this diff add a public symbol or knob, and does that knob already exist at another
+> layer?
 
 If the answer is yes, the fix is to thread the existing type through, not to add a
 parallel one. Cite §2 of this doc in the review comment.
