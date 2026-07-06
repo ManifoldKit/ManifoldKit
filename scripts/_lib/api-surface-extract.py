@@ -19,6 +19,24 @@ Nested types (e.g. an enum nested inside a struct) are walked recursively
 and get their own dotted qualified name (`Outer.Inner`); their members are
 attributed to the nested type, not the enclosing one.
 
+Access-level filtering (markers verified against a raw ManifoldContract
+dump, 2026-07-06):
+  - Nodes marked `"isInternal": true` are `package`-scoped declarations
+    (e.g. `package final class SSEEventIDTracker`). The digester includes
+    them in the dump, but they are NOT public API -- excluded here, whole
+    subtree. This also makes a public->package DEMOTION visible: the
+    symbol's lines leave the baseline and --check reports them as removed.
+  - Nodes carrying `"spi_group_names"` are `@_spi(...)` declarations
+    (e.g. `@_spi(BackendInternals) HeuristicTokenizer`). SPI is not the
+    public consumer contract either -- excluded, whole subtree. The
+    BackendInternals seam has its own compile-time freeze
+    (Tests/APIFreezeTests/BackendSeamTests.swift), so it is not
+    unguarded, just out of scope for THIS baseline.
+  - Nodes marked `"isExternal": true` are types declared in ANOTHER module
+    but extended in this one (e.g. `extension Array` / retroactive
+    conformances). KEPT: the extension members are this module's public
+    API contribution.
+
 Deliberately coarse (this is the 0.2b prototype -- see
 scripts/api-surface-baseline.sh for the full mechanism writeup):
   - Uses `printedName` (the full parameter-label signature) rather than the
@@ -26,7 +44,11 @@ scripts/api-surface-baseline.sh for the full mechanism writeup):
     GenerationConfig 28-param accretion pattern that motivated this
     tripwire) shows up as one line removed + one line added, not silence.
   - Does not descend into a member's own children (its parameter/return
-    TypeNominal nodes) -- only one level of member-ness per type.
+    TypeNominal nodes) -- only one level of member-ness per type. So a
+    member's TYPE changing (property type, param/return type, enum-case
+    payload) is INVISIBLE to this baseline; the existing per-PR
+    breakage-diff gate owns that class of change. See the "division of
+    labor" section in scripts/api-surface-baseline.sh.
   - Duplicate signatures within a type (observed for some protocol-extension
     methods that also get a concrete override) collapse to one line via a
     `set` -- this is a coarse presence check, not a full ABI diff.
@@ -35,12 +57,23 @@ import json
 import sys
 
 
+def is_non_public(node):
+    """True for package-scoped (`isInternal`) and `@_spi` (`spi_group_names`)
+    declarations -- neither is part of the public consumer contract."""
+    return bool(node.get("isInternal")) or bool(node.get("spi_group_names"))
+
+
 def emit_lines(node, prefix, lines):
     """node: a TypeDecl-shaped dict (or the Root). prefix: qualified name
     accumulated so far ('' at the root)."""
     for child in node.get("children", []):
         kind = child.get("kind")
         if kind == "Import":
+            continue
+        if is_non_public(child):
+            # Skip the whole subtree: a package/SPI type's members are not
+            # public either, and a public->package demotion must read as
+            # the entire symbol (plus members) leaving the baseline.
             continue
         if kind == "TypeDecl":
             name = child.get("name", "<unnamed>")

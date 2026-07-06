@@ -200,7 +200,6 @@ ChatViewModel.imageGenerationProgress Var
 ChatViewModel.imageRuntime Var
 ChatViewModel.ingest(_:) Func
 ChatViewModel.ingestPendingPayload(_:intent:) Func
-ChatViewModel.init(inferenceService:deviceCapability:modelStorage:memoryPressure:toolApprovalGate:userDefaults:conversationRuntime:) Constructor
 ChatViewModel.init(inferenceService:deviceCapability:modelStorage:toolApprovalGate:userDefaults:conversationRuntime:) Constructor
 ChatViewModel.inputText Var
 ChatViewModel.intentHandler Var

@@ -3,7 +3,6 @@
 (top-level).ChatSessionRecord TypeAlias
 (top-level).EndpointBackendFactory TypeAlias
 (top-level).PreToolUseHook TypeAlias
-(top-level).encodeJSONSchemaToFoundation(_:) Func
 (top-level).withFallbacks(_:policy:) Func
 (top-level).withRetry(strategy:sleeper:operation:) Func
 ActivityPhaseStateMachine Struct
@@ -118,9 +117,6 @@ BudgetTurnHistoryCompressor.init(characterBudget:preserveRecentTurns:maxResultEx
 BudgetTurnHistoryCompressor.maxResultExcerptLength Var
 BudgetTurnHistoryCompressor.maxResultExcerpts Var
 BudgetTurnHistoryCompressor.preserveRecentTurns Var
-CachingTokenizer Class
-CachingTokenizer.init(wrapping:) Constructor
-CachingTokenizer.tokenCount(_:) Func
 ChatMessage Struct
 ChatMessage.ID TypeAlias
 ChatMessage.__derived_struct_equals(_:_:) Func
@@ -361,11 +357,6 @@ GenSpanTree.generation(_:under:name:) Func
 GenSpanTree.run(name:traceID:start:attributes:) Func
 GenSpanTree.tool(under:name:start:attributes:) Func
 GenSpanTree.turn(under:name:start:attributes:) Func
-GenerationMetricTracker Class
-GenerationMetricTracker.buildMetric(provider:model:promptTokens:cachedPromptTokens:completionTokens:errorClass:) Func
-GenerationMetricTracker.init() Constructor
-GenerationMetricTracker.recordToken() Func
-GenerationMetricTracker.start() Func
 GenerationPriority Enum
 GenerationPriority.<(_:_:) Func
 GenerationPriority.RawValue TypeAlias
@@ -474,7 +465,6 @@ InferenceBackend.enforceRequiredCapabilities(_:) Func
 InferenceBackend.generateEnforcingCapabilities(prompt:systemPrompt:config:) Func
 InferenceBackend.withFallbacks(_:policy:) Func
 InferenceError Enum
-InferenceError.promptRenderFailurePrefix Var
 InferenceMetric Struct
 InferenceMetric.asGenSpan(context:name:) Func
 InferenceMetric.cachedPromptTokens Var
@@ -506,7 +496,6 @@ InferenceService.cancel(_:) Func
 InferenceService.cancelAsync(_:) Func
 InferenceService.capabilities Var
 InferenceService.capabilitiesAsync() Func
-InferenceService.clearEndpointBackendFactories() Func
 InferenceService.compatibility(for:) Func
 InferenceService.currentEndpointBackend Var
 InferenceService.declareSupport(for:) Func
@@ -540,7 +529,6 @@ InferenceService.modelLoadCoordinator Var
 InferenceService.modelLoadProgress Var
 InferenceService.modelLoadReadinessState Var
 InferenceService.modelLoadReadinessUpdates() Func
-InferenceService.notifyPressureLevel(_:) Func
 InferenceService.queuedRequestCount Var
 InferenceService.registerBackendFactory(_:) Func
 InferenceService.registerEndpointBackendFactory(_:) Func
@@ -553,7 +541,6 @@ InferenceService.runFastOrPrimary(prompt:systemPrompt:config:preferFast:) Func
 InferenceService.secureWipe() Func
 InferenceService.selectedPromptTemplate Var
 InferenceService.setHandoffDetector(_:) Func
-InferenceService.setPreToolUseHook(_:) Func
 InferenceService.stopGeneration() Func
 InferenceService.streamEach(_:to:config:) Func
 InferenceService.streamObject(_:to:config:) Func
@@ -561,7 +548,6 @@ InferenceService.tokenizer Var
 InferenceService.tokenizerAsync() Func
 InferenceService.toolRegistry Var
 InferenceService.unloadModel() Func
-InferenceService.unloadModel(reason:) Func
 InferenceService.waitUntilModelReady(maxPollCount:pollIntervalNanoseconds:) Func
 InferenceService.waitUntilModelReady(readinessUpdates:maxPollCount:pollIntervalNanoseconds:) Func
 JSONSchemaValidating Protocol
@@ -641,7 +627,6 @@ ModelCapabilityTier Enum
 ModelCapabilityTier.estimate(from:) Func
 ModelExecutor Class
 ModelExecutor.backendName Var
-ModelExecutor.currentBackend Var
 ModelExecutor.generate(prompt:systemPrompt:config:) Func
 ModelExecutor.init(key:backendName:loader:makeWatchdog:) Constructor
 ModelExecutor.key Var
@@ -935,9 +920,6 @@ RouterBackend.resetConversation() Func
 RouterBackend.selectBackend(for:) Func
 RouterBackend.stopGeneration() Func
 RouterBackend.unloadModel() Func
-SSEGenerationMetrics Enum
-SSEGenerationMetrics.observing(_:tracker:enabled:) Func
-SSEGenerationMetrics.record(to:tracker:provider:model:promptTokens:completionTokens:cachedPromptTokens:errorClass:) Func
 SchemaProviding Protocol
 SchemaProviding.jsonSchema Var
 Score Struct
@@ -1077,7 +1059,6 @@ ToolRegistry.validator Var
 ToolSpillReaper Enum
 ToolSpillReaper.cleanOldSpills(maxAge:directory:) Func
 ToolSpillReaper.defaultDirectory() Func
-ToolSpillReaper.setDefaultDirectoryOverride(_:) Func
 ToolSpillReaper.spill(content:directory:) Func
 ToolSystemPromptBuilder Struct
 ToolSystemPromptBuilder.Style Enum

@@ -21,9 +21,28 @@
 # So this script does NOT rely on the breakage diff. It dumps the
 # swift-api-digester's member-granular ABIRoot JSON for a scoped module
 # list, normalizes each dump into a flat, deterministic, checked-in-diffable
-# text file (one line per type + one line per member), and diffs that text
-# against a checked-in baseline. ANY member added or removed shows up as a
-# plain-text diff line — additions included.
+# text file (one line per type + one line per member; genuinely PUBLIC
+# only — the normalizer filters out `package`-scoped and `@_spi` decls the
+# digester also dumps, see scripts/_lib/api-surface-extract.py), and diffs
+# that text against a checked-in baseline. ANY public member added or
+# removed shows up as a plain-text diff line — additions included, and a
+# public→package demotion reads as removed lines.
+#
+# ── Division of labor with the existing digester gate (residual blind
+#    spot — read before extending this) ──────────────────────────────────
+#
+# The baseline lines are presence-keyed on `printedName`, which carries
+# parameter LABELS but not TYPES. So member TYPE changes — a property's
+# type changing, a parameter/return type changing under unchanged labels,
+# an enum case's payload changing — produce ZERO drift here. That class of
+# change is exactly what the existing per-PR breakage-diff gate
+# (`swift package diagnose-api-breaking-changes`, ci.yml:599-660) already
+# diagnoses. The two gates are complementary, not redundant:
+#   - breakage-diff gate: catches REMOVALS and TYPE/SIGNATURE changes;
+#     blind to pure additions.
+#   - this baseline:      catches ADDITIONS, removals, and demotions;
+#     blind to type changes under a stable name/labels.
+# Neither subsumes the other. Do not retire one for the other.
 #
 # ── Usage ───────────────────────────────────────────────────────────────
 #
@@ -85,6 +104,10 @@
 # file (even unstaged is fine for everything ELSE) before running this
 # against a change that adds a new file with new public members.
 #
+# NOTE: each `git stash create` invocation leaves a harmless dangling
+# commit object behind (unreachable; reclaimed by normal `git gc`). It
+# touches no refs, index, or stash list.
+#
 # ── Cost — the honest answer to "can this run per-PR?" ──────────────────
 #
 # Measured tonight on this worktree, 7 modules in ONE invocation (--targets
@@ -122,6 +145,12 @@
 #   (scripts/api-surface-baseline.sh) and justify additions in the PR body"
 
 set -euo pipefail
+
+# The baselines are Python-`sorted()` (Unicode code-point order == UTF-8
+# byte order). `comm` below requires ITS collation to match, and the
+# default locale's collation does NOT (verified: locale `sort` interleaves
+# `Agent.ID`/`Agent.chunk...` differently). Pin byte order globally.
+export LC_ALL=C
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASELINE_DIR="${REPO_ROOT}/Tests/APIFreezeTests/api-surface-baseline"
