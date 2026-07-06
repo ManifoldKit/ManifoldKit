@@ -7,8 +7,12 @@ import ManifoldInference
 // / EditInput / BranchInput) into a single normalised pair: TurnConfig (the
 // shared sampling/streaming/loop-detection knobs) and TurnKind (the per-flow
 // payload). Adding a new knob is now a single-touch change rather than a
-// 4× edit across paralleled init signatures. Old structs are kept as
-// deprecation shims for one minor — see ConversationRuntime.swift.
+// 4× edit across paralleled init signatures. The old per-flow structs and
+// ConversationRuntime's old send(_:)/regenerate(_:)/edit(_:)/branch(_:)
+// methods are gone — no deprecation shim survives. TurnInput/TurnKind is the
+// only turn-entry surface on ConversationRuntime; per-verb convenience
+// methods live one layer up, on ChatViewModel (sendMessage,
+// regenerateLastResponse, editMessage, stopGeneration, branch(from:)).
 
 /// The sampling, streaming, and loop-detection knobs shared by every
 /// ``ConversationRuntime`` turn flow.

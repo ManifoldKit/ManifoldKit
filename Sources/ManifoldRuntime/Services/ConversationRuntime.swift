@@ -47,12 +47,18 @@ import ManifoldInference
 ///
 /// ## Turn entry points
 ///
-/// ``processTurn(_:)`` is the canonical entry point for every turn flow.
-/// Build a ``TurnInput`` with the appropriate ``TurnKind`` (`.send`,
-/// `.regenerate`, `.edit`, or `.branch`) and a shared ``TurnConfig``.
-/// The legacy per-flow methods (``send(_:)``, ``regenerate(_:)``,
-/// ``edit(_:)``, ``branch(_:)``) and their `*Input` types are kept as
-/// deprecation shims for one minor.
+/// ``processTurn(_:)`` and ``processTurnWithOutcome(_:)`` are the only turn
+/// entry points on this type. Build a ``TurnInput`` with the appropriate
+/// ``TurnKind`` (`.send`, `.regenerate`, `.edit`, or `.branch`) and a shared
+/// ``TurnConfig``. There are no per-verb methods here — `send`/`regenerate`/
+/// `edit`/`branch` and their old per-flow input structs were collapsed into
+/// this unified shape (see ``TurnConfig``'s doc comment) and no shim survives
+/// for them. Per-verb convenience methods live one layer up, on
+/// `ChatViewModel`: `sendMessage`, `regenerateLastResponse`, `editMessage`,
+/// and `branch(from:)` construct the appropriate ``TurnInput`` and call
+/// through to this type, while `stopGeneration` is the cancellation entry
+/// point — it routes to ``cancel(_:)`` (and the inference service), not
+/// ``processTurn(_:)``.
 public final class ConversationRuntime: Sendable {
 
     // MARK: Ports
