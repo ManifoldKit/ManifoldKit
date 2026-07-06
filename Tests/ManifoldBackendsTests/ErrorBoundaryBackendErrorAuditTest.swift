@@ -4,7 +4,7 @@ import ManifoldRuntime
 import ManifoldUI
 import ManifoldAnyLanguageModel
 
-/// Tripwire for the error-boundary audit (docs/plans/api-review-2026-07.md
+/// Checklist guard for the error-boundary audit (docs/plans/api-review-2026-07.md
 /// item 1.2 / symptom S6) — see the DocC article "Error handling at the
 /// boundary" (`ManifoldRuntime.docc/Articles/ErrorHandlingAtTheBoundary.md`)
 /// for the full escape-path trace.
@@ -18,13 +18,20 @@ import ManifoldAnyLanguageModel
 /// the same service) — as opposed to being caught and wrapped (or reduced to
 /// a `ToolResult`) before crossing that boundary.
 ///
-/// Eight types survive that trace as the escapable set. Three already
+/// Nine types survive that trace as the escapable set: three already
 /// conformed to `BackendError` before this audit (``InferenceError``,
-/// ``CloudBackendError``, ``FallbackExhaustedError``); five gained the
-/// conformance as part of this pass (``RetryExhaustedError``,
+/// ``CloudBackendError``, ``FallbackExhaustedError``) and six gained the
+/// conformance in this pass (``RetryExhaustedError``,
 /// ``AnyLanguageModelBridgeError``, ``StructuredOutputError``,
-/// ``ConversationError``, ``SendMessageError``, ``ManifoldKitError`` — six,
-/// not five; the DocC article has the precise table). This test lives in
+/// ``ConversationError``, ``SendMessageError``, ``ManifoldKitError`` —
+/// the DocC article has the precise table).
+///
+/// Honest scope: this test guards the KNOWN set — it fails when a case is
+/// added to or removed from one of the nine named types (the per-type
+/// instance counts drift), but it cannot detect a genuinely NEW tenth
+/// escapable type introduced at a boundary, because nothing forces such a
+/// PR to touch this file. The DocC article is the human-maintained registry;
+/// extending the escapable set means updating both it and this checklist. This test lives in
 /// `ManifoldBackendsTests` because it is the one test target that already
 /// depends on every module the escapable set spans (`ManifoldInference`,
 /// `ManifoldRuntime`, `ManifoldUI`, `ManifoldAnyLanguageModel`) with zero new

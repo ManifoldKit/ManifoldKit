@@ -13,6 +13,8 @@ ManifoldKit has roughly 50 public `Error`-conforming types, but the overwhelming
 
 Every one of these types conforms to `BackendError` — `LocalizedError & Sendable` plus `var isRetryable: Bool`. That is the whole contract: **catch `BackendError` once, branch on `isRetryable`, and you have handled every escapable failure from every boundary** without switching on a dozen unrelated concrete types.
 
+> Note: This contract is scoped to the four chat-path surfaces above. The media-generation runtimes (`ImageGenerationRuntime` / `VideoGenerationRuntime` / `AudioGenerationRuntime`, whose public event streams surface `ImageGenerationServiceError` / `VideoGenerationServiceError` / `AudioGenerationServiceError`) and `EmbeddingBackend.embed(_:)` (`EmbeddingError`) are separate public boundaries whose error types do not yet conform to `BackendError`.
+
 ## The escapable-types table
 
 | Boundary | Type | Escape path | Conformed before this audit? |
