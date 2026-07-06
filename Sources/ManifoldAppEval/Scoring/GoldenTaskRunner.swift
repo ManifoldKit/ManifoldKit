@@ -17,6 +17,12 @@ import ManifoldRuntime
 /// this is cheap) for not needing to expose any partial/resumable execution
 /// API on ``RuntimeScenarioRunner``, which stays a stable, minimal surface
 /// also directly proven by MK's own 11-scenario registry and test suites.
+///
+/// The byte-identical-replay claim assumes the injected
+/// `preTurnCompressionPolicy` and `toolExecutors` are *stateless* (value
+/// types or effectively-pure conformances, like every built-in) — a stateful
+/// class conformance would leak state across the per-checkpoint replays and
+/// break the equivalence. Keep injections stateless.
 @MainActor
 public enum GoldenTaskRunner {
 
@@ -43,6 +49,25 @@ public enum GoldenTaskRunner {
         }
     }
 
+    public enum ScorerRegistrationError: Error, CustomStringConvertible {
+        /// Two `customScorers` entries declared the same `id`.
+        case duplicateScorerID(String)
+        /// A custom scorer's `id` collides with a built-in checkpoint
+        /// assertion key (``BuiltInCheckpointAssertion``) — the score map
+        /// keys both by the same string, so the collision would silently
+        /// overwrite one with the other.
+        case reservedScorerID(String)
+
+        public var description: String {
+            switch self {
+            case .duplicateScorerID(let id):
+                return "GoldenTaskRunner: two customScorers declare the same id '\(id)'"
+            case .reservedScorerID(let id):
+                return "GoldenTaskRunner: customScorer id '\(id)' collides with a built-in checkpoint assertion key — pick a different id"
+            }
+        }
+    }
+
     /// Runs every checkpoint in `fixture` and scores it.
     ///
     /// - Parameters:
@@ -50,7 +75,15 @@ public enum GoldenTaskRunner {
     ///     checkpoint after driving the prefix scenario.
     ///   - customScorers: App-registered scorers, dispatched by
     ///     ``GoldenCheckpoint/custom`` key. A `custom` key with no matching
-    ///     scorer id scores `.unavailable`.
+    ///     scorer id scores `.unavailable`. Duplicate ids, or ids that
+    ///     collide with built-in assertion keys, throw
+    ///     ``ScorerRegistrationError``.
+    ///   - toolExecutors: Executors registered for the run's tool round
+    ///     trips, in addition to any synthetic fixed-response executors the
+    ///     mapper builds from ``GoldenScriptedToolCall/result`` payloads. A
+    ///     caller-supplied executor wins over a synthetic one with the same
+    ///     tool name, so an app can exercise its real executor against a
+    ///     scripted call.
     ///   - preTurnCompressionPolicy: Optional override wired into the mapped
     ///     scenario before running. The declarative schema has no field for
     ///     this — a synthetic message-count-triggered compression policy is
@@ -62,17 +95,22 @@ public enum GoldenTaskRunner {
         _ fixture: GoldenTaskFixture,
         probe: (any ScenarioStateProbe)? = nil,
         customScorers: [any CheckpointScorer] = [],
+        toolExecutors: [any ToolExecutor] = [],
         preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil
     ) async throws -> Outcome {
-        var fullScenario = try GoldenTaskMapper.map(fixture)
-        if let preTurnCompressionPolicy {
-            fullScenario = withCompressionPolicy(fullScenario, preTurnCompressionPolicy)
-        }
-        let scorersByID = Dictionary(uniqueKeysWithValues: customScorers.map { ($0.id, $0) })
+        let mapped = try GoldenTaskMapper.mapGrouped(fixture)
+        let scorersByID = try validatedScorers(customScorers)
+        let mergedExecutors = mergeExecutors(caller: toolExecutors, synthetic: mapped.syntheticToolExecutors)
 
         var results: [CheckpointResult] = []
         for checkpoint in fixture.checkpoints {
-            let prefixScenario = try prefixed(fullScenario, throughTurnIndex: checkpoint.afterTurnIndex)
+            let prefixScenario = try prefixScenario(
+                fixture: fixture,
+                mapped: mapped,
+                throughTurnIndex: checkpoint.afterTurnIndex,
+                toolExecutors: mergedExecutors,
+                preTurnCompressionPolicy: preTurnCompressionPolicy
+            )
             let runResult = try await RuntimeScenarioRunner.run(prefixScenario)
 
             let context = evaluationContext(for: checkpoint, runResult: runResult)
@@ -124,39 +162,67 @@ public enum GoldenTaskRunner {
         return Outcome(fixture: fixture, checkpointResults: results)
     }
 
-    // MARK: - Prefix scenario construction
+    // MARK: - Scorer / executor validation
 
-    private static func withCompressionPolicy(
-        _ scenario: RuntimeScenario,
-        _ policy: any PreTurnCompressionPolicy
-    ) -> RuntimeScenario {
-        RuntimeScenario(
-            id: scenario.id,
-            displayName: scenario.displayName,
-            scenarioDescription: scenario.scenarioDescription,
-            turns: scenario.turns,
-            scriptedTurns: scenario.scriptedTurns,
-            expectedSubsequence: [],
-            toolExecutors: scenario.toolExecutors,
-            preTurnCompressionPolicy: policy,
-            systemPrompt: scenario.systemPrompt
-        )
+    /// Validates and indexes `customScorers` by id. Throws on duplicates and
+    /// on ids that collide with built-in assertion keys — both are
+    /// app-supplied input at a public boundary, so they must fail with a
+    /// descriptive error rather than trap (`Dictionary(uniqueKeysWithValues:)`)
+    /// or silently overwrite a built-in score.
+    private static func validatedScorers(
+        _ customScorers: [any CheckpointScorer]
+    ) throws -> [String: any CheckpointScorer] {
+        let reserved = Set(BuiltInCheckpointAssertion.allCases.map(\.rawValue))
+        var byID: [String: any CheckpointScorer] = [:]
+        for scorer in customScorers {
+            if reserved.contains(scorer.id) {
+                throw ScorerRegistrationError.reservedScorerID(scorer.id)
+            }
+            if byID[scorer.id] != nil {
+                throw ScorerRegistrationError.duplicateScorerID(scorer.id)
+            }
+            byID[scorer.id] = scorer
+        }
+        return byID
     }
 
-    private static func prefixed(_ scenario: RuntimeScenario, throughTurnIndex index: Int) throws -> RuntimeScenario {
-        guard index >= 0, index < scenario.turns.count else {
-            throw PrefixError.turnIndexOutOfRange(index: index, turnCount: scenario.turns.count)
+    /// Caller-supplied executors win over synthetic fixed-response ones with
+    /// the same tool name (so an app can exercise its real executor against a
+    /// fixture-scripted call).
+    private static func mergeExecutors(
+        caller: [any ToolExecutor],
+        synthetic: [any ToolExecutor]
+    ) -> [any ToolExecutor] {
+        let callerNames = Set(caller.map { $0.definition.name })
+        return caller + synthetic.filter { !callerNames.contains($0.definition.name) }
+    }
+
+    // MARK: - Prefix scenario construction
+
+    /// Builds the scripted scenario covering turns `0...index`, flattening
+    /// the per-turn script groups only after slicing at the turn boundary —
+    /// a tool-call turn contributes two backend scripts, so scripts cannot be
+    /// sliced by turn index directly.
+    private static func prefixScenario(
+        fixture: GoldenTaskFixture,
+        mapped: MappedGoldenTask,
+        throughTurnIndex index: Int,
+        toolExecutors: [any ToolExecutor],
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)?
+    ) throws -> RuntimeScenario {
+        guard index >= 0, index < mapped.turns.count else {
+            throw PrefixError.turnIndexOutOfRange(index: index, turnCount: mapped.turns.count)
         }
         return RuntimeScenario(
-            id: scenario.id,
-            displayName: scenario.displayName,
-            scenarioDescription: scenario.scenarioDescription,
-            turns: Array(scenario.turns[0...index]),
-            scriptedTurns: Array(scenario.scriptedTurns[0...index]),
+            id: fixture.id,
+            displayName: fixture.id,
+            scenarioDescription: "Mapped from GoldenTaskFixture '\(fixture.id)' (turns 0...\(index)).",
+            turns: Array(mapped.turns[0...index]),
+            scriptedTurns: mapped.scriptGroups[0...index].flatMap { $0 },
             expectedSubsequence: [],
-            toolExecutors: scenario.toolExecutors,
-            preTurnCompressionPolicy: scenario.preTurnCompressionPolicy,
-            systemPrompt: scenario.systemPrompt
+            toolExecutors: toolExecutors,
+            preTurnCompressionPolicy: preTurnCompressionPolicy,
+            systemPrompt: fixture.systemPrompt
         )
     }
 

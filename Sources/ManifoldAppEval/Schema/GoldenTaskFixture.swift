@@ -42,6 +42,14 @@ public struct GoldenTaskFixture: Codable, Sendable, Equatable {
 
 /// One turn in a ``GoldenTaskFixture``'s turn sequence.
 public struct GoldenTurn: Codable, Sendable, Equatable {
+    /// The user action this turn performs.
+    ///
+    /// `.edit` is declared for forward-compatibility only: the runner's
+    /// turn-kind enum has no edit case yet (an edit needs a runtime-assigned
+    /// `messageID` a JSON fixture cannot know ahead of time), so
+    /// ``GoldenTaskMapper/map(_:)`` **throws**
+    /// `MapError.editNotYetSupported(turnIndex:)` for any fixture that uses
+    /// it — see the mapper's doc comment for the full rationale.
     public enum Kind: String, Codable, Sendable {
         case send
         case regenerate
@@ -58,22 +66,64 @@ public struct GoldenTurn: Codable, Sendable, Equatable {
     /// the deterministic lane's ``ScriptedGenerationBackend``. `nil` produces
     /// an empty turn (stream finishes with no visible tokens) — rare, but
     /// valid for asserting error/edge-case paths.
+    ///
+    /// When ``scriptedToolCall`` is also set, this is the *follow-up* answer
+    /// the model gives after the tool result is fed back (round 2 of the tool
+    /// round trip).
     public let cannedResponse: String?
 
     /// When non-nil, the runner cancels this turn's stream after observing
     /// this many tokens — see ``RuntimeScenario/ScenarioTurn/cancelAfterTokens``.
     public let cancelAfterTokens: Int?
 
+    /// When non-nil, the scripted model requests this tool call *before*
+    /// producing ``cannedResponse`` — one full tool round trip driven from a
+    /// single user turn, scripted exactly the way MK's own tool-round-trip
+    /// scenario scripts it (a `.toolCall` backend round, then the follow-up
+    /// answer round).
+    public let scriptedToolCall: GoldenScriptedToolCall?
+
     public init(
         kind: Kind,
         text: String? = nil,
         cannedResponse: String? = nil,
-        cancelAfterTokens: Int? = nil
+        cancelAfterTokens: Int? = nil,
+        scriptedToolCall: GoldenScriptedToolCall? = nil
     ) {
         self.kind = kind
         self.text = text
         self.cannedResponse = cannedResponse
         self.cancelAfterTokens = cancelAfterTokens
+        self.scriptedToolCall = scriptedToolCall
+    }
+}
+
+// MARK: - GoldenScriptedToolCall
+
+/// A tool call the scripted model emits during a ``GoldenTurn``.
+///
+/// This is what makes ``GoldenCheckpoint/expectedToolCalls`` satisfiable from
+/// the JSON path alone: the fixture scripts the call the "model" makes, and
+/// the checkpoint asserts it was routed through the runtime's dispatch loop.
+public struct GoldenScriptedToolCall: Codable, Sendable, Equatable {
+    /// The tool name the scripted model requests.
+    public let name: String
+
+    /// JSON-encoded arguments string the scripted model emits with the call.
+    /// Defaults to `"{}"` when absent.
+    public let arguments: String?
+
+    /// The tool's scripted result payload. When non-nil the mapper registers
+    /// a synthetic fixed-response executor for ``name`` automatically, so the
+    /// JSON fixture is self-sufficient. When `nil` the caller must supply a
+    /// matching executor via `GoldenTaskRunner.run(toolExecutors:)` — for
+    /// apps that want their *real* executor exercised.
+    public let result: String?
+
+    public init(name: String, arguments: String? = nil, result: String? = nil) {
+        self.name = name
+        self.arguments = arguments
+        self.result = result
     }
 }
 

@@ -21,4 +21,5 @@
 | Checkpoint | Assertion | Result | Detail |
 |---|---|---|---|
 | graph check | graph | unavailable | no scorer registered for custom key 'graph' |
+| empty checkpoint | _(none)_ | — | no assertions declared |
 

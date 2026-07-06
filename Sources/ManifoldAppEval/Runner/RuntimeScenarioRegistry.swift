@@ -2,15 +2,19 @@ import Foundation
 import ManifoldInference
 import ManifoldRuntime
 
-/// The shared scenario registry — the single source of truth for both the
-/// CI test matrix and the demo picker.
+/// MK's internal scenario registry — the single source of truth for the CI
+/// test matrix (`RuntimeScenarioRunnerTests` scripted gate + the live-mode
+/// `GlassBoxScenarioLiveE2ETests` gate).
 ///
-/// Add new scenarios here as static properties; they are automatically
-/// included in ``all`` and therefore in both the test matrix and the demo UI.
+/// `package`-visible, not public: these 11 scenarios are shaped around MK's
+/// own turn-loop coverage, not app-facing examples — the public starter
+/// corpus for adopting apps is ``AppEvalStarterCorpus``. Add new MK-coverage
+/// scenarios here as static properties; they are automatically included in
+/// ``all`` and therefore in the test matrix.
 package enum RuntimeScenarioRegistry {
 
-    /// All registered scenarios. Tests enumerate this to build the CI matrix;
-    /// the demo picker reads it to populate its scenario list.
+    /// All registered scenarios. MK's own tests enumerate this to build the
+    /// CI matrix.
     package static let all: [RuntimeScenario] = [
         .basicTokenStream,
         .kvCacheReuseAdvisory,

@@ -2,8 +2,8 @@ import Foundation
 import ManifoldInference
 import ManifoldRuntime
 
-/// A self-contained scenario definition that drives both the CI test matrix
-/// and the demo picker UI from a single source of truth.
+/// A self-contained, declarative multi-turn scenario — the unit both MK's
+/// own turn-loop test matrix and an adopting app's goldens are written in.
 ///
 /// A `RuntimeScenario` bundles:
 /// - A scripted turn sequence (``scriptedTurns``) for hermetic CI runs via
@@ -11,8 +11,8 @@ import ManifoldRuntime
 /// - Structural assertions (``expectedSubsequence``) that must hold in both
 ///   scripted and live runs — the same kind-level subsequence is checked
 ///   regardless of which backend drives the conversation.
-/// - Display metadata (``displayName``, ``scenarioDescription``) for the
-///   demo picker UI that the Architect view (P5) will surface.
+/// - Display metadata (``displayName``, ``scenarioDescription``) for report
+///   rows and any host tooling that lists scenarios.
 /// - An optional ``preTurnCompressionPolicy`` for scenarios that exercise the
 ///   runtime's history-compression path. When supplied,
 ///   ``RuntimeScenarioRunner`` wires it into ``ConversationRuntime`` so
@@ -92,7 +92,7 @@ public struct RuntimeScenario: Sendable {
     public let turns: [ScenarioTurn]
 
     /// The text of each `.send` action, in order. Derived from ``turns`` for
-    /// backward compatibility with the demo picker and send-only consumers.
+    /// backward compatibility with send-only consumers.
     public var userMessages: [String] {
         turns.compactMap { turn in
             if case let .send(text) = turn.action { return text }

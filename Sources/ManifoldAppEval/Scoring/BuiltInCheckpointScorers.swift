@@ -98,32 +98,47 @@ public enum BuiltInCheckpointScorers {
         )
     }
 
+    /// Verdict precedence: any accrued failure wins outright (a proven
+    /// failure must never be masked by another sub-assertion's absence);
+    /// otherwise any indeterminate sub-assertion yields `.unavailable`
+    /// (a pass can't be claimed while part of the declaration was never
+    /// measured); a full pass requires every declared sub-assertion to have
+    /// measured and held.
     public static func scoreExpectedCompression(_ context: CheckpointEvaluationContext) -> Score? {
         guard let expected = context.checkpoint.expectedCompression else { return nil }
         var failures: [String] = []
+        var indeterminate: [String] = []
         if let maxRetained = expected.maxRetainedMessages, context.producedMessageCount > maxRetained {
             failures.append("retained \(context.producedMessageCount) messages, expected at most \(maxRetained)")
         }
         if let minInserted = expected.minInsertedRecords {
-            guard let actualInserted = context.lastCompressionInsertedRecordCount else {
-                return Score(
-                    value: .unavailable,
-                    explanation: "expectedCompression.minInsertedRecords declared but no historyCompressed event has fired yet",
-                    metadata: ["assertion": "expectedCompression"]
-                )
-            }
-            if actualInserted < minInserted {
-                failures.append("historyCompressed inserted \(actualInserted) records, expected at least \(minInserted)")
+            if let actualInserted = context.lastCompressionInsertedRecordCount {
+                if actualInserted < minInserted {
+                    failures.append("historyCompressed inserted \(actualInserted) records, expected at least \(minInserted)")
+                }
+            } else {
+                indeterminate.append("minInsertedRecords declared but no historyCompressed event has fired yet")
             }
         }
-        if failures.isEmpty {
-            return Score(value: .bool(true), metadata: ["assertion": "expectedCompression"])
+        if !failures.isEmpty {
+            var parts = failures
+            if !indeterminate.isEmpty {
+                parts.append("also indeterminate: \(indeterminate.joined(separator: "; "))")
+            }
+            return Score(
+                value: .bool(false),
+                explanation: parts.joined(separator: "; "),
+                metadata: ["assertion": "expectedCompression"]
+            )
         }
-        return Score(
-            value: .bool(false),
-            explanation: failures.joined(separator: "; "),
-            metadata: ["assertion": "expectedCompression"]
-        )
+        if !indeterminate.isEmpty {
+            return Score(
+                value: .unavailable,
+                explanation: indeterminate.joined(separator: "; "),
+                metadata: ["assertion": "expectedCompression"]
+            )
+        }
+        return Score(value: .bool(true), metadata: ["assertion": "expectedCompression"])
     }
 
     public static func scoreExpectedContextSlots(_ context: CheckpointEvaluationContext) -> Score? {

@@ -37,6 +37,10 @@ final class AppEvalMarkdownRendererGoldenTests: XCTestCase {
                 CheckpointOutcome(label: "graph check", afterTurnIndex: 0, scores: [
                     "graph": unavailableScore,
                 ]),
+                // The second absence state: a checkpoint that declared no
+                // assertions at all renders a "_(none)_ … no assertions
+                // declared" row rather than disappearing silently.
+                CheckpointOutcome(label: "empty checkpoint", afterTurnIndex: 1, scores: [:]),
             ]
         )
         return AppEvalOutcome(fixtures: [fixtureA, fixtureB])

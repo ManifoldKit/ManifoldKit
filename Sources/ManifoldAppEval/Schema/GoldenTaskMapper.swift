@@ -1,5 +1,24 @@
 import Foundation
+import ManifoldInference
 import ManifoldRuntime
+
+/// The grouped form of a mapped fixture: one script *group* per user turn.
+///
+/// A plain turn maps to one backend script; a turn with a
+/// ``GoldenScriptedToolCall`` maps to two (the tool-call round, then the
+/// follow-up answer round) — so backend scripts cannot be sliced by turn
+/// index directly. `GoldenTaskRunner` builds its per-checkpoint prefix
+/// scenarios from these groups, flattening only after slicing at a turn
+/// boundary.
+struct MappedGoldenTask {
+    let turns: [RuntimeScenario.ScenarioTurn]
+    /// One entry per turn; each entry holds that turn's backend `generate`
+    /// scripts in order.
+    let scriptGroups: [[ScriptedGenerationBackend.TurnScript]]
+    /// Fixed-response executors synthesized from ``GoldenScriptedToolCall/result``
+    /// payloads — one per distinct tool name that declared a result.
+    let syntheticToolExecutors: [any ToolExecutor]
+}
 
 /// Maps a ``GoldenTaskFixture`` onto a ``RuntimeScenario`` for the
 /// deterministic (scripted) lane.
@@ -42,8 +61,26 @@ public enum GoldenTaskMapper {
     /// context slots) happens per-checkpoint in ``GoldenTaskRunner``, not as
     /// one whole-scenario assertion.
     public static func map(_ fixture: GoldenTaskFixture) throws -> RuntimeScenario {
+        let mapped = try mapGrouped(fixture)
+        return RuntimeScenario(
+            id: fixture.id,
+            displayName: fixture.id,
+            scenarioDescription: "Mapped from GoldenTaskFixture '\(fixture.id)'.",
+            turns: mapped.turns,
+            scriptedTurns: mapped.scriptGroups.flatMap { $0 },
+            expectedSubsequence: [],
+            toolExecutors: mapped.syntheticToolExecutors,
+            systemPrompt: fixture.systemPrompt
+        )
+    }
+
+    /// Grouped mapping — used by `GoldenTaskRunner` so per-checkpoint prefix
+    /// scenarios can slice backend scripts at turn boundaries even when a
+    /// tool-call turn contributes more than one script.
+    static func mapGrouped(_ fixture: GoldenTaskFixture) throws -> MappedGoldenTask {
         var turns: [RuntimeScenario.ScenarioTurn] = []
-        var scriptedTurns: [ScriptedGenerationBackend.TurnScript] = []
+        var scriptGroups: [[ScriptedGenerationBackend.TurnScript]] = []
+        var syntheticExecutorsByName: [String: AppEvalEchoTool] = [:]
 
         for (index, turn) in fixture.turns.enumerated() {
             switch turn.kind {
@@ -57,17 +94,33 @@ public enum GoldenTaskMapper {
             case .edit:
                 throw MapError.editNotYetSupported(turnIndex: index)
             }
-            scriptedTurns.append(tokenize(turn.cannedResponse))
+
+            var group: [ScriptedGenerationBackend.TurnScript] = []
+            if let scriptedCall = turn.scriptedToolCall {
+                // Round 1: the scripted model requests the tool (no visible
+                // text); the runtime dispatches it and re-prompts, which pops
+                // the follow-up script below. Mirrors how MK's own
+                // tool-round-trip scenario scripts a call.
+                group.append(.toolCall(ToolCall(
+                    id: "\(fixture.id)-turn\(index)-call",
+                    toolName: scriptedCall.name,
+                    arguments: scriptedCall.arguments ?? "{}"
+                )))
+                if let result = scriptedCall.result, syntheticExecutorsByName[scriptedCall.name] == nil {
+                    syntheticExecutorsByName[scriptedCall.name] = AppEvalEchoTool(
+                        toolName: scriptedCall.name,
+                        response: result
+                    )
+                }
+            }
+            group.append(tokenize(turn.cannedResponse))
+            scriptGroups.append(group)
         }
 
-        return RuntimeScenario(
-            id: fixture.id,
-            displayName: fixture.id,
-            scenarioDescription: "Mapped from GoldenTaskFixture '\(fixture.id)'.",
+        return MappedGoldenTask(
             turns: turns,
-            scriptedTurns: scriptedTurns,
-            expectedSubsequence: [],
-            systemPrompt: fixture.systemPrompt
+            scriptGroups: scriptGroups,
+            syntheticToolExecutors: syntheticExecutorsByName.keys.sorted().compactMap { syntheticExecutorsByName[$0] }
         )
     }
 

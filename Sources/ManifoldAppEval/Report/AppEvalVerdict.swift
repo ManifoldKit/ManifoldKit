@@ -26,6 +26,13 @@ public enum AppEvalVerdict: Sendable, Equatable {
     /// - `1`: ``fail`` (actionable — a checkpoint's assertion did not hold)
     /// - `2`: ``error`` (usage/config/load error — distinct from a real failure
     ///   so CI can tell "the gate caught something" from "the gate is broken")
+    /// - `3`+ (design v2 §3.4, "named intermediate verdicts"): **not
+    ///   applicable in-library.** The wave-1 library has no aggregate
+    ///   "indeterminate" verdict — per-checkpoint absence is carried as
+    ///   first-class `.unavailable` rows inside a ``pass`` outcome rather
+    ///   than a distinct top-level verdict. `3`+ is reserved for the future
+    ///   gate-shaped CLI (wave 2+), whose named intermediate verdicts get
+    ///   codes from 3 up per the manifold-eval convention.
     public var exitCode: Int32 {
         switch self {
         case .pass: return 0

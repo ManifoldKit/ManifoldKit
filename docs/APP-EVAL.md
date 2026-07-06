@@ -103,7 +103,7 @@ import ManifoldAppEval
 
 for scenario in AppEvalStarterCorpus.all {
     let result = try await RuntimeScenarioRunner.run(scenario)
-    RuntimeScenarioRunner.assert(result: result) // XCTest adapter, from ManifoldContractTestSupport-style usage — see note below
+    try result.checkPassed() // throws a descriptive error if the subsequence fails
 }
 ```
 

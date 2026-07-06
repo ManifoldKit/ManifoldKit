@@ -6,11 +6,11 @@ import ManifoldInference
 /// Minimal ``ToolExecutor`` that returns a fixed scripted response regardless
 /// of arguments.
 ///
-/// Registered directly in a ``ToolRegistry`` to drive Glass Box tool round-trip
-/// scenarios (``RuntimeScenario`` with non-empty `toolExecutors`). It is the
-/// reusable, public twin of the characterization suite's private
-/// `ScriptedEchoTool` — kept here so scenario authors can express a tool turn
-/// without wiring a real executor.
+/// Registered directly in a ``ToolRegistry`` to drive tool round-trip tests
+/// (e.g. a `RuntimeScenario` — now in the `ManifoldAppEval` module — with
+/// non-empty `toolExecutors`). It is the reusable, public twin of the
+/// characterization suite's private `ScriptedEchoTool` — kept here so test
+/// authors can express a tool turn without wiring a real executor.
 ///
 /// `requiresApproval` defaults to `false`, so the dispatch loop auto-approves
 /// the call and emits `.toolCallApproved` on the genuine-approval path.

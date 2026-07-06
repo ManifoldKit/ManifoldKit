@@ -51,6 +51,32 @@ public enum RuntimeScenarioRunner {
         public let producedMessages: [ChatMessage]
 
         public enum RunModeKind: Sendable { case scripted, live }
+
+        /// The failure thrown by ``checkPassed()``.
+        public struct SubsequenceFailure: Error, CustomStringConvertible {
+            public let scenarioID: String
+            public let reason: String
+
+            public var description: String {
+                "Scenario '\(scenarioID)' failed: \(reason)"
+            }
+        }
+
+        /// Throws a descriptive ``SubsequenceFailure`` when the scenario's
+        /// expected subsequence was not satisfied. The XCTest-free way for an
+        /// adopting app's tests to surface a failing scenario:
+        ///
+        /// ```swift,no-build
+        /// let result = try await RuntimeScenarioRunner.run(scenario)
+        /// try result.checkPassed()
+        /// ```
+        public func checkPassed() throws {
+            guard !subsequencePassed else { return }
+            throw SubsequenceFailure(
+                scenarioID: scenario.id,
+                reason: subsequenceFailureReason ?? "expected subsequence not satisfied"
+            )
+        }
     }
 
     /// Runs `scenario` in `mode` and returns the result.

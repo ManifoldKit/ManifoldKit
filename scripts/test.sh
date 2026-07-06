@@ -198,6 +198,9 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldVoiceTests
     ManifoldSkillsTests
     ManifoldToolsTests
+    # App-eval harness (estate#1 wave 1): schema/mapper/scorer/renderer/ledger
+    # unit tests + the MK-compression-golden dogfood, all hermetic.
+    ManifoldAppEvalTests
 )
 # Local-profile filters extend the CI list with the umbrella + HuggingFace
 # suites.

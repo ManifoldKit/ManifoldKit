@@ -186,6 +186,44 @@ final class BuiltInCheckpointScorersTests: XCTestCase {
         XCTAssertEqual(score.value, .unavailable)
     }
 
+    /// The failure-masking regression case: maxRetainedMessages VIOLATED
+    /// (a definitive failure) while minInsertedRecords is indeterminate (no
+    /// historyCompressed event yet). The accrued failure must win — never be
+    /// discarded in favour of `.unavailable`.
+    func test_expectedCompression_accruedFailureNotMaskedByIndeterminateMinInserted() throws {
+        let checkpoint = GoldenCheckpoint(
+            afterTurnIndex: 0,
+            expectedCompression: GoldenExpectedCompression(maxRetainedMessages: 2, minInsertedRecords: 1)
+        )
+        let context = makeContext(
+            checkpoint: checkpoint,
+            producedMessageCount: 5,                    // violates maxRetainedMessages: 2
+            lastCompressionInsertedRecordCount: nil     // minInsertedRecords indeterminate
+        )
+        let score = try XCTUnwrap(BuiltInCheckpointScorers.scoreExpectedCompression(context))
+        XCTAssertEqual(score.value, .bool(false), "a proven failure must never be masked as absence")
+        let explanation = try XCTUnwrap(score.explanation)
+        XCTAssertTrue(explanation.contains("retained 5 messages"), explanation)
+        XCTAssertTrue(explanation.contains("indeterminate"), "the un-measured sub-assertion should still be surfaced: \(explanation)")
+    }
+
+    /// Precedence completeness: a PASSING sub-assertion plus an indeterminate
+    /// one yields `.unavailable`, not a pass — a full pass can't be claimed
+    /// while part of the declaration was never measured.
+    func test_expectedCompression_passPlusIndeterminate_yieldsUnavailable() throws {
+        let checkpoint = GoldenCheckpoint(
+            afterTurnIndex: 0,
+            expectedCompression: GoldenExpectedCompression(maxRetainedMessages: 10, minInsertedRecords: 1)
+        )
+        let context = makeContext(
+            checkpoint: checkpoint,
+            producedMessageCount: 3,                    // satisfies maxRetainedMessages: 10
+            lastCompressionInsertedRecordCount: nil     // minInsertedRecords indeterminate
+        )
+        let score = try XCTUnwrap(BuiltInCheckpointScorers.scoreExpectedCompression(context))
+        XCTAssertEqual(score.value, .unavailable)
+    }
+
     // MARK: - expectedContextSlots
 
     func test_expectedContextSlots_absent_whenNotDeclared() {

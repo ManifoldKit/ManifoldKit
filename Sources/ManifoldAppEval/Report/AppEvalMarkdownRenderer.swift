@@ -32,6 +32,16 @@ public enum AppEvalMarkdownRenderer {
             lines.append("")
             lines.append("**Fixture verdict: \(verdictLabel(fixture.verdict))**")
             lines.append("")
+            if let errorDescription = fixture.errorDescription {
+                // Error rows carry no checkpoints — render the contained
+                // error, fenced so arbitrary error text can't corrupt the
+                // Markdown structure.
+                lines.append("```")
+                lines.append(errorDescription)
+                lines.append("```")
+                lines.append("")
+                continue
+            }
             lines.append("| Checkpoint | Assertion | Result | Detail |")
             lines.append("|---|---|---|---|")
 
