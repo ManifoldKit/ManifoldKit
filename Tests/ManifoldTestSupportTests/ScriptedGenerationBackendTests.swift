@@ -1,7 +1,8 @@
 @preconcurrency import XCTest
 import Foundation
 @testable import ManifoldInference
-import ManifoldTestSupport
+// ScriptedGenerationBackend relocated to ManifoldAppEval (app-eval harness wave 1).
+import ManifoldAppEval
 
 // MARK: - ScriptedGenerationBackendTests
 

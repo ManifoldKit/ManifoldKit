@@ -118,23 +118,23 @@ Bounded taps drop events when the consumer falls behind. The primary ``Conversat
 
 ## Running scenarios
 
-``RuntimeScenarioRunner`` lets you drive a complete multi-turn conversation against a scripted or real backend in a single call, with the recorded trace returned for inspection.
+`RuntimeScenarioRunner` (in the `ManifoldAppEval` module) lets you drive a complete multi-turn conversation against a scripted or real backend in a single call, with the recorded trace returned for inspection.
 
-In `.scripted` mode the runner wires up a ``ScriptedGenerationBackend`` from the scenario's embedded turn script, records the full ``ConversationEvent`` trace, and checks the structural subsequence automatically:
+In `.scripted` mode the runner wires up a `ScriptedGenerationBackend` from the scenario's embedded turn script, records the full ``ConversationEvent`` trace, and checks the structural subsequence automatically:
 
 ```swift,no-build
-import ManifoldTestSupport
+import ManifoldAppEval
 
-let result = try await RuntimeScenarioRunner.run(.basicTokenStream)
-RuntimeScenarioRunner.assert(result: result)  // calls XCTFail if subsequence fails
+let result = try await RuntimeScenarioRunner.run(.starterSendReceiveSmoke)
+try result.checkPassed()  // throws a descriptive error if the subsequence fails
 ```
 
-All built-in scenarios are collected in ``RuntimeScenarioRegistry/all``. Iterate it in a test matrix to cover every registered scenario in one loop:
+The public starter scenarios are collected in `AppEvalStarterCorpus.all` (a send/receive smoke test, a tool round trip, and a mid-stream cancellation). Iterate it in a test matrix to cover each one in a loop:
 
 ```swift,no-build
-for scenario in RuntimeScenarioRegistry.all {
+for scenario in AppEvalStarterCorpus.all {
     let result = try await RuntimeScenarioRunner.run(scenario)
-    RuntimeScenarioRunner.assert(result: result)
+    try result.checkPassed()
 }
 ```
 
@@ -142,11 +142,13 @@ For live-backend runs, pass `.live(backend:)` — the runner uses the same struc
 
 ```swift,no-build
 let result = try await RuntimeScenarioRunner.run(
-    .basicTokenStream,
+    .starterSendReceiveSmoke,
     mode: .live(backend: myRealBackend)
 )
-RuntimeScenarioRunner.assert(result: result)
+try result.checkPassed()
 ```
+
+Beyond the built-in structural check, `result.trace.events` is public API — assert on it directly for anything the subsequence oracle can't express. See the `ManifoldAppEval` module documentation and `docs/APP-EVAL.md` for the full golden-fixture workflow.
 
 ## Re-entrancy rule (yield-outside-lock)
 

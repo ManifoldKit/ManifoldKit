@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import ManifoldInference
 import ManifoldRuntime
@@ -61,4 +60,3 @@ public struct FixedCountPreTurnCompressionPolicy: PreTurnCompressionPolicy {
         )]
     }
 }
-#endif

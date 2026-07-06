@@ -4,6 +4,8 @@ import SnapshotTesting
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+// ScriptedGenerationBackend relocated to ManifoldAppEval (app-eval harness wave 1).
+import ManifoldAppEval
 
 // MARK: - EventTapDrain
 

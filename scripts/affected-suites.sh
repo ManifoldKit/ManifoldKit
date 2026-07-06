@@ -66,6 +66,7 @@ TEST_JOB_SUITES=(
   ManifoldTurnLoopCharacterizationTests
   ManifoldBackendsTests
   ManifoldInferenceSwiftTestingTests
+  ManifoldAppEvalTests
 )
 
 # ---------------------------------------------------------------------------

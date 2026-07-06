@@ -189,6 +189,7 @@
       "type": "regular",
       "path": "Sources/ManifoldContractTestSupport",
       "deps": [
+        "ManifoldAppEval",
         "ManifoldInference",
         "ManifoldRuntime",
         "ManifoldTestSupport"
@@ -216,6 +217,7 @@
       "type": "test",
       "path": "Tests/ManifoldRuntimeTests",
       "deps": [
+        "ManifoldAppEval",
         "ManifoldContractTestSupport",
         "ManifoldInference",
         "ManifoldRuntime",
@@ -246,6 +248,7 @@
       "type": "test",
       "path": "Tests/ManifoldTestSupportTests",
       "deps": [
+        "ManifoldAppEval",
         "ManifoldContractTestSupport",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
@@ -407,6 +410,7 @@
       "type": "test",
       "path": "Tests/ManifoldE2ETests",
       "deps": [
+        "ManifoldAppEval",
         "ManifoldCloudCore",
         "ManifoldCloudSaaS",
         "ManifoldContractTestSupport",
@@ -437,6 +441,7 @@
       "type": "test",
       "path": "Tests/ManifoldTurnLoopCharacterizationTests",
       "deps": [
+        "ManifoldAppEval",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
@@ -508,6 +513,14 @@
         "ManifoldInference"
       ]
     },
+    "ManifoldAppEval": {
+      "type": "regular",
+      "path": "Sources/ManifoldAppEval",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldRuntime"
+      ]
+    },
     "ManifoldToolsTests": {
       "type": "test",
       "path": "Tests/ManifoldToolsTests",
@@ -571,6 +584,15 @@
         "ManifoldInference",
         "ManifoldTelemetryOTLP",
         "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldAppEvalTests": {
+      "type": "test",
+      "path": "Tests/ManifoldAppEvalTests",
+      "deps": [
+        "ManifoldAppEval",
+        "ManifoldInference",
+        "ManifoldRuntime"
       ]
     }
   }

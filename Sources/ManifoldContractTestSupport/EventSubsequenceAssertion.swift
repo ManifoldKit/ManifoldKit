@@ -1,6 +1,6 @@
-#if DEBUG
 import XCTest
 import ManifoldRuntime
+import ManifoldAppEval
 
 // MARK: - XCTAssertEventSubsequence
 
@@ -9,6 +9,11 @@ import ManifoldRuntime
 /// A subsequence match means every kind in `kinds` appears in `trace` (in
 /// the same order), but the events do not have to be consecutive. Extra
 /// events between matched kinds are ignored.
+///
+/// Delegates to ``EventSubsequenceChecker`` (ManifoldAppEval) — the pure,
+/// XCTest-free implementation of the scan. This function is now a thin
+/// XCTest adapter over that checker rather than a second implementation
+/// (the two were duplicated before the ManifoldAppEval relocation).
 ///
 /// ```swift,no-build
 /// XCTAssertEventSubsequence(trace, contains: [
@@ -25,24 +30,26 @@ public func XCTAssertEventSubsequence(
     file: StaticString = #filePath,
     line: UInt = #line
 ) {
-    // Greedy left-to-right scan: advance the `kinds` pointer on each match.
-    var kindIdx = kinds.startIndex
-    for event in trace {
-        guard kindIdx < kinds.endIndex else { break }
-        if event.kind == kinds[kindIdx] {
-            kindIdx = kinds.index(after: kindIdx)
-        }
-    }
-    if kindIdx < kinds.endIndex {
-        let matched = kinds[..<kindIdx].map(\.rawValue).joined(separator: ", ")
-        let missing = kinds[kindIdx...].map(\.rawValue).joined(separator: ", ")
-        let traceDesc = trace.map(\.kind.rawValue).joined(separator: ", ")
-        let detail = message.isEmpty ? "" : " — \(message)"
-        XCTFail(
-            "Event subsequence not satisfied\(detail).\nMatched: [\(matched)]\nMissing: [\(missing)]\nTrace: [\(traceDesc)]",
-            file: file,
-            line: line
-        )
+    let result = EventSubsequenceChecker.check(trace.map(\.kind), against: kinds)
+    guard !result.passed, let reason = result.failureReason else { return }
+    let detail = message.isEmpty ? "" : " — \(message)"
+    XCTFail("Event subsequence not satisfied\(detail).\n\(reason)", file: file, line: line)
+}
+
+// MARK: - RuntimeScenarioRunner.assert(result:)
+
+extension RuntimeScenarioRunner {
+    /// Calls `XCTFail` if `result.subsequencePassed` is `false`.
+    ///
+    /// Kept here (rather than on ``RuntimeScenarioRunner`` itself, which is
+    /// now XCTest-free in `ManifoldAppEval`) so MK's own test suites keep
+    /// calling `RuntimeScenarioRunner.assert(result:)` unchanged.
+    public static func assert(
+        result: Result,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard !result.subsequencePassed, let reason = result.subsequenceFailureReason else { return }
+        XCTFail("Scenario '\(result.scenario.id)' failed: \(reason)", file: file, line: line)
     }
 }
-#endif

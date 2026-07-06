@@ -112,6 +112,12 @@ let package = Package(
         // Optional OTLP/HTTP exporter — not re-exported by the ManifoldKit
         // umbrella. Import explicitly: `import ManifoldTelemetryOTLP`.
         .library(name: "ManifoldTelemetryOTLP", targets: ["ManifoldTelemetryOTLP"]),
+        // ManifoldAppEval: golden-scenario eval harness for APPS built on
+        // ManifoldKit (estate#1). Not re-exported by the ManifoldKit umbrella —
+        // same precedent as ManifoldTools/ManifoldFuzz/ManifoldTelemetryOTLP —
+        // consumers import it explicitly from test targets or dedicated eval
+        // executables. See docs/APP-EVAL.md.
+        .library(name: "ManifoldAppEval", targets: ["ManifoldAppEval"]),
     ],
     traits: [
         // No default traits since v0.48 (PR C2): the heavy MLX / llama.cpp
@@ -574,6 +580,11 @@ let package = Package(
                 "ManifoldTestSupport",
                 "ManifoldInference",
                 "ManifoldRuntime",
+                // EventSubsequenceAssertion.swift delegates to
+                // EventSubsequenceChecker and extends RuntimeScenarioRunner
+                // with the XCTest assert(result:) adapter (both relocated to
+                // ManifoldAppEval, wave 1 of the app-eval harness).
+                "ManifoldAppEval",
             ],
             path: "Sources/ManifoldContractTestSupport"
         ),
@@ -611,6 +622,9 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldTestSupport",
                 "ManifoldContractTestSupport",
+                // ScriptedBackendRuntimeTests.swift imports ScriptedGenerationBackend,
+                // relocated to ManifoldAppEval (app-eval harness wave 1).
+                "ManifoldAppEval",
             ]
         ),
         .testTarget(
@@ -651,6 +665,12 @@ let package = Package(
                 // FlatFileVectorStore + SwiftDataDocumentStore + in-memory
                 // ModelContainer behind an Ollama-gated XCTSkipUnless.
                 "ManifoldPersistenceSwiftData",
+                // RuntimeScenarioRunnerTests.swift, ScriptedGenerationBackendTests.swift,
+                // and ResearchSessionLiveRAGIntegrationTests.swift import
+                // RuntimeScenario(Registry)/ScriptedGenerationBackend/
+                // ContextWindowPreTurnCompressionPolicy, relocated to
+                // ManifoldAppEval (app-eval harness wave 1).
+                "ManifoldAppEval",
             ]
         ),
         .testTarget(
@@ -882,6 +902,10 @@ let package = Package(
                 "ManifoldContractTestSupport",
                 "ManifoldTools",
                 "ManifoldHuggingFace",
+                // GlassBoxScenarioLiveE2ETests.swift imports RuntimeScenario /
+                // RuntimeScenarioRegistry / ScriptedGenerationBackend, relocated
+                // to ManifoldAppEval (app-eval harness wave 1).
+                "ManifoldAppEval",
             ]
         ),
         .testTarget(
@@ -913,6 +937,10 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldTestSupport",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
+                // TurnLoopCharacterizationTests.swift and CompressionGoldenTests.swift
+                // import ScriptedGenerationBackend, relocated to ManifoldAppEval
+                // (app-eval harness wave 1).
+                "ManifoldAppEval",
             ],
             exclude: ["__Snapshots__"]
         ),
@@ -1018,6 +1046,23 @@ let package = Package(
             dependencies: ["ManifoldInference"],
             path: "Sources/ManifoldTelemetryOTLP"
         ),
+        // ManifoldAppEval: golden-scenario eval harness for apps built on
+        // ManifoldKit (estate#1, design doc appeval-design-v2). Deps are
+        // deliberately ManifoldInference + ManifoldRuntime only — no
+        // ManifoldTestSupport / ManifoldContractTestSupport / XCTest edge, so
+        // the harness can be imported from a plain executable or any test
+        // target without pulling in XCTest (the #1409 dyld constraint).
+        // Not re-exported by the ManifoldKit umbrella (consumers opt in
+        // explicitly, same precedent as ManifoldTools/ManifoldFuzz/
+        // ManifoldTelemetryOTLP).
+        .target(
+            name: "ManifoldAppEval",
+            dependencies: [
+                "ManifoldInference",
+                "ManifoldRuntime",
+            ],
+            path: "Sources/ManifoldAppEval"
+        ),
         .testTarget(
             name: "ManifoldToolsTests",
             dependencies: [
@@ -1109,6 +1154,21 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldTestSupport",
             ]
+        ),
+        // ManifoldAppEvalTests: schema decode/mapper/scorer/probe/renderer/ledger
+        // unit tests plus the wave-1 dogfood (MK's own compression golden
+        // re-expressed as a JSON fixture, run through the full deterministic
+        // lane). Deliberately does NOT depend on ManifoldTestSupport /
+        // ManifoldContractTestSupport — mirrors ManifoldAppEval's own
+        // dependency discipline.
+        .testTarget(
+            name: "ManifoldAppEvalTests",
+            dependencies: [
+                "ManifoldAppEval",
+                "ManifoldInference",
+                "ManifoldRuntime",
+            ],
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageModes: [.v6]

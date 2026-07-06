@@ -3,6 +3,9 @@ import ManifoldInference
 import ManifoldRuntime
 @testable import ManifoldTestSupport
 @testable import ManifoldContractTestSupport
+// RuntimeScenario / RuntimeScenarioRegistry / ScriptedGenerationBackend /
+// RuntimeScenarioRunner relocated to ManifoldAppEval (app-eval harness wave 1).
+import ManifoldAppEval
 @testable import ManifoldFoundation
 @testable import ManifoldOllama
 @testable import ManifoldCloudSaaS
