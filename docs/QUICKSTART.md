@@ -402,6 +402,48 @@ The value-typed front door has the matching `LLM.localOnly(from:backends:)`.
 
 On iOS 26 / macOS 26+, `localOnly()` with no `backends` still yields a working chat via Apple Foundation Models. On older OSes, pass a companion local registrar (`[LlamaBackends.self]` / `[MLXBackends.self]`) or the runtime will have no selectable model. To also stop accidental network egress at runtime (e.g. from a misconfigured custom endpoint), flip the `URLSessionProvider.networkDisabled` kill-switch — see [Host configuration seams](#host-configuration-seams) below.
 
+### Foundation-only quickstart (no cloud, no companion packages)
+
+Apple Foundation Models ship in core — no companion package to add, no Ollama/OpenAI/Anthropic wiring to reason about. If your app only ever targets the on-device model, register just that one family instead of the compiled-in default of "cloud + Foundation":
+
+```swift
+import SwiftUI
+import SwiftData
+import ManifoldKit
+
+@main
+struct MyChatApp: App {
+    @State private var result: QuickStartResult?
+    @State private var error: ManifoldKitError?
+    @State private var showModelManagement = false
+
+    var body: some Scene {
+        WindowGroup {
+            if let result {
+                ChatView(showModelManagement: $showModelManagement)
+                    .environment(result.viewModel)
+                    .modelContainer(result.bootstrap.modelContainer)
+            } else if let error {
+                ContentUnavailableView("Failed to start", systemImage: "exclamationmark.triangle", description: Text(error.errorDescription ?? ""))
+            } else {
+                ProgressView().task {
+                    do {
+                        result = try await ManifoldKit.quickStart(
+                            backends: [FoundationBackends.self],
+                            includeDefaultBackends: false
+                        )
+                    }
+                    catch let e as ManifoldKitError { error = e }
+                    catch { self.error = .from(error) }
+                }
+            }
+        }
+    }
+}
+```
+
+`FoundationBackends` is re-exported by the `ManifoldKit` umbrella (`@_exported import` — see `Sources/ManifoldKit/Exports.swift`), so no extra product or import is needed beyond `ManifoldKit` itself. This is the same registration-level exclusion as `localOnly()` above, just spelled out with the general `quickStart(backends:includeDefaultBackends:)` primitive and an explicit registrar list of one. On iOS 18–25 / macOS 15–25 this compiles and runs, but yields no selectable model until the OS reaches the Foundation Models floor — see the [compatibility matrix](../README.md#compatibility-matrix) in the README. Headless (non-SwiftUI) consumers get an even leaner dependency set — just `ManifoldInference` + `ManifoldFoundation`, no `ManifoldKit` umbrella at all — via [`QUICKSTART-CLI.md` §1](QUICKSTART-CLI.md#1-foundation-models-macos-26).
+
 ## Host configuration seams
 
 ManifoldKit exposes a number of powerful extension points that most apps never need — but which are easy to miss because they live deep in the module graph rather than on the `quickStart` surface. The table below is the discoverable index; each is public today.
