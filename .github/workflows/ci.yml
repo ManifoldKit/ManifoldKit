@@ -162,7 +162,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 2
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         # Skipped on merge_group to FORCE a full run on the queue branch rather
         # than narrowing the final pre-merge gate. (paths-filter v4 natively
         # SUPPORTS merge_group — it diffs merge_group.base_sha..head_sha — so this
@@ -411,7 +411,7 @@ jobs:
 
       - name: Detect dependency-graph changes
         id: deps-changed
-        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         with:
           filters: |
             deps:
