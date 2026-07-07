@@ -95,7 +95,12 @@ let package = Package(
         .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
         .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
         .library(name: "ManifoldVoice", targets: ["ManifoldVoice"]),
-        .library(name: "ManifoldFuzz", targets: ["ManifoldFuzz"]),
+        // ManifoldFuzz is deliberately NOT a published product: it has zero
+        // external consumers (no companion repo imports it), its only runtime
+        // consumer is this repo's own fuzz-weekly.yml (`swift run fuzz-chat`),
+        // and unpublishing shrinks the api-digester gate's product surface.
+        // The target (and fuzz-chat / ManifoldFuzzBackends / ManifoldFuzzTests,
+        // which depend on the target, not the product) are unaffected.
         // Test-support products: published so companion backend packages
         // (manifold-mlx / manifold-llama, #1749) can run the same mocks and
         // contract checks out-of-package. ManifoldBackendTestKit links XCTest
