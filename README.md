@@ -142,11 +142,22 @@ Building a new backend companion package? See [docs/COMPANION-BACKENDS.md](docs/
 
 **Backend portability.** MLX, llama.cpp/GGUF, Apple Foundation Models, cloud (OpenAI Chat + Responses, Anthropic, Ollama, LAN), and the AnyLanguageModel bridge (Gemini, xAI, Groq, Mistral) all sit behind one `InferenceBackend` protocol. Streaming, tool calling, thinking/reasoning tokens, RAG, and structured output behave identically across every backend, so swapping engines is a config change, not a rewrite. AnyLanguageModel is wrapped as a complementary provider backend — see [How ManifoldKit compares to AnyLanguageModel](#how-manifoldkit-compares-to-anylanguagemodel).
 
-**n-1 OS reach, WWDC-ready.** ManifoldKit serves iOS 18 / macOS 15 — the installed base that Apple Foundation Models (OS-26-only, AI-hardware-gated, 4096-token cap, single fixed model) can't reach — and wraps Foundation Models as just one more backend instead of competing with it. The companion-package split means one codebase yields either an App-Store-lean build with no heavy ML dependencies at all (core only — just don't add the companion packages) or the full local + cloud + RAG + voice stack. Pre-wired stub traits (`SystemAIProviderExtension`, `CoreAI`) mean whatever Apple ships next September is one more backend, not a migration. See [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy).
+**n-1 OS reach — everything above the model layer.** At WWDC 2026 Apple opened the Foundation Models framework to any LLM provider via the `LanguageModel` protocol, with first-party Claude (`anthropics/ClaudeForFoundationModels`, beta) and Gemini (via Firebase, preview) packages arriving on top. That validates the multi-backend idea — and commoditizes it: model *access* is becoming a platform primitive. But it all lands on the newest OS only — Foundation Models itself is iOS 26+ / macOS 26+, and the opened provider layer is iOS 27+ (in beta now) — while ManifoldKit already serves the iOS 18 / macOS 15 installed base those APIs can't reach, wrapping Foundation Models as just one more backend behind `InferenceBackend`. ManifoldKit's value was never the abstraction; it's everything above the model layer: the turn loop, persistence, MCP client+server, tool approval, and RAG. The companion-package split means one codebase yields either an App-Store-lean build with no heavy ML dependencies at all (core only — just don't add the companion packages) or the full local + cloud + RAG + voice stack, and the pre-wired stub traits (`SystemAIProviderExtension`, `CoreAI`) mean adopting Apple's new provider protocols is one more backend, not a migration. See [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy).
 
 **Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 6,500+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
 
 ManifoldKit is **decomposable, not monolithic**: 28 libraries across a layered module graph. Take just the engine ([CLI / server path](docs/QUICKSTART-CLI.md)), just the UI (bring-your-own-runtime), or the whole stack — the umbrella is a convenience, not a requirement.
+
+### Drop in `ChatView`, or compose the primitives
+
+`ChatView` is a complete reference integration, not the only door in. `ManifoldUI` ships as composable pieces you can assemble into a custom layout while still driving the same `ChatViewModel` / `ConversationRuntime`:
+
+- **Message rendering** — `MessageBubbleView`, the `MessageBubbleStyle` protocol (with `PlainMessageBubbleStyle`, `IMessageMessageBubbleStyle`, `CardMessageBubbleStyle` built in), `StreamingCursorView`, `ToolInvocationView`, `CitationsView`.
+- **Input** — `ChatInputBar`, `VisionInputButton`, `PhotoAttachmentButton`.
+- **Session chrome** — `SessionListView`, `SessionRowView`, backed by `SessionManagerViewModel`; `ContextIndicatorView`, `MemoryIndicatorView`, `ModelLoadingIndicatorView`, `TypingIndicatorView`.
+- **Pickers & sheets** — `PersonaPickerView`, `SamplerPresetPickerView`, `VoicePickerView`, `ChatExportSheet`, `SessionExportSheet`.
+
+Bring your own layout and swap in only the pieces you need — a custom message list with `MessageBubbleView` and a bespoke input bar is a valid integration, not an unsupported one.
 
 ## What's already in the box
 
@@ -214,13 +225,15 @@ Most Swift AI projects are excellent at one layer. ManifoldKit's claim is narrow
 | **ManifoldKit** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | UI-only kits (Exyte/Chat, MessageKit, SwiftyChat) | ✅ | ❌ | ❌ | ❌ | ✅ |
 | Engine-only (LocalLLMClient, AnyLanguageModel, swift-transformers, LLM.swift) | ❌ | ❌ | ❌ | partial¹ | ✅ |
+| Ecosystem-bound (SpeziLLM — Stanford Spezi) | ❌ | partial | ❌ | partial² | ✅ (requires Spezi) |
 | Thin cloud clients (MacPaw/OpenAI, SwiftAnthropic) | ❌ | ❌ | ❌ | ❌ (one provider) | ✅ |
-| Apple Foundation Models | ❌ | ❌ | ❌ | ❌ (one capped model, OS 26+) | ✅ |
+| Apple Foundation Models (+ opened provider layer, WWDC26) | ❌ | ❌ | ❌ | ✅ via `LanguageModel` (iOS 27+ only, beta) | ✅ |
+| Cross-platform (Cactus) | partial | partial | ❌ | ✅ (hosted-service cloud fallback) | ✅ (Swift binding less mature) |
 | Full-stack apps (fullmoon, Enchanted) | ✅ | ✅ | ✅ | partial | ❌ (fork, not a package) |
 
-¹ LocalLLMClient is the closest multi-engine analog (multiple local engines behind one interface) but ships no UI, persistence, or cloud backends.
+¹ LocalLLMClient is the closest multi-engine analog (multiple local engines behind one interface) but ships no UI, persistence, or cloud backends, and is explicitly labelled experimental (tool calling and multimodal included). ² SpeziLLMFog adds mDNS-discovered local-network inference ManifoldKit doesn't have.
 
-Each row is genuinely strong at its own layer — a UI kit renders beautiful bubbles, a cloud client is a clean SDK, Foundation Models is free and on-device. The point isn't that they're weak; it's that assembling them into a shipping chat product is the work ManifoldKit already did. Cross-language demand is proven (React's assistant-ui sees ~200k downloads/month; Vercel ships a chatbot template) — there is no Swift equivalent until this one. Full rationale in [docs/POSITIONING.md](docs/POSITIONING.md).
+Each row is genuinely strong at its own layer — a UI kit renders beautiful bubbles, a cloud client is a clean SDK, Foundation Models is free and on-device. The point isn't that they're weak; it's that assembling them into a shipping chat product is the work ManifoldKit already did. Apple validated the category at WWDC 2026 by opening Foundation Models to third-party providers — which raises the value of everything *above* the model layer, not below it. Cross-language demand for that "above" layer is proven (React's assistant-ui has ~11k stars; Vercel ships a chatbot template) — there is still no Swift equivalent until this one. Full rationale in [docs/POSITIONING.md](docs/POSITIONING.md).
 
 ## Install
 
@@ -496,6 +509,8 @@ open Advanced.xcodeproj
 ## How ManifoldKit compares to AnyLanguageModel
 
 AnyLanguageModel is HuggingFace's Swift package — it mirrors Apple's `FoundationModels` API and exposes many providers behind a single protocol. ManifoldKit and AnyLanguageModel occupy adjacent niches: AnyLanguageModel optimises for provider coverage and API familiarity; ManifoldKit optimises for production reliability and drop-in chat UI (`ChatView` + `SessionListView` + `ModelManagementSheet` on day one). Pick the one whose axis matches the problem you're solving.
+
+WWDC 2026 validated AnyLanguageModel's bet: Apple opened Foundation Models itself to third-party providers behind a near-identical shape (`LanguageModel` / `LanguageModelExecutor`, driving `LanguageModelSession`), with Anthropic's `ClaudeForFoundationModels` (beta) and Google's Gemini-via-Firebase (preview) shipping on top — both iOS 27+ only, both currently pre-GA. That's real validation for the "one API over many models" idea, and it's a reason ManifoldKit doesn't compete on that axis either: reaching Claude or Gemini on the OSes ManifoldKit actually targets (iOS 18+ / macOS 15+) still means ManifoldKit's own cloud backends, not the new OS-gated provider layer.
 
 ManifoldKit also **consumes** AnyLanguageModel as a backend: the `ManifoldAnyLanguageModel` product (the retired `AnyLanguageModel` trait's replacement since v0.48) is the supported path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint — so they plug into the same `ChatViewModel` and runtime as a native backend. See [docs/PROVIDER-BRIDGE.md](docs/PROVIDER-BRIDGE.md) for the provider list, URL setup, and capability limits.
 
