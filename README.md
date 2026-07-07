@@ -166,7 +166,7 @@ Table-stakes capabilities that ship today (verified in source):
 
 **Status:** ManifoldKit is pre-1.0; breaking changes can land between minor versions. Deferred reliability features (e.g. mid-stream resume) are tracked in [docs/RELIABILITY.md](docs/RELIABILITY.md).
 
-**Dev-tool products** — `ManifoldTools`, `ManifoldTestSupport`, and `ManifoldBackendTestKit` — are semver-exempt and may break in any minor release. Each provides published APIs for external consumers (eval repo, companion packages, local apps) and receive migration notes in their release cycle, but are not bound to the core stability promise since they ship in build/test runs, not end-user binaries. See [docs/API-DESIGN.md § 7](docs/API-DESIGN.md#7-semver-exempt-products) for the complete policy and consumer list.
+**Dev-tool products** — `ManifoldTools`, `ManifoldTestSupport`, and `ManifoldBackendTestKit` — are semver-exempt and may break in any minor release. Each provides published APIs for real external consumers (eval repo, companion packages, local apps) and every break receives a migration note, but they are not bound to the core stability promise: they are developer tooling, and linking one means accepting the looser promise. See [docs/API-DESIGN.md § 7](docs/API-DESIGN.md#7-semver-exempt-products) for the complete policy and consumer list.
 
 ## Beyond chat
 

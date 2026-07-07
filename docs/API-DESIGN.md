@@ -130,21 +130,24 @@ Three dev-tool products **may break in any minor release, always migration-noted
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
 deprecation cycles or api-digester gates slowing removal. The exemption reflects their
-purpose (developer tooling) and their lifecycle (consumed by builds + test runs, not
-shipped in end-user binaries):
+purpose (developer tooling), not their reachability — an app CAN link them (idlewick links
+`ManifoldTestSupport` from app code), it just accepts the looser stability promise when it
+does:
 
 - **`ManifoldTestSupport`** — shared mocks and testing utilities. Published as a `.library`
   product. Real consumers: `idlewick` (surveyed local app, direct import);
   `manifold-mlx` and `manifold-llama` (companion packages, for backend test fixtures).
 - **`ManifoldBackendTestKit`** — backend contract-check machinery and conformance harness.
   Published as a `.library` product. Real consumers: `manifold-mlx` and `manifold-llama`
-  (published conformance suites); `manifold-eval` (backend test drivers). Links XCTest,
-  so callable only from test targets.
+  (published conformance suites). Links XCTest, so callable only from test targets.
 - **`ManifoldTools`** — end-to-end tool-call evaluation harness and scoring library.
   Published as a `.library` product with executable `manifold-tools` CLI. Real consumers:
   `manifold-tools` CLI (linked by the core package); `manifold-eval` (published `ConformanceRecord`
   / `ASTMatcher` / `MatrixRenderer` reuse, BFCL runner). Exposes ~70 public types
   for conformance scoring and scenario description.
+
+(`ManifoldContractTestSupport` is deliberately absent from this list: it is a target, not a
+published product — external pins cannot reach it, so it needs no exemption.)
 
 ## 8. Review-loop standing question
 
