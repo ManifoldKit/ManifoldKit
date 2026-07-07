@@ -361,6 +361,9 @@ core wave is almost free downstream. Verified per item:
 | 4.4 TestSupport split | 29 importing files, **zero** persistence-piece usage — safe | 20 importing files, one `MockInferenceBackend` use — safe | zero imports |
 | 5.3 deprecated sweep | 2 live `service.enqueue(` sites (CLI + E2E test) | 1 DocC prose mention | 2 `enqueue(` sites + the trapping `OllamaBackend(urlSession:)` in BFCL (E1) |
 | `GenerationEvent` freeze | 12 switches, all `default:`-guarded | 2 prod switches, `default:`-guarded | 2 `if case` bindings only |
+| API plan 2.3 — `GenerationConfig` hints extraction | `LlamaBackend.swift:715` + `LlamaGenerationDriver.swift` tool-injection flat-field reads (`thinkingMarkers`); verified certain | `MLXGenerationDriver.swift:291` flat-field reads (same); verified certain | no generation driver; eval uses core's rendering path only |
+| API plan 2.8 — alias removal (`ChatSession`/`ChatMessage` → `ConversationRecord`) | 2 `service.enqueue(` call sites in `LlamaBackendTests.swift` | zero references; MLX test surfaces via core's mocks only | 2 `service.enqueue(` call sites (IFEvalGenerateCommand / IFEvalGenerateLiveTests) — cross-reference to 5.3 above |
+| **2.1 demotion wave (REVISED 2026-07-07)** — unpublish `Fuzz`; semver-exempt `ManifoldTools`, `ManifoldTestSupport`, `ManifoldBackendTestKit` | **No extraction ripple needed** — the test-kit exemption and `ManifoldTools` retention mean zero companion code motion | **No extraction ripple needed** — same as llama | **No extraction ripple needed** — consumes `ManifoldTools` via exact pin; semver-exempt policy absorbed automatically |
 
 Three consequences flow back into Part I:
 

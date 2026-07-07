@@ -126,12 +126,25 @@ seams instead of the type system enforcing it universally.
 
 ## 7. Semver-exempt products
 
-`ManifoldTestSupport`, `ManifoldContractTestSupport`, `ManifoldBackendTestKit` **may break
-in any minor release, migration-noted.** This is not "internal use only" — `idlewick` (a
-surveyed local app) imports `ManifoldTestSupport` directly, and both companion packages
-consume `ManifoldTestSupport`/`ManifoldBackendTestKit`. They get the same delete-and-note
-treatment as everything else pre-1.0; they just don't get a deprecation cycle or an
-api-digester gate slowing that down.
+Three dev-tool products **may break in any minor release, always migration-noted.** This is
+not "internal use only" — they have real external consumers and published surfaces. Breaking
+changes receive the same delete-and-note treatment as everything else pre-1.0, without
+deprecation cycles or api-digester gates slowing removal. The exemption reflects their
+purpose (developer tooling) and their lifecycle (consumed by builds + test runs, not
+shipped in end-user binaries):
+
+- **`ManifoldTestSupport`** — shared mocks and testing utilities. Published as a `.library`
+  product. Real consumers: `idlewick` (surveyed local app, direct import);
+  `manifold-mlx` and `manifold-llama` (companion packages, for backend test fixtures).
+- **`ManifoldBackendTestKit`** — backend contract-check machinery and conformance harness.
+  Published as a `.library` product. Real consumers: `manifold-mlx` and `manifold-llama`
+  (published conformance suites); `manifold-eval` (backend test drivers). Links XCTest,
+  so callable only from test targets.
+- **`ManifoldTools`** — end-to-end tool-call evaluation harness and scoring library.
+  Published as a `.library` product with executable `manifold-tools` CLI. Real consumers:
+  `manifold-tools` CLI (linked by the core package); `manifold-eval` (published `ConformanceRecord`
+  / `ASTMatcher` / `MatrixRenderer` reuse, BFCL runner). Exposes ~70 public types
+  for conformance scoring and scenario description.
 
 ## 8. Review-loop standing question
 
