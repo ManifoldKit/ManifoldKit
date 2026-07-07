@@ -6,7 +6,7 @@ ManifoldKit's shipped SwiftData adapter — concrete schema, container factory, 
 
 `ManifoldPersistenceSwiftData` is the default storage tier for ManifoldKit. It provides:
 
-- **`@Model` types** — `PersistedChatSession`, `PersistedChatMessage`, `APIEndpoint`, `SamplerPreset`, `PersistedAgent`, and the versioned schemas in `Schema/` (currently `ManifoldSchemaV9`) plus the matching `ManifoldMigrationPlan`.
+- **`@Model` types** — `PersistedChatSession`, `PersistedChatMessage`, `APIEndpoint`, `SamplerPreset`, `PersistedAgent`, and the versioned schemas in `Schema/` (currently `ManifoldSchemaV12`, which carries the V9 model classes forward) plus the matching `ManifoldMigrationPlan`.
 - **Adapter conformances** — `SwiftDataPersistenceProvider` implements both ``MessageStore`` and ``SessionStore``; `SwiftDataEndpointStore`, `SwiftDataSamplerPresetStore`, `SwiftDataBenchmarkCache`, `SwiftDataUsageStore`, and `SwiftDataDocumentStore` cover the remaining ports.
 - **``ModelContainerFactory``** — builds per-app on-disk or in-memory `ModelContainer`s, applies the configured `NSFileProtection` class on iOS, and prevents two ManifoldKit apps on the same machine from sharing a SwiftData store.
 - **``ManifoldBootstrap``** — the one-call entry point that installs ``ManifoldConfiguration/shared``, builds the inference service, container, persistence adapters, and a pre-wired ``ConversationRuntime`` in a fixed safe order.

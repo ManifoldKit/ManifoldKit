@@ -285,7 +285,7 @@ func run() async throws -> Int32 {
     // path here because tier 2 is about ChatViewModel, not session list
     // orchestration (that's what makes tier 2 distinct from a real app
     // boot, which would go through SessionManagerViewModel.createSession).
-    let sessionRecord = ChatSessionRecord(title: "Tier 2 cold-start")
+    let sessionRecord = ChatSession(title: "Tier 2 cold-start")
     try await bootstrap.persistence.insertSession(sessionRecord)
 
     // Construct ChatViewModel against the bootstrap's services. Passing

@@ -208,7 +208,7 @@ let package = Package(
         // (MessageStore, SessionStore, ChatPersistenceError, MessageSearchHit,
         // and the post-write hooks) live in ManifoldRuntime alongside the
         // ConversationRuntime use case that consumes them. The records they
-        // traffic in (ChatMessageRecord, ChatSessionRecord, MessagePart,
+        // traffic in (ChatMessage, ChatSession, MessagePart,
         // MessageRole) stay here because inference services (PromptAssembler,
         // ContextWindowManager, TranscriptHealer) also consume them and the
         // dep DAG points ManifoldRuntime → ManifoldInference, not the other way.
