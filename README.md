@@ -91,7 +91,7 @@ func oneShot() async throws -> String {
 
 #### Value-typed front door: `LLM`
 
-Want the LLM.swift feel — construct a value, call `.respond(to:)`? `LLM(from:template:)` wraps the same `quickStart` plumbing in a value type. `backends:` defaults to the compiled-in cloud + Foundation families, so a cloud/Foundation `LLM` is genuinely two lines:
+Want the LLM.swift feel — construct a value, call `.respond(to:)`? `LLM(from:template:backends:)` wraps the same `quickStart` plumbing in a value type. `backends:` is a **required** parameter (no default — explicit registrars over implicit ones, see [docs/API-DESIGN.md](docs/API-DESIGN.md)); pass `ManifoldKit.defaultBackendRegistrars` for the compiled-in cloud + Foundation families:
 
 ```swift
 import ManifoldKit
@@ -100,13 +100,14 @@ import ManifoldKit
 func twoLine() async throws -> String {
     let llm = try await LLM(
         from: .recommendedSmallModel(),
-        // backends: [LlamaBackends.self], ← required (+ import) for a LOCAL model
+        backends: ManifoldKit.defaultBackendRegistrars,
+        // backends: [LlamaBackends.self], ← swap in (+ import) for a LOCAL model
     )
     return try await llm.respond(to: "Explain monads in one sentence.")
 }
 ```
 
-> **Local models need a companion registrar.** The default `backends:` covers cloud (Ollama / OpenAI / Anthropic) and Apple Foundation Models. For an on-device model, add the `manifold-llama` (GGUF) or `manifold-mlx` package and pass its registrar — `backends: [LlamaBackends.self]` — plus the matching `import`. Pass an optional `template: ChatTemplate` to override formatting for built-in (enum) templates.
+> **Local models need a companion registrar.** `ManifoldKit.defaultBackendRegistrars` covers cloud (Ollama / OpenAI / Anthropic) and Apple Foundation Models. For an on-device model, add the `manifold-llama` (GGUF) or `manifold-mlx` package and pass its registrar instead — `backends: [LlamaBackends.self]` — plus the matching `import`. Pass an optional `template: ChatTemplate` to override formatting for built-in (enum) templates.
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.

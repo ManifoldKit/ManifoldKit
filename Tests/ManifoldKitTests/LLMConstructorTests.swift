@@ -1,6 +1,6 @@
 // LLMConstructorTests.swift
 //
-// Exercises the value-typed `LLM(from:template:)` front door (#1942 D2) — the
+// Exercises the value-typed `LLM(from:template:backends:)` front door (#1942 D2) — the
 // two-line entry point that wraps `quickStart` plumbing and exposes a
 // String-typed `respond(to:)`. Uses the `package` test seam (a pre-assembled
 // `QuickStartResult` over an in-memory bootstrap + `MockInferenceBackend`) so no

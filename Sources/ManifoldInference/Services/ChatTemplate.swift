@@ -55,7 +55,7 @@ public struct ChatTemplate: Sendable {
     /// ``Source/builtIn(_:)`` case. The ``Source/embeddedJinja(_:)`` case has no
     /// public injection seam — `selectedChatTemplateRaw` is set only at model
     /// load (`private(set)` on `ModelLifecycleCoordinator`). See
-    /// `LLM(from:template:)` (#1942 D2) for the consumer that relies on this.
+    /// `LLM(from:template:backends:)` (#1942 D2) for the consumer that relies on this.
     public var builtInPromptTemplate: PromptTemplate? {
         switch source {
         case .builtIn(let template):

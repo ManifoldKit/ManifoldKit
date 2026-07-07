@@ -1,10 +1,18 @@
 // QuickStartRespondTests.swift
 //
-// Exercises the one-shot `QuickStartResult.respond(_:)` collect helper
+// Exercises the one-shot `QuickStartResult.respond(to:)` collect helper
 // (#1942, partial) — the convenience that drains a single streamed turn to
 // its terminal assistant text. Uses a real in-memory SwiftData store plus
 // `MockInferenceBackend` so the full ChatViewModel → ConversationRuntime
 // pipeline executes without hardware dependencies.
+//
+// The duplicate unlabeled `respond(_:)` spelling this suite originally
+// exercised was removed in the 2026-07 API review (item 2.4) — both
+// spellings terminated in `sendMessage(text).content` with no behavioral
+// divergence, so `respond(to:)` (the Swift-API-guidelines spelling already
+// used by `ChatViewModel.respond(to:)` and `LLM.respond(to:)`) is now the
+// single surviving form. This suite still covers the same accumulation and
+// error-propagation contract, just through the surviving spelling.
 
 import XCTest
 import SwiftData
@@ -60,12 +68,12 @@ final class QuickStartRespondTests: XCTestCase {
 
         let result = try await makeResult(mock: mock)
 
-        let answer = try await result.respond("hi")
+        let answer = try await result.respond(to: "hi")
 
         XCTAssertEqual(
             answer,
             "Hello, from the mock",
-            "respond(_:) must return the full concatenation of every streamed token — dropping the accumulation would return only a partial prefix."
+            "respond(to:) must return the full concatenation of every streamed token — dropping the accumulation would return only a partial prefix."
         )
     }
 
@@ -83,10 +91,10 @@ final class QuickStartRespondTests: XCTestCase {
         let result = try await makeResult(mock: mock)
 
         do {
-            _ = try await result.respond("hi")
-            XCTFail("respond(_:) must throw when the backend fails the turn, not return empty text.")
+            _ = try await result.respond(to: "hi")
+            XCTFail("respond(to:) must throw when the backend fails the turn, not return empty text.")
         } catch is SendMessageError {
-            // Expected: the typed error rim is preserved through respond(_:).
+            // Expected: the typed error rim is preserved through respond(to:).
         }
     }
 }

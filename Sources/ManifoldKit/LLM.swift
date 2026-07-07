@@ -1,16 +1,23 @@
 // LLM — value-typed convenience front door (#1942 D2).
 //
-// A two-line entry point in the spirit of LLM.swift: construct an `LLM`, call
+// An entry point in the spirit of LLM.swift: construct an `LLM`, call
 // `.respond(to:)`. It wraps the existing `quickStart` plumbing — there is no
 // new bootstrap path here. `LLM.init` drives `ManifoldKit.quickStart(...)`,
 // retains the resulting `QuickStartResult` (which owns the bootstrap lifetime),
 // and exposes a String-typed `respond(to:)` over the wrapped `ChatViewModel`.
 //
-// Registrar default (#1942 D2, decided): `backends:` defaults to
-// `ManifoldKit.defaultBackendRegistrars` (the compiled-in cloud + Foundation
-// families). A cloud/Foundation `LLM` is therefore genuinely two lines; a LOCAL
-// model requires the caller to pass `backends: [LlamaBackends.self]` (and import
-// the manifold-llama companion package). See the doc-comment on `init`.
+// Registrar default (2026-07 API review, item 2.5 — REVERSES the #1942 D2
+// decision): `backends:` is now a REQUIRED parameter with no default,
+// mirroring `ManifoldKit.quickStart(backends:)`. The prior default of
+// `ManifoldKit.defaultBackendRegistrars` silently registered the cloud
+// families (Ollama + OpenAI + Anthropic) — a cloud-by-default posture that
+// contradicts this repo's toolkit-first identity (docs/API-DESIGN.md § 1):
+// explicit registrars over implicit ones. `LLM` had zero adopters among the
+// five local consumer apps surveyed for the review, so the behavioral change
+// is cheap. Callers now always state their backend intent explicitly, e.g.
+// `LLM(from: seed, backends: ManifoldKit.defaultBackendRegistrars)` for the
+// old cloud+Foundation behavior, or `backends: [LlamaBackends.self]` for a
+// local model. See the doc-comment on `init`.
 
 import Foundation
 import ManifoldInference
@@ -22,7 +29,10 @@ import ManifoldUI
 /// lines, in the spirit of LLM.swift:
 ///
 /// ```swift
-/// let llm = try await LLM(from: .recommendedSmallModel())
+/// let llm = try await LLM(
+///     from: .recommendedSmallModel(),
+///     backends: ManifoldKit.defaultBackendRegistrars
+/// )
 /// let answer = try await llm.respond(to: "Explain monads in one sentence.")
 /// ```
 ///
@@ -33,10 +43,11 @@ import ManifoldUI
 ///
 /// ### Backends
 ///
-/// `backends:` defaults to ``ManifoldKit/defaultBackendRegistrars`` — the
-/// compiled-in cloud (Ollama + SaaS) and Apple Foundation families. So a
-/// cloud/Foundation `LLM` is genuinely two lines. A **local** model needs a
-/// companion-package registrar:
+/// `backends:` is a **required** parameter — no default — mirroring
+/// ``ManifoldKit/quickStart(backends:configuration:seed:)``. Pass
+/// ``ManifoldKit/defaultBackendRegistrars`` for the compiled-in cloud
+/// (Ollama + SaaS) and Apple Foundation families, or a companion-package
+/// registrar for a **local** model:
 ///
 /// ```swift
 /// import ManifoldKit
@@ -47,6 +58,11 @@ import ManifoldUI
 ///     backends: [LlamaBackends.self]
 /// )
 /// ```
+///
+/// This is deliberate friction (2026-07 API review, item 2.5): an implicit
+/// cloud-by-default posture contradicted this repo's toolkit-first identity
+/// (explicit registrars over implicit ones — see docs/API-DESIGN.md § 1), so
+/// `backends:` no longer silently registers cloud providers.
 ///
 /// ### Templates
 ///
@@ -106,16 +122,16 @@ public struct LLM {
     ///     accepted but inert as an override (discarded with a logged warning —
     ///     see the type doc-comment). `nil` (the default) uses the model's
     ///     embedded/default template.
-    ///   - backends: Backend registrars. Defaults to
-    ///     ``ManifoldKit/defaultBackendRegistrars`` (cloud + Foundation). Pass a
-    ///     companion-package registrar (e.g. `[LlamaBackends.self]`) for local
-    ///     models.
+    ///   - backends: Backend registrars — **required**, no default (2026-07 API
+    ///     review, item 2.5). Pass ``ManifoldKit/defaultBackendRegistrars`` for
+    ///     cloud + Foundation, or a companion-package registrar (e.g.
+    ///     `[LlamaBackends.self]`) for local models.
     ///   - configuration: Framework configuration. Defaults to
     ///     `ManifoldConfiguration.default`.
     public init(
         from model: QuickStartSeed,
         template: ChatTemplate? = nil,
-        backends: [any BackendRegistrar.Type] = ManifoldKit.defaultBackendRegistrars,
+        backends: [any BackendRegistrar.Type],
         configuration: ManifoldConfiguration = .default
     ) async throws {
         let result = try await ManifoldKit.quickStart(
