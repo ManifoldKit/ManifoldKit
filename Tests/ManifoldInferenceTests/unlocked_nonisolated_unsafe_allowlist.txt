@@ -100,14 +100,15 @@ ManifoldBackendTestKit/BackendContractChecks.swift:private nonisolated(unsafe) s
 # and no longer appears in Sources/ as an unlocked `nonisolated(unsafe)`
 # declaration, so it drops out of this allowlist entirely.
 #
-# `ManifoldMCP/MCPURLSessionFactory.networkDisabled` below was allowlisted as
-# a mirror of the (former) URLSessionProvider entry above — same shape, same
-# "write once at boot" claim, same contradiction: `AuthMCPOAuthAuthorizationTests`
-# and `MCPStreamableHTTPTransportTests` also toggle it repeatedly across test
-# methods. Out of scope for plan item 1.3 (different module, different test
-# target/gate), but the same lock-guarding fix applies — tracked as a
-# follow-up, not fixed here.
-ManifoldMCP/MCPURLSessionFactory.swift:internal nonisolated(unsafe) static var networkDisabled: Bool = false
+# `ManifoldMCP/MCPURLSessionFactory.swift`'s `networkDisabled` used to be
+# allowlisted here as a mirror of the (former) URLSessionProvider entry
+# above — same shape, same "write once at boot" claim. That premise was
+# false here too: `AuthMCPOAuthAuthorizationTests` and
+# `MCPStreamableHTTPTransportTests` toggle it repeatedly across test
+# methods, the opposite of write-once. It is now `OSAllocatedUnfairLock`-backed
+# (mirrors `CloudImageEncoding._encodeHook`, same as URLSessionProvider's
+# fix) and no longer appears in Sources/ as an unlocked `nonisolated(unsafe)`
+# declaration, so it drops out of this allowlist entirely.
 
 # Documented as protected by the caller's synchronisation guarantees:
 # ManifoldConfiguration's `shared` setter (which updates this) is itself
