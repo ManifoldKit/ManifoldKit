@@ -194,4 +194,27 @@ final class ErrorBoundaryBackendErrorAuditTest: XCTestCase {
             "BackendError must fall back to false, not guess true."
         )
     }
+
+    /// Sabotage coverage (self-contained, per the `TrafficBoundaryAuditTest`
+    /// pattern): prove the audit's per-instance predicate is a real
+    /// discriminator, not a vacuous pass. A `BackendError` conformer that
+    /// omits `errorDescription` inherits `LocalizedError`'s nil default —
+    /// exactly the violation the audit's `XCTAssertNotNil` exists to catch —
+    /// so feeding one through the same existential access path must come
+    /// back nil. The conformer is a local type, so the production case list
+    /// never sees it.
+    func test_sabotage_missingErrorDescriptionIsDetectable() {
+        struct SabotagedBoundaryError: BackendError {
+            var isRetryable: Bool { false }
+            // Deliberately no errorDescription: LocalizedError's default
+            // returns nil, which the audit's check must reject.
+        }
+        let sabotaged: any BackendError = SabotagedBoundaryError()
+        XCTAssertNil(
+            sabotaged.errorDescription,
+            "Sabotage: expected a BackendError conformer without errorDescription to " +
+            "report nil through the existential — if this is non-nil, the audit's " +
+            "errorDescription check can no longer fail and guards nothing."
+        )
+    }
 }
