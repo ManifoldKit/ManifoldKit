@@ -4,6 +4,10 @@
 > future launch gist derive their language from this document. If a claim here
 > conflicts with shipped source, the source wins and this doc gets corrected —
 > not the other way around.
+>
+> Competitive data in this doc was verified against primary sources (GitHub
+> APIs, project READMEs, Apple WWDC session transcripts) on **2026-07-07**.
+> Star counts and activity dates are point-in-time snapshots and will drift.
 
 ---
 
@@ -23,11 +27,10 @@ one bootstrap to stand up — and keeps every layer swappable underneath.
 
 ---
 
-## 2. The problem: a fragmented market with a full-stack hole
+## 2. The problem: model access is commoditizing; the assembled product is not
 
 The Swift AI ecosystem is real, active, and genuinely good — but it is
-fragmented into three non-overlapping slices, none of which is a finished
-product:
+fragmented into slices, none of which is a finished product:
 
 - **UI-only kits** give you a message list and an input bar. You still have to
   bring an engine, persistence, model management, streaming, retries, and
@@ -35,18 +38,36 @@ product:
 - **Engine-only wrappers** give you tokens out of a model. You still have to
   build the entire app around them — UI, storage, session management, the turn
   loop. (LocalLLMClient, swift-transformers, LLM.swift, AnyLanguageModel.)
+  The closest of these, LocalLLMClient, self-describes as *"still
+  experimental. The API is subject to change,"* with tool calling and
+  multimodal both labelled experimental.
 - **Thin cloud clients** give you one provider's HTTP surface as typed Swift.
   Switch providers and you start over. (MacPaw/OpenAI, SwiftAnthropic.)
+- **Ecosystem-bound stacks** solve a vertical, not the platform. SpeziLLM
+  (Stanford) is capable — local MLX, OpenAI-compatible remote, fog-node
+  inference — but requires the Spezi healthcare DI infrastructure and, as of
+  July 2026, has no Foundation Models backend, no MCP, and no RAG.
 
-The only things that look "full-stack" are not packages at all — they are
-**whole apps you fork** (fullmoon, Enchanted). Forking an app means inheriting
-its product decisions, its UI, and its maintenance burden, then surgically
-removing everything that isn't your use case.
+The only things that look "full-stack" in Swift are not packages at all — they
+are **whole apps you fork** (fullmoon, Enchanted; LLMFarm is near-dormant and
+currently pulled from TestFlight/App Store). Forking an app means inheriting
+its product decisions, its UI, and its maintenance burden.
+
+And since WWDC 2026, the strongest confirmation of the category comes from
+Apple itself: the Foundation Models framework now accepts third-party LLM
+providers behind a `LanguageModel` protocol (see §8). **Apple has made
+multi-model access a platform primitive.** That commoditizes the layer the
+engine-wrappers sell — and raises the value of everything above it: the turn
+loop, persistence, UI, tool orchestration, and reliability. That "everything
+above it" is ManifoldKit.
 
 The demand for the missing middle is proven — just not in Swift yet.
-JavaScript has **assistant-ui** (~200k downloads/month) and the **Vercel AI
-chatbot template**: batteries-included, drop-in, full-stack chat scaffolding
-that developers reach for by reflex. There is no Swift equivalent.
+JavaScript has **assistant-ui** (~11k★, the dominant AI-chat-UI library) and
+the **Vercel AI SDK + chatbot template**: batteries-included, drop-in chat
+scaffolding developers reach for by reflex. React Native has
+**react-native-ai** (Callstack, ~1.4k★) shipping Apple Foundation Models +
+GGUF + MLC behind the Vercel AI SDK API. There is still no Swift-native
+equivalent of the assembled product.
 
 That gap is the entire reason ManifoldKit exists.
 
@@ -58,11 +79,13 @@ That gap is the entire reason ManifoldKit exists.
 > wiring between the layers.**
 
 A UI kit is a layer. An engine wrapper is a layer. A cloud client is a layer.
-The hard, unglamorous, bug-prone work is never inside a layer — it's at the
-**seams**: streaming a backend's tokens into a SwiftUI list without dropping
-frames, persisting a half-finished turn so a crash doesn't lose it, swapping
-the active model while a load is in flight without corrupting state, making
-tool calls behave identically whether the model is on-device or in the cloud.
+As of WWDC 2026, even *multi-model access* is a layer Apple gives away on the
+newest OS. The hard, unglamorous, bug-prone work is never inside a layer —
+it's at the **seams**: streaming a backend's tokens into a SwiftUI list
+without dropping frames, persisting a half-finished turn so a crash doesn't
+lose it, swapping the active model while a load is in flight without
+corrupting state, making tool calls behave identically whether the model is
+on-device or in the cloud.
 
 ManifoldKit's value *is* the seams. You can still drop down to any single layer
 — bring your own UI, bring your own backend, bring your own persistence — but
@@ -101,15 +124,16 @@ Foundation Models changes a backend registration, not the calling code. The
 same `enqueue(...)` call, the same `GenerationStream`, the same
 `ConversationRuntime` turn loop drives every one.
 
-### Pillar 3 — n-1 OS reach, WWDC-ready
+### Pillar 3 — n-1 OS reach, platform-shift-ready
 
 ManifoldKit follows an **n-1 platform policy**: the current Apple OS and the one
-before it (iOS 18+ / macOS 15+). Apple Foundation Models is OS-26-only,
-AI-hardware-gated, capped at 4096 tokens, and is a single model — it cannot
-serve the installed base that ManifoldKit reaches today. ManifoldKit wraps
-Foundation Models as *one backend among many*, so an app gets the on-device
-Apple model where it's available and a different backend everywhere else,
-behind one API.
+before it (iOS 18+ / macOS 15+). Everything Apple announced at WWDC 2026 —
+the opened Foundation Models framework, the `LanguageModel` provider protocol,
+the first-party Claude/Gemini packages, the Spotlight RAG tool — ships with
+**the newest OS cycle only**. ManifoldKit delivers multi-backend inference,
+tool calling, structured output, and RAG on the installed base those APIs
+cannot reach for another one to two OS cycles, and wraps whatever Apple ships
+as *one backend among many* behind the same protocol.
 
 **Proof point:** the packaging is decomposable. Core ManifoldKit ships with
 no MLX/llama binaries at all — a roughly MB-scale, App-Store-lean build is the
@@ -126,6 +150,12 @@ harness, and **6,500+ tests**. Capability-routed structured output,
 human-in-the-loop tool approval, and cost/metrics observability are built in,
 not bolted on.
 
+This pillar is sharpened by the field: the nearest Swift analog labels its
+tool calling *experimental*; the strongest cross-platform analog (Cactus)
+routes its cloud fallback through a hosted service requiring an API key.
+ManifoldKit's equivalents are production-labelled, source-backed, and
+self-hosted.
+
 **Proof point:** `RELIABILITY.md` is a source-backed contract, not marketing —
 it documents latest-wins model handoff via `LoadRequestToken`, the exact retry
 policy (`maxRetries: 3`, exponential backoff with jitter, `Retry-After`
@@ -137,42 +167,57 @@ guaranteed" section that names what ManifoldKit deliberately does *not* do.
 ## 5. ManifoldKit vs. the field
 
 The Swift AI market is layered. ManifoldKit is the only entry that spans all of
-it as an installable package.
+it as an installable package. (Stars/activity verified 2026-07-07.)
+
+### Swift-native
 
 | Project / category | Layer | UI | Turn loop | Persistence | Multi-backend | Cloud | Form factor |
 |---|---|---|---|---|---|---|---|
 | **ManifoldKit** | **Full stack** | ✅ | ✅ | ✅ SwiftData | ✅ 4 families + bridge | ✅ | **Package** |
-| Exyte/Chat (~1.8k★), MessageKit, SwiftyChat | UI only | ✅ | ❌ | ❌ | ❌ | ❌ | Package |
-| LocalLLMClient (~218★) | Engine (multi) | ❌ | ❌ | ❌ | ✅ local only | ❌ | Package |
+| Exyte/Chat, MessageKit, SwiftyChat | UI only | ✅ | ❌ | ❌ | ❌ | ❌ | Package |
+| LocalLLMClient (~220★, self-declared experimental) | Engine (multi, local) | ❌ | ❌ | ❌ | ✅ local only | ❌ | Package |
 | AnyLanguageModel | Engine (provider abstraction) | ❌ | ❌ | ❌ | ✅ | ✅ | Package |
+| SpeziLLM (~290★, Spezi-ecosystem-bound) | Engine + fog (vertical) | partial | ❌ | ❌ | ✅ local + OpenAI-compat | ✅ | Package (requires Spezi) |
 | swift-transformers, LLM.swift | Engine (single) | ❌ | ❌ | ❌ | ❌ | ❌ | Package |
 | MacPaw/OpenAI, SwiftAnthropic | Cloud client | ❌ | ❌ | ❌ | ❌ one provider | ✅ | Package |
-| Apple Foundation Models | System model | ❌ | ❌ | ❌ | ❌ one model | ❌ | OS framework |
+| Apple Foundation Models (post-WWDC26) | System model + provider protocol | ❌ | ❌ | ❌ | ✅ via `LanguageModel` (newest OS only) | ✅ via 1st-party packages | OS framework |
 | fullmoon, Enchanted | Full app | ✅ | ✅ | ✅ | partial | partial | **App (fork it)** |
+| LLMFarm (~2k★, near-dormant, pulled from App Store) | Full app | ✅ | ✅ | ✅ | ❌ GGUF only | ❌ | App (fork it) |
+
+### Cross-platform pressure (not Swift-native, but competing for the same app teams)
+
+| Project | What it is | Overlap / gap vs ManifoldKit |
+|---|---|---|
+| **Cactus** (~5.4k★, very active) | C++-core "hybrid edge-cloud AI engine for mobile & wearables"; Swift/Kotlin/Flutter/RN/Python/Rust bindings | Overlaps on streaming, tools, embeddings, RAG, vision, vector index; **cloud fallback requires its hosted service + API key**; Swift binding maturity questioned (InfoQ, Dec 2025); not SwiftUI/SwiftData-native |
+| **react-native-ai** (Callstack, ~1.4k★) | On-device AI primitives for React Native, drop-in for the Vercel AI SDK; Apple / GGUF / MLC providers | Same multi-backend idea, different ecosystem; its explicit AI-SDK compatibility table and "drop-in" framing are best-in-class DX positioning |
+| **assistant-ui** (~11k★) | React chat-UI primitives — "the UX of ChatGPT in your React app"; Radix-style composable Thread/Message/Composer | UI layer only; the composable-primitives model is the pattern ManifoldKit's UI layer should speak to |
+| **Vercel AI SDK** | The JS ecosystem's default model-access + streaming layer | The reference point for "batteries-included" DX; no Swift presence |
 
 **Being fair to the field:** these are good projects solving real problems on
-their own axis. **LocalLLMClient** is the closest multi-engine analog and the
-nearest neighbor philosophically — but it stops at the engine: no drop-in UI,
-no persistence, no cloud. **AnyLanguageModel** has the broadest provider
-coverage and the most familiar API for anyone who knows Apple's
-`FoundationModels` — ManifoldKit *consumes it* rather than competing with it
-(see §9). The **UI kits** are excellent at the thing they do and make no claim
-to be more. The **cloud clients** are the right call when you've committed to
-one provider and want a clean typed surface.
+their own axis. **LocalLLMClient** is the closest multi-engine Swift analog —
+same three local backends, plus Linux — but it stops at the engine (no cloud,
+persistence, UI, MCP) and is explicitly experimental. **AnyLanguageModel** has
+the broadest provider coverage and the most familiar API for anyone who knows
+Apple's `FoundationModels` — ManifoldKit *consumes it* rather than competing
+with it (see §9). **SpeziLLM** is real engineering with one feature ManifoldKit
+lacks (fog-node inference over mDNS), but it is a module for a healthcare
+ecosystem, not a standalone toolkit. The **UI kits** are excellent at the thing
+they do. The **cloud clients** are the right call when you've committed to one
+provider. **Cactus** is the one to watch: strong momentum, real feature
+overlap, and a genuine wearables/cross-platform story — its trade-offs are a
+C++ core, a less-mature Swift binding, and a hosted-service dependency for
+hybrid routing.
 
-ManifoldKit's distinct position is the diagonal across this table: not best at
-any single layer's niche, but the only thing that assembles all of them into a
-product you `import` instead of `git clone`.
+ManifoldKit's distinct position is the diagonal across the first table: not
+best at any single layer's niche, but the only thing that assembles all of
+them into a product you `import` instead of `git clone`.
 
 **Adjacent end-user apps (not Swift packages).** Developers evaluating
-ManifoldKit sometimes compare it against **Ollamac** (macOS Ollama client, Swift
-app), **LM Studio** (cross-platform Electron GUI for local model management),
-and **AnythingLLM** (Node.js / web RAG assistant). These are *end-user apps*,
-not Swift packages or frameworks — they solve "I want to run AI locally" for
-end users, while ManifoldKit solves "I want to build and ship an AI feature in
-my iOS/macOS app." They serve different jobs. The correct comparison for
-ManifoldKit is the table above; the correct comparison for those tools is the
-market of chat clients and local-model GUIs.
+ManifoldKit sometimes compare it against **Ollamac** (macOS Ollama client),
+**LM Studio** (Electron GUI for local models), and **AnythingLLM** (Node.js
+RAG assistant). These are *end-user apps* — they solve "I want to run AI
+locally" for end users, while ManifoldKit solves "I want to build and ship an
+AI feature in my iOS/macOS app."
 
 ---
 
@@ -185,15 +230,17 @@ source today:
 
 - **Streaming** — token-by-token `GenerationStream` across every backend.
 - **Multi-provider abstraction** — one `InferenceBackend` protocol, many engines.
-- **Tool calling** — `ToolRegistry` + `ToolDefinition`, local and cloud.
+- **Tool calling** — `ToolRegistry` + `ToolDefinition`, local and cloud —
+  production-labelled, not experimental.
 - **Structured / typed output** — capability-routed via `StructuredOutputRouter`:
   GBNF grammars for llama.cpp, Foundation guided-generation, JSON-Schema for
   cloud providers, JSON-prompting as the universal fallback. The framework picks
   the strongest method each backend actually supports.
 - **MCP — client *and* server** — `MCPClient` to consume MCP tools, plus a
-  server surface to expose them.
+  server surface to expose them. No Swift competitor ships either side.
 - **Reasoning / thinking tokens** — first-class across backends that emit them.
-- **RAG with citations** — retrieval, grounding, and `CitationsView`.
+- **RAG with citations** — retrieval, grounding, and `CitationsView` — on
+  iOS 18 / macOS 15, not gated to the newest OS like Apple's Spotlight tool.
 - **Tool-approval gating** — human-in-the-loop `ToolApprovalGate` to sanitize or
   block a call before it runs.
 - **Metrics + cost estimation** — per-request token and cost observability.
@@ -221,7 +268,8 @@ the hard way from one-star reviews.
 heavy lifting, and you do not want two code paths that drift apart.
 **ManifoldKit answer:** one `InferenceBackend` protocol. Local MLX/GGUF and
 cloud OpenAI/Anthropic/Ollama are the same calling convention, the same turn
-loop, the same streaming contract. Routing is a backend choice, not a fork.
+loop, the same streaming contract. Routing is a backend choice, not a fork —
+and it doesn't require anyone's hosted service or API key to route.
 
 ### The privacy- / offline-first app
 **Pain:** your value proposition is "your data never leaves the device," so a
@@ -242,35 +290,50 @@ model.
 
 ---
 
-## 8. The WWDC-2026 / post-WWDC distribution angle
+## 8. The post-WWDC-2026 landscape: Apple validated the category
 
-This is the timing hook.
+At WWDC 2026 Apple made the single biggest change to this market since
+Foundation Models shipped (all verified against session transcripts
+[339](https://developer.apple.com/videos/play/wwdc2026/339/) and
+[241](https://developer.apple.com/videos/play/wwdc2026/241/)):
 
-Apple is pushing on-device AI hard, and Foundation Models is the headline. But
-Foundation Models, as it stands, is **OS-26-only, AI-hardware-gated, capped at
-4096 tokens, and a single model.** The day Apple ships the next thing, every
-app that wired directly to one OS framework faces a migration.
+- **The Foundation Models framework is open to any LLM provider**, local or
+  server-based, via two protocols — `LanguageModel` (capabilities + executor
+  configuration) and `LanguageModelExecutor` — so every conforming model is
+  driven identically through `LanguageModelSession`.
+- **Anthropic and Google are shipping first-party Swift packages** exposing
+  Claude and Gemini through that session API (Google's via the Firebase SDK).
+- **Apple is open-sourcing the framework itself** (later in summer 2026), plus
+  `CoreAILanguageModel` and `MLXLanguageModel` implementations and a utilities
+  package updated between OS releases.
+- **Built-in system tools** arrive inside `LanguageModelSession`, including a
+  Spotlight-powered search tool positioned for "fully local RAG."
 
-ManifoldKit is structured so that **whatever Apple ships next is one more
-backend, not a rewrite:**
+Read plainly: **Apple just replicated the multi-backend abstraction as a
+platform primitive.** That is validation, not defeat — but it changes what
+ManifoldKit leads with:
 
-- **n-1 reach** serves the iOS 18 / macOS 15 installed base that Foundation
-  Models can't touch today.
-- **Foundation Models is wrapped as one backend** behind the same protocol as
-  everything else — apps get the Apple model where it exists and a fallback
-  everywhere else, with no branching in product code.
-- **A lean core-only build** (no heavy ML dependencies) is the default for
-  teams that want the Apple-only App Store binary — just don't add the
-  companion packages.
-- **The `SystemAIProviderExtension` and `CoreAI` trait stubs are already wired**
-  in `Package.swift`, ahead of WWDC. When Apple confirms the real framework and
-  entitlement names, activation is a source addition and a `swiftSettings`
-  define — no manifest restructuring under keynote-week pressure.
+1. **The abstraction layer is no longer the moat.** Projects whose entire
+   value is "one API over many models" now compete with the OS itself.
+   ManifoldKit's moat was never the abstraction — it's the assembled product
+   above it: turn loop, persistence, UI, MCP client+server, tool approval,
+   RAG with citations, and the reliability contract. None of that ships in
+   `LanguageModelSession`.
+2. **Everything Apple announced is newest-OS-only.** ManifoldKit's n-1 policy
+   serves the iOS 18 / macOS 15 installed base those APIs will not reach for
+   one to two OS cycles. During exactly the window when the App Store fills
+   with AI features, ManifoldKit is the way to ship them to everyone.
+3. **ManifoldKit rides the shift instead of fighting it.** Apple's new
+   provider protocols are one more backend surface: the `CoreAI` and
+   `SystemAIProviderExtension` trait stubs have been wired in `Package.swift`
+   since before the announcement, and adopting `LanguageModel` /
+   `LanguageModelExecutor` — both consuming conforming providers as
+   ManifoldKit backends *and* exposing ManifoldKit's backends as providers —
+   is an additive integration behind the same `InferenceBackend` protocol,
+   not a rewrite.
 
-The pitch writes itself: **the App Store is about to fill with apps hard-wired
-to one OS-gated model. ManifoldKit treats that model as one option among many,
-on the OSes people actually run today, with the next Apple framework already
-stubbed for arrival.**
+The pitch: **Apple opened the model layer. ManifoldKit is everything an app
+needs above the model layer — on the OSes people actually run today.**
 
 ---
 
@@ -281,7 +344,8 @@ them does both a disservice.
 
 - **AnyLanguageModel is a model-access layer.** It mirrors Apple's
   `FoundationModels` API and exposes many providers behind one familiar
-  protocol. Its axis is provider breadth and API familiarity.
+  protocol. Its axis is provider breadth and API familiarity — a bet that
+  looks prescient now that Apple has standardized exactly that shape.
 - **ManifoldKit is an application framework.** Its axis is the assembled product
   — UI, turn loop, persistence, reliability — and the wiring between layers.
 
@@ -311,6 +375,14 @@ pretending otherwise:
   reranking stage is tracked in open issue
   [#1637](https://github.com/ManifoldKit/ManifoldKit/issues/1637), not yet
   implemented.
+- **Vision/multimodal input is not shipped** ([#416](https://github.com/ManifoldKit/ManifoldKit/issues/416)
+  is blocked upstream). Competitors are not ahead here in practice — the
+  nearest Swift analog labels multimodal experimental, and the broadest
+  multimodal matrix in Swift (LLMFarm) is near-dormant — but the gap is real
+  and named.
+- **No hybrid local→cloud auto-routing** — backend choice is explicit today.
+  Cactus ships this via its hosted service; a self-hosted equivalent is open
+  design space for ManifoldKit, not a shipped feature.
 - **Mid-stream resume is deferred and documented.** Retries cover connection
   setup, not mid-stream replay; once response bytes arrive, a failure surfaces
   to the stream (preserving partial output) rather than transparently
@@ -333,6 +405,9 @@ gist. Pull from these verbatim.
 
 - **"Competitors sell a layer. ManifoldKit sells the assembled product — and the
   wiring between the layers."**
+- **"Apple opened the model layer. ManifoldKit is everything above the model
+  layer — on the OSes people actually run."**
+- **"Model access just became a platform primitive. Shipping an AI app didn't."**
 - **"The value is the seams."** The hard part of an AI app was never inside a
   layer; it's where the layers meet.
 - **"JavaScript has assistant-ui and the Vercel template. Swift didn't have an
@@ -341,13 +416,14 @@ gist. Pull from these verbatim.
 - **"Don't fork an app to ship a feature. Add a package."**
 - **"MLX, llama.cpp, Apple Foundation Models, and the cloud — behind one
   protocol, with features that work the same on all of them."**
-- **"Foundation Models is one model on one OS. ManifoldKit makes it one backend
-  among many, on the OSes people actually run."**
+- **"Everything Apple announced at WWDC ships on the newest OS. ManifoldKit
+  ships it on this one and the last one."**
 - **"Whatever Apple ships next is one more backend, not a rewrite."**
+- **"Hybrid local + cloud without anyone's hosted service in the loop."**
+- **"Tool calling that isn't labelled 'experimental'. MCP client and server.
+  RAG with citations. Shipped, tested, source-backed."**
 - **"Ship the ~5 MB Apple-only build, or the everything-included stack — same
   package, one trait flip."**
 - **"Reliability isn't a feature we'll add later. It's documented, source-backed,
   and shipped — including an honest list of what we don't guarantee."**
-- **"The table stakes are met: streaming, tools, structured output, MCP client
-  and server, RAG with citations, on-device image gen — in one package."**
 - **"We compete on what happens after the demo ends."**
