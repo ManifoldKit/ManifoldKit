@@ -92,7 +92,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// thinking budget slider) rather than inferring it from the active `PromptTemplate`.
     ///
     /// Defaults to `false` for source compatibility. Orthogonal to
-    /// `GenerationConfig.thinkingMarkers`, which is a per-request runtime hint.
+    /// `GenerationRuntimeHints.thinkingMarkers`, which is a per-request runtime hint.
     public let supportsThinking: Bool
 
     /// If true, the backend can consume image parts in ``StructuredMessage`` history.

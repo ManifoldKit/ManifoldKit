@@ -181,6 +181,9 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     public var lastPrompt: String?
     public var lastSystemPrompt: String?
     public var lastConfig: GenerationConfig?
+    /// The per-request ``GenerationRuntimeHints`` from the most recent
+    /// `generate(...)` call — split out of ``GenerationConfig`` in #2152.
+    public var lastHints: GenerationRuntimeHints?
 
     /// Stored so stopGeneration() can terminate the in-flight stream.
     ///
@@ -234,6 +237,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
         lastPrompt = prompt
         lastSystemPrompt = systemPrompt
         lastConfig = config
+        lastHints = hints
         if let error = shouldThrowOnGenerate { throw error }
         guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
 

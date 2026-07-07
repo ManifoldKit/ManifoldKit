@@ -164,10 +164,11 @@ final class OpenAIBackendTests: XCTestCase {
             modelName: "gpt-4o-mini"
         )
 
+        backend.activeHints = GenerationRuntimeHints(jsonMode: true)
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig(jsonMode: true)
+            config: GenerationConfig()
         )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])

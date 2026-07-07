@@ -897,7 +897,7 @@ private final class MockConversationHistoryBackend: InferenceBackend,
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in continuation.finish() }
         return GenerationStream(stream)
     }
@@ -924,7 +924,7 @@ private final class MockTokenUsageBackend: InferenceBackend,
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in continuation.finish() }
         return GenerationStream(stream)
     }
@@ -961,7 +961,7 @@ private final class MockCloudURLModelBackend: InferenceBackend,
         didConfigureBeforeLoad = (configuredBaseURL != nil && configuredModelName != nil)
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in continuation.finish() }
         return GenerationStream(stream)
     }
@@ -1004,7 +1004,7 @@ private final class MockCloudKeychainBackend: InferenceBackend,
         )
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in continuation.finish() }
         return GenerationStream(stream)
     }
@@ -1130,7 +1130,7 @@ private final class ControlledLoadBackend: InferenceBackend,
         }
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.finish()
         }

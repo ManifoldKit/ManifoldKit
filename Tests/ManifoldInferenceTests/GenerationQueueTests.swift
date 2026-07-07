@@ -61,8 +61,8 @@ final class GenerationQueueTests: XCTestCase {
 
         for try await _ in stream.events {}
 
-        let config = try XCTUnwrap(provider.backend.lastConfig)
-        XCTAssertTrue(config.jsonMode)
+        let hints = try XCTUnwrap(provider.backend.lastHints)
+        XCTAssertTrue(hints.jsonMode)
     }
 
     // MARK: - jsonMode silent-ignore warning (PR #615 review fix)
@@ -102,8 +102,8 @@ final class GenerationQueueTests: XCTestCase {
 
         // Silent-ignore must remain silent in the failure sense: the backend
         // still receives the flag; the warning is additive, not blocking.
-        let config = try XCTUnwrap(provider.backend.lastConfig)
-        XCTAssertTrue(config.jsonMode)
+        let hints = try XCTUnwrap(provider.backend.lastHints)
+        XCTAssertTrue(hints.jsonMode)
     }
 
     /// When `jsonMode=false`, the warning must never fire regardless of the
@@ -156,8 +156,8 @@ final class GenerationQueueTests: XCTestCase {
 
         XCTAssertTrue(captured.snapshot().isEmpty,
                       "warning must not fire when the backend supports native JSON mode")
-        let config = try XCTUnwrap(provider.backend.lastConfig)
-        XCTAssertTrue(config.jsonMode)
+        let hints = try XCTUnwrap(provider.backend.lastHints)
+        XCTAssertTrue(hints.jsonMode)
     }
 
     // MARK: - Tool-capability silent-ignore warning
@@ -1510,7 +1510,7 @@ private final class TokenCountingMockBackend: InferenceBackend, TokenCountingBac
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         generateCallCount += 1
         lastPrompt = prompt
         if let error = shouldThrowOnGenerate { throw error }

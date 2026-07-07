@@ -40,7 +40,7 @@ private final class UsageReportingBackend: InferenceBackend, @unchecked Sendable
         try await inner.loadModel(from: url, plan: plan)
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let innerStream = try inner.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
         let prompt = promptTokens
         let completion = completionTokens
@@ -83,7 +83,7 @@ private final class FakeEndpointBackend: InferenceBackend, EndpointBackendURLMod
         isModelLoaded = true
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.yield(.token("hi"))
             continuation.yield(.usage(TokenUsage(promptTokens: 12, completionTokens: 3)))

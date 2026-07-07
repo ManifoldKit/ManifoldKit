@@ -27,6 +27,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         /// tokens by calling `release(at:tokens:)` or `releaseAll()`.
         var gates: [AsyncThrowingStream<GenerationEvent, Error>.Continuation] = []
         var receivedConfigs: [GenerationConfig] = []
+        var receivedHints: [GenerationRuntimeHints] = []
         var generateCallCount = 0
         var stopCallCount = 0
 
@@ -37,10 +38,12 @@ final class InferenceServiceQueueTests: XCTestCase {
         func generate(
             prompt: String,
             systemPrompt: String?,
-            config: GenerationConfig
+            config: GenerationConfig,
+            hints: GenerationRuntimeHints
         ) throws -> GenerationStream {
             generateCallCount += 1
             receivedConfigs.append(config)
+            receivedHints.append(hints)
             isGenerating = true
             let stream = AsyncThrowingStream<GenerationEvent, Error> { [weak self] continuation in
                 self?.gates.append(continuation)
@@ -204,15 +207,15 @@ final class InferenceServiceQueueTests: XCTestCase {
         mock.release(at: 0, tokens: ["a"])
         for try await _ in firstStream.events {}
 
-        let firstConfig = try XCTUnwrap(mock.receivedConfigs.first)
-        XCTAssertFalse(firstConfig.jsonMode)
+        let firstHints = try XCTUnwrap(mock.receivedHints.first)
+        XCTAssertFalse(firstHints.jsonMode)
 
         await waitFor(mock.generateCallCount >= 2, description: "second generate() called")
         mock.release(at: 1, tokens: ["b"])
         for try await _ in secondStream.events {}
 
-        XCTAssertEqual(mock.receivedConfigs.count, 2)
-        XCTAssertTrue(mock.receivedConfigs[1].jsonMode)
+        XCTAssertEqual(mock.receivedHints.count, 2)
+        XCTAssertTrue(mock.receivedHints[1].jsonMode)
     }
 
     // MARK: - 3. Priority: userInitiated jumps ahead

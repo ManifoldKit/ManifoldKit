@@ -210,7 +210,8 @@ private final class CapabilityBackend: InferenceBackend, @unchecked Sendable {
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.finish()
@@ -247,7 +248,8 @@ private final class TokenizerVendingBackend: InferenceBackend, TokenizerVendor, 
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.finish()
@@ -289,7 +291,8 @@ private final class GatedTestBackend: InferenceBackend, @unchecked Sendable {
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         isGenerating = true
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [weak self] continuation in

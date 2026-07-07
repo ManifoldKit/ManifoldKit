@@ -150,7 +150,8 @@ private final class GatedBackend: InferenceBackend, @unchecked Sendable {
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         isGenerating = true
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [weak self] continuation in

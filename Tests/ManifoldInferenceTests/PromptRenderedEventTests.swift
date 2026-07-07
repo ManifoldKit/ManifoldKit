@@ -46,11 +46,12 @@ final class PromptRenderedEventTests: XCTestCase {
         return events
     }
 
-    private func generate(config: GenerationConfig) async throws -> [GenerationEvent] {
+    private func generate(hints: GenerationRuntimeHints = GenerationRuntimeHints()) async throws -> [GenerationEvent] {
         let (_, stream) = try queue.enqueue(
             structuredMessages: [StructuredMessage(role: "user", content: "hello")],
             systemPrompt: nil,
-            config: config
+            config: GenerationConfig(),
+            hints: hints
         )
         return try await collectEvents(stream)
     }
@@ -58,10 +59,7 @@ final class PromptRenderedEventTests: XCTestCase {
     // MARK: - Opt-in emits event
 
     func test_captureRenderedPrompt_true_emitsPromptRenderedAsFirstEvent() async throws {
-        var config = GenerationConfig()
-        config.captureRenderedPrompt = true
-
-        let events = try await generate(config: config)
+        let events = try await generate(hints: GenerationRuntimeHints(captureRenderedPrompt: true))
 
         // The very first event must be .promptRendered.
         guard case .promptRendered = events.first else {
@@ -71,10 +69,7 @@ final class PromptRenderedEventTests: XCTestCase {
     }
 
     func test_captureRenderedPrompt_true_promptRenderedTextMatchesUserMessage() async throws {
-        var config = GenerationConfig()
-        config.captureRenderedPrompt = true
-
-        let events = try await generate(config: config)
+        let events = try await generate(hints: GenerationRuntimeHints(captureRenderedPrompt: true))
 
         guard case .promptRendered(let text) = events.first else {
             XCTFail("Expected .promptRendered as first event")
@@ -87,10 +82,7 @@ final class PromptRenderedEventTests: XCTestCase {
     }
 
     func test_captureRenderedPrompt_true_tokenEventFollowsPromptRendered() async throws {
-        var config = GenerationConfig()
-        config.captureRenderedPrompt = true
-
-        let events = try await generate(config: config)
+        let events = try await generate(hints: GenerationRuntimeHints(captureRenderedPrompt: true))
 
         let hasPromptRendered = events.contains { if case .promptRendered = $0 { return true } else { return false } }
         let hasToken = events.contains { if case .token = $0 { return true } else { return false } }
@@ -108,21 +100,17 @@ final class PromptRenderedEventTests: XCTestCase {
     // MARK: - Opt-out emits no event
 
     func test_captureRenderedPrompt_false_noPromptRenderedEvent() async throws {
-        // Default config has captureRenderedPrompt == false.
-        let config = GenerationConfig()
-        XCTAssertFalse(config.captureRenderedPrompt, "captureRenderedPrompt must default to false")
+        // Default hints have captureRenderedPrompt == false.
+        XCTAssertFalse(GenerationRuntimeHints().captureRenderedPrompt, "captureRenderedPrompt must default to false")
 
-        let events = try await generate(config: config)
+        let events = try await generate()
 
         let hasPromptRendered = events.contains { if case .promptRendered = $0 { return true } else { return false } }
         XCTAssertFalse(hasPromptRendered, "stream must NOT include .promptRendered when opt-in is false (default)")
     }
 
     func test_captureRenderedPrompt_explicitFalse_noPromptRenderedEvent() async throws {
-        var config = GenerationConfig()
-        config.captureRenderedPrompt = false
-
-        let events = try await generate(config: config)
+        let events = try await generate(hints: GenerationRuntimeHints(captureRenderedPrompt: false))
 
         let hasPromptRendered = events.contains { if case .promptRendered = $0 { return true } else { return false } }
         XCTAssertFalse(hasPromptRendered, "stream must NOT include .promptRendered when explicitly set to false")
@@ -131,10 +119,7 @@ final class PromptRenderedEventTests: XCTestCase {
     // MARK: - Exactly once
 
     func test_captureRenderedPrompt_true_emitsExactlyOnePromptRenderedEvent() async throws {
-        var config = GenerationConfig()
-        config.captureRenderedPrompt = true
-
-        let events = try await generate(config: config)
+        let events = try await generate(hints: GenerationRuntimeHints(captureRenderedPrompt: true))
 
         let count = events.filter { if case .promptRendered = $0 { return true } else { return false } }.count
         XCTAssertEqual(count, 1, ".promptRendered must be emitted exactly once per turn")

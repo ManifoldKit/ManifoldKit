@@ -74,12 +74,13 @@ final class GenerationQueueRunTokenBudgetTests: XCTestCase {
         // High iteration cap so the iteration limit does not pre-empt the token
         // ceiling; 250-token budget crosses after the third turn (cumulative
         // 300 >= 250 checked at the start of the fourth iteration).
-        var config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
-        config.maxRunTokens = 250
+        let config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
+        let hints = GenerationRuntimeHints(maxRunTokens: 250)
 
         let (_, stream) = try coordinator.enqueue(
             structuredMessages: [StructuredMessage(role: "user", content: "go")],
-            config: config
+            config: config,
+            hints: hints
         )
         let events = try await collectEvents(stream)
 
@@ -135,12 +136,13 @@ final class GenerationQueueRunTokenBudgetTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         provider.bind(to: coordinator)
 
-        var config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
-        config.maxRunTokens = 10_000 // generous — never reached (cumulative 115)
+        let config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
+        let hints = GenerationRuntimeHints(maxRunTokens: 10_000) // generous — never reached (cumulative 115)
 
         let (_, stream) = try coordinator.enqueue(
             structuredMessages: [StructuredMessage(role: "user", content: "go")],
-            config: config
+            config: config,
+            hints: hints
         )
         let events = try await collectEvents(stream)
 
@@ -171,9 +173,9 @@ final class GenerationQueueRunTokenBudgetTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         provider.bind(to: coordinator)
 
-        // maxRunTokens defaults to nil.
+        // maxRunTokens defaults to nil on the hints.
         let config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
-        XCTAssertNil(config.maxRunTokens)
+        XCTAssertNil(GenerationRuntimeHints().maxRunTokens)
 
         let (_, stream) = try coordinator.enqueue(
             structuredMessages: [StructuredMessage(role: "user", content: "go")],
@@ -203,12 +205,13 @@ final class GenerationQueueRunTokenBudgetTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         provider.bind(to: coordinator)
 
-        var config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
-        config.maxRunTokens = 0 // non-positive → disabled, same as nil
+        let config = GenerationConfig(maxOutputTokens: 8, maxToolIterations: 50)
+        let hints = GenerationRuntimeHints(maxRunTokens: 0) // non-positive → disabled, same as nil
 
         let (_, stream) = try coordinator.enqueue(
             structuredMessages: [StructuredMessage(role: "user", content: "go")],
-            config: config
+            config: config,
+            hints: hints
         )
         let events = try await collectEvents(stream)
 

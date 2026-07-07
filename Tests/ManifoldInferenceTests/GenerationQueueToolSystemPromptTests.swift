@@ -197,7 +197,7 @@ private final class ToolPromptCountingBackend: InferenceBackend, TokenCountingBa
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         lastPrompt = prompt
         let tokens = tokensToYield
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in

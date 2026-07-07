@@ -28,7 +28,7 @@ final class MessageEnqueueTests: XCTestCase {
             isModelLoaded = true
         }
 
-        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
             lastPrompt = prompt
             lastSystemPrompt = systemPrompt
             lastConfig = config

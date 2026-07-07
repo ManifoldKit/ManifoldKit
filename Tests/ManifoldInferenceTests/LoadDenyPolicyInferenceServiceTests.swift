@@ -302,7 +302,7 @@ private final class PlanCapturingBackend: InferenceBackend, @unchecked Sendable 
         isModelLoaded = true
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         throw InferenceError.inferenceFailure("unused in these tests")
     }
 

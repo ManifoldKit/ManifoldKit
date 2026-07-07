@@ -26,9 +26,9 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(config.maxOutputTokens, 2048)
     }
 
-    func test_defaultInit_jsonMode() {
-        let config = GenerationConfig()
-        XCTAssertFalse(config.jsonMode)
+    func test_defaultInit_hints_jsonMode_isFalse() {
+        // jsonMode moved off GenerationConfig into GenerationRuntimeHints (#2152).
+        XCTAssertFalse(GenerationRuntimeHints().jsonMode)
     }
 
     func test_defaultInit_streamPrefillProgress_isFalse() {
@@ -43,15 +43,13 @@ final class GenerationConfigTests: XCTestCase {
             temperature: 1.2,
             topP: 0.95,
             repeatPenalty: 1.5,
-            maxOutputTokens: 2048,
-            jsonMode: true
+            maxOutputTokens: 2048
         )
 
         XCTAssertEqual(config.temperature, 1.2, accuracy: 0.001)
         XCTAssertEqual(config.topP, 0.95, accuracy: 0.001)
         XCTAssertEqual(config.repeatPenalty, 1.5, accuracy: 0.001)
         XCTAssertEqual(config.maxOutputTokens, 2048)
-        XCTAssertTrue(config.jsonMode)
     }
 
     func test_customInit_partialOverride() {
@@ -79,34 +77,65 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(config.maxOutputTokens, 512)
     }
 
-    func test_jsonMode_isMutable() {
-        var config = GenerationConfig()
-        config.jsonMode = true
-        XCTAssertTrue(config.jsonMode)
+    func test_hints_jsonMode_isMutable() {
+        var hints = GenerationRuntimeHints()
+        hints.jsonMode = true
+        XCTAssertTrue(hints.jsonMode)
     }
 
-    func test_codable_omitsJsonMode_evenWhenTrue() throws {
-        let config = GenerationConfig(jsonMode: true)
+    // MARK: - Honest (lossless) Codable round-trip (#2152)
 
+    /// After the runtime-hint split, `GenerationConfig` must round-trip through
+    /// Codable with NO dropped fields — every field it declares survives
+    /// encode → decode. Set every field to a non-default value and assert
+    /// equality after a full cycle.
+    func test_codableRoundtrip_preservesEveryField_noDrops() throws {
+        var config = GenerationConfig(
+            temperature: 0.33,
+            topP: 0.44,
+            repeatPenalty: 1.23,
+            topK: 55,
+            minP: 0.05,
+            repetitionPenalty: 1.15,
+            repetitionContextSize: 128,
+            presencePenalty: 0.7,
+            presenceContextSize: 96,
+            frequencyPenalty: 0.6,
+            frequencyContextSize: 72,
+            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.9),
+            llamaXTC: LlamaXTCSamplerOptions(probability: 0.2),
+            llamaMirostatV2: LlamaMirostatV2SamplerOptions(tau: 4.0),
+            seed: 987_654,
+            maxOutputTokens: 321,
+            tools: [],
+            toolChoice: .required,
+            maxThinkingTokens: 64,
+            streamPrefillProgress: true,
+            maxToolIterations: 7,
+            grammar: "root ::= \"x\"",
+            stopSequences: ["</s>", "STOP"],
+            yieldEveryNTokens: 16,
+            requiredCapabilities: [.toolCalling]
+        )
+        config.presenceContextSize = 96
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
+
+        XCTAssertEqual(decoded, config, "GenerationConfig must be losslessly Codable — no field may be dropped on round-trip")
+    }
+
+    /// The six extracted fields must NOT reappear on `GenerationConfig`'s wire
+    /// form. Encoding a fully-populated config yields JSON with none of the
+    /// former runtime-hint keys.
+    func test_codable_omitsExtractedRuntimeHintKeys() throws {
+        let config = GenerationConfig(temperature: 0.7, maxToolIterations: 3)
         let data = try JSONEncoder().encode(config)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        XCTAssertNil(json["jsonMode"])
-    }
-
-    func test_codable_decode_resetsRuntimeOnlyJsonModeToFalse() throws {
-        let payload = """
-        {
-            "temperature": 0.7,
-            "topP": 0.9,
-            "repeatPenalty": 1.1,
-            "jsonMode": true
+        for key in ["jsonMode", "thinkingMarkers", "structuredOutput", "documents", "maxRunTokens", "captureRenderedPrompt"] {
+            XCTAssertNil(json[key], "\(key) must not appear on GenerationConfig's Codable payload — it moved to GenerationRuntimeHints")
         }
-        """
-        let data = try XCTUnwrap(payload.data(using: .utf8))
-        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
-
-        XCTAssertFalse(decoded.jsonMode)
     }
 
     func test_streamPrefillProgress_isMutable() {
@@ -480,5 +509,70 @@ final class GenerationConfigTests: XCTestCase {
         let rhs = GenerationConfig(temperature: 0.9, topP: 0.8, maxOutputTokens: 1024)
 
         XCTAssertNotEqual(lhs, rhs)
+    }
+
+    // MARK: - maxToolIterations loud clamp (#2152)
+
+    /// The silent `didSet` clamp was replaced with a loud, `Log`-warned clamp.
+    /// A `<= 0` budget passed to `init` still clamps to 1 (reads never observe
+    /// a value below 1), and a valid value passes through unchanged.
+    func test_maxToolIterations_init_clampsNonPositiveToOne() {
+        XCTAssertEqual(GenerationConfig(maxToolIterations: 0).maxToolIterations, 1)
+        XCTAssertEqual(GenerationConfig(maxToolIterations: -5).maxToolIterations, 1)
+        XCTAssertEqual(GenerationConfig(maxToolIterations: 4).maxToolIterations, 4)
+    }
+
+    /// The clamp also fires on later assignment (the property is not a plain
+    /// stored var), so mutating to `<= 0` still yields 1.
+    func test_maxToolIterations_assignment_clampsNonPositiveToOne() {
+        var config = GenerationConfig()
+        config.maxToolIterations = 0
+        XCTAssertEqual(config.maxToolIterations, 1)
+        config.maxToolIterations = 9
+        XCTAssertEqual(config.maxToolIterations, 9)
+        config.maxToolIterations = -1
+        XCTAssertEqual(config.maxToolIterations, 1)
+    }
+
+    /// A persisted zero/negative `maxToolIterations` decodes clamped to 1.
+    func test_maxToolIterations_decode_clampsNonPositiveToOne() throws {
+        let payload = """
+        { "temperature": 0.7, "topP": 0.9, "repeatPenalty": 1.1, "maxToolIterations": 0 }
+        """
+        let data = try XCTUnwrap(payload.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
+        XCTAssertEqual(decoded.maxToolIterations, 1)
+    }
+
+    // MARK: - Hints reach the backend (#2152)
+
+    /// The per-request ``GenerationRuntimeHints`` must cross the
+    /// `InferenceBackend` boundary intact — the whole point of the split.
+    func test_hints_reachBackend_throughGenerate() throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let hints = GenerationRuntimeHints(jsonMode: true, maxRunTokens: 4096, captureRenderedPrompt: true)
+
+        _ = try backend.generate(
+            prompt: "hi",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: hints
+        )
+
+        XCTAssertEqual(backend.lastHints, hints)
+        XCTAssertEqual(backend.lastHints?.jsonMode, true)
+        XCTAssertEqual(backend.lastHints?.maxRunTokens, 4096)
+        XCTAssertEqual(backend.lastHints?.captureRenderedPrompt, true)
+    }
+
+    /// The 3-arg convenience overload forwards empty hints.
+    func test_generate_threeArgOverload_forwardsEmptyHints() throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+
+        _ = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+
+        XCTAssertEqual(backend.lastHints, GenerationRuntimeHints())
     }
 }

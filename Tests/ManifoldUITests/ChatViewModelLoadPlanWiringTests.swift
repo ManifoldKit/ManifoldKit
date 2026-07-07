@@ -217,7 +217,8 @@ private final class RecordingBackend: InferenceBackend, @unchecked Sendable {
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.finish()
