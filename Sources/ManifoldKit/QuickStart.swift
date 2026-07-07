@@ -688,6 +688,15 @@ public struct QuickStartResult: Sendable {
     /// One-hop convenience over ``ChatViewModel/respond(to:)`` so consumers can
     /// write `try await kit.respond(to: "…")` without the `.viewModel`
     /// indirection. Throws the same ``SendMessageError`` cases.
+    ///
+    /// This is the single spelling for this operation — the duplicate
+    /// `respond(_:)` (unlabeled) form was removed in the same release that
+    /// added this doc note (2026-07 API review, item 2.4): the two spellings
+    /// were behaviorally identical (`sendMessage(text).content`), so keeping
+    /// both was pure API surface with no functional difference. `respond(to:)`
+    /// matches Swift API design guidelines (a preposition names the argument's
+    /// role) and is the spelling `LLM.respond(to:)` and
+    /// `ChatViewModel.respond(to:)` already use.
     @discardableResult
     public func respond(to text: String) async throws -> String {
         try await viewModel.respond(to: text)
