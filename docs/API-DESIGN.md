@@ -14,8 +14,9 @@ the backend families — **is the product.** `ChatView` and `quickStart` are the
 
 Consequence: when a default is ambiguous, it follows toolkit values — explicit registrars
 over implicit ones, local-first over cloud-first, dependency injection over convention.
-`LLM(from:)`'s cloud-by-default posture is the counter-example this identity corrects
-(tracked in the plan's 2.5); `quickStart(backends:)`'s explicit registrar list is the
+`LLM(from:)`'s cloud-by-default posture was the counter-example this identity corrects
+(plan item 2.5 — **corrected 2026-07**: `LLM.init`'s `backends:` is now a required
+parameter with no default); `quickStart(backends:)`'s explicit registrar list is the
 pattern to match going forward.
 
 Why: five real local consumer apps were surveyed (plan Part B.2) — every hand-assembly app

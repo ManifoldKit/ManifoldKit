@@ -183,3 +183,5 @@ API breakage: struct AnthropicExplicitBreakpoints has been removed
 API breakage: struct OpenAIPrefixStableCache has been removed
 API breakage: struct NoPromptCache has been removed
 API breakage: enum SecondaryBackendBuilder has been removed
+API breakage: constructor LLM.init(from:template:backends:configuration:) has removed default argument from parameter 2
+API breakage: func QuickStartResult.respond(_:) has been removed
