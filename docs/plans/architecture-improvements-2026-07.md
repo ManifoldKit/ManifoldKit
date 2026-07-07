@@ -361,6 +361,9 @@ core wave is almost free downstream. Verified per item:
 | 4.4 TestSupport split | 29 importing files, **zero** persistence-piece usage — safe | 20 importing files, one `MockInferenceBackend` use — safe | zero imports |
 | 5.3 deprecated sweep | 2 live `service.enqueue(` sites (CLI + E2E test) | 1 DocC prose mention | 2 `enqueue(` sites + the trapping `OllamaBackend(urlSession:)` in BFCL (E1) |
 | `GenerationEvent` freeze | 12 switches, all `default:`-guarded | 2 prod switches, `default:`-guarded | 2 `if case` bindings only |
+| API plan 2.3 — `GenerationConfig` hints extraction | `LlamaBackend.swift:715` flat-field read (`config.thinkingMarkers`); one E2E test writes `captureRenderedPrompt`; verified certain | `MLXGenerationDriver.swift:291` flat-field read (`thinkingMarkers`); verified certain | no generation driver; eval uses core's rendering path only |
+| API plan 2.8 — alias removal (bare `ChatSession`/`ChatMessage` names + `ChatSessionRecord`/`ChatMessageRecord` → `Persisted*` only) | zero references (grep clean) | zero references | zero references — the real fan-out is the local apps (grok-app conformance signatures, one LocalImage test, ChatbotUI-iOS's disambiguation typealias), per api-review 2.8 |
+| API plan 2.1 (REVISED 2026-07-07) — unpublish `Fuzz` product; semver-exempt `ManifoldTools`/test kits | no extraction ripple — zero companion code motion | no extraction ripple — same as llama | no extraction ripple — consumes `ManifoldTools` via exact pin; exemption policy absorbed automatically |
 
 Three consequences flow back into Part I:
 
