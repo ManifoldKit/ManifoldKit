@@ -7,10 +7,19 @@ import ManifoldInference
 /// Shows a scrolling message history with auto-scroll, an input bar at the
 /// bottom, and toolbar actions for device info, settings, and clearing the chat.
 ///
+/// `APIConfig` is the type of the host-supplied API configuration view, which
+/// `ChatView` presents as a sheet/popover when the user triggers the API key
+/// recovery flow. Callers typically pass `{ APIConfigurationView() }` from
+/// `ManifoldUIModelManagement`. The closure-injection keeps `ManifoldUI` free
+/// of any back-edge to the model-management module.
+///
 /// ## Customization
 ///
-/// `ChatView` has a single initializer. Every optional customization seam is a
-/// modifier applied to the constructed view, not an initializer overload:
+/// `ChatView` has two initializers — the designated one (`apiConfiguration:`
+/// required) and a convenience for hosts that don't ship an API-configuration
+/// surface at all (`APIConfig == EmptyView`). Every *other* optional
+/// customization seam that used to be a combinatorial initializer overload is
+/// now a modifier applied to the constructed view instead:
 ///
 /// - ``chatEmptyState(_:)`` — replaces the placeholder shown when the active
 ///   session has no messages.
@@ -20,22 +29,20 @@ import ManifoldInference
 ///   items after the built-in pin/copy/edit/regenerate/branch/delete actions.
 /// - ``chatCustomKindRenderer(_:)`` — renders non-user-visible message kinds
 ///   (memory, annotation, tool-result, custom) that are hidden by default.
-/// - ``chatAPIConfiguration(_:)`` — supplies the host's API-key recovery view,
-///   presented as a sheet/popover. Typically `{ APIConfigurationView() }` from
-///   `ManifoldUIModelManagement`. Defaults to an empty sheet when omitted —
-///   the closure-injection pattern keeps `ManifoldUI` free of any back-edge to
-///   the model-management module.
+/// - ``chatAPIConfiguration(_:)`` — switches the API configuration view after
+///   construction (an alternative to passing `apiConfiguration:` at init).
 ///
 /// **Composition is LAST-WINS.** Applying the same modifier more than once
 /// replaces the previous closure entirely — there is no merging of two
 /// `chatEmptyState { ... }` calls, for example. Each modifier's doc comment
 /// restates this.
 ///
-/// All builder closures are stored and invoked at render/presentation time,
-/// not at the point the modifier is applied — so `@Environment` / `@Bindable`
-/// lookups inside the supplied view, and any state mutated after `ChatView`
-/// was constructed, resolve against the live view tree.
-public struct ChatView: View {
+/// All builder closures (including `apiConfiguration`) are invoked at
+/// render/presentation time, not at the point the initializer or modifier is
+/// applied — so `@Environment` / `@Bindable` lookups inside the supplied
+/// view, and any state mutated after `ChatView` was constructed, resolve
+/// against the live view tree.
+public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
 
@@ -68,10 +75,11 @@ public struct ChatView: View {
     /// existed at construction time; that was a latent staleness bug.
     private var emptyStateBuilder: (() -> AnyView)?
 
-    /// Builder for the API configuration view, set via ``chatAPIConfiguration(_:)``.
-    /// Defaults to an empty sheet so hosts that don't ship
-    /// `ManifoldUIModelManagement` need not call the modifier at all.
-    private var apiConfigurationBuilder: () -> AnyView = { AnyView(EmptyView()) }
+    /// Builder for the API configuration view. Held as a closure (rather than the
+    /// pre-built view) so that any `@Environment` / `@Bindable` lookups inside
+    /// `APIConfigurationView` resolve at sheet/popover presentation time, not at
+    /// `ChatView` init.
+    private let apiConfigurationBuilder: () -> APIConfig
 
     /// Optional host-supplied accessory rendered above the stock composer,
     /// set via ``chatComposerAccessory(_:)``. This is the integration seam
@@ -94,10 +102,27 @@ public struct ChatView: View {
 
     public init(
         showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
         self.linkPreviewProvider = linkPreviewProvider
+        self.apiConfigurationBuilder = apiConfiguration
+    }
+
+    /// Creates a ``ChatView`` without an API-configuration surface.
+    ///
+    /// Use this overload when the host app does not ship
+    /// `ManifoldUIModelManagement` or provides API settings elsewhere.
+    public init(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            apiConfiguration: { EmptyView() }
+        )
     }
 
     // MARK: - Modifier slots
@@ -112,28 +137,37 @@ public struct ChatView: View {
     /// previous empty-state builder entirely; there is no merging.
     public func chatEmptyState<Content: View>(
         @ViewBuilder _ builder: @escaping () -> Content
-    ) -> ChatView {
+    ) -> ChatView<APIConfig> {
         var copy = self
         copy.emptyStateBuilder = { AnyView(builder()) }
         return copy
     }
 
-    /// Supplies the host's API-key recovery / configuration view, presented
-    /// as a sheet or popover from the error-recovery banner, the settings
-    /// sheet, and the toolbar's API-key check flow.
+    /// Switches the API-key recovery / configuration view presented as a
+    /// sheet or popover from the error-recovery banner, the settings sheet,
+    /// and the toolbar's API-key check flow — an alternative to passing
+    /// `apiConfiguration:` to the initializer.
     ///
     /// Typically `{ APIConfigurationView() }` from `ManifoldUIModelManagement`.
     /// The closure is invoked at sheet/popover presentation time, not when
     /// this modifier is applied, so `@Environment` / `@Bindable` lookups
     /// inside the supplied view resolve against the live view tree.
     ///
-    /// **LAST-WINS:** calling this modifier more than once replaces the
-    /// previous builder entirely; there is no merging.
+    /// **LAST-WINS:** calling this modifier more than once (or after
+    /// supplying `apiConfiguration:` at init) replaces the previous builder
+    /// entirely; there is no merging.
     public func chatAPIConfiguration<Content: View>(
         @ViewBuilder _ builder: @escaping () -> Content
-    ) -> ChatView {
-        var copy = self
-        copy.apiConfigurationBuilder = { AnyView(builder()) }
+    ) -> ChatView<Content> {
+        var copy = ChatView<Content>(
+            showModelManagement: $showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            apiConfiguration: builder
+        )
+        copy.emptyStateBuilder = emptyStateBuilder
+        copy.composerAccessoryBuilder = composerAccessoryBuilder
+        copy.contextMenuItemsBuilder = contextMenuItemsBuilder
+        copy.customKindRenderer = customKindRenderer
         return copy
     }
 
@@ -144,7 +178,7 @@ public struct ChatView: View {
     /// previous accessory builder entirely; there is no merging.
     public func chatComposerAccessory<Content: View>(
         @ViewBuilder _ builder: @escaping () -> Content
-    ) -> ChatView {
+    ) -> ChatView<APIConfig> {
         var copy = self
         copy.composerAccessoryBuilder = { AnyView(builder()) }
         return copy
@@ -160,7 +194,7 @@ public struct ChatView: View {
     /// previous builder entirely; there is no merging.
     public func chatContextMenuItems<Content: View>(
         @ViewBuilder _ builder: @escaping (ChatMessage) -> Content
-    ) -> ChatView {
+    ) -> ChatView<APIConfig> {
         var copy = self
         copy.contextMenuItemsBuilder = { message in AnyView(builder(message)) }
         return copy
@@ -175,7 +209,7 @@ public struct ChatView: View {
     /// previous renderer entirely; there is no merging.
     public func chatCustomKindRenderer<Content: View>(
         @ViewBuilder _ builder: @escaping (ChatMessage) -> Content
-    ) -> ChatView {
+    ) -> ChatView<APIConfig> {
         var copy = self
         copy.customKindRenderer = { message in AnyView(builder(message)) }
         return copy
