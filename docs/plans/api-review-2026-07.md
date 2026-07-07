@@ -337,12 +337,43 @@ drafts per the §II.2 pattern. **The §II.2 runbook must be extended to cover th
 2. **Extraction (2.1): extract BOTH `manifold-fuzz` and `manifold-tools`.** `ManifoldServer`
    stays. Test kits stay in-repo, semver-exempt worded "may break in any minor,
    migration-noted." (manifold-eval gains one pin for the Tools extraction.)
+   **AMENDED 2026-07-07 — extraction reversed; see the Amendment section below.**
 3. **`GenerationConfig` (2.3): Option C** — extract the 5 lossy fields into a non-Codable
    per-request hints struct; config stays flat and becomes fully Codable.
 4. **Model-identity typing (2.7): documented convention** (UUID = local registration,
    String = catalog identity) in API-DESIGN.md; reviewers enforce at new seams. No wrapper.
 5. Arch-plan queue items 5 (`ChatSession` façade) and 7 (`GenerationEvent` freeze wording)
    fold into 2.8 and 0.1 respectively (unchanged).
+
+## Amendment (2026-07-07) — Decision 2 reversed: no extractions
+
+Decision-queue item 2 ("extract BOTH manifold-fuzz and manifold-tools") was reversed before
+execution, on dependency-shape evidence verified against the manifests (Rory, 2026-07-07):
+
+- **`ManifoldFuzz` has zero external consumers** — no `import ManifoldFuzz` anywhere in
+  manifold-mlx / manifold-llama / manifold-eval; its only runtime consumer is this repo's own
+  `fuzz-weekly.yml` (`swift run fuzz-chat`). Extraction would orphan the weekly job or make MK
+  depend on a sibling repo to fuzz itself. **Revised move (#2150): delete the
+  `.library(name: "ManifoldFuzz")` product line (Package.swift:98), keep the target.** The
+  executable and test targets reference the target, not the product, so they are untouched;
+  ~97 public types leave the consumable surface with one line; the post-0.0 digester scope
+  shrinks automatically (it keys on library products). `feat!:` + migration note.
+- **`ManifoldTools` is genuinely shared** — MK's own `manifold-tools` CLI links it
+  (Package.swift:1033) and manifold-eval consumes the published product. Moving it to eval
+  would strand MK's CLI or invert the product→assurance dependency direction; a companion repo
+  adds standing core-bump/compat/CI overhead for one consumer that exact-pins anyway.
+  **Revised move (#2151): keep the product; fold it into the test-kit semver exemption**
+  ("dev-tool products — `ManifoldTools`, `ManifoldTestSupport`, `ManifoldBackendTestKit` — may
+  break in any minor, migration-noted"). Non-breaking policy wording; can land before the wave.
+- **General principle recorded for API-DESIGN.md:** "reduce the API" and "move code to another
+  repo" are different levers. Unpublishing a product with no external consumer achieves the
+  semver-surface goal at zero relocation cost; extraction is reserved for code with external
+  consumers that should stop depending on the whole package (the manifold-mlx/llama case).
+
+Consequences threaded: 2.1's extraction bullets are superseded by #2150/#2151 as revised; the
+demotion sweep (#2154) is no longer gated on extractions (only on the 0.2b tripwire, PR #2147);
+no companion repos are created; manifold-eval keeps its name and pins; the §II.2 runbook needs
+no new ripple rows for extraction (the GenerationConfig-hints and alias-removal rows stand).
 
 ## Sequencing
 
