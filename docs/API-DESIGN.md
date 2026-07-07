@@ -86,7 +86,7 @@ Breaking is cheap and encouraged, on purpose, through scheduled `feat!:` waves. 
 **delete, don't deprecate.** Deprecation is a post-1.0 tool for a package that has made a
 stability promise; this one hasn't yet, and running a post-1.0 process pre-1.0 is what
 fossilized the three deprecated 15-19 param `enqueue` builders
-(`InferenceService.swift:547,598,645`) and the `ChatSessionRecord`/`ChatMessageRecord`
+(`InferenceService.swift:547,598,645`) and the `ChatSession`/`ChatMessage`
 shadow typealiases (`Sources/ManifoldInference/Models/ConversationRecords.swift:219,222`).
 
 Every removal ships a migration note in the same PR. No exceptions — a breaking wave

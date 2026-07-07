@@ -265,8 +265,8 @@ There are three message-shaped types. Pick the right one:
 
 | Type | Module | When to use |
 |------|--------|-------------|
-| `ChatMessage` (struct) | `ManifoldInference` | Transport / app code. The shape `sendMessage(_:)` returns. (`ChatMessageRecord` is a deprecated alias for this type.) |
-| `ChatMessage` (`@Model`) | `ManifoldPersistenceSwiftData` | SwiftData row — owned by the persistence layer. Disambiguate with the full schema path when both are in scope. |
+| `ChatMessage` (struct) | `ManifoldInference` | Transport / app code. The shape `sendMessage(_:)` returns. |
+| `PersistedChatMessage` (`@Model`) | `ManifoldPersistenceSwiftData` | SwiftData row — owned by the persistence layer. The only public name; the bare `ChatMessage` shadow alias was removed pre-1.0 (issue #2153 item 2.8). |
 | `StructuredMessage` | `ManifoldInference` | Cloud-wire payload assembled by `InferenceService`. Internal — backends consume it. |
 
 App code reads and writes `ChatMessage` (the struct). The persistence and wire types

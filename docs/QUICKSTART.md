@@ -93,7 +93,7 @@ Both flags default to `true`, so existing apps keep today's composer; opt out on
 > [!IMPORTANT]
 > **The backend cliff: no registered backend → a *runtime* throw, not a compile error.** If **zero** inference backends are registered when you call it, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause at the assembly boundary instead of a confusing "No model loaded" on the first turn. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a `quickStart()` build always has cloud support — the throw only fires if nothing was *registered* (e.g. you bypassed `quickStart()` and registered no backend yourself). For **local** inference add a companion package — [manifold-llama](https://github.com/ManifoldKit/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
 
-> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
+> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSession` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
 
 ```swift
 import ManifoldKit
@@ -112,7 +112,7 @@ struct SeedSessionExample {
         let bootstrap = try await task.value
 
         let stores: any SessionStore & MessageStore = bootstrap.persistenceStores
-        try await stores.insertSession(ChatSessionRecord(title: "Inbox"))
+        try await stores.insertSession(ChatSession(title: "Inbox"))
     }
 }
 ```

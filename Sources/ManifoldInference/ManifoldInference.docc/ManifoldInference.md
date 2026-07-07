@@ -46,8 +46,8 @@ Import `ManifoldInference` directly when:
 - You need the image-generation value types (``ImageGenerationConfig``,
   ``ImageGenerationEvent``, ``ImageModelInfo``) in a non-MLX target — for
   example a catalog UI, a persistence adapter, or a cloud image service.
-- You want the conversation record types (``ChatMessageRecord``,
-  ``ChatSessionRecord``) without dragging in SwiftData or any UI layer.
+- You want the conversation record types (``ChatMessage``,
+  ``ChatSession``) without dragging in SwiftData or any UI layer.
 - You are writing a backend test and need ``BackendCapabilities`` or the
   ``BackendContractChecks`` conformance harness.
 
@@ -237,9 +237,9 @@ For apps that swap models at runtime, use ``ImageGenerationService`` instead —
 it manages backend lifecycle and arbitrates against the text-inference resource
 pool.
 
-### `ChatMessageRecord` — cross-boundary message snapshot
+### `ChatMessage` — cross-boundary message snapshot
 
-``ChatMessageRecord`` is a plain `Sendable` value type that crosses persistence
+``ChatMessage`` is a plain `Sendable` value type that crosses persistence
 boundaries. It carries no SwiftData, no CoreData, and no UI. Use it to pass
 message data between layers without coupling them:
 
@@ -247,7 +247,7 @@ message data between layers without coupling them:
 import ManifoldInference
 
 // Construct a record the persistence layer can store.
-let record = ChatMessageRecord(
+let record = ChatMessage(
     sessionID: sessionID,
     role: .assistant,
     content: [.text(responseText)],
@@ -272,8 +272,8 @@ try await myMessageStore.insertMessage(record)
 
 ### Conversation records
 
-- ``ChatMessageRecord``
-- ``ChatSessionRecord``
+- ``ChatMessage``
+- ``ChatSession``
 - ``MessageRole``
 - ``MessagePart``
 
