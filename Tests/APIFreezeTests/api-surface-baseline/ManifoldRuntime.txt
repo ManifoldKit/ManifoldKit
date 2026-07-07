@@ -103,6 +103,7 @@ ConversationError.cancelled EnumElement
 ConversationError.contextAssembly EnumElement
 ConversationError.errorDescription Var
 ConversationError.inference EnumElement
+ConversationError.isRetryable Var
 ConversationError.messageNotFound EnumElement
 ConversationError.messageTooLarge EnumElement
 ConversationError.noAssistantMessageToRegenerate EnumElement

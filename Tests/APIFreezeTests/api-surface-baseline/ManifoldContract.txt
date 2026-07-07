@@ -135,6 +135,7 @@ GenerationCompletion.__derived_struct_equals(_:_:) Func
 GenerationCompletion.init(reason:) Constructor
 GenerationCompletion.reason Var
 GenerationConfig Struct
+GenerationConfig.__derived_struct_equals(_:_:) Func
 GenerationConfig.captureRenderedPrompt Var
 GenerationConfig.documents Var
 GenerationConfig.encode(to:) Func
@@ -287,6 +288,7 @@ LocalThinkingMarkerStrategy.hashValue Var
 LocalThinkingMarkerStrategy.never EnumElement
 LocalToolCallShape Protocol
 LocalToolCallShape.shapeName Var
+ManifoldKitError Enum
 Message Enum
 Message.__derived_enum_equals(_:_:) Func
 Message.asRoleContentTuple Var

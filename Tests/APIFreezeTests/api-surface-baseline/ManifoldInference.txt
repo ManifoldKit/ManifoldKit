@@ -905,6 +905,8 @@ ResolvedSlot.tokenCount Var
 RetryExhaustedError Struct
 RetryExhaustedError.attempts Var
 RetryExhaustedError.errorDescription Var
+RetryExhaustedError.init(lastError:attempts:) Constructor
+RetryExhaustedError.isRetryable Var
 RetryExhaustedError.lastError Var
 RetryStrategy Protocol
 RetryStrategy.delay(for:attempt:totalDelayed:) Func
@@ -1001,6 +1003,8 @@ StructuredOutput.strategy Var
 StructuredOutput.value Var
 StructuredOutputError Enum
 StructuredOutputError.decodeFailure EnumElement
+StructuredOutputError.errorDescription Var
+StructuredOutputError.isRetryable Var
 StructuredOutputError.reaskBudgetExhausted EnumElement
 StructuredOutputError.schemaEncodingFailure EnumElement
 StructuredOutputSchema Struct

@@ -472,6 +472,7 @@ SamplerPresetPickerView.init() Constructor
 SendMessageError Enum
 SendMessageError.empty EnumElement
 SendMessageError.errorDescription Var
+SendMessageError.isRetryable Var
 SendMessageError.noActiveSession EnumElement
 SendMessageError.noModelLoaded EnumElement
 SendMessageError.runtime EnumElement
