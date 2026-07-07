@@ -168,7 +168,7 @@ final class ModelContainerFileProtectionTests: XCTestCase {
 
         // Force a write so SwiftData creates any WAL sidecars it needs.
         let context = ModelContext(container)
-        context.insert(ChatSession(title: "fp-test"))
+        context.insert(PersistedChatSession(title: "fp-test"))
         try context.save()
 
         // Re-apply protection now that sidecars may exist (the factory only

@@ -18,8 +18,8 @@ This is **not** a multi-agent peer system. Agents are sequential and turn-scoped
 | ``ManifoldInference/AgentHandoff`` | `ManifoldInference` | The detected transfer intent: `targetAgentID` + optional `payload`. |
 | ``ManifoldInference/HandoffDetectionResult`` | `ManifoldInference` | `regular(ToolCall)` vs `handoff(AgentHandoff)`. |
 | ``HandoffToolSource`` | `ManifoldRuntime` | ``SessionToolSource`` that synthesises one `transfer_to_<name>` tool per non-active agent. |
-| ``ManifoldInference/ChatSessionRecord/agents`` | `ManifoldInference` | The session's agent registry — a `[Agent]` snapshot of the SwiftData rows. |
-| ``ManifoldInference/ChatSessionRecord/activeAgentID`` | `ManifoldInference` | Drives system-prompt re-derivation each turn. |
+| ``ManifoldInference/ChatSession/agents`` | `ManifoldInference` | The session's agent registry — a `[Agent]` snapshot of the SwiftData rows. |
+| ``ManifoldInference/ChatSession/activeAgentID`` | `ManifoldInference` | Drives system-prompt re-derivation each turn. |
 | ``ConversationEvent/agentHandoff(from:to:)`` | `ManifoldRuntime` | Telemetry case emitted on every swap. |
 
 ## End-to-end setup
@@ -44,7 +44,7 @@ let writer = Agent(
 
 // 2. Persist them on the session record (or seed via ManifoldPersistenceSwiftData
 //    using the V9 schema). The active agent owns the next turn.
-let session = ChatSessionRecord(
+let session = ChatSession(
     title: "Blog post on X",
     agents: [researcher, writer],
     activeAgentID: researcher.id

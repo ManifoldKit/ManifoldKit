@@ -13,14 +13,3 @@
 /// the value type as `ChatSession` and the SwiftData row as
 /// `PersistedChatSession` without disambiguation.
 public typealias PersistedChatSession = ManifoldSchemaV9.ChatSession
-
-/// Back-compat alias for code that referenced ``ChatSession`` directly before
-/// the #1717 disambiguation. Prefer ``PersistedChatSession`` in new code.
-///
-/// > Deprecated: Renamed to ``PersistedChatSession``. The bare name shadows
-/// > ``ManifoldInference/ChatSession`` when both modules are imported (e.g.
-/// > under `import ManifoldKit`). Migrate to `PersistedChatSession` now — this
-/// > alias will be removed in the 1.0-adjacent major release (≥2 minors after
-/// > this annotation was added, 0.x-era).
-@available(*, deprecated, renamed: "PersistedChatSession", message: "Use PersistedChatSession to avoid shadowing ManifoldInference.ChatSession. This alias will be removed in the 1.0-adjacent major release.")
-public typealias ChatSession = ManifoldSchemaV9.ChatSession

@@ -101,17 +101,17 @@ and a separate event-drain task owns completion. The legacy per-flow methods
 
 ### Implement a custom `MessageStore`
 
-The simplest adapter persists writes to your own storage and returns ``ChatMessageRecord`` values. Hooks registered via ``MessageStore/addPostWriteHook(_:)`` fire after every commit:
+The simplest adapter persists writes to your own storage and returns ``ChatMessage`` values. Hooks registered via ``MessageStore/addPostWriteHook(_:)`` fire after every commit:
 
 ```swift,no-build
 @MainActor
 final class AuditedMessageStore: MessageStore {
     private let inner: any MessageStore
-    private var hooks: [@MainActor (ChatMessageRecord) async -> Void] = []
+    private var hooks: [@MainActor (ChatMessage) async -> Void] = []
 
     init(wrapping inner: any MessageStore) { self.inner = inner }
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         try await inner.insertMessage(message)
         Log.audit.notice("inserted \(message.id, privacy: .public)")
         for hook in hooks { await hook(message) }
@@ -127,11 +127,11 @@ final class AuditedMessageStore: MessageStore {
 ```swift,no-build
 @MainActor
 final class RemoteSessionStore: SessionStore {
-    func insertSession(_ session: ChatSessionRecord) async throws { /* POST /sessions */ }
-    func updateSession(_ session: ChatSessionRecord) async throws { /* PATCH /sessions/{id} */ }
+    func insertSession(_ session: ChatSession) async throws { /* POST /sessions */ }
+    func updateSession(_ session: ChatSession) async throws { /* PATCH /sessions/{id} */ }
     func deleteSession(_ sessionID: UUID) async throws { /* DELETE /sessions/{id} */ }
-    func fetchSessions() async throws -> [ChatSessionRecord] { /* GET /sessions */ [] }
-    func session(for id: UUID) async throws -> ChatSessionRecord? { /* GET /sessions/{id} */ nil }
+    func fetchSessions() async throws -> [ChatSession] { /* GET /sessions */ [] }
+    func session(for id: UUID) async throws -> ChatSession? { /* GET /sessions/{id} */ nil }
 }
 ```
 

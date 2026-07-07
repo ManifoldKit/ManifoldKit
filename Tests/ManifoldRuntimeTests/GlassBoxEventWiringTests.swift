@@ -120,11 +120,11 @@ private struct SummaryReplacingPolicy: CompressionPolicy {
         contextSize > 0
     }
     func compress(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         sessionID: UUID,
-        generate: @Sendable ([ChatMessageRecord]) async throws -> String
-    ) async throws -> [ChatMessageRecord] {
-        [ChatMessageRecord(role: .assistant, content: summaryContent, sessionID: sessionID)]
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage] {
+        [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]
     }
 }
 
@@ -132,11 +132,11 @@ private struct SummaryReplacingPreTurnPolicy: PreTurnCompressionPolicy {
     let summaryContent: String
     func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool { true }
     func compressBeforeTurn(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         sessionID: UUID,
-        generate: @Sendable ([ChatMessageRecord]) async throws -> String
-    ) async throws -> [ChatMessageRecord] {
-        [ChatMessageRecord(role: .assistant, content: summaryContent, sessionID: sessionID, kind: .memory("summary"))]
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage] {
+        [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID, kind: .memory("summary"))]
     }
 }
 
@@ -175,15 +175,15 @@ final class GlassBoxEventWiringTests: XCTestCase {
 
     @MainActor
     final class InMemoryMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -197,7 +197,7 @@ final class GlassBoxEventWiringTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }

@@ -206,7 +206,7 @@ struct PersistenceStoresExample {
         let bootstrap = try await task.value
 
         let stores: any SessionStore & MessageStore = bootstrap.persistenceStores
-        let session = ChatSessionRecord(title: "Seeded Session")
+        let session = ChatSession(title: "Seeded Session")
         try await stores.insertSession(session)
         _ = try await stores.fetchMessages(for: session.id)
     }

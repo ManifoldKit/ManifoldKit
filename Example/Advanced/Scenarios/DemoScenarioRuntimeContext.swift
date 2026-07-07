@@ -19,7 +19,7 @@ import ManifoldRuntime
 /// mutate it in-place, then:
 ///
 /// 1. Applies ``agents`` and ``activeAgentID`` to the just-created
-///    ``ChatSessionRecord`` via the supplied ``SessionStore``.
+///    ``ChatSession`` via the supplied ``SessionStore``.
 /// 2. Surfaces ``sessionToolSources`` and ``hookRegistry`` as fields the
 ///    host can read to decide whether to spin a scenario-scoped
 ///    ``ConversationRuntime`` (today the demo shares one runtime across
@@ -48,7 +48,7 @@ public struct DemoScenarioRuntimeContext {
     /// hooks; the runtime falls back to its default no-op shape.
     public var hookRegistry: HookRegistry?
 
-    /// Agents to attach to the freshly-created ``ChatSessionRecord``. The
+    /// Agents to attach to the freshly-created ``ChatSession``. The
     /// runner applies these via ``SessionStore/updateSession(_:)`` after
     /// `configure` returns, before the first prompt is sent.
     public var agents: [Agent]

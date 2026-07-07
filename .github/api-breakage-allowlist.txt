@@ -185,3 +185,8 @@ API breakage: struct NoPromptCache has been removed
 API breakage: enum SecondaryBackendBuilder has been removed
 API breakage: constructor LLM.init(from:template:backends:configuration:) has removed default argument from parameter 2
 API breakage: func QuickStartResult.respond(_:) has been removed
+API breakage: typealias ChatSession has been removed
+API breakage: typealias ChatMessage has been removed
+API breakage: typealias Agent has been removed
+API breakage: typealias ChatSessionRecord has been removed
+API breakage: typealias ChatMessageRecord has been removed
