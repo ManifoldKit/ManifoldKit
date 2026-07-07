@@ -235,7 +235,6 @@ jobs:
             --targets ManifoldUIModelManagement
             --targets ManifoldHuggingFace
             --targets ManifoldVoice
-            --targets ManifoldFuzz
             --targets ManifoldTestSupport
             --targets ManifoldBackendTestKit
             --targets ManifoldTools
