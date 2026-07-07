@@ -128,7 +128,7 @@ public enum AnyLanguageModelURLResolver {
     }
 }
 
-public enum AnyLanguageModelBridgeError: LocalizedError {
+public enum AnyLanguageModelBridgeError: LocalizedError, Sendable {
     case unsupportedURLScheme(URL)
     case missingModelIdentifier(provider: String)
     case missingQueryItem(name: String, provider: String)
@@ -152,4 +152,24 @@ public enum AnyLanguageModelBridgeError: LocalizedError {
             return "The AnyLanguageModel bridge currently streams plain text only; JSON mode is unavailable."
         }
     }
+}
+
+// MARK: - AnyLanguageModelBridgeError + BackendError
+//
+// `AnyLanguageModelBackend.generate` (`AnyLanguageModelBackend.swift`) throws
+// this type directly, and `ManifoldAnyLanguageModel` is an
+// `InferenceBackend` conformer a consumer can wire as the active backend —
+// same opt-in-composition shape as `FallbackExhaustedError` (never
+// re-exported by the `ManifoldKit` umbrella; a consumer must import this
+// product and register the backend explicitly). When wired, this error
+// reaches `InferenceService.enqueue`/`.generate`'s `GenerationStream.events`
+// unwrapped, so it belongs in the escapable set.
+extension AnyLanguageModelBridgeError: BackendError {
+    /// Whether retrying the same call, unchanged, has a reasonable chance of
+    /// succeeding. Every case here is a configuration or capability mismatch
+    /// (unsupported URL scheme, missing identifier/query item, no descriptor
+    /// loaded, or a request shape — tools/JSON mode — the bridge does not
+    /// translate yet); none of them clear on their own, so retrying the
+    /// identical call always reproduces the same failure.
+    public var isRetryable: Bool { false }
 }

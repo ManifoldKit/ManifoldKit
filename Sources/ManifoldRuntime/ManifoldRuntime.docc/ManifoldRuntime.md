@@ -154,6 +154,7 @@ try await endpointStore.insertEndpoint(
 - <doc:HookSystem>
 - <doc:ObservingATurn>
 - <doc:BackgroundTaskSupport>
+- <doc:ErrorHandlingAtTheBoundary>
 
 ### Conversation runtime
 

@@ -77,6 +77,55 @@ public enum StructuredOutputError: Error, Sendable {
     case reaskBudgetExhausted(lastError: String, attempts: Int)
 }
 
+extension StructuredOutputError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .decodeFailure(_, underlying):
+            return "Model output did not decode into the requested type: \(underlying)"
+        case let .schemaEncodingFailure(detail):
+            return "Failed to encode JSON schema for the requested type: \(detail)"
+        case let .reaskBudgetExhausted(lastError, attempts):
+            return "Structured-output reask loop exhausted after \(attempts) attempt(s): \(lastError)"
+        }
+    }
+}
+
+// MARK: - StructuredOutputError + BackendError
+//
+// `StructuredOutputError` is thrown directly by
+// ``InferenceService/respond(_:to:config:)`` — the typed structured-output
+// sibling of `enqueue`/`generate` on the same `InferenceService` boundary —
+// so it belongs in the escapable-error set alongside `InferenceError` /
+// `CloudBackendError`. `BackendError` is declared in `ManifoldContract`,
+// visible here without a local import because this module's own
+// `@_exported import ManifoldContract` (for source compatibility) makes it
+// module-wide.
+extension StructuredOutputError: BackendError {
+    /// Whether retrying the same call, unchanged, has a reasonable chance of
+    /// succeeding.
+    ///
+    /// Reasoning per case:
+    /// - ``decodeFailure(rawText:underlying:)`` — a single decode miss is
+    ///   often a sampling artifact; the built-in reask loop is specifically
+    ///   designed to recover from this by re-prompting with the failure
+    ///   context, so a bare retry has a reasonable chance of a different
+    ///   (successful) generation.
+    /// - ``schemaEncodingFailure(_:)`` — the caller's `SchemaProviding` type
+    ///   produces a schema that fails to encode; this is deterministic given
+    ///   the same type and reproduces identically on retry.
+    /// - ``reaskBudgetExhausted(lastError:attempts:)`` — the bounded reask
+    ///   loop already retried internally and gave up; this is the terminal
+    ///   "stop trying" signal, not a fresh condition to retry again.
+    public var isRetryable: Bool {
+        switch self {
+        case .decodeFailure:
+            return true
+        case .schemaEncodingFailure, .reaskBudgetExhausted:
+            return false
+        }
+    }
+}
+
 // MARK: - Reask policy
 
 /// Budget for the bounded validation-reask loop on structured output (#1916).

@@ -46,6 +46,44 @@ extension SendMessageError: LocalizedError {
     }
 }
 
+// MARK: - SendMessageError + BackendError
+//
+// `SendMessageError` is the type ``ChatViewModel/sendMessage(_:)`` /
+// ``ChatViewModel/respond(to:)`` / ``QuickStartResult/respond(_:)`` /
+// ``QuickStartResult/respond(to:)`` actually throw — every one of those
+// convenience entry points bottoms out in ``ChatViewModel/sendMessage(_:)``.
+// `BackendError` is declared in `ManifoldContract` and visible here through
+// `ManifoldInference`'s `@_exported import` of it.
+extension SendMessageError: BackendError {
+    /// Whether retrying the same call, unchanged, has a reasonable chance of
+    /// succeeding.
+    ///
+    /// Reasoning per case:
+    /// - ``noActiveSession``, ``noModelLoaded`` — preconditions the caller
+    ///   can observe and fix (select a session, load a model) before calling
+    ///   again; retrying the identical call reproduces the same failure.
+    /// - ``empty`` — the turn ran and produced no visible content but raised
+    ///   no error. Sampling is stochastic, so re-sending the identical turn
+    ///   can legitimately produce output next time; this is the one case
+    ///   where "just try again" is a reasonable UI affordance (e.g. a
+    ///   regenerate action) rather than a fix-something prompt.
+    /// - ``runtime(_:)`` — defers to the wrapped error's own
+    ///   ``BackendError/isRetryable`` when it conforms (true today for every
+    ///   ``ConversationError``/``InferenceError``/``CloudBackendError`` the
+    ///   runtime can surface); falls back to `false` for an unrecognised
+    ///   underlying type (e.g. ``ChatErrorBridge``) rather than guessing.
+    public var isRetryable: Bool {
+        switch self {
+        case .noActiveSession, .noModelLoaded:
+            return false
+        case .empty:
+            return true
+        case .runtime(let error):
+            return (error as? any BackendError)?.isRetryable ?? false
+        }
+    }
+}
+
 // MARK: - ChatErrorBridge
 
 /// Adapts a ``ChatError`` value type into something that conforms to

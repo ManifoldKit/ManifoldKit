@@ -170,3 +170,44 @@ extension ConversationError: LocalizedError {
         }
     }
 }
+
+// MARK: - ConversationError + BackendError
+//
+// `ConversationError` is the type that actually crosses
+// `ConversationRuntime.processTurn(_:)` / `processTurnWithOutcome(_:)` —
+// either thrown synchronously for precondition failures or delivered via
+// `ConversationEvent.errorRaised(_:)` for async faults. Conforming it to
+// `BackendError` (declared in `ManifoldContract`, visible here through
+// `ManifoldInference`'s `@_exported import` of `ManifoldContract`) gives
+// boundary consumers the same uniform retry signal they get from a raw
+// `InferenceError`/`CloudBackendError`, without having to unwrap the four
+// `any Error`-carrying cases first.
+extension ConversationError: BackendError {
+    /// Whether retrying the same turn, unchanged, has a reasonable chance of
+    /// succeeding.
+    ///
+    /// Reasoning per case:
+    /// - ``providerNotConfigured``, ``messageTooLarge``,
+    ///   ``noAssistantMessageToRegenerate``, ``messageNotFound`` — all four
+    ///   are preconditions the caller can observe before calling again
+    ///   (wire a persistence port, shorten the message, check for an
+    ///   assistant turn, pass a real ID); retrying the identical call
+    ///   reproduces the same failure.
+    /// - ``cancelled`` — cooperative cancellation, not a failure to retry.
+    /// - ``persistence(_:)``, ``inference(_:)``, ``contextAssembly(_:)``,
+    ///   ``preTurnCompressionFailed(_:)`` — each wraps a heterogeneous
+    ///   underlying error. Defer to the underlying's own ``BackendError/isRetryable``
+    ///   when it conforms (this is true today for every ``InferenceError``/
+    ///   ``CloudBackendError`` the inference layer can raise); fall back to
+    ///   `false` for an unrecognised underlying type rather than guessing.
+    public var isRetryable: Bool {
+        switch self {
+        case .providerNotConfigured, .messageTooLarge, .noAssistantMessageToRegenerate,
+             .messageNotFound, .cancelled:
+            return false
+        case .persistence(let underlying), .inference(let underlying),
+             .contextAssembly(let underlying), .preTurnCompressionFailed(let underlying):
+            return (underlying as? any BackendError)?.isRetryable ?? false
+        }
+    }
+}

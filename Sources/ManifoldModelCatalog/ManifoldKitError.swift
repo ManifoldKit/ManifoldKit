@@ -94,6 +94,36 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
         }
     }
 
+    /// Whether retrying the same call, unchanged, has a reasonable chance of
+    /// succeeding. Part of the ``BackendError`` spine so consumers at the
+    /// ``ManifoldKit/quickStart(configuration:)`` boundary — which reduces
+    /// every thrown error through ``from(_:)`` before it reaches them — can
+    /// branch on retryability without knowing which rim case fired.
+    ///
+    /// Reasoning per case:
+    /// - ``notConnectedToInternet``, ``timedOut``, ``dnsFailure`` — transient
+    ///   connectivity conditions that commonly clear on their own; retryable.
+    /// - ``serverError`` — a 5xx, or the `statusCode == 0` malformed-response
+    ///   sentinel, is presumed transient; a 4xx means the request itself is
+    ///   malformed and retrying unchanged reproduces the same rejection.
+    /// - ``cancelled`` — cooperative cancellation, not a failure to retry.
+    /// - ``tlsFailure``, ``keychainUnavailable`` — need user or host action
+    ///   (fix pinning/trust, unlock the device) rather than a blind retry.
+    /// - ``decodingFailure``, ``noBackendsRegistered``, ``unknown`` — a
+    ///   wire-format mismatch or a configuration gap; retrying the identical
+    ///   call reproduces the same failure.
+    public var isRetryable: Bool {
+        switch self {
+        case .notConnectedToInternet, .timedOut, .dnsFailure:
+            return true
+        case .serverError(let statusCode, _):
+            return statusCode == 0 || statusCode >= 500
+        case .cancelled, .tlsFailure, .keychainUnavailable,
+             .decodingFailure, .noBackendsRegistered, .unknown:
+            return false
+        }
+    }
+
     /// Reduces any thrown `Error` to the closest matching ``ManifoldKitError``
     /// case. The mapping is exhaustive across `URLError` codes that the
     /// inference / cloud / HF stacks can produce; unknown errors fall through
