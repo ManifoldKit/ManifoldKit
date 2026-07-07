@@ -54,10 +54,8 @@ final class ChatViewControlTests: XCTestCase {
         let vm = viewModel ?? makeChatViewModel()
         return ViewHierarchyDumper.dump(
             NavigationStack {
-                ChatView(
-                    showModelManagement: .constant(false),
-                    apiConfiguration: { EmptyView() }
-                )
+                ChatView(showModelManagement: .constant(false))
+                    .chatAPIConfiguration { EmptyView() }
             }
             .environment(vm)
         )
@@ -176,6 +174,56 @@ final class ChatViewControlTests: XCTestCase {
         XCTAssertFalse(
             dump.contains("Browse Models"),
             "ChatView with model loaded should not show 'Browse Models' button"
+        )
+    }
+
+    // MARK: - ChatView — chatEmptyState(_:) liveness (staleness-bug regression)
+
+    /// Minimal observable holder standing in for arbitrary host app state
+    /// (e.g. a flagship-prompt view model) that a `.chatEmptyState(_:)`
+    /// closure might read from.
+    @Observable
+    fileprivate final class EmptyStateProbe {
+        var label: String = "before-mutation"
+    }
+
+    /// Regression test for the deliberate staleness-bug fix in the
+    /// `ChatView` init collapse: `customEmptyPlaceholder` used to be built
+    /// EAGERLY as `AnyView(emptyState())` at init time, so any state the
+    /// closure captured was frozen at construction — a mutation applied
+    /// after building the view (but before first render) would never be
+    /// reflected. `.chatEmptyState(_:)` now stores the closure and invokes it
+    /// at render time (inside `ChatHistoryEmptyPlaceholder.body`), so it
+    /// reflects state mutated after `ChatView` was constructed.
+    ///
+    /// This is deliberately NOT redundant with `test_chatView_modelLoaded_showsEmptyPlaceholder`
+    /// above — that test only proves the *default* placeholder renders; it
+    /// says nothing about *when* a custom closure is evaluated.
+    func test_chatEmptyState_reflectsStateMutatedAfterConstruction() {
+        let probe = EmptyStateProbe()
+        let vm = makeChatViewModelWithMock()
+
+        // Build the view (and apply the modifier) BEFORE mutating `probe`.
+        // With eager evaluation this would freeze "before-mutation" into the
+        // stored placeholder; with lazy evaluation the closure re-reads
+        // `probe.label` when it's finally invoked during render.
+        let view = ChatView(showModelManagement: .constant(false))
+            .chatEmptyState { Text(probe.label) }
+
+        probe.label = "after-mutation"
+
+        let dump = ViewHierarchyDumper.dump(
+            NavigationStack { view }
+                .environment(vm)
+        )
+
+        XCTAssertTrue(
+            dump.contains("after-mutation"),
+            "chatEmptyState(_:) must reflect state mutated after ChatView construction, not freeze it at build time"
+        )
+        XCTAssertFalse(
+            dump.contains("before-mutation"),
+            "chatEmptyState(_:) rendered the value captured at construction time instead of the current value — the closure is being evaluated eagerly, not lazily"
         )
     }
 }

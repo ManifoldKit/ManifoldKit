@@ -14,8 +14,9 @@ import UIKit
 
 /// Guards the runtime-bootstrap migration path documented in the README and
 /// the MinimalExample app: assemble a `ManifoldBootstrap`, configure the chat
-/// view models from it, mount `ChatView(apiConfiguration:)`, and verify that
-/// runtime-driven persistence is wired without view-lifecycle late-binding.
+/// view models from it, mount `ChatView` with `.chatAPIConfiguration(_:)`,
+/// and verify that runtime-driven persistence is wired without
+/// view-lifecycle late-binding.
 final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
 
     @MainActor
@@ -53,12 +54,10 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         XCTAssertTrue((chatViewModel.persistence as AnyObject) === (sessionManager.persistence as AnyObject),
             "Both view models must share the runtime's single persistence provider instance")
 
-        let view = ChatView(
-            showModelManagement: .constant(false),
-            apiConfiguration: { APIConfigurationView() }
-        )
-        .environment(chatViewModel)
-        .environment(sessionManager)
+        let view = ChatView(showModelManagement: .constant(false))
+            .chatAPIConfiguration { APIConfigurationView() }
+            .environment(chatViewModel)
+            .environment(sessionManager)
 
         #if canImport(AppKit)
         let controller = NSHostingController(rootView: view)

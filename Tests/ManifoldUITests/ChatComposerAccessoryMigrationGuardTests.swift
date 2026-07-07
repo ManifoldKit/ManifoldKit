@@ -23,10 +23,8 @@ final class ChatComposerAccessoryMigrationGuardTests: XCTestCase {
     @MainActor
     func test_chatView_isInstantiableWithComposerAccessoryUnderDisabledTraits() {
         let view: AnyView = AnyView(
-            ChatView(
-                showModelManagement: .constant(false),
-                composerAccessory: { Text("Voice spike") }
-            )
+            ChatView(showModelManagement: .constant(false))
+                .chatComposerAccessory { Text("Voice spike") }
         )
         _ = view
         // Compilation is the assertion (API-surface guard).
