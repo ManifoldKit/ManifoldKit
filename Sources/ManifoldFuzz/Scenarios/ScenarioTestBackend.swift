@@ -82,7 +82,8 @@ public final class ScenarioTestBackend: InferenceBackend, @unchecked Sendable {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         generateCallCount += 1
         let callIndex = generateCallCount

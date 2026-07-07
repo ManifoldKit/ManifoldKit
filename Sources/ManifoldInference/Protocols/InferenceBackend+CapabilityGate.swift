@@ -22,10 +22,16 @@ public extension InferenceBackend {
     func generateEnforcingCapabilities(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints()
     ) throws -> GenerationStream {
         try enforceRequiredCapabilities(config.requiredCapabilities)
-        return try generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
+        return try generate(
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            config: config,
+            hints: hints
+        )
     }
 
     /// Throws ``InferenceError/noBackendSatisfiesRequirements(_:)`` listing the

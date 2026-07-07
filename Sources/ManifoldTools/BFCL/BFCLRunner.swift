@@ -159,8 +159,6 @@ public struct BFCLRunner {
             tools: testCase.tools,
             toolChoice: .auto,
             maxThinkingTokens: nil,
-            jsonMode: false,
-            thinkingMarkers: nil,
             maxToolIterations: 1
         )
         let (token, stream) = try service.enqueue(structuredMessages: messages, systemPrompt: "", config: config)

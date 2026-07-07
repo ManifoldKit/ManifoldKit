@@ -229,7 +229,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
         isModelLoaded = true
     }
 
-    public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         generateCallCount += 1
         lastPrompt = prompt
         lastSystemPrompt = systemPrompt

@@ -72,7 +72,8 @@ public final class SlowMockBackend: InferenceBackend, @unchecked Sendable {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let (tokens, delay) = withStateLock {
             _isGenerating = true

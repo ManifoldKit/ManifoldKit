@@ -278,18 +278,22 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
 
     public init(
         config: GenerationConfig,
+        thinkingMarkers: ThinkingMarkers? = nil,
         autoDetectedMarkers: ThinkingMarkers? = nil
     ) {
         self.visibleLimit = config.maxOutputTokens
         self.thinkingLimit = config.maxThinkingTokens
-        self.initialThinkingMarkers = config.thinkingMarkers
+        // `thinkingMarkers` is the per-request runtime hint (formerly
+        // `config.thinkingMarkers`, split into `GenerationRuntimeHints` in
+        // #2152).
+        self.initialThinkingMarkers = thinkingMarkers
         self.autoDetectedMarkers = autoDetectedMarkers
         // Same precedence as the legacy `OllamaStreamProcessor`:
         // per-request override > auto-detected from `/api/show` template >
         // Qwen3 default. The lookup order matters: hardcoding `.qwen3`
         // was the bug that leaked `<thinking>` and `<reasoning>` markers
         // as visible tokens before the auto-detection landed.
-        self.fallbackMarkers = config.thinkingMarkers ?? autoDetectedMarkers ?? .qwen3
+        self.fallbackMarkers = thinkingMarkers ?? autoDetectedMarkers ?? .qwen3
     }
 
     // MARK: - Per-frame event extraction

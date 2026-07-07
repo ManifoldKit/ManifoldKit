@@ -115,7 +115,8 @@ public final class FallbackBackend: InferenceBackend, @unchecked Sendable {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let backends = self.backends
         let policy = self.policy
@@ -141,6 +142,7 @@ public final class FallbackBackend: InferenceBackend, @unchecked Sendable {
                             prompt: prompt,
                             systemPrompt: systemPrompt,
                             config: config,
+                            hints: hints,
                             policy: policy,
                             retrySleeper: retrySleeper,
                             tokenSeen: tokenSeen,
@@ -202,6 +204,7 @@ public final class FallbackBackend: InferenceBackend, @unchecked Sendable {
         prompt: String,
         systemPrompt: String?,
         config: GenerationConfig,
+        hints: GenerationRuntimeHints,
         policy: FallbackPolicy,
         retrySleeper: @escaping @Sendable (Duration) async throws -> Void,
         tokenSeen: TokenSeenBox,
@@ -215,7 +218,8 @@ public final class FallbackBackend: InferenceBackend, @unchecked Sendable {
             let genStream = try backend.generate(
                 prompt: prompt,
                 systemPrompt: systemPrompt,
-                config: config
+                config: config,
+                hints: hints
             )
             for try await event in genStream.events {
                 if Self.isContentToken(event) {

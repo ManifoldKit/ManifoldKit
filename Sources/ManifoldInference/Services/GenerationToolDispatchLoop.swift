@@ -55,7 +55,7 @@ struct GenerationToolDispatchLoop {
     let toolRegistry: ToolRegistry?
     let toolApprovalGate: any ToolApprovalGate
     let currentBackend: () -> InferenceBackend?
-    let generateWithConfig: ([StructuredMessage], String?, GenerationConfig) throws -> GenerationStream
+    let generateWithConfig: ([StructuredMessage], String?, GenerationConfig, GenerationRuntimeHints) throws -> GenerationStream
     let yieldEvent: (GenerationEvent) -> Void
     let pauseWhileThermalCritical: (GenerationRequestToken) async -> Void
     /// Session-aware handoff detector. `nil` when the executor has not
@@ -80,7 +80,7 @@ struct GenerationToolDispatchLoop {
         toolRegistry: ToolRegistry?,
         toolApprovalGate: any ToolApprovalGate,
         currentBackend: @escaping () -> InferenceBackend?,
-        generateWithConfig: @escaping ([StructuredMessage], String?, GenerationConfig) throws -> GenerationStream,
+        generateWithConfig: @escaping ([StructuredMessage], String?, GenerationConfig, GenerationRuntimeHints) throws -> GenerationStream,
         yieldEvent: @escaping (GenerationEvent) -> Void,
         pauseWhileThermalCritical: @escaping (GenerationRequestToken) async -> Void,
         handoffDetector: ((ToolCall) -> HandoffDetectionResult)? = nil,
@@ -109,14 +109,16 @@ struct GenerationToolDispatchLoop {
         token: GenerationRequestToken,
         messages: [StructuredMessage],
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) async throws {
         do {
             let reason = try await runLoop(
                 token: token,
                 messages: messages,
                 systemPrompt: systemPrompt,
-                config: config
+                config: config,
+                hints: hints
             )
             yieldEvent(.generationCompleted(GenerationCompletion(reason: reason)))
         } catch is CancellationError {
@@ -159,7 +161,8 @@ struct GenerationToolDispatchLoop {
         token: GenerationRequestToken,
         messages: [StructuredMessage],
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) async throws -> GenerationCompletion.Reason {
         // First-time-only wiring: make sure the registry has a schema
         // validator installed so tools with non-trivial parameter schemas
@@ -195,7 +198,7 @@ struct GenerationToolDispatchLoop {
         // the ceiling. Checked at the boundary — not mid-stream — because cloud
         // backends only report usage at end-of-generation (#1939 item 3).
         let runTokenBudget: Int? = {
-            guard let max = config.maxRunTokens, max > 0 else { return nil }
+            guard let max = hints.maxRunTokens, max > 0 else { return nil }
             return max
         }()
         var cumulativeRunTokens = 0
@@ -227,7 +230,7 @@ struct GenerationToolDispatchLoop {
                 receiver.setToolAwareHistory(toolAwareHistory)
             }
 
-            let stream = try generateWithConfig(currentMessages, systemPrompt, config)
+            let stream = try generateWithConfig(currentMessages, systemPrompt, config, hints)
 
             // Tool calls are buffered during stream iteration and dispatched
             // only after the turn's stream has fully drained. Buffering lets the

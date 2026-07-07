@@ -434,7 +434,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         // Tool calling is synthesized via GuidedGeneration. The structured
         // schema is built up-front so a build failure (an unsupported

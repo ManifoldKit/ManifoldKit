@@ -150,7 +150,7 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
         isModelLoaded = true
     }
 
-    public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let script = nextTurn()
         isGenerating = true
 

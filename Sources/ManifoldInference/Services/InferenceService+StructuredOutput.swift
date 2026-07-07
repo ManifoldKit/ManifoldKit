@@ -316,10 +316,9 @@ extension InferenceService {
         // supports grammar-constrained sampling, and selects the strongest
         // mechanism — leaving `config.grammar` untouched for schema-only
         // backends so they never see a grammar they'd reject.
-        var routedConfig = config
-        routedConfig.structuredOutput = .jsonSchema(schemaString)
+        let hints = GenerationRuntimeHints(structuredOutput: .jsonSchema(schemaString))
 
-        let (_, stream) = try enqueue(messages: messages, config: routedConfig)
+        let (_, stream) = try enqueue(messages: messages, config: config, hints: hints)
 
         // Drain to a string. Collect only content tokens — thinking and tool
         // events are not part of the structured payload.

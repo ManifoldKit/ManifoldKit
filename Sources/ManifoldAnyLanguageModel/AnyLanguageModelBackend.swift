@@ -71,12 +71,13 @@ public final class AnyLanguageModelBackend: @unchecked Sendable, InferenceBacken
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         if !config.tools.isEmpty {
             throw AnyLanguageModelBridgeError.unsupportedToolCalling
         }
-        if config.jsonMode {
+        if hints.jsonMode {
             throw AnyLanguageModelBridgeError.unsupportedStructuredOutput
         }
         if config.grammar != nil {

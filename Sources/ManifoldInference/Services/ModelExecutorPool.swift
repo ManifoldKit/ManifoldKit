@@ -207,7 +207,8 @@ public final class ModelExecutorPool {
         on key: ModelExecutorKey? = nil,
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints()
     ) async throws -> GenerationStream {
         guard let target = key ?? activeKey else {
             throw InferenceError.inferenceFailure("No active model and no explicit executor key")
@@ -215,7 +216,7 @@ public final class ModelExecutorPool {
         // First load also establishes the active model if none is set.
         let exec = try await executor(for: target)
         if activeKey == nil { activeKey = target }
-        let stream = try await exec.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
+        let stream = try await exec.generate(prompt: prompt, systemPrompt: systemPrompt, config: config, hints: hints)
         await refreshSnapshots()
         return stream
     }
