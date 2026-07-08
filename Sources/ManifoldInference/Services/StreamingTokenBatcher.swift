@@ -8,7 +8,7 @@ import Foundation
 /// Moved from `ManifoldUI/GenerationQueue` to `ManifoldInference` so both
 /// `ConversationRuntime` (in `ManifoldRuntime`) and `GenerationQueue` (in
 /// `ManifoldUI`) can share the same implementation without a cross-module copy.
-public struct StreamingTokenBatcher: Sendable {
+package struct StreamingTokenBatcher: Sendable {
     private let interval: Duration
     private let maxBufferedCharacters: Int
     private var buffered = ""

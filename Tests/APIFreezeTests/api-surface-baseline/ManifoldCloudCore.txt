@@ -70,9 +70,6 @@ ConnectAddressPinningDelegate.pinnedData(for:on:) Func
 ConnectAddressPinningDelegate.urlSession(_:task:didFinishCollecting:) Func
 DNSRebindingGuard Enum
 DNSRebindingGuard.validate(url:) Func
-DefaultErrorBodyDecoder Struct
-DefaultErrorBodyDecoder.extractMessage(from:) Func
-DefaultErrorBodyDecoder.init() Constructor
 DefaultWebSearchRuntime Class
 DefaultWebSearchRuntime.init(baseURL:tokenProvider:model:session:) Constructor
 DefaultWebSearchRuntime.search(query:) Func
@@ -140,6 +137,7 @@ PromptCachePolicy.disabled EnumElement
 PromptCachePolicy.hash(into:) Func
 PromptCachePolicy.hashValue Var
 SSECloudBackend Class
+SSECloudBackend.activeHints Var
 SSECloudBackend.adapterRouting Var
 SSECloudBackend.backendName Var
 SSECloudBackend.baseURL Var
@@ -160,7 +158,7 @@ SSECloudBackend.extractEvents(from:) Func
 SSECloudBackend.extractStreamError(from:) Func
 SSECloudBackend.extractToken(from:) Func
 SSECloudBackend.extractUsage(from:) Func
-SSECloudBackend.generate(prompt:systemPrompt:config:) Func
+SSECloudBackend.generate(prompt:systemPrompt:config:hints:) Func
 SSECloudBackend.handleUsage(_:) Func
 SSECloudBackend.init(defaultModelName:urlSession:payloadHandler:) Constructor
 SSECloudBackend.isGenerating Var
@@ -205,10 +203,6 @@ StreamTermination.TokenUsage.promptTokens Var
 StreamTermination.__derived_enum_equals(_:_:) Func
 StreamTermination.streamComplete EnumElement
 StreamTermination.streamContinue EnumElement
-StrictSchemaTransform Enum
-StrictSchemaTransform.anthropicStrict(_:) Func
-StrictSchemaTransform.jsonSchemaString(from:) Func
-StrictSchemaTransform.openAIStrict(_:) Func
 ThinkingBlockManager Struct
 ThinkingBlockManager.flushIfOpen(into:) Func
 ThinkingBlockManager.init() Constructor

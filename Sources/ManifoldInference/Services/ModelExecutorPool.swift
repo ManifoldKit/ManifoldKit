@@ -5,7 +5,7 @@ import ManifoldContract
 /// A point-in-time, value-typed snapshot of one pooled executor. The pool
 /// publishes these for observation so SwiftUI / telemetry can render the live
 /// roster without `await`-ing into each executor actor on the render path.
-public struct ExecutorSnapshot: Sendable, Equatable, Identifiable {
+package struct ExecutorSnapshot: Sendable, Equatable, Identifiable {
     public var id: ModelExecutorKey { key }
     public let key: ModelExecutorKey
     public let backendName: String
@@ -42,7 +42,7 @@ public struct ExecutorSnapshot: Sendable, Equatable, Identifiable {
 /// non-active one.
 @Observable
 @MainActor
-public final class ModelExecutorPool {
+package final class ModelExecutorPool {
 
     /// Builds a loader closure for a given model key. The closure, when called,
     /// loads and returns a ready backend. Injected so the pool stays agnostic

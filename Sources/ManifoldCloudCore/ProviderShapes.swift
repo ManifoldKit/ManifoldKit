@@ -27,7 +27,7 @@ public protocol ErrorBodyDecoder: Sendable {
 
 /// Default decoder: handles `{error:{message:…}}`, flat `{message:…}`, and
 /// `{detail:…}` shapes used by OpenAI, Anthropic, and most compat servers.
-public struct DefaultErrorBodyDecoder: ErrorBodyDecoder {
+package struct DefaultErrorBodyDecoder: ErrorBodyDecoder {
     public init() {}
     public func extractMessage(from body: String) -> String? {
         parseCloudErrorMessage(from: body)

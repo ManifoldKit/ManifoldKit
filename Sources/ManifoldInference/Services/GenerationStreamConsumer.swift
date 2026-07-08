@@ -182,7 +182,7 @@ public struct GenerationStreamConsumer: Sendable {
 /// tend to duplicate: visible text, empty-response tracking, token usage, and
 /// in-flight thinking blocks. It intentionally leaves batching, persistence,
 /// cancellation, and event emission to the caller.
-public struct GenerationStreamAccumulator: Sendable {
+package struct GenerationStreamAccumulator: Sendable {
     public private(set) var visibleText: String
     public private(set) var isEmptyResponse: Bool
     public private(set) var tokenUsage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)?
