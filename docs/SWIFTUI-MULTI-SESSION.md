@@ -236,10 +236,10 @@ users a model browser, downloader, and storage UI. See
 
 Cloud backends need at least one configured ``APIEndpointRecord`` before
 the user can pick a model. Mount
-``ManifoldUIModelManagement.APIConfigurationView`` from your
-`ChatView(showModelManagement:apiConfiguration:)` to give users the
-endpoint editor. Hosts that pre-configure endpoints in code (e.g. for an
-internal demo) can skip the UI entirely and write directly to
+``ManifoldUIModelManagement.APIConfigurationView`` via
+`ChatView(showModelManagement:).chatAPIConfiguration { APIConfigurationView() }`
+to give users the endpoint editor. Hosts that pre-configure endpoints in code
+(e.g. for an internal demo) can skip the UI entirely and write directly to
 `bootstrap.endpointStore`.
 
 ## 5. When `ManifoldUIModelManagement` is required
@@ -260,13 +260,11 @@ struct RootView: View {
     @State private var showModelManagement = false
 
     var body: some View {
-        ChatView(
-            showModelManagement: $showModelManagement,
-            apiConfiguration: { APIConfigurationView() }
-        )
-        .sheet(isPresented: $showModelManagement) {
-            ModelManagementSheet()
-        }
+        ChatView(showModelManagement: $showModelManagement)
+            .chatAPIConfiguration { APIConfigurationView() }
+            .sheet(isPresented: $showModelManagement) {
+                ModelManagementSheet()
+            }
     }
 }
 ```
@@ -279,8 +277,8 @@ You need to import `ManifoldUIModelManagement` when your app surfaces:
 
 Cloud-only apps that pre-configure endpoints in code, or apps that build
 their own settings UI, can skip `ManifoldUIModelManagement` entirely and
-use `ChatView(showModelManagement:)` — the `APIConfig == EmptyView`
-convenience initializer supplies an empty sheet.
+use `ChatView(showModelManagement:)` with no `.chatAPIConfiguration(_:)`
+modifier — `ChatView` defaults to an empty sheet.
 
 ## 6. Full recipe: explicit bootstrap + multi-session UI + APIConfigurationView + Ollama
 
@@ -440,15 +438,13 @@ struct RootView: View {
         } detail: {
             // Pass APIConfigurationView via closure injection — this is the
             // structural pattern that avoids an import cycle between ManifoldUI
-            // and ManifoldUIModelManagement. Omit apiConfiguration: entirely
-            // if your app doesn't surface an API key editor.
-            ChatView(
-                showModelManagement: $showModelManagement,
-                apiConfiguration: { APIConfigurationView() }
-            )
-            .sheet(isPresented: $showModelManagement) {
-                ModelManagementSheet(modelRegistry: chatVM.modelRegistry)
-            }
+            // and ManifoldUIModelManagement. Omit .chatAPIConfiguration(_:)
+            // entirely if your app doesn't surface an API key editor.
+            ChatView(showModelManagement: $showModelManagement)
+                .chatAPIConfiguration { APIConfigurationView() }
+                .sheet(isPresented: $showModelManagement) {
+                    ModelManagementSheet(modelRegistry: chatVM.modelRegistry)
+                }
         }
         .onChange(of: sessionVM.activeSession) { _, newSession in
             guard let newSession,
@@ -463,8 +459,8 @@ struct RootView: View {
 > app surfaces a model browser, model downloader, or API endpoint editor UI.
 > Cloud-only apps that pre-seed endpoints in code (like the `start()` snippet
 > above), or apps that build their own settings UI, can omit the import
-> entirely and use `ChatView(showModelManagement:)` — the convenience
-> initializer supplies an empty API sheet.
+> and the `.chatAPIConfiguration(_:)` modifier entirely — `ChatView` defaults
+> to an empty API sheet.
 
 ## 7. Persistence and relaunch guarantees
 

@@ -12,6 +12,36 @@ import ManifoldInference
 /// recovery flow. Callers typically pass `{ APIConfigurationView() }` from
 /// `ManifoldUIModelManagement`. The closure-injection keeps `ManifoldUI` free
 /// of any back-edge to the model-management module.
+///
+/// ## Customization
+///
+/// `ChatView` has two initializers — the designated one (`apiConfiguration:`
+/// required) and a convenience for hosts that don't ship an API-configuration
+/// surface at all (`APIConfig == EmptyView`). Every *other* optional
+/// customization seam that used to be a combinatorial initializer overload is
+/// now a modifier applied to the constructed view instead:
+///
+/// - ``chatEmptyState(_:)`` — replaces the placeholder shown when the active
+///   session has no messages.
+/// - ``chatComposerAccessory(_:)`` — renders a host-supplied accessory (photo
+///   attachment, voice capture, …) above the stock composer.
+/// - ``chatContextMenuItems(_:)`` — appends extra per-message context-menu
+///   items after the built-in pin/copy/edit/regenerate/branch/delete actions.
+/// - ``chatCustomKindRenderer(_:)`` — renders non-user-visible message kinds
+///   (memory, annotation, tool-result, custom) that are hidden by default.
+/// - ``chatAPIConfiguration(_:)`` — switches the API configuration view after
+///   construction (an alternative to passing `apiConfiguration:` at init).
+///
+/// **Composition is LAST-WINS.** Applying the same modifier more than once
+/// replaces the previous closure entirely — there is no merging of two
+/// `chatEmptyState { ... }` calls, for example. Each modifier's doc comment
+/// restates this.
+///
+/// All builder closures (including `apiConfiguration`) are invoked at
+/// render/presentation time, not at the point the initializer or modifier is
+/// applied — so `@Environment` / `@Bindable` lookups inside the supplied
+/// view, and any state mutated after `ChatView` was constructed, resolve
+/// against the live view tree.
 public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
@@ -31,10 +61,19 @@ public struct ChatView<APIConfig: View>: View {
     @State private var showArchitectView: Bool = false
     #endif
 
+    private let linkPreviewProvider: LinkPreviewProvider?
+
     /// Optional replacement for the built-in "Send a message to start chatting."
-    /// placeholder shown when the session has no messages. Hosts pass a custom
-    /// view here to surface a flagship prompt button, first-run hints, etc.
-    private let customEmptyPlaceholder: AnyView?
+    /// placeholder shown when the session has no messages. Set via
+    /// ``chatEmptyState(_:)``.
+    ///
+    /// Held as a closure and evaluated at render time (not eagerly at
+    /// modifier-application time) so it reflects state mutated after
+    /// `ChatView` was constructed — e.g. an `@Observable` model whose
+    /// properties change after the view is built. Previously this was built
+    /// eagerly into a stored `AnyView` at init, which froze whatever state
+    /// existed at construction time; that was a latent staleness bug.
+    private var emptyStateBuilder: (() -> AnyView)?
 
     /// Builder for the API configuration view. Held as a closure (rather than the
     /// pre-built view) so that any `@Environment` / `@Bindable` lookups inside
@@ -42,27 +81,24 @@ public struct ChatView<APIConfig: View>: View {
     /// `ChatView` init.
     private let apiConfigurationBuilder: () -> APIConfig
 
-    /// Optional host-supplied accessory rendered above the stock composer.
-    /// This is the integration seam for add-ons such as voice capture without
-    /// forcing `ManifoldUI` to depend on optional sibling modules.
-    private let composerAccessoryBuilder: (() -> AnyView)?
-
-    /// Optional opt-in metadata provider for URL preview cards in messages.
-    ///
-    /// The default is `nil`: `ManifoldUI` performs no network fetching and
-    /// renders no link previews unless a host supplies this closure.
-    private let linkPreviewProvider: LinkPreviewProvider?
+    /// Optional host-supplied accessory rendered above the stock composer,
+    /// set via ``chatComposerAccessory(_:)``. This is the integration seam
+    /// for add-ons such as voice capture without forcing `ManifoldUI` to
+    /// depend on optional sibling modules.
+    private var composerAccessoryBuilder: (() -> AnyView)?
 
     /// Builder for extra per-message context-menu items rendered after the
-    /// built-in actions (pin, copy, edit, regenerate, branch, delete).
-    /// Defaults to `nil`, in which case only the built-in items appear.
-    /// The closure is invoked per message so hosts can vary items by role
-    /// or content.
-    private let contextMenuItemsBuilder: ((ChatMessage) -> AnyView)?
+    /// built-in actions (pin, copy, edit, regenerate, branch, delete), set via
+    /// ``chatContextMenuItems(_:)``. `nil` means only the built-in items appear.
+    /// The closure is invoked per message so hosts can vary items by role or
+    /// content.
+    private var contextMenuItemsBuilder: ((ChatMessage) -> AnyView)?
 
-    /// Optional renderer for non-user-visible kind records. By default these are hidden.
-    /// Hosts supply this to render memory bubbles, annotation labels, or other internal records.
-    private let customKindRenderer: ((ChatMessage) -> AnyView)?
+    /// Optional renderer for non-user-visible kind records, set via
+    /// ``chatCustomKindRenderer(_:)``. By default these are hidden. Hosts
+    /// supply this to render memory bubbles, annotation labels, or other
+    /// internal records.
+    private var customKindRenderer: ((ChatMessage) -> AnyView)?
 
     public init(
         showModelManagement: Binding<Bool>,
@@ -70,159 +106,8 @@ public struct ChatView<APIConfig: View>: View {
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = nil
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = nil
-        self.customKindRenderer = nil
-    }
-
-    public init<ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = nil
         self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = nil
-        self.customKindRenderer = nil
-    }
-
-    /// Creates a ``ChatView`` with a host-supplied empty-state view rendered
-    /// when the active session has no messages.
-    ///
-    /// Use this overload to surface a curated prompt button, a first-run
-    /// tour, or any other call-to-action in place of the default placeholder.
-    public init<EmptyContent: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = AnyView(emptyState())
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = nil
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = nil
-        self.customKindRenderer = nil
-    }
-
-    public init<EmptyContent: View, ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = AnyView(emptyState())
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = nil
-        self.customKindRenderer = nil
-    }
-
-    /// Creates a ``ChatView`` with host-supplied extra items appended to each
-    /// message's context menu.
-    ///
-    /// The `contextMenuItems` closure is invoked per ``ChatMessage``;
-    /// items it returns render after the built-in pin/copy/edit/regenerate/
-    /// branch/delete actions. Use this overload to add app-specific actions
-    /// such as "Reply", "Translate", or "Send to…" without forking the
-    /// stock message bubble.
-    public init<ExtraItems: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = nil
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = nil
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
-        self.customKindRenderer = nil
-    }
-
-    public init<ExtraItems: View, ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = nil
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
-        self.customKindRenderer = nil
-    }
-
-    public init<EmptyContent: View, ExtraItems: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = AnyView(emptyState())
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = nil
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
-        self.customKindRenderer = nil
-    }
-
-    public init<EmptyContent: View, ExtraItems: View, ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = AnyView(emptyState())
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
-        self.customKindRenderer = nil
-    }
-
-    /// Creates a ``ChatView`` with a ``customKindRenderer`` for non-user-visible records.
-    ///
-    /// By default, records with `kind.isUserVisible == false` (memory, annotation,
-    /// toolResult, custom) are hidden. Supply this overload to render them as custom
-    /// views — e.g. a collapsible "Memory updated" banner above compression summaries.
-    ///
-    /// - Parameters:
-    ///   - customKindRenderer: Invoked for each record whose `kind.isUserVisible == false`.
-    ///     Return `AnyView(EmptyView())` to hide specific kinds selectively.
-    public init<KindView: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder customKindRenderer: @escaping (ChatMessage) -> KindView,
-        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
-    ) {
-        self._showModelManagement = showModelManagement
-        self.customEmptyPlaceholder = nil
-        self.apiConfigurationBuilder = apiConfiguration
-        self.composerAccessoryBuilder = nil
-        self.linkPreviewProvider = linkPreviewProvider
-        self.contextMenuItemsBuilder = nil
-        self.customKindRenderer = { message in AnyView(customKindRenderer(message)) }
     }
 
     /// Creates a ``ChatView`` without an API-configuration surface.
@@ -240,109 +125,94 @@ public struct ChatView<APIConfig: View>: View {
         )
     }
 
-    public init<ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
-            linkPreviewProvider: linkPreviewProvider,
-            composerAccessory: composerAccessory,
-            apiConfiguration: { EmptyView() }
-        )
+    // MARK: - Modifier slots
+
+    /// Replaces the built-in "Send a message to start chatting." placeholder
+    /// shown when the active session has no messages.
+    ///
+    /// The closure is evaluated at render time, so it reflects state mutated
+    /// after `ChatView` was constructed.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous empty-state builder entirely; there is no merging.
+    public func chatEmptyState<Content: View>(
+        @ViewBuilder _ builder: @escaping () -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.emptyStateBuilder = { AnyView(builder()) }
+        return copy
     }
 
-    /// Creates a ``ChatView`` with a custom empty state and no
-    /// API-configuration surface.
-    public init<EmptyContent: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
+    /// Switches the API-key recovery / configuration view presented as a
+    /// sheet or popover from the error-recovery banner, the settings sheet,
+    /// and the toolbar's API-key check flow — an alternative to passing
+    /// `apiConfiguration:` to the initializer.
+    ///
+    /// Typically `{ APIConfigurationView() }` from `ManifoldUIModelManagement`.
+    /// The closure is invoked at sheet/popover presentation time, not when
+    /// this modifier is applied, so `@Environment` / `@Bindable` lookups
+    /// inside the supplied view resolve against the live view tree.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once (or after
+    /// supplying `apiConfiguration:` at init) replaces the previous builder
+    /// entirely; there is no merging.
+    public func chatAPIConfiguration<Content: View>(
+        @ViewBuilder _ builder: @escaping () -> Content
+    ) -> ChatView<Content> {
+        var copy = ChatView<Content>(
+            showModelManagement: $showModelManagement,
             linkPreviewProvider: linkPreviewProvider,
-            emptyState: emptyState,
-            apiConfiguration: { EmptyView() }
+            apiConfiguration: builder
         )
+        copy.emptyStateBuilder = emptyStateBuilder
+        copy.composerAccessoryBuilder = composerAccessoryBuilder
+        copy.contextMenuItemsBuilder = contextMenuItemsBuilder
+        copy.customKindRenderer = customKindRenderer
+        return copy
     }
 
-    public init<EmptyContent: View, ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
-            linkPreviewProvider: linkPreviewProvider,
-            emptyState: emptyState,
-            composerAccessory: composerAccessory,
-            apiConfiguration: { EmptyView() }
-        )
+    /// Renders a host-supplied accessory above the stock composer — e.g. a
+    /// photo-attachment button or a voice-capture control.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous accessory builder entirely; there is no merging.
+    public func chatComposerAccessory<Content: View>(
+        @ViewBuilder _ builder: @escaping () -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.composerAccessoryBuilder = { AnyView(builder()) }
+        return copy
     }
 
-    /// Creates a ``ChatView`` with host-supplied context-menu items and no
-    /// API-configuration surface.
-    public init<ExtraItems: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
-            linkPreviewProvider: linkPreviewProvider,
-            contextMenuItems: contextMenuItems,
-            apiConfiguration: { EmptyView() }
-        )
+    /// Appends host-supplied items to each message's context menu, after the
+    /// built-in pin/copy/edit/regenerate/branch/delete actions.
+    ///
+    /// The closure is invoked per ``ChatMessage`` so hosts can vary items by
+    /// role or content.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous builder entirely; there is no merging.
+    public func chatContextMenuItems<Content: View>(
+        @ViewBuilder _ builder: @escaping (ChatMessage) -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.contextMenuItemsBuilder = { message in AnyView(builder(message)) }
+        return copy
     }
 
-    public init<ExtraItems: View, ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
-            linkPreviewProvider: linkPreviewProvider,
-            contextMenuItems: contextMenuItems,
-            composerAccessory: composerAccessory,
-            apiConfiguration: { EmptyView() }
-        )
-    }
-
-    public init<EmptyContent: View, ExtraItems: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
-            linkPreviewProvider: linkPreviewProvider,
-            emptyState: emptyState,
-            contextMenuItems: contextMenuItems,
-            apiConfiguration: { EmptyView() }
-        )
-    }
-
-    public init<EmptyContent: View, ExtraItems: View, ComposerAccessory: View>(
-        showModelManagement: Binding<Bool>,
-        linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
-        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
-    ) where APIConfig == EmptyView {
-        self.init(
-            showModelManagement: showModelManagement,
-            linkPreviewProvider: linkPreviewProvider,
-            emptyState: emptyState,
-            contextMenuItems: contextMenuItems,
-            composerAccessory: composerAccessory,
-            apiConfiguration: { EmptyView() }
-        )
+    /// Renders non-user-visible kind records — those with
+    /// `kind.isUserVisible == false` (memory, annotation, toolResult, custom)
+    /// — which are hidden by default. Return `AnyView(EmptyView())` from the
+    /// closure to hide specific kinds selectively.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous renderer entirely; there is no merging.
+    public func chatCustomKindRenderer<Content: View>(
+        @ViewBuilder _ builder: @escaping (ChatMessage) -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.customKindRenderer = { message in AnyView(builder(message)) }
+        return copy
     }
 
     // MARK: - Body
@@ -448,7 +318,7 @@ public struct ChatView<APIConfig: View>: View {
 
     private var messageList: some View {
         ChatHistoryView(
-            customEmptyPlaceholder: customEmptyPlaceholder,
+            emptyStateBuilder: emptyStateBuilder,
             linkPreviewProvider: linkPreviewProvider,
             contextMenuItemsBuilder: contextMenuItemsBuilder,
             customKindRenderer: customKindRenderer
@@ -469,10 +339,7 @@ public struct ChatView<APIConfig: View>: View {
 
 #Preview("Chat View") {
     NavigationStack {
-        ChatView(
-            showModelManagement: .constant(false),
-            apiConfiguration: { EmptyView() }
-        )
+        ChatView(showModelManagement: .constant(false))
     }
     .environment(ChatViewModel())
 }

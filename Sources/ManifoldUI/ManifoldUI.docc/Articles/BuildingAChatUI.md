@@ -382,7 +382,7 @@ Keep ``ChatViewModel/configure(persistence:)`` for adopters that provide custom 
 
 ### Wiring `APIConfigurationView` from `ManifoldUIModelManagement`
 
-`ChatView` accepts a `@ViewBuilder apiConfiguration:` closure that returns the host's API-key recovery sheet. The closure-injection pattern is **the canonical way** to mount `ManifoldUIModelManagement.APIConfigurationView` from a host that depends on both chat surfaces — and it is structural, not stylistic. Without it, `ManifoldUI` would have to import `ManifoldUIModelManagement` to reference the view directly, which would close a forbidden import cycle (the dependency edge runs UIModelManagement → UI, never the reverse). Closure injection lets the host module sit above both and pass the value down by name.
+`ChatView` accepts a host-supplied API-key recovery sheet via the `.chatAPIConfiguration(_:)` modifier, a `@ViewBuilder` closure. The closure-injection pattern is **the canonical way** to mount `ManifoldUIModelManagement.APIConfigurationView` from a host that depends on both chat surfaces — and it is structural, not stylistic. Without it, `ManifoldUI` would have to import `ManifoldUIModelManagement` to reference the view directly, which would close a forbidden import cycle (the dependency edge runs UIModelManagement → UI, never the reverse). Closure injection lets the host module sit above both and pass the value down by name.
 
 ```swift,no-build
 import ManifoldUI
@@ -392,17 +392,15 @@ struct RootView: View {
     @State private var showModelManagement = false
 
     var body: some View {
-        ChatView(
-            showModelManagement: $showModelManagement,
-            apiConfiguration: { APIConfigurationView() }
-        )
+        ChatView(showModelManagement: $showModelManagement)
+            .chatAPIConfiguration { APIConfigurationView() }
     }
 }
 ```
 
-Hosts that don't use `ManifoldUIModelManagement` (e.g. cloud-only builds or apps with their own settings UI) can use `ChatView(showModelManagement:)`; the `APIConfig == EmptyView` convenience initializer supplies the empty API sheet for them.
+Hosts that don't use `ManifoldUIModelManagement` (e.g. cloud-only builds or apps with their own settings UI) can use `ChatView(showModelManagement:)` with no `.chatAPIConfiguration(_:)` modifier; `ChatView` supplies an empty API sheet for them.
 
-The closure is invoked at sheet/popover presentation time, not at `ChatView` init, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction.
+**LAST-WINS:** applying `.chatAPIConfiguration(_:)` more than once replaces the previous closure entirely — there is no merging. The closure is invoked at sheet/popover presentation time, not when the modifier is applied, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction.
 
 ## Next Steps
 

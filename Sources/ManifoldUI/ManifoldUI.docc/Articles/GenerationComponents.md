@@ -10,23 +10,25 @@ ManifoldKit ships three composable components for building generative chat exper
 
 ``PhotoAttachmentButton`` wraps a `PhotosPicker` and stages the selected image on ``ChatViewModel`` using ``ChatViewModel/stageAttachment(_:)``. The staged image is sent as a ``MessagePart/image(data:mimeType:placeholderHash:)`` part alongside the next user message.
 
-Place it in the `composerAccessory` slot of ``ChatView``:
+Apply it via the ``ChatView/chatComposerAccessory(_:)`` modifier on ``ChatView``:
 
 ```swift,no-build
-ChatView(showModelManagement: $show, composerAccessory: {
-    PhotoAttachmentButton()
-})
+ChatView(showModelManagement: $show)
+    .chatComposerAccessory {
+        PhotoAttachmentButton()
+    }
 ```
 
 Combine it with ``VoiceComposerAccessory`` when your app supports both modalities:
 
 ```swift,no-build
-ChatView(showModelManagement: $show, composerAccessory: {
-    HStack {
-        PhotoAttachmentButton()
-        VoiceComposerAccessory(controller: controller)
+ChatView(showModelManagement: $show)
+    .chatComposerAccessory {
+        HStack {
+            PhotoAttachmentButton()
+            VoiceComposerAccessory(controller: controller)
+        }
     }
-})
 ```
 
 The button tint changes to ``Color/accentColor`` when an image is already staged, giving the user visual confirmation without requiring a separate indicator view. ``PhotoAttachmentButton/clearSelection()`` resets both the picker state and the staged attachment — useful when the host needs to programmatically cancel an in-progress compose operation.
@@ -39,23 +41,25 @@ The button tint changes to ``Color/accentColor`` when an image is already staged
 
 ``VisionInputButton`` hides itself automatically when the active backend does not report ``BackendCapabilities/supportsVision`` — no extra conditional logic is required in the host UI.
 
-Place it in the `composerAccessory` slot of ``ChatView``:
+Apply it via the ``ChatView/chatComposerAccessory(_:)`` modifier on ``ChatView``:
 
 ```swift,no-build
-ChatView(showModelManagement: $show, composerAccessory: {
-    VisionInputButton()
-})
+ChatView(showModelManagement: $show)
+    .chatComposerAccessory {
+        VisionInputButton()
+    }
 ```
 
 Combine it with ``VoiceComposerAccessory`` when your app supports both modalities:
 
 ```swift,no-build
-ChatView(showModelManagement: $show, composerAccessory: {
-    HStack {
-        VisionInputButton()
-        VoiceComposerAccessory(controller: controller)
+ChatView(showModelManagement: $show)
+    .chatComposerAccessory {
+        HStack {
+            VisionInputButton()
+            VoiceComposerAccessory(controller: controller)
+        }
     }
-})
 ```
 
 > Note: ``PhotoAttachmentButton`` is iOS-only and predates this component. New code should prefer ``VisionInputButton``, which compiles on both iOS and macOS.
@@ -129,12 +133,13 @@ Each tool source requires its corresponding generation runtime to be wired into 
 
 ``GenerativeContextMenuItems`` surfaces generation actions directly in the
 long-press context menu of each chat bubble. Pass it to ``ChatView`` via the
-`contextMenuItems` trailing closure:
+``ChatView/chatContextMenuItems(_:)`` modifier:
 
 ```swift,no-build
-ChatView(showModelManagement: $show) { message in
-    GenerativeContextMenuItems(message: message, viewModel: viewModel)
-}
+ChatView(showModelManagement: $show)
+    .chatContextMenuItems { message in
+        GenerativeContextMenuItems(message: message, viewModel: viewModel)
+    }
 ```
 
 Items appear conditionally based on the message content and which runtimes are

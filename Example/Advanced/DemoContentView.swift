@@ -83,18 +83,16 @@ struct DemoContentView: View {
         ) {
             sidebar
         } detail: {
-            ChatView(
-                showModelManagement: $isModelManagementPresented,
-                emptyState: { ChatEmptyStateView(runScenario: runScenario) },
-                composerAccessory: {
+            ChatView(showModelManagement: $isModelManagementPresented)
+                .chatEmptyState { ChatEmptyStateView(runScenario: runScenario) }
+                .chatComposerAccessory {
                     #if !targetEnvironment(simulator)
                     VoiceComposerAccessory(controller: voiceController)
                     #else
                     EmptyView()
                     #endif
-                },
-                apiConfiguration: { APIConfigurationView() }
-            )
+                }
+                .chatAPIConfiguration { APIConfigurationView() }
                 // Theming, all three layers composed: Layer 1 tokens via
                 // `.chatTheme(_:)`, Layer 2 bubble chrome via
                 // `.messageBubbleStyle(_:)`, Layer 3 per-message override via

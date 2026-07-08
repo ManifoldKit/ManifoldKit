@@ -15,7 +15,10 @@ struct ChatHistoryView: View {
     /// `params.defaultMessageView()`. Injected with `.chatMessageRenderer(_:)`.
     @Environment(\.chatMessageRenderer) private var messageRenderer
 
-    let customEmptyPlaceholder: AnyView?
+    /// Builder for a host-supplied empty-state view, invoked at render time
+    /// (not stored eagerly) so it reflects state mutated after `ChatView` was
+    /// constructed.
+    let emptyStateBuilder: (() -> AnyView)?
     let linkPreviewProvider: LinkPreviewProvider?
     let contextMenuItemsBuilder: ((ChatMessage) -> AnyView)?
     let customKindRenderer: ((ChatMessage) -> AnyView)?
@@ -37,7 +40,7 @@ struct ChatHistoryView: View {
                     }
 
                     if viewModel.messages.isEmpty && !viewModel.isGenerating {
-                        ChatHistoryEmptyPlaceholder(customContent: customEmptyPlaceholder)
+                        ChatHistoryEmptyPlaceholder(customContentBuilder: emptyStateBuilder)
                     }
 
                     // why: iterate `messages` directly (ChatMessage is
@@ -138,12 +141,16 @@ struct ChatHistoryView: View {
 
 struct ChatHistoryEmptyPlaceholder: View {
 
-    let customContent: AnyView?
+    /// Invoked here, inside `body`, rather than stored as a pre-built `AnyView` —
+    /// this is what makes the empty state reflect state mutated after `ChatView`
+    /// was constructed (SwiftUI's Observation tracking registers property reads
+    /// that happen during body evaluation, wherever on the call stack they occur).
+    let customContentBuilder: (() -> AnyView)?
 
     var body: some View {
         Group {
-            if let customContent {
-                customContent
+            if let customContentBuilder {
+                customContentBuilder()
             } else {
                 Text("Send a message to start chatting.")
                     .foregroundStyle(.tertiary)

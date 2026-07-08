@@ -16,21 +16,23 @@ import ManifoldInference
 /// unsupported the button is hidden.
 ///
 /// ```swift
-/// ChatView(showModelManagement: $show, composerAccessory: {
-///     VisionInputButton()
-/// })
+/// ChatView(showModelManagement: $show)
+///     .chatComposerAccessory {
+///         VisionInputButton()
+///     }
 /// ```
 ///
 /// Combine with `VoiceComposerAccessory` (from `ManifoldVoice`) when your app
 /// supports both modalities:
 ///
 /// ```swift
-/// ChatView(showModelManagement: $show, composerAccessory: {
-///     HStack {
-///         VisionInputButton()
-///         VoiceComposerAccessory(controller: controller)
+/// ChatView(showModelManagement: $show)
+///     .chatComposerAccessory {
+///         HStack {
+///             VisionInputButton()
+///             VoiceComposerAccessory(controller: controller)
+///         }
 ///     }
-/// })
 /// ```
 ///
 /// > Note: On iOS, `PhotoAttachmentButton` provides equivalent functionality

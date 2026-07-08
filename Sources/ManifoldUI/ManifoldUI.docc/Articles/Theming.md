@@ -19,7 +19,8 @@ Every layer is a thin semantic shell over SwiftUI's own resolution machinery. Th
 ``ChatTheme`` is a `Sendable` struct of semantic tokens. Inject it with the `.chatTheme(_:)` modifier; it cascades through the environment like `.tint(_:)` or `.font(_:)`, so a single call at the chat root reaches every bubble.
 
 ```swift,no-build
-ChatView(showModelManagement: $showModels) { APIConfigurationView() }
+ChatView(showModelManagement: $showModels)
+    .chatAPIConfiguration { APIConfigurationView() }
     .chatTheme(
         ChatTheme(
             userBubbleBackground: AnyShapeStyle(Color.indigo),
@@ -40,7 +41,8 @@ When you need to restructure the bubble *container* — a different shape, borde
 Three built-ins ship, exposed as static members the way Apple ships `.bordered`:
 
 ```swift,no-build
-ChatView(showModelManagement: $showModels) { APIConfigurationView() }
+ChatView(showModelManagement: $showModels)
+    .chatAPIConfiguration { APIConfigurationView() }
     .messageBubbleStyle(.iMessage)   // .plain (default), .iMessage, or .card
 ```
 
@@ -68,7 +70,8 @@ Because `makeBody` returns a view, it can read `@Environment(\.colorScheme)`, th
 Sometimes one *kind* of message needs a bespoke view — a tool-call card, a rich receipt, a map. The `.chatMessageRenderer(_:)` modifier installs a closure that gets first refusal on every row. Handle the messages you care about and call `defaultMessageView()` for the rest:
 
 ```swift,no-build
-ChatView(showModelManagement: $showModels) { APIConfigurationView() }
+ChatView(showModelManagement: $showModels)
+    .chatAPIConfiguration { APIConfigurationView() }
     .chatMessageRenderer { params in
         if case .toolResult = params.message.kind {
             AnyView(ToolResultCard(message: params.message))
@@ -94,7 +97,8 @@ import ManifoldUI
 struct ThemedChatApp: App {
     var body: some Scene {
         WindowGroup {
-            ChatView(showModelManagement: .constant(false)) { EmptyView() }
+            ChatView(showModelManagement: .constant(false))
+                .chatAPIConfiguration { EmptyView() }
                 .chatTheme(
                     ChatTheme(
                         userBubbleBackground: AnyShapeStyle(Color.indigo),

@@ -5,13 +5,11 @@ import SwiftUI
 /// Regression test for PR #796 review feedback.
 ///
 /// `APIConfigurationView` is the canonical thing host apps wire into
-/// `ChatView`'s new `apiConfiguration:` view-builder slot:
+/// `ChatView` via the `.chatAPIConfiguration(_:)` modifier:
 ///
 /// ```swift
-/// ChatView(
-///     showModelManagement: $showSheet,
-///     apiConfiguration: { APIConfigurationView() }
-/// )
+/// ChatView(showModelManagement: $showSheet)
+///     .chatAPIConfiguration { APIConfigurationView() }
 /// ```
 ///
 /// The **type and `init()`** must remain public in every build shape so the

@@ -12,7 +12,7 @@ import ManifoldInference
 /// sent along with the next user message.
 ///
 /// Pair with ``VoiceComposerAccessory`` or use standalone as the
-/// `composerAccessory` argument to ``ChatView``.
+/// ``ChatView/chatComposerAccessory(_:)`` modifier on ``ChatView``.
 ///
 /// > Note: Consider using ``VisionInputButton`` which provides the same
 /// > functionality on iOS and additionally supports macOS file-picker input.
@@ -20,18 +20,20 @@ import ManifoldInference
 /// ## Usage
 ///
 /// ```swift
-/// // As sole composerAccessory:
-/// ChatView(showModelManagement: $show, composerAccessory: {
-///     PhotoAttachmentButton()
-/// })
+/// // As sole composer accessory:
+/// ChatView(showModelManagement: $show)
+///     .chatComposerAccessory {
+///         PhotoAttachmentButton()
+///     }
 ///
 /// // Alongside voice:
-/// ChatView(showModelManagement: $show, composerAccessory: {
-///     HStack {
-///         PhotoAttachmentButton()
-///         VoiceComposerAccessory(controller: controller)
+/// ChatView(showModelManagement: $show)
+///     .chatComposerAccessory {
+///         HStack {
+///             PhotoAttachmentButton()
+///             VoiceComposerAccessory(controller: controller)
+///         }
 ///     }
-/// })
 /// ```
 public struct PhotoAttachmentButton: View {
     @Environment(ChatViewModel.self) private var viewModel
