@@ -40,7 +40,8 @@ public final class TokenTrackingMockBackend: InferenceBackend, TokenUsageProvide
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         isGenerating = true
         let tokens = tokensToYield

@@ -377,7 +377,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // (`additionalProperties:false` + all-required + null-unions) and
         // emitted under `response_format: {type:"json_schema", strict:true}`,
         // which guarantees the model's output validates against the schema.
-        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: config.structuredOutput)
+        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: activeHints.structuredOutput)
         let strictRequested = capabilities.supportsStrictSchema && strictSchemaString != nil
         if strictRequested,
            let schemaString = strictSchemaString,
@@ -390,7 +390,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
                     "schema": strictSchema,
                 ] as [String: Any],
             ]
-        } else if config.jsonMode {
+        } else if activeHints.jsonMode {
             // OpenAI-native providers accept `response_format`; Ollama's
             // OpenAI-compatible adapter looks for the legacy top-level
             // `format: "json"` switch.

@@ -74,7 +74,8 @@ enum BackendSeamConsumer {
         func generate(
             prompt: String,
             systemPrompt: String?,
-            config: GenerationConfig
+            config: GenerationConfig,
+            hints: GenerationRuntimeHints
         ) throws -> GenerationStream {
             let (stream, continuation) = AsyncThrowingStream<GenerationEvent, Error>.makeStream()
             continuation.finish()

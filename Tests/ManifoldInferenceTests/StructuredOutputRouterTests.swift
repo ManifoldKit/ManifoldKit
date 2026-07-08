@@ -64,15 +64,18 @@ final class StructuredOutputRouterTests: XCTestCase {
         )
     }
 
-    func test_generationConfigStructuredOutput_isRuntimeOnly() throws {
-        let original = GenerationConfig(structuredOutput: .jsonSchema(#"{"type":"object"}"#))
+    func test_structuredOutput_isRuntimeOnly_onHints() throws {
+        // structuredOutput moved off GenerationConfig into the non-Codable
+        // GenerationRuntimeHints (#2152): it is a per-request runtime input, so
+        // it carries on the hints and never appears on the config's persisted
+        // payload.
+        let hints = GenerationRuntimeHints(structuredOutput: .jsonSchema(#"{"type":"object"}"#))
+        XCTAssertEqual(hints.structuredOutput, .jsonSchema(#"{"type":"object"}"#))
 
-        let data = try JSONEncoder().encode(original)
+        // A config encodes without any structuredOutput key.
+        let data = try JSONEncoder().encode(GenerationConfig())
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
-
         XCTAssertNil(json["structuredOutput"])
-        XCTAssertNil(decoded.structuredOutput)
     }
 
     func test_capabilitiesPreferredStructuredOutputSupport() {

@@ -172,7 +172,8 @@ public actor ModelExecutor {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         guard let backend else {
             throw InferenceError.inferenceFailure("No model loaded in executor \(key.rawValue)")
@@ -185,7 +186,8 @@ public actor ModelExecutor {
         let upstream = try backend.generateEnforcingCapabilities(
             prompt: prompt,
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
 
         _state = .generating

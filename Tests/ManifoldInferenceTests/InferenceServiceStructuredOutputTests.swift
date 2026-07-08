@@ -84,9 +84,10 @@ final class InferenceServiceStructuredOutputTests: XCTestCase {
         let result = try await service.respond(Weather.self, to: "Weather in Rome?")
 
         let config = try XCTUnwrap(backend.lastConfig, "generate() was not called")
+        let hints = try XCTUnwrap(backend.lastHints, "generate() was not called")
         // Router selected GBNF: grammar lowered onto config, strategy hint cleared.
         XCTAssertNotNil(config.grammar, "router did not lower the schema to a GBNF grammar")
-        XCTAssertNil(config.structuredOutput, "grammar path should clear the strategy hint")
+        XCTAssertNil(hints.structuredOutput, "grammar path should clear the strategy hint")
         XCTAssertEqual(result.strategy, .gbnf(try XCTUnwrap(config.grammar)))
 
         // Sabotage check (run manually before commit, then remove): breaking the
@@ -108,9 +109,10 @@ final class InferenceServiceStructuredOutputTests: XCTestCase {
         let result = try await service.respond(Weather.self, to: "Weather in Bern?")
 
         let config = try XCTUnwrap(backend.lastConfig)
+        let hints = try XCTUnwrap(backend.lastHints)
         XCTAssertNil(config.grammar, "non-grammar backend must not receive a grammar")
-        guard case .jsonSchema = config.structuredOutput else {
-            return XCTFail("expected .jsonSchema strategy to remain on config, got \(String(describing: config.structuredOutput))")
+        guard case .jsonSchema = hints.structuredOutput else {
+            return XCTFail("expected .jsonSchema strategy to remain on hints, got \(String(describing: hints.structuredOutput))")
         }
         guard case .jsonSchema = result.strategy else {
             return XCTFail("expected reported strategy .jsonSchema, got \(result.strategy)")

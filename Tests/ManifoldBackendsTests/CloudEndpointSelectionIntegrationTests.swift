@@ -608,7 +608,8 @@ private final class ConfiguringOpenAICloudBackend: InferenceBackend,
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
     }
@@ -648,7 +649,8 @@ private final class ConfiguringClaudeCloudBackend: InferenceBackend,
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
     }

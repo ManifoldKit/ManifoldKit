@@ -359,7 +359,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
     /// `OpenAIResponsesBackend` advertises `supportsStructuredOutput: true`
     /// (and, since this fix, `supportsStrictSchema: true`), which makes
     /// `StructuredOutputRouter` pick the `.jsonSchema` strategy and leave
-    /// `config.structuredOutput` set for the backend to honor on the wire.
+    /// `hints.structuredOutput` set for the backend to honor on the wire.
     /// Prior to this fix `buildRequest` never read it back, silently
     /// dropping the caller's schema. This drives a real `generate()` call
     /// through `MockURLProtocol` and inspects the captured outgoing request
@@ -375,10 +375,9 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         MockURLProtocol.stub(url: url, response: .sse(chunks: chunks, statusCode: 200))
 
         let schema = #"{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"]}"#
-        var config = GenerationConfig()
-        config.structuredOutput = .jsonSchema(schema)
+        let hints = GenerationRuntimeHints(structuredOutput: .jsonSchema(schema))
 
-        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: config)
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let body = try capturedRequestJSON(url: url)
@@ -411,10 +410,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         ]
         MockURLProtocol.stub(url: url, response: .sse(chunks: chunks, statusCode: 200))
 
-        var config = GenerationConfig()
-        config.jsonMode = true
-
-        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: config)
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig(), hints: GenerationRuntimeHints(jsonMode: true))
         for try await _ in stream.events { }
 
         let body = try capturedRequestJSON(url: url)

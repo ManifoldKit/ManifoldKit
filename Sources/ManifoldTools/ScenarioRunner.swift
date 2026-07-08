@@ -217,8 +217,6 @@ public final class ScenarioRunner {
             tools: tools,
             toolChoice: .auto,
             maxThinkingTokens: nil,
-            jsonMode: false,
-            thinkingMarkers: nil,
             maxToolIterations: maxIterations
         )
         // Advisory hint only — `GenerationConfig.seed` is silently ignored by

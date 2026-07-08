@@ -36,7 +36,8 @@ final class PostGenerationQueueTests: XCTestCase {
         func generate(
             prompt: String,
             systemPrompt: String?,
-            config: GenerationConfig
+            config: GenerationConfig,
+            hints: GenerationRuntimeHints
         ) throws -> GenerationStream {
             generateCallCount += 1
             isGenerating = true

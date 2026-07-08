@@ -495,6 +495,7 @@ public final class InferenceService {
         messages: [Message],
         systemPrompt: String? = nil,
         config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints(),
         priority: GenerationPriority = .normal,
         requestGroupID: UUID? = nil,
         route: GenerationRoute = .primary
@@ -505,6 +506,7 @@ public final class InferenceService {
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: systemPrompt,
             config: config,
+            hints: hints,
             priority: priority,
             requestGroupID: requestGroupID,
             routedBackend: routedBackend
@@ -520,6 +522,7 @@ public final class InferenceService {
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String? = nil,
         config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints(),
         priority: GenerationPriority = .normal,
         requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
@@ -532,6 +535,7 @@ public final class InferenceService {
             structuredMessages: messages,
             systemPrompt: systemPrompt,
             config: config,
+            hints: hints,
             priority: priority,
             requestGroupID: requestGroupID,
             handoffDetector: handoffDetector,
@@ -581,12 +585,12 @@ public final class InferenceService {
                 seed: seed,
                 maxOutputTokens: maxOutputTokens,
                 maxThinkingTokens: maxThinkingTokens,
-                jsonMode: jsonMode,
                 grammar: grammar,
                 tools: tools,
                 toolChoice: toolChoice,
                 maxToolIterations: maxToolIterations
             ),
+            hints: GenerationRuntimeHints(jsonMode: jsonMode),
             priority: priority,
             requestGroupID: requestGroupID,
             route: route
@@ -629,12 +633,12 @@ public final class InferenceService {
                 seed: nil,
                 maxOutputTokens: maxOutputTokens,
                 maxThinkingTokens: maxThinkingTokens,
-                jsonMode: jsonMode,
                 grammar: grammar,
                 tools: tools,
                 toolChoice: toolChoice,
                 maxToolIterations: maxToolIterations
             ),
+            hints: GenerationRuntimeHints(jsonMode: jsonMode),
             priority: priority,
             requestGroupID: requestGroupID,
             routedBackend: routedBackend
@@ -679,12 +683,12 @@ public final class InferenceService {
                 seed: seed,
                 maxOutputTokens: maxOutputTokens,
                 maxThinkingTokens: maxThinkingTokens,
-                jsonMode: jsonMode,
                 grammar: grammar,
                 tools: tools,
                 toolChoice: toolChoice,
                 maxToolIterations: maxToolIterations
             ),
+            hints: GenerationRuntimeHints(jsonMode: jsonMode),
             priority: priority,
             requestGroupID: requestGroupID,
             route: route

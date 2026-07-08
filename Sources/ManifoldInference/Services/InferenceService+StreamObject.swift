@@ -83,10 +83,11 @@ extension InferenceService {
             // (CLAUDE.md gotcha #5).
             let task = Task { @MainActor in
                 do {
-                    let routedConfig = try Self.routedStructuredConfig(for: T.self, base: config)
+                    let hints = try Self.routedStructuredHints(for: T.self)
                     let (_, stream) = try self.enqueue(
                         messages: [.user(prompt)],
-                        config: routedConfig
+                        config: config,
+                        hints: hints
                     )
 
                     var buffer = ""
@@ -139,10 +140,11 @@ extension InferenceService {
         AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
                 do {
-                    let routedConfig = try Self.routedStructuredConfig(for: T.self, base: config)
+                    let hints = try Self.routedStructuredHints(for: T.self)
                     let (_, stream) = try self.enqueue(
                         messages: [.user(prompt)],
-                        config: routedConfig
+                        config: config,
+                        hints: hints
                     )
 
                     var extractor = TopLevelArrayElementExtractor()
@@ -167,13 +169,12 @@ extension InferenceService {
 
     // MARK: - Shared helpers
 
-    /// Builds the routed config that stages `T`'s schema on `structuredOutput`,
+    /// Builds the runtime hints that stage `T`'s schema on `structuredOutput`,
     /// matching `respond`'s lowering so `streamObject`/`streamEach` route through
     /// the same `StructuredOutputRouter` wiring at the queue chokepoint.
-    static func routedStructuredConfig<T: SchemaProviding>(
-        for type: T.Type,
-        base: GenerationConfig
-    ) throws -> GenerationConfig {
+    static func routedStructuredHints<T: SchemaProviding>(
+        for type: T.Type
+    ) throws -> GenerationRuntimeHints {
         let schema = T.jsonSchema
         let schemaString: String
         do {
@@ -184,9 +185,7 @@ extension InferenceService {
         } catch {
             throw StructuredOutputError.schemaEncodingFailure(String(describing: error))
         }
-        var routed = base
-        routed.structuredOutput = .jsonSchema(schemaString)
-        return routed
+        return GenerationRuntimeHints(structuredOutput: .jsonSchema(schemaString))
     }
 
     /// Produces a snapshot from the accumulated buffer: lenient-close → parse

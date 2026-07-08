@@ -222,10 +222,11 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
                         autoDetectedMarkers: nil
                     )
                 }
-                let (config, markers) = backend.snapshotForExtractor()
+                let (config, markers, auto) = backend.snapshotForExtractor()
                 return OllamaStreamEventExtractor(
                     config: config,
-                    autoDetectedMarkers: markers
+                    thinkingMarkers: markers,
+                    autoDetectedMarkers: auto
                 )
             }
         )
@@ -310,10 +311,11 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
                         autoDetectedMarkers: nil
                     )
                 }
-                let (config, markers) = backend.snapshotForExtractor()
+                let (config, markers, auto) = backend.snapshotForExtractor()
                 return OllamaStreamEventExtractor(
                     config: config,
-                    autoDetectedMarkers: markers
+                    thinkingMarkers: markers,
+                    autoDetectedMarkers: auto
                 )
             }
         )
@@ -359,13 +361,17 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     /// config if no snapshot has been stashed (shouldn't happen on the
     /// production path; defensive against a future refactor that calls
     /// the routing's factory outside the stream-open path).
-    fileprivate func snapshotForExtractor() -> (GenerationConfig, ThinkingMarkers?) {
-        withStateLock {
+    fileprivate func snapshotForExtractor() -> (GenerationConfig, ThinkingMarkers?, ThinkingMarkers?) {
+        // Read the per-request thinking-marker hint (#2152) outside the state
+        // lock — `activeHints` takes the same non-recursive `NSLock`, so reading
+        // it inside `withStateLock` would deadlock.
+        let hintMarkers = activeHints.thinkingMarkers
+        return withStateLock {
             let config = _pendingStreamConfig ?? GenerationConfig()
             // Clear after read — the snapshot is one-shot, mirroring
             // `toolAwareHistory`'s snapshot-and-clear pattern below.
             _pendingStreamConfig = nil
-            return (config, _autoDetectedThinkingMarkers)
+            return (config, hintMarkers, _autoDetectedThinkingMarkers)
         }
     }
 
@@ -708,7 +714,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             "options": options,
             "keep_alive": keepAlive,
         ]
-        if config.jsonMode {
+        if activeHints.jsonMode {
             body["format"] = "json"
         }
         if let think = thinkDirective {

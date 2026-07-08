@@ -317,7 +317,7 @@ private final class ProgressBridgeBackend: InferenceBackend,
         }
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { $0.finish() }
         return GenerationStream(stream)
     }
@@ -350,7 +350,7 @@ private final class PlainBridgeBackend: InferenceBackend, @unchecked Sendable {
         }
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { $0.finish() }
         return GenerationStream(stream)
     }

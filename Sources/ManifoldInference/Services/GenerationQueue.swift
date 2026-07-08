@@ -242,6 +242,11 @@ final class GenerationQueue {
         let messages: [StructuredMessage]
         let systemPrompt: String?
         let config: GenerationConfig
+        /// Per-request runtime hints (JSON mode, thinking markers, structured
+        /// output, RAG documents, run-token ceiling, prompt capture). Split out
+        /// of ``GenerationConfig`` in #2152 so the config stays losslessly
+        /// `Codable`; carried alongside it here.
+        let hints: GenerationRuntimeHints
         let stream: GenerationStream
         /// Per-request handoff detector, captured at enqueue time. When set, it
         /// is used for this request's dispatch loop instead of the queue-level
@@ -374,18 +379,19 @@ final class GenerationQueue {
             temperature: temperature,
             topP: topP,
             repeatPenalty: repeatPenalty,
-            maxOutputTokens: maxOutputTokens,
-            jsonMode: jsonMode
+            maxOutputTokens: maxOutputTokens
         )
         config.maxThinkingTokens = maxThinkingTokens
+        let hints = GenerationRuntimeHints(jsonMode: jsonMode)
 
-        Self.warnIfThinkingUnsupported(backend: backend, config: config)
+        Self.warnIfThinkingUnsupported(backend: backend, config: config, hints: hints)
 
         return try dispatchToBackend(
             backend: backend,
             messages: messages,
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
     }
 
@@ -402,12 +408,14 @@ final class GenerationQueue {
     func generateWithConfig(
         messages: [(role: String, content: String)],
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints()
     ) throws -> GenerationStream {
         try generateWithConfig(
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
     }
 
@@ -420,19 +428,21 @@ final class GenerationQueue {
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String?,
         config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints(),
         backendOverride: (any InferenceBackend)? = nil
     ) throws -> GenerationStream {
         guard let backend = backendOverride ?? currentBackend else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
 
-        Self.warnIfThinkingUnsupported(backend: backend, config: config)
+        Self.warnIfThinkingUnsupported(backend: backend, config: config, hints: hints)
 
         return try dispatchToBackend(
             backend: backend,
             messages: messages,
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
     }
 
@@ -446,18 +456,19 @@ final class GenerationQueue {
     /// suppress the warning by not setting the flag in the first place.
     private static func warnIfJSONModeUnsupported(
         backend: InferenceBackend,
-        config: GenerationConfig
+        hints: GenerationRuntimeHints
     ) {
-        guard config.jsonMode, !backend.capabilities.supportsNativeJSONMode else { return }
+        guard hints.jsonMode, !backend.capabilities.supportsNativeJSONMode else { return }
         let backendType = String(describing: type(of: backend))
-        let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
+        let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `hints.jsonMode`."
         Log.inference.warning("\(message, privacy: .public)")
         Self.jsonModeUnsupportedWarningHook?(backendType, message)
     }
 
     private static func warnIfThinkingUnsupported(
         backend: InferenceBackend,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) {
         guard !backend.capabilities.supportsThinking else { return }
 
@@ -465,7 +476,7 @@ final class GenerationQueue {
         if config.maxThinkingTokens != nil {
             requestedHints.append("maxThinkingTokens")
         }
-        if config.thinkingMarkers != nil {
+        if hints.thinkingMarkers != nil {
             requestedHints.append("thinkingMarkers")
         }
         guard !requestedHints.isEmpty else { return }
@@ -488,7 +499,8 @@ final class GenerationQueue {
         backend: InferenceBackend,
         messages: [StructuredMessage],
         systemPrompt: String?,
-        config rawConfig: GenerationConfig
+        config rawConfig: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         // Fill the effective stop sequences from the active template's defaults
         // when the caller set none, for prompt-template backends (#1944). The
@@ -498,7 +510,7 @@ final class GenerationQueue {
         let config = backend.capabilities.requiresPromptTemplate
             ? applyingTemplateStopSequences(to: rawConfig)
             : rawConfig
-        Self.warnIfJSONModeUnsupported(backend: backend, config: config)
+        Self.warnIfJSONModeUnsupported(backend: backend, hints: hints)
 
         if GenerationHistoryInstaller.containsImages(messages), !backend.capabilities.supportsVision {
             throw InferenceError.inferenceFailure(
@@ -525,15 +537,17 @@ final class GenerationQueue {
                     backend: backend,
                     config: config
                 ),
-                config: config
+                config: config,
+                hints: hints
             )
             GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: result.trimmedMessages)
             let stream = try backend.generateEnforcingCapabilities(
                 prompt: result.prompt,
                 systemPrompt: nil,
-                config: config
+                config: config,
+                hints: hints
             )
-            if config.captureRenderedPrompt {
+            if hints.captureRenderedPrompt {
                 return Self.prependingPromptRendered(text: result.prompt, to: stream)
             }
             return stream
@@ -569,13 +583,13 @@ final class GenerationQueue {
                     messages: messages,
                     systemPrompt: augmentedSystemPrompt,
                     tools: config.tools,
-                    documents: config.documents
+                    documents: hints.documents
                 )
             } else {
                 assembledPrompt = try renderer.render(
                     messages: messages,
                     systemPrompt: systemPrompt,
-                    documents: config.documents
+                    documents: hints.documents
                 )
             }
             effectiveSystemPrompt = nil
@@ -589,9 +603,10 @@ final class GenerationQueue {
         let stream = try backend.generateEnforcingCapabilities(
             prompt: assembledPrompt,
             systemPrompt: effectiveSystemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
-        if config.captureRenderedPrompt {
+        if hints.captureRenderedPrompt {
             return Self.prependingPromptRendered(text: assembledPrompt, to: stream)
         }
         return stream
@@ -682,6 +697,7 @@ final class GenerationQueue {
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String? = nil,
         config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints(),
         priority: GenerationPriority = .normal,
         requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
@@ -730,6 +746,7 @@ final class GenerationQueue {
         // prose-permitting grammar, `.tool(name:)` a single-tool union, and
         // `.none` no grammar at all.
         var config = config
+        var hints = hints
         if config.grammar == nil,
            !config.tools.isEmpty,
            backend.capabilities.supportsGrammarConstrainedSampling {
@@ -764,7 +781,7 @@ final class GenerationQueue {
         // (`respond(_:to:)` reads it rather than recomputing against a possibly
         // different capability set).
         var selectedStructuredStrategy: StructuredOutputStrategy?
-        if let staged = config.structuredOutput,
+        if let staged = hints.structuredOutput,
            let target = Self.structuredOutputTarget(
                from: staged,
                capabilities: backend.capabilities
@@ -781,11 +798,11 @@ final class GenerationQueue {
                 if config.grammar == nil { config.grammar = grammar }
                 // The grammar is the constraint — drop the strategy hint so a
                 // cloud encoder downstream doesn't also try to apply a schema.
-                config.structuredOutput = nil
+                hints.structuredOutput = nil
             case .jsonSchema(let schema):
-                // Leave the strategy on config so the cloud strict-schema
+                // Leave the strategy on the hints so the cloud strict-schema
                 // encoder (sibling #1918) honors it on the wire.
-                config.structuredOutput = .jsonSchema(schema)
+                hints.structuredOutput = .jsonSchema(schema)
             case .jsonPrompting:
                 // No backend-level constraint available — fall back to a
                 // prompt-level instruction so weak backends still get steered.
@@ -795,7 +812,7 @@ final class GenerationQueue {
                         schema: schema
                     )
                 }
-                config.structuredOutput = nil
+                hints.structuredOutput = nil
             case .guided:
                 // Foundation guided generation is deferred (#1915 follow-up).
                 // Keep the strategy intact for the guided-capable backend to
@@ -814,7 +831,7 @@ final class GenerationQueue {
         stream.structuredOutputStrategy = selectedStructuredStrategy
         continuations[token] = continuation
 
-        Self.warnIfThinkingUnsupported(backend: backend, config: config)
+        Self.warnIfThinkingUnsupported(backend: backend, config: config, hints: hints)
 
         let request = QueuedRequest(
             token: token,
@@ -823,6 +840,7 @@ final class GenerationQueue {
             messages: messages,
             systemPrompt: systemPrompt,
             config: config,
+            hints: hints,
             stream: stream,
             handoffDetector: handoffDetector,
             preToolUseHook: preToolUseHook,
@@ -913,11 +931,9 @@ final class GenerationQueue {
         seed: UInt64?,
         maxOutputTokens: Int?,
         maxThinkingTokens: Int?,
-        jsonMode: Bool,
         grammar: String?,
         tools: [ToolDefinition],
         toolChoice: ToolChoice,
-        documents: [RetrievedDocument] = [],
         maxToolIterations: Int
     ) -> GenerationConfig {
         var config = GenerationConfig(
@@ -932,8 +948,6 @@ final class GenerationQueue {
             maxOutputTokens: maxOutputTokens,
             tools: tools,
             toolChoice: toolChoice,
-            documents: documents,
-            jsonMode: jsonMode,
             maxToolIterations: maxToolIterations
         )
         config.maxThinkingTokens = maxThinkingTokens
@@ -977,12 +991,12 @@ final class GenerationQueue {
                 seed: seed,
                 maxOutputTokens: maxOutputTokens,
                 maxThinkingTokens: maxThinkingTokens,
-                jsonMode: jsonMode,
                 grammar: grammar,
                 tools: tools,
                 toolChoice: toolChoice,
                 maxToolIterations: maxToolIterations
             ),
+            hints: GenerationRuntimeHints(jsonMode: jsonMode),
             priority: priority,
             requestGroupID: requestGroupID,
             routedBackend: routedBackend
@@ -1031,12 +1045,12 @@ final class GenerationQueue {
                 seed: seed,
                 maxOutputTokens: maxOutputTokens,
                 maxThinkingTokens: maxThinkingTokens,
-                jsonMode: jsonMode,
                 grammar: grammar,
                 tools: tools,
                 toolChoice: toolChoice,
                 maxToolIterations: maxToolIterations
             ),
+            hints: GenerationRuntimeHints(jsonMode: jsonMode),
             priority: priority,
             requestGroupID: requestGroupID,
             routedBackend: routedBackend
@@ -1215,7 +1229,7 @@ final class GenerationQueue {
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate,
             currentBackend: { [weak self] in routedBackend ?? self?.currentBackend },
-            generateWithConfig: { [weak self] messages, systemPrompt, config in
+            generateWithConfig: { [weak self] messages, systemPrompt, config, hints in
                 guard let self else {
                     throw InferenceError.inferenceFailure("Generation queue deallocated")
                 }
@@ -1223,6 +1237,7 @@ final class GenerationQueue {
                     structuredMessages: messages,
                     systemPrompt: systemPrompt,
                     config: config,
+                    hints: hints,
                     backendOverride: routedBackend
                 )
             },
@@ -1247,7 +1262,8 @@ final class GenerationQueue {
             token: request.token,
             messages: request.messages,
             systemPrompt: request.systemPrompt,
-            config: request.config
+            config: request.config,
+            hints: request.hints
         )
     }
 

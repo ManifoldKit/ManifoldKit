@@ -348,12 +348,12 @@ final class ModelExecutorPoolTests: XCTestCase {
         )
         try await executor.load()
 
-        let first = try await executor.generate(prompt: "p", systemPrompt: nil, config: makeConfig())
+        let first = try await executor.generate(prompt: "p", systemPrompt: nil, config: makeConfig(), hints: GenerationRuntimeHints())
         let firstTask = Task { try await self.consume(first) }
 
         // A second generate while the first is in flight must throw.
         do {
-            _ = try await executor.generate(prompt: "p2", systemPrompt: nil, config: makeConfig())
+            _ = try await executor.generate(prompt: "p2", systemPrompt: nil, config: makeConfig(), hints: GenerationRuntimeHints())
             XCTFail("Concurrent generate on the same executor must throw alreadyGenerating")
         } catch let error as InferenceError {
             guard case .alreadyGenerating = error else {

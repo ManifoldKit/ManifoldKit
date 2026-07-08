@@ -93,7 +93,8 @@ public final class PerceivedLatencyBackend: InferenceBackend, @unchecked Sendabl
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let loaded = withStateLock { _isModelLoaded }
         guard loaded else {

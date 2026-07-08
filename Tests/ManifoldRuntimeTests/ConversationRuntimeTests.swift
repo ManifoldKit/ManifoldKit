@@ -42,7 +42,7 @@ private final class RuntimeUsageBackend: InferenceBackend, TokenUsageProvider, @
         isModelLoaded = true
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
         let turn = nextTurn()
         isGenerating = true
@@ -136,7 +136,7 @@ private final class HangingRuntimeBackend: InferenceBackend, @unchecked Sendable
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         lock.lock()
         _isGenerating = true
         lock.unlock()

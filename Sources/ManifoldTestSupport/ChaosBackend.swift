@@ -139,7 +139,8 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let (tokens, mode, loaded) = withStateLock {
             (_tokensToYield, _mode, _isModelLoaded)

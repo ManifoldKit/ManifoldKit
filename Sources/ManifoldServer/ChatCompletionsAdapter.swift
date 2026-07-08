@@ -527,6 +527,10 @@ internal struct ChatCompletionError: Codable, Equatable, Sendable {
 internal protocol ChatCompletionsAdapter: Sendable {
     func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig
 
+    /// Per-request runtime hints (JSON mode, structured output) derived from the
+    /// request's `response_format`. Split out of ``GenerationConfig`` in #2152.
+    func generationHints(for request: ChatCompletionRequest) throws -> GenerationRuntimeHints
+
     func response(
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
@@ -541,6 +545,10 @@ internal protocol ChatCompletionsAdapter: Sendable {
 extension ChatCompletionsAdapter {
     internal func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
         try DefaultChatCompletionsAdapter().generationConfig(for: request)
+    }
+
+    internal func generationHints(for request: ChatCompletionRequest) throws -> GenerationRuntimeHints {
+        try DefaultChatCompletionsAdapter().generationHints(for: request)
     }
 
     internal func chunks(
@@ -594,7 +602,12 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
             topP: Float(request.topP ?? 0.9),
             maxOutputTokens: request.maxCompletionTokens ?? request.maxTokens,
             tools: tools,
-            toolChoice: toolChoice,
+            toolChoice: toolChoice
+        )
+    }
+
+    internal func generationHints(for request: ChatCompletionRequest) throws -> GenerationRuntimeHints {
+        GenerationRuntimeHints(
             jsonMode: request.responseFormat?.type == .jsonObject || request.responseFormat?.type == .jsonSchema,
             structuredOutput: try structuredOutputStrategy(for: request.responseFormat)
         )
@@ -672,7 +685,12 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         let conversation = request.messages.filter { $0.role != .system && $0.role != .developer }
         installHistory(from: conversation, on: backend)
         let (prompt, systemPrompt) = promptParts(for: request)
-        return try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: generationConfig(for: request))
+        return try backend.generate(
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            config: generationConfig(for: request),
+            hints: generationHints(for: request)
+        )
     }
 
     /// Installs the structured conversation history on whichever receiver

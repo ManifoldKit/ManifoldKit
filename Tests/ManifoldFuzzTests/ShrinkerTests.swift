@@ -49,7 +49,7 @@ final class ShrinkerTests: XCTestCase {
 
         func loadModel(from url: URL, plan: ModelLoadPlan) async throws { isModelLoaded = true }
 
-        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
             guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
             let text = prompt
             let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in

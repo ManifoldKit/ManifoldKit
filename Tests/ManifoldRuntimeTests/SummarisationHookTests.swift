@@ -133,7 +133,7 @@ final class SummarisationHookTests: XCTestCase {
             try await inner.loadModel(from: url, plan: plan)
         }
 
-        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
             let innerStream = try inner.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
             let promptTokens = reportedPromptTokens
             return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in

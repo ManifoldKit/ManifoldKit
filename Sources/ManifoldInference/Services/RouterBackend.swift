@@ -91,7 +91,8 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let requirements = config.requiredCapabilities
         guard let chosen = selectBackend(for: requirements) else {
@@ -113,7 +114,8 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         return try chosen.generate(
             prompt: prompt,
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
     }
 

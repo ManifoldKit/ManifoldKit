@@ -205,3 +205,42 @@ API breakage: constructor ChatView.init(showModelManagement:linkPreviewProvider:
 API breakage: constructor ChatView.init(showModelManagement:linkPreviewProvider:contextMenuItems:composerAccessory:) has been removed
 API breakage: constructor ChatView.init(showModelManagement:linkPreviewProvider:emptyState:contextMenuItems:) has been removed
 API breakage: constructor ChatView.init(showModelManagement:linkPreviewProvider:emptyState:contextMenuItems:composerAccessory:) has been removed
+API breakage: constructor GenerationConfig.init(temperature:topP:repeatPenalty:topK:minP:repetitionPenalty:repetitionContextSize:presencePenalty:presenceContextSize:frequencyPenalty:frequencyContextSize:llamaDRY:llamaXTC:llamaMirostatV2:seed:maxOutputTokens:tools:toolChoice:documents:maxThinkingTokens:jsonMode:streamPrefillProgress:thinkingMarkers:maxToolIterations:maxRunTokens:grammar:stopSequences:structuredOutput:yieldEveryNTokens:requiredCapabilities:) has been removed
+API breakage: constructor OllamaStreamEventExtractor.init(config:autoDetectedMarkers:) has been removed
+API breakage: func AnyLanguageModelBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func ChaosBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func FallbackBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func FoundationBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func InferenceBackend.generate(prompt:systemPrompt:config:hints:) has been added as a protocol requirement
+API breakage: func InferenceBackend.generateEnforcingCapabilities(prompt:systemPrompt:config:) has been renamed to func generateEnforcingCapabilities(prompt:systemPrompt:config:hints:)
+API breakage: func InferenceService.enqueue(messages:systemPrompt:config:priority:requestGroupID:route:) has been renamed to func enqueue(messages:systemPrompt:config:hints:priority:requestGroupID:route:)
+API breakage: func InferenceService.enqueue(messages:systemPrompt:config:priority:requestGroupID:route:) has parameter 3 type change from ManifoldInference.InferenceService.GenerationPriority to ManifoldContract.GenerationRuntimeHints
+API breakage: func InferenceService.enqueue(messages:systemPrompt:config:priority:requestGroupID:route:) has parameter 4 type change from Foundation.UUID? to ManifoldInference.InferenceService.GenerationPriority
+API breakage: func InferenceService.enqueue(messages:systemPrompt:config:priority:requestGroupID:route:) has parameter 5 type change from ManifoldInference.InferenceService.GenerationRoute to Foundation.UUID?
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:config:priority:requestGroupID:handoffDetector:preToolUseHook:route:) has been renamed to func enqueue(structuredMessages:systemPrompt:config:hints:priority:requestGroupID:handoffDetector:preToolUseHook:route:)
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:config:priority:requestGroupID:handoffDetector:preToolUseHook:route:) has parameter 3 type change from ManifoldInference.InferenceService.GenerationPriority to ManifoldContract.GenerationRuntimeHints
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:config:priority:requestGroupID:handoffDetector:preToolUseHook:route:) has parameter 4 type change from Foundation.UUID? to ManifoldInference.InferenceService.GenerationPriority
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:config:priority:requestGroupID:handoffDetector:preToolUseHook:route:) has parameter 5 type change from ((Foundation.UUID?, ManifoldHardware.ToolCall) -> ManifoldContract.HandoffDetectionResult)? to Foundation.UUID?
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:config:priority:requestGroupID:handoffDetector:preToolUseHook:route:) has parameter 6 type change from ManifoldInference.PreToolUseHook? to ((Foundation.UUID?, ManifoldHardware.ToolCall) -> ManifoldContract.HandoffDetectionResult)?
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:config:priority:requestGroupID:handoffDetector:preToolUseHook:route:) has parameter 7 type change from ManifoldInference.InferenceService.GenerationRoute to ManifoldInference.PreToolUseHook?
+API breakage: func MidStreamErrorBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func MockCancellableLoadBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func MockInferenceBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func MockLoadProgressBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func MockTokenizerVendorBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func ModelExecutor.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func ModelExecutorPool.generate(on:prompt:systemPrompt:config:) has been renamed to func generate(on:prompt:systemPrompt:config:hints:)
+API breakage: func PerceivedLatencyBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func RouterBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func ScenarioTestBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func ScriptedBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func ScriptedGenerationBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func SlowMockBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func SSECloudBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: func TokenTrackingMockBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
+API breakage: var GenerationConfig.captureRenderedPrompt has been removed
+API breakage: var GenerationConfig.documents has been removed
+API breakage: var GenerationConfig.jsonMode has been removed
+API breakage: var GenerationConfig.maxRunTokens has been removed
+API breakage: var GenerationConfig.structuredOutput has been removed
+API breakage: var GenerationConfig.thinkingMarkers has been removed

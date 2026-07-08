@@ -224,7 +224,7 @@ private final class GatedBackend: InferenceBackend, @unchecked Sendable {
         isModelLoaded = true
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         GenerationStream(AsyncThrowingStream { $0.finish() })
     }
 

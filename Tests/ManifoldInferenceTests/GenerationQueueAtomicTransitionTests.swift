@@ -155,7 +155,7 @@ private final class OverlapDetectingBackend: InferenceBackend, @unchecked Sendab
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let tokens = self.tokens
         let delay = self.delay
         recordEnter()

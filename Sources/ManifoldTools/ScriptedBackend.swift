@@ -47,7 +47,7 @@ public final class ScriptedBackend: InferenceBackend, ConversationHistoryReceive
         isModelLoaded = true
     }
 
-    public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         receivedConfigs.append(config)
         let turn: Turn
         if cursor < turns.count {

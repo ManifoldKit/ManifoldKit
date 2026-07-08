@@ -295,12 +295,12 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         // Completions' `response_format` (see `OpenAIBackend.buildRequest`).
         // `GenerationQueue`'s `StructuredOutputRouter` selects `.jsonSchema`
         // whenever `capabilities.supportsStructuredOutput` is true and leaves
-        // the schema on `config.structuredOutput` for the backend to honor on
+        // the schema on `activeHints.structuredOutput` for the backend to honor on
         // the wire; this backend previously never read it back, silently
         // dropping the caller's schema. The Responses API expects the format
         // nested under `text.format` rather than a top-level
         // `response_format` key.
-        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: config.structuredOutput)
+        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: activeHints.structuredOutput)
         let strictRequested = capabilities.supportsStrictSchema && strictSchemaString != nil
         if strictRequested,
            let schemaString = strictSchemaString,
@@ -313,7 +313,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
                     "schema": strictSchema,
                 ] as [String: Any],
             ]
-        } else if config.jsonMode {
+        } else if activeHints.jsonMode {
             body["text"] = ["format": ["type": "json_object"]]
         }
 

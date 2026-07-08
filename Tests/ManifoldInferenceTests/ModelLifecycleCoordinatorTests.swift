@@ -501,7 +501,7 @@ private final class GatedLoadBackend: InferenceBackend, @unchecked Sendable {
         }
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { $0.finish() }
         return GenerationStream(stream)
     }
@@ -603,7 +603,7 @@ private final class AdvisoryEndpointSpyBackend:
         stateLock.withLock { $0 = true }
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { $0.finish() })
     }
 

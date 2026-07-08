@@ -103,20 +103,17 @@ public struct LlamaMirostatV2SamplerOptions: Sendable, Codable, Equatable {
 ///
 /// See each field's own documentation for the per-backend specifics.
 ///
-/// ## Codable round-trip is intentionally lossy
+/// ## Codable round-trip is lossless
 ///
 /// `GenerationConfig` conforms to `Codable` so it can be persisted (e.g. as a
-/// sampler preset), but **six** fields are per-request runtime hints that
-/// are never encoded and always decode back to their defaults:
-/// ``GenerationConfig/jsonMode`` (decodes to `false`),
-/// ``GenerationConfig/thinkingMarkers`` (decodes to `nil`),
-/// ``GenerationConfig/structuredOutput`` (decodes to `nil`),
-/// ``GenerationConfig/documents`` (decodes to `[]`),
-/// ``GenerationConfig/maxRunTokens`` (decodes to `nil`), and
-/// ``GenerationConfig/captureRenderedPrompt`` (decodes to `false`). They are absent
-/// from the `CodingKeys`, so an encode-then-decode cycle silently drops them.
-/// Do not rely on Codable round-trip to preserve these fields — carry them
-/// alongside the persisted config at the call site if you need them to survive.
+/// sampler preset), and every field it declares survives an encode-then-decode
+/// cycle. The six per-request runtime hints that used to be silently dropped on
+/// round-trip (`jsonMode`, `thinkingMarkers`, `structuredOutput`, `documents`,
+/// `maxRunTokens`, `captureRenderedPrompt`) now live on the separate,
+/// deliberately non-`Codable` ``GenerationRuntimeHints`` type — thread that
+/// alongside the config through the generation path (see
+/// ``InferenceBackend/generate(prompt:systemPrompt:config:hints:)``). What
+/// persists here is exactly the sampler configuration; nothing is lost.
 public struct GenerationConfig: Sendable, Codable, Equatable {
     public var temperature: Float
     public var topP: Float
@@ -224,6 +221,15 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
     /// answers) will be truncated at 2048 tokens unless you raise it. Pass
     /// `maxOutputTokens: nil` explicitly to remove the cap and fall back to the
     /// backend's own default limit. `nil` is never the default.
+    ///
+    /// **Decision (issue #2152, decided in this PR): the `2048` default is
+    /// deliberately kept.** A `nil` default would leave output silently
+    /// unbounded on every backend that treats a missing `max_tokens` as "run to
+    /// the context limit", turning a forgotten knob into an unpredictable cost
+    /// ceiling. A concrete, predictable cap is the safer default; callers who
+    /// genuinely want long-form output opt in explicitly (raise it or pass
+    /// `nil`). Revisit only if a future backend-level default policy supersedes
+    /// this.
     public var maxOutputTokens: Int?
 
     /// Tool definitions made available to the model for this generation request.
@@ -239,23 +245,13 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
     /// calling.  Defaults to ``ToolChoice/auto``.
     public var toolChoice: ToolChoice
 
-    /// Retrieved RAG passages threaded into a chat template's `documents`
-    /// context variable (#1967).
-    ///
-    /// Only honoured by the prompt-template render path (embedded-Jinja): a
-    /// template that exposes a `{% for document in documents %}` block formats
-    /// these passages the way the model was trained to ground on. Empty (the
-    /// default) keeps every `{% if documents %}` branch falsey. A per-request
-    /// runtime hint — not persisted (same policy as ``thinkingMarkers`` /
-    /// ``structuredOutput``).
-    public var documents: [RetrievedDocument]
-
     /// Cap on reasoning (chain-of-thought) tokens for a single generation.
     ///
     /// - `nil` — no client-side cap. Backends reserve a default thinking budget
     ///   only when the loaded model is known to be a thinking model (Ollama
     ///   detects this via `/api/show`; Llama uses the prompt template's
-    ///   `thinkingMarkers`). Non-thinking models add no reservation.
+    ///   ``GenerationRuntimeHints/thinkingMarkers``). Non-thinking models add
+    ///   no reservation.
     /// - `0` — **disable thinking entirely.** On supporting backends (Ollama
     ///   with thinking-capable models, MLX/Llama with reasoning GGUFs), this
     ///   instructs the model to skip the reasoning phase and emit visible
@@ -273,14 +269,6 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
     /// BackendCapabilities when a backend-level thinking-capability flag is
     /// added.
     public var maxThinkingTokens: Int?
-
-    /// Requests backend-specific JSON-object-only generation for this call.
-    ///
-    /// Runtime-only flag: defaults to `false` and is intentionally excluded
-    /// from Codable persistence, matching other per-request hints like
-    /// ``thinkingMarkers``. Backends that do not support structured output, or
-    /// have not implemented JSON-mode wiring yet, silently ignore this flag.
-    public var jsonMode: Bool
 
     /// Opt-in for backend-specific prefill-progress streaming extensions.
     ///
@@ -308,31 +296,6 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
     /// set it.
     public var stopSequences: [String] = []
 
-    /// Routed structured-output strategy for this generation request.
-    ///
-    /// Runtime-only hint: callers can use ``StructuredOutputRouter`` to choose a
-    /// strategy from backend capabilities, then pass it through config without
-    /// forcing every backend to understand every representation.
-    public var structuredOutput: StructuredOutputStrategy?
-
-    /// Per-request override for the thinking-marker pair the backend should use
-    /// to split reasoning tokens from visible output.
-    ///
-    /// - `nil` — let the backend use whatever it auto-detected when the model
-    ///   was loaded (e.g. by reading the Jinja chat template from the GGUF or
-    ///   `tokenizer_config.json`). If the backend's auto-detection also
-    ///   returned `nil`, no thinking parsing happens — every chunk surfaces
-    ///   as a plain `.token` event.
-    /// - non-`nil` — overrides whatever the backend auto-detected. Use this
-    ///   when the caller knows better (e.g. a fine-tune that ships an empty
-    ///   chat template but still emits `<think>` blocks at runtime).
-    ///
-    /// `GenerationQueue` emits an explicit warning when callers pass markers
-    /// to a backend with `BackendCapabilities.supportsThinking == false`.
-    /// There is no longer a hardcoded fallback to `.qwen3` — if neither
-    /// auto-detection nor the caller surfaces markers, the parser stays off.
-    public var thinkingMarkers: ThinkingMarkers?
-
     /// Maximum number of tool-call iterations permitted inside a single
     /// generation request.
     ///
@@ -342,37 +305,29 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
     /// where a misbehaving model keeps requesting tools without finalising a
     /// user-visible response.
     ///
-    /// Defaults to `10`. Values `<= 0` are silently clamped to `1` — a zero
+    /// Defaults to `10`. Values `<= 0` are **loudly** clamped to `1` — a zero
     /// budget would prevent any tool dispatch at all and is never the intent.
+    /// The clamp emits a `Log.inference` warning (both on `init` and on any
+    /// later assignment) rather than silently correcting the value, so a caller
+    /// that passes a bad budget sees it in the logs. Reads always observe the
+    /// clamped (`>= 1`) value.
     public var maxToolIterations: Int {
-        didSet { if maxToolIterations < 1 { maxToolIterations = 1 } }
+        get { _maxToolIterations }
+        set { _maxToolIterations = Self.validatedToolIterations(newValue) }
     }
 
-    /// Optional run-level token ceiling for a single tool-dispatch turn.
-    ///
-    /// Sibling to ``maxToolIterations``: where that bounds the *number* of
-    /// tool round-trips, this bounds the cumulative token spend across them.
-    /// The orchestrator accumulates the prompt + completion tokens reported by
-    /// each generation's terminal ``GenerationEvent/usage(_:)`` and, **at the
-    /// tool-iteration boundary** (after a generation finishes, before the next
-    /// one is dispatched), aborts the turn when the running total reaches this
-    /// ceiling — emitting ``GenerationEvent/runTokenBudgetExceeded(tokensUsed:limit:)``
-    /// and a terminal ``GenerationCompletion/Reason/runTokenBudget``. Mirrors
-    /// OpenAI Agents' `max_turns` budget and LiteLLM's `max_budget`.
-    ///
-    /// - `nil` (the default) — no token ceiling; turns run until iteration
-    ///   limit, organic stop, or another guard fires. Preserves existing
-    ///   zero-config behaviour.
-    /// - non-`nil` — the cumulative token budget. Values `<= 0` disable the
-    ///   ceiling (treated as no limit) since a zero budget would abort before
-    ///   any useful work.
-    ///
-    /// Enforcement is deliberately at the iteration boundary, not mid-stream:
-    /// cloud backends only report usage at end-of-generation, so a mid-single-
-    /// generation hard abort is not reliably checkable and is out of scope. A
-    /// runaway *single* generation is bounded by ``maxOutputTokens``; this
-    /// ceiling bounds runaway *multi-iteration* tool loops.
-    public var maxRunTokens: Int?
+    /// Backing storage for ``maxToolIterations``. Never `< 1`.
+    private var _maxToolIterations: Int
+
+    /// Clamps a tool-iteration budget to the `>= 1` domain, emitting a loud
+    /// `Log.inference` warning when a caller-supplied value is out of range.
+    private static func validatedToolIterations(_ value: Int) -> Int {
+        guard value < 1 else { return value }
+        Log.inference.warning(
+            "GenerationConfig.maxToolIterations was set to \(value, privacy: .public), which would prevent any tool dispatch; clamping to 1. Pass a value >= 1 to silence this warning."
+        )
+        return 1
+    }
 
     /// Number of tokens between brief cooperative yields during MLX generation.
     ///
@@ -395,19 +350,6 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
     /// per-request payloads; this is a per-request *contract*.
     public var requiredCapabilities: Set<GenerationCapabilityRequirement> = []
 
-    /// When `true`, the orchestration layer emits a
-    /// ``GenerationEvent/promptRendered(text:)`` event as the first event
-    /// in the generation stream, carrying the fully-assembled prompt string.
-    ///
-    /// Off by default (`false`) to avoid unintentional retention of
-    /// sensitive prompt content. Only set this when you need to inspect or
-    /// log the rendered prompt for debugging — do not leave it on in
-    /// production builds that handle private user data.
-    ///
-    /// Runtime-only flag: excluded from `Codable` persistence to match
-    /// other per-request hints like ``thinkingMarkers`` and ``jsonMode``.
-    public var captureRenderedPrompt: Bool = false
-
     public init(
         temperature: Float = 0.7,
         topP: Float = 0.9,
@@ -427,16 +369,11 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
         maxOutputTokens: Int? = 2048,
         tools: [ToolDefinition] = [],
         toolChoice: ToolChoice = .auto,
-        documents: [RetrievedDocument] = [],
         maxThinkingTokens: Int? = nil,
-        jsonMode: Bool = false,
         streamPrefillProgress: Bool = false,
-        thinkingMarkers: ThinkingMarkers? = nil,
         maxToolIterations: Int = 10,
-        maxRunTokens: Int? = nil,
         grammar: String? = nil,
         stopSequences: [String] = [],
-        structuredOutput: StructuredOutputStrategy? = nil,
         yieldEveryNTokens: Int = 8,
         requiredCapabilities: Set<GenerationCapabilityRequirement> = []
     ) {
@@ -458,16 +395,11 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
         self.maxOutputTokens = maxOutputTokens
         self.tools = tools
         self.toolChoice = toolChoice
-        self.documents = documents
         self.maxThinkingTokens = maxThinkingTokens
-        self.jsonMode = jsonMode
         self.streamPrefillProgress = streamPrefillProgress
-        self.thinkingMarkers = thinkingMarkers
-        self.maxToolIterations = max(1, maxToolIterations)
-        self.maxRunTokens = maxRunTokens
+        self._maxToolIterations = Self.validatedToolIterations(maxToolIterations)
         self.grammar = grammar
         self.stopSequences = stopSequences
-        self.structuredOutput = structuredOutput
         self.yieldEveryNTokens = yieldEveryNTokens
         self.requiredCapabilities = requiredCapabilities
     }
@@ -499,28 +431,15 @@ public struct GenerationConfig: Sendable, Codable, Equatable {
         // New fields added after the original shape; absent from older payloads.
         tools = (try c.decodeIfPresent([ToolDefinition].self, forKey: .tools)) ?? []
         toolChoice = (try c.decodeIfPresent(ToolChoice.self, forKey: .toolChoice)) ?? .auto
-        // documents is a per-request RAG hint; it is not persisted (same policy
-        // as maxRunTokens / thinkingMarkers / structuredOutput).
-        documents = []
         maxThinkingTokens = try c.decodeIfPresent(Int.self, forKey: .maxThinkingTokens)
-        // jsonMode is a per-request runtime hint; persisted payloads always decode
-        // with the canonical default regardless of any legacy on-disk key.
-        jsonMode = false
         streamPrefillProgress = (try c.decodeIfPresent(Bool.self, forKey: .streamPrefillProgress)) ?? false
         // maxToolIterations landed after the original shape; default to 10 when absent and
-        // clamp any persisted zero/negative value to the minimum of 1.
+        // clamp any persisted zero/negative value to the minimum of 1 (loudly).
         let decodedIterations = (try c.decodeIfPresent(Int.self, forKey: .maxToolIterations)) ?? 10
-        maxToolIterations = max(1, decodedIterations)
-        // maxRunTokens is a per-request runtime hint; it is not persisted (same
-        // policy as thinkingMarkers / structuredOutput).
-        maxRunTokens = nil
-        // thinkingMarkers is a per-request runtime hint; it is not persisted.
-        thinkingMarkers = nil
+        _maxToolIterations = Self.validatedToolIterations(decodedIterations)
         grammar = try c.decodeIfPresent(String.self, forKey: .grammar)
         // stopSequences landed after the original shape; absent from older payloads.
         stopSequences = (try c.decodeIfPresent([String].self, forKey: .stopSequences)) ?? []
-        // structuredOutput is a per-request runtime hint; it is not persisted.
-        structuredOutput = nil
         // yieldEveryNTokens landed after the original shape; default to 8 when absent.
         yieldEveryNTokens = (try c.decodeIfPresent(Int.self, forKey: .yieldEveryNTokens)) ?? 8
         // minP / repetitionPenalty / seed landed after the original shape; absent
@@ -651,6 +570,13 @@ public protocol InferenceBackend: AnyObject, Sendable {
     /// Generates a response from a prompt, streaming events as they are produced.
     /// Errors during generation are thrown into the stream.
     ///
+    /// `config` carries the persistable sampler settings; `hints` carries the
+    /// per-request, never-persisted runtime inputs (JSON mode, thinking markers,
+    /// structured-output strategy, RAG documents, run-token ceiling, prompt
+    /// capture). Backends read from `hints` for those inputs and ignore any they
+    /// do not support, exactly as they do for advisory ``GenerationConfig``
+    /// fields. See ``GenerationRuntimeHints``.
+    ///
     /// **KV cache reuse semantics.** KV state MAY be reused across consecutive `generate()` calls
     /// in the same model-loaded session — defined as calls between `loadModel()`,
     /// `resetConversation()`, and `unloadModel()`. Callers do not pass a session ID; sessionhood
@@ -660,7 +586,8 @@ public protocol InferenceBackend: AnyObject, Sendable {
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream
 
     /// Requests that the current generation stop as soon as possible.
@@ -707,6 +634,26 @@ public protocol InferenceBackend: AnyObject, Sendable {
 extension InferenceBackend {
     public func resetConversation() {}
     public func secureWipe() {}
+
+    /// Convenience overload for callers that do not need per-request
+    /// ``GenerationRuntimeHints`` — forwards an empty hints value.
+    ///
+    /// Keeps the common `generate(prompt:systemPrompt:config:)` call shape
+    /// working after the runtime hints were split out of ``GenerationConfig``
+    /// (issue #2152). Conformers implement only the four-argument requirement;
+    /// this overload dispatches to it.
+    public func generate(
+        prompt: String,
+        systemPrompt: String?,
+        config: GenerationConfig
+    ) throws -> GenerationStream {
+        try generate(
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            config: config,
+            hints: GenerationRuntimeHints()
+        )
+    }
     /// Default — backends that haven't adopted manifest source-of-truth yet
     /// return `nil`, and consumers fall back to ``capabilities``.
     public var manifest: ModelManifest? { nil }

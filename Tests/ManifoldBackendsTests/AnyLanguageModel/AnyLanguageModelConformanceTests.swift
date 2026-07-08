@@ -72,8 +72,7 @@ final class AnyLanguageModelConformanceTests: XCTestCase {
         XCTAssertThrowsError(try backend.generate(prompt: "hi", systemPrompt: nil, config: tools))
 
         // structured output advertised false ⇒ generate must reject jsonMode
-        let json = GenerationConfig(jsonMode: true)
-        XCTAssertThrowsError(try backend.generate(prompt: "hi", systemPrompt: nil, config: json))
+        XCTAssertThrowsError(try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig(), hints: GenerationRuntimeHints(jsonMode: true)))
     }
 
     // MARK: - Tier 2: live provider (env-gated)

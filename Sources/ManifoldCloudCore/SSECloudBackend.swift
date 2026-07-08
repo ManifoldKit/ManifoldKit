@@ -124,6 +124,24 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     private var _generationID: UInt64 = 0
     private var _activeEventIDTracker: SSEEventIDTracker?
 
+    /// Per-request runtime hints for the in-flight generation (JSON mode,
+    /// thinking markers, structured output). Split out of ``GenerationConfig``
+    /// in #2152; because the cloud adapter indirection (`buildRequest` /
+    /// `parseResponseStream`) is not on the `generate(...)` argument path, the
+    /// active call's hints are stashed here under the state lock — mirroring the
+    /// existing per-generation state (`_generationID`, `_lastUsage`). The queue
+    /// serialises generation, so exactly one call's hints are live at a time.
+    /// Subclasses read them via ``activeHints``.
+    private var _activeHints = GenerationRuntimeHints()
+
+    /// The in-flight generation's ``GenerationRuntimeHints``. Read by subclass
+    /// `buildRequest` / `parseResponseStream` overrides that honour JSON mode,
+    /// structured output, or thinking markers.
+    public var activeHints: GenerationRuntimeHints {
+        get { withStateLock { _activeHints } }
+        set { withStateLock { _activeHints = newValue } }
+    }
+
     /// The sink that receives an ``InferenceMetric`` after every generation call.
     ///
     /// Defaults to ``InMemoryMetricSink/shared`` so callers can read recent
@@ -502,11 +520,17 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         guard withStateLock({ _isModelLoaded && _baseURL != nil }) else {
             throw CloudBackendError.invalidURL("Backend not configured. Call loadModel first.")
         }
+
+        // Stash the per-request hints so the adapter-indirected `buildRequest`
+        // and `parseResponseStream` overrides can read them via `activeHints`.
+        // Set before request building, which reads jsonMode / structuredOutput.
+        withStateLock { _activeHints = hints }
 
         try validateGenerationConfig(config)
 

@@ -73,11 +73,13 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         } else {
             XCTFail("Expected named tool choice")
         }
-        XCTAssertTrue(config.jsonMode)
+
+        let hints = try DefaultChatCompletionsAdapter().generationHints(for: request)
+        XCTAssertTrue(hints.jsonMode)
     }
 
     func testJsonSchemaResponseFormatStagesStructuredOutput() throws {
-        // A json_schema response_format must reach GenerationConfig.structuredOutput
+        // A json_schema response_format must reach GenerationRuntimeHints.structuredOutput
         // (the field the engine's structured-output router consults) — not just
         // flip jsonMode and drop the schema.
         let schema = JSONSchemaValue.object([
@@ -95,11 +97,11 @@ final class ChatCompletionsAdapterTests: XCTestCase {
             )
         )
 
-        let config = try DefaultChatCompletionsAdapter().generationConfig(for: request)
+        let hints = try DefaultChatCompletionsAdapter().generationHints(for: request)
 
-        XCTAssertTrue(config.jsonMode)
-        guard case .jsonSchema(let staged) = config.structuredOutput else {
-            XCTFail("Expected structuredOutput to be staged as .jsonSchema; got \(String(describing: config.structuredOutput))")
+        XCTAssertTrue(hints.jsonMode)
+        guard case .jsonSchema(let staged) = hints.structuredOutput else {
+            XCTFail("Expected structuredOutput to be staged as .jsonSchema; got \(String(describing: hints.structuredOutput))")
             return
         }
         XCTAssertTrue(staged.contains("\"answer\""), "staged schema should carry the client's schema content; got: \(staged)")
@@ -112,10 +114,10 @@ final class ChatCompletionsAdapterTests: XCTestCase {
             responseFormat: ChatCompletionResponseFormat(type: .jsonObject)
         )
 
-        let config = try DefaultChatCompletionsAdapter().generationConfig(for: request)
+        let hints = try DefaultChatCompletionsAdapter().generationHints(for: request)
 
-        XCTAssertTrue(config.jsonMode)
-        XCTAssertNil(config.structuredOutput)
+        XCTAssertTrue(hints.jsonMode)
+        XCTAssertNil(hints.structuredOutput)
     }
 
     func testTokenEventsMapToContentDeltaChunks() async throws {
@@ -451,7 +453,7 @@ private final class EventSequenceBackend: InferenceBackend, @unchecked Sendable 
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws { isModelLoaded = true }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let events = events
         return GenerationStream(AsyncThrowingStream { continuation in
             for event in events {
@@ -501,7 +503,7 @@ private final class CapturingBackend: InferenceBackend, ConversationHistoryRecei
 
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws { isModelLoaded = true }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         capturedPrompt = prompt
         capturedSystemPrompt = systemPrompt
         return GenerationStream(AsyncThrowingStream { continuation in

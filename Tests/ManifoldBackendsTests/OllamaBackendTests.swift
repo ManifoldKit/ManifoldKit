@@ -229,10 +229,11 @@ struct OllamaBackendTests {
 
     @Test func buildRequest_jsonModeEnabled_addsFormat() throws {
         let (backend, _) = makeConfiguredBackend()
+        backend.activeHints = GenerationRuntimeHints(jsonMode: true)
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig(jsonMode: true)
+            config: GenerationConfig()
         )
 
         let body = try #require(request.httpBody)

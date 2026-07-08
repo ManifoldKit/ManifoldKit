@@ -188,7 +188,8 @@ private final class CharTokenizerVendorBackend: InferenceBackend, TokenizerVendo
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.finish()

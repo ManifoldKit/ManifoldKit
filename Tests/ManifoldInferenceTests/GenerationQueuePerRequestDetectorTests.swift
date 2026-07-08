@@ -90,7 +90,7 @@ final class GenerationQueuePerRequestDetectorTests: XCTestCase {
                 temperature: 0.7, topP: 0.9, repeatPenalty: 1.1,
                 topK: nil, minP: nil, presencePenalty: nil, frequencyPenalty: nil,
                 seed: nil, maxOutputTokens: 32, maxThinkingTokens: nil,
-                jsonMode: false, grammar: nil, tools: [], toolChoice: .auto,
+                grammar: nil, tools: [], toolChoice: .auto,
                 maxToolIterations: 4
             ),
             handoffDetector: detectorA
@@ -101,7 +101,7 @@ final class GenerationQueuePerRequestDetectorTests: XCTestCase {
                 temperature: 0.7, topP: 0.9, repeatPenalty: 1.1,
                 topK: nil, minP: nil, presencePenalty: nil, frequencyPenalty: nil,
                 seed: nil, maxOutputTokens: 32, maxThinkingTokens: nil,
-                jsonMode: false, grammar: nil, tools: [], toolChoice: .auto,
+                grammar: nil, tools: [], toolChoice: .auto,
                 maxToolIterations: 4
             ),
             handoffDetector: detectorB
@@ -139,7 +139,7 @@ final class GenerationQueuePerRequestDetectorTests: XCTestCase {
                 temperature: 0.7, topP: 0.9, repeatPenalty: 1.1,
                 topK: nil, minP: nil, presencePenalty: nil, frequencyPenalty: nil,
                 seed: nil, maxOutputTokens: 32, maxThinkingTokens: nil,
-                jsonMode: false, grammar: nil, tools: [], toolChoice: .auto,
+                grammar: nil, tools: [], toolChoice: .auto,
                 maxToolIterations: 4
             )
             // No per-request detector — must fall back to the queue-level one.

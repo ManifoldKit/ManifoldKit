@@ -304,7 +304,8 @@ private final class GatedBackend: InferenceBackend, @unchecked Sendable {
     func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         isGenerating = true
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [weak self] continuation in
@@ -348,7 +349,7 @@ private final class GatedLoadBackend: InferenceBackend, @unchecked Sendable {
         isModelLoaded = true
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         let stream = AsyncThrowingStream<GenerationEvent, Error> { $0.finish() }
         return GenerationStream(stream)
     }

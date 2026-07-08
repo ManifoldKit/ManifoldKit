@@ -767,7 +767,6 @@ extension GenerationQueue {
             repeatPenalty: config.repeatPenalty,
             maxOutputTokens: config.maxOutputTokens,
             maxThinkingTokens: config.maxThinkingTokens,
-            jsonMode: config.jsonMode,
             tools: config.tools,
             toolChoice: config.toolChoice,
             maxToolIterations: config.maxToolIterations,
@@ -825,7 +824,7 @@ private final class ToolAwareMockBackend: InferenceBackend, ToolCallingHistoryRe
         isModelLoaded = true
     }
 
-    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         lock.lock()
         let tokens = _tokensToYieldPerTurn.isEmpty ? [] : _tokensToYieldPerTurn.removeFirst()
         let calls = _scriptedToolCallsPerTurn.isEmpty ? [] : _scriptedToolCallsPerTurn.removeFirst()

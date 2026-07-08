@@ -119,7 +119,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
         for try await _ in stream.events {}
 
         XCTAssertEqual(provider.backend.generateCallCount, 1)
-        XCTAssertTrue(provider.backend.lastConfig?.jsonMode == true)
+        XCTAssertTrue(provider.backend.lastHints?.jsonMode == true)
         let entry = try XCTUnwrap(warnings.snapshot().first)
         XCTAssertEqual(entry.backendType, "MockInferenceBackend")
         XCTAssertTrue(entry.message.contains("supportsNativeJSONMode"), entry.message)
@@ -137,7 +137,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
 
         XCTAssertTrue(warnings.snapshot().isEmpty)
         XCTAssertEqual(provider.backend.generateCallCount, 1)
-        XCTAssertTrue(provider.backend.lastConfig?.jsonMode == true)
+        XCTAssertTrue(provider.backend.lastHints?.jsonMode == true)
     }
 
     func test_thinkingCapabilityMatrix_warnsButForwardsHintsWhenThinkingUnsupported() async throws {
@@ -149,17 +149,18 @@ final class BackendCapabilityMatrixTests: XCTestCase {
 
         var config = GenerationConfig(maxOutputTokens: 16)
         config.maxThinkingTokens = 4
-        config.thinkingMarkers = .qwen3
+        let hints = GenerationRuntimeHints(thinkingMarkers: .qwen3)
         let stream = try coordinator.generateWithConfig(
             messages: [("user", "think briefly")],
             systemPrompt: nil,
-            config: config
+            config: config,
+            hints: hints
         )
         for try await _ in stream.events {}
 
         XCTAssertEqual(provider.backend.generateCallCount, 1)
         XCTAssertEqual(provider.backend.lastConfig?.maxThinkingTokens, 4)
-        XCTAssertEqual(provider.backend.lastConfig?.thinkingMarkers, .qwen3)
+        XCTAssertEqual(provider.backend.lastHints?.thinkingMarkers, .qwen3)
         let entry = try XCTUnwrap(warnings.snapshot().first)
         XCTAssertEqual(entry.backendType, "MockInferenceBackend")
         XCTAssertTrue(entry.message.contains("supportsThinking"), entry.message)

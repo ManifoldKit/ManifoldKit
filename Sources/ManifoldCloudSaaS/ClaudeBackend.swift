@@ -418,7 +418,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             // strict-schema support, encode each tool's `input_schema` in
             // Anthropic's strict shape and flag `strict: true`.
             let strictRequested = capabilities.supportsStrictSchema
-                && StrictSchemaTransform.jsonSchemaString(from: config.structuredOutput) != nil
+                && StrictSchemaTransform.jsonSchemaString(from: activeHints.structuredOutput) != nil
             var toolEntries = CloudMessageEncoder.claude.encodeTools(config.tools, strict: strictRequested)
             // Tag the last tool entry with cache_control when automatic so
             // Anthropic caches the entire system+tools prefix. The breakpoint

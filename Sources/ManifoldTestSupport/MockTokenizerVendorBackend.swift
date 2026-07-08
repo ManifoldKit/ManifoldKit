@@ -30,7 +30,8 @@ public final class MockTokenizerVendorBackend: InferenceBackend,
     public func generate(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
         guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
         isGenerating = true

@@ -41,7 +41,7 @@ final class DefaultDialogueSummariserTests: XCTestCase {
             try await inner.loadModel(from: url, plan: plan)
         }
 
-        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
             capturedPrompt = prompt
             return try inner.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
         }

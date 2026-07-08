@@ -38,7 +38,8 @@ struct GenerationPreflightTrimmer {
         backend: InferenceBackend,
         messages: [StructuredMessage],
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints = GenerationRuntimeHints()
     ) throws -> Result {
         let contextSize = Int(backend.capabilities.maxContextTokens)
         // Reserve context for both visible output and (optionally) thinking output.
@@ -81,7 +82,7 @@ struct GenerationPreflightTrimmer {
                 messages: workingMessages,
                 systemPrompt: systemPrompt,
                 tools: config.tools,
-                documents: config.documents,
+                documents: hints.documents,
                 warnOnCapabilityLoss: false
             )
             let promptTokens = try counter.countTokens(prompt)
@@ -95,7 +96,7 @@ struct GenerationPreflightTrimmer {
                     messages: workingMessages,
                     systemPrompt: systemPrompt,
                     tools: config.tools,
-                    documents: config.documents,
+                    documents: hints.documents,
                     warnOnCapabilityLoss: true
                 )
                 return Result(prompt: prompt, trimmedMessages: workingMessages)
