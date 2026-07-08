@@ -36,7 +36,7 @@ import Foundation
 /// the backend advertises ``BackendCapabilities/supportsStrictSchema`` — so
 /// providers that reject `additionalProperties: false` never see a strict
 /// schema and keep emitting their legacy shape.
-public enum StrictSchemaTransform: Sendable {
+package enum StrictSchemaTransform: Sendable {
 
     /// JSON Schema validation keywords OpenAI's strict mode rejects with a
     /// `400`. We strip these from every object/property level before sending.

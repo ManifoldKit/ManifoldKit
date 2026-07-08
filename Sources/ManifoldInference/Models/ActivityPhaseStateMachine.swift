@@ -24,7 +24,7 @@ import Foundation
 /// `phase` is left untouched and the caller receives
 /// ``TransitionResult/rejected(from:to:)``. Callers log and move on; the
 /// machine never traps.
-public struct ActivityPhaseStateMachine: Sendable {
+package struct ActivityPhaseStateMachine: Sendable {
 
     /// The machine's current phase. Callers mutate this via ``transition(to:)``.
     public private(set) var phase: BackendActivityPhase

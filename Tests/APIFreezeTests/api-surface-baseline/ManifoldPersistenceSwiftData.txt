@@ -1,7 +1,4 @@
 (top-level).APIEndpoint TypeAlias
-(top-level).Agent TypeAlias
-(top-level).ChatMessage TypeAlias
-(top-level).ChatSession TypeAlias
 (top-level).ModelBenchmarkCache TypeAlias
 (top-level).PersistedAgent TypeAlias
 (top-level).PersistedChatMessage TypeAlias
