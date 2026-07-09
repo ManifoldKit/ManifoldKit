@@ -189,7 +189,9 @@ if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
   # this only ever rewrites a stale caller value.)
   if [ -n "${MANIFOLD_BENCH_OLLAMA_MODEL:-}" ]; then
     _installed_norm="$(_ollama_tags | sed 's/:latest$//' | sort -u)"
-    if ! printf '%s\n' "$_installed_norm" | grep -qxF "${MANIFOLD_BENCH_OLLAMA_MODEL%:latest}"; then
+    # Only validate if we actually got a tag list back — a transient /api/tags
+    # failure here must not falsely rewrite a valid caller model to a fallback.
+    if [ -n "$_installed_norm" ] && ! printf '%s\n' "$_installed_norm" | grep -qxF "${MANIFOLD_BENCH_OLLAMA_MODEL%:latest}"; then
       _bench_fallback="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | grep -iE '[0-9]b' | head -1)"
       [ -n "$_bench_fallback" ] || _bench_fallback="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | head -1)"
       _bench_fallback="${_bench_fallback%:latest}"
