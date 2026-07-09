@@ -48,8 +48,13 @@ MODELS_DIR="${MODELS_DIR:-$HOME/Documents/Models}"
 CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
 MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
-LANES="core,llama,mlx"
+EVAL_DIR="$COMPANIONS_DIR/manifold-eval"
+LANES="core,llama,mlx,eval"
 LANE_TIMEOUT="${LANE_TIMEOUT:-2400}"   # per-lane hard cap (s); a hung xctest must not eat the night
+# The eval lane drives hundreds of live generations (not xctest), so it gets its
+# OWN, larger per-command cap — the 40-min xctest cap would kill it mid-corpus.
+# It is resumable (generate skips keys already on disk), so a kill loses nothing.
+EVAL_CMD_TIMEOUT="${EVAL_CMD_TIMEOUT:-5400}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$CORE_DIR/.local-integration-runs/$STAMP"
 
@@ -109,7 +114,7 @@ run_lane() {
   echo "# Local integration + perf sweep — $STAMP"
   echo
   echo "- core repo: \`$CORE_DIR\` ($(git -C "$CORE_DIR" rev-parse --short HEAD 2>/dev/null) on $(git -C "$CORE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null))"
-  echo "- companions dir: \`$COMPANIONS_DIR\`  (llama: $([ -d "$LLAMA_DIR" ] && echo present || echo MISSING), mlx: $([ -d "$MLX_DIR" ] && echo present || echo MISSING))"
+  echo "- companions dir: \`$COMPANIONS_DIR\`  (llama: $([ -d "$LLAMA_DIR" ] && echo present || echo MISSING), mlx: $([ -d "$MLX_DIR" ] && echo present || echo MISSING), eval: $([ -d "$EVAL_DIR" ] && echo present || echo MISSING))"
   echo "- models dir: \`$MODELS_DIR\`"
   echo "- lanes: \`$LANES\`"
   echo
@@ -274,6 +279,110 @@ if have_lane core; then
   fi
 fi
 
+# ----- 4b. eval lane: local-LLM CAPABILITY scoring via manifold-eval ---------
+# Where core/llama/mlx answer "do the backends still integrate", this answers
+# "how CAPABLE are the local models" — tool-calling (BFCL), instruction-following
+# (IFEval), and embedding quality (MTEB-STS). It drives live Ollama generations
+# (not xctest) and scores them with the independent assurance harness, so it is a
+# custom block (run_lane's xctest-verdict counting does not apply) with its own
+# EVAL_CMD_TIMEOUT watchdog. All corpora are cached locally; models are env-
+# overridable. Cross-runtime `diff`/`collate` is deferred — the matrix lane above
+# already covers the Ollama conformance leg.
+if have_lane eval && [ -d "$EVAL_DIR" ]; then
+  EVAL_OUT="$OUT/eval"; mkdir -p "$EVAL_OUT"
+  EVAL_CACHE="${MANIFOLD_EVAL_CACHE:-$HOME/.cache/manifold-eval}"
+  # Model roster (override any via env). Tool model must advertise `tools`; the
+  # instruct model matches the corpus the fixture was verified against.
+  EVAL_TOOL_MODEL="${EVAL_TOOL_MODEL:-mistral-7b-tools}"
+  EVAL_INSTRUCT_MODEL="${EVAL_INSTRUCT_MODEL:-qwen2.5:0.5b-instruct-q4_K_M}"
+  EVAL_EMBED_MODEL="${EVAL_EMBED_MODEL:-nomic-embed-text}"
+  # BFCL defaults to `simple` (400 cases) to stay bounded overnight; set to `all`
+  # (1240) for the full leaderboard, or any comma-list of categories.
+  EVAL_BFCL_CATEGORY="${EVAL_BFCL_CATEGORY:-simple}"
+  EVAL_IFEVAL_CORPUS="${EVAL_IFEVAL_CORPUS:-$EVAL_DIR/Tests/ManifoldEvalTests/Fixtures/ifeval.jsonl}"
+  EVAL_STSB="${EVAL_STSB:-$EVAL_CACHE/stsb_test.json}"
+
+  # Run one eval subcommand as its own process group under an EVAL_CMD_TIMEOUT
+  # watchdog (same set -m / kill -TERM -pid pattern as run_lane). Appends a
+  # one-line status to SUMMARY_LANES. args: sub-label logfile cmd...
+  run_eval_cmd() {
+    local lbl="$1" logf="$2"; shift 2
+    log "=== [eval:$lbl] $(date +%H:%M:%S) starting (cap ${EVAL_CMD_TIMEOUT}s) ==="
+    set -m
+    ( "$@" ) >"$logf" 2>&1 &
+    local pid=$!
+    set +m
+    ( sleep "$EVAL_CMD_TIMEOUT"; kill -TERM -"$pid" 2>/dev/null; sleep 8; kill -KILL -"$pid" 2>/dev/null ) &
+    local wd=$!
+    wait "$pid"; local rc=$?
+    kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+    if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: TIMEOUT/killed (rc=$rc, cap ${EVAL_CMD_TIMEOUT}s; resumable) -> $(basename "$logf")\n"
+      log "=== [eval:$lbl] $(date +%H:%M:%S) KILLED after ${EVAL_CMD_TIMEOUT}s cap ==="
+      return 1
+    fi
+    # Scorer reports print a one-line metric summary to stdout (BFCL/IFEval
+    # accuracy, MTEB Spearman). Surface it verbatim; fall back to the exit code.
+    local metric; metric="$(grep -hiE 'accuracy|spearman|pearson|F1|pass%|strict' "$logf" 2>/dev/null | tail -1 | sed 's/[[:space:]]\{2,\}/ /g')"
+    if [ "$rc" -eq 0 ]; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: ok ${metric:+— $metric} -> $(basename "$logf")\n"
+    else
+      SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: fail(rc=$rc) ${metric:+— $metric} -> $(basename "$logf")\n"
+    fi
+    log "=== [eval:$lbl] $(date +%H:%M:%S) done rc=$rc ==="
+    return $rc
+  }
+
+  if ! curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
+    SUMMARY_LANES="${SUMMARY_LANES}eval: skip (Ollama down at localhost:11434)\n"
+  elif ! ( cd "$EVAL_DIR" && swift build ) >"$EVAL_OUT/build.log" 2>&1; then
+    SUMMARY_LANES="${SUMMARY_LANES}eval: skip (manifold-eval build failed -> eval/build.log)\n"
+  else
+    EVAL_BIN="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
+    log "=== [eval] built manifold-eval -> $EVAL_BIN ==="
+
+    # --- tool-calling: BFCL generate -> score (Gorilla v4 cache layout) -------
+    run_eval_cmd "bfcl-generate" "$EVAL_OUT/bfcl-generate.log" \
+      "$EVAL_BIN" bfcl-generate --ollama-model "$EVAL_TOOL_MODEL" \
+        --category "$EVAL_BFCL_CATEGORY" --cache-dir "$EVAL_CACHE/bfcl" \
+        --out "$EVAL_OUT/bfcl-responses.jsonl"
+    if [ -s "$EVAL_OUT/bfcl-responses.jsonl" ]; then
+      run_eval_cmd "bfcl" "$EVAL_OUT/bfcl.log" \
+        "$EVAL_BIN" bfcl --gorilla-cache-dir "$EVAL_CACHE/bfcl" \
+          --responses "$EVAL_OUT/bfcl-responses.jsonl" --out "$EVAL_OUT/BFCL.md"
+    else
+      SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: skip (no responses generated -> eval/bfcl-generate.log)\n"
+    fi
+
+    # --- instruction-following: IFEval generate -> score ----------------------
+    if [ -f "$EVAL_IFEVAL_CORPUS" ]; then
+      run_eval_cmd "ifeval-generate" "$EVAL_OUT/ifeval-generate.log" \
+        "$EVAL_BIN" ifeval-generate --ollama-model "$EVAL_INSTRUCT_MODEL" \
+          --corpus "$EVAL_IFEVAL_CORPUS" --out "$EVAL_OUT/ifeval-responses.jsonl"
+      if [ -s "$EVAL_OUT/ifeval-responses.jsonl" ]; then
+        run_eval_cmd "ifeval" "$EVAL_OUT/ifeval.log" \
+          "$EVAL_BIN" ifeval --corpus "$EVAL_IFEVAL_CORPUS" \
+            --responses "$EVAL_OUT/ifeval-responses.jsonl" --out "$EVAL_OUT/IFEVAL.md"
+      else
+        SUMMARY_LANES="${SUMMARY_LANES}eval:ifeval: skip (no responses generated -> eval/ifeval-generate.log)\n"
+      fi
+    else
+      SUMMARY_LANES="${SUMMARY_LANES}eval:ifeval: skip (corpus absent at $EVAL_IFEVAL_CORPUS)\n"
+    fi
+
+    # --- embedding quality: MTEB STS-B ----------------------------------------
+    if [ -f "$EVAL_STSB" ]; then
+      run_eval_cmd "mteb" "$EVAL_OUT/mteb.log" \
+        "$EVAL_BIN" mteb --dataset "$EVAL_STSB" --ollama-model "$EVAL_EMBED_MODEL" \
+          --out "$EVAL_OUT/MTEB.md"
+    else
+      SUMMARY_LANES="${SUMMARY_LANES}eval:mteb: skip (STS-B dataset absent at $EVAL_STSB — run scripts/fetch-corpora.sh)\n"
+    fi
+  fi
+elif have_lane eval; then
+  SUMMARY_LANES="${SUMMARY_LANES}eval: skip (repo absent at $EVAL_DIR)\n"
+fi
+
 # ----- 5. perf extraction ----------------------------------------------------
 {
   echo "## Conformance matrix"
@@ -292,6 +401,22 @@ fi
   echo "core backend benchmark:"
   grep -hi "tokensPerSecond\|TTFT\|benchmark" "$OUT"/core.log 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
   echo '```'
+  echo
+  echo "## Capability scores (manifold-eval)"
+  if [ -d "$OUT/eval" ]; then
+    echo '```'
+    for r in BFCL IFEVAL MTEB; do
+      f="$OUT/eval/$r.md"
+      if [ -s "$f" ]; then
+        echo "$r: $(grep -hiE 'accuracy|spearman|pearson|F1|pass%|strict' "$f" 2>/dev/null | head -1 | sed 's/[#*`]//g; s/^[[:space:]]*//')  (eval/$r.md)"
+      else
+        echo "$r: (not produced — see Lane summary)"
+      fi
+    done
+    echo '```'
+  else
+    echo "- eval lane not run this sweep (see Lane summary)"
+  fi
   echo
   echo "## Lane summary"
   echo '```'
