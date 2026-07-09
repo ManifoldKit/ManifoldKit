@@ -244,3 +244,4 @@ API breakage: var GenerationConfig.jsonMode has been removed
 API breakage: var GenerationConfig.maxRunTokens has been removed
 API breakage: var GenerationConfig.structuredOutput has been removed
 API breakage: var GenerationConfig.thinkingMarkers has been removed
+API breakage: constructor VoiceConversationController.init(transcriber:synthesizer:) has been removed
