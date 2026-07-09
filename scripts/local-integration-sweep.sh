@@ -179,6 +179,28 @@ if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
   else
     echo "MANIFOLD_BENCH_OLLAMA_MODEL: caller-set ($MANIFOLD_BENCH_OLLAMA_MODEL)" >> "$REPORT"
   fi
+  # Validate the resolved benchmark model against what Ollama ACTUALLY has. A
+  # caller-set MANIFOLD_BENCH_OLLAMA_MODEL (e.g. from a shell profile) drifts
+  # easily from the installed tag naming — registry-style `llama3.1:8b` vs a
+  # custom Modelfile tag `llama3.1-8b` — and 404s the throughput benchmark,
+  # failing the whole core lane on a naming mismatch (seen 2026-07-09). If the
+  # requested tag isn't installed, fall back to an installed chat tag and log the
+  # substitution instead. (The auto-selected value above is always installed, so
+  # this only ever rewrites a stale caller value.)
+  if [ -n "${MANIFOLD_BENCH_OLLAMA_MODEL:-}" ]; then
+    _installed_norm="$(_ollama_tags | sed 's/:latest$//' | sort -u)"
+    if ! printf '%s\n' "$_installed_norm" | grep -qxF "${MANIFOLD_BENCH_OLLAMA_MODEL%:latest}"; then
+      _bench_fallback="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | grep -iE '[0-9]b' | head -1)"
+      [ -n "$_bench_fallback" ] || _bench_fallback="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | head -1)"
+      _bench_fallback="${_bench_fallback%:latest}"
+      if [ -n "$_bench_fallback" ]; then
+        echo "MANIFOLD_BENCH_OLLAMA_MODEL '$MANIFOLD_BENCH_OLLAMA_MODEL' NOT installed -> falling back to installed '$_bench_fallback'" >> "$REPORT"
+        export MANIFOLD_BENCH_OLLAMA_MODEL="$_bench_fallback"
+      else
+        echo "MANIFOLD_BENCH_OLLAMA_MODEL '$MANIFOLD_BENCH_OLLAMA_MODEL' NOT installed and no chat tag to fall back to — benchmark will 404" >> "$REPORT"
+      fi
+    fi
+  fi
   { echo '```'; echo; } >> "$REPORT"
 fi
 
@@ -305,9 +327,11 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
   # Run one eval subcommand as its own process group under an EVAL_CMD_TIMEOUT
   # watchdog (same set -m / kill -TERM -pid pattern as run_lane). Appends a
   # one-line status to SUMMARY_LANES. args: sub-label logfile cmd...
-  run_eval_cmd() {
-    local lbl="$1" logf="$2"; shift 2
-    log "=== [eval:$lbl] $(date +%H:%M:%S) starting (cap ${EVAL_CMD_TIMEOUT}s) ==="
+  # Run one command as its own process group under the EVAL_CMD_TIMEOUT watchdog
+  # (same set -m / kill -TERM -pid pattern as run_lane). Returns the command's rc;
+  # 143/137 signal a timeout kill. No summary side effect — the caller classifies.
+  run_capped() {
+    local logf="$1"; shift
     set -m
     ( "$@" ) >"$logf" 2>&1 &
     local pid=$!
@@ -316,6 +340,15 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     local wd=$!
     wait "$pid"; local rc=$?
     kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+    return $rc
+  }
+
+  # run_capped + a one-line status appended to SUMMARY_LANES, with the metric
+  # auto-grepped from the log. args: sub-label logfile cmd...
+  run_eval_cmd() {
+    local lbl="$1" logf="$2"; shift 2
+    log "=== [eval:$lbl] $(date +%H:%M:%S) starting (cap ${EVAL_CMD_TIMEOUT}s) ==="
+    run_capped "$logf" "$@"; local rc=$?
     if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: TIMEOUT/killed (rc=$rc, cap ${EVAL_CMD_TIMEOUT}s; resumable) -> $(basename "$logf")\n"
       log "=== [eval:$lbl] $(date +%H:%M:%S) KILLED after ${EVAL_CMD_TIMEOUT}s cap ==="
@@ -347,9 +380,43 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
         --category "$EVAL_BFCL_CATEGORY" --cache-dir "$EVAL_CACHE/bfcl" \
         --out "$EVAL_OUT/bfcl-responses.jsonl"
     if [ -s "$EVAL_OUT/bfcl-responses.jsonl" ]; then
-      run_eval_cmd "bfcl" "$EVAL_OUT/bfcl.log" \
+      # NB: `bfcl` scores the FULL Gorilla corpus present in the cache, counting
+      # every un-generated case as a miss (irrelevance excepted). So when we
+      # generate only a subset (EVAL_BFCL_CATEGORY != all), BFCL.md's "Overall"
+      # conflates "not generated" with "failed" and understates capability. We
+      # therefore report the accuracy of the GENERATED categories only, computed
+      # from BFCL.md's per-category table — the honest signal for what ran. The
+      # full report (with the diluted overall) is still written for inspection.
+      log "=== [eval:bfcl] $(date +%H:%M:%S) starting (cap ${EVAL_CMD_TIMEOUT}s) ==="
+      run_capped "$EVAL_OUT/bfcl.log" \
         "$EVAL_BIN" bfcl --gorilla-cache-dir "$EVAL_CACHE/bfcl" \
           --responses "$EVAL_OUT/bfcl-responses.jsonl" --out "$EVAL_OUT/BFCL.md"
+      bfcl_rc=$?
+      if [ $bfcl_rc -eq 143 ] || [ $bfcl_rc -eq 137 ]; then
+        SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: TIMEOUT/killed (rc=$bfcl_rc, cap ${EVAL_CMD_TIMEOUT}s) -> bfcl.log\n"
+      elif [ $bfcl_rc -ne 0 ]; then
+        SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: fail(rc=$bfcl_rc) -> bfcl.log\n"
+      elif [ "$EVAL_BFCL_CATEGORY" = "all" ]; then
+        # Full corpus generated — the overall IS the honest number.
+        bfcl_metric="$(grep -hiE 'overall|accuracy' "$EVAL_OUT/BFCL.md" 2>/dev/null | tail -1 | sed 's/[*|]//g; s/^ *//; s/[[:space:]]\{2,\}/ /g')"
+        SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: ok ${bfcl_metric:+— $bfcl_metric} -> BFCL.md\n"
+      else
+        # Sum passed/total across ONLY the generated categories in BFCL.md's table.
+        bfcl_metric="$(awk -F'|' -v cats="$EVAL_BFCL_CATEGORY" '
+          BEGIN { n = split(cats, a, ","); for (i = 1; i <= n; i++) { gsub(/[[:space:]]/, "", a[i]); want[a[i]] = 1 } }
+          /^\| *[a-z_]+ *\| *[0-9]+ *\| *[0-9]+ *\|/ {
+            c = $2; gsub(/[[:space:]]/, "", c)
+            if (c in want) { tot += $3 + 0; pas += $4 + 0 }
+          }
+          END { if (tot > 0) printf "%s %d/%d (%.1f%%)", cats, pas, tot, 100 * pas / tot }
+        ' "$EVAL_OUT/BFCL.md" 2>/dev/null)"
+        if [ -n "$bfcl_metric" ]; then
+          SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: ok — $bfcl_metric [generated categories only; BFCL.md Overall spans full corpus] -> BFCL.md\n"
+        else
+          SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: ok (scoped metric unparsed — see BFCL.md) -> BFCL.md\n"
+        fi
+      fi
+      log "=== [eval:bfcl] $(date +%H:%M:%S) done rc=$bfcl_rc ==="
     else
       SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: skip (no responses generated -> eval/bfcl-generate.log)\n"
     fi
@@ -408,7 +475,11 @@ fi
     for r in BFCL IFEVAL MTEB; do
       f="$OUT/eval/$r.md"
       if [ -s "$f" ]; then
-        echo "$r: $(grep -hiE 'accuracy|spearman|pearson|F1|pass%|strict' "$f" 2>/dev/null | head -1 | sed 's/[#*`]//g; s/^[[:space:]]*//')  (eval/$r.md)"
+        # Match the summary line, not the table HEADER row (which also contains
+        # "Accuracy"): BFCL -> "Overall", IFEval -> "Strict Accuracy", MTEB ->
+        # "Spearman". For a category-scoped BFCL run the Overall is diluted — the
+        # honest per-category figure is in the Lane summary; BFCL.md has the table.
+        echo "$r: $(grep -hiE 'overall|spearman|pearson|strict accuracy|^\| *F1' "$f" 2>/dev/null | head -1 | sed 's/[#*`]//g; s/^[[:space:]]*//')  (eval/$r.md)"
       else
         echo "$r: (not produced — see Lane summary)"
       fi
