@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.67.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.66.0...v0.67.0) (2026-07-08)
+
+
+### Highlights
+
+#### The pre-1.0 API-tightening wave (breaking)
+
+0.67.0 is the Phase 2 breaking wave of the pre-1.0 API program: several public surfaces are narrowed or removed so the eventual 1.0 freeze lands on a smaller, sharper API. Every break was pre-screened against the five local consumer apps and the companion packages — most callers need no change. The migrations you may need:
+
+- **Runtime hints moved off `GenerationConfig`.** `jsonMode`, `thinkingMarkers`, `structuredOutput`, `documents`, `maxRunTokens`, and `captureRenderedPrompt` now live on `GenerationRuntimeHints`, passed through a new `hints:` parameter on `InferenceBackend.generate` / `InferenceService.enqueue`.
+- **`Persisted*` are the only persistence names.** The bare `ChatSession` / `ChatMessage` / `Agent` exports and the `ChatSessionRecord` / `ChatMessageRecord` aliases are gone.
+- **The `LLM` front door tightened.** `LLM.init(from:…)` no longer defaults `backends:`, and `QuickStartResult.respond(_:)` is removed in favour of the single `respond(to:)` spelling.
+- **Surface trimmed.** Seven internal-only types dropped from `public` to `package`, `ChatView`'s 17 initializers collapsed to 2 + modifier slots, and `ManifoldFuzz` is no longer a published product.
+
+```swift
+// Runtime knobs move from GenerationConfig to GenerationRuntimeHints
+let hints = GenerationRuntimeHints(jsonMode: true, maxRunTokens: 4096)
+let (_, stream) = try inferenceService.enqueue(messages: history, hints: hints)
+
+// The LLM front door now takes explicit registrars, and respond(to:) is the only spelling
+let llm = try await LLM(from: endpoint, backends: ManifoldKit.defaultBackendRegistrars)
+let reply = try await llm.respond(to: "hi")
+```
+
+See [#2169](https://github.com/ManifoldKit/ManifoldKit/issues/2169), [#2167](https://github.com/ManifoldKit/ManifoldKit/issues/2167), [#2165](https://github.com/ManifoldKit/ManifoldKit/issues/2165), [#2168](https://github.com/ManifoldKit/ManifoldKit/issues/2168), [#2173](https://github.com/ManifoldKit/ManifoldKit/issues/2173), [#2166](https://github.com/ManifoldKit/ManifoldKit/issues/2166).
+
+#### Voice barge-in
+
+`VoiceConversationController` can now stop playback the instant the user starts speaking, through a pluggable `VoiceActivityDetector` seam (default: a zero-dependency energy-based detector). It is opt-in and source-compatible — the new `voiceActivityDetector:`, `bargeInListener:`, and `isBargeInEnabled:` parameters are all defaulted, so existing initializers keep working.
+
+```swift
+let controller = VoiceConversationController(
+    transcriber: transcriber,
+    synthesizer: synthesizer,
+    isBargeInEnabled: true
+)
+```
+
+See [#2136](https://github.com/ManifoldKit/ManifoldKit/issues/2136).
+
+### ⚠ BREAKING CHANGES
+
+* **GenerationConfig runtime hints extracted.** `GenerationConfig` no longer has `jsonMode`, `thinkingMarkers`, `structuredOutput`, `documents`, `maxRunTokens`, or `captureRenderedPrompt` — move them to `GenerationRuntimeHints` and pass via the new `hints:` parameter on `InferenceBackend.generate` / `InferenceService.enqueue`.
+* **Persisted* aliases removed.** `ChatSession`, `ChatMessage`, and `Agent` are no longer exported as bare names from `ManifoldPersistenceSwiftData` — use `PersistedChatSession`, `PersistedChatMessage`, and `PersistedAgent`. The `ChatSessionRecord` / `ChatMessageRecord` aliases in `ManifoldInference` are removed.
+* **LLM front door.** `QuickStartResult.respond(_:)` is removed — use `respond(to:)`. `LLM.init(from:template:backends:configuration:)` no longer defaults `backends:` — pass `ManifoldKit.defaultBackendRegistrars` for the old cloud+Foundation behaviour, or a companion registrar (e.g. `[LlamaBackends.self]`) for a local model.
+* **ChatView initializers collapsed.** `ChatView`'s 17 initializers are reduced to 2 plus modifier slots (`.chatEmptyState { }`, etc., last-wins composition); the 15 removed initializers are source-breaking.
+* **Seven internal types demoted** from `public` to `package` (source-incompatible only for out-of-package callers that named them directly; pre-screening found none): `DefaultErrorBodyDecoder`, `StrictSchemaTransform`, `ModelExecutorPool`, `ExecutorSnapshot`, `GenerationStreamAccumulator`, `StreamingTokenBatcher`, `ActivityPhaseStateMachine`.
+* **ManifoldFuzz product unpublished** — the fuzz harness is now an internal dev tool with no published library product (no known external consumers).
+
+### Features
+
+* Extract runtime hints from GenerationConfig (option C) ([#2169](https://github.com/ManifoldKit/ManifoldKit/issues/2169)) ([50cf3ed](https://github.com/ManifoldKit/ManifoldKit/commit/50cf3ed0815a376d0ae853d8a42fde5d2ee6299e))
+* Demote 7 internal-only types from public to package ([#2173](https://github.com/ManifoldKit/ManifoldKit/issues/2173)) ([616f7f9](https://github.com/ManifoldKit/ManifoldKit/commit/616f7f98a71dbf77e83ac0371493e5c1c3c1c9da))
+* Collapse ChatView's 17 inits to 2 inits + modifier slots ([#2168](https://github.com/ManifoldKit/ManifoldKit/issues/2168)) ([e9b6483](https://github.com/ManifoldKit/ManifoldKit/commit/e9b6483d))
+* Remove bare-name and Record shadow aliases for Persisted* types ([#2167](https://github.com/ManifoldKit/ManifoldKit/issues/2167)) ([dc95330](https://github.com/ManifoldKit/ManifoldKit/commit/dc95330928fd932a17f0c16165f3b636dc2cceb1))
+* Single respond spelling + explicit backends for LLM front door ([#2165](https://github.com/ManifoldKit/ManifoldKit/issues/2165)) ([0220986](https://github.com/ManifoldKit/ManifoldKit/commit/02209863128d73abc76b17b58939e950cee05dcd))
+* Unpublish the ManifoldFuzz library product ([#2166](https://github.com/ManifoldKit/ManifoldKit/issues/2166)) ([50164f4](https://github.com/ManifoldKit/ManifoldKit/commit/50164f4ab559234e4d6c7ab818b34726cbae1f84))
+* **Inference:** conform boundary-escapable errors to BackendError + document the error boundary ([#2148](https://github.com/ManifoldKit/ManifoldKit/issues/2148)) ([d57d94e](https://github.com/ManifoldKit/ManifoldKit/commit/d57d94e108de42a1f1b286a2ff0a08c35f852edc))
+* **Voice:** VAD-driven barge-in for the voice controller ([#2136](https://github.com/ManifoldKit/ManifoldKit/issues/2136)) ([3402c93](https://github.com/ManifoldKit/ManifoldKit/commit/3402c935200ee4d821eed6e32ac908d85748a340))
+
+
+### Bug Fixes
+
+* **MCP:** lock-guard MCPURLSessionFactory.networkDisabled ([#2159](https://github.com/ManifoldKit/ManifoldKit/issues/2159)) ([e289e7b](https://github.com/ManifoldKit/ManifoldKit/commit/e289e7b7c7409d55f072eeb2a2557262fdee9435))
+
+
+### Documentation
+
+* Amend API plan — reverse decision 2 (no extractions; unpublish Fuzz product, semver-exempt Tools) ([#2163](https://github.com/ManifoldKit/ManifoldKit/issues/2163)) ([fc6fa37](https://github.com/ManifoldKit/ManifoldKit/commit/fc6fa37d2d0e49286e5e2b105d74b0c94ebc14b1))
+* Refresh POSITIONING.md for post-WWDC-2026 competitive landscape ([#2170](https://github.com/ManifoldKit/ManifoldKit/issues/2170)) ([ba6e6bb](https://github.com/ManifoldKit/ManifoldKit/commit/ba6e6bbf15d768152f355be2a766408c0c1b3f6f))
+* Refresh README competitive framing post-WWDC-2026 ([#2172](https://github.com/ManifoldKit/ManifoldKit/issues/2172)) ([a41a552](https://github.com/ManifoldKit/ManifoldKit/commit/a41a552b620fa215cf23a65f582078b97804b155))
+* Semver-exempt dev-tool products + extend companion runbook ([#2164](https://github.com/ManifoldKit/ManifoldKit/issues/2164)) ([1a1bca4](https://github.com/ManifoldKit/ManifoldKit/commit/1a1bca442360b984ab8e3899f818d1d7ae76ccac))
+
+
+### Tests
+
+* **API:** member-aware public-surface baseline tripwire (prototype) ([#2147](https://github.com/ManifoldKit/ManifoldKit/issues/2147)) ([90aeb90](https://github.com/ManifoldKit/ManifoldKit/commit/90aeb90ce1050ea975ba1bc439bd4acb4e006fd6))
+
 ## [0.66.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.65.0...v0.66.0) (2026-07-06)
 
 ### Highlights
