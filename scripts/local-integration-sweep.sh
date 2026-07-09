@@ -315,20 +315,23 @@ fi
 if have_lane eval && [ -d "$EVAL_DIR" ]; then
   EVAL_OUT="$OUT/eval"; mkdir -p "$EVAL_OUT"
   EVAL_CACHE="${MANIFOLD_EVAL_CACHE:-$HOME/.cache/manifold-eval}"
-  # Model roster (override any via env). Tool model must advertise `tools`; the
-  # instruct model matches the corpus the fixture was verified against.
+  # Model roster (override any via env). Tool model must advertise `tools`.
   EVAL_TOOL_MODEL="${EVAL_TOOL_MODEL:-mistral-7b-tools}"
-  EVAL_INSTRUCT_MODEL="${EVAL_INSTRUCT_MODEL:-qwen2.5:0.5b-instruct-q4_K_M}"
+  # IFEval instruction-following: default to a CAPABLE model so the number
+  # reflects ManifoldKit's prompt-assembly quality, not just a tiny model's
+  # ceiling — a 0.5B model scores ~21% and can't separate "model is small" from
+  # "MK plumbing is lossy". Override to qwen2.5:0.5b-instruct-q4_K_M for the
+  # provenance-anchored 22.9% baseline.
+  EVAL_INSTRUCT_MODEL="${EVAL_INSTRUCT_MODEL:-llama3.1-8b}"
   EVAL_EMBED_MODEL="${EVAL_EMBED_MODEL:-nomic-embed-text}"
-  # BFCL defaults to `simple` (400 cases) to stay bounded overnight; set to `all`
-  # (1240) for the full leaderboard, or any comma-list of categories.
-  EVAL_BFCL_CATEGORY="${EVAL_BFCL_CATEGORY:-simple}"
+  # BFCL categories: default to the tool-calling trio (simple + the two HARD
+  # modes local models actually fail — multiple-tool selection and parallel
+  # calls) so the lane isn't blind to the failure surface. `simple` alone (400)
+  # for a fast run; `all` (1240) for the full leaderboard incl. irrelevance.
+  EVAL_BFCL_CATEGORY="${EVAL_BFCL_CATEGORY:-simple,multiple,parallel}"
   EVAL_IFEVAL_CORPUS="${EVAL_IFEVAL_CORPUS:-$EVAL_DIR/Tests/ManifoldEvalTests/Fixtures/ifeval.jsonl}"
   EVAL_STSB="${EVAL_STSB:-$EVAL_CACHE/stsb_test.json}"
 
-  # Run one eval subcommand as its own process group under an EVAL_CMD_TIMEOUT
-  # watchdog (same set -m / kill -TERM -pid pattern as run_lane). Appends a
-  # one-line status to SUMMARY_LANES. args: sub-label logfile cmd...
   # Run one command as its own process group under the EVAL_CMD_TIMEOUT watchdog
   # (same set -m / kill -TERM -pid pattern as run_lane). Returns the command's rc;
   # 143/137 signal a timeout kill. No summary side effect — the caller classifies.
@@ -368,6 +371,20 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     return $rc
   }
 
+  # True if <model> (":latest"-insensitive) is an installed Ollama tag.
+  eval_model_installed() {
+    local m="${1%:latest}"
+    _ollama_tags 2>/dev/null | sed 's/:latest$//' | grep -qxF "$m"
+  }
+  # Append a generation-completeness line: how many cases actually landed on
+  # disk. A count below the corpus size means cases errored/timed out (the
+  # generators are resumable, so a re-run retries them) — surfacing it keeps a
+  # 25%-error run from reading as a clean pass.
+  eval_gen_count() {  # label logf responsesfile
+    local n=0; [ -f "$3" ] && n="$(grep -c . "$3" 2>/dev/null)"
+    SUMMARY_LANES="${SUMMARY_LANES}eval:${1}: generated=${n} cases (resumable; below corpus ⇒ some errored/timed out) -> $(basename "$2")\n"
+  }
+
   if ! curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
     SUMMARY_LANES="${SUMMARY_LANES}eval: skip (Ollama down at localhost:11434)\n"
   elif ! ( cd "$EVAL_DIR" && swift build ) >"$EVAL_OUT/build.log" 2>&1; then
@@ -376,11 +393,30 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     EVAL_BIN="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
     log "=== [eval] built manifold-eval -> $EVAL_BIN ==="
 
+    # Model-resolution preflight: a requested eval model that isn't installed
+    # 404s mid-run. Check up front, record it in the report, and skip the
+    # affected sub-lane instead of burning the timeout on a guaranteed failure.
+    # (Same class as the bench-model mismatch — registry name vs Modelfile tag.)
+    { echo "## Eval model preflight"; echo '```'
+      for pair in "tool=$EVAL_TOOL_MODEL" "instruct=$EVAL_INSTRUCT_MODEL" "embed=$EVAL_EMBED_MODEL"; do
+        _role="${pair%%=*}"; _m="${pair#*=}"
+        if eval_model_installed "$_m"; then
+          echo "$_role: $_m  (installed)"
+        else
+          echo "$_role: $_m  NOT INSTALLED — sub-lane will skip"
+        fi
+      done
+      echo '```'; echo; } >> "$REPORT"
+
     # --- tool-calling: BFCL generate -> score (Gorilla v4 cache layout) -------
+    if ! eval_model_installed "$EVAL_TOOL_MODEL"; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: skip (tool model '$EVAL_TOOL_MODEL' not installed)\n"
+    else
     run_eval_cmd "bfcl-generate" "$EVAL_OUT/bfcl-generate.log" \
       "$EVAL_BIN" bfcl-generate --ollama-model "$EVAL_TOOL_MODEL" \
         --category "$EVAL_BFCL_CATEGORY" --cache-dir "$EVAL_CACHE/bfcl" \
         --out "$EVAL_OUT/bfcl-responses.jsonl"
+    eval_gen_count "bfcl-generate" "$EVAL_OUT/bfcl-generate.log" "$EVAL_OUT/bfcl-responses.jsonl"
     if [ -s "$EVAL_OUT/bfcl-responses.jsonl" ]; then
       # NB: `bfcl` scores the FULL Gorilla corpus present in the cache, counting
       # every un-generated case as a miss (irrelevance excepted). So when we
@@ -422,12 +458,18 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     else
       SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: skip (no responses generated -> eval/bfcl-generate.log)\n"
     fi
+    fi  # tool-model preflight guard
 
     # --- instruction-following: IFEval generate -> score ----------------------
-    if [ -f "$EVAL_IFEVAL_CORPUS" ]; then
+    if ! eval_model_installed "$EVAL_INSTRUCT_MODEL"; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:ifeval: skip (instruct model '$EVAL_INSTRUCT_MODEL' not installed)\n"
+    elif [ ! -f "$EVAL_IFEVAL_CORPUS" ]; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:ifeval: skip (corpus absent at $EVAL_IFEVAL_CORPUS)\n"
+    else
       run_eval_cmd "ifeval-generate" "$EVAL_OUT/ifeval-generate.log" \
         "$EVAL_BIN" ifeval-generate --ollama-model "$EVAL_INSTRUCT_MODEL" \
           --corpus "$EVAL_IFEVAL_CORPUS" --out "$EVAL_OUT/ifeval-responses.jsonl"
+      eval_gen_count "ifeval-generate" "$EVAL_OUT/ifeval-generate.log" "$EVAL_OUT/ifeval-responses.jsonl"
       if [ -s "$EVAL_OUT/ifeval-responses.jsonl" ]; then
         run_eval_cmd "ifeval" "$EVAL_OUT/ifeval.log" \
           "$EVAL_BIN" ifeval --corpus "$EVAL_IFEVAL_CORPUS" \
@@ -435,17 +477,17 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
       else
         SUMMARY_LANES="${SUMMARY_LANES}eval:ifeval: skip (no responses generated -> eval/ifeval-generate.log)\n"
       fi
-    else
-      SUMMARY_LANES="${SUMMARY_LANES}eval:ifeval: skip (corpus absent at $EVAL_IFEVAL_CORPUS)\n"
     fi
 
     # --- embedding quality: MTEB STS-B ----------------------------------------
-    if [ -f "$EVAL_STSB" ]; then
+    if ! eval_model_installed "$EVAL_EMBED_MODEL"; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:mteb: skip (embed model '$EVAL_EMBED_MODEL' not installed)\n"
+    elif [ ! -f "$EVAL_STSB" ]; then
+      SUMMARY_LANES="${SUMMARY_LANES}eval:mteb: skip (STS-B dataset absent at $EVAL_STSB — run scripts/fetch-corpora.sh)\n"
+    else
       run_eval_cmd "mteb" "$EVAL_OUT/mteb.log" \
         "$EVAL_BIN" mteb --dataset "$EVAL_STSB" --ollama-model "$EVAL_EMBED_MODEL" \
           --out "$EVAL_OUT/MTEB.md"
-    else
-      SUMMARY_LANES="${SUMMARY_LANES}eval:mteb: skip (STS-B dataset absent at $EVAL_STSB — run scripts/fetch-corpora.sh)\n"
     fi
   fi
 elif have_lane eval; then
