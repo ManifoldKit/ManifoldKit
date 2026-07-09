@@ -371,10 +371,16 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     return $rc
   }
 
-  # True if <model> (":latest"-insensitive) is an installed Ollama tag.
+  # True if <model> (":latest"-insensitive) is an installed Ollama tag. Reads a
+  # tag list captured ONCE into _EVAL_INSTALLED_TAGS (set below) rather than
+  # re-curling per call — a transient /api/tags blip mid-run must not falsely
+  # skip a sub-lane. On an empty list (fetch failed) we ASSUME installed and let
+  # the sub-lane run; the same "never act on an empty tag list" rule the
+  # bench-model guard uses. The generator itself will surface a real 404.
+  _EVAL_INSTALLED_TAGS=""
   eval_model_installed() {
-    local m="${1%:latest}"
-    _ollama_tags 2>/dev/null | sed 's/:latest$//' | grep -qxF "$m"
+    [ -z "$_EVAL_INSTALLED_TAGS" ] && return 0
+    printf '%s\n' "$_EVAL_INSTALLED_TAGS" | grep -qxF "${1%:latest}"
   }
   # Append a generation-completeness line: how many cases actually landed on
   # disk. A count below the corpus size means cases errored/timed out (the
@@ -392,6 +398,11 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
   else
     EVAL_BIN="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
     log "=== [eval] built manifold-eval -> $EVAL_BIN ==="
+
+    # Snapshot installed tags ONCE for the preflight + per-lane guards (see
+    # eval_model_installed). Empty => a transient fetch failure; guards then
+    # assume-installed rather than skip everything.
+    _EVAL_INSTALLED_TAGS="$(_ollama_tags 2>/dev/null | sed 's/:latest$//' | sort -u)"
 
     # Model-resolution preflight: a requested eval model that isn't installed
     # 404s mid-run. Check up front, record it in the report, and skip the
@@ -449,7 +460,7 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
           END { if (tot > 0) printf "%s %d/%d (%.1f%%)", cats, pas, tot, 100 * pas / tot }
         ' "$EVAL_OUT/BFCL.md" 2>/dev/null)"
         if [ -n "$bfcl_metric" ]; then
-          SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: ok — $bfcl_metric [generated categories only; BFCL.md Overall spans full corpus] -> BFCL.md\n"
+          SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: ok — $bfcl_metric [generated categories only; BFCL.md Overall spans full corpus; if the bfcl-generate 'generated=' count is below the category totals the number is understated] -> BFCL.md\n"
         else
           SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: ok (scoped metric unparsed — see BFCL.md) -> BFCL.md\n"
         fi
