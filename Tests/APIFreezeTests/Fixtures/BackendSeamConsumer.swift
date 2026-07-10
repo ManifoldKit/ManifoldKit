@@ -191,12 +191,17 @@ enum BackendSeamConsumer {
     /// (`MLXBackends`, `LlamaBackends` post-split).
     private enum SeamFrozenRegistrar: BackendRegistrar {
         @MainActor static func register(with service: InferenceService) {
-            // Exhaustive ModelType switch: registrars route on this enum, so
-            // an added case must surface here as a compile error — every
-            // companion's factory switch breaks the same way.
+            // `ModelType` switch shape: registrars route on this type. Since
+            // arch-plan 4.1 / Wave 2 B1, `ModelType` is an extensible struct
+            // (not a closed enum), so this switch is no longer exhaustively
+            // enforced by the compiler and MUST carry a `default:` arm — same
+            // shape every companion's factory switch (MLXBackends,
+            // LlamaBackends) needs post-split.
             service.registerBackendFactory { (modelType: ModelType) -> (any InferenceBackend)? in
                 switch modelType {
                 case .gguf, .mlx, .foundation:
+                    return nil
+                default:
                     return nil
                 }
             }

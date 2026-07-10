@@ -162,6 +162,8 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             return .snapshot(files: files)
         case .foundation:
             throw HuggingFaceError.invalidDownloadedFile(reason: "Foundation models cannot be downloaded")
+        default:
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Unsupported model type '\(model.modelType.rawValue)' — no download plan is registered for it")
         }
     }
 

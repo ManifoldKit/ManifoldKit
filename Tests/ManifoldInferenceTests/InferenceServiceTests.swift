@@ -357,6 +357,8 @@ final class InferenceServiceTests: XCTestCase {
                 secondBackend
             case .mlx:
                 nil
+            default:
+                nil
             }
         }
 
@@ -439,6 +441,8 @@ final class InferenceServiceTests: XCTestCase {
             case .foundation:
                 secondBackend
             case .mlx:
+                nil
+            default:
                 nil
             }
         }

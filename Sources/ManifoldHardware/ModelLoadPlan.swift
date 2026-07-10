@@ -367,7 +367,9 @@ public struct ModelLoadPlan: Sendable {
         switch model.modelType {
         case .foundation:
             return systemManaged(requestedContextSize: requestedContextSize)
-        case .mlx, .gguf:
+        default:
+            // `.mlx`, `.gguf`, and any third-party local model type fall through
+            // to the memory-budget estimate below.
             break
         }
 

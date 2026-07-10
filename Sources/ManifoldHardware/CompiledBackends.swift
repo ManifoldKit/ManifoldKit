@@ -188,6 +188,10 @@ public struct CompiledBackends: Sendable, Equatable {
             return "No MLX backend is compiled into this build. Add the manifold-mlx companion package (pre-split builds: the MLX trait) — see docs/MIGRATION-0.48.md."
         case .foundation:
             return "Apple Foundation Models require iOS 26 / macOS 26 or later."
+        default:
+            // A third-party local model type: no descriptor to point at a companion
+            // package, so surface the raw identifier rather than a wrong guess.
+            return "No backend is compiled into this build for model type '\(modelType.rawValue)'."
         }
     }
 

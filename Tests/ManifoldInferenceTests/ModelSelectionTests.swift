@@ -108,6 +108,7 @@ final class ModelSelectionTests: XCTestCase {
             case .gguf: return firstBackend
             case .foundation: return secondBackend
             case .mlx: return nil
+            default: return nil
             }
         }
         let selection = ModelSelection(

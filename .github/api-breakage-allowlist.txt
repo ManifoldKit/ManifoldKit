@@ -331,3 +331,12 @@ API breakage: var HandoffChipView.to has declared type change from ManifoldContr
 API breakage: var TurnConfig.repeatPenalty has been removed
 API breakage: var TurnConfig.temperature has been removed
 API breakage: var TurnConfig.topP has been removed
+API breakage: enum ModelType has been changed to a struct
+API breakage: enumelement ModelType.gguf is now static
+API breakage: enumelement ModelType.gguf has declared type change from (ManifoldHardware.ModelType.Type) -> ManifoldHardware.ModelType to ManifoldHardware.ModelType
+API breakage: enumelement ModelType.mlx is now static
+API breakage: enumelement ModelType.mlx has declared type change from (ManifoldHardware.ModelType.Type) -> ManifoldHardware.ModelType to ManifoldHardware.ModelType
+API breakage: enumelement ModelType.foundation is now static
+API breakage: enumelement ModelType.foundation has declared type change from (ManifoldHardware.ModelType.Type) -> ManifoldHardware.ModelType to ManifoldHardware.ModelType
+API breakage: func ModelType.hash(into:) has been removed
+API breakage: var ModelType.hashValue has been removed

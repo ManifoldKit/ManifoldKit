@@ -28,6 +28,8 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
                 return (name, URL(fileURLWithPath: "/\(name)"))
             case .foundation:
                 return ("/", URL(fileURLWithPath: "/"))
+            default:
+                return (name, URL(fileURLWithPath: "/\(name)"))
             }
         }()
         return ModelInfo(
@@ -258,6 +260,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
             case .gguf: firstBackend
             case .foundation: secondBackend
             case .mlx: nil
+            default: nil
             }
         }
 
@@ -333,6 +336,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
             case .gguf: firstBackend
             case .foundation: secondBackend
             case .mlx: nil
+            default: nil
             }
         }
 
@@ -421,6 +425,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
             case .gguf: firstBackend
             case .foundation: secondBackend
             case .mlx: nil
+            default: nil
             }
         }
 

@@ -96,7 +96,9 @@ public extension ModelLoadPlan {
                 headroomFraction: headroomFraction,
                 measuredBytesPerToken: measuredBytesPerToken
             )
-        case .gguf:
+        default:
+            // `.gguf` and any third-party local model type: mappable is the
+            // least-assumption default (matches on-disk, not resident, memory).
             return compute(
                 for: model,
                 requestedContextSize: requestedContextSize,
