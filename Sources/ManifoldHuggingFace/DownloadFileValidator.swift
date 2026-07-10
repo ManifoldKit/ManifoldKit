@@ -34,6 +34,8 @@ public struct DownloadFileValidator {
             try validateMLXDirectory(at: fileURL)
         case .foundation:
             throw HuggingFaceError.invalidDownloadedFile(reason: "Foundation models cannot be downloaded")
+        default:
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Unsupported model type '\(modelType.rawValue)' — no download validator is registered for it")
         }
         try validateChecksum(at: fileURL, expectedChecksum: expectedChecksum)
     }

@@ -3,8 +3,9 @@ import Foundation
 /// The on-disk format / runtime an image-generation model uses.
 ///
 /// Sibling to ``ModelType`` for text inference. Image models live in their own type
-/// space — ``ModelType``'s switches stay closed over text formats, and image-side code
-/// keys off this enum instead.
+/// space — ``ModelType`` (an extensible struct since arch-plan 4.1 / Wave 2 B1) is
+/// scoped to text-inference formats, and image-side code keys off this closed enum
+/// instead rather than growing `ModelType` with image-only cases.
 ///
 /// Additional cases (e.g. a `gguf` variant for `stable-diffusion.cpp`, or a `coreAI`
 /// case once Apple's Core AI image-gen surface ships) land alongside their conformers

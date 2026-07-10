@@ -240,6 +240,7 @@ private struct ModelSelectionRow: View {
         case .gguf: type = "GGUF"
         case .mlx: type = "MLX"
         case .foundation: type = "Apple Foundation Model"
+        default: type = model.modelType.rawValue.uppercased()
         }
         let tier = model.effectiveCapabilityTier.label
         if model.modelType == .foundation {
@@ -255,6 +256,7 @@ private struct ModelSelectionRow: View {
             case .gguf: return ("GGUF", .orange)
             case .mlx: return ("MLX", .purple)
             case .foundation: return ("Foundation", .blue)
+            default: return (modelType.rawValue.uppercased(), .gray)
             }
         }()
 

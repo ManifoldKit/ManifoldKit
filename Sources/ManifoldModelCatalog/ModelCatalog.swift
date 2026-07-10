@@ -284,7 +284,7 @@ private struct ModelInfoSnapshot: Codable, Equatable {
     var fileName: String
     var url: URL
     var fileSize: UInt64
-    var modelType: StoredModelType
+    var modelType: ModelType
     var mmprojURL: URL?
     var huggingFaceRepoID: String?
     // Resolved capability flags survive without a re-probe. Both the curated
@@ -305,7 +305,7 @@ private struct ModelInfoSnapshot: Codable, Equatable {
         fileName = modelInfo.fileName
         url = modelInfo.url
         fileSize = modelInfo.fileSize
-        modelType = StoredModelType(modelInfo.modelType)
+        modelType = modelInfo.modelType
         mmprojURL = modelInfo.mmprojURL
         huggingFaceRepoID = modelInfo.huggingFaceRepoID
         curatedSupportsCode = modelInfo.curatedSupportsCode
@@ -323,7 +323,7 @@ private struct ModelInfoSnapshot: Codable, Equatable {
             fileName: fileName,
             url: url,
             fileSize: fileSize,
-            modelType: modelType.modelType,
+            modelType: modelType,
             mmprojURL: mmprojURL,
             huggingFaceRepoID: huggingFaceRepoID,
             curatedSupportsCode: curatedSupportsCode,
@@ -333,28 +333,6 @@ private struct ModelInfoSnapshot: Codable, Equatable {
             curatedSupportsReasoning: curatedSupportsReasoning,
             detectedSupportsReasoning: detectedSupportsReasoning
         )
-    }
-}
-
-private enum StoredModelType: String, Codable {
-    case gguf
-    case mlx
-    case foundation
-
-    init(_ modelType: ModelType) {
-        switch modelType {
-        case .gguf: self = .gguf
-        case .mlx: self = .mlx
-        case .foundation: self = .foundation
-        }
-    }
-
-    var modelType: ModelType {
-        switch self {
-        case .gguf: .gguf
-        case .mlx: .mlx
-        case .foundation: .foundation
-        }
     }
 }
 

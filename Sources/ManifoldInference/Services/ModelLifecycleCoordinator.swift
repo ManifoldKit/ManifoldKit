@@ -836,6 +836,8 @@ final class ModelLifecycleCoordinator {
             return "MLX models require Apple Silicon and the MLX backend. Build with the MLX Swift package dependency to enable it."
         case .foundation:
             return "Apple Foundation Models require iOS 26 / macOS 26 or later."
+        default:
+            return "No backend is registered for model type '\(modelType.rawValue)'."
         }
     }
 

@@ -244,18 +244,20 @@ public final class ModelLoadCoordinator {
         switch model.modelType {
         case .foundation:
             plan = ModelLoadPlan.systemManaged(requestedContextSize: requestedContext)
-        case .gguf:
-            plan = ModelLoadPlan.compute(
-                for: model,
-                requestedContextSize: requestedContext,
-                strategy: .mappable,
-                environment: currentLoadPlanEnvironment()
-            )
         case .mlx:
             plan = ModelLoadPlan.compute(
                 for: model,
                 requestedContextSize: requestedContext,
                 strategy: .resident,
+                environment: currentLoadPlanEnvironment()
+            )
+        default:
+            // `.gguf` and any third-party local model type: mappable is the
+            // least-assumption default (matches ModelLoadPlan+ModelInfo.swift).
+            plan = ModelLoadPlan.compute(
+                for: model,
+                requestedContextSize: requestedContext,
+                strategy: .mappable,
                 environment: currentLoadPlanEnvironment()
             )
         }

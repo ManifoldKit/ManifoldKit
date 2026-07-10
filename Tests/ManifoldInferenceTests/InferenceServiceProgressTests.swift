@@ -106,6 +106,7 @@ final class InferenceServiceProgressTests: XCTestCase {
             case .gguf: firstBackend
             case .foundation: secondBackend
             case .mlx: nil
+            default: nil
             }
         }
 

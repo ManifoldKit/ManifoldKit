@@ -5,9 +5,9 @@ import os
 //
 // A *descriptor* bundles the static, display-layer metadata for a backend
 // family so callers can look things up by identity without exhaustive `switch`
-// statements. The existing `ModelType` and `APIProvider` enums remain the
-// canonical identifiers for persistence and `Codable`; descriptors are an
-// additive overlay, not a replacement.
+// statements. `APIProvider` and `ModelType` remain the canonical identifiers
+// for persistence and `Codable`; descriptors are an additive overlay, not a
+// replacement.
 //
 // Design constraints driving these choices:
 //
@@ -25,11 +25,14 @@ import os
 //    Available on iOS 16 / macOS 13+, which is well below the iOS 18 / macOS 15
 //    deployment floor.
 //
-// 3. **Enum cases stay.** `APIProvider.rawValue` and `ModelType` are persisted
-//    in SwiftData `providerRawValue: String` (ManifoldSchemaV3/V4). Third-party
-//    providers that need persistence register a `providerID` that goes into
-//    `providerRawValue` and decode via the `unknown(_:)` escape hatch (not
-//    in scope for this spike — noted in the plan).
+// 3. **Identity types differ in openness.** `APIProvider.rawValue` is persisted
+//    in SwiftData `providerRawValue: String` (ManifoldSchemaV3/V4); it stays a
+//    closed enum, so third-party providers that need persistence register a
+//    `providerID` that goes into `providerRawValue` and decode via the
+//    `unknown(_:)` escape hatch (not in scope for this spike — noted in the
+//    plan). `ModelType` (arch-plan 4.1, Wave 2 B1) converted to an extensible
+//    `RawRepresentable` struct — third-party local model types persist via
+//    `ModelType`'s own `Codable` conformance directly, no escape hatch needed.
 
 /// Static metadata a cloud-provider backend needs to surface to routing,
 /// display, and capability layers without owning any mutable state.

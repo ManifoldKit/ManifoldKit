@@ -78,6 +78,8 @@ final class LoadDispatchCoordinationTests: XCTestCase {
                     secondBackend
                 case .mlx:
                     nil
+                default:
+                    nil
                 }
             }
         }
@@ -167,6 +169,8 @@ final class LoadDispatchCoordinationTests: XCTestCase {
                 case .foundation:
                     secondBackend
                 case .mlx:
+                    nil
+                default:
                     nil
                 }
             }

@@ -51,7 +51,9 @@ extension ModelCapabilityTier {
         case .foundation:
             // Apple Foundation Model is approximately 3B parameters.
             return .fast
-        case .gguf, .mlx:
+        default:
+            // `.gguf`, `.mlx`, and any third-party local model type: file size
+            // is the only signal available, so estimate from it uniformly.
             let gb = Double(fileSize) / 1_073_741_824
             switch gb {
             case ..<2:    return .minimal
