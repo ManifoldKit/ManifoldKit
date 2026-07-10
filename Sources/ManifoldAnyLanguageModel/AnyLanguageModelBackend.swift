@@ -45,25 +45,16 @@ public final class AnyLanguageModelBackend: @unchecked Sendable, InferenceBacken
         state.withLock { state in
             state.descriptor = descriptor
             state.activeSession = nil
-            state.capabilities = BackendCapabilities(
-                supportedParameters: descriptor.capabilities.supportedParameters,
-                maxContextTokens: Int32(plan.effectiveContextSize),
-                requiresPromptTemplate: descriptor.capabilities.requiresPromptTemplate,
-                supportsSystemPrompt: descriptor.capabilities.supportsSystemPrompt,
-                supportsToolCalling: descriptor.capabilities.supportsToolCalling,
-                supportsStructuredOutput: descriptor.capabilities.supportsStructuredOutput,
-                supportsNativeJSONMode: descriptor.capabilities.supportsNativeJSONMode,
-                cancellationStyle: descriptor.capabilities.cancellationStyle,
-                supportsTokenCounting: descriptor.capabilities.supportsTokenCounting,
-                memoryStrategy: descriptor.capabilities.memoryStrategy,
-                maxOutputTokens: descriptor.capabilities.maxOutputTokens,
-                supportsStreaming: descriptor.capabilities.supportsStreaming,
-                isRemote: descriptor.capabilities.isRemote,
-                supportsKVCachePersistence: descriptor.capabilities.supportsKVCachePersistence,
-                supportsGrammarConstrainedSampling: descriptor.capabilities.supportsGrammarConstrainedSampling,
-                supportsThinking: descriptor.capabilities.supportsThinking,
-                streamsToolCallArguments: descriptor.capabilities.streamsToolCallArguments,
-                supportsParallelToolCalls: descriptor.capabilities.supportsParallelToolCalls
+            // `maxContextTokens` is the only field this call site genuinely
+            // overrides (from the runtime-derived load plan); `updating(...)`
+            // preserves every other field from `descriptor.capabilities`
+            // verbatim, including `supportsVision`, `supportsGuidedStructuredOutput`,
+            // `supportsStrictSchema`, `toolDialect`, `maxAdvertisedToolCount`,
+            // `rendersFullPrompt`, and `sharesMLXProcessResources` — the 7
+            // fields a prior fresh-literal rebuild here silently zeroed
+            // (arch-plan 1.3 / api-review-wave2 0.D).
+            state.capabilities = descriptor.capabilities.updating(
+                maxContextTokens: Int32(plan.effectiveContextSize)
             )
         }
     }
