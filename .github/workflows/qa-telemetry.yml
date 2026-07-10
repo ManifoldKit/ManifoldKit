@@ -25,8 +25,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # append + commit docs/ci-metrics.jsonl
+  contents: write   # push the appended metrics row to the ci-metrics branch
   actions: read     # gh run list
+  issues: write     # failure-visibility issue (the branch push is no longer
+                    # best-effort — a failed push fails the job, and this
+                    # weekly job would otherwise fail silently)
 
 concurrency:
   group: qa-telemetry
@@ -81,17 +84,28 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # Create the branch on first run; otherwise branch off its current
-          # tip so prior runs' rows are preserved. actions/checkout configures
-          # a narrow fetch refspec covering only the checked-out ref (main),
-          # so a plain `git fetch origin ci-metrics` populates FETCH_HEAD but
-          # NOT refs/remotes/origin/ci-metrics — the explicit destination
-          # refspec below is required, otherwise the subsequent
-          # `origin/ci-metrics` reference fails to resolve even though the
-          # fetch itself reported success.
-          if git fetch origin ci-metrics:refs/remotes/origin/ci-metrics 2>/dev/null; then
+          # tip so prior runs' rows are preserved. `ls-remote --exit-code`
+          # distinguishes "branch doesn't exist" (exit 2 → create it) from a
+          # transient fetch failure (network/auth → fail loudly) — treating
+          # the two alike would route a blip into the create path, whose
+          # subsequent non-fast-forward push would then fail confusingly.
+          set +e
+          git ls-remote --exit-code --heads origin ci-metrics >/dev/null
+          ls_remote_rc=$?
+          set -e
+          if [ "$ls_remote_rc" -eq 0 ]; then
+            # actions/checkout configures a narrow fetch refspec covering only
+            # the checked-out ref (main), so a plain `git fetch origin
+            # ci-metrics` populates FETCH_HEAD but NOT
+            # refs/remotes/origin/ci-metrics — the explicit destination
+            # refspec is required for the checkout below to resolve.
+            git fetch origin ci-metrics:refs/remotes/origin/ci-metrics
             git checkout -B ci-metrics origin/ci-metrics
-          else
+          elif [ "$ls_remote_rc" -eq 2 ]; then
             git checkout -B ci-metrics
+          else
+            echo "::error::git ls-remote for ci-metrics failed (exit ${ls_remote_rc}) — transient remote error, not a missing branch."
+            exit "$ls_remote_rc"
           fi
 
           printf '%s\n' "$row" >> docs/ci-metrics.jsonl
@@ -110,3 +124,34 @@ jobs:
           name: ci-metrics-${{ github.run_id }}
           path: docs/ci-metrics.jsonl
           if-no-files-found: ignore
+
+      - name: Open GitHub issue on failure
+        # The data-branch push above is a hard failure (unlike the retired
+        # best-effort push to main), and this is a weekly scheduled job nobody
+        # watches — mirror the nightly workflows' failure-visibility pattern.
+        # De-duplication: comment on an existing open issue instead of
+        # creating a duplicate.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="QA telemetry failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## QA telemetry failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi

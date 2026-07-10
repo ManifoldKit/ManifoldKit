@@ -328,7 +328,12 @@ jobs:
   # `if: success() || failure()` so one failure doesn't mask the others.
   cold-start:
     runs-on: macos-15
-    timeout-minutes: 60
+    # Must exceed the sum of the step budgets (6 × 10 min) plus checkout +
+    # Swift CI setup + the issue-reporter step: a job-level timeout marks
+    # steps `cancelled`, not `failure`, so the `if: failure()` reporter below
+    # would be skipped and the failure would stay silent — the reporter only
+    # works if per-step timeouts, not the job ceiling, are what trip first.
+    timeout-minutes: 75
     permissions:
       contents: read
       issues: write
@@ -412,7 +417,11 @@ jobs:
   # mask the rest.
   queue-merge-backstop:
     runs-on: macos-15
-    timeout-minutes: 60
+    # Step budgets sum to 50 min (15+15+15+5); checkout + Swift CI setup +
+    # the issue-reporter step need real headroom on top — a job-level timeout
+    # marks steps `cancelled`, not `failure`, which would skip the
+    # `if: failure()` reporter below (see cold-start).
+    timeout-minutes: 70
     permissions:
       contents: read
       issues: write
@@ -487,7 +496,11 @@ jobs:
   # here.
   doc-gates:
     runs-on: macos-15
-    timeout-minutes: 30
+    # Step budgets sum to 30 min (20+10); checkout + Swift CI setup + the
+    # issue-reporter step need headroom on top — a job-level timeout marks
+    # steps `cancelled`, not `failure`, which would skip the `if: failure()`
+    # reporter below (see cold-start).
+    timeout-minutes: 45
     permissions:
       contents: read
       issues: write
