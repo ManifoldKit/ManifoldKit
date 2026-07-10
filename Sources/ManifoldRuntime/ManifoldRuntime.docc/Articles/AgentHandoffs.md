@@ -8,17 +8,23 @@ Agent handoffs let a session host several personas (e.g. a research agent that h
 
 This is **not** a multi-agent peer system. Agents are sequential and turn-scoped — the active agent owns the next turn entirely. For long-lived peer actors, see the v2 Team / Mailbox proposal.
 
-> Note: There are two `Agent` types in the stack. ``ManifoldInference/Agent`` is the storage-agnostic value type that flows through the runtime. `ManifoldPersistenceSwiftData/PersistedAgent` is the SwiftData `@Model` row backing it (also still exported under the back-compat name `Agent` from that module). When you import both modules, prefer `PersistedAgent` for the persistence row so the bare `Agent` resolves unambiguously to the value type.
+> Note: There are two agent-persona types in the stack, distinguished by name
+> (not just module-qualification). ``ManifoldInference/AgentDefinition`` is
+> the storage-agnostic value type that flows through the runtime.
+> `ManifoldPersistenceSwiftData/PersistedAgent` is the SwiftData `@Model` row
+> backing it (the underlying `@Model` class is schema-internally named
+> `Agent` — `ManifoldSchemaV9.Agent` — but that name is not part of either
+> module's public surface).
 
 ## The moving parts
 
 | Piece | Lives in | Role |
 |---|---|---|
-| ``ManifoldInference/Agent`` | `ManifoldInference` | Value type: `id`, `name`, `systemPrompt`, `description`, `allowedToolNames`. |
+| ``ManifoldInference/AgentDefinition`` | `ManifoldInference` | Value type: `id`, `name`, `systemPrompt`, `description`, `allowedToolNames`. |
 | ``ManifoldInference/AgentHandoff`` | `ManifoldInference` | The detected transfer intent: `targetAgentID` + optional `payload`. |
 | ``ManifoldInference/HandoffDetectionResult`` | `ManifoldInference` | `regular(ToolCall)` vs `handoff(AgentHandoff)`. |
 | ``HandoffToolSource`` | `ManifoldRuntime` | ``SessionToolSource`` that synthesises one `transfer_to_<name>` tool per non-active agent. |
-| ``ManifoldInference/ChatSession/agents`` | `ManifoldInference` | The session's agent registry — a `[Agent]` snapshot of the SwiftData rows. |
+| ``ManifoldInference/ChatSession/agents`` | `ManifoldInference` | The session's agent registry — a `[AgentDefinition]` snapshot of the SwiftData rows. |
 | ``ManifoldInference/ChatSession/activeAgentID`` | `ManifoldInference` | Drives system-prompt re-derivation each turn. |
 | ``ConversationEvent/agentHandoff(from:to:)`` | `ManifoldRuntime` | Telemetry case emitted on every swap. |
 
@@ -30,13 +36,13 @@ import ManifoldInference
 import ManifoldRuntime
 
 // 1. Define the agents.
-let researcher = Agent(
+let researcher = AgentDefinition(
     name: "researcher",
     systemPrompt: "You research topics and produce a tight outline. Hand off to the writer once the outline is ready.",
     description: "Researches a topic and produces a structured outline."
 )
 
-let writer = Agent(
+let writer = AgentDefinition(
     name: "writer",
     systemPrompt: "You take an outline and turn it into a polished long-form post.",
     description: "Turns an outline into a written piece."

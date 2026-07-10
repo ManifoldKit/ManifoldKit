@@ -277,7 +277,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M2: set `session = nil` on the view → resolvedAgent is nil.
     ///   M3: clear `session.agents` → lookup fails → no badge.
     func test_bubble_withResolvedAgentID_rendersAgentBadge() throws {
-        let agent = ManifoldInference.Agent(name: "Researcher", systemPrompt: "do research", description: "researcher")
+        let agent = ManifoldInference.AgentDefinition(name: "Researcher", systemPrompt: "do research", description: "researcher")
         let session = ManifoldInference.ChatSession(id: sessionID, agents: [agent], activeAgentID: agent.id)
         let msg = ManifoldInference.ChatMessage(
             role: .assistant,
@@ -301,7 +301,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M2: add a fallback "Unknown" label → finder for that label would fire.
     ///   M3: remove the nil-guard in agentBadge call site → fatal.
     func test_bubble_withUnresolvedAgentID_fallsBackToRoleRender() throws {
-        let realAgent = ManifoldInference.Agent(name: "Researcher", systemPrompt: "", description: "")
+        let realAgent = ManifoldInference.AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
         let danglingID = UUID()
         let session = ManifoldInference.ChatSession(id: sessionID, agents: [realAgent])
         let msg = ManifoldInference.ChatMessage(
@@ -366,9 +366,9 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     // MARK: - W3A: handoff chip rendering
 
-    private func agentPair() -> (ManifoldInference.Agent, ManifoldInference.Agent) {
-        let a = ManifoldInference.Agent(name: "Researcher", systemPrompt: "", description: "")
-        let b = ManifoldInference.Agent(name: "Writer", systemPrompt: "", description: "")
+    private func agentPair() -> (ManifoldInference.AgentDefinition, ManifoldInference.AgentDefinition) {
+        let a = ManifoldInference.AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
+        let b = ManifoldInference.AgentDefinition(name: "Writer", systemPrompt: "", description: "")
         return (a, b)
     }
 

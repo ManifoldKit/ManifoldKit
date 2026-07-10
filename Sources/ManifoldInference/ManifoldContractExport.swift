@@ -5,7 +5,7 @@
 // `LocalInferenceAdapter`, `ToolExecutor`, the `BackendOptInProtocols`
 // family), the value/stream types (`GenerationConfig`, `GenerationEvent`,
 // `GenerationStream`, `Message`, `MessagePart`, `ChatError`, `BackendName`,
-// `BackendVisionCapability`, `VectorSearchHit`, `Agent`/`AgentHandoff`), and
+// `BackendVisionCapability`, `VectorSearchHit`, `AgentDefinition`/`AgentHandoff`), and
 // the backend-facing streaming utilities (`StreamTransform`,
 // `ToolCallTransform`, `ThinkingTransform`, `OutputParserSession`,
 // `GrammarPhaseGate`, `SSEStreamParser`, `StreamingArgumentAccumulator`,

@@ -568,11 +568,11 @@ package struct ConversationTurnExecutor: Sendable {
         // generation isn't reconfigured mid-stream.
         let (turnSessionToolSources, turnHookRegistry) = await bindings.snapshot()
 
-        let activeAgent: Agent? = {
+        let activeAgent: AgentDefinition? = {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
             return sessionRecord.agents.first(where: { $0.id == activeID })
         }()
-        let agentSiblings: [Agent] = {
+        let agentSiblings: [AgentDefinition] = {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return [] }
             return sessionRecord.agents.filter { $0.id != activeID }
         }()

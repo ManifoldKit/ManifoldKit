@@ -17,10 +17,10 @@ import ManifoldInference
 /// or when `to == nil` (cannot resolve target agent — fail soft, no chip).
 public struct HandoffChipView: View {
 
-    public let from: Agent?
-    public let to: Agent?
+    public let from: AgentDefinition?
+    public let to: AgentDefinition?
 
-    public init(from: Agent?, to: Agent?) {
+    public init(from: AgentDefinition?, to: AgentDefinition?) {
         self.from = from
         self.to = to
     }
@@ -35,7 +35,7 @@ public struct HandoffChipView: View {
     }
 
     @ViewBuilder
-    private func chip(to: Agent) -> some View {
+    private func chip(to: AgentDefinition) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "arrow.turn.down.right")
                 .font(.caption2)
@@ -56,8 +56,8 @@ public struct HandoffChipView: View {
 }
 
 #Preview {
-    let agentA = Agent(name: "Researcher", systemPrompt: "", description: "")
-    let agentB = Agent(name: "Writer", systemPrompt: "", description: "")
+    let agentA = AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
+    let agentB = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
     return VStack {
         HandoffChipView(from: agentA, to: agentB)
         HandoffChipView(from: agentB, to: agentA)

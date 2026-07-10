@@ -493,8 +493,8 @@ final class TurnLoopCharacterizationTests: XCTestCase {
 
         // Pre-create a two-agent session with Researcher active. Fixed UUIDs
         // are fine — the canonicalizer relabels them positionally.
-        let researcher = Agent(name: "Researcher", systemPrompt: "You are a Researcher.", description: "Gathers facts.")
-        let writer = Agent(name: "Writer", systemPrompt: "You are a Writer.", description: "Drafts copy.")
+        let researcher = AgentDefinition(name: "Researcher", systemPrompt: "You are a Researcher.", description: "Gathers facts.")
+        let writer = AgentDefinition(name: "Writer", systemPrompt: "You are a Writer.", description: "Drafts copy.")
         let handoffSessionID = UUID()
         try await persistenceStack.provider.insertSession(ChatSession(
             id: handoffSessionID,

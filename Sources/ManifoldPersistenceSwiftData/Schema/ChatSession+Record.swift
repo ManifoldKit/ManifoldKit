@@ -10,7 +10,7 @@ extension PersistedChatSession {
     /// passing to inference services that don't depend on SwiftData.
     public var record: ManifoldInference.ChatSession {
         // Map SwiftData @Model Agent rows to the storage-agnostic
-        // ManifoldInference.Agent value type so consumers downstream of
+        // ManifoldInference.AgentDefinition value type so consumers downstream of
         // ManifoldInference.ChatSession (HandoffToolSource, ConversationTurnExecutor)
         // don't need to import the persistence module.
         //
@@ -18,8 +18,8 @@ extension PersistedChatSession {
         // SwiftDataPersistenceProvider.reconcileAgents(on:with:), invoked from
         // insertSession/updateSession so this read mapping has a lossless write
         // counterpart (#1495).
-        let agentRecords: [ManifoldInference.Agent] = agents.map { row in
-            ManifoldInference.Agent(
+        let agentRecords: [ManifoldInference.AgentDefinition] = agents.map { row in
+            ManifoldInference.AgentDefinition(
                 id: row.id,
                 name: row.name,
                 systemPrompt: row.systemPrompt,

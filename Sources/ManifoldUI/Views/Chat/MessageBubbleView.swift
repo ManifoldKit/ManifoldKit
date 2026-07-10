@@ -82,7 +82,7 @@ public struct MessageBubbleView: View {
     /// Resolves the message's `agentID` against the supplied session's agent
     /// registry. Returns `nil` when there is no agentID, no session, or when
     /// the agent has been deleted from the session (dangling reference).
-    var resolvedAgent: Agent? {
+    var resolvedAgent: AgentDefinition? {
         guard let agentID = message.agentID,
               let session
         else { return nil }
@@ -307,7 +307,7 @@ public struct MessageBubbleView: View {
     /// message. Color is derived deterministically from the agent's UUID so two
     /// different agents look visually distinct without per-agent theming work.
     @ViewBuilder
-    private func agentBadge(for agent: Agent) -> some View {
+    private func agentBadge(for agent: AgentDefinition) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "person.circle.fill")
                 .font(.caption)

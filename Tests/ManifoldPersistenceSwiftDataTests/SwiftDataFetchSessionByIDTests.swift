@@ -57,8 +57,8 @@ final class SwiftDataFetchSessionByIDTests: XCTestCase {
     /// agents and `activeAgentID` off the fetched record, so the override must
     /// still materialize them on the single matched row.
     func test_fetchSessionByID_roundTripsAgentsAndActiveAgent() async throws {
-        let researcher = ManifoldInference.Agent(name: "Researcher", systemPrompt: "find facts", description: "")
-        let writer = ManifoldInference.Agent(name: "Writer", systemPrompt: "compose", description: "")
+        let researcher = ManifoldInference.AgentDefinition(name: "Researcher", systemPrompt: "find facts", description: "")
+        let writer = ManifoldInference.AgentDefinition(name: "Writer", systemPrompt: "compose", description: "")
         let record = ManifoldInference.ChatSession(
             title: "Multi-agent",
             agents: [researcher, writer],

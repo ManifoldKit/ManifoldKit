@@ -18,8 +18,8 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
     /// contract's stableAcrossCalls assertion runs against a session that
     /// actually produces a non-empty advertised list.
     func makeSession() -> ChatSession {
-        let researcher = Agent(name: "Researcher", systemPrompt: "P1", description: "D1")
-        let writer = Agent(name: "Writer", systemPrompt: "P2", description: "D2")
+        let researcher = AgentDefinition(name: "Researcher", systemPrompt: "P1", description: "D1")
+        let writer = AgentDefinition(name: "Writer", systemPrompt: "P2", description: "D2")
         return ChatSession(
             id: UUID(),
             title: "Contract fixture",
@@ -55,9 +55,9 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
     // MARK: - Synthesis shape
 
     func test_toolDefinitions_synthesizesTransferTools_excludingActiveAgent() async {
-        let researcher = Agent(name: "Researcher", systemPrompt: "", description: "")
-        let writer = Agent(name: "Writer", systemPrompt: "", description: "")
-        let critic = Agent(name: "Critic", systemPrompt: "", description: "")
+        let researcher = AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
+        let writer = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
+        let critic = AgentDefinition(name: "Critic", systemPrompt: "", description: "")
         let session = ChatSession(
             id: UUID(),
             title: "T",
@@ -76,7 +76,7 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
     }
 
     func test_toolDefinitions_emptyWhenSingleAgent() async {
-        let solo = Agent(name: "Solo", systemPrompt: "", description: "")
+        let solo = AgentDefinition(name: "Solo", systemPrompt: "", description: "")
         let session = ChatSession(
             id: UUID(),
             title: "Solo",
@@ -95,13 +95,13 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
         // The soft cap is informational — the source must still return
         // every non-active agent's transfer tool so handoff isn't silently
         // truncated mid-conversation.
-        let active = Agent(name: "A", systemPrompt: "", description: "")
-        let agents: [Agent] = [
+        let active = AgentDefinition(name: "A", systemPrompt: "", description: "")
+        let agents: [AgentDefinition] = [
             active,
-            Agent(name: "B", systemPrompt: "", description: ""),
-            Agent(name: "C", systemPrompt: "", description: ""),
-            Agent(name: "D", systemPrompt: "", description: ""),
-            Agent(name: "E", systemPrompt: "", description: ""),
+            AgentDefinition(name: "B", systemPrompt: "", description: ""),
+            AgentDefinition(name: "C", systemPrompt: "", description: ""),
+            AgentDefinition(name: "D", systemPrompt: "", description: ""),
+            AgentDefinition(name: "E", systemPrompt: "", description: ""),
         ]
         let session = ChatSession(
             id: UUID(),
@@ -120,7 +120,7 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
     // MARK: - resolve error surface
 
     func test_resolve_handoffName_throwsHandoffMustBeInterceptedUpstream() async {
-        let writer = Agent(name: "Writer", systemPrompt: "", description: "")
+        let writer = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
         let session = ChatSession(
             id: UUID(),
             title: "T",

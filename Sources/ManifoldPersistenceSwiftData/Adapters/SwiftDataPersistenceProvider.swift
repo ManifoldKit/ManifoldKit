@@ -106,7 +106,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// `activeAgentID` is written separately on the parent row (and via
     /// ``setActiveAgent(sessionID:agentID:)``), so handoff state is untouched
     /// here — this only owns the agent registry membership.
-    private func reconcileAgents(on session: PersistedChatSession, with agents: [ManifoldInference.Agent]) {
+    private func reconcileAgents(on session: PersistedChatSession, with agents: [ManifoldInference.AgentDefinition]) {
         let desiredByID = Dictionary(agents.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         var existingByID: [UUID: PersistedAgent] = [:]
 
