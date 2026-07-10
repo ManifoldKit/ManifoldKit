@@ -8,12 +8,16 @@ APIProvider.claude EnumElement
 APIProvider.custom EnumElement
 APIProvider.defaultBaseURL Var
 APIProvider.defaultModelName Var
+APIProvider.displayName Var
+APIProvider.encode(to:) Func
 APIProvider.id Var
+APIProvider.init(from:) Constructor
 APIProvider.init(rawValue:) Constructor
 APIProvider.lmStudio EnumElement
 APIProvider.ollama EnumElement
 APIProvider.openAI EnumElement
 APIProvider.openAIResponses EnumElement
+APIProvider.parse(_:) Func
 APIProvider.rawValue Var
 APIProvider.requiresAPIKey Var
 AppMemoryUsage Enum
