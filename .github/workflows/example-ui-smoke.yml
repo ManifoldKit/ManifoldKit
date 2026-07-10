@@ -17,6 +17,9 @@ jobs:
   smoke:
     runs-on: macos-15
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -32,3 +35,34 @@ jobs:
 
       - name: Run Example UI smoke test
         run: scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+
+      - name: Open GitHub issue on failure
+        # Creates a tracking issue so an advisory smoke failure is visible
+        # without relying on GitHub's email digest. De-duplication: if an open
+        # issue with the same title prefix already exists, appends a comment
+        # instead of opening a second issue — avoids spam during multi-week
+        # failure runs.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="Example UI smoke failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## Example UI smoke failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi

@@ -38,7 +38,9 @@ permissions:
 jobs:
   slow:
     runs-on: macos-15
-    timeout-minutes: 30
+    # Steps sum well past 30 on a cold cache (coverage alone is ~15m, plus the
+    # full-package api-digester step and six test steps) — 45 gives headroom.
+    timeout-minutes: 45
     permissions:
       contents: read
       issues: write
@@ -326,7 +328,15 @@ jobs:
   # `if: success() || failure()` so one failure doesn't mask the others.
   cold-start:
     runs-on: macos-15
-    timeout-minutes: 60
+    # Must exceed the sum of the step budgets (6 × 10 min) plus checkout +
+    # Swift CI setup + the issue-reporter step: a job-level timeout marks
+    # steps `cancelled`, not `failure`, so the `if: failure()` reporter below
+    # would be skipped and the failure would stay silent — the reporter only
+    # works if per-step timeouts, not the job ceiling, are what trip first.
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -364,6 +374,36 @@ jobs:
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
 
+      - name: Open GitHub issue on failure
+        # Creates a tracking issue so a nightly failure is visible without
+        # relying on GitHub's email digest. De-duplication: if an open issue
+        # with the same title prefix already exists, appends a comment instead
+        # of opening a second issue — avoids spam during multi-day failure runs.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="Nightly cold-start gates failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## Nightly cold-start gates failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi
+
   # Merged-tree backstop for the trait-gated / simulator suites that the merge
   # queue never validates. On merge_group ci.yml bypasses the paths-filter, so
   # server-tests / macros-tests / ci-ios-file-protection / mcp-fixture-check
@@ -377,7 +417,14 @@ jobs:
   # mask the rest.
   queue-merge-backstop:
     runs-on: macos-15
-    timeout-minutes: 60
+    # Step budgets sum to 50 min (15+15+15+5); checkout + Swift CI setup +
+    # the issue-reporter step need real headroom on top — a job-level timeout
+    # marks steps `cancelled`, not `failure`, which would skip the
+    # `if: failure()` reporter below (see cold-start).
+    timeout-minutes: 70
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -407,6 +454,36 @@ jobs:
         timeout-minutes: 5
         run: scripts/regenerate-mcp-fixtures.sh --check
 
+      - name: Open GitHub issue on failure
+        # Creates a tracking issue so a nightly failure is visible without
+        # relying on GitHub's email digest. De-duplication: if an open issue
+        # with the same title prefix already exists, appends a comment instead
+        # of opening a second issue — avoids spam during multi-day failure runs.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="Nightly queue-merge backstop failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## Nightly queue-merge backstop failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi
+
   # Doc-snippet + human-path cold-start gates — the 24h post-merge backstop.
   # readme-snippets.yml and cold-start-human.yml run these scripts on PRs (via
   # their source `paths:` filters), but as of PR #1870 those workflows dropped
@@ -419,7 +496,14 @@ jobs:
   # here.
   doc-gates:
     runs-on: macos-15
-    timeout-minutes: 30
+    # Step budgets sum to 30 min (20+10); checkout + Swift CI setup + the
+    # issue-reporter step need headroom on top — a job-level timeout marks
+    # steps `cancelled`, not `failure`, which would skip the `if: failure()`
+    # reporter below (see cold-start).
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -436,3 +520,33 @@ jobs:
         if: success() || failure()
         timeout-minutes: 10
         run: bash scripts/cold-start-human.sh
+
+      - name: Open GitHub issue on failure
+        # Creates a tracking issue so a nightly failure is visible without
+        # relying on GitHub's email digest. De-duplication: if an open issue
+        # with the same title prefix already exists, appends a comment instead
+        # of opening a second issue — avoids spam during multi-day failure runs.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="Nightly doc gates failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## Nightly doc gates failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi

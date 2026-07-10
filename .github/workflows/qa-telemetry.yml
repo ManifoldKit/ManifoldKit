@@ -10,10 +10,13 @@ name: QA & Cost Telemetry
 #
 # Runs on ubuntu-latest (1× billing) — this is bookkeeping, not a build, so it
 # must not consume the macOS 10× lane. The computed row is appended to
-# docs/ci-metrics.jsonl for longitudinal tracking and surfaced in the run's
-# step summary. The commit-back step is best-effort: direct pushes to main are
-# normally blocked by branch protection, so a failed push degrades to the
-# uploaded artifact + step summary rather than failing the job.
+# docs/ci-metrics.jsonl on the `main` checkout for the step summary, but the
+# longitudinal record lives on the unprotected `ci-metrics` branch: main's
+# copy of docs/ci-metrics.jsonl is a one-time seed row from 2026-06-07 and
+# stays that way forever, because branch protection unconditionally rejects
+# direct pushes to main (verified — every prior run's "commit to main" attempt
+# failed silently). Each run appends its one new row onto the ci-metrics
+# branch instead, which has no such protection.
 
 on:
   schedule:
@@ -22,8 +25,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # append + commit docs/ci-metrics.jsonl
+  contents: write   # push the appended metrics row to the ci-metrics branch
   actions: read     # gh run list
+  issues: write     # failure-visibility issue (the branch push is no longer
+                    # best-effort — a failed push fails the job, and this
+                    # weekly job would otherwise fail silently)
 
 concurrency:
   group: qa-telemetry
@@ -45,25 +51,107 @@ jobs:
           WORKFLOW_FILE: ci.yml
         run: scripts/qa-telemetry.sh
 
-      - name: Commit appended metrics row (best-effort)
-        # main blocks direct pushes for PRs; if the Actions token is likewise
-        # restricted the push fails and we fall through to the artifact upload.
+      - name: Append metrics row to the ci-metrics data branch
+        # docs/ci-metrics.jsonl on `main` never accumulates rows — branch
+        # protection unconditionally rejects direct pushes there (confirmed:
+        # main's copy still holds only the 2026-06-07 seed row). The
+        # longitudinal record instead lives on an unprotected `ci-metrics`
+        # branch, appended to on every run.
+        #
+        # The checkout step above left docs/ci-metrics.jsonl locally modified
+        # (qa-telemetry.sh appended this run's row against the `main` tree).
+        # Capture that row, then *discard* the local modification before
+        # switching branches: `git checkout -B ci-metrics origin/ci-metrics`
+        # while docs/ci-metrics.jsonl is dirty and diverges from
+        # origin/ci-metrics' tip risks "local changes would be overwritten by
+        # checkout" (main and ci-metrics have unrelated content for this
+        # file) — discarding first guarantees a clean branch switch, and the
+        # captured row is appended back afterwards so no data is lost.
+        #
+        # The `qa-telemetry` concurrency group (cancel-in-progress: false, see
+        # top of file) serializes runs of this workflow, so there is no
+        # concurrent-push race on the ci-metrics branch to guard against here.
         run: |
           set -euo pipefail
           if git diff --quiet -- docs/ci-metrics.jsonl; then
             echo "No metrics delta to commit."
             exit 0
           fi
+          row=$(tail -n 1 docs/ci-metrics.jsonl)
+          git checkout -- docs/ci-metrics.jsonl
+
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Create the branch on first run; otherwise branch off its current
+          # tip so prior runs' rows are preserved. `ls-remote --exit-code`
+          # distinguishes "branch doesn't exist" (exit 2 → create it) from a
+          # transient fetch failure (network/auth → fail loudly) — treating
+          # the two alike would route a blip into the create path, whose
+          # subsequent non-fast-forward push would then fail confusingly.
+          set +e
+          git ls-remote --exit-code --heads origin ci-metrics >/dev/null
+          ls_remote_rc=$?
+          set -e
+          if [ "$ls_remote_rc" -eq 0 ]; then
+            # actions/checkout configures a narrow fetch refspec covering only
+            # the checked-out ref (main), so a plain `git fetch origin
+            # ci-metrics` populates FETCH_HEAD but NOT
+            # refs/remotes/origin/ci-metrics — the explicit destination
+            # refspec is required for the checkout below to resolve.
+            git fetch origin ci-metrics:refs/remotes/origin/ci-metrics
+            git checkout -B ci-metrics origin/ci-metrics
+          elif [ "$ls_remote_rc" -eq 2 ]; then
+            git checkout -B ci-metrics
+          else
+            echo "::error::git ls-remote for ci-metrics failed (exit ${ls_remote_rc}) — transient remote error, not a missing branch."
+            exit "$ls_remote_rc"
+          fi
+
+          printf '%s\n' "$row" >> docs/ci-metrics.jsonl
           git add docs/ci-metrics.jsonl
-          git commit -m "chore(ci): append QA/cost telemetry row [skip ci]"
-          git push || echo "::warning::push to main blocked (branch protection?) — row preserved in artifact + summary"
+          git commit -m "chore(ci): append QA/cost telemetry row"
+          git push origin ci-metrics
 
       - name: Upload metrics artifact
+        # Convenience/debug snapshot of docs/ci-metrics.jsonl as it stands at
+        # the end of the job (the ci-metrics branch above is the durable
+        # longitudinal record; this artifact expires after 90 days and is not
+        # the primary sink).
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ci-metrics-${{ github.run_id }}
           path: docs/ci-metrics.jsonl
           if-no-files-found: ignore
+
+      - name: Open GitHub issue on failure
+        # The data-branch push above is a hard failure (unlike the retired
+        # best-effort push to main), and this is a weekly scheduled job nobody
+        # watches — mirror the nightly workflows' failure-visibility pattern.
+        # De-duplication: comment on an existing open issue instead of
+        # creating a duplicate.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="QA telemetry failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## QA telemetry failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi
