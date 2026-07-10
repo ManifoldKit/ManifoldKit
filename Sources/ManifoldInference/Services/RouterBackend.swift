@@ -22,7 +22,9 @@ import Foundation
 /// - `resetConversation()` fans out for the same reason.
 ///
 /// `capabilities` is the **union** of every child's capabilities (per-flag
-/// OR; numeric maxima taken). This is the correct surface for a UI that
+/// OR and numeric maxima for routable capabilities; conservative AND/minimum
+/// for pre-routing guarantees — see ``BackendCapabilities/union(_:)``).
+/// This is the correct surface for a UI that
 /// asks "can the runtime as a whole do X?" — for a per-request question
 /// the right answer comes from `GenerationConfig.requiredCapabilities` and
 /// the dispatch performed in `generate(...)`.

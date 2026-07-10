@@ -285,8 +285,11 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     }
 
     /// Merges an ordered list of capability sets into the "can the composed
-    /// runtime as a whole do X?" union — per-flag OR, numeric maxima, the most
-    /// permissive cancellation/memory strategy.
+    /// runtime as a whole do X?" union — per-flag OR and numeric maxima for
+    /// routable capabilities; conservative AND/minimum for guarantees consumed
+    /// before routing (`requiresPromptTemplate`, `rendersFullPrompt`,
+    /// `maxAdvertisedToolCount`). Each exception is annotated at its merge
+    /// line below.
     ///
     /// Originally lifted from ``RouterBackend``'s inline merge so the composing
     /// backends (``RouterBackend``, ``FallbackBackend``) share one
