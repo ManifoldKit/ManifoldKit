@@ -14,7 +14,7 @@ A ``SkillToolSource`` exposes a single `invoke_skill` dispatch tool to the model
 
 ### Essentials
 
-- ``Skill``
+- ``SkillDefinition``
 - ``SkillLoader``
 - ``SkillRegistry``
 - ``SkillToolSource``

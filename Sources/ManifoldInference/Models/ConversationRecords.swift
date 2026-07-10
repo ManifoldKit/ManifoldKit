@@ -38,7 +38,7 @@ public struct ChatSession: Identifiable, Hashable, Sendable {
 
     /// Per-session agent registry (V9 schema). Storage-agnostic snapshot of
     /// the SwiftData `Agent` rows. Empty when the session is single-agent.
-    public var agents: [Agent]
+    public var agents: [AgentDefinition]
 
     /// UUID of the agent currently authoring this session's next turn.
     /// `nil` when the session has no multi-agent registry. The executor
@@ -66,7 +66,7 @@ public struct ChatSession: Identifiable, Hashable, Sendable {
         pinnedMessageIDs: Set<UUID> = [],
         isPinned: Bool = false,
         pinnedAt: Date? = nil,
-        agents: [Agent] = [],
+        agents: [AgentDefinition] = [],
         activeAgentID: UUID? = nil,
         activeSkillName: String? = nil
     ) {

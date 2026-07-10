@@ -43,11 +43,7 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
     func test_nonGemmaTemplate_withTools_injectsPreamble() async throws {
         let (backend, provider, queue) = makeBackend(template: .llama3, supportsToolCalling: true)
 
-        let (_, stream) = try queue.enqueue(
-            messages: [("user", "what time is it?")],
-            systemPrompt: "You are a helpful assistant.",
-            tools: [tool("get_time")]
-        )
+        let (_, stream) = try queue.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "what time is it?")], systemPrompt: "You are a helpful assistant.", config: GenerationConfig(tools: [tool("get_time")]))
         for try await _ in stream.events {}
 
         let prompt = try XCTUnwrap(backend.lastPrompt)
@@ -64,11 +60,7 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
     func test_gemma4Template_withTools_doesNotInjectPreamble() async throws {
         let (backend, provider, queue) = makeBackend(template: .gemma4, supportsToolCalling: true)
 
-        let (_, stream) = try queue.enqueue(
-            messages: [("user", "what time is it?")],
-            systemPrompt: "You are a helpful assistant.",
-            tools: [tool("get_time")]
-        )
+        let (_, stream) = try queue.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "what time is it?")], systemPrompt: "You are a helpful assistant.", config: GenerationConfig(tools: [tool("get_time")]))
         for try await _ in stream.events {}
 
         let prompt = try XCTUnwrap(backend.lastPrompt)
@@ -85,10 +77,7 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
     func test_nonGemmaTemplate_noTools_noInjection() async throws {
         let (backend, provider, queue) = makeBackend(template: .llama3, supportsToolCalling: true)
 
-        let (_, stream) = try queue.enqueue(
-            messages: [("user", "hi")],
-            systemPrompt: "You are a helpful assistant."
-        )
+        let (_, stream) = try queue.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], systemPrompt: "You are a helpful assistant.", config: GenerationConfig())
         for try await _ in stream.events {}
 
         let prompt = try XCTUnwrap(backend.lastPrompt)
@@ -104,11 +93,7 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
         let (backend, provider, queue) = makeBackend(template: .llama3, supportsToolCalling: false)
 
         do {
-            _ = try queue.enqueue(
-                messages: [("user", "hi")],
-                systemPrompt: "You are a helpful assistant.",
-                tools: [tool("get_time")]
-            )
+            _ = try queue.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], systemPrompt: "You are a helpful assistant.", config: GenerationConfig(tools: [tool("get_time")]))
             XCTFail("enqueue must reject tools on a backend that can't call them")
         } catch {
             // Expected: the queue refuses tools on an incapable backend.
@@ -135,11 +120,7 @@ final class GenerationQueueToolSystemPromptTests: XCTestCase {
             chatTemplateRaw: "{%- if broken"
         )
 
-        let (_, stream) = try queue.enqueue(
-            messages: [("user", "what time is it?")],
-            systemPrompt: "You are a helpful assistant.",
-            tools: [tool("get_time")]
-        )
+        let (_, stream) = try queue.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "what time is it?")], systemPrompt: "You are a helpful assistant.", config: GenerationConfig(tools: [tool("get_time")]))
 
         var thrown: Error?
         do {

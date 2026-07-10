@@ -35,8 +35,8 @@ final class SwiftDataAgentRoundTripTests: XCTestCase {
         prompt: String,
         description: String = "",
         tools: [String]? = nil
-    ) -> ManifoldInference.Agent {
-        ManifoldInference.Agent(
+    ) -> ManifoldInference.AgentDefinition {
+        ManifoldInference.AgentDefinition(
             id: id,
             name: name,
             systemPrompt: prompt,

@@ -85,10 +85,7 @@ final class PostGenerationQueueTests: XCTestCase {
         let (service, mock) = makeService()
 
         // Primary user-initiated request.
-        let (_, primaryStream) = try service.enqueue(
-            messages: [("user", "primary")],
-            priority: .userInitiated
-        )
+        let (_, primaryStream) = try service.enqueue(messages: [Message.user("primary")], config: GenerationConfig(), priority: .userInitiated)
 
         XCTAssertEqual(primaryStream.phase, .connecting)
         XCTAssertTrue(service.isGenerating)
@@ -104,10 +101,7 @@ final class PostGenerationQueueTests: XCTestCase {
                        "Service should be idle after stream terminates")
 
         // Now enqueue a background request, simulating a post-generation task.
-        let (_, bgStream) = try service.enqueue(
-            messages: [("user", "background extraction")],
-            priority: .background
-        )
+        let (_, bgStream) = try service.enqueue(messages: [Message.user("background extraction")], config: GenerationConfig(), priority: .background)
 
         // With an empty queue and no active request, it should start immediately.
         XCTAssertEqual(bgStream.phase, .connecting,
@@ -148,10 +142,7 @@ final class PostGenerationQueueTests: XCTestCase {
 
         let (service, mock) = makeService()
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "background work")],
-            priority: .background
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("background work")], config: GenerationConfig(), priority: .background)
 
         // Under .nominal thermal state, the request should start immediately.
         XCTAssertEqual(stream.phase, .connecting,
@@ -177,25 +168,13 @@ final class PostGenerationQueueTests: XCTestCase {
         let (service, mock) = makeService()
 
         // Start one request to occupy the active slot.
-        let (_, activeStream) = try service.enqueue(
-            messages: [("user", "active")],
-            priority: .normal
-        )
+        let (_, activeStream) = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal)
         XCTAssertEqual(activeStream.phase, .connecting)
 
         // Enqueue several background requests behind it.
-        let (_, bg1Stream) = try service.enqueue(
-            messages: [("user", "bg1")],
-            priority: .background
-        )
-        let (_, bg2Stream) = try service.enqueue(
-            messages: [("user", "bg2")],
-            priority: .background
-        )
-        let (_, bg3Stream) = try service.enqueue(
-            messages: [("user", "bg3")],
-            priority: .background
-        )
+        let (_, bg1Stream) = try service.enqueue(messages: [Message.user("bg1")], config: GenerationConfig(), priority: .background)
+        let (_, bg2Stream) = try service.enqueue(messages: [Message.user("bg2")], config: GenerationConfig(), priority: .background)
+        let (_, bg3Stream) = try service.enqueue(messages: [Message.user("bg3")], config: GenerationConfig(), priority: .background)
 
         // All background requests should be queued.
         XCTAssertEqual(bg1Stream.phase, .queued)
@@ -203,10 +182,7 @@ final class PostGenerationQueueTests: XCTestCase {
         XCTAssertEqual(bg3Stream.phase, .queued)
 
         // Now enqueue a user-initiated request — it should jump ahead.
-        let (_, urgentStream) = try service.enqueue(
-            messages: [("user", "urgent")],
-            priority: .userInitiated
-        )
+        let (_, urgentStream) = try service.enqueue(messages: [Message.user("urgent")], config: GenerationConfig(), priority: .userInitiated)
 
         XCTAssertEqual(urgentStream.phase, .queued,
                        "Urgent request is queued because active slot is occupied")

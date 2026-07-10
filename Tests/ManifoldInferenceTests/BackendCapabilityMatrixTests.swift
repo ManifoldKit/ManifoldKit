@@ -74,7 +74,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
         }
 
         XCTAssertThrowsError(
-            try coordinator.enqueue(messages: [("user", "use a tool")], tools: [weatherTool()])
+            try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "use a tool")], config: GenerationConfig(tools: [weatherTool()]))
         ) { error in
             guard case InferenceError.inferenceFailure(let message) = error else {
                 XCTFail("expected InferenceError.inferenceFailure, got \(error)")
@@ -97,10 +97,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
             warnings.record(backendType: backendType, message: message)
         }
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "use a tool")],
-            tools: [weatherTool()]
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "use a tool")], config: GenerationConfig(tools: [weatherTool()]))
         for try await _ in stream.events {}
 
         XCTAssertTrue(warnings.snapshot().isEmpty)

@@ -7,13 +7,13 @@ import Foundation
 /// already orders by precedence; the registry preserves it).
 public actor SkillRegistry {
 
-    private var skillsByName: [String: Skill] = [:]
+    private var skillsByName: [String: SkillDefinition] = [:]
     private var skillByAlias: [String: String] = [:]
 
     public init() {}
 
     /// Inserts skills, overwriting any prior entry sharing a name or alias.
-    public func load(_ skills: [Skill]) {
+    public func load(_ skills: [SkillDefinition]) {
         for skill in skills {
             skillsByName[skill.name] = skill
             for alias in skill.aliases {
@@ -23,7 +23,7 @@ public actor SkillRegistry {
     }
 
     /// Looks up by canonical name or alias.
-    public func skill(named identifier: String) -> Skill? {
+    public func skill(named identifier: String) -> SkillDefinition? {
         if let direct = skillsByName[identifier] {
             return direct
         }
@@ -34,7 +34,7 @@ public actor SkillRegistry {
     }
 
     /// All registered skills, sorted by name for stable enumeration.
-    public func all() -> [Skill] {
+    public func all() -> [SkillDefinition] {
         skillsByName.values.sorted { $0.name < $1.name }
     }
 }

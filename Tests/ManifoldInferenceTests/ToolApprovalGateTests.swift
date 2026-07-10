@@ -115,10 +115,7 @@ final class ToolApprovalGateTests: XCTestCase {
         let gate = RecordingGate(decision: .approved)
         let (coordinator, executor) = makeSingleCallSetup(gate: gate)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(maxOutputTokens: 16))
         _ = try await collectEvents(stream)
 
         XCTAssertEqual(executor.callCount, 1, "approved path must dispatch through the registry")
@@ -131,10 +128,7 @@ final class ToolApprovalGateTests: XCTestCase {
         let gate = RecordingGate(decision: .denied(reason: "not now"))
         let (coordinator, executor) = makeSingleCallSetup(gate: gate)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(maxOutputTokens: 16))
         _ = try await collectEvents(stream)
 
         // Sabotage-verify: flipping the `.denied` branch in
@@ -150,10 +144,7 @@ final class ToolApprovalGateTests: XCTestCase {
         let gate = RecordingGate(decision: .denied(reason: reason))
         let (coordinator, _) = makeSingleCallSetup(gate: gate)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(maxOutputTokens: 16))
         let events = try await collectEvents(stream)
 
         let results = events.compactMap { event -> ToolResult? in
@@ -169,10 +160,7 @@ final class ToolApprovalGateTests: XCTestCase {
         let gate = RecordingGate(decision: .denied(reason: nil))
         let (coordinator, _) = makeSingleCallSetup(gate: gate)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(maxOutputTokens: 16))
         let events = try await collectEvents(stream)
 
         let results = events.compactMap { event -> ToolResult? in
@@ -192,10 +180,7 @@ final class ToolApprovalGateTests: XCTestCase {
         let gate = RecordingGate(decision: .approved)
         let (coordinator, _) = makeSingleCallSetup(gate: gate)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(maxOutputTokens: 16))
         _ = try await collectEvents(stream)
 
         let observed = try XCTUnwrap(gate.observedCalls.first)
@@ -222,10 +207,7 @@ final class ToolApprovalGateTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         _ = try await collectEvents(stream)
 
         XCTAssertEqual(executor.callCount, 1, "AutoApproveGate must be the default and approve unconditionally")

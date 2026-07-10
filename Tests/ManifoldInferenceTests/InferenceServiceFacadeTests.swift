@@ -19,7 +19,7 @@ final class InferenceServiceFacadeTests: XCTestCase {
         try await service.loadModel(from: makeModelInfo(), plan: .testStub())
         XCTAssertTrue(service.isModelLoaded)
 
-        let (_, stream) = try service.enqueue(messages: [("user", "hi")])
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         var tokens: [String] = []
         for try await event in stream.events {
             if case .token(let t) = event { tokens.append(t) }
@@ -33,8 +33,8 @@ final class InferenceServiceFacadeTests: XCTestCase {
         let mock = GatedBackend()
         let service = InferenceService(backend: mock, name: "Mock")
 
-        let (_, stream1) = try service.enqueue(messages: [("user", "first")])
-        let (_, stream2) = try service.enqueue(messages: [("user", "second")])
+        let (_, stream1) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig())
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig())
 
         service.unloadModel()
 
@@ -77,7 +77,7 @@ final class InferenceServiceFacadeTests: XCTestCase {
         } onChange: {
             genObserved.fulfill()
         }
-        _ = try gatedService.enqueue(messages: [("user", "hi")])
+        _ = try gatedService.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         await fulfillment(of: [genObserved], timeout: 2)
         XCTAssertTrue(gatedService.isGenerating)
     }

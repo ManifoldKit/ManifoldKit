@@ -22,11 +22,11 @@ final class ScenarioStateProbeTests: XCTestCase {
 
     private struct FactCountScorer: CheckpointScorer {
         let id = "fact-count"
-        func score(_ context: CheckpointEvaluationContext) async -> Score {
+        func score(_ context: CheckpointEvaluationContext) async -> EvalScore {
             guard let snapshot = context.snapshot as? FakeSnapshot else {
-                return Score(value: .unavailable, explanation: "no FakeSnapshot present")
+                return EvalScore(value: .unavailable, explanation: "no FakeSnapshot present")
             }
-            return Score(value: .bool(snapshot.extractedFactCount >= 1))
+            return EvalScore(value: .bool(snapshot.extractedFactCount >= 1))
         }
     }
 

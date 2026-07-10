@@ -477,12 +477,13 @@ public final class InferenceService {
     /// Enqueues a generation request from a typed ``Message`` slice using a
     /// pre-built ``GenerationConfig``, returning a token + stream pair.
     ///
-    /// This is the value-typed entry point. Every sampling knob now lives on
+    /// This is the value-typed entry point. Every sampling knob lives on
     /// ``GenerationConfig`` rather than being spread across a ~18-parameter
     /// argument list, so adding a new knob is a one-line change on the config
     /// type instead of a thread-through across every enqueue signature. The
-    /// parameterized overloads below remain as deprecated source-compatible
-    /// builders that assemble a config and forward here.
+    /// individually-parameterized builder overloads that used to forward
+    /// here were removed pre-1.0 (delete-don't-deprecate) — build a
+    /// ``GenerationConfig`` and call this overload directly.
     ///
     /// The stream starts in `.queued` phase and transitions to `.connecting`
     /// when the request reaches the front of the queue.
@@ -541,157 +542,6 @@ public final class InferenceService {
             handoffDetector: handoffDetector,
             preToolUseHook: preToolUseHook,
             routedBackend: routedBackend
-        )
-    }
-
-    /// Parameterized enqueue retained as a source-compatible builder.
-    ///
-    /// Assembles a ``GenerationConfig`` from the individual sampling
-    /// parameters and forwards to ``enqueue(messages:config:priority:requestGroupID:)``.
-    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(messages:config:priority:requestGroupID:).")
-    public func enqueue(
-        messages: [Message],
-        systemPrompt: String? = nil,
-        temperature: Float = 0.7,
-        topP: Float = 0.9,
-        repeatPenalty: Float = 1.1,
-        topK: Int32? = nil,
-        minP: Float? = nil,
-        presencePenalty: Float? = nil,
-        frequencyPenalty: Float? = nil,
-        seed: UInt64? = nil,
-        maxOutputTokens: Int? = 2048,
-        maxThinkingTokens: Int? = nil,
-        jsonMode: Bool = false,
-        grammar: String? = nil,
-        tools: [ToolDefinition] = [],
-        toolChoice: ToolChoice = .auto,
-        maxToolIterations: Int = 10,
-        priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil,
-        route: GenerationRoute = .primary
-    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        try enqueue(
-            messages: messages,
-            systemPrompt: systemPrompt,
-            config: GenerationQueue.makeEnqueueConfig(
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                topK: topK,
-                minP: minP,
-                presencePenalty: presencePenalty,
-                frequencyPenalty: frequencyPenalty,
-                seed: seed,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens,
-                grammar: grammar,
-                tools: tools,
-                toolChoice: toolChoice,
-                maxToolIterations: maxToolIterations
-            ),
-            hints: GenerationRuntimeHints(jsonMode: jsonMode),
-            priority: priority,
-            requestGroupID: requestGroupID,
-            route: route
-        )
-    }
-
-    /// Tuple-shaped enqueue retained for one minor while consumers migrate
-    /// to the typed ``enqueue(messages:config:priority:requestGroupID:)`` overload.
-    @available(*, deprecated, message: "Use [Message] with .system/.user/.assistant and a GenerationConfig — raw role strings are typo-prone.")
-    public func enqueue(
-        messages: [(role: String, content: String)],
-        systemPrompt: String? = nil,
-        temperature: Float = 0.7,
-        topP: Float = 0.9,
-        repeatPenalty: Float = 1.1,
-        maxOutputTokens: Int? = 2048,
-        maxThinkingTokens: Int? = nil,
-        jsonMode: Bool = false,
-        grammar: String? = nil,
-        tools: [ToolDefinition] = [],
-        toolChoice: ToolChoice = .auto,
-        maxToolIterations: Int = 10,
-        priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil,
-        route: GenerationRoute = .primary
-    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        ensureProviderWired()
-        let routedBackend: (any InferenceBackend)? = (route == .deep) ? deepBackend : nil
-        return try generation.enqueue(
-            structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
-            systemPrompt: systemPrompt,
-            config: GenerationQueue.makeEnqueueConfig(
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                topK: nil,
-                minP: nil,
-                presencePenalty: nil,
-                frequencyPenalty: nil,
-                seed: nil,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens,
-                grammar: grammar,
-                tools: tools,
-                toolChoice: toolChoice,
-                maxToolIterations: maxToolIterations
-            ),
-            hints: GenerationRuntimeHints(jsonMode: jsonMode),
-            priority: priority,
-            requestGroupID: requestGroupID,
-            routedBackend: routedBackend
-        )
-    }
-
-    /// Parameterized structured-message enqueue retained as a source-compatible builder.
-    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(structuredMessages:config:priority:requestGroupID:).")
-    public func enqueue(
-        structuredMessages messages: [StructuredMessage],
-        systemPrompt: String? = nil,
-        temperature: Float = 0.7,
-        topP: Float = 0.9,
-        repeatPenalty: Float = 1.1,
-        topK: Int32? = nil,
-        minP: Float? = nil,
-        presencePenalty: Float? = nil,
-        frequencyPenalty: Float? = nil,
-        seed: UInt64? = nil,
-        maxOutputTokens: Int? = 2048,
-        maxThinkingTokens: Int? = nil,
-        jsonMode: Bool = false,
-        grammar: String? = nil,
-        tools: [ToolDefinition] = [],
-        toolChoice: ToolChoice = .auto,
-        maxToolIterations: Int = 10,
-        priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil,
-        route: GenerationRoute = .primary
-    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        try enqueue(
-            structuredMessages: messages,
-            systemPrompt: systemPrompt,
-            config: GenerationQueue.makeEnqueueConfig(
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                topK: topK,
-                minP: minP,
-                presencePenalty: presencePenalty,
-                frequencyPenalty: frequencyPenalty,
-                seed: seed,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens,
-                grammar: grammar,
-                tools: tools,
-                toolChoice: toolChoice,
-                maxToolIterations: maxToolIterations
-            ),
-            hints: GenerationRuntimeHints(jsonMode: jsonMode),
-            priority: priority,
-            requestGroupID: requestGroupID,
-            route: route
         )
     }
 

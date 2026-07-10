@@ -53,8 +53,8 @@ public enum HandoffDetector {
     /// Returns the empty string when `siblings` is empty so the executor
     /// can prepend unconditionally without producing stray whitespace.
     public static func handoffInstructions(
-        for agent: Agent,
-        siblings: [Agent]
+        for agent: AgentDefinition,
+        siblings: [AgentDefinition]
     ) -> String {
         guard !siblings.isEmpty else { return "" }
         let lines = siblings.map { sibling in
@@ -72,8 +72,8 @@ public enum HandoffDetector {
     /// an explicit context-handover boundary instead of "what is this
     /// conversation."
     public static func boundaryMessage(
-        from previous: Agent,
-        to next: Agent,
+        from previous: AgentDefinition,
+        to next: AgentDefinition,
         payload: String?
     ) -> String {
         let header = "[Handoff from \(previous.name) to \(next.name)]"

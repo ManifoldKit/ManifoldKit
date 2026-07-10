@@ -21,9 +21,24 @@ import ManifoldInference
 /// these once per turn and forwards them to ``InferenceService/enqueueAsync(...)``.
 public struct TurnConfig: Sendable, Equatable, Codable {
     public let systemPrompt: String?
-    public let temperature: Float
-    public let topP: Float
-    public let repeatPenalty: Float
+
+    /// The sampler configuration for this turn — composition, not duplication.
+    ///
+    /// `TurnConfig` used to re-declare `temperature`/`topP`/`repeatPenalty` as
+    /// its own stored fields, byte-identical to ``GenerationConfig``'s
+    /// defaults (API-DESIGN.md §2's counter-example for exactly this
+    /// pattern). Every sampling knob now lives here instead — BYO-UI
+    /// consumers write `TurnConfig(generation: .init(temperature: 0.9))`
+    /// rather than a duplicated `TurnConfig(temperature: 0.9)`.
+    ///
+    /// **`generation.tools` / `generation.toolChoice` are NOT the tool
+    /// source on this path.** The runtime owns tools: the executor advertises
+    /// whatever the session's `ToolRegistry` / session tool sources expose
+    /// (see `ConversationTurnExecutor`'s `advertisedToolDefinitions`) and
+    /// ignores any `tools`/`toolChoice` set here. Register tools with the
+    /// session's `ToolRegistry`, not by setting them on this config.
+    public let generation: GenerationConfig
+
     public let maxOutputTokens: Int?
     public let maxThinkingTokens: Int?
     public let streamingUpdateInterval: Duration
@@ -34,9 +49,7 @@ public struct TurnConfig: Sendable, Equatable, Codable {
 
     public init(
         systemPrompt: String? = nil,
-        temperature: Float = 0.7,
-        topP: Float = 0.9,
-        repeatPenalty: Float = 1.1,
+        generation: GenerationConfig = GenerationConfig(),
         maxOutputTokens: Int? = 2048,
         maxThinkingTokens: Int? = nil,
         streamingUpdateInterval: Duration = .milliseconds(33),
@@ -46,9 +59,7 @@ public struct TurnConfig: Sendable, Equatable, Codable {
         loopDetectionEnabled: Bool = true
     ) {
         self.systemPrompt = systemPrompt
-        self.temperature = temperature
-        self.topP = topP
-        self.repeatPenalty = repeatPenalty
+        self.generation = generation
         self.maxOutputTokens = maxOutputTokens
         self.maxThinkingTokens = maxThinkingTokens
         self.streamingUpdateInterval = streamingUpdateInterval

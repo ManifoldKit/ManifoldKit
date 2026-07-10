@@ -3,12 +3,18 @@ import Foundation
 /// Session-scoped agent persona — a named system prompt plus an optional
 /// allowlist of tool names the agent may invoke during its turns.
 ///
-/// `Agent` is intentionally a value type in `ManifoldInference`: it carries no
-/// persistence machinery and can flow through any layer that already imports
-/// the inference module. Agents are aggregated on a `ChatSession` (added
-/// in V9 schema migration, Wave 1B) and the active one drives system-prompt
-/// re-derivation per turn in `ConversationTurnExecutor`.
-public struct Agent: Sendable, Identifiable, Equatable, Hashable, Codable {
+/// `AgentDefinition` is intentionally a value type re-exported through
+/// `ManifoldInference`: it carries no persistence machinery and can flow
+/// through any layer that already imports the inference module. Agents are
+/// aggregated on a `ChatSession` (added in V9 schema migration, Wave 1B) and
+/// the active one drives system-prompt re-derivation per turn in
+/// `ConversationTurnExecutor`.
+///
+/// Named `AgentDefinition` (not the bare `Agent`) to avoid colliding with
+/// `ManifoldSchemaV9.Agent`, the SwiftData `@Model` row this type maps
+/// to/from (see `PersistedAgent`) — the two are distinguishable by name
+/// without module-qualification.
+public struct AgentDefinition: Sendable, Identifiable, Equatable, Hashable, Codable {
     public let id: UUID
     public let name: String
     public let systemPrompt: String

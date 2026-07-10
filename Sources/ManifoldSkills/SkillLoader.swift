@@ -1,7 +1,7 @@
 import Foundation
 import ManifoldInference
 
-/// Filesystem scanner that materialises `Skill` values from `SKILL.md` files.
+/// Filesystem scanner that materialises `SkillDefinition` values from `SKILL.md` files.
 ///
 /// **macOS-only in v1.** iOS skill discovery requires entitlement / app-group
 /// design that hasn't shipped yet — on iOS `discover()` returns `[]` and logs
@@ -49,9 +49,9 @@ public struct SkillLoader: Sendable {
     ///
     /// Returns `[]` on non-macOS platforms (no skills loaded, warning logged
     /// once at module level — see TODO at file scope).
-    public func discover() -> [Skill] {
+    public func discover() -> [SkillDefinition] {
         #if os(macOS)
-        var byName: [String: Skill] = [:]
+        var byName: [String: SkillDefinition] = [:]
         for root in searchPaths {
             for skill in scan(root: root) {
                 byName[skill.name] = skill
@@ -66,7 +66,7 @@ public struct SkillLoader: Sendable {
 
     #if os(macOS)
     /// Scans a single search-path root for `<sub>/SKILL.md` files.
-    private func scan(root: URL) -> [Skill] {
+    private func scan(root: URL) -> [SkillDefinition] {
         let fm = FileManager.default
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: root.path, isDirectory: &isDir), isDir.boolValue else {
@@ -81,7 +81,7 @@ public struct SkillLoader: Sendable {
             return []
         }
 
-        var skills: [Skill] = []
+        var skills: [SkillDefinition] = []
         var seenNamesInPath: Set<String> = []
         for entry in entries {
             var entryIsDir: ObjCBool = false
@@ -102,7 +102,7 @@ public struct SkillLoader: Sendable {
     /// Reads + parses a single `SKILL.md`. Returns `nil` on any parse or IO
     /// error (and logs a warning so authoring mistakes are visible). Never
     /// uses `try?` — every error path is explicit.
-    private func loadSkill(at url: URL) -> Skill? {
+    private func loadSkill(at url: URL) -> SkillDefinition? {
         let contents: String
         do {
             contents = try String(contentsOf: url, encoding: .utf8)
@@ -160,7 +160,7 @@ public struct SkillLoader: Sendable {
         default: references = []
         }
 
-        return Skill(
+        return SkillDefinition(
             name: name,
             description: description,
             aliases: aliases,

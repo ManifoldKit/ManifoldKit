@@ -186,11 +186,7 @@ final class SessionAutoRenameTests: XCTestCase {
 
         // Enqueue a high-priority userInitiated request. drainQueue() moves it
         // to the active slot immediately, so requestQueue stays empty.
-        let (activeToken, _) = try! service.enqueue(
-            messages: [(role: "user", content: "Tell me a long story")],
-            priority: .userInitiated,
-            requestGroupID: nil
-        )
+        let (activeToken, _) = try! service.enqueue(messages: [Message.user("Tell me a long story")], config: GenerationConfig(), priority: .userInitiated, requestGroupID: nil)
         _ = activeToken // silence unused-variable warning
 
         // Active slot is now occupied. The next enqueue will stay in requestQueue.

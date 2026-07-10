@@ -14,7 +14,12 @@ import ManifoldTestSupport
 @MainActor
 final class InferenceServiceSignatureLockTests: XCTestCase {
 
-    /// Pins the full `enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:priority:requestGroupID:)` signature.
+    /// Pins the full `enqueue(messages:systemPrompt:config:priority:requestGroupID:)` signature —
+    /// the value-typed entry point `SessionScriptRunner` actually calls (see
+    /// `Sources/ManifoldFuzz/SessionScriptRunner.swift`). The individually-parameterized
+    /// builder overloads this test used to pin were removed pre-1.0
+    /// (delete-don't-deprecate, wave-2 mechanical batch); every sampling knob now lives
+    /// on `GenerationConfig`.
     ///
     /// Any change to parameter labels, types, default values, or throws-ness
     /// fails this test at compile time.
@@ -27,26 +32,14 @@ final class InferenceServiceSignatureLockTests: XCTestCase {
         // Bind the method to a typed closure with the exact expected shape.
         // If the signature drifts the assignment fails to type-check.
         let bound: (
-            [(role: String, content: String)],
+            [Message],
             String?,
-            Float,
-            Float,
-            Float,
-            Int?,
+            GenerationConfig,
             InferenceService.GenerationPriority,
             UUID?
         ) throws -> (token: InferenceService.GenerationRequestToken, stream: GenerationStream) = {
-            (msgs, sys, temp, topP, rep, maxTok, prio, groupID) in
-            try service.enqueue(
-                messages: msgs,
-                systemPrompt: sys,
-                temperature: temp,
-                topP: topP,
-                repeatPenalty: rep,
-                maxOutputTokens: maxTok,
-                priority: prio,
-                requestGroupID: groupID
-            )
+            (msgs, sys, config, prio, groupID) in
+            try service.enqueue(messages: msgs, systemPrompt: sys, config: config, priority: prio, requestGroupID: groupID)
         }
 
         // Calling through the bound closure would require a loaded model

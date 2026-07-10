@@ -9,7 +9,7 @@ import ManifoldInference
 import ManifoldRuntime
 
 /// A `SessionToolSource` that advertises a single `invoke_skill` dispatch
-/// tool fanning into prompt-template injection from discovered `Skill`s.
+/// tool fanning into prompt-template injection from discovered `SkillDefinition`s.
 ///
 /// **Concurrency**: mirrors `MCPToolSource` — `@unchecked Sendable` outer +
 /// actor-backed storage. The registry is an actor; the source itself is
@@ -185,7 +185,7 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
 
         // L3 progressive disclosure: advertise the names of the author's
         // published references without inlining their contents. The model
-        // pulls a file's body on demand (via `Skill.resolveReference(_:)`,
+        // pulls a file's body on demand (via `SkillDefinition.resolveReference(_:)`,
         // surfaced by the host) only when the task needs it, so a multi-KB
         // `reference.md` does not burn context on every invocation.
         if !skill.references.isEmpty {

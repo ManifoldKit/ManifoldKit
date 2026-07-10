@@ -381,9 +381,7 @@ package struct ConversationTurnExecutor: Sendable {
         // follow-up tuning knob.
         let branchConfig = TurnConfig(
             systemPrompt: config.systemPrompt,
-            temperature: config.temperature,
-            topP: config.topP,
-            repeatPenalty: config.repeatPenalty,
+            generation: config.generation,
             maxOutputTokens: config.maxOutputTokens,
             maxThinkingTokens: config.maxThinkingTokens,
             streamingUpdateInterval: .milliseconds(33),
@@ -570,11 +568,11 @@ package struct ConversationTurnExecutor: Sendable {
         // generation isn't reconfigured mid-stream.
         let (turnSessionToolSources, turnHookRegistry) = await bindings.snapshot()
 
-        let activeAgent: Agent? = {
+        let activeAgent: AgentDefinition? = {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
             return sessionRecord.agents.first(where: { $0.id == activeID })
         }()
-        let agentSiblings: [Agent] = {
+        let agentSiblings: [AgentDefinition] = {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return [] }
             return sessionRecord.agents.filter { $0.id != activeID }
         }()
@@ -715,12 +713,19 @@ package struct ConversationTurnExecutor: Sendable {
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
         do {
+            // `enqueueAsync` takes its sampler knobs as individual parameters
+            // rather than a `GenerationConfig`, so only temperature/topP/
+            // repeatPenalty thread through here; the rest of
+            // `config.generation` (topK, seed, grammar, …) is not yet wired
+            // on this path — same limitation as before TurnConfig composed
+            // GenerationConfig, just now sourced from one place instead of
+            // three duplicated fields.
             (token, stream) = try await inferenceService.enqueueAsync(
                 structuredMessages: structuredHistory,
                 systemPrompt: composedSystemPrompt,
-                temperature: config.temperature,
-                topP: config.topP,
-                repeatPenalty: config.repeatPenalty,
+                temperature: config.generation.temperature,
+                topP: config.generation.topP,
+                repeatPenalty: config.generation.repeatPenalty,
                 maxOutputTokens: config.maxOutputTokens,
                 maxThinkingTokens: config.maxThinkingTokens,
                 tools: advertisedTools,

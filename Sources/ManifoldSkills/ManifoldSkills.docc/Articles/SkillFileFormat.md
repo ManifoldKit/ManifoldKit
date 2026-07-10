@@ -48,10 +48,10 @@ model: sonnet
 | Key | Type | Behaviour when missing |
 |---|---|---|
 | `aliases` | list of strings (or single string) | Alternate identifiers that resolve to this skill in ``SkillRegistry/skill(named:)``. Defaults to empty. |
-| `allowed-tools` | list of strings | When present, intersects the executor's advertised tool list while the skill is active (strong containment, mirrors Claude Code's `allowed-tools` gating). **Absent** means "no restriction" — equivalent to ``Skill/allowedTools`` being `nil`. **Present with empty list** means "deny all" (prompt-only skill); the skill's prompt template runs but no tools are exposed. |
+| `allowed-tools` | list of strings | When present, intersects the executor's advertised tool list while the skill is active (strong containment, mirrors Claude Code's `allowed-tools` gating). **Absent** means "no restriction" — equivalent to ``SkillDefinition/allowedTools`` being `nil`. **Present with empty list** means "deny all" (prompt-only skill); the skill's prompt template runs but no tools are exposed. |
 | `when-to-use` | string | Routing hint surfaced in the `invoke_skill` **tool description** (not the parameter description, which OpenAI truncates aggressively). Defaults to `nil`. |
 | `argument-hint` | string | Surfaced as the `args` parameter description. Defaults to a generic message. |
-| `references` | list of strings (or single string) | **L3 progressive disclosure.** Relative paths (under the skill's own directory) to companion files the body can point the model at. They are **not** read at discovery or inlined on dispatch — `invoke_skill` advertises only their names, and the host reads one on demand via ``Skill/resolveReference(_:)``. Resolution is dir-confined: `..`, absolute paths, and undeclared files throw `SkillReferenceError`. Defaults to empty. |
+| `references` | list of strings (or single string) | **L3 progressive disclosure.** Relative paths (under the skill's own directory) to companion files the body can point the model at. They are **not** read at discovery or inlined on dispatch — `invoke_skill` advertises only their names, and the host reads one on demand via ``SkillDefinition/resolveReference(_:)``. Resolution is dir-confined: `..`, absolute paths, and undeclared files throw `SkillReferenceError`. Defaults to empty. |
 | `model` | string | Skill-author hint for which model class to use. **Parsed but ignored in v1.** |
 
 ### Behaviour when the file is unreadable

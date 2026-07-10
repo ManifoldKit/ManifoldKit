@@ -8,7 +8,7 @@ import ManifoldRuntime
 /// list is empty).
 final class AllowedToolsEnforcementTests: XCTestCase {
 
-    private func makeSource(skill: Skill) async -> (SkillToolSource, ChatSession) {
+    private func makeSource(skill: SkillDefinition) async -> (SkillToolSource, ChatSession) {
         let registry = SkillRegistry()
         await registry.load([skill])
         let source = SkillToolSource(registry: registry)
@@ -18,7 +18,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
     }
 
     func test_allowedToolNames_emptyAllowedTools_returnsEmptySet() async {
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "prompt-only",
             description: "no tools",
             allowedTools: [],
@@ -36,7 +36,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
     }
 
     func test_allowedToolNames_subsetAllowedTools_returnsThatSubset() async {
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "narrow",
             description: "narrow scope",
             allowedTools: ["read_file", "list_dir"],
@@ -53,7 +53,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
     }
 
     func test_allowedToolNames_nilAllowedTools_returnsNil() async {
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "unrestricted",
             description: "no restriction",
             allowedTools: nil,
@@ -70,7 +70,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
     }
 
     func test_allowedToolNames_noActiveSkill_returnsNil() async {
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "any",
             description: "any",
             allowedTools: ["read_file"],
@@ -98,7 +98,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
     /// was reloaded from SwiftData after relaunch, and asserts containment is
     /// still enforced instead of silently resetting to unrestricted.
     func test_allowedToolNames_rehydratesFromPersistedActiveSkillName_onFirstTouch() async {
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "narrow",
             description: "narrow scope",
             allowedTools: ["read_file", "list_dir"],
@@ -134,7 +134,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
     /// beats accidentally re-enabling"). The correct behavior is deny-all (the
     /// same empty-set signal a prompt-only skill carries).
     func test_allowedToolNames_persistedSkillNoLongerInRegistry_failsClosed() async {
-        let survivor = Skill(
+        let survivor = SkillDefinition(
             name: "survivor",
             description: "still installed",
             allowedTools: ["read_file"],

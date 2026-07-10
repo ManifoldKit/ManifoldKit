@@ -11,13 +11,13 @@ import ManifoldAppEval
 final class AppEvalMarkdownRendererGoldenTests: XCTestCase {
 
     private func makeFixedOutcome() -> AppEvalOutcome {
-        let passingScore = Score(value: .bool(true), metadata: ["assertion": "requiredContent"])
-        let failingScore = Score(
+        let passingScore = EvalScore(value: .bool(true), metadata: ["assertion": "requiredContent"])
+        let failingScore = EvalScore(
             value: .bool(false),
             explanation: "Missing required content: goodbye",
             metadata: ["assertion": "requiredContent"]
         )
-        let unavailableScore = Score(value: .unavailable, explanation: "no scorer registered for custom key 'graph'")
+        let unavailableScore = EvalScore(value: .unavailable, explanation: "no scorer registered for custom key 'graph'")
 
         let fixtureA = FixtureOutcome(
             fixtureID: "alpha-fixture",
@@ -63,7 +63,7 @@ final class AppEvalMarkdownRendererGoldenTests: XCTestCase {
     }
 
     func test_render_escapesPipeCharactersInExplanation() {
-        let score = Score(value: .bool(false), explanation: "contains | a pipe")
+        let score = EvalScore(value: .bool(false), explanation: "contains | a pipe")
         let outcome = AppEvalOutcome(fixtures: [
             FixtureOutcome(fixtureID: "pipe-fixture", checkpoints: [
                 CheckpointOutcome(label: "l", afterTurnIndex: 0, scores: ["k": score]),

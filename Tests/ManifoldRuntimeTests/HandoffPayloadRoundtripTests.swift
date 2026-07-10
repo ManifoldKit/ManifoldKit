@@ -8,8 +8,8 @@ import ManifoldInference
 final class HandoffPayloadRoundtripTests: XCTestCase {
 
     func test_payload_nil_roundtrips() {
-        let previous = Agent(name: "Researcher", systemPrompt: "", description: "")
-        let next = Agent(name: "Writer", systemPrompt: "", description: "")
+        let previous = AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
+        let next = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
         let handoff = AgentHandoff(targetAgentID: next.id, payload: nil)
 
         let boundary = HandoffDetector.boundaryMessage(
@@ -26,8 +26,8 @@ final class HandoffPayloadRoundtripTests: XCTestCase {
     }
 
     func test_payload_present_roundtrips() {
-        let previous = Agent(name: "Researcher", systemPrompt: "", description: "")
-        let next = Agent(name: "Writer", systemPrompt: "", description: "")
+        let previous = AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
+        let next = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
         let handoff = AgentHandoff(targetAgentID: next.id, payload: "outline-here")
 
         let boundary = HandoffDetector.boundaryMessage(
@@ -43,7 +43,7 @@ final class HandoffPayloadRoundtripTests: XCTestCase {
     }
 
     func test_payload_extractedFromArguments() {
-        let writer = Agent(name: "Writer", systemPrompt: "", description: "")
+        let writer = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
         let session = ChatSession(
             id: UUID(),
             title: "T",

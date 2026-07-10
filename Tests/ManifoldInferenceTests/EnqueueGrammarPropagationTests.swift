@@ -18,10 +18,7 @@ final class EnqueueGrammarPropagationTests: XCTestCase {
         let service = InferenceService(backend: backend, name: "Mock")
 
         let grammar = "root ::= \"x\""
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            grammar: grammar
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(grammar: grammar))
 
         for try await _ in stream.events {}
 

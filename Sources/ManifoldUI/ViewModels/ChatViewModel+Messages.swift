@@ -487,9 +487,11 @@ extension ChatViewModel {
     func makeTurnConfig(systemPrompt: String?) -> TurnConfig {
         TurnConfig(
             systemPrompt: systemPrompt,
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
+            generation: GenerationConfig(
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty
+            ),
             maxOutputTokens: maxOutputTokens,
             maxThinkingTokens: maxThinkingTokens,
             streamingUpdateInterval: streamingUpdateInterval,

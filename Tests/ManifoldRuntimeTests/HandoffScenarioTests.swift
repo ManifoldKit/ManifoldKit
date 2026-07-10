@@ -45,10 +45,10 @@ final class HandoffScenarioTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makeAgents() -> (researcher: Agent, writer: Agent) {
+    private func makeAgents() -> (researcher: AgentDefinition, writer: AgentDefinition) {
         (
-            Agent(name: "Researcher", systemPrompt: "You are a Researcher.", description: "Gathers facts."),
-            Agent(name: "Writer", systemPrompt: "You are a Writer.", description: "Drafts copy.")
+            AgentDefinition(name: "Researcher", systemPrompt: "You are a Researcher.", description: "Gathers facts."),
+            AgentDefinition(name: "Writer", systemPrompt: "You are a Writer.", description: "Drafts copy.")
         )
     }
 
@@ -58,8 +58,8 @@ final class HandoffScenarioTests: XCTestCase {
         let sessionStore: InMemorySessionStore
         let mock: MockInferenceBackend
         let sessionID: UUID
-        let researcher: Agent
-        let writer: Agent
+        let researcher: AgentDefinition
+        let writer: AgentDefinition
     }
 
     private func makeFixture() async throws -> ScenarioFixture {
@@ -192,8 +192,8 @@ final class HandoffScenarioTests: XCTestCase {
     /// returns every transfer tool. Smoke-tests the source under the
     /// runtime path so the cap doesn't accidentally truncate behaviour.
     func test_handoff_softCapDoesNotTruncate_advertisedList() async {
-        let active = Agent(name: "A", systemPrompt: "", description: "")
-        let others = (0..<4).map { Agent(name: "Agent\($0)", systemPrompt: "", description: "") }
+        let active = AgentDefinition(name: "A", systemPrompt: "", description: "")
+        let others = (0..<4).map { AgentDefinition(name: "Agent\($0)", systemPrompt: "", description: "") }
         let session = ChatSession(
             id: UUID(),
             title: "Big",

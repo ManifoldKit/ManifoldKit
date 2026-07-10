@@ -253,7 +253,7 @@ final class SwiftDataRunStoreTests: XCTestCase {
         try await store.insertRun(run)
 
         let sessionID = UUID()
-        let config = TurnConfig(systemPrompt: "be terse", temperature: 0.3, maxOutputTokens: 512)
+        let config = TurnConfig(systemPrompt: "be terse", generation: GenerationConfig(temperature: 0.3), maxOutputTokens: 512)
         let input = TurnInput(
             sessionID: sessionID,
             kind: .send(text: "hello"),

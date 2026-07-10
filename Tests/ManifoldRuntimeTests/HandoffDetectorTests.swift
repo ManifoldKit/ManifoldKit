@@ -10,8 +10,8 @@ final class HandoffDetectorTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makeAgent(name: String, description: String = "A description") -> Agent {
-        Agent(
+    private func makeAgent(name: String, description: String = "A description") -> AgentDefinition {
+        AgentDefinition(
             id: UUID(),
             name: name,
             systemPrompt: "You are \(name).",
@@ -19,7 +19,7 @@ final class HandoffDetectorTests: XCTestCase {
         )
     }
 
-    private func makeSession(agents: [Agent], active: Agent?) -> ChatSession {
+    private func makeSession(agents: [AgentDefinition], active: AgentDefinition?) -> ChatSession {
         ChatSession(
             id: UUID(),
             title: "Fixture",

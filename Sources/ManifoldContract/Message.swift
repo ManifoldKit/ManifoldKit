@@ -21,8 +21,11 @@ import Foundation
 ///   attachments.
 ///
 /// Replaces the typo-prone `[(role: String, content: String)]` tuple
-/// variant. The tuple variant remains as a deprecation shim for one minor
-/// (`enqueue(messages: [(role:content:)])` / `generate(messages:...)`).
+/// variant. The tuple-shaped `enqueue(messages: [(role:content:)])`
+/// overloads were removed pre-1.0 (delete-don't-deprecate); the low-level,
+/// non-queued `generate(messages: [(role:content:)])` entry point still
+/// accepts the tuple shape by design — it predates ``Message`` and is not
+/// scheduled for removal.
 ///
 /// ## Scope boundary — text-only by design
 ///

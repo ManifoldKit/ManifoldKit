@@ -86,10 +86,7 @@ final class GenerationQueueApprovalTests: XCTestCase {
         )
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather in Rome?")],
-            maxOutputTokens: 64
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather in Rome?")], config: GenerationConfig(maxOutputTokens: 64))
         let events = try await collectEvents(stream)
 
         // Executor must NOT have been hit.
@@ -137,10 +134,7 @@ final class GenerationQueueApprovalTests: XCTestCase {
         )
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         _ = try await collectEvents(stream)
 
         // `.done` is the terminal phase for a successfully-completed run.
@@ -182,10 +176,7 @@ final class GenerationQueueApprovalTests: XCTestCase {
         )
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         _ = try await collectEvents(stream)
 
         XCTAssertEqual(gate.count, 2, "gate must be consulted for every tool call, including denied ones")

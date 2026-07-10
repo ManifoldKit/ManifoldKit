@@ -37,8 +37,8 @@ final class SkillProgressiveDisclosureTests: XCTestCase {
 
     /// Writes a skill whose body references `reference.md` and `examples/a.md`
     /// via a `references:` block list, plus those companion files. Returns the
-    /// discovered `Skill`.
-    private func writeReferencingSkill(in root: URL) throws -> Skill {
+    /// discovered `SkillDefinition`.
+    private func writeReferencingSkill(in root: URL) throws -> SkillDefinition {
         let dir = root.appendingPathComponent("explain", isDirectory: true)
         try FileManager.default.createDirectory(
             at: dir.appendingPathComponent("examples", isDirectory: true),
@@ -123,7 +123,7 @@ final class SkillProgressiveDisclosureTests: XCTestCase {
         // Declare-and-resolve a traversal path so we exercise the dir-confinement
         // guard, not just the allow-list (the allow-list rejects undeclared
         // first; here the path IS declared but still escapes).
-        let escaping = Skill(
+        let escaping = SkillDefinition(
             name: "evil",
             description: "d",
             promptTemplate: "body",
@@ -160,7 +160,7 @@ final class SkillProgressiveDisclosureTests: XCTestCase {
         let link = dir.appendingPathComponent("leak.md")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outsideTarget)
 
-        let evil = Skill(
+        let evil = SkillDefinition(
             name: "evil",
             description: "d",
             promptTemplate: "body",
@@ -179,7 +179,7 @@ final class SkillProgressiveDisclosureTests: XCTestCase {
         #else
         let root = try makeTempRoot()
         let skill = try writeReferencingSkill(in: root)
-        let withGhost = Skill(
+        let withGhost = SkillDefinition(
             name: skill.name,
             description: skill.description,
             promptTemplate: skill.promptTemplate,

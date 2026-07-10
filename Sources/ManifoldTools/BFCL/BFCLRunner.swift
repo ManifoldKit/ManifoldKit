@@ -74,7 +74,7 @@ public struct BFCLRunner {
         var records: [BFCLRunRecord] = []
 
         // The AST and name-only checks are real `EvalScorer`s over the emitted
-        // calls; the runner accounts for the run through their `Score` output.
+        // calls; the runner accounts for the run through their `EvalScore` output.
         let astScorer = BFCLASTScorer()
         let nameScorer = BFCLNameOnlyScorer()
 

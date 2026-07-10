@@ -48,7 +48,7 @@ final class MessageEnqueueTests: XCTestCase {
         let backend = CapturingBackend()
         let service = InferenceService(backend: backend, name: "Capture")
 
-        let (_, stream) = try service.enqueue(messages: [.user("hello world")])
+        let (_, stream) = try service.enqueue(messages: [.user("hello world")], config: GenerationConfig())
         for try await _ in stream.events {}
 
         // The default backend prompt-format places "User: hello world" in the
@@ -69,10 +69,7 @@ final class MessageEnqueueTests: XCTestCase {
         let backend = CapturingBackend()
         let service = InferenceService(backend: backend, name: "Capture")
 
-        let (_, stream) = try service.enqueue(
-            messages: [.user("hi")],
-            systemPrompt: "you are concise"
-        )
+        let (_, stream) = try service.enqueue(messages: [.user("hi")], systemPrompt: "you are concise", config: GenerationConfig())
         for try await _ in stream.events {}
 
         XCTAssertEqual(backend.lastSystemPrompt, "you are concise",
@@ -91,7 +88,7 @@ final class MessageEnqueueTests: XCTestCase {
             .user("hi"),
             .assistant("hello"),
             .user("how are you?")
-        ])
+        ], config: GenerationConfig())
         for try await _ in typedStream.events {}
 
         let tupleBackend = CapturingBackend()
@@ -109,11 +106,7 @@ final class MessageEnqueueTests: XCTestCase {
     private func enqueueTuples(
         service: InferenceService
     ) throws -> (token: InferenceService.GenerationRequestToken, stream: GenerationStream) {
-        try service.enqueue(messages: [
-            ("user", "hi"),
-            ("assistant", "hello"),
-            ("user", "how are you?")
-        ])
+        try service.enqueue(messages: [Message.user("hi"), Message.assistant("hello"), Message.user("how are you?")], config: GenerationConfig())
     }
 
     // MARK: - Value-typed config entry point
@@ -153,53 +146,6 @@ final class MessageEnqueueTests: XCTestCase {
         XCTAssertEqual(received.seed, 99)
         XCTAssertEqual(received.maxOutputTokens, 333)
         XCTAssertEqual(received.maxThinkingTokens, 64)
-    }
-
-    /// The deprecated parameterized builder must produce the same config the
-    /// new value-typed path would — proves the shim is a pure forwarder.
-    @available(*, deprecated)
-    func test_parameterizedBuilder_matchesValueTypedConfig() async throws {
-        let paramBackend = CapturingBackend()
-        let paramService = InferenceService(backend: paramBackend, name: "Param")
-        let (_, paramStream) = try paramService.enqueue(
-            messages: [.user("hello")],
-            temperature: 0.42,
-            topP: 0.81,
-            repeatPenalty: 1.23,
-            topK: 7,
-            seed: 99,
-            maxOutputTokens: 333,
-            maxThinkingTokens: 64
-        )
-        for try await _ in paramStream.events {}
-
-        let configBackend = CapturingBackend()
-        let configService = InferenceService(backend: configBackend, name: "Config")
-        var config = GenerationConfig(
-            temperature: 0.42,
-            topP: 0.81,
-            repeatPenalty: 1.23,
-            topK: 7,
-            seed: 99,
-            maxOutputTokens: 333
-        )
-        config.maxThinkingTokens = 64
-        let (_, configStream) = try configService.enqueue(
-            messages: [.user("hello")],
-            config: config
-        )
-        for try await _ in configStream.events {}
-
-        let viaParams = try XCTUnwrap(paramBackend.lastConfig)
-        let viaConfig = try XCTUnwrap(configBackend.lastConfig)
-        XCTAssertEqual(viaParams.temperature, viaConfig.temperature)
-        XCTAssertEqual(viaParams.topP, viaConfig.topP)
-        XCTAssertEqual(viaParams.repeatPenalty, viaConfig.repeatPenalty)
-        XCTAssertEqual(viaParams.topK, viaConfig.topK)
-        XCTAssertEqual(viaParams.seed, viaConfig.seed)
-        XCTAssertEqual(viaParams.maxOutputTokens, viaConfig.maxOutputTokens)
-        XCTAssertEqual(viaParams.maxThinkingTokens, viaConfig.maxThinkingTokens)
-        XCTAssertEqual(viaParams.maxToolIterations, viaConfig.maxToolIterations)
     }
 
     // MARK: - Message conformance / role mapping

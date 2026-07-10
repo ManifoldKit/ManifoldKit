@@ -76,7 +76,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["ok"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         // Two executor invocations: the transient one and the retry.
@@ -125,7 +125,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["ok"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         XCTAssertEqual(executor.invocationCount, 3, "two rate-limited responses must drive two retries")
@@ -166,7 +166,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["ok"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         // Exactly maxAttempts invocations — no unbounded looping.
@@ -199,7 +199,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["ok"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         // Sabotage check: classifying `.permanent` as retriable in
@@ -235,7 +235,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         ]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         XCTAssertEqual(executor.invocationCount, 1, "cancellation must not retry")
@@ -269,7 +269,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["done"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
 
         // If dispatch were sequential, the stream would never finish (barrier
         // deadlock) and this would hang the test deadline rather than fail.
@@ -319,7 +319,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["must-not-run"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
 
         let collector = Task<[GenerationEvent], Never> {
             var events: [GenerationEvent] = []
@@ -385,7 +385,7 @@ final class ToolDispatchHardeningTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["done"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "go")], maxOutputTokens: 8)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         XCTAssertEqual(concurrent.invocationCount, 1)
