@@ -1,0 +1,4 @@
+OTLPTraceSink Class
+OTLPTraceSink.init(endpoint:session:) Constructor
+OTLPTraceSink.record(_:) Func
+OTLPTraceSink.unownedExecutor Var

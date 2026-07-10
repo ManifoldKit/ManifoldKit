@@ -37,7 +37,7 @@ dump, 2026-07-06):
     conformances). KEPT: the extension members are this module's public
     API contribution.
 
-Deliberately coarse (this is the 0.2b prototype -- see
+Deliberately coarse (a presence tripwire, not a full ABI differ -- see
 scripts/api-surface-baseline.sh for the full mechanism writeup):
   - Uses `printedName` (the full parameter-label signature) rather than the
     bare `name`, so a parameter ADDED to an existing initializer (the

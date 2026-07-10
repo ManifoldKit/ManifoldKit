@@ -75,12 +75,13 @@ for suite in "$@"; do
     ManifoldBackendsTests)
       run_swift_test "$suite"
       ;;
-    ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldAppIntentsTests|ManifoldAppEvalTests)
+    ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldAppIntentsTests|ManifoldAppEvalTests|APIFreezeTests)
       # No .xcscheme for these suites; their traits were retired in v0.48
       # (PR A3) so they compile under the shared core lane shape and reuse
       # its .build. swift test routing avoids the no-scheme failure path.
       # ManifoldAppEvalTests (estate#1 wave 1) is trait-free and hermetic —
-      # same shape, same routing.
+      # same shape, same routing. APIFreezeTests (wave-2 0.A) is trait-free,
+      # fast, and hermetic — same routing.
       run_swift_test "$suite"
       ;;
     *)

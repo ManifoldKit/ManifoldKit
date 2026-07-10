@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# scripts/api-surface-baseline.sh — member-aware public-surface tripwire (prototype)
+# scripts/api-surface-baseline.sh — member-aware public-surface tripwire
 #
-# PROTOTYPE / mechanism design — see docs/plans/api-review-2026-07.md item
-# 0.2b. This is scoped narrowly on purpose (7 modules, no CI wiring) so the
-# mechanism can be reviewed before it's made load-bearing.
+# Originated as a 7-module prototype (docs/plans/api-review-2026-07.md item
+# 0.2b). Made load-bearing in docs/plans/api-review-wave2-2026-07.md item
+# 0.A: full coverage of every `.library()` product in Package.swift (27 as
+# of 2026-07-10), wired into nightly-slow-tests.yml via `--check`. No
+# longer a prototype — a red run here blocks the nightly job.
 #
 # ── Why this exists ─────────────────────────────────────────────────────
 #
@@ -59,26 +61,35 @@
 #
 #   scripts/api-surface-baseline.sh --modules "ModuleA ModuleB"
 #       Override the scoped module list (space-separated, one --modules
-#       flag). Defaults to the 7 modules below.
+#       flag). Defaults to every covered module below.
 #
 #   scripts/api-surface-baseline.sh --treeish <ref>
 #       Advanced escape hatch: dump a specific git treeish instead of the
 #       live working tree (see CAVEAT below). Rarely needed.
 #
-# ── Module scope (prototype — deliberately narrow) ─────────────────────
+# ── Module scope (full coverage — no exclusions) ────────────────────────
 #
-# The 5 modules the existing per-PR digester gate already covers
-# (ci.yml:226-238) plus the two the arch-review plan's item 0.0 flags as
-# gate-scope holes that matter most for THIS tripwire's motivating example
-# (ModelType/ToolTypes/BackendCapabilities physically live in
-# ManifoldHardware; GenerationConfig's home, ManifoldContract, is the
-# accretion example itself):
-#   ManifoldInference, ManifoldRuntime, ManifoldCloudCore,
-#   ManifoldPersistenceSwiftData, ManifoldUI, ManifoldContract,
-#   ManifoldHardware
-# Closing the REST of the 0.0 gate-scope hole (ManifoldTestSupport,
-# ManifoldBackendTestKit, and wiring this into CI) is out of scope here —
-# this script only prototypes the member-aware MECHANISM.
+# Every `.library(...)` product in Package.swift — the same product surface
+# the nightly api-check step (nightly-slow-tests.yml, `swift package
+# diagnose-api-breaking-changes`) covers, so the two gates track the same
+# modules and neither silently drifts ahead of the other. Keep
+# DEFAULT_MODULES in sync with Package.swift's `products:` array (and with
+# PublicSurfaceBaselineTests.swift's `expectedModules`) when a product is
+# added, removed, or renamed. Executables (fuzz-chat, manifold-tools,
+# ManifoldServer) and the ManifoldMacrosPlugin build plugin aren't
+# `.library()` products and have no digestible module interface — out of
+# scope by construction, not an exclusion.
+#
+# ManifoldFoundation note (checked before including it, 2026-07-10): its
+# main surface sits behind `#if canImport(FoundationModels)`, which is a
+# compile-SDK check, not a runtime-OS check. The repo's toolchain floor is
+# Xcode 26.x (see AGENTS.md "swift-tools-version ceiling"), whose SDK
+# always ships FoundationModels — so the gated surface compiles, and dumps,
+# identically on every supported dev machine and CI runner. Verified: the
+# module dumps its full surface (FoundationBackend + registrar) on both
+# sides of the digester's scratch-checkout build. If a future toolchain
+# situation makes this flaky, exclude it HERE with a comment — never
+# silently.
 #
 # ── How the dump is generated (the part worth reviewing carefully) ─────
 #
@@ -110,15 +121,18 @@
 #
 # ── Cost — the honest answer to "can this run per-PR?" ──────────────────
 #
-# Measured tonight on this worktree, 7 modules in ONE invocation (--targets
-# scoping does NOT reduce the build — diagnose-api-breaking-changes builds
-# the whole package graph regardless, matching ci.yml's own documented
-# "~12 min compile cost" comment):
-#   - Cold (nothing cached): ~13 minutes wall clock (two full package
+# Measured on a local Apple Silicon worktree, all modules in ONE
+# invocation (--targets scoping does NOT reduce the build —
+# diagnose-api-breaking-changes builds the whole package graph regardless,
+# matching ci.yml's own documented "~12 min compile cost" comment):
+#   - Cold (nothing cached): ~13 minutes wall clock (measured at the
+#     original 7-module scope; the dominant cost is the two full package
 #     builds — the scratch treeish checkout AND the live tree — each
-#     ~1300+ compile actions).
+#     ~1300+ compile actions, so scope barely moves it).
 #   - Warm (both .build dirs already built from a prior run, e.g. right
-#     after `scripts/test.sh`): ~78 seconds for all 7 modules together.
+#     after `scripts/test.sh`): ~97 seconds for all 27 modules together
+#     (2026-07-10; was ~78s at 7-module scope — the per-module dump cost
+#     is small next to the build).
 # The gap between those numbers IS the finding: this is only "per-PR
 # cheap" if a PR's normal `swift build`/`swift test` already warmed both
 # caches AND the scratch-checkout side also stays warm across runs (true
@@ -128,15 +142,13 @@
 # doc comment). Recommend nightly/pre-release cadence, not per-PR, until
 # that's re-measured against a real CI runner.
 #
-# ── CI integration (NOT wired here — see PR body) ───────────────────────
+# ── CI integration ───────────────────────────────────────────────────────
 #
-# PR #2145 owns workflow files tonight, so this script does not touch
-# .github/workflows/*. The suggested integration step (for whoever picks
-# this up) mirrors the existing "Public API source-compatibility check" in
-# ci.yml:599: run `scripts/api-surface-baseline.sh --check` as a nightly
-# step (nightly-slow-tests.yml) given the cold-cache cost measured above;
-# revisit per-PR once the scratch-checkout cache behavior is measured on an
-# actual GitHub Actions runner.
+# Wired into .github/workflows/nightly-slow-tests.yml as its own job
+# (`api-surface-baseline`) running `scripts/api-surface-baseline.sh --check`,
+# given the cold-cache cost measured above. Not per-PR — revisit once the
+# scratch-checkout cache behavior is measured warm on an actual GitHub
+# Actions runner across consecutive nightly runs.
 #
 # ── Failure message contract ─────────────────────────────────────────────
 #
@@ -157,7 +169,9 @@ BASELINE_DIR="${REPO_ROOT}/Tests/APIFreezeTests/api-surface-baseline"
 EXTRACT_PY="${REPO_ROOT}/scripts/_lib/api-surface-extract.py"
 ALLOWLIST_PATH="${REPO_ROOT}/.github/api-breakage-allowlist.txt"
 
-DEFAULT_MODULES="ManifoldInference ManifoldRuntime ManifoldCloudCore ManifoldPersistenceSwiftData ManifoldUI ManifoldContract ManifoldHardware"
+# Every `.library(...)` product in Package.swift (see the "Module scope"
+# header section above). Order mirrors Package.swift's products: array.
+DEFAULT_MODULES="ManifoldKit ManifoldInference ManifoldContract ManifoldNetworking ManifoldSecrets ManifoldHardware ManifoldModelCatalog ManifoldMCP ManifoldMCPHost ManifoldRuntime ManifoldPersistenceSwiftData ManifoldCloudCore ManifoldFoundation ManifoldOllama ManifoldCloudSaaS ManifoldAnyLanguageModel ManifoldUI ManifoldUIModelManagement ManifoldHuggingFace ManifoldVoice ManifoldTestSupport ManifoldBackendTestKit ManifoldTools ManifoldAppIntents ManifoldSkills ManifoldTelemetryOTLP ManifoldAppEval"
 
 MODE="generate"
 TREEISH=""

@@ -404,6 +404,32 @@ jobs:
               --body "$(printf '## Nightly cold-start gates failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
           fi
 
+  # Member-aware public-surface baseline (docs/plans/api-review-wave2-2026-07.md
+  # item 0.A). Complements the `slow` job's api-check step above: that step
+  # diagnoses BREAKING changes only (removals, type/signature changes) via
+  # `swift package diagnose-api-breaking-changes` against the last release
+  # tag; this job catches pure ADDITIONS and public->package DEMOTIONS via
+  # scripts/api-surface-baseline.sh's member-granular checked-in baseline
+  # (Tests/APIFreezeTests/api-surface-baseline/*.txt), diffed against the
+  # live working tree. Neither gate subsumes the other — see the script's
+  # own header "Division of labor" section. Own job (not folded into `slow`)
+  # because the script's cold-cache cost (~13 min measured at 7-module scope,
+  # more at the current 27-module scope) doesn't fit inside `slow`'s 30-minute
+  # timeout alongside everything else that job already runs.
+  api-surface-baseline:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+
+      - name: Public API member-aware surface baseline (--check)
+        run: bash scripts/api-surface-baseline.sh --check
+
   # Merged-tree backstop for the trait-gated / simulator suites that the merge
   # queue never validates. On merge_group ci.yml bypasses the paths-filter, so
   # server-tests / macros-tests / ci-ios-file-protection / mcp-fixture-check

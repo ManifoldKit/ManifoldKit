@@ -579,6 +579,25 @@ Four cross-cutting QA practices live outside the unit/integration/E2E pyramid �
 
 `ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`) is the single turn loop — owns `send`, `regenerate`, `edit`, `cancel`, and `branch`. No alternative path. Host apps get a configured runtime via `ManifoldBootstrap` and forward user actions to it.
 
+## Public API design policy (pre-1.0)
+
+- **Default to `package`, not `public`.** A new declaration is `package` unless the PR body
+  explicitly claims it as public API and says why. `package` access never crosses a package
+  boundary, so this default does NOT apply to anything a **companion package**
+  (manifold-mlx / manifold-llama), **manifold-eval**, or a **consumer app** conforms to or
+  consumes directly — those surfaces must stay `public`, full stop. When unsure whether a
+  cross-package consumer exists, check before demoting (grep the companion/eval repos, not just
+  this one).
+- **Pre-1.0, delete — don't deprecate.** `@available(*, deprecated)` is a post-1.0 tool for
+  giving external consumers a migration window; before 1.0 there is no stability promise to
+  protect, so a retired API is removed outright, not carried forward with a deprecation shim.
+- **Standing review question**: does this diff add a public symbol or knob, and does that knob
+  already exist at another layer? (The `TurnConfig`/`GenerationConfig` sampler-parameter
+  duplication is the canonical counter-example of what happens when this question isn't asked.)
+  Every reviewer — human or agent — asks this before approving a diff that widens public surface.
+- See [`docs/API-DESIGN.md`](docs/API-DESIGN.md) for the layer-ownership map and the full
+  identity-ranking rationale behind these rules.
+
 ## Coding conventions
 
 - **Concurrency**: async/await throughout. No Combine, no callback pyramids.
