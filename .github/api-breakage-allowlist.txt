@@ -275,3 +275,59 @@ API breakage: class ManifoldSchemaV4.ChatMessage has been removed
 API breakage: class ManifoldSchemaV4.ChatSession has been removed
 API breakage: enum ManifoldSchemaV7 has been removed
 API breakage: enum ManifoldSchemaV8 has been removed
+API breakage: accessor ChatSession.agents.Get() has return type change from [ManifoldContract.Agent] to [ManifoldContract.AgentDefinition]
+API breakage: accessor ChatSession.agents.Set() has parameter 0 type change from [ManifoldContract.Agent] to [ManifoldContract.AgentDefinition]
+API breakage: accessor CheckpointOutcome.scores.Get() has return type change from [Swift.String : ManifoldInference.Score] to [Swift.String : ManifoldInference.EvalScore]
+API breakage: accessor GoldenTaskRunner.CheckpointResult.scores.Get() has return type change from [Swift.String : ManifoldInference.Score] to [Swift.String : ManifoldInference.EvalScore]
+API breakage: accessor HandoffChipView.from.Get() has return type change from ManifoldContract.Agent? to ManifoldContract.AgentDefinition?
+API breakage: accessor HandoffChipView.to.Get() has return type change from ManifoldContract.Agent? to ManifoldContract.AgentDefinition?
+API breakage: constructor Agent.init(from:) has return type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: constructor Agent.init(id:name:systemPrompt:description:allowedToolNames:) has return type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: constructor ChatSession.init(id:title:createdAt:updatedAt:systemPrompt:selectedModelID:selectedEndpointID:temperature:topP:repeatPenalty:promptTemplate:contextSizeOverride:pinnedMessageIDs:isPinned:pinnedAt:agents:activeAgentID:activeSkillName:) has parameter 15 type change from [ManifoldContract.Agent] to [ManifoldContract.AgentDefinition]
+API breakage: constructor CheckpointOutcome.init(label:afterTurnIndex:scores:) has parameter 2 type change from [Swift.String : ManifoldInference.Score] to [Swift.String : ManifoldInference.EvalScore]
+API breakage: constructor GoldenTaskRunner.CheckpointResult.init(checkpoint:scores:) has parameter 1 type change from [Swift.String : ManifoldInference.Score] to [Swift.String : ManifoldInference.EvalScore]
+API breakage: constructor HandoffChipView.init(from:to:) has parameter 0 type change from ManifoldContract.Agent? to ManifoldContract.AgentDefinition?
+API breakage: constructor HandoffChipView.init(from:to:) has parameter 1 type change from ManifoldContract.Agent? to ManifoldContract.AgentDefinition?
+API breakage: constructor Score.init(value:answer:explanation:metadata:) has return type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: constructor Skill.init(from:) has return type change from ManifoldSkills.Skill to ManifoldSkills.SkillDefinition
+API breakage: constructor Skill.init(name:description:aliases:allowedTools:model:whenToUse:argumentHint:promptTemplate:references:sourcePath:) has return type change from ManifoldSkills.Skill to ManifoldSkills.SkillDefinition
+API breakage: constructor TurnConfig.init(systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:maxThinkingTokens:streamingUpdateInterval:streamingBatchCharacterLimit:thinkingStreamingUpdateInterval:thinkingStreamingBatchCharacterLimit:loopDetectionEnabled:) has been removed
+API breakage: func Agent.__derived_struct_equals(_:_:) has parameter 0 type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: func Agent.__derived_struct_equals(_:_:) has parameter 1 type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: func BFCLASTScorer.score(output:expected:) has return type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func BFCLNameOnlyScorer.score(output:expected:) has return type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func BuiltInCheckpointScorers.scoreExpectedCompression(_:) has return type change from ManifoldInference.Score? to ManifoldInference.EvalScore?
+API breakage: func BuiltInCheckpointScorers.scoreExpectedContextSlots(_:) has return type change from ManifoldInference.Score? to ManifoldInference.EvalScore?
+API breakage: func BuiltInCheckpointScorers.scoreExpectedEvents(_:) has return type change from ManifoldInference.Score? to ManifoldInference.EvalScore?
+API breakage: func BuiltInCheckpointScorers.scoreExpectedToolCalls(_:) has return type change from ManifoldInference.Score? to ManifoldInference.EvalScore?
+API breakage: func BuiltInCheckpointScorers.scoreForbiddenContent(_:) has return type change from ManifoldInference.Score? to ManifoldInference.EvalScore?
+API breakage: func BuiltInCheckpointScorers.scoreRequiredContent(_:) has return type change from ManifoldInference.Score? to ManifoldInference.EvalScore?
+API breakage: func CheckpointScorer.score(_:) has return type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func EvalScorer.score(output:expected:) has return type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func HandoffDetector.boundaryMessage(from:to:payload:) has parameter 0 type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: func HandoffDetector.boundaryMessage(from:to:payload:) has parameter 1 type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: func HandoffDetector.handoffInstructions(for:siblings:) has parameter 0 type change from ManifoldContract.Agent to ManifoldContract.AgentDefinition
+API breakage: func HandoffDetector.handoffInstructions(for:siblings:) has parameter 1 type change from [ManifoldContract.Agent] to [ManifoldContract.AgentDefinition]
+API breakage: func InferenceService.enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:maxThinkingTokens:jsonMode:grammar:tools:toolChoice:maxToolIterations:priority:requestGroupID:route:) has been removed
+API breakage: func InferenceService.enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:topK:minP:presencePenalty:frequencyPenalty:seed:maxOutputTokens:maxThinkingTokens:jsonMode:grammar:tools:toolChoice:maxToolIterations:priority:requestGroupID:route:) has been removed
+API breakage: func InferenceService.enqueue(structuredMessages:systemPrompt:temperature:topP:repeatPenalty:topK:minP:presencePenalty:frequencyPenalty:seed:maxOutputTokens:maxThinkingTokens:jsonMode:grammar:tools:toolChoice:maxToolIterations:priority:requestGroupID:route:) has been removed
+API breakage: func JudgedCheckpointScorer.score(_:) has return type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func Score.__derived_struct_equals(_:_:) has parameter 0 type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func Score.__derived_struct_equals(_:_:) has parameter 1 type change from ManifoldInference.Score to ManifoldInference.EvalScore
+API breakage: func Skill.__derived_struct_equals(_:_:) has parameter 0 type change from ManifoldSkills.Skill to ManifoldSkills.SkillDefinition
+API breakage: func Skill.__derived_struct_equals(_:_:) has parameter 1 type change from ManifoldSkills.Skill to ManifoldSkills.SkillDefinition
+API breakage: func SkillLoader.discover() has return type change from [ManifoldSkills.Skill] to [ManifoldSkills.SkillDefinition]
+API breakage: func SkillRegistry.all() has return type change from [ManifoldSkills.Skill] to [ManifoldSkills.SkillDefinition]
+API breakage: func SkillRegistry.load(_:) has parameter 0 type change from [ManifoldSkills.Skill] to [ManifoldSkills.SkillDefinition]
+API breakage: func SkillRegistry.skill(named:) has return type change from ManifoldSkills.Skill? to ManifoldSkills.SkillDefinition?
+API breakage: struct Agent has been renamed to struct AgentDefinition
+API breakage: struct Score has been renamed to struct EvalScore
+API breakage: struct Skill has been renamed to struct SkillDefinition
+API breakage: var ChatSession.agents has declared type change from [ManifoldContract.Agent] to [ManifoldContract.AgentDefinition]
+API breakage: var CheckpointOutcome.scores has declared type change from [Swift.String : ManifoldInference.Score] to [Swift.String : ManifoldInference.EvalScore]
+API breakage: var GoldenTaskRunner.CheckpointResult.scores has declared type change from [Swift.String : ManifoldInference.Score] to [Swift.String : ManifoldInference.EvalScore]
+API breakage: var HandoffChipView.from has declared type change from ManifoldContract.Agent? to ManifoldContract.AgentDefinition?
+API breakage: var HandoffChipView.to has declared type change from ManifoldContract.Agent? to ManifoldContract.AgentDefinition?
+API breakage: var TurnConfig.repeatPenalty has been removed
+API breakage: var TurnConfig.temperature has been removed
+API breakage: var TurnConfig.topP has been removed
