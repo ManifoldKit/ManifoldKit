@@ -161,6 +161,10 @@ jobs:
       - name: shim-drift — ci.yml PR paths must equal shim paths-ignore
         if: always()
         run: |
+          # PyYAML ships preinstalled on ubuntu-latest's system python3, but
+          # that is a runner-image detail, not a contract — install it if a
+          # future image drops it rather than hard-failing the required lint.
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet PyYAML
           python3 <<'PYEOF'
           import sys
           import yaml

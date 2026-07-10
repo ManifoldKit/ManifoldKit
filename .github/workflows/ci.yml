@@ -407,9 +407,11 @@ jobs:
     if: needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
     # Backstop against an org-wide macOS-slot stall (see the `changes` job's
-    # timeout-minutes comment). 120 is a backstop, not a budget: worst
-    # legitimate case is three 30-min test steps plus the api-digester step.
-    timeout-minutes: 120
+    # timeout-minutes comment). 150 is a backstop, not a budget: the worst
+    # legitimate step-budget sum is 15 (dep pre-fetch) + 3×30 (test steps) +
+    # 25 (api-digester) = 130, plus checkout/setup/lint slack. Typical full
+    # runs finish in ~12 min; this only exists to bound a hang.
+    timeout-minutes: 150
 
     steps:
       - name: Checkout
@@ -793,10 +795,13 @@ jobs:
           for s in $affected; do
             # NOTE: must use the assignment form, not `((swift_test_count++))` —
             # a C-style post-increment FROM ZERO evaluates to 0, which bash
-            # treats as a failing exit status. Under `set -euo pipefail` above,
-            # the very first increment kills the script before any mode is
-            # emitted (confirmed: any PR touching only Sources/ManifoldOllama/**
-            # etc. crashed the required `test` check with a bare exit 1).
+            # treats as a failing exit status, and under `set -euo pipefail`
+            # the very first increment then kills the script before any mode
+            # is emitted. Whether that kill actually fires is BASH-VERSION-
+            # DEPENDENT (reproduced: bash 5.x crashes, macOS system bash 3.2
+            # does not propagate it through this case/for shape) — the
+            # assignment form is correct under every version, so we don't
+            # gamble on which bash a runner resolves.
             case "$s" in ManifoldBackendsTests) swift_test_count=$((swift_test_count + 1)) ;; esac
           done
           total_count=$(printf '%s\n' $affected | wc -w | tr -d ' ')
@@ -969,8 +974,9 @@ jobs:
     if: needs.changes.outputs.server == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
-    # timeout-minutes comment for the rationale.
-    timeout-minutes: 25
+    # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
+    # pre-fetch, fires when deps changed) + 12 (test step) + setup slack.
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -1039,8 +1045,9 @@ jobs:
     if: needs.changes.outputs.macros == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
-    # timeout-minutes comment for the rationale.
-    timeout-minutes: 25
+    # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
+    # pre-fetch, fires when deps changed) + 12 (test step) + setup slack.
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
