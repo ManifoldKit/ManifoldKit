@@ -1,9 +1,10 @@
 # ManifoldKit — guide for AI coding assistants
 
 This is the **canonical instruction file** for ManifoldKit, readable by any AI
-coding assistant (Claude Code, Cursor, Copilot, codex, …). It serves two
-audiences:
+coding assistant (Claude Code, Cursor, Copilot, codex, …). It has three parts:
 
+- **Part 0 — Principles**: the project invariants. Short, and they should
+  rarely change.
 - **Part 1 — Using ManifoldKit** (consumers): the recipe-shaped surface for an
   assistant helping a human use ManifoldKit in their app — imports, bootstrap,
   the public API.
@@ -13,6 +14,67 @@ audiences:
 
 `CLAUDE.md` is a stub that imports this file (`@AGENTS.md`) and adds only
 Claude-harness-specific notes — never duplicate content between the two.
+
+# Part 0 — Principles
+
+These are the things that must stay true as everything else changes. Parts 1
+and 2 churn with every refactor; this list should not. Each principle names
+its enforcement, because a rule nobody checks is a suggestion — and for the
+same reason, **a new rule ships with its enforcement in the same PR, or it is
+not a rule.**
+
+1. **Built for sustained development, not the demo.** ManifoldKit is for
+   building and operating real apps over months and years. Getting started is
+   simple (one import, one bootstrap recipe, one way to send a message), and
+   staying productive is too: docs stay truthful as the API evolves, recipes
+   keep compiling, upgrade paths are written down. AI assistants are
+   first-class readers — their common mistakes against this API are documented
+   and corrected. *(Cold-start gates, doc-snippet compile gate,
+   `AgentsMdAuditTest`.)*
+2. **Dependencies flow one way.** UI → Runtime → Inference → Contract →
+   leaves. Backends plug into the Contract kernel; the kernel never depends on
+   the engine; UI never imports a backend. A cycle is a regression no matter
+   how convenient. *(`TrafficBoundaryAuditTest`,
+   `ManifoldContractNoEngineDependencyTests`, the package manifest itself.)*
+3. **Heavy dependencies are opt-in.** Plain `swift build` is the full core
+   build. A dependency whose build cost rivals the core (macro toolchains,
+   server frameworks, GPU runtimes) goes behind a trait or into a companion
+   package. A consumer who wants only chat pays only for chat. *(No default
+   traits — a structural fact of the manifest.)*
+4. **Every rule has a tripwire, and the tripwires are tested.** Forbidden
+   patterns get audit tests that scan the source; a sabotage suite plants
+   known violations nightly and confirms each audit still fires.
+   *(`ManifoldAuditSabotageSuiteTests` + the per-run coverage check.)*
+5. **Tests are honest.** Classified truthfully (SwiftData ⇒ integration
+   test), real `async`/`await`, never a mocked persistence layer, shipped in
+   the same PR as the change. A test that cannot be shown to fail is not
+   coverage. *(`TestSuiteSilentSkipAuditTest`; conventions in
+   `Tests/README.md`.)*
+6. **Errors are visible.** No `try?` in production code; `do`/`catch` and
+   log. `fatalError`/`assertionFailure` only for programmer errors with no
+   recovery path. *(`SilentCatchAuditTest`, force-unwrap lint.)*
+7. **Swift concurrency, done properly.** `@Observable` + `@MainActor`, no
+   Combine, no `Task.detached` in `@MainActor` classes, and never
+   `@unchecked Sendable` as a race fix — fix the isolation boundary.
+   *(Strict Swift 6 builds; the gotcha list in Part 2.)*
+8. **One turn loop.** Send/regenerate/edit/cancel/branch have one
+   implementation: `ConversationRuntime` and its `TurnDriver`s. New entry
+   points (server, MCP host, apps) forward into it; they never reimplement
+   it. *(Turn-loop characterization tests pin the observable behavior.)*
+9. **Breaking changes are deliberate.** Pre-1.0 allows breakage, never casual
+   breakage: migration docs for every retired API, a changelog written for
+   humans, known consumers (companions, example apps) built against the
+   change before release. Only removals are irreversible — bias toward
+   migration and lockstep, not toward never removing. *(API-break diff in CI,
+   changelog lint, release-time demo/companion builds.)*
+10. **Shipped means live.** Done = exercised end to end, not compiled. A read
+    path with no writer or a flag nothing reads lies to every future reader.
+    Every review asks: is this actually live? *(Review loop; fuzzer and
+    integration sweeps drive real traffic.)*
+11. **No secret ever touches the repository.** Not in a file, not behind
+    `.gitignore`, not in history — a leak is the one mistake a revert cannot
+    undo. Templates hold references, never values. *(Per-PR secret scanning;
+    keychain-only credential storage in the product.)*
 
 # Part 1 — Using ManifoldKit (consumers)
 
@@ -462,11 +524,11 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldNetworking` | Leaf networking primitives (P1a #1608): `NetworkActivity` observability funnel, `PrivateIPClassifier`. Pure Foundation, zero upward deps. |
-| `ManifoldSecrets` | Leaf security primitives (P1b #1609): `KeychainService`, `SecureEnclaveKeyManager`, `SecureBytes`. Pure Security framework, zero upward deps. |
-| `ManifoldHardware` | Leaf device-capability + GGUF primitives (P1c #1610): device probing, memory-pressure broadcasting, GGUF parsing, load-plan logic. Also the physical home of the tool-calling value types (`ToolDefinition`/`ToolCall`/`ToolResult`/`ToolChoice`/`JSONSchemaValue`) and `BackendCapabilities` — re-exported through `ManifoldContract` via `@_exported import` (see `ManifoldContractLeafExports.swift`); physical relocation to Contract was ruled out (2026-07 API review) because `StructuredOutputStrategy`/`PromptTemplate`/`GenerationCapabilityRequirement` consume them here load-bearingly, which would cycle. Per the API-review posture, the SwiftPM products are the API — module placement is internal topology. Zero deps. |
-| `ManifoldModelCatalog` | Model discovery/catalog/benchmark + image/video-gen records (P1d #1611): `ModelInfo`, `ModelManifest`, `ModelCatalog`, `ModelStorageService`, `DiagnosticsService`, `SettingsService`, `ModelBenchmarkRunner`. Depends on `ManifoldHardware`, `ManifoldNetworking`, `ManifoldSecrets`. |
-| `ManifoldContract` | The Contract kernel (P2a #1719): backend protocols (`InferenceBackend`, `EmbeddingBackend`), value/stream types (`GenerationConfig`, `GenerationEvent`, `Message`, streaming transforms), plus `ToolDefinition`/`ToolCall`/`ToolResult` re-exported from `ManifoldHardware` (see that row). Depends on `ManifoldHardware` + `ManifoldModelCatalog` (`@_exported import`s both). Must NOT depend on `ManifoldInference` — `ManifoldContractNoEngineDependencyTests` is the tripwire. |
+| `ManifoldNetworking` | Leaf networking primitives: `NetworkActivity` observability funnel, `PrivateIPClassifier`. Pure Foundation, zero upward deps. |
+| `ManifoldSecrets` | Leaf security primitives: `KeychainService`, `SecureEnclaveKeyManager`, `SecureBytes`. Pure Security framework, zero upward deps. |
+| `ManifoldHardware` | Leaf device-capability + GGUF primitives: device probing, memory-pressure broadcasting, GGUF parsing, load-plan logic. Also the physical home of the tool-calling value types (`ToolDefinition`/`ToolCall`/`ToolResult`/`ToolChoice`/`JSONSchemaValue`) and `BackendCapabilities`, re-exported through `ManifoldContract` via `@_exported import` (`ManifoldContractLeafExports.swift`) — moving them into Contract would cycle, so don't. Zero deps. |
+| `ManifoldModelCatalog` | Model discovery/catalog/benchmark + image/video-gen records: `ModelInfo`, `ModelManifest`, `ModelCatalog`, `ModelStorageService`, `DiagnosticsService`, `SettingsService`, `ModelBenchmarkRunner`. Depends on `ManifoldHardware`, `ManifoldNetworking`, `ManifoldSecrets`. |
+| `ManifoldContract` | The Contract kernel: backend protocols (`InferenceBackend`, `EmbeddingBackend`), value/stream types (`GenerationConfig`, `GenerationEvent`, `Message`, streaming transforms), plus the tool-calling types re-exported from `ManifoldHardware`. Depends on `ManifoldHardware` + `ManifoldModelCatalog` (`@_exported import`s both). Must NOT depend on `ManifoldInference` — `ManifoldContractNoEngineDependencyTests` is the tripwire. |
 
 ### Inference engine + runtime
 
@@ -480,21 +542,21 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldFoundation` | Apple Foundation Models bridge — gated by OS availability (`#if canImport(FoundationModels)`, iOS 26 / macOS 26+), no trait. Depends on `ManifoldContract` + `ManifoldInference` (the `FoundationBackends` registrar, relocated here in P7, needs the engine). |
-| `ManifoldOllama` | Ollama (self-hosted / LAN) backend family: `OllamaBackend`, model list/probe services, NDJSON stream extractor, `OllamaBackends` registrar. Compiles unconditionally with unconditional consumer edges (the `Ollama` trait was retired in v0.48 PR A4). Depends on `ManifoldContract` + `ManifoldCloudCore`. Split out of `ManifoldCloud` in v0.48 (PR A1). |
-| `ManifoldCloudSaaS` | SaaS backend family: Anthropic Claude, OpenAI Chat Completions, OpenAI Responses, LM Studio / custom OpenAI-compatible endpoints, `CloudSaaSBackends` registrar. Compiles unconditionally with unconditional consumer edges (the `CloudSaaS` trait was retired in v0.48 PR A4). Depends on `ManifoldContract` + `ManifoldCloudCore`. Split out of `ManifoldCloud` in v0.48 (PR A1). |
-| `ManifoldCloud` | **Retired in P7 (#1837).** The re-export shim is gone — `import ManifoldCloud` no longer compiles. Import `ManifoldCloudCore` + the provider family (`ManifoldOllama` / `ManifoldCloudSaaS`), or the `ManifoldKit` umbrella. `DefaultWebSearchRuntime` moved to `ManifoldCloudCore`. See docs/MIGRATION-shims-retired.md. |
-| `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`) plus the provider-agnostic encoding/parsing surface shared by both cloud families (`CloudMessageEncoder`, `CloudPayloadHandler`, `CloudHTTPProviderAdapter`, OpenAI-compatible Chat Completions parsing), and (since P7) `DefaultWebSearchRuntime` — the `WebSearchRuntime` port conformance relocated from the retired `ManifoldCloud` shim. Always linked; compiles unconditionally since v0.48 removed its trait gates. Depends on `ManifoldInference` + `ManifoldRuntime` (the latter for `DefaultWebSearchRuntime`'s port conformance — an un-gated library→library edge; see Package.swift comment). |
-| `ManifoldBackends` | **Retired in P7 (#1837).** The umbrella re-export shim and its `DefaultBackends` cross-family glue are gone — `import ManifoldBackends` no longer compiles. Import the families directly (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) or the `ManifoldKit` umbrella; pass an explicit registrar list to `ManifoldKit.quickStart(backends:)` (or call `OllamaBackends`/`CloudSaaSBackends`/`FoundationBackends` `.register(with:)`) instead of `DefaultBackends.register(...)`. See docs/MIGRATION-shims-retired.md. |
-| `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge (`AnyLanguageModelBackend` + URL resolver) for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own product since v0.48 (PR A5; the `AnyLanguageModel` trait is retired); unconditional dep on the external AnyLanguageModel package; opt in by importing. Depends on `ManifoldInference`. |
+| `ManifoldFoundation` | Apple Foundation Models bridge — gated by OS availability (`#if canImport(FoundationModels)`, iOS 26 / macOS 26+), no trait. Depends on `ManifoldContract` + `ManifoldInference` (the `FoundationBackends` registrar needs the engine). |
+| `ManifoldOllama` | Ollama (self-hosted / LAN) backend family: `OllamaBackend`, model list/probe services, NDJSON stream extractor, `OllamaBackends` registrar. Compiles unconditionally. Depends on `ManifoldContract` + `ManifoldCloudCore`. |
+| `ManifoldCloudSaaS` | SaaS backend family: Anthropic Claude, OpenAI Chat Completions, OpenAI Responses, LM Studio / custom OpenAI-compatible endpoints, `CloudSaaSBackends` registrar. Compiles unconditionally. Depends on `ManifoldContract` + `ManifoldCloudCore`. |
+| `ManifoldCloud` | **Retired** — `import ManifoldCloud` no longer compiles. Use `ManifoldCloudCore` + a provider family, or the `ManifoldKit` umbrella. See docs/MIGRATION-shims-retired.md. |
+| `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`), the provider-agnostic encoding/parsing surface shared by both cloud families, and `DefaultWebSearchRuntime`. Always linked. Depends on `ManifoldInference` + `ManifoldRuntime` (the latter for `DefaultWebSearchRuntime`'s port conformance — an un-gated library→library edge; see Package.swift comment). |
+| `ManifoldBackends` | **Retired** — `import ManifoldBackends` and `DefaultBackends` are gone. Import the families directly or the `ManifoldKit` umbrella; pass explicit registrars to `quickStart(backends:)`. See docs/MIGRATION-shims-retired.md. |
+| `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own always-compiled product, never re-exported by the umbrella; opt in by importing. Depends on `ManifoldInference`. |
 
-**Companion packages (v0.48, PR C2 / #1749):** the heavy local-inference families live outside this repo. [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) hosts the MLX backend family (text inference, diffusion/image gen, video gen, vendored FluxSwift/StableDiffusion, MLX integration tests); [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) hosts the llama.cpp/GGUF family. Module names stay `ManifoldMLX` / `ManifoldLlama`. Consumers add the companion `.package(...)` and pass registrars: `try await ManifoldKit.quickStart(backends: [LlamaBackends.self])`. Their conventions, hardware constraints, and test docs live in those repos. Building a new companion package? See [docs/COMPANION-BACKENDS.md](docs/COMPANION-BACKENDS.md).
+**Companion packages:** the heavy local-inference families live outside this repo. [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) hosts the MLX backend family (text inference, diffusion/image gen, video gen, vendored FluxSwift/StableDiffusion, MLX integration tests); [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) hosts the llama.cpp/GGUF family. Module names stay `ManifoldMLX` / `ManifoldLlama`. Consumers add the companion `.package(...)` and pass registrars: `try await ManifoldKit.quickStart(backends: [LlamaBackends.self])`. Their conventions, hardware constraints, and test docs live in those repos. Building a new companion package? See [docs/COMPANION-BACKENDS.md](docs/COMPANION-BACKENDS.md).
 
 ### MCP + tool + app-extension modules
 
 | Target | Role |
 |--------|------|
-| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally — the `MCP` and `MCPBuiltinCatalog` traits were retired in v0.48 (catalog descriptors included). Depends on `ManifoldInference`. |
+| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally, catalog descriptors included. Depends on `ManifoldInference`. |
 | `ManifoldMCPHost` | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. |
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. |
 | `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
@@ -513,35 +575,31 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldHuggingFace` | HuggingFace Hub search, browse, and download integration. Compiles unconditionally — the `HuggingFace` trait was retired in v0.48 (PR C2). Depends on `ManifoldInference`. |
+| `ManifoldHuggingFace` | HuggingFace Hub search, browse, and download integration. Compiles unconditionally. Depends on `ManifoldInference`. |
 | `ManifoldServer` | OpenAI-compatible HTTP server executable (Hummingbird). Trait-gated behind `Server`. |
-| `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic; depends on `ManifoldInference`. **Not a published `.library()` product** (#2150) — internal dev tool with zero external consumers; only referenced as a target by `fuzz-chat` / `ManifoldFuzzBackends` / `ManifoldFuzzTests`. |
-| `ManifoldFuzzBackends` | Real-backend factory shim for `fuzz-chat` (Ollama / OpenAI / Foundation — the MLX/Llama factories moved to the companion packages). Depends on `ManifoldFuzz` + `ManifoldInference` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`). Unconditional since the `Fuzz` trait retired (PR C2). Also not a published product — same rationale as `ManifoldFuzz`. |
-| `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama). Compiles unconditionally. Run via `scripts/fuzz.sh`. |
-| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` + `ManifoldCloudSaaS` directly (the now-retired `ManifoldBackends` umbrella was deliberately never used here — #982 dual-llama Xcode-scheme hazard). |
-| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter (added #2070). Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
+| `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic; depends on `ManifoldInference`. **Not a published `.library()` product** — internal dev tool, only referenced as a target by `fuzz-chat` / `ManifoldFuzzBackends` / `ManifoldFuzzTests`. |
+| `ManifoldFuzzBackends` | Real-backend factory shim for `fuzz-chat` (Ollama / OpenAI / Foundation). Depends on `ManifoldFuzz` + `ManifoldInference` + the backend families. Also not a published product. |
+| `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama). Run via `scripts/fuzz.sh`. |
+| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` + `ManifoldCloudSaaS` directly (never the umbrella — #982 dual-llama Xcode-scheme hazard). |
+| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
 
 ### Test support targets
 
 | Target | Role |
 |--------|------|
-| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency (see `ManifoldContractTestSupport`). Published as a `.library` product so companion backend packages (manifold-mlx / manifold-llama, #1749) can reuse the mocks. |
-| `ManifoldContractTestSupport` | XCTest-dependent protocol contract mixins. Kept separate from `ManifoldTestSupport` so `fuzz-chat` can depend on the latter without pulling XCTest into a non-test binary (PR #1409). |
-| `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published as a `.library` product for companion backend packages. Links XCTest — same #1409 constraint as `ManifoldContractTestSupport`: never depend on it from an executable target (audit-enforced). The capability-claims registry (`BackendContractChecks.ClaimRegistry`) is instance-scoped — owned per test case, not a process-global `static var` — so contract suites that use it are safe under `swift test --parallel` (arch-plan item 4.2; see its DocC catalog). |
+| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency. Published as a `.library` product so companion backend packages can reuse the mocks. |
+| `ManifoldContractTestSupport` | XCTest-dependent protocol contract mixins. Kept separate from `ManifoldTestSupport` so `fuzz-chat` can depend on the latter without pulling XCTest into a non-test binary. |
+| `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published for companion backend packages. Links XCTest — never depend on it from an executable target (audit-enforced). The capability-claims registry (`BackendContractChecks.ClaimRegistry`) is instance-scoped — owned per test case, not a process-global `static var` — so contract suites that use it are safe under `swift test --parallel` (see its DocC catalog). |
 
 ### Umbrella
 
 | Target | Role |
 |--------|------|
-| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI` + `ManifoldSkills` + `ManifoldHuggingFace` (the `quickStart(seed:)` background-download path). `ManifoldModelCatalog` is deliberately *not* a direct edge — no file in `Sources/ManifoldKit/` imports it; consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. |
+| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI` + `ManifoldSkills` + `ManifoldHuggingFace`. `ManifoldModelCatalog` is deliberately *not* a direct edge — consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. |
 
-**Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter.
+**Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. All backend-family edges are unconditional; the companion-package families (`ManifoldMLX`, `ManifoldLlama`) depend on this package's `ManifoldInference` from their own repos.
 
-**Backend family deps (post-P2a #1719, post-v0.48 C2, post-P7 #1837):** `ManifoldOllama` and `ManifoldCloudSaaS` compile against `ManifoldContract` + `ManifoldCloudCore` without touching the engine directly; `ManifoldFoundation` compiles against `ManifoldContract` + `ManifoldInference` (its `FoundationBackends` registrar, relocated here in P7, needs the engine). `ManifoldCloudCore` depends on `ManifoldInference` + `ManifoldRuntime` (the latter for `DefaultWebSearchRuntime`'s `WebSearchRuntime` port conformance — an un-gated library→library edge; see Package.swift comment). `ManifoldMCP` depends on `ManifoldInference` (uses `ToolExecutor`, `ToolRegistry`). All backend-family edges are unconditional — the trait-gated consumer→family edges died with the v0.48 trait retirement. The companion-package families (`ManifoldMLX`, `ManifoldLlama`) depend on this package's `ManifoldInference` from their own repos.
-
-The `ManifoldKit` umbrella re-exports the always-compiled families (Foundation + cloud) directly — the `ManifoldBackends` re-export shim was retired in P7 (#1837), so `import ManifoldBackends` no longer compiles (see docs/MIGRATION-shims-retired.md). `ManifoldMCP` (including the `MCPCatalog` descriptors) compiles unconditionally — the `MCP` and `MCPBuiltinCatalog` traits were retired in v0.48. The `ManifoldAnyLanguageModel` bridge is its own always-compiled product (PR A5) — never re-exported by the umbrella or `ManifoldKit`; consumers import it explicitly.
-
-**Trait roster (post-C2):** there are **no default traits** — plain `swift build` is the full core build. Surviving opt-in traits: `Server`, `Macros`; WWDC stubs `SystemAIProviderExtension`, `CoreAI`. Everything else was retired across the v0.48 train: `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, `AnyLanguageModel` (A-series), then `MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly` (PR C2). See docs/MIGRATION-0.48.md.
+**Trait roster:** there are **no default traits** — plain `swift build` is the full core build. Surviving opt-in traits: `Server`, `Macros`; WWDC stubs `SystemAIProviderExtension`, `CoreAI`. Everything else was retired in the v0.48 train — see docs/MIGRATION-0.48.md; a `traits: ["MLX"]` / `["Llama"]` array now hard-errors at resolve time.
 
 ## Running tests
 
@@ -749,17 +807,13 @@ Every **non-trivial** PR goes through an adversarial review-and-fix loop **on a 
 
 ## Issue & PR hygiene
 
-CI is macOS-only, and the repo is **public — standard GitHub-hosted runners (including `macos-15`) cost nothing**. The budget is **latency, not dollars**: GitHub caps concurrent macOS jobs org-wide (~5), one `ci.yml` run fans out up to 5 macOS jobs, and the satellite PR workflows (`cold-start-human`, `readme-snippets`, `build-modes`) add more — so a single readied PR can saturate the cap, and wasted runs queue *behind each other and every other session's work*. Each run still pays an ~8-min cold `swift build` floor before any test executes. Caching is two-tiered (see the `actions/cache` step in `.github/actions/setup-swift-ci`): compiled **own-module** artifacts (`.build/debug`) are deliberately *not* cached — SwiftPM embeds paths in module fingerprints, so restored objects go stale on miss; tried and reverted twice (#961/#1045 → #1036, ~13% worse). But SwiftPM **dependency** material *is* cached and live — `.build/artifacts` + `.build/checkouts`/`.build/repositories` save the artifact-download and clone phases. The residual floor is local-module + test compile and test execution, neither cacheable. The dominant latency lever is therefore **run count and macOS job fan-out**, not per-run speed. Recent baseline: 145 PRs merged in 14 days across ~411 `ci.yml` runs (270 `pull_request`, 111 `push`, 30 `merge_group`; ~22% of concluded ready-PR runs were red). **The merge queue is LIVE** (batch ≤5, 5-min accumulation window, ALLGREEN, squash): `gh pr merge --squash --auto` routes a merge through it, which validates the true merged tree pre-merge and lets the push-to-main CI run self-skip via ci.yml's `already-validated` guard. An `--admin` merge bypasses both — every admin merge buys a redundant ~11-min post-merge run.
+CI is macOS-only and the repo is public, so runner minutes are free — the budget is **latency**: GitHub caps concurrent macOS jobs org-wide (~5), one `ci.yml` run fans out up to 5 of them, and each run pays an ~8-min cold `swift build` floor (own-module build artifacts are deliberately not cached — restored objects go stale; tried and reverted twice. Dependency checkouts/artifacts *are* cached). The dominant lever is run count, not per-run speed.
 
-- **Batch toward an interior optimum, not "bigger is always better."** Two run-count reducers already ship and are doing real work: the `concurrency:` block in `ci.yml` (`cancel-in-progress: true`) collapses superseded in-flight runs — keyed on the PR number for `pull_request` (force-push collapse) and, since #1871, on `github.ref` for `push` so a *burst of rapid merges to main collapses to one CI run on the newest commit* (intermediate merges lose per-commit post-merge signal; nightly is the backstop); and `dorny/paths-filter@v4` (the `changes` job in `ci.yml`) skips jobs whose inputs didn't change. So the marginal cost of a *small, well-scoped* PR is already lower than the raw 384-runs figure implies — over-batching is no longer free. Prefer fewer, larger units of work, **but split when a diff exceeds ~40 changed files or ~800 net non-generated lines**: past that, review quality and conflict/revert risk dominate the saved cold-compile run. The target is the EOQ interior optimum, not maximal batch size.
-- **Already-pulled CI-cost levers (don't re-investigate these).** Pulled June 2026 — verify before re-opening:
-  - **Doc-snippet gate batching (#1870).** `scripts/extract-snippets-test.sh` (run by `readme-snippets.yml`) compiles every snippet in ONE SwiftPM package with one executable target per snippet + a single `swift build`, so the heavy ManifoldKit umbrella links once instead of once-per-snippet: ~17 min → ~2.5 min. A non-zero aggregate exit falls through to compile-only per-target attribution (`swift build --target`) — the gate validates compilation, not linking. **The CI runners ship Bash 3.2** (no `declare -A`); test shell-script edits under `/bin/bash`, not your dev bash.
-  - **Redundant push gates dropped (#1870).** `readme-snippets.yml` and `cold-start-human.yml` run on `pull_request` only; their `push:` triggers were removed. `nightly-slow-tests.yml`'s `doc-gates` job runs both scripts as the 24h post-merge backstop.
-  - **Docs left as-is.** `docs.yml`'s `pages` concurrency group (`cancel-in-progress: false`) already collapses a merge burst to ~2 builds (GitHub cancels previously-*pending* runs in the group). Flipping to `cancel-in-progress: true` reclaims only the one in-flight build and risks cancelling a publish mid-deploy — deliberately not done.
-- **No phased feature splits.** Ship a feature as one PR, not P0→P5 (Glass Box shipped as 8 separate PRs of ≤8 files each = 8 cold-compile runs for one feature). If it's too big to review at once, stack it behind a draft and merge the stack as one — do not open a CI-triggering PR per phase.
-- **Don't open issues for follow-ups, phases, or "while I'm here" cleanups.** The tracker is for real bugs and feature asks with external visibility. Use code comments for cross-session notes. Default to no when considering opening an issue.
-- **One feature = one PR across all backends.** Don't fan out per-backend (past storms hit 15–24 PRs/day). Ship as one PR with a backend checklist in the body.
+- **Kill the re-run tax.** Run the full `scripts/test.sh --profile local` gate before *every* push — CI is the last check, not the iteration loop. A red run wastes a cold compile and holds concurrency slots every other queued job waits behind.
+- **Merge through the queue** (`gh pr merge <N> --squash --auto`); never `--admin`, never `gh api`-direct. The queue validates the true merged tree pre-merge and lets the push-to-main CI run self-skip; bypassing it forfeits both.
+- **Batch toward an interior optimum.** Prefer fewer, larger units of work, **but split when a diff exceeds ~40 changed files or ~800 net non-generated lines** — past that, review quality and conflict/revert risk dominate the saved CI run. Superseded in-flight runs auto-cancel and unchanged-path jobs auto-skip, so over-batching is not free either. Single-file PRs are a smell — batch them.
+- **No phased feature splits.** Ship a feature as one PR, not P0→P5. If it's too big to review at once, stack it behind a draft and merge the stack as one — do not open a CI-triggering PR per phase.
+- **One feature = one PR across all backends.** Don't fan out per-backend; use a backend checklist in the PR body.
 - **Tests and docs ship in the feature PR**, not as follow-ups.
-- **Single-file PRs are a smell.** Batch them. (19% of the last 14 days' PRs touched one file.)
-- **Kill the re-run tax.** ~Half of CI compute is failed attempts. Run the full `scripts/test.sh --profile local` gate before *every* push — CI is the last check, not the iteration loop. A red run costs a full ~8-min cold compile *and* holds macOS concurrency slots that every other queued job — yours and other sessions' — waits behind.
-- **Tracking issues**: use one issue with a checklist for multi-PR work. Existing umbrellas: #753 (tool calling), #754 (demo-picker test matrix), #755 (fuzz harness v2). Add to these rather than creating new ones in the same area.
+- **Don't open issues for follow-ups, phases, or "while I'm here" cleanups.** The tracker is for real bugs and feature asks with external visibility. For multi-PR work use one tracking issue with a checklist — existing umbrellas: #753 (tool calling), #754 (demo-picker test matrix), #755 (fuzz harness v2).
+- **CI-cost levers already pulled (June 2026 — verify before re-investigating):** the doc-snippet gate compiles all snippets in one SwiftPM build (#1870, ~17 min → ~2.5 min); the doc gates run on `pull_request` only, with the nightly `doc-gates` job as the post-merge backstop; `docs.yml` deliberately keeps `cancel-in-progress: false` so a publish is never killed mid-deploy. **CI runners ship Bash 3.2** (no `declare -A`) — test shell-script edits under `/bin/bash`.
