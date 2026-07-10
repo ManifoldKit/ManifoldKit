@@ -5,6 +5,7 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 @testable import ManifoldUI
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration test: drives ``SessionManagerViewModel/exportSession(_:format:directory:)``
 /// end-to-end against a real in-memory SwiftData store — creates a session,

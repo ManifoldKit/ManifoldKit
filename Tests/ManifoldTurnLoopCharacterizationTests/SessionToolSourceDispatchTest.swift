@@ -3,6 +3,7 @@ import XCTest
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 // MARK: - StubGenerateImageToolSource
 

@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for the edit-user-message feature (`ChatViewModel.editMessage`).
 ///

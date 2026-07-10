@@ -5,6 +5,7 @@ import SwiftData
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Phase 1.1 — covers ``SessionListService`` directly (no view model
 /// adapter), ensuring CRUD, search, pagination, and title generation behave

@@ -127,7 +127,7 @@ seams instead of the type system enforcing it universally.
 
 ## 7. Semver-exempt products
 
-Three dev-tool products **may break in any minor release, always migration-noted.** This is
+Four dev-tool products **may break in any minor release, always migration-noted.** This is
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
 deprecation cycles or api-digester gates slowing removal. The exemption reflects their
@@ -138,6 +138,13 @@ does:
 - **`ManifoldTestSupport`** — shared mocks and testing utilities. Published as a `.library`
   product. Real consumers: `idlewick` (surveyed local app, direct import);
   `manifold-mlx` and `manifold-llama` (companion packages, for backend test fixtures).
+- **`ManifoldPersistenceTestSupport`** — the persistence-dependent test mocks split out of
+  `ManifoldTestSupport` (arch-plan 4.4, wave2 P2, #2158): `GlassBoxDemoRAG`,
+  `InMemoryPersistenceHarness`, `makeInMemoryContainer()`. Published as a `.library` product.
+  Consumer survey at split time (2026-07): `idlewick`, `manifold-mlx`, and `manifold-llama`
+  import `ManifoldTestSupport` (test targets only, no app-code import found in idlewick despite
+  the claim above — flagged, not fixed, out of scope for the split PR) but none reference any
+  of the three moved symbols — no external consumer needed a migration draft for this split.
 - **`ManifoldBackendTestKit`** — backend contract-check machinery and conformance harness.
   Published as a `.library` product. Real consumers: `manifold-mlx` and `manifold-llama`
   (published conformance suites). Links XCTest, so callable only from test targets.

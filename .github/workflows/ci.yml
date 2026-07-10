@@ -676,6 +676,7 @@ jobs:
             --targets ManifoldHuggingFace
             --targets ManifoldVoice
             --targets ManifoldTestSupport
+            --targets ManifoldPersistenceTestSupport
             --targets ManifoldBackendTestKit
             --targets ManifoldTools
             --targets ManifoldAppIntents

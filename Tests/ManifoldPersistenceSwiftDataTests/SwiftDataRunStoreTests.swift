@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for ``SwiftDataRunStore`` (P3b #1784) and the V9→V10
 /// additive schema migration. In-memory SwiftData throughout — the

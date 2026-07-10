@@ -6,6 +6,7 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Tests for the per-message context menu introduced in #1011.
 ///

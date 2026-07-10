@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 @MainActor
 final class SessionManagerViewModelTests: XCTestCase {

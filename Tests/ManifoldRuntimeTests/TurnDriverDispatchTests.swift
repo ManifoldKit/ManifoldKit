@@ -3,6 +3,7 @@ import XCTest
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Unit tests for the ``TurnDriver`` seam introduced in P3a.
 ///

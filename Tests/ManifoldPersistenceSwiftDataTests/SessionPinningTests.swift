@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for session-level pinning (#1301).
 ///

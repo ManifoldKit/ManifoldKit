@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Coverage for the `requirePersistence` / `persistenceOrLog` helpers added in
 /// `Sources/ManifoldUI/Internal/PersistenceGuard.swift`. Twelve cases — three

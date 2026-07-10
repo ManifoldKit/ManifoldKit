@@ -3,6 +3,7 @@ import XCTest
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Tests for ``ConversationRun`` and ``RunStep`` value type invariants, plus
 /// ``ResumableRunDriver`` lifecycle (start → complete path).

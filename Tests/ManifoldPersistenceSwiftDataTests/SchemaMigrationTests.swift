@@ -3,6 +3,7 @@ import SwiftData
 @testable import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Tests for the SwiftData schema and ModelContainerFactory infrastructure.
 final class SchemaMigrationTests: XCTestCase {

@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Perf-audit baseline (PR-β work unit β-3) for the `ConversationRuntime`
 /// `touchSession` cost as session count grows.

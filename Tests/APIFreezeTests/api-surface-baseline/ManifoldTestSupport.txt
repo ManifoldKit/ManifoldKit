@@ -4,7 +4,6 @@
 (top-level).extractCloudError(_:) Func
 (top-level).ggufMagic Var
 (top-level).makeE2ETempDir() Func
-(top-level).makeInMemoryContainer() Func
 (top-level).makeIsolatedModelStorage(fileManager:) Func
 (top-level).makeIsolatedModelsDirectory() Func
 (top-level).withTimeout(_:file:line:_:) Func
@@ -78,9 +77,6 @@ ErrorInjectingPersistenceProvider.updateMessage(_:) Func
 ErrorInjectingPersistenceProvider.updateMessageCallCount Var
 ErrorInjectingPersistenceProvider.updateSession(_:) Func
 ErrorInjectingPersistenceProvider.updateSessionCallCount Var
-GlassBoxDemoRAG Enum
-GlassBoxDemoRAG.makeBootstrap(configuration:inferenceService:ragConfiguration:) Func
-GlassBoxDemoRAG.makeConfiguration(baseURL:modelName:) Func
 GoldenQuery Struct
 GoldenQuery.__derived_struct_equals(_:_:) Func
 GoldenQuery.hash(into:) Func
@@ -122,13 +118,6 @@ HashingEmbeddingBackend.unloadModel() Func
 ImageFixtures Enum
 ImageFixtures.largeJPEG(approxBytes:) Func
 ImageFixtures.oneByOnePNGData Var
-InMemoryPersistenceHarness Enum
-InMemoryPersistenceHarness.Stack Struct
-InMemoryPersistenceHarness.Stack.container Var
-InMemoryPersistenceHarness.Stack.context Var
-InMemoryPersistenceHarness.Stack.provider Var
-InMemoryPersistenceHarness.isInMemoryStore(_:) Func
-InMemoryPersistenceHarness.make() Func
 MidStreamErrorBackend Class
 MidStreamErrorBackend.capabilities Var
 MidStreamErrorBackend.errorToThrow Var

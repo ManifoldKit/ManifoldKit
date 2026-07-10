@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for ``SwiftDataPersistenceProvider`` against a fresh
 /// in-memory SwiftData stack per test. Covers CRUD, ordering, pagination,

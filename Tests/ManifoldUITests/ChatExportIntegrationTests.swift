@@ -5,6 +5,7 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 @testable import ManifoldUI
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration test: generates real conversation turns via ChatViewModel,
 /// then exports through ChatExportService and verifies the output format.

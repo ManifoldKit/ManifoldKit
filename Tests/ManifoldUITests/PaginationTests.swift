@@ -4,6 +4,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Tests for message pagination: loadMessages pages, loadOlderMessages prepend,
 /// hasOlderMessages heuristic, and guard against concurrent loads.

@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Baseline performance for the paginated session sidebar at 1000 sessions
 /// and ~50K messages. These measurements catch regressions in the SwiftData

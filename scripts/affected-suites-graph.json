@@ -181,8 +181,17 @@
       "path": "Sources/ManifoldTestSupport",
       "deps": [
         "ManifoldInference",
-        "ManifoldPersistenceSwiftData",
         "ManifoldRuntime"
+      ]
+    },
+    "ManifoldPersistenceTestSupport": {
+      "type": "regular",
+      "path": "Sources/ManifoldPersistenceTestSupport",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
       ]
     },
     "ManifoldContractTestSupport": {
@@ -209,6 +218,7 @@
       "deps": [
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
@@ -220,6 +230,8 @@
         "ManifoldAppEval",
         "ManifoldContractTestSupport",
         "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
@@ -240,6 +252,7 @@
       "deps": [
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
@@ -343,6 +356,7 @@
         "ManifoldInference",
         "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldSecrets",
         "ManifoldTestSupport",
@@ -355,6 +369,7 @@
       "deps": [
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport",
         "ManifoldUI"
@@ -373,6 +388,7 @@
       "deps": [
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport",
         "ManifoldUI",
@@ -419,6 +435,7 @@
         "ManifoldInference",
         "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport",
         "ManifoldTools",
@@ -444,6 +461,7 @@
         "ManifoldAppEval",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
+        "ManifoldPersistenceTestSupport",
         "ManifoldRuntime",
         "ManifoldTestSupport"
       ]

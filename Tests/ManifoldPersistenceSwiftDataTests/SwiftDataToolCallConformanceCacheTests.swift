@@ -3,6 +3,7 @@ import SwiftData
 @testable import ManifoldPersistenceSwiftData
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for ``SwiftDataToolCallConformanceCache``.
 ///

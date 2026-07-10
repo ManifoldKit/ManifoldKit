@@ -6,6 +6,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Perf-audit β-1: observer-cascade fan-out per token batch.
 ///

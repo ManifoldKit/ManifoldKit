@@ -107,6 +107,13 @@ let package = Package(
         // and must stay a SEPARATE product from ManifoldTestSupport — see the
         // ManifoldContractTestSupport target comment (#1409 dyld lesson).
         .library(name: "ManifoldTestSupport", targets: ["ManifoldTestSupport"]),
+        // Persistence-dependent test mocks split out of ManifoldTestSupport
+        // (arch-plan 4.4, #2158 wave2 P2): GlassBoxDemoRAG, InMemoryPersistenceHarness,
+        // and makeInMemoryContainer() need SwiftData + ManifoldPersistenceSwiftData.
+        // Mirrors the precedented TestSupport/ContractTestSupport split — kept
+        // separate so pure-engine consumers (companion repos, leaf test suites)
+        // stop linking the persistence stack to get one mock.
+        .library(name: "ManifoldPersistenceTestSupport", targets: ["ManifoldPersistenceTestSupport"]),
         .library(name: "ManifoldBackendTestKit", targets: ["ManifoldBackendTestKit"]),
         .executable(name: "fuzz-chat", targets: ["fuzz-chat"]),
         .library(name: "ManifoldTools", targets: ["ManifoldTools"]),
@@ -549,22 +556,48 @@ let package = Package(
             dependencies: ["ManifoldUI"],
             path: "Sources/ManifoldVoice"
         ),
-        // Shared test mocks and utilities
+        // Shared test mocks and utilities. Deliberately does NOT depend on
+        // ManifoldPersistenceSwiftData — the persistence-touching mocks
+        // (GlassBoxDemoRAG, InMemoryPersistenceHarness, makeInMemoryContainer())
+        // live in ManifoldPersistenceTestSupport (arch-plan 4.4, wave2 P2) so
+        // pure-engine consumers (companion repos, leaf test suites) don't pull
+        // in the SwiftData stack transitively for one mock.
         .target(
             name: "ManifoldTestSupport",
             dependencies: [
                 "ManifoldRuntime",
-                "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
             ],
             path: "Sources/ManifoldTestSupport",
             exclude: ["FuzzCalibrationCorpus"],
             resources: [
                 // Sample Markdown corpus the Glass Box research-session demo
-                // ingests into the real RAG stack (#1575). Bundled so the live
-                // integration test can resolve them via Bundle.module.
+                // (GlassBoxDemoRAG, now in ManifoldPersistenceTestSupport)
+                // ingests into the real RAG stack (#1575). Bundled here because
+                // SampleDocumentCorpus.swift has no persistence dependency of
+                // its own and stays in this target; the live integration test
+                // resolves it via Bundle.module.
                 .copy("Fixtures/Documents")
             ]
+        ),
+        // Persistence-dependent test mocks split out of ManifoldTestSupport
+        // (arch-plan 4.4, docs/plans/api-review-wave2-2026-07.md Track 2 P2):
+        // GlassBoxDemoRAG, InMemoryPersistenceHarness, and makeInMemoryContainer()
+        // are the only 3 of ManifoldTestSupport's ~41 files that needed SwiftData
+        // + ManifoldPersistenceSwiftData — split out so pure-engine consumers
+        // (companion repos, leaf Hardware/Secrets/Networking test suites) stop
+        // linking the whole persistence stack to get one mock. Depends on
+        // ManifoldTestSupport for SampleDocumentCorpus (GlassBoxDemoRAG's bundled
+        // fixture corpus), which has no persistence dependency and stays put.
+        .target(
+            name: "ManifoldPersistenceTestSupport",
+            dependencies: [
+                "ManifoldTestSupport",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+            ],
+            path: "Sources/ManifoldPersistenceTestSupport"
         ),
         // XCTest-dependent protocol contract mixins, kept in a separate target
         // so that fuzz-chat (an executable) can depend on ManifoldTestSupport
@@ -614,12 +647,22 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // ConversationExporterTests.swift/TouchSessionScalePerformanceTests.swift
+                // use InMemoryPersistenceHarness; SwiftDataEndpointStoreTests.swift,
+                // SwiftDataPersonaStoreTests.swift, and SwiftDataSamplerPresetStoreTests.swift
+                // use makeInMemoryContainer() — both moved here in the 4.4 TestSupport split.
+                "ManifoldPersistenceTestSupport",
             ]
         ),
-        // ManifoldRuntime-only tests: protocol contracts, value types, and
-        // services that don't import SwiftData. Tests that exercise both
-        // ManifoldRuntime and ManifoldPersistenceSwiftData (e.g. the
-        // adapter-against-port integrations) stay in ManifoldCoreTests.
+        // ManifoldRuntime-focused tests: protocol contracts, value types, and
+        // services. Some suites here (ConversationRunStateTests.swift,
+        // SessionListServiceDeleteAllTests.swift, TurnDriverDispatchTests.swift)
+        // do exercise InMemoryPersistenceHarness — the "don't import SwiftData"
+        // framing above predates that; tests exercising both ManifoldRuntime and
+        // ManifoldPersistenceSwiftData as adapter-against-port integrations were
+        // meant to stay in ManifoldCoreTests, but these three drifted here. Not
+        // relocated by this PR (out of scope for the TestSupport split) — flagged
+        // for a follow-up sweep.
         .testTarget(
             name: "ManifoldRuntimeTests",
             dependencies: [
@@ -630,6 +673,13 @@ let package = Package(
                 // ScriptedBackendRuntimeTests.swift imports ScriptedGenerationBackend,
                 // relocated to ManifoldAppEval (app-eval harness wave 1).
                 "ManifoldAppEval",
+                // ConversationRunStateTests.swift, SessionListServiceDeleteAllTests.swift,
+                // and TurnDriverDispatchTests.swift use InMemoryPersistenceHarness
+                // (and TurnDriverDispatchTests.swift/ConversationRunStateTests.swift
+                // directly `import ManifoldPersistenceSwiftData`, previously reached
+                // transitively through ManifoldTestSupport before the 4.4 split).
+                "ManifoldPersistenceTestSupport",
+                "ManifoldPersistenceSwiftData",
             ]
         ),
         .testTarget(
@@ -651,6 +701,8 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // Most suites here use InMemoryPersistenceHarness / makeInMemoryContainer().
+                "ManifoldPersistenceTestSupport",
             ]
         ),
         // Tests for the shared test-helper module itself (e.g. `withTimeout`).
@@ -795,6 +847,9 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // FoundationModelE2ETests.swift and CloudEndpointSelectionIntegrationTests.swift
+                // use makeInMemoryContainer(), moved here in the 4.4 TestSupport split.
+                "ManifoldPersistenceTestSupport",
                 "ManifoldBackendTestKit",
                 // AnyLanguageModel bridge suites — unconditional since the
                 // trait was retired in v0.48 (PR A5). The direct edge to the
@@ -812,6 +867,9 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // Most suites here use makeInMemoryContainer() / InMemoryPersistenceHarness,
+                // moved here in the 4.4 TestSupport split.
+                "ManifoldPersistenceTestSupport",
                 .product(name: "ViewInspector", package: "ViewInspector"),
             ]
         ),
@@ -831,6 +889,9 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // TestChatViewModelFactory.swift uses makeInMemoryContainer(),
+                // moved here in the 4.4 TestSupport split.
+                "ManifoldPersistenceTestSupport",
             ]
         ),
         .testTarget(
@@ -903,6 +964,11 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                // LoopDetectionE2ETests.swift uses makeInMemoryContainer(),
+                // moved here in the 4.4 TestSupport split. (The other E2E
+                // suites here call ModelContainerFactory.makeInMemoryContainer()
+                // directly via ManifoldPersistenceSwiftData above.)
+                "ManifoldPersistenceTestSupport",
                 // RuntimeScenarioRunner (live-mode Glass Box gate, #1576) lives here.
                 "ManifoldContractTestSupport",
                 "ManifoldTools",
@@ -941,6 +1007,10 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldPersistenceSwiftData",
                 "ManifoldTestSupport",
+                // TurnLoopCharacterizationTests.swift, CompressionGoldenTests.swift,
+                // and SessionToolSourceDispatchTest.swift use InMemoryPersistenceHarness,
+                // moved here in the 4.4 TestSupport split.
+                "ManifoldPersistenceTestSupport",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 // TurnLoopCharacterizationTests.swift and CompressionGoldenTests.swift
                 // import ScriptedGenerationBackend, relocated to ManifoldAppEval
@@ -1137,6 +1207,10 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 // MockDownloadManager lives in ManifoldTestSupport so seed tests
                 // can drive the download path without real network activity.
+                // NOTE: QuickStart*Tests.swift call `ModelContainerFactory.
+                // makeInMemoryContainer()` directly (ManifoldPersistenceSwiftData
+                // above), not the ManifoldTestSupport free function, so this
+                // target does NOT need ManifoldPersistenceTestSupport (4.4 split).
                 "ManifoldTestSupport",
             ]
         ),

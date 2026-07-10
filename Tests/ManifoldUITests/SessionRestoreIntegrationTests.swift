@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration coverage for the multi-session relaunch / restore path
 /// fixed in #1464. These tests exercise ``SessionManagerViewModel`` against

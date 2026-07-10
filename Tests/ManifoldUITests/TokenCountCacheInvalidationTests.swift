@@ -3,6 +3,7 @@ import SwiftData
 @testable import ManifoldUI
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
+import ManifoldPersistenceTestSupport
 @testable import ManifoldInference
 @testable import ManifoldTestSupport
 

@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Phase 1.2.1 — `MessageStorePostWriteHook` integration coverage for the
 /// SwiftData adapter. Same contract as the protocol-level tests in

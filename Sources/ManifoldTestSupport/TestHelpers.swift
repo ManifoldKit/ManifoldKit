@@ -1,24 +1,14 @@
 import Foundation
 import os
 import Darwin
-import SwiftData
-import ManifoldRuntime
-import ManifoldPersistenceSwiftData
 import ManifoldInference
 
-/// Creates an in-memory `ModelContainer` suitable for unit and integration tests.
-///
-/// Delegates to ``ModelContainerFactory/makeInMemoryContainer()`` so the
-/// container is configured with the current schema — the same setup used
-/// in production. All SwiftData models (ChatMessage, ChatSession, SamplerPreset,
-/// APIEndpoint, ModelBenchmarkCache) are registered. The container is ephemeral — nothing touches disk.
-///
-/// - Returns: A configured `ModelContainer` with in-memory storage.
-/// - Throws: If `ModelContainer` initialisation fails (should not happen with
-///   an in-memory configuration).
-public func makeInMemoryContainer() throws -> ModelContainer {
-    try ModelContainerFactory.makeInMemoryContainer()
-}
+// NOTE: `makeInMemoryContainer()` (needs SwiftData + ManifoldPersistenceSwiftData)
+// moved to `ManifoldPersistenceTestSupport/PersistenceTestHelpers.swift` — see
+// docs/plans/architecture-improvements-2026-07.md item 4.4. Everything left in
+// this file is pure-engine (Foundation/os/Darwin/ManifoldInference only), so
+// leaf test suites (Hardware/Secrets/Networking) that link ManifoldTestSupport
+// no longer pull in the SwiftData/persistence stack transitively.
 
 // MARK: - E2E Temp Directory & GGUF Helpers
 
