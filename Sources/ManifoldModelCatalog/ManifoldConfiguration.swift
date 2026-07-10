@@ -471,9 +471,10 @@ extension ManifoldConfiguration {
         /// Unknown custom hosts fall back to the OS platform trust evaluation
         /// when no pins are configured for them.
         ///
-        /// This is the default. It matches pre-existing ManifoldKit behaviour
-        /// and is appropriate for most deployments where custom endpoints are
-        /// trusted via standard CA-signed certificates.
+        /// This is the default for TLS evaluation. Credentialed requests to
+        /// unpinned non-loopback hosts are still rejected by
+        /// ``allowUnpinnedCredentialedHosts`` (default `false`) unless pins
+        /// are configured — platform trust alone is not enough for API keys.
         case platformDefault
 
         /// Connections to custom hosts that have no configured pins are

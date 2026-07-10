@@ -80,7 +80,7 @@ internal struct ServerCommandOptions: ParsableArguments, Sendable {
             throw ValidationError("--parallel must be greater than zero")
         }
 
-        let hasAPIKey = !(apiKey ?? "").isEmpty
+        let hasAPIKey = !(apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
         let loopback = Self.isLoopbackBindHost(host)
 
         if allowAnonymous && hasAPIKey {

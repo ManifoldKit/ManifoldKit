@@ -25,6 +25,8 @@ final class DNSRebindingCoverageAuditTest: XCTestCase {
         "ManifoldCloudCore/DNSRebindingGuard.swift",
         // The single envelope call site.
         "ManifoldCloudCore/SSECloudBackend.swift",
+        // Non-SSE cloud helpers share the same pre-flight via pinnedData.
+        "ManifoldCloudCore/ConnectAddressPinningDelegate.swift",
         // Comment reference only — `URLSessionProvider`'s docs mention
         // the guard to explain how the pinned session interoperates.
         "ManifoldCloudCore/URLSessionProvider.swift",

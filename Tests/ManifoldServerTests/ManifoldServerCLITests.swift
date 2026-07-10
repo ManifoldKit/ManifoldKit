@@ -43,20 +43,31 @@ final class ManifoldServerCLITests: XCTestCase {
     }
 
     func testRejectsUnsafeCORSWithSpecificOrigin() {
-        XCTAssertThrowsError(try ServerCommandOptions.parse(["--unsafe-cors", "--cors-origin", "https://example.test"])) { error in
+        // Include --api-key so auth validation does not fire first.
+        XCTAssertThrowsError(try ServerCommandOptions.parse([
+            "--api-key", "k",
+            "--unsafe-cors",
+            "--cors-origin", "https://example.test",
+        ])) { error in
             XCTAssertTrue(String(describing: error).contains("--unsafe-cors cannot be combined with --cors-origin"))
         }
     }
 
     func testRejectsZeroParallel() {
         // ArgumentParser calls validate() internally during parse — the error surfaces there.
-        XCTAssertThrowsError(try ServerCommandOptions.parse(["--parallel", "0"])) { error in
+        XCTAssertThrowsError(try ServerCommandOptions.parse([
+            "--api-key", "k",
+            "--parallel", "0",
+        ])) { error in
             XCTAssertTrue(String(describing: error).contains("--parallel must be greater than zero"))
         }
     }
 
     func testRejectsInvalidCORSOrigin() {
-        XCTAssertThrowsError(try ServerCommandOptions.parse(["--cors-origin", "not-a-url"])) { error in
+        XCTAssertThrowsError(try ServerCommandOptions.parse([
+            "--api-key", "k",
+            "--cors-origin", "not-a-url",
+        ])) { error in
             XCTAssertTrue(String(describing: error).contains("--cors-origin must be a valid URL"))
         }
     }

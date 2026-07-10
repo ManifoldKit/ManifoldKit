@@ -72,4 +72,34 @@ final class CredentialedHostTrustGateTests: XCTestCase {
         XCTAssertFalse(CredentialedHostTrustGate.isTestOrLocalSpecialUseHost("api.openai.com"))
         XCTAssertFalse(CredentialedHostTrustGate.isTestOrLocalSpecialUseHost("example.com"))
     }
+
+    func test_loopbackFullRange_allowsCredentials() throws {
+        ManifoldConfiguration.shared = ManifoldConfiguration(allowUnpinnedCredentialedHosts: false)
+        let url = URL(string: "http://127.0.0.2:8080")!
+        try CredentialedHostTrustGate.check(url: url, hasCredentials: true)
+    }
+
+    /// Live-path sabotage check: `pinnedData` must invoke the gate. Uses a
+    /// resolver stub so DNS pre-flight passes with a public IP and the gate
+    /// is the first fail-closed check (no real network).
+    func test_pinnedData_invokesCredentialedHostGate() async {
+        ManifoldConfiguration.shared = ManifoldConfiguration(allowUnpinnedCredentialedHosts: false)
+        let previousResolver = DNSRebindingGuard._resolverForTesting
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] } // example.com public
+        defer { DNSRebindingGuard._resolverForTesting = previousResolver }
+
+        var request = URLRequest(url: URL(string: "https://api.custom-llm.example/v1")!)
+        request.setValue("Bearer sk-test", forHTTPHeaderField: "Authorization")
+        let session = URLSession(configuration: .ephemeral)
+        do {
+            _ = try await ConnectAddressPinningDelegate.pinnedData(for: request, on: session)
+            XCTFail("expected unpinnedCredentialedHost before network")
+        } catch let error as CloudBackendError {
+            guard case .unpinnedCredentialedHost = error else {
+                return XCTFail("expected unpinnedCredentialedHost, got \(error)")
+            }
+        } catch {
+            XCTFail("expected CloudBackendError, got \(error)")
+        }
+    }
 }

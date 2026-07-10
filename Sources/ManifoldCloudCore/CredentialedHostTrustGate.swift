@@ -26,14 +26,18 @@ enum CredentialedHostTrustGate {
     static func check(url: URL?, hasCredentials: Bool) throws {
         guard hasCredentials else { return }
         guard let url else { return }
+        // Full IPv4 loopback range + canonical names — aligned with
+        // PinnedSessionDelegate / server bind loopback classification.
         if PrivateIPClassifier.isLocalhostURL(url) { return }
+        if let host = url.host(), PrivateIPClassifier.isLoopbackHost(host) { return }
 
         guard let host = url.host()?.lowercased(), !host.isEmpty else { return }
         let normalized = host.hasSuffix(".") ? String(host.dropLast()) : host
 
-        // RFC 6761 special-use names reserved for testing / loopback — never
-        // resolvable on the public internet; exempt so MockURLProtocol suites
-        // and local tooling keep working without fake pin sets.
+        // RFC 6761 special-use names (`.test`, `.localhost`, `.invalid`) are
+        // exempt so MockURLProtocol suites keep working without fake pin sets.
+        // Do not use these TLDs for production custom endpoints — corp DNS can
+        // resolve them; prefer real hostnames with SPKI pins.
         if isTestOrLocalSpecialUseHost(normalized) { return }
 
         if ManifoldConfiguration.shared.allowUnpinnedCredentialedHosts { return }

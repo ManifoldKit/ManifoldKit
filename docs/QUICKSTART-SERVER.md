@@ -120,7 +120,7 @@ Open **Cursor Settings → Models → Add Model** and fill in:
 }
 ```
 
-If you started `manifold-server` without `--api-key`, set `apiKey` to any non-empty string (Cursor requires a value; the server ignores it when no key is configured).
+If you started with `--allow-anonymous` (loopback only), Cursor still requires a non-empty `apiKey` field — use any placeholder string; the server ignores it.
 
 ## Continue (VS Code / JetBrains) configuration
 

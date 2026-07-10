@@ -467,7 +467,7 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model. A qu
 
 - API keys stored in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 - Keys read just-in-time from Keychain rather than cached as long-lived properties; during an in-flight `URLSession` request the key bytes do exist in process memory as a Swift `String` and are not zeroized after use (see [docs/FIPS.md](docs/FIPS.md) §non-mitigations).
-- Certificate pinning via `PinnedSessionDelegate`; `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing/empty. Custom hosts use platform trust by default or can be hardened to fail-closed via `ManifoldConfiguration.shared.customHostTrustPolicy = .requireExplicitPins`.
+- Certificate pinning via `PinnedSessionDelegate`; `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing/empty. Credentialed requests to non-loopback hosts without SPKI pins also fail closed by default (`allowUnpinnedCredentialedHosts = false`) — add pins for custom endpoints or opt in to residual DNS-rebinding risk. TLS for unpinned custom hosts can be further hardened via `customHostTrustPolicy = .requireExplicitPins`.
 - HTTPS enforced for non-localhost endpoints.
 - User content sanitised in prompt templates to prevent injection.
 - Sensitive data uses `privacy: .private` in `os.Logger` calls; error response bodies filtered before logging.

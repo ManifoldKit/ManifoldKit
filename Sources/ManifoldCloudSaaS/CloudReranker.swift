@@ -128,7 +128,15 @@ public struct CloudReranker: Reranker {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await urlSession.data(for: request)
+            // Route through pinnedData so DNS rebinding pre-flight, the
+            // credentialed-host pin gate (H1), and connect-time IP pinning
+            // all apply — same envelope as Ollama list/probe and web search.
+            (data, response) = try await ConnectAddressPinningDelegate.pinnedData(
+                for: request,
+                on: urlSession
+            )
+        } catch let error as CloudBackendError {
+            throw error
         } catch {
             Log.network.error("CloudReranker request failed: \(error.localizedDescription, privacy: .public)")
             throw CloudBackendError.networkError(underlying: error)
