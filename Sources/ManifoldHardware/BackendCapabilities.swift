@@ -285,17 +285,18 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     }
 
     /// Merges an ordered list of capability sets into the "can the composed
-    /// runtime as a whole do X?" union — per-flag OR, numeric maxima, the most
-    /// permissive cancellation/memory strategy.
+    /// runtime as a whole do X?" union — per-flag OR and numeric maxima for
+    /// routable capabilities; conservative AND/minimum for guarantees consumed
+    /// before routing (`requiresPromptTemplate`, `rendersFullPrompt`,
+    /// `maxAdvertisedToolCount`). Each exception is annotated at its merge
+    /// line below.
     ///
-    /// Lifted verbatim from ``RouterBackend``'s inline merge so the composing
+    /// Originally lifted from ``RouterBackend``'s inline merge so the composing
     /// backends (``RouterBackend``, ``FallbackBackend``) share one
-    /// implementation and cannot drift. The field set merged here is exactly the
-    /// one ``RouterBackend`` merged before extraction: flags added to
-    /// ``BackendCapabilities`` after the original merge (`supportsStrictSchema`,
-    /// `sharesMLXProcessResources`, `rendersFullPrompt`, `maxAdvertisedToolCount`)
-    /// fall to their memberwise-init defaults — preserving the historical union
-    /// surface rather than silently broadening it.
+    /// implementation and cannot drift. Every stored field is merged explicitly
+    /// below — `BackendCapabilitiesFieldCompletenessTests` (Mirror-based) fails
+    /// if a future stored field isn't threaded through this function (and
+    /// through `updating(...)`, the copy-with helper below).
     ///
     /// An empty list yields a default ``BackendCapabilities``.
     public static func union(_ capabilities: [BackendCapabilities]) -> BackendCapabilities {
@@ -322,6 +323,18 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         var streamsToolCallArguments = first.streamsToolCallArguments
         var supportsParallelToolCalls = first.supportsParallelToolCalls
         var supportsGuidedStructuredOutput = first.supportsGuidedStructuredOutput
+        var supportsStrictSchema = first.supportsStrictSchema
+        var sharesMLXProcessResources = first.sharesMLXProcessResources
+        // `rendersFullPrompt` is a fidelity *guarantee*, not a permissive
+        // capability: the union answer is "every child renders the full
+        // prompt" (AND), because the router picks exactly one child per turn
+        // and a caller reading `.promptRendered` can't tell which one served
+        // it — false is the conservative default per the field's own doc.
+        var rendersFullPrompt = first.rendersFullPrompt
+        // `maxAdvertisedToolCount` is most-restrictive-wins: `nil` means "no
+        // limit", so the union tightens to the smallest advertised cap seen
+        // so far rather than silently widening past a child's real ceiling.
+        var maxAdvertisedToolCount = first.maxAdvertisedToolCount
         // Prefer the first non-nil dialect: the union answer is "the runtime can
         // serve a backend that reports *some* dialect" — a discovered dialect
         // beats an unknown one, and we don't try to reconcile conflicting ones.
@@ -356,6 +369,10 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             streamsToolCallArguments = streamsToolCallArguments || c.streamsToolCallArguments
             supportsParallelToolCalls = supportsParallelToolCalls || c.supportsParallelToolCalls
             supportsGuidedStructuredOutput = supportsGuidedStructuredOutput || c.supportsGuidedStructuredOutput
+            supportsStrictSchema = supportsStrictSchema || c.supportsStrictSchema
+            sharesMLXProcessResources = sharesMLXProcessResources || c.sharesMLXProcessResources
+            rendersFullPrompt = rendersFullPrompt && c.rendersFullPrompt
+            maxAdvertisedToolCount = Self.mergedToolCountCap(maxAdvertisedToolCount, c.maxAdvertisedToolCount)
             if toolDialect == nil { toolDialect = c.toolDialect }
         }
         return BackendCapabilities(
@@ -379,6 +396,10 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             streamsToolCallArguments: streamsToolCallArguments,
             supportsParallelToolCalls: supportsParallelToolCalls,
             supportsGuidedStructuredOutput: supportsGuidedStructuredOutput,
+            supportsStrictSchema: supportsStrictSchema,
+            sharesMLXProcessResources: sharesMLXProcessResources,
+            rendersFullPrompt: rendersFullPrompt,
+            maxAdvertisedToolCount: maxAdvertisedToolCount,
             toolDialect: toolDialect
         )
     }
@@ -389,6 +410,89 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         if a == .external || b == .external { return .external }
         if a == .mappable || b == .mappable { return .mappable }
         return .resident
+    }
+
+    /// Most-restrictive-wins merge for `maxAdvertisedToolCount`: `nil` means
+    /// "no limit", so two non-nil caps merge to their minimum (the tighter
+    /// constraint governs regardless of which child actually serves a turn).
+    private static func mergedToolCountCap(_ a: Int?, _ b: Int?) -> Int? {
+        switch (a, b) {
+        case (nil, nil): return nil
+        case (let x?, nil): return x
+        case (nil, let y?): return y
+        case (let x?, let y?): return min(x, y)
+        }
+    }
+
+    /// Returns a copy of this capability set with the given fields overridden;
+    /// every field not passed keeps its current value.
+    ///
+    /// Exists so call sites that need to override one or two fields (e.g.
+    /// clamping `maxContextTokens` to a runtime-derived plan value) don't
+    /// hand-rebuild the full ~25-field literal — a fresh-literal rebuild
+    /// silently zeroes every field the call site doesn't list, which is
+    /// exactly the bug this method exists to make impossible (see
+    /// `AnyLanguageModelBackend.loadModel`, which now calls this instead).
+    ///
+    /// The two `Optional`-typed stored fields (`maxAdvertisedToolCount`,
+    /// `toolDialect`) take a double-optional parameter, the standard
+    /// copy-with shape: omit the argument (default `.none`) to keep the
+    /// current value, or pass `.some(nil)` / a value to override to `nil` or
+    /// to something new.
+    public func updating(
+        supportedParameters: Set<GenerationParameter>? = nil,
+        maxContextTokens: Int32? = nil,
+        requiresPromptTemplate: Bool? = nil,
+        supportsSystemPrompt: Bool? = nil,
+        supportsToolCalling: Bool? = nil,
+        supportsStructuredOutput: Bool? = nil,
+        supportsNativeJSONMode: Bool? = nil,
+        cancellationStyle: CancellationStyle? = nil,
+        supportsTokenCounting: Bool? = nil,
+        memoryStrategy: MemoryStrategy? = nil,
+        maxOutputTokens: Int? = nil,
+        supportsStreaming: Bool? = nil,
+        isRemote: Bool? = nil,
+        supportsKVCachePersistence: Bool? = nil,
+        supportsGrammarConstrainedSampling: Bool? = nil,
+        supportsThinking: Bool? = nil,
+        supportsVision: Bool? = nil,
+        streamsToolCallArguments: Bool? = nil,
+        supportsParallelToolCalls: Bool? = nil,
+        supportsGuidedStructuredOutput: Bool? = nil,
+        supportsStrictSchema: Bool? = nil,
+        sharesMLXProcessResources: Bool? = nil,
+        rendersFullPrompt: Bool? = nil,
+        maxAdvertisedToolCount: Int?? = nil,
+        toolDialect: ToolCallDialect?? = nil
+    ) -> BackendCapabilities {
+        BackendCapabilities(
+            supportedParameters: supportedParameters ?? self.supportedParameters,
+            maxContextTokens: maxContextTokens ?? self.maxContextTokens,
+            requiresPromptTemplate: requiresPromptTemplate ?? self.requiresPromptTemplate,
+            supportsSystemPrompt: supportsSystemPrompt ?? self.supportsSystemPrompt,
+            supportsToolCalling: supportsToolCalling ?? self.supportsToolCalling,
+            supportsStructuredOutput: supportsStructuredOutput ?? self.supportsStructuredOutput,
+            supportsNativeJSONMode: supportsNativeJSONMode ?? self.supportsNativeJSONMode,
+            cancellationStyle: cancellationStyle ?? self.cancellationStyle,
+            supportsTokenCounting: supportsTokenCounting ?? self.supportsTokenCounting,
+            memoryStrategy: memoryStrategy ?? self.memoryStrategy,
+            maxOutputTokens: maxOutputTokens ?? self.maxOutputTokens,
+            supportsStreaming: supportsStreaming ?? self.supportsStreaming,
+            isRemote: isRemote ?? self.isRemote,
+            supportsKVCachePersistence: supportsKVCachePersistence ?? self.supportsKVCachePersistence,
+            supportsGrammarConstrainedSampling: supportsGrammarConstrainedSampling ?? self.supportsGrammarConstrainedSampling,
+            supportsThinking: supportsThinking ?? self.supportsThinking,
+            supportsVision: supportsVision ?? self.supportsVision,
+            streamsToolCallArguments: streamsToolCallArguments ?? self.streamsToolCallArguments,
+            supportsParallelToolCalls: supportsParallelToolCalls ?? self.supportsParallelToolCalls,
+            supportsGuidedStructuredOutput: supportsGuidedStructuredOutput ?? self.supportsGuidedStructuredOutput,
+            supportsStrictSchema: supportsStrictSchema ?? self.supportsStrictSchema,
+            sharesMLXProcessResources: sharesMLXProcessResources ?? self.sharesMLXProcessResources,
+            rendersFullPrompt: rendersFullPrompt ?? self.rendersFullPrompt,
+            maxAdvertisedToolCount: maxAdvertisedToolCount ?? self.maxAdvertisedToolCount,
+            toolDialect: toolDialect ?? self.toolDialect
+        )
     }
 
     private enum CodingKeys: String, CodingKey {

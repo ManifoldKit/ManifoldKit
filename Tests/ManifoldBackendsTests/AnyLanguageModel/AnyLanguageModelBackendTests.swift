@@ -49,6 +49,51 @@ final class AnyLanguageModelBackendTests: XCTestCase {
         XCTAssertTrue(descriptor.capabilities.isRemote)
     }
 
+    /// Regression test for arch-plan 1.3 / api-review-wave2 0.D:
+    /// `loadModel` used to rebuild `BackendCapabilities` from a fresh
+    /// literal, silently zeroing `supportsVision`, `supportsGuidedStructuredOutput`,
+    /// `supportsStrictSchema`, `toolDialect`, `maxAdvertisedToolCount`,
+    /// `rendersFullPrompt`, and `sharesMLXProcessResources` even when the
+    /// resolved descriptor advertised non-default values for them. It now
+    /// calls `updating(maxContextTokens:)`, which must preserve all seven.
+    func test_loadModel_preservesFieldsThatWereFormerlyDroppedByFreshLiteralRebuild() async throws {
+        let nonDefaultCapabilities = AnyLanguageModelBridgeCapabilities.remote().updating(
+            supportsVision: true,
+            supportsGuidedStructuredOutput: true,
+            supportsStrictSchema: true,
+            sharesMLXProcessResources: true,
+            rendersFullPrompt: true,
+            maxAdvertisedToolCount: .some(12),
+            toolDialect: .some(ToolCallDialect(
+                family: .mistral,
+                openDelimiter: "[TOOL_CALLS]",
+                closeDelimiter: nil,
+                argEncoding: .json,
+                extractability: .clean
+            ))
+        )
+
+        let backend = AnyLanguageModelBackend { _ in
+            AnyLanguageModelDescriptor(
+                model: MockLanguageModel(chunks: ["done"]),
+                capabilities: nonDefaultCapabilities
+            )
+        }
+        try await backend.loadModel(from: URL(string: "openai://gpt-4o?apiKey=test")!, plan: makePlan(context: 4_096))
+
+        let loaded = backend.capabilities
+        // The one field this call site genuinely overrides.
+        XCTAssertEqual(loaded.maxContextTokens, 4_096)
+        // The seven fields the fresh-literal rebuild used to drop.
+        XCTAssertTrue(loaded.supportsVision, "supportsVision was dropped")
+        XCTAssertTrue(loaded.supportsGuidedStructuredOutput, "supportsGuidedStructuredOutput was dropped")
+        XCTAssertTrue(loaded.supportsStrictSchema, "supportsStrictSchema was dropped")
+        XCTAssertEqual(loaded.toolDialect?.family, .mistral, "toolDialect was dropped")
+        XCTAssertEqual(loaded.maxAdvertisedToolCount, 12, "maxAdvertisedToolCount was dropped")
+        XCTAssertTrue(loaded.rendersFullPrompt, "rendersFullPrompt was dropped")
+        XCTAssertTrue(loaded.sharesMLXProcessResources, "sharesMLXProcessResources was dropped")
+    }
+
     private func makePlan(context: Int) -> ModelLoadPlan {
         ModelLoadPlan(
             inputs: .init(
