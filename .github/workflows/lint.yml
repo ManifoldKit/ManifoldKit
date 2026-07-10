@@ -91,11 +91,24 @@ jobs:
           fetch-depth: 0
 
       # ── actionlint ────────────────────────────────────────────────────────
+      # Previously bootstrapped via `bash <(curl ... download-actionlint.bash)
+      # 1.7.7` — a mutable tag ref (`v1.7.7`) piped straight to bash. A
+      # retargeted upstream tag is RCE in this job, and unlike a `uses:` step
+      # this pipe-to-bash pattern is invisible to the action-pin-audit step
+      # below (it only scans `uses:` lines). Replaced with a direct,
+      # checksum-verified download of the release asset: the hash below was
+      # computed locally from the downloaded tarball and cross-checked against
+      # rhysd/actionlint's own published `actionlint_1.7.7_checksums.txt` for
+      # this release (both matched).
       - name: Install actionlint
         id: install_actionlint
-        # Pin the bootstrap script to the same release tag as the binary so a
-        # compromised `main` on rhysd/actionlint cannot swap the download URL.
-        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+        run: |
+          set -euo pipefail
+          curl -sSfL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz"
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          echo "executable=$PWD/actionlint" >> "$GITHUB_OUTPUT"
 
       - name: actionlint — lint GitHub Actions workflows
         if: always()
@@ -135,6 +148,54 @@ jobs:
             exit 1
           fi
           echo "All third-party actions are SHA-pinned."
+
+      # ── shim-drift ────────────────────────────────────────────────────────
+      # ci-required-test-shim.yml's `paths-ignore` must stay the exact inverse
+      # of ci.yml's pull_request `paths:` (see that shim's header comment for
+      # why) — a drift lets a PR either dodge the real `test` suite (a missing
+      # entry in ci.yml) or get wrongly blocked as untestable (a missing entry
+      # in the shim). A 2026-07-10 CI review found `scripts/regenerate-mcp-
+      # fixtures.sh` present in ci.yml's paths but absent from the shim's
+      # paths-ignore; this step is the tripwire so that class of drift fails
+      # CI instead of silently shipping.
+      - name: shim-drift — ci.yml PR paths must equal shim paths-ignore
+        if: always()
+        run: |
+          python3 <<'PYEOF'
+          import sys
+          import yaml
+
+          with open(".github/workflows/ci.yml") as f:
+              ci = yaml.safe_load(f)
+          with open(".github/workflows/ci-required-test-shim.yml") as f:
+              shim = yaml.safe_load(f)
+
+          # PyYAML parses the bare top-level `on:` key as the boolean True
+          # (YAML 1.1's on/off/yes/no are booleans), not the string "on" — so
+          # it must be looked up via wf.get('on', wf.get(True)) or a plain
+          # wf['on'] KeyErrors on every run.
+          ci_on = ci.get('on', ci.get(True))
+          shim_on = shim.get('on', shim.get(True))
+
+          ci_paths = sorted(ci_on['pull_request']['paths'])
+          shim_paths_ignore = sorted(shim_on['pull_request']['paths-ignore'])
+
+          if ci_paths != shim_paths_ignore:
+              ci_only = sorted(set(ci_paths) - set(shim_paths_ignore))
+              shim_only = sorted(set(shim_paths_ignore) - set(ci_paths))
+              print("::error::ci.yml's pull_request.paths and ci-required-test-shim.yml's "
+                    "pull_request.paths-ignore have drifted apart. They must stay identical "
+                    "(see the shim's header comment for why: the shim reports a green 'test' "
+                    "for PRs that don't touch a real-test-relevant path, and a drifted list "
+                    "either lets a real change dodge the suite or wrongly blocks a safe PR).")
+              if ci_only:
+                  print(f"  In ci.yml's paths but missing from the shim's paths-ignore: {ci_only}")
+              if shim_only:
+                  print(f"  In the shim's paths-ignore but missing from ci.yml's paths: {shim_only}")
+              sys.exit(1)
+
+          print(f"OK: {len(ci_paths)} entries match between ci.yml's paths and the shim's paths-ignore.")
+          PYEOF
 
       # ── changelog-lint ────────────────────────────────────────────────────
       - name: changelog-lint — skip for non-Release-Please PRs
@@ -344,7 +405,10 @@ jobs:
           new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
           echo "PR adds $new new package pin(s)."
           if [ "$new" -gt 2 ]; then
-            if printf '%s' "$PR_LABELS" | grep -q 'deps-ok'; then
+            # jq index() does an exact-element match against the JSON array —
+            # unlike the previous `grep -q 'deps-ok'` substring match, a label
+            # like `pre-deps-okay` cannot false-positive here.
+            if printf '%s' "$PR_LABELS" | jq -e 'index("deps-ok") != null' >/dev/null; then
               echo "::notice::PR adds $new new pins; 'deps-ok' label present, allowing."
               exit 0
             fi

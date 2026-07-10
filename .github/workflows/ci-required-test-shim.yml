@@ -63,6 +63,7 @@ on:
       - "scripts/affected-suites-graph.json"
       - "scripts/ci-selective-test.sh"
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
+      - "scripts/regenerate-mcp-fixtures.sh"
       - ".github/actions/setup-swift-ci/**"
       # ↑↑↑ MUST stay identical to ci.yml's pull_request `paths:` ↑↑↑
 

@@ -119,6 +119,9 @@ jobs:
     # keeps push-to-main runs unconditional (no PR context there).
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # Backstop against an org-wide macOS-slot stall: an untimed hung job would
+    # otherwise block every queued PR for up to the 360-min GitHub default.
+    timeout-minutes: 10
     # `contents: read` for checkout; `actions: read` for the "Skip post-merge
     # re-test" step's Actions-API query. Scoped to this job (least privilege) —
     # no other job queries the API. A job-level block overrides the workflow
@@ -378,6 +381,9 @@ jobs:
       needs.changes.outputs.already-validated == 'true' &&
       needs.changes.outputs.deps == 'true'
     runs-on: macos-15  # must match the test jobs' runner so cache keys collide
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment for the rationale.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -400,6 +406,10 @@ jobs:
     # and merge_group the flag is empty, so '' != 'true' keeps the job running.
     if: needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
+    # Backstop against an org-wide macOS-slot stall (see the `changes` job's
+    # timeout-minutes comment). 120 is a backstop, not a budget: worst
+    # legitimate case is three 30-min test steps plus the api-digester step.
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -435,6 +445,7 @@ jobs:
         # `deps` is empty, but the queue branch still runs against a cache that
         # lacks a dep bumped in this PR — the final gate must fetch it too.
         if: needs.changes.outputs.deps == 'true' || github.event_name == 'merge_group'
+        timeout-minutes: 15
         run: swift package resolve
 
       # .build/debug is intentionally NOT cached. Tried twice (#961, #1045), reverted
@@ -634,6 +645,7 @@ jobs:
         # 24h backstop for Sources-only regressions not touched by a PR.
         if: |
           github.event_name == 'pull_request' && needs.changes.outputs.api-any == 'true'
+        timeout-minutes: 25
         run: |
           set -euo pipefail
           # Fixed, always-complete list — every .library() product in
@@ -747,6 +759,17 @@ jobs:
       # Saves ~127s full-bundle compile by compiling only the affected subgraph(s).
       # When Tier 0 returns FULL (hub-module change, push to main) or NONE (no
       # test-job suites affected), fall through to the existing full swift-test batch.
+      #
+      # KNOWN GAP: in selective mode, cross-cutting audit suites that live
+      # *inside* another test target (e.g. SilentCatchAuditTest inside
+      # ManifoldInferenceTests) do not run on the PR head unless that target
+      # itself is in the affected set — xcodebuild per-target compilation runs
+      # the whole target, but a target not selected by Tier 0 doesn't run at
+      # all. The merge_group full run (mode always resolves to `full` there,
+      # see the resolver's event-name gate) remains the hard pre-merge gate, so
+      # the cost of this gap is red-at-queue latency on a rare PR, not a merged
+      # hole — nothing lands without the full audit suite having run somewhere
+      # before the squash.
       - name: Compute test mode (Tier 2 selective or full)
         id: test-mode
         run: |
@@ -768,7 +791,13 @@ jobs:
           # to avoid excessive sequential xcodebuild overhead outweighing the compile savings.
           swift_test_count=0
           for s in $affected; do
-            case "$s" in ManifoldBackendsTests) ((swift_test_count++)) ;; esac
+            # NOTE: must use the assignment form, not `((swift_test_count++))` —
+            # a C-style post-increment FROM ZERO evaluates to 0, which bash
+            # treats as a failing exit status. Under `set -euo pipefail` above,
+            # the very first increment kills the script before any mode is
+            # emitted (confirmed: any PR touching only Sources/ManifoldOllama/**
+            # etc. crashed the required `test` check with a bare exit 1).
+            case "$s" in ManifoldBackendsTests) swift_test_count=$((swift_test_count + 1)) ;; esac
           done
           total_count=$(printf '%s\n' $affected | wc -w | tr -d ' ')
           [[ $swift_test_count -ge 2 ]] \
@@ -939,6 +968,9 @@ jobs:
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
     if: needs.changes.outputs.server == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment for the rationale.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -963,6 +995,7 @@ jobs:
         # `deps` is empty, but the queue branch still runs against a cache that
         # lacks a dep bumped in this PR — the final gate must fetch it too.
         if: needs.changes.outputs.deps == 'true' || github.event_name == 'merge_group'
+        timeout-minutes: 15
         run: swift package resolve
 
       - name: Test — Server suite (Server trait)
@@ -1005,6 +1038,9 @@ jobs:
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
     if: needs.changes.outputs.macros == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment for the rationale.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -1029,6 +1065,7 @@ jobs:
         # `deps` is empty, but the queue branch still runs against a cache that
         # lacks a dep bumped in this PR — the final gate must fetch it too.
         if: needs.changes.outputs.deps == 'true' || github.event_name == 'merge_group'
+        timeout-minutes: 15
         run: swift package resolve
 
       - name: Test — @ToolSchema macro suite (Macros trait)
@@ -1068,6 +1105,10 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.mcp-fixtures == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: ubuntu-latest
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment for the rationale (this job is ubuntu, but the
+    # same "don't let a hung job stall queued work" argument applies).
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -1101,6 +1142,10 @@ jobs:
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
     if: needs.changes.outputs.cold-start == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment for the rationale. 70 covers the six sequential
+    # tiers (each step-level-timed at 10 min) plus setup/checkout slack.
+    timeout-minutes: 70
 
     steps:
       - name: Checkout
@@ -1183,6 +1228,9 @@ jobs:
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
     if: needs.changes.outputs.persistence == 'true' && needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment for the rationale.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
