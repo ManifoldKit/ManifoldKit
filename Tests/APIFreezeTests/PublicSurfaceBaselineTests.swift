@@ -1,15 +1,17 @@
 import XCTest
 
 /// Structural tripwire for the member-aware public-surface baseline
-/// prototype (0.2b, `docs/plans/api-review-2026-07.md`).
+/// (originated as the 0.2b prototype in `docs/plans/api-review-2026-07.md`;
+/// made load-bearing and expanded to full module coverage by
+/// `docs/plans/api-review-wave2-2026-07.md` item 0.A).
 ///
 /// `scripts/api-surface-baseline.sh` generates the real, member-granular
 /// diff (swift-api-digester's ABIRoot dump, normalized to one line per
 /// public member) and is the actual tripwire — but running it needs a full
 /// package build twice (a scratch git-treeish checkout plus the live tree;
-/// measured ~13 min cold, ~80s warm — see the script's own header for the
-/// full cost writeup). That's too heavy to run on every `swift test`
-/// invocation as a unit test.
+/// measured multiple minutes cold, well under a minute warm — see the
+/// script's own header for the full cost writeup). That's too heavy to run
+/// on every `swift test` invocation as a unit test.
 ///
 /// So this test validates the CHEAP, ALWAYS-TRUE invariants instead: the
 /// checked-in baselines exist, are non-empty, and are well-formed (every
@@ -18,10 +20,10 @@ import XCTest
 /// baseline files rotting (deleted, truncated, hand-edited into garbage)
 /// without paying the full-build cost per test run.
 ///
-/// The real check — regenerate + diff against a live digester dump — is
-/// meant to run at CI/nightly cadence (see the script header's "CI
-/// integration" section; not wired into any workflow yet, since PR #2145
-/// owns workflow files tonight). To run the real check by hand:
+/// The real check — regenerate + diff against a live digester dump — runs
+/// nightly (`.github/workflows/nightly-slow-tests.yml`, the
+/// `api-surface-baseline` job, `scripts/api-surface-baseline.sh --check`).
+/// To run the real check by hand:
 ///
 ///     scripts/api-surface-baseline.sh --check
 ///
@@ -32,16 +34,38 @@ import XCTest
 final class PublicSurfaceBaselineTests: XCTestCase {
 
     /// The module list `scripts/api-surface-baseline.sh` scopes to by
-    /// default. Kept in sync by hand for this prototype — see the script's
-    /// "Module scope" header section for why these seven.
+    /// default: every `.library(...)` product in Package.swift (see the
+    /// script's "Module scope" header section). Kept in sync by hand —
+    /// update here, in the script's `DEFAULT_MODULES`, and in
+    /// Package.swift's `products:` array together.
     private static let expectedModules = [
+        "ManifoldKit",
         "ManifoldInference",
-        "ManifoldRuntime",
-        "ManifoldCloudCore",
-        "ManifoldPersistenceSwiftData",
-        "ManifoldUI",
         "ManifoldContract",
+        "ManifoldNetworking",
+        "ManifoldSecrets",
         "ManifoldHardware",
+        "ManifoldModelCatalog",
+        "ManifoldMCP",
+        "ManifoldMCPHost",
+        "ManifoldRuntime",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldCloudCore",
+        "ManifoldFoundation",
+        "ManifoldOllama",
+        "ManifoldCloudSaaS",
+        "ManifoldAnyLanguageModel",
+        "ManifoldUI",
+        "ManifoldUIModelManagement",
+        "ManifoldHuggingFace",
+        "ManifoldVoice",
+        "ManifoldTestSupport",
+        "ManifoldBackendTestKit",
+        "ManifoldTools",
+        "ManifoldAppIntents",
+        "ManifoldSkills",
+        "ManifoldTelemetryOTLP",
+        "ManifoldAppEval",
     ]
 
     /// Every `declKind` the normalizer (`scripts/_lib/api-surface-extract.py`)
