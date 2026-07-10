@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.68.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.67.0...v0.68.0) (2026-07-10)
+
+No public API changes in this release — it hardens the assurance tooling around the
+library and lands the plan for the next (final) pre-1.0 API wave.
+
+### Highlights
+
+#### Harder local eval lanes
+
+The local-integration sweep gains a manifold-eval capability lane, and the eval lane
+itself moves to v2: hard tool-calling coverage, a more capable IFEval model, and
+completeness + preflight checks so a lane that silently under-runs its case list now
+fails loudly. Contributor/assurance tooling only — nothing in the shipped library
+surface changes. See [#2175](https://github.com/ManifoldKit/ManifoldKit/issues/2175),
+[#2178](https://github.com/ManifoldKit/ManifoldKit/issues/2178).
+
+### Fixes
+
+**Honest BFCL scoping** — BFCL coverage claims are scoped to what actually runs, and the eval/core lanes validate their bench models up front ([#2176](https://github.com/ManifoldKit/ManifoldKit/issues/2176)).
+
+**OllamaBackend deprecation message** — now points at the live replacement API instead of the retired `DefaultBackends` ([#2177](https://github.com/ManifoldKit/ManifoldKit/issues/2177)).
+
+**API-digester allowlist** — the v0.67.0 `VoiceConversationController` initializer change is allowlisted so the gate reflects the shipped surface ([#2174](https://github.com/ManifoldKit/ManifoldKit/issues/2174)).
+
+### Internal
+
+**Wave-2 API plan committed** — the adversarially-reviewed execution plan for the final pre-1.0 breaking wave lives at `docs/plans/api-review-wave2-2026-07.md` ([#2187](https://github.com/ManifoldKit/ManifoldKit/issues/2187)).
+
+**Instruction-file consolidation** — `.cursorrules` reduced to an `AGENTS.md` pointer; `.claude/` local files documented ([#2180](https://github.com/ManifoldKit/ManifoldKit/issues/2180)).
+
+**Release hardening** — the server release binary is attested, dispatch inputs are env-routed, and CI job timeouts are bounded ([#2183](https://github.com/ManifoldKit/ManifoldKit/issues/2183)).
+
 ## [0.67.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.66.0...v0.67.0) (2026-07-08)
 
 
