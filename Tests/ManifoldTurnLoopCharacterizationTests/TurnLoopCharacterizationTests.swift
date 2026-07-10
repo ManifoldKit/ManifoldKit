@@ -4,6 +4,7 @@ import SnapshotTesting
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 // ScriptedGenerationBackend relocated to ManifoldAppEval (app-eval harness wave 1).
 import ManifoldAppEval
 

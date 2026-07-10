@@ -4,6 +4,7 @@
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration test for issue #629: a session whose persisted transcript
 /// contains a `.toolCall` part with no matching `.toolResult` (because the

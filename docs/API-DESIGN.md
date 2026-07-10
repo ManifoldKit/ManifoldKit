@@ -127,17 +127,24 @@ seams instead of the type system enforcing it universally.
 
 ## 7. Semver-exempt products
 
-Three dev-tool products **may break in any minor release, always migration-noted.** This is
+Four dev-tool products **may break in any minor release, always migration-noted.** This is
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
 deprecation cycles or api-digester gates slowing removal. The exemption reflects their
-purpose (developer tooling), not their reachability — an app CAN link them (idlewick links
-`ManifoldTestSupport` from app code), it just accepts the looser stability promise when it
-does:
+purpose (developer tooling), not their reachability — an app CAN link them from any target
+(the surveyed consumers below all link from test targets), it just accepts the looser
+stability promise when it does:
 
 - **`ManifoldTestSupport`** — shared mocks and testing utilities. Published as a `.library`
-  product. Real consumers: `idlewick` (surveyed local app, direct import);
+  product. Real consumers: `idlewick` (surveyed local app, test-target import — re-verified
+  2026-07 during the 4.4 split; an earlier survey note claiming app-code import was wrong);
   `manifold-mlx` and `manifold-llama` (companion packages, for backend test fixtures).
+- **`ManifoldPersistenceTestSupport`** — the persistence-dependent test mocks split out of
+  `ManifoldTestSupport` (arch-plan 4.4, wave2 P2, #2158): `GlassBoxDemoRAG`,
+  `InMemoryPersistenceHarness`, `makeInMemoryContainer()`. Published as a `.library` product.
+  Consumer survey at split time (2026-07): `idlewick`, `manifold-mlx`, and `manifold-llama`
+  all import `ManifoldTestSupport` from test targets only, and none reference any of the
+  three moved symbols — no external consumer needed a migration draft for this split.
 - **`ManifoldBackendTestKit`** — backend contract-check machinery and conformance harness.
   Published as a `.library` product. Real consumers: `manifold-mlx` and `manifold-llama`
   (published conformance suites). Links XCTest, so callable only from test targets.

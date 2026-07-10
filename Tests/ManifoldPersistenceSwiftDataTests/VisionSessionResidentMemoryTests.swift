@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import ManifoldPersistenceTestSupport
 @testable import ManifoldPersistenceSwiftData
 import ManifoldInference
 @testable import ManifoldTestSupport

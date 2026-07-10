@@ -3,6 +3,7 @@ import SwiftData
 @testable import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for ``SwiftDataPersistenceProvider/searchMessages(query:limit:)``
 /// and ``SwiftDataPersistenceProvider/fetchSessions(offset:limit:)``.

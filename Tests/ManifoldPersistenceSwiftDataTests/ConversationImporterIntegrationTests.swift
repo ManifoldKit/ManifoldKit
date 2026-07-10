@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for ``ConversationImporter`` against the real SwiftData
 /// adapter on an in-memory container.

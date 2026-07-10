@@ -4,6 +4,7 @@ import ManifoldRuntime
 @testable import ManifoldPersistenceSwiftData
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 @MainActor
 final class SwiftDataEndpointStoreTests: XCTestCase {

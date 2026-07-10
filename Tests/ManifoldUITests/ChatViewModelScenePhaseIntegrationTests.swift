@@ -6,6 +6,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration coverage complementing `ScenePhaseTransitionTests`.
 ///

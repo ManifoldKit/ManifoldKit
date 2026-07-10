@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Demonstrates running the full `ChatViewModel.sendMessage()` flow through
 /// a backend that models realistic streaming latency.

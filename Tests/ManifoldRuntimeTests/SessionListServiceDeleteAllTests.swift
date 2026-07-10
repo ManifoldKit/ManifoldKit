@@ -2,6 +2,7 @@ import XCTest
 @testable import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Verifies ``SessionListService/deleteAllSessions()`` emits **one**
 /// terminal `.sessionsLoaded([], hasMore: false, offset: 0)` event rather

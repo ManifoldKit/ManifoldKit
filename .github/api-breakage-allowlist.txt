@@ -58,6 +58,9 @@ API breakage: struct AgentHandoff has been removed
 API breakage: struct ChatError has been removed
 API breakage: struct DocumentChunk has been removed
 API breakage: struct GenerationConfig has been removed
+API breakage: enum GlassBoxDemoRAG has been removed
+API breakage: enum InMemoryPersistenceHarness has been removed
+API breakage: func makeInMemoryContainer() has been removed
 API breakage: struct GrammarPhaseGate has been removed
 API breakage: struct HeuristicTokenizer has been removed
 API breakage: struct InlineXMLToolCallMarkers has been removed

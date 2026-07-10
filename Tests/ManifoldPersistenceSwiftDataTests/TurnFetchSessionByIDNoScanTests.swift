@@ -4,6 +4,7 @@ import SwiftData
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Observability decorator that WRAPS a real ``SessionStore`` and counts which
 /// surface the turn loop drives — `fetchSessions()` (full-table scan) vs

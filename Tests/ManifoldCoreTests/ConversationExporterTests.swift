@@ -4,6 +4,7 @@ import SwiftData
 @testable import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Tests for ``ConversationExporter`` — file output, filename sanitization,
 /// and the SwiftData-fetching convenience overload.

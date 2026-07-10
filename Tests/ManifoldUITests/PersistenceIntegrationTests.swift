@@ -6,6 +6,7 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for ChatViewModel persistence using REAL SwiftData (in-memory).
 ///

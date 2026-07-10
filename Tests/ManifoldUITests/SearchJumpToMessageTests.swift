@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Covers the "jump to the matched message" bridge: selecting a
 /// `.messages`-scope search result must scroll the chat pane to the exact

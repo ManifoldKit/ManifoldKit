@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration tests for the multi-agent write path (#1495): the
 /// `ManifoldInference.ChatSession.agents` registry must survive an insert→fetch and an

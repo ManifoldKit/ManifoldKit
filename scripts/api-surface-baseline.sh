@@ -171,7 +171,7 @@ ALLOWLIST_PATH="${REPO_ROOT}/.github/api-breakage-allowlist.txt"
 
 # Every `.library(...)` product in Package.swift (see the "Module scope"
 # header section above). Order mirrors Package.swift's products: array.
-DEFAULT_MODULES="ManifoldKit ManifoldInference ManifoldContract ManifoldNetworking ManifoldSecrets ManifoldHardware ManifoldModelCatalog ManifoldMCP ManifoldMCPHost ManifoldRuntime ManifoldPersistenceSwiftData ManifoldCloudCore ManifoldFoundation ManifoldOllama ManifoldCloudSaaS ManifoldAnyLanguageModel ManifoldUI ManifoldUIModelManagement ManifoldHuggingFace ManifoldVoice ManifoldTestSupport ManifoldBackendTestKit ManifoldTools ManifoldAppIntents ManifoldSkills ManifoldTelemetryOTLP ManifoldAppEval"
+DEFAULT_MODULES="ManifoldKit ManifoldInference ManifoldContract ManifoldNetworking ManifoldSecrets ManifoldHardware ManifoldModelCatalog ManifoldMCP ManifoldMCPHost ManifoldRuntime ManifoldPersistenceSwiftData ManifoldCloudCore ManifoldFoundation ManifoldOllama ManifoldCloudSaaS ManifoldAnyLanguageModel ManifoldUI ManifoldUIModelManagement ManifoldHuggingFace ManifoldVoice ManifoldTestSupport ManifoldPersistenceTestSupport ManifoldBackendTestKit ManifoldTools ManifoldAppIntents ManifoldSkills ManifoldTelemetryOTLP ManifoldAppEval"
 
 MODE="generate"
 TREEISH=""

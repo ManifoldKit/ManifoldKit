@@ -587,7 +587,8 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency. Published as a `.library` product so companion backend packages can reuse the mocks. |
+| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency (see `ManifoldContractTestSupport`) and no SwiftData/persistence dependency (see `ManifoldPersistenceTestSupport`). Published as a `.library` product so companion backend packages can reuse the mocks. |
+| `ManifoldPersistenceTestSupport` | The persistence-dependent test mocks split out of `ManifoldTestSupport`: `GlassBoxDemoRAG`, `InMemoryPersistenceHarness`, and `makeInMemoryContainer()` — the only files that need `SwiftData`/`ManifoldPersistenceSwiftData`. Depends on `ManifoldTestSupport` + `ManifoldPersistenceSwiftData` + `ManifoldRuntime` + `ManifoldInference`. Published as a `.library` product, semver-exempt like its sibling (see docs/API-DESIGN.md § 7). |
 | `ManifoldContractTestSupport` | XCTest-dependent protocol contract mixins. Kept separate from `ManifoldTestSupport` so `fuzz-chat` can depend on the latter without pulling XCTest into a non-test binary. |
 | `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published for companion backend packages. Links XCTest — never depend on it from an executable target (audit-enforced). The capability-claims registry (`BackendContractChecks.ClaimRegistry`) is instance-scoped — owned per test case, not a process-global `static var` — so contract suites that use it are safe under `swift test --parallel` (see its DocC catalog). |
 

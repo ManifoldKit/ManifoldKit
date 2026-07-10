@@ -2,6 +2,10 @@ import Foundation
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
+// SampleDocumentCorpus stays in ManifoldTestSupport (no persistence
+// dependency of its own) — see docs/plans/architecture-improvements-2026-07.md
+// item 4.4 for the split rationale.
+import ManifoldTestSupport
 
 /// Assembles the **real** RAG stack for the Glass Box flagship research-session
 /// demo / live path (#1575).

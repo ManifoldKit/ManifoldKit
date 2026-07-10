@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 @testable import ManifoldPersistenceSwiftData
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 final class SamplerPresetRoundTripTests: XCTestCase {
 

@@ -28,6 +28,15 @@ ALLOWLIST_PATHS=(
     # Ships in ManifoldTestSupport, not in the SDK product.
     "ManifoldTestSupport"
 
+    # ManifoldPersistenceTestSupport (arch-plan 4.4, wave2 P2, #2158): the
+    # persistence-dependent slice split out of ManifoldTestSupport.
+    # GlassBoxDemoRAG.makeConfiguration(baseURL:) defaults to
+    # URL(string: "http://localhost:11434")! — a hardcoded, always-valid
+    # literal (same pattern as the ManifoldTestSupport entry above, carried
+    # over verbatim by the split). Ships in this dev-tool product, not the
+    # SDK product.
+    "ManifoldPersistenceTestSupport"
+
     # AsyncThrowingStream / AsyncStream makeStream closure pattern:
     #   var continuation: SomeStream.Continuation!
     #   let stream = SomeStream { continuation = $0 }

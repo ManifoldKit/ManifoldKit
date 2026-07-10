@@ -5,6 +5,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// I6 replaces ``NoResponseError`` with the typed ``SendMessageError`` enum so
 /// callers can pattern-match each upstream failure mode of the async

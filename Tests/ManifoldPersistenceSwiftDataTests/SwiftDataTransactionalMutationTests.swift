@@ -3,6 +3,7 @@ import XCTest
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 @MainActor
 final class SwiftDataTransactionalMutationTests: XCTestCase {

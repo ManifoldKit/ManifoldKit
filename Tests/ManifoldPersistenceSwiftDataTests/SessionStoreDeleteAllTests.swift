@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration coverage for ``SessionStore/deleteAll()`` against the real
 /// SwiftData adapter on an in-memory container — per CLAUDE.md, the

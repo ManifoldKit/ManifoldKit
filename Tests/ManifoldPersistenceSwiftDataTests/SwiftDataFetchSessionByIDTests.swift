@@ -4,6 +4,7 @@ import SwiftData
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldPersistenceTestSupport
 
 /// Integration coverage for the per-turn single-session read
 /// (`perf: fetch sessions by id`). The SwiftData adapter overrides
