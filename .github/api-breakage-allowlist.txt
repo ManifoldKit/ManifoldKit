@@ -341,3 +341,4 @@ API breakage: enumelement ModelType.foundation has declared type change from (Ma
 API breakage: func ModelType.hash(into:) has been removed
 API breakage: var ModelType.hashValue has been removed
 API breakage: enumelement GenerationCapabilityRequirement.streamingToolCalls has been removed
+API breakage: enumelement GenerationCapabilityRequirement.streamsToolCallArguments has been added as a new enum case
