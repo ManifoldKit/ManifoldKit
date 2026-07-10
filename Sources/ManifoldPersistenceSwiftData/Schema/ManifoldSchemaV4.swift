@@ -29,7 +29,7 @@ public enum ManifoldSchemaV4: VersionedSchema {
     /// `contentPartsJSON`. The `content` property concatenates text parts
     /// for backward compatibility.
     @Model
-    public final class ChatMessage {
+    final class ChatMessage {
         public var id: UUID
         public var role: MessageRole
         public var timestamp: Date
@@ -121,7 +121,7 @@ public enum ManifoldSchemaV4: VersionedSchema {
     /// Sessions hold per-session overrides for generation parameters. When an
     /// override is `nil`, the app falls back to global defaults from `SettingsService`.
     @Model
-    public final class ChatSession {
+    final class ChatSession {
         public var id: UUID
         public var title: String
         public var createdAt: Date

@@ -8,10 +8,10 @@ import ManifoldRuntime
 /// All model definitions live here. Previous schema versions (V1, V2) were
 /// removed while the repo was still private — no users carry legacy data that
 /// needs migration.
-public enum ManifoldSchemaV3: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(3, 0, 0)
+enum ManifoldSchemaV3: VersionedSchema {
+    static let versionIdentifier = Schema.Version(3, 0, 0)
 
-    public static var models: [any PersistentModel.Type] {
+    static var models: [any PersistentModel.Type] {
         [
             ChatMessage.self,
             ChatSession.self,
@@ -29,7 +29,7 @@ public enum ManifoldSchemaV3: VersionedSchema {
     /// `contentPartsJSON`. The `content` property concatenates text parts
     /// for backward compatibility.
     @Model
-    public final class ChatMessage {
+    final class ChatMessage {
         public var id: UUID
         public var role: MessageRole
         public var timestamp: Date
@@ -121,7 +121,7 @@ public enum ManifoldSchemaV3: VersionedSchema {
     /// Sessions hold per-session overrides for generation parameters. When an
     /// override is `nil`, the app falls back to global defaults from `SettingsService`.
     @Model
-    public final class ChatSession {
+    final class ChatSession {
         public var id: UUID
         public var title: String
         public var createdAt: Date
@@ -189,7 +189,7 @@ public enum ManifoldSchemaV3: VersionedSchema {
 
     /// A saved set of generation parameters that can be applied to any session.
     @Model
-    public final class SamplerPreset {
+    final class SamplerPreset {
         public var id: UUID
         public var name: String
         public var temperature: Float
@@ -214,7 +214,7 @@ public enum ManifoldSchemaV3: VersionedSchema {
     /// The API key is NOT stored here — it lives in the Keychain, referenced
     /// by this endpoint's `id` as the Keychain account identifier.
     @Model
-    public final class APIEndpoint {
+    final class APIEndpoint {
         public var id: UUID
         public var name: String
         public var providerRawValue: String
@@ -382,7 +382,7 @@ public enum ManifoldSchemaV3: VersionedSchema {
     /// as columns, so the result is decomposed into scalar fields. Use ``toResult()``
     /// to reconstitute a ``ModelBenchmarkResult`` value.
     @Model
-    public final class ModelBenchmarkCache {
+    final class ModelBenchmarkCache {
 
         /// The file name of the model this result belongs to (e.g. `"model.Q4_K_M.gguf"`).
         public var modelFileName: String
