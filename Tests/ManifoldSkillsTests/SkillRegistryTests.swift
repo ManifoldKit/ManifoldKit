@@ -3,8 +3,8 @@ import XCTest
 
 final class SkillRegistryTests: XCTestCase {
 
-    private func make(_ name: String, aliases: [String] = []) -> Skill {
-        Skill(
+    private func make(_ name: String, aliases: [String] = []) -> SkillDefinition {
+        SkillDefinition(
             name: name,
             description: name,
             aliases: aliases,
@@ -16,7 +16,7 @@ final class SkillRegistryTests: XCTestCase {
     func test_load_lastWinsOnName() async {
         let registry = SkillRegistry()
         let a1 = make("foo")
-        let a2 = Skill(
+        let a2 = SkillDefinition(
             name: "foo",
             description: "newer",
             promptTemplate: "BODY-2",

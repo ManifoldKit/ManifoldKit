@@ -62,9 +62,9 @@ final class SkillLoaderTests: XCTestCase {
 
     func test_discover_blockStyleAliases_roundTrip() throws {
         // End-to-end smoke: a SKILL.md authored with idiomatic block-style
-        // `aliases:` must surface as a `Skill` with the expected aliases array.
+        // `aliases:` must surface as a `SkillDefinition` with the expected aliases array.
         // This guards the loader path that calls `SkillFrontmatterParser` and
-        // then collapses `.list(...)` into `Skill.aliases`.
+        // then collapses `.list(...)` into `SkillDefinition.aliases`.
         #if !os(macOS)
         throw XCTSkip("Discovery is macOS-only in v1")
         #else
@@ -92,7 +92,7 @@ final class SkillLoaderTests: XCTestCase {
         // Sabotage-evidence: M1 change one of the `- ` to `* ` — block list
         // ends empty and aliases assertion fails; M2 unindent both items —
         // they become top-level non-key garbage and the file fails to parse;
-        // M3 rename `aliases:` → `alia:` — Skill.aliases falls back to [].
+        // M3 rename `aliases:` → `alia:` — SkillDefinition.aliases falls back to [].
         #endif
     }
 

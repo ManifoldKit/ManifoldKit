@@ -4,7 +4,7 @@ Wire filesystem-discovered skills into a chat session.
 
 ## 1) Discover skills on disk
 
-``SkillLoader`` walks the default Claude-Code-compatible roots and returns the parsed `Skill` values. The default search paths are resolved lazily so iOS / sandboxed builds with no `$HOME` don't crash at module init.
+``SkillLoader`` walks the default Claude-Code-compatible roots and returns the parsed `SkillDefinition` values. The default search paths are resolved lazily so iOS / sandboxed builds with no `$HOME` don't crash at module init.
 
 > Warning: **macOS-only in v1.** On iOS, ``SkillLoader/discover()`` returns `[]`
 > and logs a one-time warning. Skill discovery requires entitlement / app-group

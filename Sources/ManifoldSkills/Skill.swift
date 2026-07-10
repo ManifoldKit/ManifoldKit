@@ -5,7 +5,11 @@ import Foundation
 ///
 /// Compatible with the Claude Code skill layout (`<root>/<skill-name>/SKILL.md`)
 /// so existing user skill libraries work as-is on first launch.
-public struct Skill: Sendable, Equatable, Codable, Identifiable {
+///
+/// Named `SkillDefinition` (not the bare `Skill`) — a bare generic public
+/// name under the umbrella, matched to ``AgentDefinition``'s suffix per the
+/// wave-2 mechanical rename batch (N5).
+public struct SkillDefinition: Sendable, Equatable, Codable, Identifiable {
     public var id: String { name }
 
     /// Canonical skill name (frontmatter `name:`); also the registry key.

@@ -38,7 +38,7 @@ final class SkillToolSourceTests: XCTestCase, SessionToolSourceContract {
     func test_toolDefinitions_capsAtSix_whenMoreSkillsRegistered() async {
         let registry = SkillRegistry()
         let many = (0..<8).map {
-            Skill(
+            SkillDefinition(
                 name: String(format: "skill-%02d", $0),
                 description: "d",
                 promptTemplate: "body",
@@ -101,7 +101,7 @@ final class SkillToolSourceTests: XCTestCase, SessionToolSourceContract {
 
     func test_resolve_validSkill_returnsPromptTemplate() async throws {
         let registry = SkillRegistry()
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "explain",
             description: "Explain a snippet",
             promptTemplate: "Please explain the snippet thoroughly.",
@@ -125,7 +125,7 @@ final class SkillToolSourceTests: XCTestCase, SessionToolSourceContract {
 
     func test_resolve_setsActiveSkill_observableViaAllowedToolNames() async throws {
         let registry = SkillRegistry()
-        let skill = Skill(
+        let skill = SkillDefinition(
             name: "narrow",
             description: "narrow scope",
             allowedTools: ["read_file"],
