@@ -212,10 +212,10 @@ final class BackendCapabilitiesUnionAndUpdatingTests: XCTestCase {
 /// `BackendCapabilities` field through a single explicit table, and that
 /// table must actually match what `BackendCapabilities.satisfies(_:)` does.
 ///
-/// This is the enforcement mechanism issue #2153's `BackendCapabilities`
-/// rename will ride: today's mismatches (e.g. `streamingToolCalls` vs
-/// `streamsToolCallArguments`) are recorded as-is with a `// FIXME: #2153`
-/// note rather than fixed here.
+/// #2153 aligned the one case that used to drift from its field name
+/// (`streamingToolCalls` → `streamsToolCallArguments`, matching
+/// `BackendCapabilities.streamsToolCallArguments` textually); every case
+/// below now names its field exactly.
 final class GenerationCapabilityRequirementFieldMappingTests: XCTestCase {
 
     /// The mapping table. The switch is **exhaustive** (no `default:`
@@ -230,10 +230,7 @@ final class GenerationCapabilityRequirementFieldMappingTests: XCTestCase {
         case .thinking:                   return "supportsThinking"
         case .grammarConstrainedSampling: return "supportsGrammarConstrainedSampling"
         case .parallelToolCalls:          return "supportsParallelToolCalls"
-        // FIXME: #2153 — requirement case is named `streamingToolCalls`, the
-        // BackendCapabilities field is `streamsToolCallArguments`. Recorded
-        // as-is; #2153's rename pass is the place to reconcile the names.
-        case .streamingToolCalls:         return "streamsToolCallArguments"
+        case .streamsToolCallArguments:   return "streamsToolCallArguments"
         case .kvCachePersistence:         return "supportsKVCachePersistence"
         // Special-shaped: carries an Int, checked against `contextWindowSize`
         // (backed by `maxContextTokens`), not a Bool flag. Verified by
@@ -253,7 +250,7 @@ final class GenerationCapabilityRequirementFieldMappingTests: XCTestCase {
         .thinking,
         .grammarConstrainedSampling,
         .parallelToolCalls,
-        .streamingToolCalls,
+        .streamsToolCallArguments,
         .kvCachePersistence,
     ]
 

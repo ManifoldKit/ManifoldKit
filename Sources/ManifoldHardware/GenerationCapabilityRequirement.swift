@@ -36,7 +36,7 @@ public enum GenerationCapabilityRequirement: Sendable, Hashable, Codable {
 
     /// The backend must stream tool-call arguments
     /// (``BackendCapabilities/streamsToolCallArguments``).
-    case streamingToolCalls
+    case streamsToolCallArguments
 
     /// The backend must persist KV cache state across consecutive
     /// `generate()` calls (``BackendCapabilities/supportsKVCachePersistence``).
@@ -52,15 +52,15 @@ public enum GenerationCapabilityRequirement: Sendable, Hashable, Codable {
     /// match `String(describing:)` today but callers should not rely on that.
     package var sortKey: String {
         switch self {
-        case .toolCalling:                return "1.toolCalling"
-        case .structuredOutput:           return "2.structuredOutput"
-        case .jsonMode:                   return "3.jsonMode"
-        case .thinking:                   return "4.thinking"
-        case .grammarConstrainedSampling: return "5.grammarConstrainedSampling"
-        case .parallelToolCalls:          return "6.parallelToolCalls"
-        case .streamingToolCalls:         return "7.streamingToolCalls"
-        case .kvCachePersistence:         return "8.kvCachePersistence"
-        case .minContextTokens(let n):    return "9.minContextTokens.\(n)"
+        case .toolCalling:                 return "1.toolCalling"
+        case .structuredOutput:            return "2.structuredOutput"
+        case .jsonMode:                    return "3.jsonMode"
+        case .thinking:                    return "4.thinking"
+        case .grammarConstrainedSampling:  return "5.grammarConstrainedSampling"
+        case .parallelToolCalls:           return "6.parallelToolCalls"
+        case .streamsToolCallArguments:    return "7.streamsToolCallArguments"
+        case .kvCachePersistence:          return "8.kvCachePersistence"
+        case .minContextTokens(let n):     return "9.minContextTokens.\(n)"
         }
     }
 }
@@ -69,15 +69,15 @@ extension BackendCapabilities {
     /// Whether this capability set satisfies a single requirement.
     public func satisfies(_ requirement: GenerationCapabilityRequirement) -> Bool {
         switch requirement {
-        case .toolCalling:                return supportsToolCalling
-        case .structuredOutput:           return supportsStructuredOutput
-        case .jsonMode:                   return supportsNativeJSONMode
-        case .thinking:                   return supportsThinking
-        case .grammarConstrainedSampling: return supportsGrammarConstrainedSampling
-        case .parallelToolCalls:          return supportsParallelToolCalls
-        case .streamingToolCalls:         return streamsToolCallArguments
-        case .kvCachePersistence:         return supportsKVCachePersistence
-        case .minContextTokens(let n):    return contextWindowSize >= n
+        case .toolCalling:                 return supportsToolCalling
+        case .structuredOutput:            return supportsStructuredOutput
+        case .jsonMode:                    return supportsNativeJSONMode
+        case .thinking:                    return supportsThinking
+        case .grammarConstrainedSampling:  return supportsGrammarConstrainedSampling
+        case .parallelToolCalls:           return supportsParallelToolCalls
+        case .streamsToolCallArguments:    return streamsToolCallArguments
+        case .kvCachePersistence:          return supportsKVCachePersistence
+        case .minContextTokens(let n):     return contextWindowSize >= n
         }
     }
 
