@@ -47,6 +47,11 @@ final class MyBackendConformanceTests: XCTestCase,
     var contractBackendName: String { "my.backend" }
     func makeContractBackend() -> MyBackend { MyBackend() }
 
+    // Instance-scoped: XCTest instantiates a fresh test case per method, so
+    // this registry starts empty for every method invocation — no cross-test
+    // or cross-class bleed, even under `swift test --parallel`.
+    let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+
     func test_contract_allInvariants() {
         assertUniversalBackendContract()
     }
@@ -58,9 +63,10 @@ final class MyBackendConformanceTests: XCTestCase,
     // Named test_z_… so XCTest's alphabetical in-class ordering runs it after
     // the claim-recording tests in this class.
     func test_z_contract_allCapabilityClaims() {
-        BackendContractChecks.resetCapabilityClaims(forBackend: contractBackendName)
+        BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: contractBackendName)
         // …claimWithoutBehaviouralAssertion / real assertion families…
         BackendContractChecks.assertCapabilityMetaContract(
+            capabilityClaimRegistry,
             backendName: contractBackendName,
             capabilities: makeContractBackend().capabilities
         )
@@ -73,21 +79,26 @@ For local (on-device) backends, additionally declare a
 ``LocalBackendContractRunner`` scenario, with fixtures under
 `Tests/Fixtures/backends/<name>/…` in your repo.
 
-## Never run the contract suite with `swift test --parallel`
+## The contract suite is safe under `swift test --parallel`
 
-The capability-claims registry in ``BackendContractChecks`` is
-**process-global** (an `NSLock`-protected set shared by every conformance
-class in the test process). The registry lifecycle is safe when each backend's
-reset → claim → meta-contract sequence stays inside one test method, but
-explicit `--parallel` (with or without a tuned `--num-workers`) interleaves
-backend test *classes* aggressively enough that the registry can be partial
-when a meta-contract assertion reads it. In ManifoldKit's own gate this
-surfaced as 57 normally-skipped tests registering as runs with 7 false
-failures; `scripts/test.sh` documents the same rule for the core repo.
+The capability-claims registry lives on ``BackendContractChecks/ClaimRegistry``,
+an instance owned by the test case (a stored property, per the recipe above) —
+not a process-global `static var`. Because XCTest instantiates a fresh test
+case per test method, every method invocation gets its own empty registry with
+no reset boilerplate required for isolation, and no shared mutable state
+survives across concurrently-scheduled test classes or methods.
 
-Run the suite with swift-test's implicit scheduling (no `--parallel` flag),
-and keep the entire registry lifecycle for a backend inside a single test
-method body.
+This replaced a process-global `nonisolated(unsafe) static var` (arch-plan
+item 4.2) that made `swift test --parallel` unsafe for every contract suite in
+the fleet — under explicit `--parallel`, backend test *classes* interleaved
+aggressively enough that the shared registry could be partial when a
+meta-contract assertion read it (ManifoldKit's own gate saw 57
+normally-skipped tests register as runs with 7 false failures). That failure
+mode is now structurally impossible: there is nothing left to share.
+
+Suites may still collapse a backend's reset → claim → meta-contract sequence
+into a single test method (see the recipe above) — that remains a readable,
+self-contained shape, not a correctness requirement.
 
 ## Non-vacuity: assert that checks actually executed
 
@@ -97,8 +108,8 @@ whole-file `#if` gates produce after a package split (the file compiles to
 nothing and CI stays green). Every adopting suite must:
 
 - assert N > 0 executed checks per participant — e.g. a final test that calls
-  `BackendContractChecks.capturedClaims()` and asserts your backend's prefix
-  appears, or a suite-level counter asserting every scenario method ran;
+  `BackendContractChecks.capturedClaims(registry)` and asserts your backend's
+  prefix appears, or a suite-level counter asserting every scenario method ran;
 - treat an all-skipped run as a red flag: hardware gates (`RUN_SLOW_TESTS`,
   simulator checks) should skip *scenarios*, never the universal invariants,
   which require no model and must always execute.

@@ -32,18 +32,13 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
     private let backendName = "MockInferenceBackend"
     let contractBackendName = "MockInferenceBackend"
 
+    // Instance-scoped: XCTest instantiates a fresh MockInferenceBackendConformanceTests
+    // per test method, so this registry starts empty for every method invocation with
+    // no explicit reset needed between tests. See BackendContractChecks.ClaimRegistry.
+    let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+
     func makeContractBackend() -> MockInferenceBackend {
         MockInferenceBackend()
-    }
-
-    override func setUp() {
-        super.setUp()
-        // Critical: clear this backend's registry entries between tests so that
-        // per-capability claims recorded by an earlier test don't bleed into the
-        // current one and confuse the meta-contract. Scoped to "MockInferenceBackend"
-        // so concurrent backend classes under --parallel don't erase each other's
-        // in-flight claims.
-        BackendContractChecks.resetCapabilityClaims(forBackend: "MockInferenceBackend")
     }
 
     // MARK: - Universal invariants
@@ -72,7 +67,7 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
         try await assertGrammarFailClosedContract()
         // Claim recorded.
         XCTAssertTrue(
-            BackendContractChecks.capturedClaims().contains("\(backendName)::supportsGrammarConstrainedSampling"),
+            BackendContractChecks.capturedClaims(capabilityClaimRegistry).contains("\(backendName)::supportsGrammarConstrainedSampling"),
             "assertGrammarFailClosedContract must record the capability claim"
         )
     }
@@ -94,6 +89,7 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
     func test_metaContract_defaultMockHasNoTrackedTrueFlags() {
         let caps = MockInferenceBackend().capabilities
         let unproven = BackendContractChecks.unprovenClaims(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
         )
@@ -114,6 +110,7 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
             supportsToolCalling: true  // declared true, no claim recorded
         )
         let unproven = BackendContractChecks.unprovenClaims(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
         )
@@ -129,10 +126,12 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
     func test_metaContract_claimWithoutBehaviouralAssertion_clearsUnproven() {
         let caps = BackendCapabilities(supportsToolCalling: true)
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsToolCalling"
         )
         let unproven = BackendContractChecks.unprovenClaims(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
         )
@@ -149,10 +148,12 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
             supportsStructuredOutput: true
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsToolCalling"
         )
         let unproven = BackendContractChecks.unprovenClaims(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
         )
@@ -165,6 +166,7 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
     func test_metaContract_untrackedFlag_neverSurfaces() {
         let caps = BackendCapabilities(isRemote: true)
         let unproven = BackendContractChecks.unprovenClaims(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
         )
@@ -177,10 +179,12 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
     func test_metaContract_assertSucceedsWhenAllClaimed() {
         let caps = BackendCapabilities(supportsToolCalling: true)
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsToolCalling"
         )
         BackendContractChecks.assertCapabilityMetaContract(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
         )

@@ -25,6 +25,11 @@ final class AnyLanguageModelConformanceTests: XCTestCase {
 
     private let backendName = "AnyLanguageModelBackend"
 
+    // Instance-scoped: XCTest instantiates a fresh test case per method, so
+    // this registry starts empty for every method invocation. See
+    // BackendContractChecks.ClaimRegistry.
+    private let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+
     // MARK: - Tier 1: offline universal contract
 
     func test_contract_allInvariants() {
@@ -36,8 +41,9 @@ final class AnyLanguageModelConformanceTests: XCTestCase {
     /// capability router never routes those requests to it. The meta-contract
     /// passes trivially because no tracked flag is declared `true`.
     func test_contract_capabilityMetaContract() {
-        BackendContractChecks.resetCapabilityClaims(forBackend: backendName)
+        BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: backendName)
         BackendContractChecks.assertCapabilityMetaContract(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: AnyLanguageModelBackend().capabilities
         )

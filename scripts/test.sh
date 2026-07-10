@@ -281,14 +281,17 @@ if [[ -n "$PROFILE" ]]; then
             SWIFT_ARGS+=("--skip-update")
             SKIP_UPDATE_PRESENT=1
         fi
-        # We deliberately do NOT inject `--parallel` here. Adding it surfaces
-        # pre-existing process-global state races in `BackendContractChecks`
-        # (each per-backend conformance suite's `test_z_contract_metaContract`
-        # reads a shared claims registry; under explicit `--parallel` the
-        # interleaving differs enough that 57 normally-skipped tests register
-        # as runs and 7 of them fail because the registry is partial). swift-
-        # test's implicit scheduling without the flag is the baseline that
-        # works — keep it.
+        # We deliberately do NOT inject `--parallel` here. swift-test's
+        # implicit scheduling without the flag is the baseline that works —
+        # keep it. (Historically this also avoided pre-existing process-global
+        # state races in `BackendContractChecks` — each per-backend conformance
+        # suite's `test_z_contract_metaContract` read a shared claims registry,
+        # and explicit `--parallel` interleaved test classes enough that 57
+        # normally-skipped tests registered as runs with 7 false failures. The
+        # capability-claims registry is now instance-scoped per test case
+        # (arch-plan item 4.2), so that specific hazard no longer applies —
+        # see ManifoldBackendTestKit's DocC catalog. `--parallel` stays off
+        # here as a conservative default, not a correctness requirement.)
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  PROFILE: $PROFILE (single-invocation override — caller passed --filter)"
         printf "  Filters: %s\n" "${FILTERS_SEEN[*]}"
@@ -332,15 +335,17 @@ if [[ -n "$PROFILE" ]]; then
         # Invocation 1: XCTest filters.
         #
         # We deliberately do NOT pass `--parallel` or `--num-workers` here.
-        # Explicit `--parallel` surfaces pre-existing process-global state
-        # races in `BackendContractChecks` — each per-backend conformance
-        # suite's `test_z_contract_metaContract` reads a shared claims
-        # registry, and explicit `--parallel` (with or without a tuned worker
-        # count) interleaves backend test classes enough that the registry is
-        # partial when meta-contract runs. swift-test's implicit scheduling
-        # without the flag is the baseline that's passed historically; keep it.
-        # Verified locally: 4395/0/57 pass under implicit scheduling vs
-        # 4445/7/0 with explicit --parallel.
+        # swift-test's implicit scheduling without the flag is the baseline
+        # that's passed historically; keep it. (Historically explicit
+        # `--parallel` also surfaced process-global state races in
+        # `BackendContractChecks` — each per-backend conformance suite's
+        # `test_z_contract_metaContract` read a shared claims registry, and
+        # interleaving backend test classes left it partial when meta-contract
+        # ran: 4395/0/57 pass under implicit scheduling vs 4445/7/0 with
+        # explicit --parallel, measured locally. The capability-claims
+        # registry is now instance-scoped per test case (arch-plan item 4.2),
+        # so that specific hazard is gone — see ManifoldBackendTestKit's DocC
+        # catalog. `--parallel` stays off here as a conservative default.)
         set +e
         "$SCRIPT_PATH" \
             "${XCTEST_FILTER_ARGS[@]}" \

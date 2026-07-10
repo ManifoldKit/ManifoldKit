@@ -527,7 +527,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 |--------|------|
 | `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency (see `ManifoldContractTestSupport`). Published as a `.library` product so companion backend packages (manifold-mlx / manifold-llama, #1749) can reuse the mocks. |
 | `ManifoldContractTestSupport` | XCTest-dependent protocol contract mixins. Kept separate from `ManifoldTestSupport` so `fuzz-chat` can depend on the latter without pulling XCTest into a non-test binary (PR #1409). |
-| `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published as a `.library` product for companion backend packages. Links XCTest — same #1409 constraint as `ManifoldContractTestSupport`: never depend on it from an executable target (audit-enforced). Contract suites that use the capability-claims registry must NOT run under `swift test --parallel` (process-global registry — see its DocC catalog). |
+| `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published as a `.library` product for companion backend packages. Links XCTest — same #1409 constraint as `ManifoldContractTestSupport`: never depend on it from an executable target (audit-enforced). The capability-claims registry (`BackendContractChecks.ClaimRegistry`) is instance-scoped — owned per test case, not a process-global `static var` — so contract suites that use it are safe under `swift test --parallel` (arch-plan item 4.2; see its DocC catalog). |
 
 ### Umbrella
 
@@ -665,7 +665,7 @@ See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-
 scripts/test.sh --profile local
 ```
 
-Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism can surface process-global state races in `BackendContractChecks` when backend test classes interleave (fixed for claim-methods in #1601, but implicit scheduling matches historical behavior — keep it).
+Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: implicit scheduling matches historical behavior — keep it. (Historically this also avoided process-global state races in `BackendContractChecks` when backend test classes interleaved, #1601; the capability-claims registry is now instance-scoped per test case, arch-plan item 4.2, so that specific hazard is gone — see `ManifoldBackendTestKit`'s DocC catalog. `--parallel` stays off here as a conservative default, not a correctness requirement.)
 
 **Pre-push (CI repro — only when chasing a CI failure):**
 

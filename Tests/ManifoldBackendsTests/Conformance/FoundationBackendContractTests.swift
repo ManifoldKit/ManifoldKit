@@ -41,6 +41,11 @@ final class FoundationBackendContractTests: XCTestCase,
 
     let contractBackendName = "FoundationBackend"
 
+    // Instance-scoped: XCTest instantiates a fresh test case per method, so
+    // this registry starts empty for every method invocation. See
+    // BackendContractChecks.ClaimRegistry.
+    let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+
     func makeContractBackend() -> FoundationBackend {
         FoundationBackend()
     }
@@ -84,29 +89,35 @@ final class FoundationBackendContractTests: XCTestCase,
     // MARK: - Per-capability claims + meta-contract
 
     /// All bootstrap claims and the meta-contract assertion are collapsed into
-    /// one method so the registry is built and verified within a single process.
-    /// Under `swift test --parallel` each test method runs in an isolated worker
-    /// process; splitting claim recording across several methods meant the
-    /// meta-contract reader saw an empty registry in its worker. (#1601)
+    /// one method, threaded through one shared `capabilityClaimRegistry`
+    /// instance, so the registry is built and verified within a single test-case
+    /// lifetime. Historically necessary because the registry was process-global
+    /// (#1601); now the registry is instance-scoped (arch-plan 4.2) and this
+    /// suite is safe under `swift test --parallel` — the collapse remains as a
+    /// readable, self-contained shape, not a correctness requirement.
     ///
     /// Full behavioural proofs for each flag:
     /// - `supportsToolCalling`: requires Apple Intelligence (live session); lives in the E2E tier.
     /// - `supportsGuidedStructuredOutput`: requires a live session (GuidedGeneration round-trip).
     func test_contract_allCapabilityClaims() {
-        // Reset first so a prior run of this method in the same process doesn't
-        // leave stale claims that could mask a newly-removed flag.
-        BackendContractChecks.resetCapabilityClaims(forBackend: contractBackendName)
+        // Reset first — harmless given a freshly-constructed registry, kept
+        // for symmetry with suites that build up several scenarios in one
+        // test method.
+        BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: contractBackendName)
 
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: contractBackendName,
             flag: "supportsToolCalling"
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: contractBackendName,
             flag: "supportsGuidedStructuredOutput"
         )
 
         BackendContractChecks.assertCapabilityMetaContract(
+            capabilityClaimRegistry,
             backendName: contractBackendName,
             capabilities: FoundationBackend().capabilities
         )

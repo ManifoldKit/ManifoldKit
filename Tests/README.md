@@ -120,13 +120,13 @@ Reference adopters live alongside their target:
                                             GrammarFailClosedContractMixin {
        let contractBackendName = "YourBackend"
 
+       // Instance-scoped: XCTest instantiates a fresh test case per method, so
+       // this registry starts empty for every method invocation — no reset
+       // boilerplate needed, and the suite is safe under `swift test --parallel`.
+       let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+
        func makeContractBackend() -> YourBackend {
            YourBackend()
-       }
-
-       override class func setUp() {
-           super.setUp()
-           BackendContractChecks.resetCapabilityClaims(forBackend: "YourBackend")
        }
 
        func test_universalInvariants_allPass() {
@@ -142,6 +142,7 @@ Reference adopters live alongside their target:
 
        func test_metaContract() {
            BackendContractChecks.assertCapabilityMetaContract(
+               capabilityClaimRegistry,
                backendName: "YourBackend",
                capabilities: YourBackend().capabilities
            )
@@ -154,7 +155,7 @@ Reference adopters live alongside their target:
 5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
 6. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.
 
-The full assertion shape is documented in `Sources/ManifoldBackendTestKit/BackendContractChecks.swift` — the contract checks and mixins ship as the `ManifoldBackendTestKit` product so companion backend packages (manifold-mlx / manifold-llama, #1749) run the same suite via `import ManifoldBackendTestKit` (no `@testable` access). Its DocC catalog documents the adoption walkthrough, the no-`--parallel` claims-registry rule, and the non-vacuity expectation.
+The full assertion shape is documented in `Sources/ManifoldBackendTestKit/BackendContractChecks.swift` — the contract checks and mixins ship as the `ManifoldBackendTestKit` product so companion backend packages (manifold-mlx / manifold-llama, #1749) run the same suite via `import ManifoldBackendTestKit` (no `@testable` access). Its DocC catalog documents the adoption walkthrough, the instance-scoped claims registry (arch-plan 4.2 — safe under `swift test --parallel`), and the non-vacuity expectation.
 
 ## Sabotage evidence
 

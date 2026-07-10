@@ -35,8 +35,10 @@
 #     unified memory; running them concurrently would distort perf and risk OOM.
 #   - Every lane gets a unique TMPDIR (concurrent swift-test runs otherwise
 #     collide on a shared test_output.txt -> spurious failures).
-#   - NO --parallel: BackendContractChecks + llama's process-global init are not
-#     parallel-safe (matches both repos' own CI).
+#   - NO --parallel: llama's process-global llama_backend_init is not parallel-
+#     safe (matches both repos' own CI). BackendContractChecks' capability-claims
+#     registry is now instance-scoped per test case (arch-plan item 4.2) and no
+#     longer a --parallel hazard on its own.
 #   - The script never fails the whole sweep on one lane; it records per-lane
 #     status and always writes the report.
 

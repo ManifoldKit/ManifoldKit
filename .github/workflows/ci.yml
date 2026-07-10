@@ -863,13 +863,16 @@ jobs:
         run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --filter ManifoldAppEvalTests --filter APIFreezeTests --skip-update --parallel
 
       # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
-      # above. Under --parallel, swift-test schedules XCTest classes across workers
-      # concurrently, so ClaudeBackendConformanceTests.test_z_contract_metaContract
-      # can fire before the OpenAI* backend classes have loaded and registered their
-      # claims. The shared claims registry then looks incomplete and the meta-contract
-      # check fails (see CLAUDE.md "BackendContractChecks" note). Running this suite
-      # alone in a separate serial invocation guarantees every backend class loads and
-      # registers before any meta-contract assertion executes.
+      # above. Historically, under --parallel, swift-test scheduled XCTest classes
+      # across workers concurrently, so ClaudeBackendConformanceTests.test_z_contract_
+      # metaContract could fire before the OpenAI* backend classes had loaded and
+      # registered their claims — the shared, process-global claims registry then
+      # looked incomplete and the meta-contract check failed. The capability-claims
+      # registry is now instance-scoped per test case (arch-plan item 4.2; see
+      # ManifoldBackendTestKit's DocC catalog), so that specific hazard is gone —
+      # this suite could now join the --parallel batch above. Kept as its own serial
+      # step here as a conservative, unproven-in-CI-yet default rather than folding
+      # topology changes into the registry fix; a follow-up can merge it.
       # In selective mode this suite runs via ci-selective-test.sh when it appears in
       # the affected set; the full-mode step below is therefore scoped to full runs.
       #

@@ -245,3 +245,27 @@ API breakage: var GenerationConfig.maxRunTokens has been removed
 API breakage: var GenerationConfig.structuredOutput has been removed
 API breakage: var GenerationConfig.thinkingMarkers has been removed
 API breakage: constructor VoiceConversationController.init(transcriber:synthesizer:) has been removed
+API breakage: func BackendContractChecks.recordCapabilityClaim(backend:flag:) has parameter 0 type change from Swift.String to ManifoldBackendTestKit.BackendContractChecks.ClaimRegistry
+API breakage: func BackendContractChecks.resetCapabilityClaims(forBackend:) has parameter 0 type change from Swift.String to ManifoldBackendTestKit.BackendContractChecks.ClaimRegistry
+API breakage: func BackendContractChecks.unprovenClaims(backendName:capabilities:) has parameter 0 type change from Swift.String to ManifoldBackendTestKit.BackendContractChecks.ClaimRegistry
+API breakage: func BackendContractChecks.unprovenClaims(backendName:capabilities:) has parameter 1 type change from ManifoldHardware.BackendCapabilities to Swift.String
+API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has parameter 0 type change from Swift.String to ManifoldBackendTestKit.BackendContractChecks.ClaimRegistry
+API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has parameter 1 type change from ManifoldHardware.BackendCapabilities to Swift.String
+API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has parameter 2 type change from Swift.StaticString to ManifoldHardware.BackendCapabilities
+API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has removed default argument from parameter 2
+API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has parameter 3 type change from Swift.UInt to Swift.StaticString
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has parameter 0 type change from Swift.String to ManifoldBackendTestKit.BackendContractChecks.ClaimRegistry
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has parameter 1 type change from () -> B to Swift.String
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has parameter 2 type change from Foundation.URL? to () -> B
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has removed default argument from parameter 2
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has parameter 3 type change from Swift.StaticString to Foundation.URL?
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has parameter 4 type change from Swift.UInt to Swift.StaticString
+API breakage: func BackendContractChecks.claimWithoutBehaviouralAssertion(backendName:flag:) has parameter 0 type change from Swift.String to ManifoldBackendTestKit.BackendContractChecks.ClaimRegistry
+API breakage: var GrammarFailClosedContractMixin.capabilityClaimRegistry has been added as a protocol requirement
+API breakage: func BackendContractChecks.recordCapabilityClaim(backend:flag:) has been renamed to func recordCapabilityClaim(_:backend:flag:)
+API breakage: func BackendContractChecks.resetCapabilityClaims(forBackend:) has been renamed to func resetCapabilityClaims(_:forBackend:)
+API breakage: func BackendContractChecks.capturedClaims() has been renamed to func capturedClaims(_:)
+API breakage: func BackendContractChecks.unprovenClaims(backendName:capabilities:) has been renamed to func unprovenClaims(_:backendName:capabilities:)
+API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has been renamed to func assertCapabilityMetaContract(_:backendName:capabilities:file:line:)
+API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has been renamed to func assertGrammarFailClosedContract(_:backendName:makingBackend:forbiddenRequestURL:file:line:)
+API breakage: func BackendContractChecks.claimWithoutBehaviouralAssertion(backendName:flag:) has been renamed to func claimWithoutBehaviouralAssertion(_:backendName:flag:)
