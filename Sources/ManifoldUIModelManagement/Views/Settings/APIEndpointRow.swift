@@ -25,7 +25,7 @@ public struct APIEndpointRow: View {
 
                 Spacer()
 
-                Text(endpoint.provider.rawValue)
+                Text(endpoint.provider.displayName)
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
@@ -59,7 +59,7 @@ public struct APIEndpointRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(endpoint.name), \(endpoint.provider.rawValue), \(endpoint.modelName)")
+        .accessibilityLabel("\(endpoint.name), \(endpoint.provider.displayName), \(endpoint.modelName)")
         .accessibilityValue(accessibilityStatus)
         .accessibilityHint("Tap to edit")
     }

@@ -68,13 +68,24 @@ final class APIConfigurationLogicTests: XCTestCase {
         XCTAssertEqual(ids.count, APIProvider.allCases.count, "Each provider should have a unique ID")
     }
 
-    func test_provider_rawValues_areDisplayNames() {
-        // The raw values are used as display names in the UI picker.
-        XCTAssertEqual(APIProvider.openAI.rawValue, "OpenAI")
-        XCTAssertEqual(APIProvider.claude.rawValue, "Claude")
-        XCTAssertEqual(APIProvider.ollama.rawValue, "Ollama")
-        XCTAssertEqual(APIProvider.lmStudio.rawValue, "LM Studio")
-        XCTAssertEqual(APIProvider.custom.rawValue, "Custom")
+    func test_provider_rawValues_areStableCodes() {
+        // Since v0.68 (Wave 2 A1) raw values are stable opaque codes, not the
+        // display strings — those moved to `displayName`.
+        XCTAssertEqual(APIProvider.openAI.rawValue, "openAI")
+        XCTAssertEqual(APIProvider.openAIResponses.rawValue, "openAIResponses")
+        XCTAssertEqual(APIProvider.claude.rawValue, "claude")
+        XCTAssertEqual(APIProvider.ollama.rawValue, "ollama")
+        XCTAssertEqual(APIProvider.lmStudio.rawValue, "lmStudio")
+        XCTAssertEqual(APIProvider.custom.rawValue, "custom")
+    }
+
+    func test_provider_displayName_carriesHumanLabels() {
+        XCTAssertEqual(APIProvider.openAI.displayName, "OpenAI")
+        XCTAssertEqual(APIProvider.openAIResponses.displayName, "OpenAI Responses")
+        XCTAssertEqual(APIProvider.claude.displayName, "Claude")
+        XCTAssertEqual(APIProvider.ollama.displayName, "Ollama")
+        XCTAssertEqual(APIProvider.lmStudio.displayName, "LM Studio")
+        XCTAssertEqual(APIProvider.custom.displayName, "Custom")
     }
 
     // MARK: - Save validation logic
@@ -198,10 +209,10 @@ final class APIConfigurationLogicTests: XCTestCase {
     // The live predicate lives in `.onChange(of: provider)` (APIEndpointEditorView.swift:121)
     // and cannot be extracted without refactoring the View body.
 
-    /// The editor auto-fills the name with the provider's rawValue when name is empty
-    /// or matches another provider's rawValue.
+    /// The editor auto-fills the name with the provider's displayName when name is empty
+    /// or matches another provider's displayName.
     func test_providerSwitch_autoFillsName() {
-        let providerNames = APIProvider.allCases.map(\.rawValue)
+        let providerNames = APIProvider.allCases.map(\.displayName)
         let currentName = "OpenAI"
         let newProvider = APIProvider.claude
 
@@ -209,12 +220,12 @@ final class APIConfigurationLogicTests: XCTestCase {
         let shouldAutoFill = currentName.isEmpty || providerNames.contains(currentName)
         XCTAssertTrue(shouldAutoFill, "Should auto-fill name when current name matches a provider name")
 
-        let expectedName = newProvider.rawValue
+        let expectedName = newProvider.displayName
         XCTAssertEqual(expectedName, "Claude")
     }
 
     func test_providerSwitch_doesNotOverwriteCustomName() {
-        let providerNames = APIProvider.allCases.map(\.rawValue)
+        let providerNames = APIProvider.allCases.map(\.displayName)
         let currentName = "My Custom Server"
 
         let shouldAutoFill = currentName.isEmpty || providerNames.contains(currentName)

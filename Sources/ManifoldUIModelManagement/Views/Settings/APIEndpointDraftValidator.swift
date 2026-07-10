@@ -14,7 +14,7 @@ enum APIEndpointDraftValidator {
         let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
         let record = APIEndpointRecord(
-            name: provider.rawValue,
+            name: provider.displayName,
             provider: provider,
             baseURL: trimmedURL.isEmpty ? nil : trimmedURL,
             modelName: trimmedModel.isEmpty ? nil : trimmedModel
