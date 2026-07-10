@@ -44,8 +44,13 @@ public struct CloudProviderDescriptor: Sendable {
     public let displayName: String
 
     /// The canonical `BackendName`-compatible engine label emitted in load-event
-    /// logs. For providers that do not have a `BackendName` case, this falls back
-    /// to `displayName`.
+    /// logs and surfaced as `InferenceService.activeBackendName`.
+    ///
+    /// This is an **identity** string, not a display string (Wave 2 A1): for
+    /// providers with a `BackendName` case it is that case's raw value; for the
+    /// rest it is the stable `APIProvider` code (`"openAIResponses"`,
+    /// `"lmStudio"`, `"custom"`). When omitted it falls back to `providerID`.
+    /// Use `displayName` for anything a person reads.
     public let engineLabel: String
 
     /// Default base URL for the provider's API.
@@ -73,7 +78,9 @@ public struct CloudProviderDescriptor: Sendable {
     ) {
         self.providerID = providerID
         self.displayName = displayName
-        self.engineLabel = engineLabel ?? displayName
+        // Identity fallback: engineLabel feeds activeBackendName, so the
+        // stable providerID — not the display label — is the right default.
+        self.engineLabel = engineLabel ?? providerID
         self.defaultBaseURL = defaultBaseURL
         self.requiresAPIKey = requiresAPIKey
         self.defaultModelName = defaultModelName
@@ -231,7 +238,7 @@ extension CloudProviderDescriptor {
         CloudProviderDescriptor(
             providerID: APIProvider.openAIResponses.rawValue,
             displayName: "OpenAI Responses",
-            engineLabel: "OpenAI Responses",
+            engineLabel: "openAIResponses",
             defaultBaseURL: "https://api.openai.com",
             requiresAPIKey: true,
             defaultModelName: "gpt-5",
@@ -240,7 +247,7 @@ extension CloudProviderDescriptor {
         CloudProviderDescriptor(
             providerID: APIProvider.lmStudio.rawValue,
             displayName: "LM Studio",
-            engineLabel: "LM Studio",
+            engineLabel: "lmStudio",
             defaultBaseURL: "http://localhost:1234",
             requiresAPIKey: false,
             defaultModelName: "local-model",
@@ -249,7 +256,7 @@ extension CloudProviderDescriptor {
         CloudProviderDescriptor(
             providerID: APIProvider.custom.rawValue,
             displayName: "Custom",
-            engineLabel: "Custom",
+            engineLabel: "custom",
             defaultBaseURL: "https://",
             requiresAPIKey: true,
             defaultModelName: "model",
