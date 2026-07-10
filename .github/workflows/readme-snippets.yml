@@ -64,6 +64,11 @@ jobs:
     # Skip on draft PRs — CI runs once the PR is marked ready.
     if: github.event.pull_request.draft == false
     runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
+    # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
+    # min) can stall the whole org queue if this job hangs (#2099 CI review).
+    # 45 (not 30): recent real runs hit ~14 min and this job's duration grows
+    # with the snippet count, so keep >3x headroom.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
