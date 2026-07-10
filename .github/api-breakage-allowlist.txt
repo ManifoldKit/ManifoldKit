@@ -340,3 +340,4 @@ API breakage: enumelement ModelType.foundation is now static
 API breakage: enumelement ModelType.foundation has declared type change from (ManifoldHardware.ModelType.Type) -> ManifoldHardware.ModelType to ManifoldHardware.ModelType
 API breakage: func ModelType.hash(into:) has been removed
 API breakage: var ModelType.hashValue has been removed
+API breakage: enumelement GenerationCapabilityRequirement.streamingToolCalls has been removed

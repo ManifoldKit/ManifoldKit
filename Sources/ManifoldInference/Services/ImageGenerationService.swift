@@ -23,7 +23,10 @@ public enum ImageGenerationServiceError: Error, Equatable, Sendable {
 /// load / generate / unload, and the `@Observable` state machine that hosts
 /// observe to drive UI. Image-side state is intentionally separate from the
 /// text-side service: shipping a parallel type space is the umbrella-#1002
-/// architectural decision, so `ModelType`'s exhaustive switches stay closed.
+/// architectural decision. (`ModelType` moved from a closed enum to an
+/// open, `wellKnown`-backed struct — see wave2/B1 — so this separation is no
+/// longer about keeping an exhaustive switch closed; it is about keeping the
+/// image and text lifecycles independently extensible.)
 ///
 /// ## Decomposition (deferred)
 ///
