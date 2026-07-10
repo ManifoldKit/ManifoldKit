@@ -96,8 +96,9 @@ public final class ConnectAddressPinningDelegate: NSObject, URLSessionTaskDelega
         return PrivateIPClassifier.classifyIPLiteral(remoteAddress)
     }
 
-    /// Performs `session.data(for:)` with connect-time IP pinning attached, then
-    /// throws ``CloudBackendError/blockedAddress(_:)`` if URLSession connected to a
+    /// Performs `session.data(for:)` with DNS rebinding pre-flight, credentialed
+    /// host pin gate, and connect-time IP pinning attached, then throws
+    /// ``CloudBackendError/blockedAddress(_:)`` if URLSession connected to a
     /// private/reserved address (DNS rebinding) before returning the response body.
     ///
     /// `data(for:)` returns only after the task completes, by which point the
@@ -106,13 +107,28 @@ public final class ConnectAddressPinningDelegate: NSObject, URLSessionTaskDelega
     /// callers (Ollama model-list / probe, web search) use this instead of calling
     /// `data(for:)` directly so they get the same connect-time guarantee the SSE
     /// path has, without each call site re-implementing the check.
+    ///
+    /// On a blocked connect address the response body is zero-filled before the
+    /// throw so private-network payloads (e.g. cloud IMDS) do not linger in the
+    /// returned `Data` buffer even for the brief window before ARC reclaim.
     public static func pinnedData(
         for request: URLRequest,
         on session: URLSession
     ) async throws -> (Data, URLResponse) {
+        if let url = request.url {
+            try await DNSRebindingGuard.validate(url: url)
+            let hasCredentials = request.value(forHTTPHeaderField: "Authorization") != nil
+                || request.value(forHTTPHeaderField: "x-api-key") != nil
+                || request.value(forHTTPHeaderField: "api-key") != nil
+            try CredentialedHostTrustGate.check(url: url, hasCredentials: hasCredentials)
+        }
+
         let connectionGuard = ConnectAddressPinningDelegate()
-        let (data, response) = try await session.data(for: request, delegate: connectionGuard)
+        var (data, response) = try await session.data(for: request, delegate: connectionGuard)
         if let blocked = connectionGuard.blockedConnectedURL {
+            // Best-effort scrub: overwrite COW buffer contents so a blocked
+            // private-network body is not returned or retained as cleartext.
+            data.resetBytes(in: 0..<data.count)
             throw CloudBackendError.blockedAddress(
                 "Connection to \(blocked.host ?? "endpoint") resolved to a private/reserved address (DNS rebinding) — blocked"
             )

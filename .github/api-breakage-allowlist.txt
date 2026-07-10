@@ -121,6 +121,8 @@ API breakage: constructor RAGConfiguration.init(embeddingBackend:reranker:chunkS
 API breakage: constructor RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:) has been removed
 API breakage: func CloudMessageEncoder.encodeTools(_:) has been renamed to func encodeTools(_:strict:)
 API breakage: func CloudMessageEncoder.claudeEncodeToolDefinition(_:) has been renamed to func claudeEncodeToolDefinition(_:strict:)
+API breakage: enumelement CloudBackendError.unpinnedCredentialedHost has been added as a new enum case
+API breakage: constructor ManifoldConfiguration.init(appName:bundleIdentifier:modelsDirectoryName:features:fileProtectionClass:sseStreamLimits:keychainReaperEnabled:customHostTrustPolicy:useSecureEnclave:networkPolicy:) has been removed
 API breakage: func OpenAIToolEncoding.encodeToolDefinition(_:) has been renamed to func encodeToolDefinition(_:strict:)
 API breakage: enumelement StructuredOutputError.reaskBudgetExhausted has been added as a new enum case
 API breakage: enumelement UIToolApprovalGate.Policy.askOncePerTool has been added as a new enum case

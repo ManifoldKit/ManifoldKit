@@ -112,6 +112,7 @@ CloudBackendError.rateLimited EnumElement
 CloudBackendError.serverError EnumElement
 CloudBackendError.streamInterrupted EnumElement
 CloudBackendError.timeout EnumElement
+CloudBackendError.unpinnedCredentialedHost EnumElement
 CloudModelManifestTable Enum
 CloudModelManifestTable.claude(modelName:) Func
 CloudModelManifestTable.claudeManifests Var
@@ -339,6 +340,7 @@ ManifoldConfiguration.NetworkPolicy Enum
 ManifoldConfiguration.NetworkPolicy.__derived_enum_equals(_:_:) Func
 ManifoldConfiguration.NetworkPolicy.allowlist EnumElement
 ManifoldConfiguration.NetworkPolicy.unrestricted EnumElement
+ManifoldConfiguration.allowUnpinnedCredentialedHosts Var
 ManifoldConfiguration.appName Var
 ManifoldConfiguration.bundleIdentifier Var
 ManifoldConfiguration.customHostTrustPolicy Var
@@ -346,7 +348,7 @@ ManifoldConfiguration.downloadSessionIdentifier Var
 ManifoldConfiguration.features Var
 ManifoldConfiguration.fileProtectionClass Var
 ManifoldConfiguration.frameworkDefaultBundleIdentifier Var
-ManifoldConfiguration.init(appName:bundleIdentifier:modelsDirectoryName:features:fileProtectionClass:sseStreamLimits:keychainReaperEnabled:customHostTrustPolicy:useSecureEnclave:networkPolicy:) Constructor
+ManifoldConfiguration.init(appName:bundleIdentifier:modelsDirectoryName:features:fileProtectionClass:sseStreamLimits:keychainReaperEnabled:customHostTrustPolicy:allowUnpinnedCredentialedHosts:useSecureEnclave:networkPolicy:) Constructor
 ManifoldConfiguration.keychainReaperEnabled Var
 ManifoldConfiguration.keychainServiceName Var
 ManifoldConfiguration.logSubsystem Var

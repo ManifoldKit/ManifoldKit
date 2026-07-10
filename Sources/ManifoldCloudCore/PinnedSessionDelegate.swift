@@ -83,18 +83,26 @@ public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
         guard !_defaultPinsLoaded else { return }
         _defaultPinsLoaded = true
 
-        // Google Trust Services WE1 (intermediate — shared by both hosts)
+        // Google Trust Services WE1 (intermediate — shared by OpenAI/Anthropic/Jina)
         let gtsWE1 = "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4="
         // GTS Root R4 (root CA — backup pin for rotation safety)
         let gtsRootR4 = "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c="
-        let defaults = Set([gtsWE1, gtsRootR4])
+        let gtsDefaults = Set([gtsWE1, gtsRootR4])
+
+        // Let's Encrypt R13 intermediate + ISRG Root X1 (Cohere rerank host)
+        let leR13 = "AlSQhgtJirc8ahLyekmtX+Iw+v46yPYRLJt9Cq1GlB0="
+        let isrgRootX1 = "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M="
+        let leDefaults = Set([leR13, isrgRootX1])
 
         // Only set defaults if the host app hasn't already configured pins.
         // Access _pinnedHosts directly — we already hold the lock.
-        for host in ["api.anthropic.com", "api.openai.com"] {
+        for host in ["api.anthropic.com", "api.openai.com", "api.jina.ai"] {
             if _pinnedHosts[host] == nil {
-                _pinnedHosts[host] = defaults
+                _pinnedHosts[host] = gtsDefaults
             }
+        }
+        if _pinnedHosts["api.cohere.com"] == nil {
+            _pinnedHosts["api.cohere.com"] = leDefaults
         }
     }
 

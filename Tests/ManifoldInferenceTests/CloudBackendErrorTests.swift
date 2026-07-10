@@ -142,6 +142,22 @@ final class CloudBackendErrorTests: XCTestCase {
         XCTAssertFalse(error.errorDescription?.isEmpty ?? true)
     }
 
+    // MARK: - unpinnedCredentialedHost (H1)
+
+    func test_unpinnedCredentialedHost_isNotRetryable() {
+        XCTAssertFalse(
+            CloudBackendError.unpinnedCredentialedHost("api.example.com").isRetryable,
+            "unpinnedCredentialedHost must not retry — host configuration must change"
+        )
+    }
+
+    func test_unpinnedCredentialedHost_descriptionMentionsHostAndPins() {
+        let error = CloudBackendError.unpinnedCredentialedHost("api.example.com")
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(description.contains("api.example.com"), description)
+        XCTAssertTrue(description.lowercased().contains("pin"), description)
+    }
+
     // MARK: - New cases: quotaExceeded / providerOverloaded / contentFiltered
 
     func test_quotaExceeded_description_includesProvider() {

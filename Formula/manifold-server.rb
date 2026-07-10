@@ -44,15 +44,16 @@ class ManifoldServer < Formula
     <<~EOS
       manifold-server binds to 127.0.0.1:8080 by default.
 
-      Start with a specific backend (example — Ollama must be running):
-        manifold-server --backend ollama --model llama3.2
+      Start with a specific backend (example — Ollama must be running).
+      Unauthenticated loopback requires an explicit opt-in:
+        manifold-server --allow-anonymous --backend ollama --model llama3.2
 
-      Secure the server with an API key:
+      Recommended — secure with an API key (required for non-loopback binds):
         manifold-server --api-key sk-my-secret --backend ollama --model llama3.2
 
       Configure Cursor / Continue to use manifold-server:
         base URL : http://127.0.0.1:8080/v1
-        API key  : (the value you passed to --api-key, or leave blank)
+        API key  : (the value you passed to --api-key; any placeholder if --allow-anonymous)
         model    : (the model you specified with --model)
 
       For all flags:

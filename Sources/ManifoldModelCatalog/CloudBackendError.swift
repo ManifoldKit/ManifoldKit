@@ -28,6 +28,12 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
     /// IP address at connect time, indicating a potential DNS rebinding attack.
     /// The associated value describes which address triggered the block.
     case blockedAddress(String)
+    /// A credentialed request targeted a non-loopback host that has no SPKI pins
+    /// configured, and ``ManifoldConfiguration/allowUnpinnedCredentialedHosts``
+    /// is `false`. Fail closed so Authorization material is not sent under
+    /// platform trust alone (residual DNS-rebinding risk if TLS were to succeed
+    /// against a rebound private address).
+    case unpinnedCredentialedHost(String)
     /// The runtime kill-switch ``URLSessionProvider/networkDisabled`` was
     /// `true` when a cloud backend tried to obtain a `URLSession`. Belt-and-
     /// suspenders mitigation for regulated runtimes that need to lock the
@@ -65,7 +71,7 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
         case .serverError(let code, _) where code >= 500:
             return .retryableTransient
         case .invalidURL, .parseError, .backendDeallocated,
-             .blockedAddress, .networkDisabled, .serverError:
+             .blockedAddress, .unpinnedCredentialedHost, .networkDisabled, .serverError:
             return .nonRetryable
         }
     }
@@ -105,6 +111,8 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
             return "No response received for \(duration.components.seconds)s."
         case .blockedAddress(let detail):
             return "Connection blocked: the endpoint resolved to a private or reserved address. \(detail)"
+        case .unpinnedCredentialedHost(let host):
+            return "Credentialed request to unpinned host '\(host)' rejected. Add SPKI pins via PinnedSessionDelegate.pinnedHosts, or set ManifoldConfiguration.shared.allowUnpinnedCredentialedHosts = true only if you accept residual DNS-rebinding risk."
         case .networkDisabled:
             return "Network access is disabled by the runtime kill-switch (URLSessionProvider.networkDisabled)."
         case .quotaExceeded(let provider):
@@ -129,8 +137,8 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
         case .serverError(let statusCode, _):
             return statusCode >= 500
         case .invalidURL, .authenticationFailed, .parseError, .missingAPIKey,
-             .backendDeallocated, .blockedAddress, .networkDisabled,
-             .quotaExceeded, .contentFiltered:
+             .backendDeallocated, .blockedAddress, .unpinnedCredentialedHost,
+             .networkDisabled, .quotaExceeded, .contentFiltered:
             return false
         }
     }

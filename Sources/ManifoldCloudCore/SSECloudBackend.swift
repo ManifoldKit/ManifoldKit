@@ -618,6 +618,11 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         }
         let capturedStrategy = retryStrategy
         let capturedBaseURL = baseURL
+        // Snapshot credential presence from the built request so the validate
+        // closure does not re-enter Keychain on every retry.
+        let requestHasCredentials = request.value(forHTTPHeaderField: "Authorization") != nil
+            || request.value(forHTTPHeaderField: "x-api-key") != nil
+            || request.value(forHTTPHeaderField: "api-key") != nil
         return SSEGenerationTaskContext(
             request: request,
             eventIDTracker: eventIDTracker,
@@ -629,6 +634,12 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 if let url = capturedBaseURL {
                     try await DNSRebindingGuard.validate(url: url)
                 }
+                // H1: refuse credentialed requests to unpinned non-loopback hosts
+                // so Authorization is not sent under platform trust alone.
+                try CredentialedHostTrustGate.check(
+                    url: capturedBaseURL,
+                    hasCredentials: requestHasCredentials
+                )
             },
             metricSink: metricSink,
             traceSink: traceSink,
