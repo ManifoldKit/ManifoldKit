@@ -66,7 +66,9 @@ jobs:
     runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
     # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
     # min) can stall the whole org queue if this job hangs (#2099 CI review).
-    timeout-minutes: 30
+    # 45 (not 30): recent real runs hit ~14 min and this job's duration grows
+    # with the snippet count, so keep >3x headroom.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
