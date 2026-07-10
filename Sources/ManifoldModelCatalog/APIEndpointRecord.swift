@@ -8,7 +8,7 @@ import ManifoldHardware
 /// record, but inference orchestration only depends on the record so consumers
 /// with their own persistence layer can still call
 /// ``InferenceService/loadEndpointBackend(from:)``.
-public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
+public struct APIEndpointRecord: Sendable, Hashable, Identifiable, Codable {
     public var id: UUID
     public var name: String
     public var provider: APIProvider
@@ -17,6 +17,25 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
     public var keychainAccount: String
     public var createdAt: Date
     public var isEnabled: Bool
+
+    /// Explicit wire keys for ``APIEndpointRecord``'s `Codable` conformance.
+    ///
+    /// Pinned deliberately, not left to the memberwise-derived default: this
+    /// is a stable wire/persistence contract pre-1.0 for consumers who
+    /// serialize the record directly (headless / CLI callers per the
+    /// convenience initializer below, or hosts round-tripping it outside
+    /// SwiftData). Adding a case is additive; renaming or removing a case is
+    /// a breaking change to whatever already-serialized data exists.
+    public enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case provider
+        case baseURL
+        case modelName
+        case keychainAccount
+        case createdAt
+        case isEnabled
+    }
 
     public init(
         id: UUID = UUID(),

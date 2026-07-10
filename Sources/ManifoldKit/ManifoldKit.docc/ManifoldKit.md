@@ -26,7 +26,16 @@ and `ManifoldAppIntents`.
 Add the package, then drop this into your app entry point.
 ``ManifoldKit/quickStart(configuration:)`` builds the SwiftData container,
 registers the compiled-in backends, and wires up a `ChatViewModel` in one call.
-Errors surface as `ManifoldKitError`.
+
+Errors surface differently on the two rims of the API. Startup — building the
+SwiftData container, registering backends, wiring the view model — throws
+``/ManifoldModelCatalog/ManifoldKitError``, shown caught below. Once the chat
+is running, sending a turn (`ChatViewModel/sendMessage(_:)`) throws
+``/ManifoldUI/SendMessageError`` instead — a distinct typed error covering the
+turn-level preconditions (no active session, no model loaded) and the
+underlying ``/ManifoldRuntime/ConversationRuntime`` failure it wraps. Catch
+`ManifoldKitError` around the bootstrap path and `SendMessageError` around
+`sendMessage(_:)` calls — they are not interchangeable.
 
 ```swift
 import SwiftUI

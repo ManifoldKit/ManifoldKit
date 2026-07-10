@@ -360,8 +360,8 @@ let endpoint = APIEndpointRecord(
 // 2. Store the API key in the Keychain (throws on failure).
 try KeychainService.store(key: "sk-...", account: endpoint.keychainAccount)
 
-// 3. Persist the endpoint via the runtime's EndpointStore.
-try await runtime.endpointStore.insertEndpoint(endpoint)
+// 3. Persist the endpoint via the bootstrap's EndpointStore.
+try await bootstrap.endpointStore.insertEndpoint(endpoint)
 
 // 4. Route the chat view model to the new backend.
 await vm.loadCloudEndpoint(endpoint)
