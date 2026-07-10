@@ -7,7 +7,7 @@ import ManifoldRuntime
 /// declaration itself (so a scorer can read its own `custom` payload).
 ///
 /// Built on ``EvalRunOutput`` — no fourth scorer protocol, no parallel
-/// `Score` type (design v1 §3, "no fourth scorer protocol"). `output` is a
+/// `EvalScore` type (design v1 §3, "no fourth scorer protocol"). `output` is a
 /// projection of everything produced *up to and including* the checkpoint's
 /// `afterTurnIndex`, not just the final turn.
 ///
@@ -82,5 +82,5 @@ public protocol CheckpointScorer: Sendable {
     /// ``GoldenCheckpoint/custom`` keys.
     var id: String { get }
 
-    func score(_ context: CheckpointEvaluationContext) async -> Score
+    func score(_ context: CheckpointEvaluationContext) async -> EvalScore
 }

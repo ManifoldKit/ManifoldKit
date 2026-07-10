@@ -3,7 +3,7 @@ import ManifoldInference
 import ManifoldRuntime
 
 /// Routes a checkpoint's ``GoldenCheckpoint/custom`` payload to a registered
-/// ``EvalJudge``, reducing its ``JudgeVerdict`` to a pass/fail ``Score``
+/// ``EvalJudge``, reducing its ``JudgeVerdict`` to a pass/fail ``EvalScore``
 /// against the payload's declared `minScore` bar.
 ///
 /// A ``CheckpointScorer`` conformance, so it plugs into the exact same
@@ -84,16 +84,16 @@ public struct JudgedCheckpointScorer: CheckpointScorer {
         self.judge = judge
     }
 
-    public func score(_ context: CheckpointEvaluationContext) async -> Score {
+    public func score(_ context: CheckpointEvaluationContext) async -> EvalScore {
         guard let judge else {
-            return Score(
+            return EvalScore(
                 value: .unavailable,
                 explanation: "no EvalJudge registered for custom key '\(id)'",
                 metadata: ["assertion": "custom", "scorerID": id, "reason": "judge-absent"]
             )
         }
         guard let payload = context.checkpoint.custom?[id] else {
-            return Score(
+            return EvalScore(
                 value: .unavailable,
                 explanation: "checkpoint '\(context.checkpoint.displayLabel)' declares no custom payload for scorer id '\(id)'",
                 metadata: ["assertion": "custom", "scorerID": id, "reason": "no-payload"]
@@ -102,13 +102,13 @@ public struct JudgedCheckpointScorer: CheckpointScorer {
 
         switch Self.decode(payload, fixtureID: context.fixtureID, checkpointLabel: context.checkpoint.displayLabel) {
         case .malformed:
-            return Score(
+            return EvalScore(
                 value: .unavailable,
                 explanation: "custom payload for '\(id)' is not a judge-request object (expected fields: candidate (string), rubric (string), minScore (number); optional: content, reference (strings))",
                 metadata: ["assertion": "custom", "scorerID": id, "reason": "invalid-payload"]
             )
         case .missingMinScore:
-            return Score(
+            return EvalScore(
                 value: .bool(false),
                 explanation: "invalid judged payload for '\(id)': no minScore declared — a judge assertion with no pass bar can never pass; declare \"minScore\" (0.0–1.0) in the payload",
                 metadata: ["assertion": "custom", "scorerID": id, "reason": "missing-minScore"]
@@ -117,7 +117,7 @@ public struct JudgedCheckpointScorer: CheckpointScorer {
             do {
                 let verdict = try await judge.judge(request)
                 let passed = verdict.score >= minScore
-                return Score(
+                return EvalScore(
                     value: .bool(passed),
                     explanation: "judge score \(Self.format(verdict.score)) vs minScore \(Self.format(minScore)): \(verdict.rationale)",
                     metadata: [
@@ -132,7 +132,7 @@ public struct JudgedCheckpointScorer: CheckpointScorer {
                 Log.inference.warning(
                     "JudgedCheckpointScorer[\(id, privacy: .public)]: judge failed: \(String(describing: error), privacy: .public)"
                 )
-                return Score(
+                return EvalScore(
                     value: .unavailable,
                     explanation: "judge failed: \(error)",
                     metadata: ["assertion": "custom", "scorerID": id, "reason": "judge-error"]

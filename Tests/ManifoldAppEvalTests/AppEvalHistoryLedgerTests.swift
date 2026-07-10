@@ -7,8 +7,8 @@ import ManifoldAppEval
 final class AppEvalHistoryLedgerTests: XCTestCase {
 
     private func makeOutcome() -> AppEvalOutcome {
-        let passingScore = Score(value: .bool(true))
-        let failingScore = Score(value: .bool(false), explanation: "missing content")
+        let passingScore = EvalScore(value: .bool(true))
+        let failingScore = EvalScore(value: .bool(false), explanation: "missing content")
         return AppEvalOutcome(fixtures: [
             FixtureOutcome(fixtureID: "alpha", checkpoints: [
                 CheckpointOutcome(label: "c0", afterTurnIndex: 0, scores: ["requiredContent": passingScore]),

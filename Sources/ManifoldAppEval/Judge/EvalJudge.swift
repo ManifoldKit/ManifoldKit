@@ -76,7 +76,7 @@ public struct JudgeRequest: Sendable, Equatable {
 
 /// A judge's verdict on one ``JudgeRequest``.
 ///
-/// `Codable` (unlike ``Score``, which is deliberately not — see
+/// `Codable` (unlike ``EvalScore``, which is deliberately not — see
 /// `Score.swift`'s doc comment): `JudgeVerdict` is the on-disk shape
 /// ``CachingJudge`` persists, so its Codable conformance is load-bearing from
 /// day one, not a speculative addition.
@@ -122,7 +122,7 @@ public struct JudgeVerdict: Sendable, Equatable, Codable {
 /// fabricated verdict would violate the "absence is never scored as a
 /// failure" convention the built-in scorers already follow throughout this
 /// module. Callers that route a judge through ``JudgedCheckpointScorer``
-/// get that translation (`Score.unavailable`, never `.number(0)`) for free.
+/// get that translation (`ScoreValue.unavailable`, never `.number(0)`) for free.
 public protocol EvalJudge: Sendable {
     func judge(_ request: JudgeRequest) async throws -> JudgeVerdict
 }

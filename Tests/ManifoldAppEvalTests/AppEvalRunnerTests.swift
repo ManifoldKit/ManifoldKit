@@ -92,8 +92,8 @@ final class AppEvalRunnerTests: XCTestCase {
 
     private struct StubScorer: CheckpointScorer {
         let id: String
-        func score(_ context: CheckpointEvaluationContext) async -> Score {
-            Score(value: .bool(true))
+        func score(_ context: CheckpointEvaluationContext) async -> EvalScore {
+            EvalScore(value: .bool(true))
         }
     }
 

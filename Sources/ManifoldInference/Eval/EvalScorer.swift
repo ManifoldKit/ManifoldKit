@@ -39,5 +39,5 @@ public struct EvalRunOutput: Sendable {
 /// here as an `Expected == Void` conformance.
 public protocol EvalScorer<Expected>: Sendable {
     associatedtype Expected: Sendable
-    func score(output: EvalRunOutput, expected: Expected) async -> Score
+    func score(output: EvalRunOutput, expected: Expected) async -> EvalScore
 }

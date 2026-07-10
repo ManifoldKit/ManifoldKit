@@ -73,7 +73,7 @@ public enum AppEvalMarkdownRenderer {
         }
     }
 
-    private static func resultLabel(_ score: Score) -> String {
+    private static func resultLabel(_ score: EvalScore) -> String {
         switch score.value {
         case .bool(true): return "pass"
         case .bool(false): return "fail"
@@ -82,7 +82,7 @@ public enum AppEvalMarkdownRenderer {
         }
     }
 
-    private static func detail(_ score: Score) -> String {
+    private static func detail(_ score: EvalScore) -> String {
         var parts: [String] = []
         if let explanation = score.explanation, !explanation.isEmpty {
             parts.append(explanation)

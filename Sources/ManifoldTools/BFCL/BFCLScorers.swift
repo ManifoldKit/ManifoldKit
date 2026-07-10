@@ -6,16 +6,16 @@ import ManifoldInference
 ///
 /// A genuine ``EvalScorer`` conformance, not a veneer — the AST-match logic
 /// (``ASTMatcher/scoreCase(emittedCalls:groundTruth:)``) is the score function,
-/// and ``BFCLRunner`` drives the run through this type's `Score` output rather
+/// and ``BFCLRunner`` drives the run through this type's `EvalScore` output rather
 /// than reading a bool out of band.
 public struct BFCLASTScorer: EvalScorer {
     public typealias Expected = [BFCLExpectedCall]
 
     public init() {}
 
-    public func score(output: EvalRunOutput, expected: [BFCLExpectedCall]) async -> Score {
+    public func score(output: EvalRunOutput, expected: [BFCLExpectedCall]) async -> EvalScore {
         let result = ASTMatcher.scoreCase(emittedCalls: output.toolCalls, groundTruth: expected)
-        return Score(
+        return EvalScore(
             value: .bool(result.matched),
             explanation: result.matched ? nil : result.bestFailures.first.map { "\($0)" },
             metadata: ["scorer": "bfcl-ast"]
@@ -32,10 +32,10 @@ public struct BFCLNameOnlyScorer: EvalScorer {
 
     public init() {}
 
-    public func score(output: EvalRunOutput, expected: [BFCLExpectedCall]) async -> Score {
+    public func score(output: EvalRunOutput, expected: [BFCLExpectedCall]) async -> EvalScore {
         let nameMatched = output.toolCalls.contains { call in
             expected.contains { $0.functionName == call.toolName }
         }
-        return Score(value: .bool(nameMatched), metadata: ["scorer": "bfcl-name-only"])
+        return EvalScore(value: .bool(nameMatched), metadata: ["scorer": "bfcl-name-only"])
     }
 }

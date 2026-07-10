@@ -65,9 +65,9 @@ public struct CheckpointOutcome: Sendable {
     /// Scores keyed by ``BuiltInCheckpointAssertion/rawValue`` (built-ins) or
     /// the custom scorer's `id` — sorted by key before iteration wherever this
     /// is rendered (never dictionary-order, which is non-deterministic).
-    public let scores: [String: Score]
+    public let scores: [String: EvalScore]
 
-    public init(label: String, afterTurnIndex: Int, scores: [String: Score]) {
+    public init(label: String, afterTurnIndex: Int, scores: [String: EvalScore]) {
         self.label = label
         self.afterTurnIndex = afterTurnIndex
         self.scores = scores

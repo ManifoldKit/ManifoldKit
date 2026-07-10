@@ -18,19 +18,19 @@ final class ScoreTests: XCTestCase {
     }
 
     func testCompactMapDropsUnavailable() {
-        let scores: [Score] = [
-            Score(value: .number(1.0)),
-            Score(value: .unavailable),
-            Score(value: .bool(true)),
+        let scores: [EvalScore] = [
+            EvalScore(value: .number(1.0)),
+            EvalScore(value: .unavailable),
+            EvalScore(value: .bool(true)),
         ]
         let numeric = scores.compactMap(\.value.doubleValue)
         XCTAssertEqual(numeric, [1.0, 1.0])
     }
 
     func testEquatable() {
-        let a = Score(value: .bool(true), explanation: "matched", metadata: ["scorer": "x"])
-        let b = Score(value: .bool(true), explanation: "matched", metadata: ["scorer": "x"])
-        let c = Score(value: .bool(false), explanation: "matched", metadata: ["scorer": "x"])
+        let a = EvalScore(value: .bool(true), explanation: "matched", metadata: ["scorer": "x"])
+        let b = EvalScore(value: .bool(true), explanation: "matched", metadata: ["scorer": "x"])
+        let c = EvalScore(value: .bool(false), explanation: "matched", metadata: ["scorer": "x"])
         XCTAssertEqual(a, b)
         XCTAssertNotEqual(a, c)
     }

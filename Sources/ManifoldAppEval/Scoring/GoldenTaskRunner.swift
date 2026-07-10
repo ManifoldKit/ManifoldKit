@@ -31,9 +31,9 @@ public enum GoldenTaskRunner {
         /// Built-in scores keyed by ``BuiltInCheckpointAssertion/rawValue``,
         /// plus custom scores keyed by the app-registered scorer's `id`.
         /// Only assertion kinds the checkpoint actually declares are present.
-        public let scores: [String: Score]
+        public let scores: [String: EvalScore]
 
-        public init(checkpoint: GoldenCheckpoint, scores: [String: Score]) {
+        public init(checkpoint: GoldenCheckpoint, scores: [String: EvalScore]) {
             self.checkpoint = checkpoint
             self.scores = scores
         }
@@ -126,7 +126,7 @@ public enum GoldenTaskRunner {
                 fixtureID: context.fixtureID
             )
 
-            var scores: [String: Score] = [:]
+            var scores: [String: EvalScore] = [:]
             if let score = BuiltInCheckpointScorers.scoreRequiredContent(contextWithSnapshot) {
                 scores[BuiltInCheckpointAssertion.requiredContent.rawValue] = score
             }
@@ -147,7 +147,7 @@ public enum GoldenTaskRunner {
             }
             for (scorerID, payload) in (checkpoint.custom ?? [:]).sorted(by: { $0.key < $1.key }) {
                 guard let scorer = scorersByID[scorerID] else {
-                    scores[scorerID] = Score(
+                    scores[scorerID] = EvalScore(
                         value: .unavailable,
                         explanation: "no CheckpointScorer registered for custom key '\(scorerID)'",
                         metadata: ["assertion": "custom", "payload": describePayload(payload)]

@@ -15,57 +15,57 @@ public enum BuiltInCheckpointAssertion: String, Sendable, CaseIterable {
 
 /// Plain-function scorers for every built-in ``GoldenCheckpoint`` assertion
 /// kind. Each returns `nil` when the checkpoint doesn't declare that
-/// assertion (not scored — never a fabricated pass), and a ``Score`` when it
+/// assertion (not scored — never a fabricated pass), and a ``EvalScore`` when it
 /// does. These are functions, not ``CheckpointScorer`` conformances: they read
 /// fixed schema fields, not an opaque `custom` payload, so the id-dispatch
 /// seam ``CheckpointScorer`` provides doesn't apply.
 public enum BuiltInCheckpointScorers {
 
-    public static func scoreRequiredContent(_ context: CheckpointEvaluationContext) -> Score? {
+    public static func scoreRequiredContent(_ context: CheckpointEvaluationContext) -> EvalScore? {
         guard let required = context.checkpoint.requiredContent, !required.isEmpty else { return nil }
         let missing = required.filter { !context.output.visibleText.contains($0) }
         if missing.isEmpty {
-            return Score(value: .bool(true), metadata: ["assertion": "requiredContent"])
+            return EvalScore(value: .bool(true), metadata: ["assertion": "requiredContent"])
         }
-        return Score(
+        return EvalScore(
             value: .bool(false),
             explanation: "Missing required content: \(missing.joined(separator: ", "))",
             metadata: ["assertion": "requiredContent"]
         )
     }
 
-    public static func scoreForbiddenContent(_ context: CheckpointEvaluationContext) -> Score? {
+    public static func scoreForbiddenContent(_ context: CheckpointEvaluationContext) -> EvalScore? {
         guard let forbidden = context.checkpoint.forbiddenContent, !forbidden.isEmpty else { return nil }
         let present = forbidden.filter { context.output.visibleText.contains($0) }
         if present.isEmpty {
-            return Score(value: .bool(true), metadata: ["assertion": "forbiddenContent"])
+            return EvalScore(value: .bool(true), metadata: ["assertion": "forbiddenContent"])
         }
-        return Score(
+        return EvalScore(
             value: .bool(false),
             explanation: "Forbidden content present: \(present.joined(separator: ", "))",
             metadata: ["assertion": "forbiddenContent"]
         )
     }
 
-    public static func scoreExpectedEvents(_ context: CheckpointEvaluationContext) -> Score? {
+    public static func scoreExpectedEvents(_ context: CheckpointEvaluationContext) -> EvalScore? {
         guard let expectedRaw = context.checkpoint.expectedEvents, !expectedRaw.isEmpty else { return nil }
         let expected = expectedRaw.compactMap(ConversationEventKind.init(rawValue:))
         guard expected.count == expectedRaw.count else {
-            return Score(
+            return EvalScore(
                 value: .unavailable,
                 explanation: "One or more expectedEvents entries are not valid ConversationEventKind values: \(expectedRaw)",
                 metadata: ["assertion": "expectedEvents"]
             )
         }
         let result = EventSubsequenceChecker.check(context.eventKinds, against: expected)
-        return Score(
+        return EvalScore(
             value: .bool(result.passed),
             explanation: result.failureReason,
             metadata: ["assertion": "expectedEvents"]
         )
     }
 
-    public static func scoreExpectedToolCalls(_ context: CheckpointEvaluationContext) -> Score? {
+    public static func scoreExpectedToolCalls(_ context: CheckpointEvaluationContext) -> EvalScore? {
         guard let expected = context.checkpoint.expectedToolCalls, !expected.isEmpty else { return nil }
         var failures: [String] = []
         for expectation in expected {
@@ -89,9 +89,9 @@ public enum BuiltInCheckpointScorers {
             }
         }
         if failures.isEmpty {
-            return Score(value: .bool(true), metadata: ["assertion": "expectedToolCalls"])
+            return EvalScore(value: .bool(true), metadata: ["assertion": "expectedToolCalls"])
         }
-        return Score(
+        return EvalScore(
             value: .bool(false),
             explanation: failures.joined(separator: "; "),
             metadata: ["assertion": "expectedToolCalls"]
@@ -104,7 +104,7 @@ public enum BuiltInCheckpointScorers {
     /// (a pass can't be claimed while part of the declaration was never
     /// measured); a full pass requires every declared sub-assertion to have
     /// measured and held.
-    public static func scoreExpectedCompression(_ context: CheckpointEvaluationContext) -> Score? {
+    public static func scoreExpectedCompression(_ context: CheckpointEvaluationContext) -> EvalScore? {
         guard let expected = context.checkpoint.expectedCompression else { return nil }
         var failures: [String] = []
         var indeterminate: [String] = []
@@ -125,26 +125,26 @@ public enum BuiltInCheckpointScorers {
             if !indeterminate.isEmpty {
                 parts.append("also indeterminate: \(indeterminate.joined(separator: "; "))")
             }
-            return Score(
+            return EvalScore(
                 value: .bool(false),
                 explanation: parts.joined(separator: "; "),
                 metadata: ["assertion": "expectedCompression"]
             )
         }
         if !indeterminate.isEmpty {
-            return Score(
+            return EvalScore(
                 value: .unavailable,
                 explanation: indeterminate.joined(separator: "; "),
                 metadata: ["assertion": "expectedCompression"]
             )
         }
-        return Score(value: .bool(true), metadata: ["assertion": "expectedCompression"])
+        return EvalScore(value: .bool(true), metadata: ["assertion": "expectedCompression"])
     }
 
-    public static func scoreExpectedContextSlots(_ context: CheckpointEvaluationContext) -> Score? {
+    public static func scoreExpectedContextSlots(_ context: CheckpointEvaluationContext) -> EvalScore? {
         guard let expected = context.checkpoint.expectedContextSlots else { return nil }
         guard let actual = context.lastContextAssembledSlotCount else {
-            return Score(
+            return EvalScore(
                 value: .unavailable,
                 explanation: "expectedContextSlots declared but no contextAssembled event has fired yet",
                 metadata: ["assertion": "expectedContextSlots"]
@@ -158,9 +158,9 @@ public enum BuiltInCheckpointScorers {
             failures.append("assembled \(actual) slots, expected at most \(maxSlots)")
         }
         if failures.isEmpty {
-            return Score(value: .bool(true), metadata: ["assertion": "expectedContextSlots"])
+            return EvalScore(value: .bool(true), metadata: ["assertion": "expectedContextSlots"])
         }
-        return Score(
+        return EvalScore(
             value: .bool(false),
             explanation: failures.joined(separator: "; "),
             metadata: ["assertion": "expectedContextSlots"]

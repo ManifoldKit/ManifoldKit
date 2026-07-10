@@ -9,9 +9,10 @@ import Foundation
 /// breakdown) will add cases — `category(String)` / `dict([String: Double])` are
 /// the obvious next two and slot in additively.
 ///
-/// `Score` is intentionally **not** `Codable` in this phase: nothing persists a
-/// `Score` yet, so growing this enum stays a pure source-level (non-breaking)
-/// change. Freeze the on-disk shape only when a real persistence consumer exists.
+/// `EvalScore` is intentionally **not** `Codable` in this phase: nothing persists
+/// an `EvalScore` yet, so growing this enum stays a pure source-level
+/// (non-breaking) change. Freeze the on-disk shape only when a real persistence
+/// consumer exists.
 public enum ScoreValue: Sendable, Equatable {
     /// A continuous score (e.g. cosine similarity, a normalized grade).
     case number(Double)
@@ -40,7 +41,11 @@ public enum ScoreValue: Sendable, Equatable {
 /// Mirrors the per-sample `Score` shape common to the eval field (Inspect AI et
 /// al.): a `value` plus the optional `explanation` that makes a judge/structural
 /// verdict debuggable, and free-form `metadata` for scorer-specific detail.
-public struct Score: Sendable, Equatable {
+///
+/// Named `EvalScore` (not the bare `Score`) — a bare generic public name
+/// under the umbrella (N5); the eval namespace already has `ModelFitScore`
+/// and `CaseScore`, so this keeps the family consistently suffixed.
+public struct EvalScore: Sendable, Equatable {
     /// The verdict.
     public let value: ScoreValue
     /// The answer extracted from the run, if the scorer isolates one.

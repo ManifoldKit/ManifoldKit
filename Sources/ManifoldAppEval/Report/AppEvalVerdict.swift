@@ -53,7 +53,7 @@ public enum AppEvalVerdict: Sendable, Equatable {
     /// a bare `.number` into a gate would be verdict-inert (a `0.0` that
     /// still exits `0`); keep this invariant true when adding scorers, or
     /// extend this aggregation with an explicit threshold policy first.
-    public static func aggregate(_ scores: some Sequence<Score>) -> AppEvalVerdict {
+    public static func aggregate(_ scores: some Sequence<EvalScore>) -> AppEvalVerdict {
         for score in scores {
             switch score.value {
             case .bool(false):

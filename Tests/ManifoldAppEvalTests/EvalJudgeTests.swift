@@ -92,7 +92,7 @@ final class EvalJudgeTests: XCTestCase {
         )
     }
 
-    // MARK: - Full path: fixture → judged checkpoint → verdict → Score
+    // MARK: - Full path: fixture → judged checkpoint → verdict → EvalScore
 
     func test_fullPath_scoreAboveBar_passes() async throws {
         let judge = RecordingJudge(verdict: JudgeVerdict(score: 0.9, rationale: "all entities present"))
