@@ -1,4 +1,5 @@
 import XCTest
+@testable import ManifoldCloudCore
 @testable import ManifoldCloudSaaS
 import ManifoldInference
 import ManifoldTestSupport
@@ -14,15 +15,23 @@ final class CloudRerankerTests: XCTestCase {
     private var endpoint: URL!
     private var session: URLSession!
 
+    private var previousResolver: ((String) async -> [String]?)?
+
     override func setUp() {
         super.setUp()
         endpoint = URL(string: "https://rerank-\(UUID().uuidString).test/v2/rerank")!
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
         session = URLSession(configuration: config)
+        // pinnedData runs DNSRebindingGuard before MockURLProtocol; stub a
+        // public IP so pre-flight passes without touching the real resolver.
+        previousResolver = DNSRebindingGuard._resolverForTesting
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
     }
 
     override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = previousResolver
+        previousResolver = nil
         if let endpoint {
             MockURLProtocol.unstub(url: endpoint)
         }
