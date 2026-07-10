@@ -269,3 +269,9 @@ API breakage: func BackendContractChecks.unprovenClaims(backendName:capabilities
 API breakage: func BackendContractChecks.assertCapabilityMetaContract(backendName:capabilities:file:line:) has been renamed to func assertCapabilityMetaContract(_:backendName:capabilities:file:line:)
 API breakage: func BackendContractChecks.assertGrammarFailClosedContract(backendName:makingBackend:forbiddenRequestURL:file:line:) has been renamed to func assertGrammarFailClosedContract(_:backendName:makingBackend:forbiddenRequestURL:file:line:)
 API breakage: func BackendContractChecks.claimWithoutBehaviouralAssertion(backendName:flag:) has been renamed to func claimWithoutBehaviouralAssertion(_:backendName:flag:)
+API breakage: enum ManifoldSchemaV10 has been removed
+API breakage: enum ManifoldSchemaV3 has been removed
+API breakage: class ManifoldSchemaV4.ChatMessage has been removed
+API breakage: class ManifoldSchemaV4.ChatSession has been removed
+API breakage: enum ManifoldSchemaV7 has been removed
+API breakage: enum ManifoldSchemaV8 has been removed
