@@ -83,9 +83,7 @@ let input = TurnInput(
     sessionID: sessionID,
     kind: .send(text: "Summarise the attached document."),
     config: TurnConfig(
-        modelDescriptor: descriptor,
-        backend: backend,
-        generationConfig: GenerationConfig(temperature: 0.7)
+        generation: GenerationConfig(temperature: 0.7)
     )
 )
 
