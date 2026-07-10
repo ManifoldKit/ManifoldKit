@@ -11,8 +11,7 @@ import ManifoldTestSupport
 /// Published as part of the ``ManifoldBackendTestKit`` product so companion
 /// backend packages (manifold-mlx / manifold-llama) run the exact same
 /// contract suite against core's published API. See the DocC catalog for the
-/// adoption walkthrough, the no-`--parallel` rule, and the non-vacuity
-/// expectation.
+/// adoption walkthrough and the non-vacuity expectation.
 ///
 /// ## Three-category capability semantics (T1.1)
 ///
@@ -21,7 +20,7 @@ import ManifoldTestSupport
 ///
 /// 1. **Claimed-true** → at least one passing behaviour assertion must run for
 ///    that capability against this backend. Tracked via the claim registry below;
-///    the meta-contract test ``assertCapabilityMetaContract(backendName:capabilities:file:line:)``
+///    the meta-contract test ``assertCapabilityMetaContract(_:backendName:capabilities:file:line:)``
 ///    fails if any declared-true tracked flag has no claim.
 /// 2. **Claimed-false** → a fail-closed assertion must run. Disclaiming a
 ///    capability is a promise to fail-closed (e.g. backends with
@@ -32,21 +31,23 @@ import ManifoldTestSupport
 ///    `isRemote` — a static label, not a behaviour).
 ///
 /// Per-capability assertion families live as static methods on this enum. Each
-/// method calls ``recordCapabilityClaim(backend:flag:)`` when it runs against
+/// method calls ``recordCapabilityClaim(_:backend:flag:)`` when it runs against
 /// a backend whose capability matches the family's gate, so the meta-contract
 /// knows the claim was exercised.
 ///
 /// ## Adding a new backend
 ///
 /// 1. Subclass `XCTestCase` in your backend package's test target.
-/// 2. Add `test_contract_allInvariants()` calling the universal harness.
-/// 3. Add `test_contract_grammarFailClosed()` calling the false-claim family.
-/// 4. Add a single `test_contract_allCapabilityClaims()` that calls
-///    `BackendContractChecks.resetCapabilityClaims(forBackend:)` at the top,
-///    then all `claimWithoutBehaviouralAssertion` calls, then
-///    `assertCapabilityMetaContract(...)` — all in one method body.
-///    This keeps the entire registry lifecycle inside one process, so the
-///    test is safe under `swift test --parallel`.
+/// 2. Declare one `let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()`
+///    (or a per-mixin-required property — see ``BackendContractMixin``) owned by
+///    the test case instance.
+/// 3. Add `test_contract_allInvariants()` calling the universal harness.
+/// 4. Add `test_contract_grammarFailClosed()` calling the false-claim family.
+/// 5. Add a single `test_contract_allCapabilityClaims()` that calls
+///    `BackendContractChecks.resetCapabilityClaims(registry, forBackend:)` at the
+///    top, then all `claimWithoutBehaviouralAssertion` calls, then
+///    `assertCapabilityMetaContract(...)` — all in one method body, passing the
+///    same `registry` instance throughout.
 public enum BackendContractChecks {
 
     // MARK: - Original universal invariants (preserved verbatim)
@@ -89,46 +90,60 @@ public enum BackendContractChecks {
 
     // MARK: - Capability claim registry
 
-    /// Process-wide registry of `(backendName, capabilityFlag)` pairs that the
-    /// per-capability assertion families have exercised. The meta-contract
-    /// test reads this to decide whether every declared-true tracked flag has
-    /// been claimed.
+    /// Instance-scoped registry of `(backendName, capabilityFlag)` claim pairs
+    /// that the per-capability assertion families have exercised. The
+    /// meta-contract test reads a registry instance to decide whether every
+    /// declared-true tracked flag has been claimed.
     ///
-    /// Backed by an `NSLock`-protected `Set<String>` rather than an atomic
-    /// type, because `Atomic` requires `BitwiseCopyable` payloads that
-    /// `Set<String>` does not provide.
-    private static let claimsLock = NSLock()
-    private nonisolated(unsafe) static var claims: Set<String> = []
+    /// Own **one instance per test case** — e.g. a `let capabilityClaimRegistry
+    /// = BackendContractChecks.ClaimRegistry()` stored property on the adopting
+    /// `XCTestCase` subclass — and thread it through every call in this file.
+    /// XCTest instantiates a fresh instance of the test class per test method,
+    /// so a registry stored this way starts empty for every method invocation
+    /// with no cross-test or cross-class bleed. This replaced a process-global
+    /// `nonisolated(unsafe) static var` (arch-plan item 4.2, #2038-adjacent)
+    /// that made contract suites unsafe under `swift test --parallel` — the
+    /// registry no longer needs a lock, and the whole fleet's ban on
+    /// `--parallel` for these suites is lifted. See the DocC catalog.
+    public final class ClaimRegistry {
+        private var claims: Set<String> = []
+
+        public init() {}
+
+        func insert(_ key: String) {
+            claims.insert(key)
+        }
+
+        func removeAll(matchingPrefix prefix: String) {
+            claims = claims.filter { !$0.hasPrefix(prefix) }
+        }
+
+        var all: Set<String> { claims }
+    }
 
     /// Records that a per-capability assertion family ran against `backend`
-    /// for `flag`. Called from each assertion method below. Idempotent;
-    /// recording the same `(backend, flag)` twice is fine.
-    public static func recordCapabilityClaim(backend backendName: String, flag capabilityFlag: String) {
-        claimsLock.lock()
-        defer { claimsLock.unlock() }
-        claims.insert("\(backendName)::\(capabilityFlag)")
+    /// for `flag` in `registry`. Called from each assertion method below.
+    /// Idempotent; recording the same `(backend, flag)` twice is fine.
+    public static func recordCapabilityClaim(
+        _ registry: ClaimRegistry,
+        backend backendName: String,
+        flag capabilityFlag: String
+    ) {
+        registry.insert("\(backendName)::\(capabilityFlag)")
     }
 
-    /// Clears recorded claims for a specific backend. Call at the top of
-    /// `test_contract_allCapabilityClaims()` so each method invocation starts
-    /// with a clean slate without clobbering another backend's claims when
-    /// suites run under `--parallel`.
-    ///
-    /// This is intentionally backend-scoped rather than a full `removeAll()`:
-    /// a global clear could race with concurrently-running conformance classes,
-    /// wiping their in-flight claims.
-    public static func resetCapabilityClaims(forBackend backendName: String) {
-        claimsLock.lock()
-        defer { claimsLock.unlock() }
-        claims = claims.filter { !$0.hasPrefix("\(backendName)::") }
+    /// Clears `registry`'s recorded claims for a specific backend. Call at the
+    /// top of `test_contract_allCapabilityClaims()` — harmless (and normally a
+    /// no-op given a freshly-constructed `registry`), kept for symmetry and for
+    /// suites that build up several scenarios against one long-lived registry
+    /// within a single test method.
+    public static func resetCapabilityClaims(_ registry: ClaimRegistry, forBackend backendName: String) {
+        registry.removeAll(matchingPrefix: "\(backendName)::")
     }
 
-    /// Snapshot of the current claim set, taken under lock for stability under
-    /// `--parallel`.
-    public static func capturedClaims() -> Set<String> {
-        claimsLock.lock()
-        defer { claimsLock.unlock() }
-        return claims
+    /// Snapshot of `registry`'s current claim set.
+    public static func capturedClaims(_ registry: ClaimRegistry) -> Set<String> {
+        registry.all
     }
 
     // MARK: - Meta-contract: tracked flags + unproven detection
@@ -160,16 +175,18 @@ public enum BackendContractChecks {
     ]
 
     /// Returns the list of declared-true tracked flags for which `backendName`
-    /// has NO recorded claim. An empty result means the meta-contract is
-    /// satisfied. A non-empty result is the backend's "unproven claims" set.
+    /// has NO recorded claim in `registry`. An empty result means the
+    /// meta-contract is satisfied. A non-empty result is the backend's
+    /// "unproven claims" set.
     ///
     /// Reflects ``BackendCapabilities`` via Mirror — no per-flag conditional
     /// chain to maintain.
     public static func unprovenClaims(
+        _ registry: ClaimRegistry,
         backendName: String,
         capabilities: BackendCapabilities
     ) -> [String] {
-        let claimSet = capturedClaims()
+        let claimSet = capturedClaims(registry)
         var unproven: [String] = []
         let mirror = Mirror(reflecting: capabilities)
         for child in mirror.children {
@@ -186,16 +203,17 @@ public enum BackendContractChecks {
     }
 
     /// Asserts that every declared-true tracked flag for `backendName` has at
-    /// least one recorded claim. Call this at the end of
+    /// least one recorded claim in `registry`. Call this at the end of
     /// `test_contract_allCapabilityClaims()`, after all
     /// `claimWithoutBehaviouralAssertion` calls for the backend.
     public static func assertCapabilityMetaContract(
+        _ registry: ClaimRegistry,
         backendName: String,
         capabilities: BackendCapabilities,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let unproven = unprovenClaims(backendName: backendName, capabilities: capabilities)
+        let unproven = unprovenClaims(registry, backendName: backendName, capabilities: capabilities)
         XCTAssertTrue(
             unproven.isEmpty,
             """
@@ -218,12 +236,13 @@ public enum BackendContractChecks {
     /// ``InferenceError/unsupportedGrammar(reason:)`` rather than silently
     /// ignoring the constraint.
     ///
-    /// Records claim under `supportsGrammarConstrainedSampling` regardless of
-    /// the flag's value. When the flag is `true` this method is a no-op
-    /// (the true side will be claimed by a separate "grammar produces valid
-    /// output" family in a future patch).
+    /// Records claim under `supportsGrammarConstrainedSampling` in `registry`
+    /// regardless of the flag's value. When the flag is `true` this method is
+    /// a no-op (the true side will be claimed by a separate "grammar produces
+    /// valid output" family in a future patch).
     @MainActor
     public static func assertGrammarFailClosedContract<B: InferenceBackend>(
+        _ registry: ClaimRegistry,
         backendName: String,
         makingBackend makeBackend: () -> B,
         forbiddenRequestURL: URL? = nil,
@@ -235,7 +254,7 @@ public enum BackendContractChecks {
         // not the backend takes the false-side path. The same family proves
         // both shapes — true backends via "produces grammar-valid output"
         // (future) and false backends via "throws unsupportedGrammar" (here).
-        recordCapabilityClaim(backend: backendName, flag: "supportsGrammarConstrainedSampling")
+        recordCapabilityClaim(registry, backend: backendName, flag: "supportsGrammarConstrainedSampling")
 
         guard !backend.capabilities.supportsGrammarConstrainedSampling else {
             // Backend claims true; no fail-closed test to run here. The
@@ -283,7 +302,7 @@ public enum BackendContractChecks {
     // MARK: - True-claim convenience: claim-and-skip helper
 
     /// Convenience helper for capabilities whose true-claim assertion is not
-    /// yet implemented in this harness. Records the claim so the
+    /// yet implemented in this harness. Records the claim in `registry` so the
     /// meta-contract is satisfied, but does no further verification beyond
     /// the existing per-backend `BackendCapabilitiesContractTests`. This is
     /// the seam through which subsequent PRs grow the assertion families
@@ -294,9 +313,10 @@ public enum BackendContractChecks {
     /// is to bootstrap the meta-contract with the existing static-flag
     /// coverage; it is NOT a permanent escape hatch.
     public static func claimWithoutBehaviouralAssertion(
+        _ registry: ClaimRegistry,
         backendName: String,
         flag capabilityFlag: String
     ) {
-        recordCapabilityClaim(backend: backendName, flag: capabilityFlag)
+        recordCapabilityClaim(registry, backend: backendName, flag: capabilityFlag)
     }
 }

@@ -78,14 +78,6 @@ ManifoldInference/Services/ToolSpillReaper.swift:nonisolated(unsafe) private sta
 # around both the fast-path read and the write-after-fetch.
 ManifoldHuggingFace/PendingDownloadStore.swift:private nonisolated(unsafe) static var _cachedResumeHMACKey: SymmetricKey?
 
-# Guarded by the adjacent claimsLock (NSLock) — recordCapabilityClaim(_:)
-# and resetCapabilityClaims(forBackend:) both lock. The process-global
-# nature of this registry (not the locking) is why contract suites that use
-# it must not run under `swift test --parallel` (see CLAUDE.md /
-# ManifoldBackendTestKit's DocC catalog) — a logical cross-suite-ordering
-# concern, not a data race this audit covers.
-ManifoldBackendTestKit/BackendContractChecks.swift:private nonisolated(unsafe) static var claims: Set<String> = []
-
 # ---------------------------------------------------------------------------
 # Genuinely write-once-before-any-reader (documented boot-time contract)
 # ---------------------------------------------------------------------------

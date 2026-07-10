@@ -32,7 +32,13 @@ extension BackendContractMixin where Self: XCTestCase {
     }
 }
 
-public protocol GrammarFailClosedContractMixin: BackendContractMixin {}
+public protocol GrammarFailClosedContractMixin: BackendContractMixin {
+    /// Instance-scoped capability-claims registry owned by this test case.
+    /// Declare as a stored property, e.g.
+    /// `let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()`.
+    /// See ``BackendContractChecks/ClaimRegistry``.
+    var capabilityClaimRegistry: BackendContractChecks.ClaimRegistry { get }
+}
 
 extension GrammarFailClosedContractMixin where Self: XCTestCase {
     @MainActor
@@ -42,6 +48,7 @@ extension GrammarFailClosedContractMixin where Self: XCTestCase {
         line: UInt = #line
     ) async throws {
         try await BackendContractChecks.assertGrammarFailClosedContract(
+            capabilityClaimRegistry,
             backendName: contractBackendName,
             makingBackend: makeContractBackend,
             forbiddenRequestURL: forbiddenRequestURL,

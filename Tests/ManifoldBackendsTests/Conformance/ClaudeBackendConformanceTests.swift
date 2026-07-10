@@ -20,6 +20,11 @@ final class ClaudeBackendConformanceTests: XCTestCase {
 
     private let backendName = "ClaudeBackend"
 
+    // Instance-scoped: XCTest instantiates a fresh test case per method, so
+    // this registry starts empty for every method invocation. See
+    // BackendContractChecks.ClaimRegistry.
+    private let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+
     // MARK: - Universal invariants
 
     // Sabotage-evidence: assertAllInvariants trips on invariant 1 if init() sets isModelLoaded=true
@@ -38,6 +43,7 @@ final class ClaudeBackendConformanceTests: XCTestCase {
         defer { MockURLProtocol.unstub(url: messagesURL) }
 
         try await BackendContractChecks.assertGrammarFailClosedContract(
+            capabilityClaimRegistry,
             backendName: backendName,
             makingBackend: {
                 let backend = ClaudeBackend(urlSession: URLSession(configuration: sessionConfig))
@@ -55,10 +61,12 @@ final class ClaudeBackendConformanceTests: XCTestCase {
     // MARK: - Per-capability claims + meta-contract
 
     /// All bootstrap claims and the meta-contract assertion are collapsed into
-    /// one method so the registry is built and verified within a single process.
-    /// Under `swift test --parallel` each test method runs in an isolated worker
-    /// process; splitting claim recording across several methods meant the
-    /// meta-contract reader saw an empty registry in its worker. (#1601)
+    /// one method, threaded through one shared `capabilityClaimRegistry`
+    /// instance, so the registry is built and verified within a single test-case
+    /// lifetime. Historically necessary because the registry was process-global
+    /// (#1601); now the registry is instance-scoped (arch-plan 4.2) and this
+    /// suite is safe under `swift test --parallel` — the collapse remains as a
+    /// readable, self-contained shape, not a correctness requirement.
     ///
     /// `ClaudeBackend.capabilities.supportsThinking` is derived from
     /// ``ModelManifest`` via ``CloudModelManifestTable/claude(modelName:)``.
@@ -67,36 +75,44 @@ final class ClaudeBackendConformanceTests: XCTestCase {
     /// events lives in `ClaudeThinkingErrorPathTests` / `CloudThinkingTokenTests`;
     /// this claim records the meta-contract obligation.
     func test_contract_allCapabilityClaims() {
-        // Reset first so a prior run of this method in the same process doesn't
-        // leave stale claims that could mask a newly-removed flag.
-        BackendContractChecks.resetCapabilityClaims(forBackend: backendName)
+        // Reset first — harmless given a freshly-constructed registry, kept
+        // for symmetry with suites that build up several scenarios in one
+        // test method.
+        BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: backendName)
 
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsToolCalling"
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsStructuredOutput"
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsVision"
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "streamsToolCallArguments"
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsParallelToolCalls"
         )
         BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
             backendName: backendName,
             flag: "supportsThinking"
         )
 
         BackendContractChecks.assertCapabilityMetaContract(
+            capabilityClaimRegistry,
             backendName: backendName,
             capabilities: ClaudeBackend().capabilities
         )
