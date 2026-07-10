@@ -28,12 +28,14 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable, Codable {
     /// a breaking change to whatever already-serialized data exists.
     ///
     /// Note: the `provider` field's encoded *value* is ``APIProvider``'s raw
-    /// string, which is currently a display label (e.g. `"OpenAI Responses"`).
-    /// Those raw values are scheduled to migrate to stable opaque codes
-    /// pre-1.0 (API plan Wave 2, item A1) — and synthesized `Codable` throws
-    /// on an unrecognized raw value rather than falling back. Consumers
-    /// persisting this record as JSON today should expect that one-time value
-    /// migration; the key names themselves will not change.
+    /// string, which since v0.68 (API plan Wave 2, item A1) is a **stable
+    /// opaque code** (`"openAIResponses"`, `"lmStudio"`, …), not the display
+    /// label it used to be. ``APIProvider``'s custom `Codable` decodes both the
+    /// stable codes *and* the legacy pre-0.68 display strings (via
+    /// ``APIProvider/parse(_:)``), so JSON written by older builds still
+    /// decodes; encoding always emits the stable code. An unrecognised provider
+    /// string throws `DecodingError` rather than silently falling back. The key
+    /// names themselves are unchanged.
     public enum CodingKeys: String, CodingKey {
         case id
         case name

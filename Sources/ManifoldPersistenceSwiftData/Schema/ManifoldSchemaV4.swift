@@ -259,8 +259,13 @@ public enum ManifoldSchemaV4: VersionedSchema {
         }
 
         /// The provider type as an enum.
+        ///
+        /// Reads through ``APIProvider/parse(_:)`` so rows persisted before the
+        /// v0.68 stable-code migration (which stored display strings like
+        /// `"LM Studio"`) map to their real provider instead of collapsing to
+        /// `.custom`. The setter writes the stable code (`provider.rawValue`).
         public var provider: APIProvider {
-            get { APIProvider(rawValue: providerRawValue) ?? .custom }
+            get { APIProvider.parse(providerRawValue) ?? .custom }
             set { providerRawValue = newValue.rawValue }
         }
 

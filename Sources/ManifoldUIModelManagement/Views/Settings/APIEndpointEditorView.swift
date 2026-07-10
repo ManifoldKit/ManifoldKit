@@ -36,7 +36,7 @@ public struct APIEndpointEditorView: View {
                 Section("Provider") {
                     Picker("Provider", selection: $provider) {
                         ForEach(APIProvider.availableInBuild) { p in
-                            Text(p.rawValue).tag(p)
+                            Text(p.displayName).tag(p)
                         }
                     }
 
@@ -117,8 +117,8 @@ public struct APIEndpointEditorView: View {
                 if !isEditing {
                     baseURL = newProvider.defaultBaseURL
                     modelName = newProvider.defaultModelName
-                    if name.isEmpty || APIProvider.availableInBuild.map(\.rawValue).contains(name) {
-                        name = newProvider.rawValue
+                    if name.isEmpty || APIProvider.availableInBuild.map(\.displayName).contains(name) {
+                        name = newProvider.displayName
                     }
                 }
             }
@@ -135,7 +135,7 @@ public struct APIEndpointEditorView: View {
             modelName = endpoint.modelName
             // Don't populate apiKey — user must re-enter or leave blank to keep existing
         } else {
-            name = provider.rawValue
+            name = provider.displayName
             baseURL = provider.defaultBaseURL
             modelName = provider.defaultModelName
         }

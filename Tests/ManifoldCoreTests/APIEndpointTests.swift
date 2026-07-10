@@ -43,7 +43,8 @@ final class APIEndpointTests: XCTestCase {
 
         endpoint.provider = .ollama
         XCTAssertEqual(endpoint.provider, .ollama)
-        XCTAssertEqual(endpoint.providerRawValue, "Ollama")
+        // Raw values are stable opaque codes since v0.68 (Wave 2 A1), not display strings.
+        XCTAssertEqual(endpoint.providerRawValue, "ollama")
     }
 
     func test_provider_allCases_haveDefaultURL() {

@@ -59,4 +59,52 @@ final class APIEndpointRecordTests: XCTestCase {
         ]
         XCTAssertEqual(Set(json.keys), expectedKeys)
     }
+
+    // MARK: - Legacy provider-string migration (Wave 2 A1)
+
+    /// JSON written by a pre-0.68 build persisted the provider *display* string
+    /// (`"OpenAI Responses"`). It must still decode to the real provider, not
+    /// throw or collapse.
+    func test_legacyDisplayStringProvider_decodes() throws {
+        let id = UUID()
+        let legacyJSON = """
+        {
+            "id": "\(id.uuidString)",
+            "name": "My Responses",
+            "provider": "OpenAI Responses",
+            "baseURL": "https://api.openai.com",
+            "modelName": "gpt-5",
+            "keychainAccount": "acct-legacy",
+            "createdAt": 0,
+            "isEnabled": true
+        }
+        """
+        let decoded = try JSONDecoder().decode(
+            APIEndpointRecord.self,
+            from: Data(legacyJSON.utf8)
+        )
+        XCTAssertEqual(decoded.provider, .openAIResponses,
+                       "Legacy display string should map to the real provider")
+
+        // Re-encoding emits the stable opaque code, not the legacy display string.
+        let reencoded = try JSONEncoder().encode(decoded)
+        let json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: reencoded) as? [String: Any]
+        )
+        XCTAssertEqual(json["provider"] as? String, "openAIResponses",
+                       "Encoding must write the stable code, never the display string")
+    }
+
+    /// An unrecognised provider string is a routing hazard, so decode throws
+    /// rather than silently falling back.
+    func test_unknownProviderString_throws() {
+        let json = """
+        { "id": "\(UUID().uuidString)", "name": "x", "provider": "NotAProvider",
+          "baseURL": "https://example.com", "modelName": "m",
+          "keychainAccount": "a", "createdAt": 0, "isEnabled": true }
+        """
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(APIEndpointRecord.self, from: Data(json.utf8))
+        )
+    }
 }
