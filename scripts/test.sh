@@ -201,6 +201,12 @@ PROFILE_CI_XCTEST_FILTERS=(
     # App-eval harness (estate#1 wave 1): schema/mapper/scorer/renderer/ledger
     # unit tests + the MK-compression-golden dogfood, all hermetic.
     ManifoldAppEvalTests
+    # Public-API freeze suite: compile-time surface fixtures + the
+    # public-surface baseline well-formedness tripwire
+    # (PublicSurfaceBaselineTests). Fast (<1s) and hermetic — the heavy
+    # digester-backed check stays behind RUN_API_SURFACE_BASELINE_CHECK=1
+    # and the nightly api-surface-baseline job (wave-2 item 0.A).
+    APIFreezeTests
 )
 # Local-profile filters extend the CI list with the umbrella + HuggingFace
 # suites.

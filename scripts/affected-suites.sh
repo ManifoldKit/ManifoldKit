@@ -67,6 +67,7 @@ TEST_JOB_SUITES=(
   ManifoldBackendsTests
   ManifoldInferenceSwiftTestingTests
   ManifoldAppEvalTests
+  APIFreezeTests
 )
 
 # ---------------------------------------------------------------------------
@@ -245,6 +246,18 @@ affected_add() {
 
 # ---- Map each changed path to its owning target (longest path-prefix match) --
 for p in "${CHANGED[@]}"; do
+  # Special-case: the public-surface baseline tooling lives under scripts/,
+  # but APIFreezeTests (PublicSurfaceBaselineTests) asserts its presence,
+  # executability, and output contract — an edit to either script must run
+  # that suite. (The baseline .txt files themselves live under
+  # Tests/APIFreezeTests/ and map via the normal prefix rule below.)
+  case "$p" in
+    scripts/api-surface-baseline.sh|scripts/_lib/api-surface-extract.py)
+      changed_targets_add "APIFreezeTests"
+      log "changed: $p → target APIFreezeTests (surface-baseline tooling)"
+      continue
+      ;;
+  esac
   # Only Sources/ and Tests/ paths can map to a target. Anything else (docs,
   # READMEs, …) cannot affect compiled test outcomes and is ignored.
   case "$p" in
