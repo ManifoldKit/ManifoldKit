@@ -26,6 +26,14 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable, Codable {
     /// convenience initializer below, or hosts round-tripping it outside
     /// SwiftData). Adding a case is additive; renaming or removing a case is
     /// a breaking change to whatever already-serialized data exists.
+    ///
+    /// Note: the `provider` field's encoded *value* is ``APIProvider``'s raw
+    /// string, which is currently a display label (e.g. `"OpenAI Responses"`).
+    /// Those raw values are scheduled to migrate to stable opaque codes
+    /// pre-1.0 (API plan Wave 2, item A1) — and synthesized `Codable` throws
+    /// on an unrecognized raw value rather than falling back. Consumers
+    /// persisting this record as JSON today should expect that one-time value
+    /// migration; the key names themselves will not change.
     public enum CodingKeys: String, CodingKey {
         case id
         case name
