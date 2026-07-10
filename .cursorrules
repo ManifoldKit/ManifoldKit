@@ -8,5 +8,6 @@ avoid); Part 2 covers contributing to this repo. CLAUDE.md is a thin stub
 that imports AGENTS.md.
 
 Do not rely on memorized ManifoldKit API knowledge — the package is pre-1.0
-and minor versions break; AGENTS.md is kept current and compile-checked,
-this file deliberately carries no API facts.
+and minor versions break; AGENTS.md is kept current (`AgentsMdAuditTest`
+fails CI if it drifts from the live API), and this file deliberately
+carries no API facts.
