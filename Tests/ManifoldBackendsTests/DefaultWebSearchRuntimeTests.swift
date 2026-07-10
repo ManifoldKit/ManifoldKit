@@ -18,6 +18,23 @@ import ManifoldTestSupport
 @MainActor
 final class DefaultWebSearchRuntimeTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        // `DefaultWebSearchRuntime.search` routes through
+        // `ConnectAddressPinningDelegate.pinnedData`, which now runs
+        // `DNSRebindingGuard.validate(url:)` as a pre-flight (this PR). The
+        // fake `*.test` hostnames these tests stub via `MockURLProtocol` don't
+        // resolve on a real resolver, so the guard would block every request
+        // before it reaches the mock. Inject a deterministic public address,
+        // matching the pattern used by `OpenAIBackendTests`/`ClaudeBackendTests`.
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
+
     // MARK: - Test token provider
 
     private struct StaticTokenProvider: TokenProvider {
