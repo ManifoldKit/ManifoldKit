@@ -340,9 +340,9 @@ ManifoldConfiguration.NetworkPolicy Enum
 ManifoldConfiguration.NetworkPolicy.__derived_enum_equals(_:_:) Func
 ManifoldConfiguration.NetworkPolicy.allowlist EnumElement
 ManifoldConfiguration.NetworkPolicy.unrestricted EnumElement
+ManifoldConfiguration.allowUnpinnedCredentialedHosts Var
 ManifoldConfiguration.appName Var
 ManifoldConfiguration.bundleIdentifier Var
-ManifoldConfiguration.allowUnpinnedCredentialedHosts Var
 ManifoldConfiguration.customHostTrustPolicy Var
 ManifoldConfiguration.downloadSessionIdentifier Var
 ManifoldConfiguration.features Var
