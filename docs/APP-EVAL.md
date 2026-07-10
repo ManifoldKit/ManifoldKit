@@ -132,11 +132,11 @@ struct MyAppProbe: ScenarioStateProbe {
 
 struct MyGraphScorer: CheckpointScorer {
     let id = "my-graph-scorer"
-    func score(_ context: CheckpointEvaluationContext) async -> Score {
+    func score(_ context: CheckpointEvaluationContext) async -> EvalScore {
         guard let graph = context.snapshot as? MyGraphSnapshot else {
-            return Score(value: .unavailable, explanation: "no graph snapshot available")
+            return EvalScore(value: .unavailable, explanation: "no graph snapshot available")
         }
-        // ... your domain assertion, returning Score(value: .bool(...)) ...
+        // ... your domain assertion, returning EvalScore(value: .bool(...)) ...
     }
 }
 
