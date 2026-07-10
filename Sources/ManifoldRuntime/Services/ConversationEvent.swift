@@ -62,9 +62,17 @@ import ManifoldInference
 /// generation host adapters need to extend even when they don't drive their
 /// own turn loop.
 ///
-/// Adding cases is allowed (source-breaking for exhaustive `switch`
-/// consumers — we accept that pre-1.0); renaming or removing requires
-/// coordination per the runtime ports plan.
+/// ## Vocabulary posture: open pre- and post-1.0
+///
+/// Unlike ``/ManifoldContract/GenerationEvent`` (frozen at 1.0), the
+/// `ConversationEvent` case set stays **open indefinitely** — new lifecycle,
+/// tool-call, skill, hook, and handoff cases can land in a MINOR release
+/// both before and after the 1.0 line, per the runtime ports plan. Adding a
+/// case is source-breaking only for exhaustive `switch` statements.
+/// Public-facing / cross-module consumers that switch over `ConversationEvent`
+/// should add an `@unknown default:` arm so a future case does not fail to
+/// compile. Renaming or removing an existing case remains a coordinated
+/// breaking change, gated the same as any other public API.
 public enum ConversationEvent: Sendable {
 
     // MARK: Lifecycle

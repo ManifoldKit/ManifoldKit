@@ -49,6 +49,12 @@ public struct PromptContextRequest: Sendable, Hashable {
 /// case set is deliberately small — backends and the runtime collapse a
 /// richer underlying lifecycle into one of these four high-level outcomes
 /// before emitting.
+///
+/// This enum stays **open pre- and post-1.0**, mirroring ``ConversationEvent``'s
+/// posture rather than ``/ManifoldContract/GenerationEvent``'s freeze: a new
+/// high-level outcome can be added in a MINOR release at any point. Consumers
+/// with an exhaustive `switch` over `FinishReason` should add an
+/// `@unknown default:` arm.
 public enum FinishReason: Sendable, Hashable {
     /// Stream ended normally — backend emitted its terminal event.
     case stop
@@ -78,6 +84,11 @@ public enum FinishReason: Sendable, Hashable {
 /// flows (PR-B/PR-C) and Phase 1.2.5 follow-ups so adopters can subscribe
 /// today and receive events when later PRs route compression through the
 /// runtime.
+///
+/// This enum stays **open pre- and post-1.0**, mirroring ``ConversationEvent``'s
+/// posture: a new compression trigger can be added in a MINOR release at any
+/// point. Consumers with an exhaustive `switch` over `CompressionReason`
+/// should add an `@unknown default:` arm.
 public enum CompressionReason: Sendable, Hashable {
     /// Total prompt tokens (history + system + reserve) exceeded the
     /// configured context window. Older messages were dropped to fit.
