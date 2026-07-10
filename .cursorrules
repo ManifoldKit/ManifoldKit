@@ -1,22 +1,13 @@
-This project uses ManifoldKit, a Swift framework for building chat
-interfaces backed by local and cloud LLMs on Apple platforms.
+This project is ManifoldKit, a Swift package for building chat interfaces
+backed by local and cloud LLMs on Apple platforms.
 
-Read AGENTS.md at the repo root for the canonical API surface, common LLM
-hallucinations to avoid, and recipe code that compiles against the current
-release. CLAUDE.md is for contributors; AGENTS.md is for consumers.
+Read AGENTS.md at the repo root before generating any code. It is the
+canonical, audited instruction file for ALL AI coding assistants: Part 1
+covers consuming the ManifoldKit API (including common LLM hallucinations to
+avoid); Part 2 covers contributing to this repo. CLAUDE.md is a thin stub
+that imports AGENTS.md.
 
-Key facts when generating code that uses ManifoldKit:
-
-- The send method is `vm.sendMessage(_:)`, not `.send(_:)`.
-- Backend identity is the typed `BackendName.foundation`, not a raw string.
-- The `@ToolSchema` macro requires `--traits Macros` (default-off). Without
-  the trait, declare `JSONSchemaValue` by hand.
-- The `ManifoldKit` umbrella product re-exports the most-imported modules
-  (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
-  `ManifoldUI`, plus the backend umbrellas). Specialised modules
-  (`ManifoldUIModelManagement`, `ManifoldHuggingFace`, …) stay opt-in.
-- The current release is 0.20.0. ManifoldKit is pre-1.0; minor versions can break.
-- View models are Swift `@Observable` + `@MainActor`. Never `ObservableObject`,
-  never `Task.detached` from a `@MainActor` class.
-
-See AGENTS.md for the canonical bootstrap recipe and working code examples.
+Do not rely on memorized ManifoldKit API knowledge — the package is pre-1.0
+and minor versions break; AGENTS.md is kept current (`AgentsMdAuditTest`
+fails CI if it drifts from the live API), and this file deliberately
+carries no API facts.

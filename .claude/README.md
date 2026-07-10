@@ -12,10 +12,12 @@ CLI agent. Most files in here are **per-developer state and are gitignored**.
 | `settings.local.json` | **no** | Per-developer agent allowlist. Holds the local set of pre-approved Bash commands, MCP servers, etc. |
 | `scheduled_tasks.lock` | no | Runtime lock file written by the agent. |
 | `worktrees/` | no | Isolation worktrees the agent creates while working on multiple branches in parallel. |
+| `known-issues.md` | **no** | Machine-local or private known-issue notes only. Durable, shareable known issues are filed as GitHub issues instead; this file may hold one-line symptom pointers to those issues plus anything genuinely private or machine-specific. |
+| `skills/` | yes (if present) | Project-local Claude Code skills. Currently absent. |
 
-The `.gitignore` rule is `.claude/*` with explicit re-includes for `README.md`
-and `settings.json` — anything else dropped in here will be ignored without
-further configuration.
+The `.gitignore` rule is `.claude/*` with explicit re-includes for `README.md`,
+`settings.json`, and `.claude/skills/**` — anything else dropped in here will
+be ignored without further configuration.
 
 ## Why `settings.local.json` is local
 
