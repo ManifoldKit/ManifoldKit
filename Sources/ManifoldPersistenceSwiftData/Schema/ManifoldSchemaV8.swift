@@ -18,10 +18,10 @@ import ManifoldRuntime
 ///
 /// All other model types (``ChatMessage`` at V7, sampler preset, API endpoint,
 /// benchmark cache, RAG document, usage record) are carried forward unchanged.
-public enum ManifoldSchemaV8: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(8, 0, 0)
+enum ManifoldSchemaV8: VersionedSchema {
+    static let versionIdentifier = Schema.Version(8, 0, 0)
 
-    public static var models: [any PersistentModel.Type] {
+    static var models: [any PersistentModel.Type] {
         [
             ManifoldSchemaV7.ChatMessage.self,
             ChatSession.self,
@@ -42,7 +42,7 @@ public enum ManifoldSchemaV8: VersionedSchema {
     /// no longer need to maintain their own `Set<UUID>` of pinned IDs in
     /// `UserDefaults` and reconcile it across deletes.
     @Model
-    public final class ChatSession {
+    final class ChatSession {
         public var id: UUID
         public var title: String
         public var createdAt: Date

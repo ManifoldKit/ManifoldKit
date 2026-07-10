@@ -11,10 +11,10 @@ import ManifoldRuntime
 ///
 /// All prior model types (session, sampler preset, API endpoint, benchmark
 /// cache, RAG document, usage record) are carried forward unchanged.
-public enum ManifoldSchemaV7: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(7, 0, 0)
+enum ManifoldSchemaV7: VersionedSchema {
+    static let versionIdentifier = Schema.Version(7, 0, 0)
 
-    public static var models: [any PersistentModel.Type] {
+    static var models: [any PersistentModel.Type] {
         [
             ChatMessage.self,
             ManifoldSchemaV4.ChatSession.self,
@@ -34,7 +34,7 @@ public enum ManifoldSchemaV7: VersionedSchema {
     /// - `kindRaw`: raw storage for ``MessageKind`` (defaults to `"chat"`)
     /// - `citationsJSON`: JSON-encoded `[Citation]` array (nil when not RAG-augmented)
     @Model
-    public final class ChatMessage {
+    final class ChatMessage {
         public var id: UUID
         public var role: MessageRole
         public var timestamp: Date

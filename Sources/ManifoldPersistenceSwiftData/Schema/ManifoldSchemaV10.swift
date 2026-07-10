@@ -21,10 +21,10 @@ import ManifoldRuntime
 /// motion. Every other model type (ChatSession, ChatMessage, Agent, sampler
 /// preset, API endpoint, benchmark cache, RAG document, usage record) is
 /// carried forward from V9 unchanged.
-public enum ManifoldSchemaV10: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(10, 0, 0)
+enum ManifoldSchemaV10: VersionedSchema {
+    static let versionIdentifier = Schema.Version(10, 0, 0)
 
-    public static var models: [any PersistentModel.Type] {
+    static var models: [any PersistentModel.Type] {
         [
             // Carried forward verbatim from V9 — V10 does not redefine these.
             ManifoldSchemaV9.ChatMessage.self,
@@ -49,7 +49,7 @@ public enum ManifoldSchemaV10: VersionedSchema {
     /// shape is stable across enum-case reordering. `maxSteps` is optional and
     /// mirrors the value type's "nil means unlimited" contract.
     @Model
-    public final class ConversationRunModel {
+    final class ConversationRunModel {
         @Attribute(.unique) public var id: UUID
         public var sessionID: UUID
         public var goal: String
@@ -133,7 +133,7 @@ public enum ManifoldSchemaV10: VersionedSchema {
     /// logged, never thrown. This matches the value type, where `turnInput`
     /// is already nil-able for goal-derived steps.
     @Model
-    public final class RunStepModel {
+    final class RunStepModel {
         @Attribute(.unique) public var id: UUID
         public var runID: UUID
         public var stepIndex: Int
