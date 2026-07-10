@@ -11,9 +11,7 @@ final class EnqueueGrammarDefaultNilTests: XCTestCase {
         backend.tokensToYield = ["x"]
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")]
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
 
         for try await _ in stream.events {}
 

@@ -26,10 +26,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: true)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            tools: [tool("get_weather"), tool("get_time")]
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("get_weather"), tool("get_time")]))
         for try await _ in stream.events {}
 
         let grammar = try XCTUnwrap(backend.lastConfig?.grammar)
@@ -52,11 +49,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: true)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            tools: [tool("a"), tool("b")],
-            toolChoice: .auto
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("a"), tool("b")], toolChoice: .auto))
         for try await _ in stream.events {}
 
         let grammar = try XCTUnwrap(backend.lastConfig?.grammar)
@@ -70,11 +63,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: true)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            tools: [tool("a"), tool("b")],
-            toolChoice: .required
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("a"), tool("b")], toolChoice: .required))
         for try await _ in stream.events {}
 
         let grammar = try XCTUnwrap(backend.lastConfig?.grammar)
@@ -85,11 +74,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: true)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            tools: [tool("a"), tool("b"), tool("c")],
-            toolChoice: .tool(name: "b")
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("a"), tool("b"), tool("c")], toolChoice: .tool(name: "b")))
         for try await _ in stream.events {}
 
         let grammar = try XCTUnwrap(backend.lastConfig?.grammar)
@@ -102,11 +87,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: true)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            tools: [tool("a")],
-            toolChoice: .none
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("a")], toolChoice: .none))
         for try await _ in stream.events {}
 
         XCTAssertNil(backend.lastConfig?.grammar, ".none must not inject a tool-call grammar")
@@ -116,10 +97,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: false)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            tools: [tool("get_weather")]
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("get_weather")]))
         for try await _ in stream.events {}
 
         XCTAssertNil(backend.lastConfig?.grammar, "no grammar capability → no derived grammar")
@@ -130,11 +108,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let service = InferenceService(backend: backend, name: "Mock")
 
         let caller = "root ::= \"x\""
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hi")],
-            grammar: caller,
-            tools: [tool("get_weather")]
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig(tools: [tool("get_weather")], grammar: caller))
         for try await _ in stream.events {}
 
         XCTAssertEqual(
@@ -148,7 +122,7 @@ final class EnqueueToolGrammarWiringTests: XCTestCase {
         let backend = makeBackend(grammar: true)
         let service = InferenceService(backend: backend, name: "Mock")
 
-        let (_, stream) = try service.enqueue(messages: [("user", "hi")])
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         for try await _ in stream.events {}
 
         XCTAssertNil(backend.lastConfig?.grammar, "no tools → nothing to constrain")

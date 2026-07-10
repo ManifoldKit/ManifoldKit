@@ -116,7 +116,7 @@ final class GenerationQueueStructuredHistoryTests: XCTestCase {
             ]),
             StructuredMessage(role: "user", parts: [.text("again")]),
         ]
-        let (_, stream) = try coordinator.enqueue(structuredMessages: history)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: history, config: GenerationConfig())
         for try await _ in stream.events {}
 
         let observed = try XCTUnwrap(provider.backend.lastReceivedStructuredHistory)

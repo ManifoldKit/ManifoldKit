@@ -61,7 +61,7 @@ final class InferenceServiceObservationTests: XCTestCase {
             changed.fulfill()
         }
 
-        _ = try service.enqueue(messages: [("user", "hi")])
+        _ = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         wait(for: [changed], timeout: 2)
         XCTAssertTrue(service.isGenerating)
     }

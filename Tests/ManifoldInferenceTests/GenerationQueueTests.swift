@@ -185,10 +185,7 @@ final class GenerationQueueTests: XCTestCase {
         // The coordinator must reject the request with a clear error before
         // any stream is created — the warning fires, then the throw follows.
         XCTAssertThrowsError(
-            try coordinator.enqueue(
-                messages: [("user", "What's the weather?")],
-                tools: [tool]
-            )
+            try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "What's the weather?")], config: GenerationConfig(tools: [tool]))
         ) { error in
             guard case InferenceError.inferenceFailure(let msg) = error else {
                 XCTFail("expected InferenceError.inferenceFailure, got \(error)")
@@ -219,7 +216,7 @@ final class GenerationQueueTests: XCTestCase {
         }
         defer { GenerationQueue.toolsUnsupportedWarningHook = nil }
 
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "hi")])
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig())
         for try await _ in stream.events {}
 
         XCTAssertTrue(captured.snapshot().isEmpty,
@@ -250,10 +247,7 @@ final class GenerationQueueTests: XCTestCase {
             name: "get_weather",
             description: "Lookup the weather for a city"
         )
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            tools: [tool]
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(tools: [tool]))
         for try await _ in stream.events {}
 
         XCTAssertTrue(captured.snapshot().isEmpty,
@@ -264,14 +258,14 @@ final class GenerationQueueTests: XCTestCase {
         // Saturate the coordinator: one active plus eight queued is the hard cap
         // (maxQueueDepth == 8 counts queued requests only).
         for i in 0..<9 {
-            _ = try coordinator.enqueue(messages: [("user", "msg \(i)")], priority: .normal)
+            _ = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "msg \(i)")], config: GenerationConfig(), priority: .normal)
         }
 
         // The 10th enqueue must throw the "queue is full" variant of
         // InferenceError.inferenceFailure — pin the message so a future
         // dedicated error case doesn't regress the text silently.
         XCTAssertThrowsError(
-            try coordinator.enqueue(messages: [("user", "overflow")], priority: .normal)
+            try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "overflow")], config: GenerationConfig(), priority: .normal)
         ) { error in
             guard case InferenceError.inferenceFailure(let message) = error else {
                 return XCTFail("expected InferenceError.inferenceFailure, got \(error)")
@@ -294,12 +288,12 @@ final class GenerationQueueTests: XCTestCase {
         slowProvider.bind(to: coord)
 
         // Active slot holds one request; queue builds behind it.
-        let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
+        let (_, activeStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "active")], config: GenerationConfig(), priority: .normal)
 
         // Queue two .background, then one .userInitiated.
-        let (_, bg1Stream) = try coord.enqueue(messages: [("user", "bg1")], priority: .background)
-        let (_, bg2Stream) = try coord.enqueue(messages: [("user", "bg2")], priority: .background)
-        let (_, uiStream) = try coord.enqueue(messages: [("user", "ui")], priority: .userInitiated)
+        let (_, bg1Stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "bg1")], config: GenerationConfig(), priority: .background)
+        let (_, bg2Stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "bg2")], config: GenerationConfig(), priority: .background)
+        let (_, uiStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "ui")], config: GenerationConfig(), priority: .userInitiated)
 
         // All three are currently queued (active is still running).
         XCTAssertEqual(uiStream.phase, .queued)
@@ -326,10 +320,8 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider.bind(to: coord)
 
-        let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
-        let (queuedToken, queuedStream) = try coord.enqueue(
-            messages: [("user", "queued")], priority: .normal
-        )
+        let (_, activeStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "active")], config: GenerationConfig(), priority: .normal)
+        let (queuedToken, queuedStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "queued")], config: GenerationConfig(), priority: .normal)
 
         coord.cancel(queuedToken)
 
@@ -362,7 +354,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider.bind(to: coord)
 
-        let (token, stream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
+        let (token, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "active")], config: GenerationConfig(), priority: .normal)
 
         var tokensBeforeCancel = 0
         var tokensAfterCancel = 0
@@ -407,9 +399,9 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider.bind(to: coord)
 
-        let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
-        let (_, q1Stream) = try coord.enqueue(messages: [("user", "queued1")], priority: .normal)
-        let (_, q2Stream) = try coord.enqueue(messages: [("user", "queued2")], priority: .normal)
+        let (_, activeStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "active")], config: GenerationConfig(), priority: .normal)
+        let (_, q1Stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "queued1")], config: GenerationConfig(), priority: .normal)
+        let (_, q2Stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "queued2")], config: GenerationConfig(), priority: .normal)
 
         coord.stopGeneration()
 
@@ -427,7 +419,7 @@ final class GenerationQueueTests: XCTestCase {
         // After stopGeneration + drain, a fresh enqueue must succeed
         // immediately — proving the coordinator is back in a clean state with
         // no stale continuations blocking the queue.
-        let (_, freshStream) = try coord.enqueue(messages: [("user", "fresh")], priority: .normal)
+        let (_, freshStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "fresh")], config: GenerationConfig(), priority: .normal)
         XCTAssertNotEqual(freshStream.phase, .queued, "new request must start running after stop")
         coord.stopGeneration()
         do { for try await _ in freshStream.events {} } catch { /* cancel error OK */ }
@@ -459,7 +451,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider.bind(to: coord)
 
-        _ = try coord.enqueue(messages: [("user", "long")], priority: .normal)
+        _ = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "long")], config: GenerationConfig(), priority: .normal)
 
         // Yield once so the orchestrator's drainQueue() spawns its Task and
         // the producer enters its first 60s sleep before we ask to stop.
@@ -491,16 +483,10 @@ final class GenerationQueueTests: XCTestCase {
         let dropSession = UUID()
 
         // Active request belongs to keepSession.
-        let (_, activeStream) = try coord.enqueue(
-            messages: [("user", "active")], priority: .normal, requestGroupID: keepSession
-        )
+        let (_, activeStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "active")], config: GenerationConfig(), priority: .normal, requestGroupID: keepSession)
         // Queued: one matching keep, one not.
-        let (_, keepStream) = try coord.enqueue(
-            messages: [("user", "keep")], priority: .normal, requestGroupID: keepSession
-        )
-        let (_, dropStream) = try coord.enqueue(
-            messages: [("user", "drop")], priority: .normal, requestGroupID: dropSession
-        )
+        let (_, keepStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "keep")], config: GenerationConfig(), priority: .normal, requestGroupID: keepSession)
+        let (_, dropStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "drop")], config: GenerationConfig(), priority: .normal, requestGroupID: dropSession)
 
         await coord.discardRequests(notMatching: keepSession)
 
@@ -531,7 +517,7 @@ final class GenerationQueueTests: XCTestCase {
         XCTAssertFalse(coordinator.isGenerating)
 
         provider.backend.tokensToYield = ["a", "b"]
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "hi")], priority: .normal)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(), priority: .normal)
 
         // After enqueue returns, drainQueue has flipped isGenerating to true.
         XCTAssertTrue(coordinator.isGenerating, "isGenerating must flip true immediately on drain")
@@ -550,7 +536,7 @@ final class GenerationQueueTests: XCTestCase {
         provider.backend.shouldThrowInsideStream = Boom()
         provider.backend.tokensToYield = ["x"]
 
-        let (_, stream) = try coordinator.enqueue(messages: [("user", "hi")], priority: .normal)
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(), priority: .normal)
         XCTAssertTrue(coordinator.isGenerating)
 
         do {
@@ -570,7 +556,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider.bind(to: coord)
 
-        let (token, stream) = try coord.enqueue(messages: [("user", "hi")], priority: .normal)
+        let (token, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(), priority: .normal)
         XCTAssertTrue(coord.isGenerating)
 
         // Consume one token so we know generation is truly in flight.
@@ -592,8 +578,8 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider.bind(to: coord)
 
-        let (token1, s1) = try coord.enqueue(messages: [("user", "a")], priority: .normal)
-        let (token2, s2) = try coord.enqueue(messages: [("user", "b")], priority: .normal)
+        let (token1, s1) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "a")], config: GenerationConfig(), priority: .normal)
+        let (token2, s2) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "b")], config: GenerationConfig(), priority: .normal)
 
         // Interleave cancels — the yields here are intentional cooperative preemption
         // to hit the re-entry window between finishAndDiscard and drainQueue, not a
@@ -611,7 +597,7 @@ final class GenerationQueueTests: XCTestCase {
 
         // Fresh enqueue must succeed immediately — proof that no stale
         // continuations remained to block the queue.
-        let (_, freshStream) = try coord.enqueue(messages: [("user", "fresh")], priority: .normal)
+        let (_, freshStream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "fresh")], config: GenerationConfig(), priority: .normal)
         XCTAssertNotEqual(freshStream.phase, .queued)
         coord.stopGeneration()
         do { for try await _ in freshStream.events {} } catch { /* cancel OK */ }
@@ -629,7 +615,7 @@ final class GenerationQueueTests: XCTestCase {
         nilProvider.bind(to: coord)
 
         XCTAssertThrowsError(
-            try coord.enqueue(messages: [("user", "x")], priority: .normal)
+            try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "x")], config: GenerationConfig(), priority: .normal)
         ) { error in
             guard case InferenceError.inferenceFailure(let message) = error else {
                 return XCTFail("expected inferenceFailure, got \(error)")
@@ -643,7 +629,7 @@ final class GenerationQueueTests: XCTestCase {
         provider.backend.isModelLoaded = false
 
         XCTAssertThrowsError(
-            try coordinator.enqueue(messages: [("user", "x")], priority: .normal)
+            try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "x")], config: GenerationConfig(), priority: .normal)
         ) { error in
             guard case InferenceError.inferenceFailure(let message) = error else {
                 return XCTFail("expected inferenceFailure, got \(error)")
@@ -657,9 +643,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_backgroundPriority_seriousThermal_requestDropped() async throws {
         let coord = makeCoordinator { .serious }
 
-        let (_, stream) = try coord.enqueue(
-            messages: [("user", "bg")], priority: .background
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "bg")], config: GenerationConfig(), priority: .background)
 
         // The request must be dropped without invoking the backend.
         var tokenCount = 0
@@ -687,9 +671,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = makeCoordinator { .serious }
 
         provider.backend.tokensToYield = ["ok"]
-        let (_, stream) = try coord.enqueue(
-            messages: [("user", "normal")], priority: .normal
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "normal")], config: GenerationConfig(), priority: .normal)
 
         var tokens: [String] = []
         for try await event in stream.events {
@@ -745,9 +727,7 @@ final class GenerationQueueTests: XCTestCase {
 
         provider.backend.tokensToYield = ["a", "b"]
 
-        let (_, stream) = try coord.enqueue(
-            messages: [("user", "hi")], priority: .normal
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(), priority: .normal)
 
         var tokens: [String] = []
         var throttleEvents: [String] = []
@@ -825,9 +805,7 @@ final class GenerationQueueTests: XCTestCase {
         provider.bind(to: coord)
         provider.backend.tokensToYield = ["a", "b"]
 
-        let (_, stream) = try coord.enqueue(
-            messages: [("user", "hi")], priority: .normal
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(), priority: .normal)
 
         // Drain the stream until we see the throttle event, then trigger
         // cancellation. We don't fully drain here — `stopGenerationAndWait`
@@ -886,10 +864,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         tcProvider.bind(to: coord)
 
-        let (_, stream) = try coord.enqueue(
-            messages: [("user", "hello")],
-            maxOutputTokens: 128
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hello")], config: GenerationConfig(maxOutputTokens: 128))
         for try await _ in stream.events {}
 
         XCTAssertEqual(tcBackend.generateCallCount, 1,
@@ -919,13 +894,7 @@ final class GenerationQueueTests: XCTestCase {
         tcProvider.bind(to: coord)
 
         // Two messages so we have something to trim.
-        let (_, stream) = try coord.enqueue(
-            messages: [
-                (role: "user", content: "first message that will be trimmed"),
-                (role: "user", content: "second message kept"),
-            ],
-            maxOutputTokens: 100
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "first message that will be trimmed"), StructuredMessage(role: "user", content: "second message kept")], config: GenerationConfig(maxOutputTokens: 100))
         for try await _ in stream.events {}
 
         XCTAssertEqual(tcBackend.generateCallCount, 1,
@@ -987,14 +956,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         tcProvider.bind(to: coord)
 
-        let (_, stream) = try coord.enqueue(
-            messages: [
-                (role: "user", content: "oldest message"),
-                (role: "assistant", content: "middle reply"),
-                (role: "user", content: "latest question"),
-            ],
-            maxOutputTokens: 100
-        )
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "oldest message"), StructuredMessage(role: "assistant", content: "middle reply"), StructuredMessage(role: "user", content: "latest question")], config: GenerationConfig(maxOutputTokens: 100))
         for try await _ in stream.events {}
 
         XCTAssertEqual(tcBackend.generateCallCount, 1,
@@ -1296,7 +1258,7 @@ final class GenerationQueueTests: XCTestCase {
         let coord = GenerationQueue()
         slowProvider!.bind(to: coord)
 
-        let (_, stream) = try coord.enqueue(messages: [("user", "x")], priority: .normal)
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "x")], config: GenerationConfig(), priority: .normal)
 
         // Consume a token, then release our strong ref so the weak captures go nil.
         var iter = stream.events.makeAsyncIterator()

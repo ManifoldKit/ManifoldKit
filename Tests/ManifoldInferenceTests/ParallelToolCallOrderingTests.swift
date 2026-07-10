@@ -194,10 +194,7 @@ final class ParallelToolCallOrderingTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather and time in London?")],
-            maxOutputTokens: 64
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather and time in London?")], config: GenerationConfig(maxOutputTokens: 64))
 
         var toolResults: [ToolResult] = []
         for try await event in stream.events {

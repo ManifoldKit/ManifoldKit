@@ -72,10 +72,7 @@ final class ToolApprovalLoopContinuationTests: XCTestCase {
             .block(reason: "Tool call declined by the user.")
         }
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "do the dangerous thing")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "do the dangerous thing")], config: GenerationConfig(maxOutputTokens: 16))
 
         var events: [GenerationEvent] = []
         for try await event in stream.events {

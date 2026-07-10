@@ -39,7 +39,7 @@ final class GenerationQueueAtomicTransitionTests: XCTestCase {
         let coord = GenerationQueue()
         bind(backend, to: coord)
 
-        let (_, stream) = try coord.enqueue(messages: [("user", "first")], priority: .normal)
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "first")], config: GenerationConfig(), priority: .normal)
 
         // Drain the first turn to completion.
         for try await _ in stream.events {}
@@ -50,7 +50,7 @@ final class GenerationQueueAtomicTransitionTests: XCTestCase {
         XCTAssertFalse(coord.hasQueuedRequests, "no leftover queued requests after a turn completes")
 
         // A follow-up must activate, not queue.
-        let (_, followUp) = try coord.enqueue(messages: [("user", "second")], priority: .normal)
+        let (_, followUp) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "second")], config: GenerationConfig(), priority: .normal)
         XCTAssertNotEqual(followUp.phase, .queued, "follow-up enqueue after a clean finish must activate immediately")
 
         coord.stopGeneration()
@@ -76,10 +76,10 @@ final class GenerationQueueAtomicTransitionTests: XCTestCase {
         // enqueue per round to maximise the chance of landing in the finish
         // window.
         for _ in 0..<25 {
-            let (_, s1) = try coord.enqueue(messages: [("user", "a")], priority: .normal)
+            let (_, s1) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "a")], config: GenerationConfig(), priority: .normal)
             // Second enqueue races in immediately while the first is active or
             // finishing; it must queue cleanly (single active turn invariant).
-            let (_, s2) = try coord.enqueue(messages: [("user", "b")], priority: .normal)
+            let (_, s2) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "b")], config: GenerationConfig(), priority: .normal)
 
             for try await _ in s1.events {}
             for try await _ in s2.events {}

@@ -87,9 +87,7 @@ final class ResidentModelStatusTests: XCTestCase {
 
     func test_queuedRequestCount_zeroAfterGenerationCompletes() async throws {
         let (service, _) = makeService()
-        let (_, stream) = try service.enqueue(
-            messages: [Message.user("hi")]
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         // Drain the stream to let the queue settle.
         for try await _ in stream.events {}
         XCTAssertEqual(service.queuedRequestCount, 0,
@@ -101,9 +99,7 @@ final class ResidentModelStatusTests: XCTestCase {
     func test_lastActivityAt_updatedAfterGenerationCompletes() async throws {
         let (service, _) = makeService()
         let before = Date()
-        let (_, stream) = try service.enqueue(
-            messages: [Message.user("hi")]
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         for try await _ in stream.events {}
         let after = Date()
         guard let status = service.residentModelStatus else {
@@ -118,7 +114,7 @@ final class ResidentModelStatusTests: XCTestCase {
 
     func test_idleDuration_isNonNegative() async throws {
         let (service, _) = makeService()
-        let (_, stream) = try service.enqueue(messages: [Message.user("hi")])
+        let (_, stream) = try service.enqueue(messages: [Message.user("hi")], config: GenerationConfig())
         for try await _ in stream.events {}
         let status = service.residentModelStatus
         XCTAssertNotNil(status)

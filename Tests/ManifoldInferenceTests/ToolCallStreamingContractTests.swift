@@ -511,10 +511,7 @@ final class ToolCallStreamingContractTests: XCTestCase {
         let coordinator = GenerationQueue()
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 32
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 32))
 
         // Collect events from a single consumer. Release one delta-gate
         // permit at a time:

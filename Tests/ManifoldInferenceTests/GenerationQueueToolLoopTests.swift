@@ -129,10 +129,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["bye"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "weather?")],
-            maxOutputTokens: 32
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "weather?")], config: GenerationConfig(maxOutputTokens: 32))
 
         let events = try await collectEvents(stream)
 
@@ -178,10 +175,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         ]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "What's the weather in Rome?")],
-            maxOutputTokens: 128
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "What's the weather in Rome?")], config: GenerationConfig(maxOutputTokens: 128))
 
         let events = try await collectEvents(stream)
 
@@ -233,10 +227,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         ]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "What's the weather in Rome?")],
-            maxOutputTokens: 128
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "What's the weather in Rome?")], config: GenerationConfig(maxOutputTokens: 128))
         _ = try await collectEvents(stream)
 
         // The second (and last) turn's structured history must include both the
@@ -274,10 +265,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["done"]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "run streaming tool")],
-            maxOutputTokens: 64
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "run streaming tool")], config: GenerationConfig(maxOutputTokens: 64))
 
         let events = try await collectEvents(stream)
 
@@ -351,10 +339,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         toolAwareProvider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "what time?")],
-            maxOutputTokens: 16
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "what time?")], config: GenerationConfig(maxOutputTokens: 16))
         _ = try await collectEvents(stream)
 
         // The backend recorded the tool-aware history passed for its second
@@ -422,10 +407,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         ]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         XCTAssertEqual(executor.callCount, 1, "executor must run only for the first unique call")
@@ -467,10 +449,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         ]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         // The first dispatch returns real content (exceeds budget post-hoc);
@@ -564,10 +543,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         ]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         let results = events.compactMap { event -> ToolResult? in
@@ -631,10 +607,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         // Block every call before it dispatches.
         coordinator.preToolUseHook = { @Sendable _, _, _ in .block(reason: "not allowed") }
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 8
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 8))
         let events = try await collectEvents(stream)
 
         // The blocked tool must never execute.
@@ -679,10 +652,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [["Hello", " world."]]
 
         let coordinator = makeCoordinator(registry: registry)
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "hi")],
-            maxOutputTokens: 32
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(maxOutputTokens: 32))
         let events = try await collectEvents(stream)
 
         let completions = events.compactMap { event -> GenerationCompletion? in
@@ -760,16 +730,9 @@ extension GenerationQueue {
         requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
-            messages: messages,
+            structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: nil,
-            temperature: config.temperature,
-            topP: config.topP,
-            repeatPenalty: config.repeatPenalty,
-            maxOutputTokens: config.maxOutputTokens,
-            maxThinkingTokens: config.maxThinkingTokens,
-            tools: config.tools,
-            toolChoice: config.toolChoice,
-            maxToolIterations: config.maxToolIterations,
+            config: config,
             priority: priority,
             requestGroupID: requestGroupID
         )

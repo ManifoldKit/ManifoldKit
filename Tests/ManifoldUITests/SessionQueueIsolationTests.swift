@@ -69,10 +69,7 @@ final class SessionQueueIsolationTests: XCTestCase {
         let sessionA = try await createAndActivateSession(title: "Session A")
 
         // Enqueue a request scoped to session A.
-        let (_, stream) = try vm.inferenceService.enqueue(
-            messages: [.user("hello")],
-            requestGroupID: sessionA.id
-        )
+        let (_, stream) = try vm.inferenceService.enqueue(messages: [.user("hello")], config: GenerationConfig(), requestGroupID: sessionA.id)
 
         // Create session B and switch to it.
         let sessionB = try await sessionManager.createSession(title: "Session B")
@@ -124,12 +121,8 @@ final class SessionQueueIsolationTests: XCTestCase {
         await vm.awaitGenerating(true)
 
         // Enqueue additional requests directly on the service.
-        let (_, stream2) = try vm.inferenceService.enqueue(
-            messages: [.user("second")]
-        )
-        let (_, stream3) = try vm.inferenceService.enqueue(
-            messages: [.user("third")]
-        )
+        let (_, stream2) = try vm.inferenceService.enqueue(messages: [.user("second")], config: GenerationConfig())
+        let (_, stream3) = try vm.inferenceService.enqueue(messages: [.user("third")], config: GenerationConfig())
 
         XCTAssertTrue(vm.inferenceService.hasQueuedRequests, "Should have queued requests")
 

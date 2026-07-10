@@ -98,10 +98,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
         let tool = makeNoopTool()
 
         XCTAssertThrowsError(
-            try coordinator.enqueue(
-                messages: [("user", "do something")],
-                tools: [tool]
-            )
+            try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "do something")], config: GenerationConfig(tools: [tool]))
         ) { error in
             guard case InferenceError.inferenceFailure(let msg) = error else {
                 XCTFail("Expected InferenceError.inferenceFailure, got \(error)")
@@ -129,10 +126,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
         let coordinator = makeCoordinator()
 
         // No tools → enqueue must succeed and the stream must complete normally.
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "hello")],
-            tools: []
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hello")], config: GenerationConfig(tools: []))
 
         var tokens: [String] = []
         for try await event in stream.events {
@@ -162,10 +156,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
 
         // Must not throw, and the returned stream must yield real tokens — the
         // guard only blocks the incapable-backend path.
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "call the tool")],
-            tools: [tool]
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "call the tool")], config: GenerationConfig(tools: [tool]))
 
         var tokens: [String] = []
         for try await event in stream.events {

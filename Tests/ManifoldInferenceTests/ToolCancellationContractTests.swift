@@ -112,10 +112,7 @@ final class ToolCancellationContractTests: XCTestCase {
         let coordinator = GenerationQueue(toolRegistry: registry)
         provider.bind(to: coordinator)
 
-        let (_, stream) = try coordinator.enqueue(
-            messages: [("user", "go")],
-            maxOutputTokens: 64
-        )
+        let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "go")], config: GenerationConfig(maxOutputTokens: 64))
 
         // Drain events on a separate task so we can stop generation while
         // the executor is hanging. The stream is expected to terminate

@@ -117,10 +117,7 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_enqueue_singleRequest_executesImmediately() async throws {
         let (service, mock) = makeService()
 
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hello")],
-            priority: .normal
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hello")], config: GenerationConfig(), priority: .normal)
 
         // The stream should transition from .queued to .connecting once drainQueue fires.
         // drainQueue runs synchronously in enqueue, so by the time we get here
@@ -150,14 +147,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_enqueue_twoRequests_executesSequentially() async throws {
         let (service, mock) = makeService()
 
-        let (_, stream1) = try service.enqueue(
-            messages: [("user", "first")],
-            priority: .normal
-        )
-        let (_, stream2) = try service.enqueue(
-            messages: [("user", "second")],
-            priority: .normal
-        )
+        let (_, stream1) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         XCTAssertEqual(stream1.phase, .connecting, "First should be active")
         XCTAssertEqual(stream2.phase, .queued, "Second should be queued")
@@ -192,16 +183,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_enqueue_jsonMode_survivesQueueHandoff() async throws {
         let (service, mock) = makeService()
 
-        let (_, firstStream) = try service.enqueue(
-            messages: [("user", "first")],
-            jsonMode: false,
-            priority: .normal
-        )
-        let (_, secondStream) = try service.enqueue(
-            messages: [("user", "second")],
-            jsonMode: true,
-            priority: .normal
-        )
+        let (_, firstStream) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), hints: GenerationRuntimeHints(jsonMode: false), priority: .normal)
+        let (_, secondStream) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), hints: GenerationRuntimeHints(jsonMode: true), priority: .normal)
 
         await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0, tokens: ["a"])
@@ -224,20 +207,11 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, mock) = makeService()
 
         // First request is active immediately.
-        let (_, streamActive) = try service.enqueue(
-            messages: [("user", "active")],
-            priority: .normal
-        )
+        let (_, streamActive) = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal)
 
         // Enqueue background, then userInitiated.
-        let (_, streamBg) = try service.enqueue(
-            messages: [("user", "bg")],
-            priority: .background
-        )
-        let (_, streamUi) = try service.enqueue(
-            messages: [("user", "ui")],
-            priority: .userInitiated
-        )
+        let (_, streamBg) = try service.enqueue(messages: [Message.user("bg")], config: GenerationConfig(), priority: .background)
+        let (_, streamUi) = try service.enqueue(messages: [Message.user("ui")], config: GenerationConfig(), priority: .userInitiated)
 
         // Complete the active request.
         await waitFor(mock.generateCallCount >= 1, description: "active generate() called")
@@ -257,24 +231,12 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, mock) = makeService()
 
         // First fills the active slot.
-        let (_, streamActive) = try service.enqueue(
-            messages: [("user", "active")],
-            priority: .normal
-        )
+        let (_, streamActive) = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal)
 
         // Queue background, normal, userInitiated.
-        let (_, streamBg) = try service.enqueue(
-            messages: [("user", "bg")],
-            priority: .background
-        )
-        let (_, streamNorm) = try service.enqueue(
-            messages: [("user", "norm")],
-            priority: .normal
-        )
-        let (_, streamUi) = try service.enqueue(
-            messages: [("user", "ui")],
-            priority: .userInitiated
-        )
+        let (_, streamBg) = try service.enqueue(messages: [Message.user("bg")], config: GenerationConfig(), priority: .background)
+        let (_, streamNorm) = try service.enqueue(messages: [Message.user("norm")], config: GenerationConfig(), priority: .normal)
+        let (_, streamUi) = try service.enqueue(messages: [Message.user("ui")], config: GenerationConfig(), priority: .userInitiated)
 
         // Complete the active request and drain.
         await waitFor(mock.generateCallCount >= 1, description: "active generate() called")
@@ -310,9 +272,9 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, _) = makeService()
 
         // Active slot.
-        let _ = try service.enqueue(messages: [("user", "active")], priority: .normal)
+        let _ = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal)
         // Queued.
-        let (token2, stream2) = try service.enqueue(messages: [("user", "queued")], priority: .normal)
+        let (token2, stream2) = try service.enqueue(messages: [Message.user("queued")], config: GenerationConfig(), priority: .normal)
 
         service.cancel(token2)
 
@@ -339,8 +301,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_cancel_activeRequest_stopsAndDrainsNext() async throws {
         let (service, _) = makeService()
 
-        let (token1, _) = try service.enqueue(messages: [("user", "first")], priority: .normal)
-        let (_, stream2) = try service.enqueue(messages: [("user", "second")], priority: .normal)
+        let (token1, _) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         XCTAssertEqual(stream2.phase, .queued)
 
@@ -356,8 +318,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_stopGeneration_cancelsActiveAndDrainsQueue() async throws {
         let (service, _) = makeService()
 
-        let (_, stream1) = try service.enqueue(messages: [("user", "first")], priority: .normal)
-        let (_, stream2) = try service.enqueue(messages: [("user", "second")], priority: .normal)
+        let (_, stream1) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         service.stopGeneration()
 
@@ -382,21 +344,9 @@ final class InferenceServiceQueueTests: XCTestCase {
         let sessionA = UUID()
         let sessionB = UUID()
 
-        let _ = try service.enqueue(
-            messages: [("user", "active")],
-            priority: .normal,
-            requestGroupID: sessionA
-        )
-        let (_, streamA) = try service.enqueue(
-            messages: [("user", "queued-A")],
-            priority: .normal,
-            requestGroupID: sessionA
-        )
-        let (_, streamB) = try service.enqueue(
-            messages: [("user", "queued-B")],
-            priority: .normal,
-            requestGroupID: sessionB
-        )
+        let _ = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal, requestGroupID: sessionA)
+        let (_, streamA) = try service.enqueue(messages: [Message.user("queued-A")], config: GenerationConfig(), priority: .normal, requestGroupID: sessionA)
+        let (_, streamB) = try service.enqueue(messages: [Message.user("queued-B")], config: GenerationConfig(), priority: .normal, requestGroupID: sessionB)
 
         await service.discardRequests(notMatching: sessionB)
 
@@ -419,13 +369,9 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, _) = makeService()
         let sessionB = UUID()
 
-        let _ = try service.enqueue(messages: [("user", "active")], priority: .normal)
+        let _ = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal)
         // nil requestGroupID — group-agnostic.
-        let (_, streamNil) = try service.enqueue(
-            messages: [("user", "agnostic")],
-            priority: .normal,
-            requestGroupID: nil
-        )
+        let (_, streamNil) = try service.enqueue(messages: [Message.user("agnostic")], config: GenerationConfig(), priority: .normal, requestGroupID: nil)
 
         await service.discardRequests(notMatching: sessionB)
 
@@ -444,7 +390,7 @@ final class InferenceServiceQueueTests: XCTestCase {
 
     func test_isGenerating_trueWhileActiveRequest() throws {
         let (service, _) = makeService()
-        let _ = try service.enqueue(messages: [("user", "hello")], priority: .normal)
+        let _ = try service.enqueue(messages: [Message.user("hello")], config: GenerationConfig(), priority: .normal)
         XCTAssertTrue(service.isGenerating)
     }
 
@@ -454,14 +400,14 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, _) = makeService()
 
         // First enqueue fills the active slot, next 8 fill the queue.
-        let _ = try service.enqueue(messages: [("user", "active")], priority: .normal)
+        let _ = try service.enqueue(messages: [Message.user("active")], config: GenerationConfig(), priority: .normal)
         for i in 0..<8 {
-            let _ = try service.enqueue(messages: [("user", "q\(i)")], priority: .normal)
+            let _ = try service.enqueue(messages: [Message.user("q\(i)")], config: GenerationConfig(), priority: .normal)
         }
 
         // 9th queued request (10th total) should throw.
         XCTAssertThrowsError(
-            try service.enqueue(messages: [("user", "overflow")], priority: .normal)
+            try service.enqueue(messages: [Message.user("overflow")], config: GenerationConfig(), priority: .normal)
         ) { error in
             XCTAssertTrue("\(error)".contains("queue is full"),
                           "Error should mention queue full, got: \(error)")
@@ -473,8 +419,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_unloadModel_cancelsAllQueued() async throws {
         let (service, _) = makeService()
 
-        let (_, stream1) = try service.enqueue(messages: [("user", "first")], priority: .normal)
-        let (_, stream2) = try service.enqueue(messages: [("user", "second")], priority: .normal)
+        let (_, stream1) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         service.unloadModel()
 
@@ -498,8 +444,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_drainQueue_noop_whenActiveRequestExists() async throws {
         let (service, mock) = makeService()
 
-        let _ = try service.enqueue(messages: [("user", "first")], priority: .normal)
-        let (_, stream2) = try service.enqueue(messages: [("user", "second")], priority: .normal)
+        let _ = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         // The first stream is not consumed, so auto-drain never fires.
         // Wait for the first generate() call, then confirm the second has not fired.
@@ -520,10 +466,7 @@ final class InferenceServiceQueueTests: XCTestCase {
 
         // 1 active + 8 queued = 9 total (within maxQueueDepth).
         for _ in 0..<9 {
-            let (token, stream) = try service.enqueue(
-                messages: [("user", "msg")],
-                priority: .normal
-            )
+            let (token, stream) = try service.enqueue(messages: [Message.user("msg")], config: GenerationConfig(), priority: .normal)
             tokens.append(token)
             streams.append(stream)
         }
@@ -554,14 +497,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_queue_autoDrains_onStreamTerminate() async throws {
         let (service, mock) = makeService()
 
-        let (_, stream1) = try service.enqueue(
-            messages: [("user", "first")],
-            priority: .normal
-        )
-        let (_, stream2) = try service.enqueue(
-            messages: [("user", "second")],
-            priority: .normal
-        )
+        let (_, stream1) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         XCTAssertEqual(stream2.phase, .queued, "Second should start queued")
 
@@ -591,10 +528,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, mock) = makeService()
 
         // Enqueue one request — it becomes the active request immediately.
-        let (_, stream1) = try service.enqueue(
-            messages: [("user", "queued request")],
-            priority: .normal
-        )
+        let (_, stream1) = try service.enqueue(messages: [Message.user("queued request")], config: GenerationConfig(), priority: .normal)
 
         XCTAssertTrue(service.isGenerating, "isGenerating should be true after enqueue")
         XCTAssertFalse(service.hasQueuedRequests,
@@ -625,14 +559,8 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_queueAutoDrains_withTwoRequests() async throws {
         let (service, mock) = makeService()
 
-        let (_, stream1) = try service.enqueue(
-            messages: [("user", "first")],
-            priority: .normal
-        )
-        let (_, stream2) = try service.enqueue(
-            messages: [("user", "second")],
-            priority: .normal
-        )
+        let (_, stream1) = try service.enqueue(messages: [Message.user("first")], config: GenerationConfig(), priority: .normal)
+        let (_, stream2) = try service.enqueue(messages: [Message.user("second")], config: GenerationConfig(), priority: .normal)
 
         XCTAssertEqual(stream1.phase, .connecting)
         XCTAssertEqual(stream2.phase, .queued)
@@ -672,10 +600,7 @@ final class InferenceServiceQueueTests: XCTestCase {
 
         // Enqueue a request — it becomes active immediately. The GatedMockBackend
         // blocks generation until explicitly released, so we're mid-stream.
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hello")],
-            priority: .normal
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hello")], config: GenerationConfig(), priority: .normal)
 
         XCTAssertEqual(stream.phase, .connecting, "Stream should be active (connecting)")
         XCTAssertTrue(service.isGenerating)
@@ -704,7 +629,7 @@ final class InferenceServiceQueueTests: XCTestCase {
 
         // Subsequent enqueue must throw because no model is loaded.
         XCTAssertThrowsError(
-            try service.enqueue(messages: [("user", "after-unload")], priority: .normal)
+            try service.enqueue(messages: [Message.user("after-unload")], config: GenerationConfig(), priority: .normal)
         ) { error in
             XCTAssertTrue(
                 "\(error)".contains("No model loaded"),
@@ -718,10 +643,7 @@ final class InferenceServiceQueueTests: XCTestCase {
     func test_finishAndDiscard_alwaysFinishesContinuation() async throws {
         let (service, _) = makeService()
 
-        let (token, stream) = try service.enqueue(
-            messages: [("user", "hello")],
-            priority: .normal
-        )
+        let (token, stream) = try service.enqueue(messages: [Message.user("hello")], config: GenerationConfig(), priority: .normal)
 
         // Cancel the active request — this calls finishAndDiscard internally.
         service.cancel(token)
@@ -747,10 +669,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (service, mock) = makeService()
 
         // Enqueue a request — it becomes active immediately.
-        let (_, stream) = try service.enqueue(
-            messages: [("user", "hello")],
-            priority: .normal
-        )
+        let (_, stream) = try service.enqueue(messages: [Message.user("hello")], config: GenerationConfig(), priority: .normal)
 
         // Wait for the drain Task to call generate() so gates[0] is populated.
         await waitFor(mock.generateCallCount >= 1, description: "generate() called")
@@ -775,7 +694,7 @@ final class InferenceServiceQueueTests: XCTestCase {
 
         // Subsequent enqueue must throw because no model is loaded.
         XCTAssertThrowsError(
-            try service.enqueue(messages: [("user", "after-unload")], priority: .normal)
+            try service.enqueue(messages: [Message.user("after-unload")], config: GenerationConfig(), priority: .normal)
         ) { error in
             XCTAssertTrue(
                 "\(error)".contains("No model loaded"),
