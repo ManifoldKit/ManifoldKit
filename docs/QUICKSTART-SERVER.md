@@ -54,16 +54,19 @@ All examples use Ollama as the backend. Substitute `--backend foundation` for th
 ### Minimal (no auth, localhost only)
 
 ```bash
-manifold-server --backend ollama --model llama3.2
+# Loopback without auth requires an explicit opt-in (any local process can call inference):
+manifold-server --backend ollama --model llama3.2 --allow-anonymous
 ```
 
-### With an API key
+### With an API key (recommended)
 
 ```bash
 manifold-server --backend ollama --model llama3.2 --api-key sk-my-secret
 ```
 
 ### Public bind with CORS
+
+Non-loopback binds **require** `--api-key` (`--allow-anonymous` is rejected off loopback):
 
 ```bash
 manifold-server \
@@ -78,8 +81,8 @@ manifold-server \
 ### Enable the Prometheus metrics endpoint
 
 ```bash
-manifold-server --backend ollama --model llama3.2 --metrics
-# then: curl http://127.0.0.1:8080/metrics
+manifold-server --backend ollama --model llama3.2 --api-key sk-my-secret --metrics
+# then: curl -H "Authorization: Bearer sk-my-secret" http://127.0.0.1:8080/metrics
 ```
 
 ---
@@ -88,12 +91,13 @@ manifold-server --backend ollama --model llama3.2 --metrics
 
 ```bash
 curl http://127.0.0.1:8080/health
-# {"status":"ok"}
+# {"status":"ok"}   # /health stays unauthenticated for probes
 
-curl http://127.0.0.1:8080/v1/models
+curl -H "Authorization: Bearer sk-my-secret" http://127.0.0.1:8080/v1/models
 # {"object":"list","data":[{"id":"llama3.2",...}]}
 
 curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer sk-my-secret" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2",
@@ -142,9 +146,10 @@ In `~/.continue/config.json`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--host` | `127.0.0.1` | Interface to bind. Use `0.0.0.0` for network access. |
+| `--host` | `127.0.0.1` | Interface to bind. Use `0.0.0.0` for network access (requires `--api-key`). |
 | `--port` | `8080` | TCP port. |
-| `--api-key` | _(none)_ | Require this key in `Authorization: Bearer` headers. Omit for unauthenticated localhost. |
+| `--api-key` | _(none)_ | Require this key in `Authorization: Bearer` headers. Required unless `--allow-anonymous` on loopback. |
+| `--allow-anonymous` | `false` | Explicit opt-in for unauthenticated loopback-only binds. Rejected for non-loopback hosts. |
 | `--parallel` | `1` | Maximum concurrent generation requests. |
 | `--backend` | `foundation` | `foundation` or `ollama` — the only selections that actually load a backend. (`mlx` / `llama` error with a companion-package pointer since v0.48; `cloud` always errors with `ServerError.notImplemented` — Cloud SaaS backend loading isn't implemented for ManifoldServer v1.) |
 | `--model` | _(none)_ | Model name or HuggingFace repo ID for the selected backend. |
@@ -158,6 +163,7 @@ In `~/.continue/config.json`:
 
 ## Security notes
 
-- Bind to `127.0.0.1` (default) unless you need network access. The server issues no auth challenge unless `--api-key` is set.
-- When exposing to a network, always set `--api-key` and consider TLS termination via a reverse proxy (nginx, Caddy).
+- Bind to `127.0.0.1` (default) unless you need network access.
+- Unauthenticated mode requires explicit `--allow-anonymous` and is **loopback-only**. Non-loopback binds always require `--api-key`.
+- When exposing to a network, always set `--api-key` and terminate TLS at a reverse proxy (nginx, Caddy).
 - The `basechat_*` Prometheus metric prefix is a legacy artifact from the BaseChatKit rename; it is intentionally preserved to avoid breaking existing dashboards.

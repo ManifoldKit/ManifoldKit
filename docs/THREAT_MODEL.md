@@ -81,11 +81,21 @@ considered hostile on the far side and what ManifoldKit validates as data crosse
     validation at endpoint persist time (`APIEndpoint.validate()`) only checks
     IP literals and does not resolve DNS names — this guard is what closes the
     "domain re-pointed after save" gap. `ConnectAddressPinningDelegate`
-    (#1756) closes the residual TOCTOU window between the guard's pre-flight
-    resolution and `URLSession`'s own connect-time resolution by inspecting
-    the address actually connected to and cancelling the task on a mismatch.
+    (#1756) detects a private address URLSession *actually* connected to and
+    cancels the task / discards the body.
+  - **Credentialed-host pin gate** (`CredentialedHostTrustGate`): by default
+    (`ManifoldConfiguration.allowUnpinnedCredentialedHosts = false`), requests
+    that carry API credentials to a non-loopback host without SPKI pins are
+    rejected *before* the network call. SPKI pins fail closed at the TLS
+    handshake if DNS rebinds to a peer that cannot present a matching chain,
+    so `Authorization` is not sent under platform trust alone. Opt out only
+    when you accept residual rebinding risk on unpinned custom hosts.
 - **Not mitigated:** user-installed MITM root CAs (corporate proxies, jailbreak
-  tweaks); compromised pinning trust store.
+  tweaks); compromised pinning trust store; pure `URLSession` cannot pin the
+  TCP connect to the pre-flight-resolved IP without Network.framework SNI
+  control (banned by the traffic-boundary audit), so connect-time detection
+  remains a discard/cancel backstop rather than a pre-send guarantee for
+  *unpinned* hosts that opt into `allowUnpinnedCredentialedHosts`.
 
 ### B2. Disk ↔ process
 

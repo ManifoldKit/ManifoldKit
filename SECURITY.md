@@ -213,7 +213,7 @@ There is no bug bounty programme today.
 | API keys                           | System Keychain, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, **not** synced via iCloud Keychain. Per-endpoint UUID accounts.         |
 | SwiftData store (chat history)     | `NSFileProtection.completeUntilFirstUserAuthentication` (default) on iOS / iPadOS / tvOS / watchOS. Opt in to `.complete` via `ManifoldConfiguration.fileProtectionClass`. |
 | Model weights                      | Plain files under `modelsDirectory`. Path-traversal validation runs at filename ingest (`DownloadableModel.validate(fileName:)`). No content-integrity check today. |
-| In-flight TLS                      | SPKI-pinned for `api.openai.com` and `api.anthropic.com`; pluggable via `PinnedSessionDelegate.pinnedHosts` for custom hosts.            |
+| In-flight TLS                      | SPKI-pinned for `api.openai.com` and `api.anthropic.com`; pluggable via `PinnedSessionDelegate.pinnedHosts` for custom hosts. Credentialed requests to unpinned non-loopback hosts fail closed by default (`allowUnpinnedCredentialedHosts = false`). |
 
 ManifoldKit is **not** FIPS-validated. The Apple Keychain and Apple's `Security.framework` use
 CoreCrypto, which has FIPS-140-3 validations on supported OS versions, but ManifoldKit does

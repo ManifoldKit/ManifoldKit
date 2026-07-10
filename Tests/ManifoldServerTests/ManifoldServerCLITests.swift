@@ -60,6 +60,78 @@ final class ManifoldServerCLITests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains("--cors-origin must be a valid URL"))
         }
     }
+
+    // MARK: - H2 auth gates
+
+    func testRejectsUnauthenticatedLoopbackWithoutAllowAnonymous() {
+        XCTAssertThrowsError(try ServerCommandOptions.parse([])) { error in
+            XCTAssertTrue(
+                String(describing: error).contains("--allow-anonymous"),
+                "expected allow-anonymous guidance, got \(error)"
+            )
+        }
+    }
+
+    func testAcceptsLoopbackWithAllowAnonymous() throws {
+        let options = try ServerCommandOptions.parse(["--allow-anonymous"])
+        XCTAssertTrue(options.allowAnonymous)
+        XCTAssertNil(options.apiKey)
+    }
+
+    func testRejectsNonLoopbackWithoutAPIKey() {
+        XCTAssertThrowsError(try ServerCommandOptions.parse([
+            "--host", "0.0.0.0",
+            "--allow-anonymous",
+        ])) { error in
+            let text = String(describing: error)
+            XCTAssertTrue(
+                text.contains("--api-key") || text.contains("loopback"),
+                "expected non-loopback auth rejection, got \(error)"
+            )
+        }
+    }
+
+    func testRejectsNonLoopbackWithoutAPIKeyEvenWithoutAllowAnonymous() {
+        XCTAssertThrowsError(try ServerCommandOptions.parse([
+            "--host", "0.0.0.0",
+        ])) { error in
+            XCTAssertTrue(
+                String(describing: error).contains("--api-key"),
+                "expected --api-key requirement for non-loopback, got \(error)"
+            )
+        }
+    }
+
+    func testAcceptsNonLoopbackWithAPIKey() throws {
+        let options = try ServerCommandOptions.parse([
+            "--host", "0.0.0.0",
+            "--api-key", "secret",
+        ])
+        XCTAssertEqual(options.apiKey, "secret")
+        XCTAssertFalse(options.allowAnonymous)
+    }
+
+    func testRejectsAllowAnonymousCombinedWithAPIKey() {
+        XCTAssertThrowsError(try ServerCommandOptions.parse([
+            "--allow-anonymous",
+            "--api-key", "secret",
+        ])) { error in
+            XCTAssertTrue(
+                String(describing: error).contains("--allow-anonymous cannot be combined"),
+                "got \(error)"
+            )
+        }
+    }
+
+    func testLoopbackBindHostClassifier() {
+        XCTAssertTrue(ServerCommandOptions.isLoopbackBindHost("127.0.0.1"))
+        XCTAssertTrue(ServerCommandOptions.isLoopbackBindHost("localhost"))
+        XCTAssertTrue(ServerCommandOptions.isLoopbackBindHost("::1"))
+        XCTAssertTrue(ServerCommandOptions.isLoopbackBindHost("127.0.0.2"))
+        XCTAssertFalse(ServerCommandOptions.isLoopbackBindHost("0.0.0.0"))
+        XCTAssertFalse(ServerCommandOptions.isLoopbackBindHost("192.168.1.1"))
+        XCTAssertFalse(ServerCommandOptions.isLoopbackBindHost("::"))
+    }
 }
 
 final class TraitAwareServerBackendProviderTests: XCTestCase {

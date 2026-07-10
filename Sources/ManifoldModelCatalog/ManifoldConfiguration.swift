@@ -148,6 +148,23 @@ public struct ManifoldConfiguration: Sendable {
     /// fail-closed regardless of this setting.
     public var customHostTrustPolicy: CustomHostTrustPolicy
 
+    /// When `false` (default), credentialed cloud requests to non-loopback hosts
+    /// require a non-empty SPKI pin set in ``PinnedSessionDelegate/pinnedHosts``.
+    ///
+    /// Fail-closed here closes the residual DNS-rebinding window where
+    /// ``ConnectAddressPinningDelegate`` can only detect a private connect
+    /// address *after* URLSession may already have sent `Authorization` under
+    /// platform trust. Pinned hosts fail TLS (and never send the HTTP request)
+    /// if the rebound peer cannot present a matching certificate chain.
+    ///
+    /// Set `true` only for trusted custom endpoints you cannot pin yet — you
+    /// accept residual credential exposure if DNS rebinds to a private peer that
+    /// completes TLS under platform trust.
+    ///
+    /// Loopback URLs and RFC 6761 special-use test hosts (`.test`, `.localhost`)
+    /// are always exempt so unit tests and local servers keep working.
+    public var allowUnpinnedCredentialedHosts: Bool
+
     /// The framework's fallback ``bundleIdentifier``. Host apps that surface
     /// this value back to the user (e.g. as part of a default-path
     /// derivation) can compare against it to detect when the host forgot to
@@ -163,6 +180,7 @@ public struct ManifoldConfiguration: Sendable {
         sseStreamLimits: SSEStreamLimits = .default,
         keychainReaperEnabled: Bool = true,
         customHostTrustPolicy: CustomHostTrustPolicy = .platformDefault,
+        allowUnpinnedCredentialedHosts: Bool = false,
         useSecureEnclave: Bool = false,
         networkPolicy: NetworkPolicy = .unrestricted
     ) {
@@ -174,6 +192,7 @@ public struct ManifoldConfiguration: Sendable {
         self.sseStreamLimits = sseStreamLimits
         self.keychainReaperEnabled = keychainReaperEnabled
         self.customHostTrustPolicy = customHostTrustPolicy
+        self.allowUnpinnedCredentialedHosts = allowUnpinnedCredentialedHosts
         self.useSecureEnclave = useSecureEnclave
         self.networkPolicy = networkPolicy
     }
