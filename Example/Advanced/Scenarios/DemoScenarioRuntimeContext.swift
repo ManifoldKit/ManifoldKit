@@ -51,7 +51,7 @@ public struct DemoScenarioRuntimeContext {
     /// Agents to attach to the freshly-created ``ChatSession``. The
     /// runner applies these via ``SessionStore/updateSession(_:)`` after
     /// `configure` returns, before the first prompt is sent.
-    public var agents: [Agent]
+    public var agents: [AgentDefinition]
 
     /// Initial active agent for the session. Must reference an `id` in
     /// ``agents`` — the runner logs a warning and clears the pointer on
@@ -62,7 +62,7 @@ public struct DemoScenarioRuntimeContext {
         toolRegistry: ToolRegistry,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        agents: [Agent] = [],
+        agents: [AgentDefinition] = [],
         activeAgentID: UUID? = nil
     ) {
         self.toolRegistry = toolRegistry

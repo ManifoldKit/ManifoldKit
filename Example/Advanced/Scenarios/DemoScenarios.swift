@@ -167,14 +167,14 @@ enum DemoScenarios {
         // `transfer_to_writer`. Researcher is active first; the handoff
         // tool-call flips `activeAgentID` to Writer for the next turn.
         configureContext: { context in
-            let researcher = Agent(
+            let researcher = AgentDefinition(
                 id: researcherAgentID,
                 name: "Researcher",
                 systemPrompt: "You are Researcher. Produce a tight outline, then call `transfer_to_writer` with the outline as the `payload` so Writer can draft prose.",
                 description: "Outlines a topic before handing off to Writer.",
                 allowedToolNames: nil
             )
-            let writer = Agent(
+            let writer = AgentDefinition(
                 id: writerAgentID,
                 name: "Writer",
                 systemPrompt: "You are Writer. Turn Researcher's outline into three short paragraphs of clear prose.",
