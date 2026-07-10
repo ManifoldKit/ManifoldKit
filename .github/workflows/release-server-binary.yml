@@ -24,12 +24,17 @@ on:
         type: string
 
 permissions:
-  contents: write   # upload assets to the GitHub release
+  contents: write       # upload assets to the GitHub release
+  id-token: write       # OIDC token for sigstore signing
+  attestations: write   # create build-provenance attestations
 
 jobs:
   build-server-binary:
     name: Build manifold-server (arm64 macOS)
     runs-on: macos-15
+    # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
+    # min) can stall the whole org queue if this job hangs (#2099 CI review).
+    timeout-minutes: 45
 
     steps:
       - name: Checkout tagged commit
@@ -40,9 +45,11 @@ jobs:
 
       - name: Resolve tag name
         id: tag
+        env:
+          TAG_INPUT: ${{ github.event.inputs.tag }}
         run: |
-          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
-            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [[ -n "$TAG_INPUT" ]]; then
+            echo "name=$TAG_INPUT" >> "$GITHUB_OUTPUT"
           else
             echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
@@ -66,13 +73,26 @@ jobs:
             --arch arm64
 
       - name: Package binary
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
           mkdir -p artifacts
           cp .build/release/ManifoldServer artifacts/manifold-server
           cd artifacts
-          tar -czf manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz manifold-server
-          shasum -a 256 manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz \
-            > manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz.sha256
+          tar -czf "manifold-server-${TAG}-macos-arm64.tar.gz" manifold-server
+          shasum -a 256 "manifold-server-${TAG}-macos-arm64.tar.gz" \
+            > "manifold-server-${TAG}-macos-arm64.tar.gz.sha256"
+
+      # Closes the #726 gap for the one binary consumers actually download —
+      # release-provenance.yml only attests the SBOM/dependency-tree metadata
+      # files, never this tarball, and its sidecar .sha256 is regenerated on
+      # the same runner (transfer-integrity only, not provenance: a swapper
+      # would regenerate both together). Consumers verify with:
+      #   gh attestation verify <tarball> --repo ManifoldKit/ManifoldKit
+      - name: Attest binary build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: artifacts/manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz
 
       - name: Upload to release
         env:

@@ -28,6 +28,9 @@ jobs:
     # there are no default traits and the ML families live in companion
     # packages; a bare resolve is the release metadata path.)
     runs-on: macos-15
+    # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
+    # min) can stall the whole org queue if this job hangs (#2099 CI review).
+    timeout-minutes: 30
     steps:
       - name: Checkout PR commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

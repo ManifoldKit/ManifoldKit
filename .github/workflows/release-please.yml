@@ -25,6 +25,10 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # Bounded even though this job runs on ubuntu (not the org-capped macOS
+    # pool): an unbounded default (360 min) still wastes a runner slot and
+    # delays detection of a hang (#2099 CI review).
+    timeout-minutes: 15
     # Concurrency is scoped to THIS job deliberately, NOT the whole workflow:
     # cancelling the release-please detection job when a newer run supersedes
     # it is safe (only the latest matters), but a workflow-level
@@ -50,6 +54,7 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -104,6 +109,7 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Dispatch core-release to companion repos
         env:
