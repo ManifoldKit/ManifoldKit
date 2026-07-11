@@ -583,13 +583,15 @@ final class GenerationQueue {
                     messages: messages,
                     systemPrompt: augmentedSystemPrompt,
                     tools: config.tools,
-                    documents: hints.documents
+                    documents: hints.documents,
+                    renderingMode: hints.renderingMode
                 )
             } else {
                 assembledPrompt = try renderer.render(
                     messages: messages,
                     systemPrompt: systemPrompt,
-                    documents: hints.documents
+                    documents: hints.documents,
+                    renderingMode: hints.renderingMode
                 )
             }
             effectiveSystemPrompt = nil
