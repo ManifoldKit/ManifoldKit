@@ -289,8 +289,13 @@ method enforces both preconditions.
 
 ## Backend identity
 
-`BackendName` is a Swift `enum: String` with six cases. Compare via the typed
-accessor — never against raw string literals:
+`BackendName` is an extensible `RawRepresentable` struct — the
+`Notification.Name` / `URLResourceKey` pattern — **not an enum**. It was
+converted from `enum: String` to a struct in #1742 so third-party backends
+(including those added after ManifoldKit 1.0 ships) can mint new identifiers
+via `BackendName(rawValue:)` without breaking every downstream exhaustive
+`switch`. Six well-known identifiers ship as `public static let` constants.
+Compare via the typed accessor — never against raw string literals:
 
 ```swift
 import ManifoldKit   // re-exports ManifoldInference
@@ -300,9 +305,13 @@ if vm.activeBackendName == BackendName.foundation.rawValue {
 }
 ```
 
-Available cases (canonical raw values shown):
+Because the type is open, a `switch` over `BackendName` needs a `default:`
+arm now — `case .foundation:` style pattern matching still works (Swift's
+default `~=` for `Equatable` types), but the compiler can no longer prove the
+well-known constants are exhaustive. `BackendName.wellKnown` lists them (also
+available as `.allCases` for source compatibility with the pre-#1742 enum):
 
-| Case | Raw value (0.19+) | Legacy (0.18.x) |
+| Identifier | Raw value (0.19+) | Legacy (0.18.x) |
 |------|-------------------|-----------------|
 | `.foundation` | `"foundation"` | `"Apple"` |
 | `.ollama` | `"ollama"` | `"Ollama"` |
@@ -459,12 +468,14 @@ of them:
 2. **The send method is `vm.sendMessage(_:)`, NOT `vm.send(_:)`.**
    `ChatViewModel.send` does not exist. Use `try await vm.sendMessage("hi")`
    for scripted use, or set `vm.inputText` and call `await vm.sendMessage()`.
-3. **Backend identity comparisons go through `BackendName.<case>.rawValue`**
+3. **Backend identity comparisons go through `BackendName.<identifier>.rawValue`**
    (e.g. `vm.activeBackendName == BackendName.foundation.rawValue`). The raw
    values flipped from `"Apple"`/`"Ollama"`/`"llama.cpp"` to lowercase
    canonical (`"foundation"`/`"ollama"`/`"llama"`) in 0.19 — code that
    hardcoded the legacy strings breaks. Use `BackendName.parse(_:)` when
-   reading already-persisted strings off disk.
+   reading already-persisted strings off disk. `BackendName` is an
+   extensible struct (since #1742), not an enum — a `switch` over it needs a
+   `default:` arm.
 4. **Local model loading goes through
    `ModelManagementViewModel.dispatchSelectedLoad()`** — there is no shortcut
    like `vm.loadModel(url:)` or `vm.loadModel(from:)`. Foundation Models are
