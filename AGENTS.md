@@ -573,6 +573,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
 | `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
 | `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. |
+| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
 
 ### UI modules
 
@@ -793,6 +794,13 @@ Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, a
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 
 `changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.
+
+**Capability-field release-notes discipline:** a release that adds a new `BackendCapabilities`
+field ships a one-line CHANGELOG callout — "new capability field `X`, default `Y` — backends
+that support `X` must opt in." New fields default to their old-behavior value, so a companion
+backend (manifold-mlx / manifold-llama) that doesn't yet construct the literal with the new
+field silently reports the default rather than failing to compile; the callout is the only
+signal that tells a companion maintainer opt-in is available and expected.
 
 ## PR workflow
 
