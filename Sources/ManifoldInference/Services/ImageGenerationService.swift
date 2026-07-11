@@ -17,6 +17,30 @@ public enum ImageGenerationServiceError: Error, Equatable, Sendable {
     case notLoaded
 }
 
+// `ImageGenerationServiceError` is the concrete error type that escapes
+// `ImageGenerationRuntime`'s public `AsyncThrowingStream<ImageGenerationEvent,
+// Error>` event stream — a separate public boundary from the four chat-path
+// surfaces `ErrorHandlingAtTheBoundary.md` documents (#2157). Conforming it to
+// `BackendError` mirrors that spine.
+extension ImageGenerationServiceError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .noFactoryRegistered(let format):
+            return "No image-generation backend factory registered for format \"\(format.rawValue)\". " +
+                "Call ImageGenerationService.registerBackendFactory(for:factory:) before loadModel."
+        case .notLoaded:
+            return "generate was called without a loaded image-generation model. Call loadModel first."
+        }
+    }
+}
+
+extension ImageGenerationServiceError: BackendError {
+    /// Both cases are caller-side preconditions, not transient failures —
+    /// retrying without registering a factory or loading a model first
+    /// reproduces the same error.
+    public var isRetryable: Bool { false }
+}
+
 /// Orchestrates an image-generation backend's lifecycle.
 ///
 /// Sibling to ``InferenceService`` for the image path. Owns registration,

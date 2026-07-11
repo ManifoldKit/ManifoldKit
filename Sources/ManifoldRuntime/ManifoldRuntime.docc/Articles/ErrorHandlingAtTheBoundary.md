@@ -13,7 +13,7 @@ ManifoldKit has roughly 50 public `Error`-conforming types, but the overwhelming
 
 Every one of these types conforms to `BackendError` — `LocalizedError & Sendable` plus `var isRetryable: Bool`. That is the whole contract: **catch `BackendError` once, branch on `isRetryable`, and you have handled every escapable failure from every boundary** without switching on a dozen unrelated concrete types.
 
-> Note: This contract is scoped to the four chat-path surfaces above. The media-generation runtimes (`ImageGenerationRuntime` / `VideoGenerationRuntime` / `AudioGenerationRuntime`, whose public event streams surface `ImageGenerationServiceError` / `VideoGenerationServiceError` / `AudioGenerationServiceError`) and `EmbeddingBackend.embed(_:)` (`EmbeddingError`) are separate public boundaries whose error types do not yet conform to `BackendError`.
+> Note: This contract is scoped to the four chat-path surfaces above. The media-generation runtimes (`ImageGenerationRuntime` / `VideoGenerationRuntime` / `AudioGenerationRuntime`, whose public event streams surface `ImageGenerationServiceError` / `VideoGenerationServiceError` / `AudioGenerationServiceError`) and `EmbeddingBackend.embed(_:)` (`EmbeddingError`) are separate public boundaries. As of #2157 all four of those types also conform to `BackendError` — see "The media-generation and embedding boundary" below — but they are audited and case-counted separately from the four chat-path surfaces above, because they escape at a different set of entry points.
 
 ## The escapable-types table
 
@@ -65,6 +65,21 @@ Types that looked like escape candidates but turned out to be caught and wrapped
 - **`EndpointStoreError` / `ModelDiscoveryError`** encountered during `quickStart`'s auto-select and registry-refresh steps are caught, logged, and defaulted — never thrown — so the facade degrades gracefully instead of failing assembly over a non-fatal lookup.
 - **`KeychainError`** is string-matched inside `ManifoldKitError.from(_:)` and reduced to `.keychainUnavailable`.
 - **Background seed downloads** — `HuggingFaceError` raised during `quickStart(seed:)`'s best-effort model download is logged and skipped, never thrown; the facade launches with no model selected instead.
+
+## The media-generation and embedding boundary
+
+Separate from the four chat-path surfaces above, four more types escape at their own boundaries and conform to `BackendError` as of #2157:
+
+| Boundary | Type | Escape path |
+|---|---|---|
+| `ImageGenerationRuntime`'s public `AsyncThrowingStream<ImageGenerationEvent, Error>` | `ImageGenerationServiceError` | Thrown by `ImageGenerationService` for caller-observable preconditions (`.noFactoryRegistered`, `.notLoaded`). |
+| `VideoGenerationRuntime`'s public `AsyncThrowingStream<VideoGenerationEvent, Error>` | `VideoGenerationServiceError` | Thrown by `VideoGenerationService` when `generate` is called while another generation is already in progress (`.alreadyGenerating`). |
+| `AudioGenerationRuntime`'s public `AsyncThrowingStream<AudioGenerationEvent, Error>` | `AudioGenerationServiceError` | Thrown by `AudioGenerationService`, same shape as the video sibling (`.alreadyGenerating`). |
+| `EmbeddingBackend.embed(_:)` | `EmbeddingError` | Thrown directly by the embedding backend for a not-loaded model, a dimension-mismatch postcondition violation, or an encoding failure wrapping the underlying engine's error. |
+
+All four cases across the three generation-service types are caller-side preconditions (`isRetryable == false` — a blind retry reproduces the same failure without the caller changing state first: register a factory, load a model, or wait for the in-flight generation to finish). `EmbeddingError.encodingFailed` follows the same "defer to the wrapped error's own `isRetryable`" pattern as `ConversationError`/`SendMessageError`/`RetryExhaustedError` above.
+
+`ErrorBoundaryMediaGenEmbeddingAuditTest` (in `ManifoldBackendsTests`, alongside `ErrorBoundaryBackendErrorAuditTest`) is the checklist guard for this set — kept as a separate test because these four types escape at different entry points than the four chat-path surfaces, not because the contract itself differs.
 
 ## The uncontrolled exceptions
 

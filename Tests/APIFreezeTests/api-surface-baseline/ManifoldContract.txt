@@ -115,6 +115,7 @@ EmbeddingError Enum
 EmbeddingError.dimensionMismatch EnumElement
 EmbeddingError.encodingFailed EnumElement
 EmbeddingError.errorDescription Var
+EmbeddingError.isRetryable Var
 EmbeddingError.modelNotLoaded EnumElement
 EndpointBackendKeychainConfigurable Protocol
 EndpointBackendKeychainConfigurable.configure(baseURL:keychainAccount:modelName:) Func

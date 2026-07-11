@@ -138,3 +138,30 @@ public enum EmbeddingError: LocalizedError {
         }
     }
 }
+
+// `EmbeddingError` is the sole error type thrown across the
+// `EmbeddingBackend.embed(_:)` boundary — a separate public boundary from the
+// four chat-path surfaces `ErrorHandlingAtTheBoundary.md` documents (#2157).
+// Conforming it to `BackendError` mirrors that spine so callers of
+// `embed(_:)` get the same "catch `BackendError` once, branch on
+// `isRetryable`" contract.
+extension EmbeddingError: BackendError {
+    /// Whether calling `embed(_:)` again, unchanged, has a reasonable chance
+    /// of succeeding.
+    ///
+    /// `.modelNotLoaded` and `.dimensionMismatch` are precondition/contract
+    /// violations — retrying without first loading a model, or without the
+    /// backend fixing its output shape, reproduces the same failure. For
+    /// `.encodingFailed`, defer to the wrapped error's own `isRetryable` when
+    /// it conforms to `BackendError` (e.g. a network blip inside a remote
+    /// embedder); fall back to `false` for an unrecognised underlying type
+    /// rather than guessing.
+    public var isRetryable: Bool {
+        switch self {
+        case .modelNotLoaded, .dimensionMismatch:
+            return false
+        case .encodingFailed(let underlying):
+            return (underlying as? any BackendError)?.isRetryable ?? false
+        }
+    }
+}
