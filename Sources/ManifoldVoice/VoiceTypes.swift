@@ -133,10 +133,27 @@ public extension SpeechTranscribing {
                     }
                     // `startTranscribing` only awaits setup (registering the
                     // tap/callback), not completion, so this task must stay
-                    // alive until torn down — `Task.sleep` throws
-                    // `CancellationError` the instant `onTermination` below
-                    // cancels `task`.
-                    try await Task.sleep(nanoseconds: .max)
+                    // alive until torn down. Park on a *bounded* sleep in a
+                    // cancellation-checked loop rather than a single
+                    // `Task.sleep(nanoseconds: .max)`: the deadline arithmetic
+                    // for `.max` nanoseconds overflows on older concurrency
+                    // runtimes (the macos-15 CI runner), so that sleep returns
+                    // immediately instead of parking — the task then finishes
+                    // before `onTermination` fires, `task.cancel()` no-ops
+                    // against an already-completed task, and
+                    // `cancelTranscribing()` is never reached (cancellation
+                    // propagation silently lost). A short, overflow-safe
+                    // duration re-parked while `!Task.isCancelled` holds
+                    // unconditionally: `Task.sleep` throws `CancellationError`
+                    // the instant `onTermination` cancels `task`, and the guard
+                    // re-parks if any sleep ever returns early — so teardown
+                    // fires exactly once, on cancellation, on every toolchain.
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .seconds(60))
+                    }
+                    // Reached only if the task was cancelled between sleeps;
+                    // funnel into the same teardown path as an interrupted sleep.
+                    throw CancellationError()
                 } catch is CancellationError {
                     cancelTranscribing()
                     continuation.finish()
