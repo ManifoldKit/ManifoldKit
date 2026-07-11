@@ -457,6 +457,95 @@ final class RAGServiceTests: XCTestCase {
         XCTAssertTrue(docStore.deletedIDs.contains(record.id))
     }
 
+    // MARK: - #2199: in-memory text ingestion
+
+    /// The in-memory overload must share the same chunk/insert pipeline as
+    /// `ingest(url:)`: chunks land in the vector store and a matching
+    /// `DocumentRecord` lands in the document store, keyed to the
+    /// caller-supplied `documentID`.
+    func test_ingestText_storesChunksAndDocumentKeyedToCallerID() async throws {
+        let vectorStore = FakeVectorStore()
+        let docStore = FakeDocumentStore()
+        let sut = RAGService(documentStore: docStore, vectorStore: vectorStore)
+
+        let documentID = UUID()
+        let record = try await sut.ingest(
+            text: "Hello world. This is an in-memory test document.",
+            documentID: documentID,
+            title: "My Scene"
+        )
+
+        XCTAssertEqual(record.id, documentID, "the caller-supplied documentID must be preserved, not replaced with a fresh UUID")
+        XCTAssertEqual(record.title, "My Scene")
+
+        let inserted = await vectorStore.insertedChunks
+        XCTAssertFalse(inserted.isEmpty)
+        XCTAssertTrue(inserted.allSatisfy { $0.documentID == documentID })
+        XCTAssertEqual(docStore.insertedRecords.count, 1)
+        XCTAssertEqual(docStore.insertedRecords[0].id, documentID)
+    }
+
+    /// Omitting `title` falls back to the documentID string rather than
+    /// leaving an empty/ambiguous label.
+    func test_ingestText_defaultTitleFallsBackToDocumentIDString() async throws {
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: FakeVectorStore())
+        let documentID = UUID()
+
+        let record = try await sut.ingest(text: "Some text", documentID: documentID)
+
+        XCTAssertEqual(record.title, documentID.uuidString)
+    }
+
+    /// The embedding pipeline must run identically to `ingest(url:)`: when a
+    /// loaded embedding backend is present, `ingest(text:)` calls it and
+    /// stores the resulting vectors.
+    func test_ingestText_withEmbeddingBackendCallsEmbed() async throws {
+        let vectorStore = FakeVectorStore()
+        let docStore = FakeDocumentStore()
+        let backend = FakeEmbeddingBackend(isModelLoaded: true)
+        let sut = RAGService(documentStore: docStore, vectorStore: vectorStore, embeddingBackend: backend)
+
+        try await sut.ingest(text: String(repeating: "word ", count: 20), documentID: UUID())
+
+        XCTAssertGreaterThan(backend.embedCallCount, 0)
+        let embeddings = await vectorStore.insertedEmbeddings
+        XCTAssertFalse(embeddings.isEmpty)
+    }
+
+    /// The synthetic `sourceURL`/`fileType` must not collide with any
+    /// registered `DocumentParser`'s supported extensions — otherwise the
+    /// full-context path would attempt (and fail) a filesystem read against a
+    /// non-file URL instead of gracefully skipping.
+    func test_ingestText_recordCarriesSyntheticNonFileSourceAndUnmatchedFileType() async throws {
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: FakeVectorStore())
+        let documentID = UUID()
+
+        let record = try await sut.ingest(text: "Some text", documentID: documentID)
+
+        XCTAssertEqual(record.sourceURL.scheme, "manifold-inmemory")
+        let parsers: [any DocumentParser] = [TextDocumentParser(), PDFDocumentParser()]
+        XCTAssertFalse(
+            parsers.contains { $0.supportedExtensions.contains(record.fileType) },
+            "the in-memory fileType marker must not match a registered parser's supported extensions"
+        )
+    }
+
+    /// `deleteDocument(id:)` must work against text-ingested documents just
+    /// like file-ingested ones — the acceptance criterion from #2199.
+    func test_ingestText_thenDeleteDocument_removesFromBothStores() async throws {
+        let vectorStore = FakeVectorStore()
+        let docStore = FakeDocumentStore()
+        let sut = RAGService(documentStore: docStore, vectorStore: vectorStore)
+
+        let documentID = UUID()
+        let record = try await sut.ingest(text: "Delete me too", documentID: documentID)
+        try await sut.deleteDocument(id: record.id)
+
+        let deleted = await vectorStore.deletedDocumentIDs
+        XCTAssertTrue(deleted.contains(documentID))
+        XCTAssertTrue(docStore.deletedIDs.contains(documentID))
+    }
+
     // MARK: - #1637: rerank stage
 
     /// Three semantic hits arrive in a deliberately *wrong* cosine order — the
