@@ -1,5 +1,152 @@
 # Changelog
 
+## [0.69.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.68.0...v0.69.0) (2026-07-11)
+
+The final pre-1.0 breaking wave (the Wave-2 API program, [#2158](https://github.com/ManifoldKit/ManifoldKit/issues/2158)).
+Seven breaking changes land together, each with its migration note below. Companion
+packages (manifold-mlx, manifold-llama, manifold-eval) have staged adapt PRs that merge
+with their next pin bump, all five reference apps were screened for exposure, and the
+demo-apps gate is green on exactly this surface.
+
+### Highlights
+
+#### TurnConfig composes GenerationConfig
+
+`TurnConfig` no longer duplicates `temperature`/`topP`/`repeatPenalty` as stored fields —
+it embeds a full `GenerationConfig`, so every sampling knob is available per turn from
+one place ([#2197](https://github.com/ManifoldKit/ManifoldKit/issues/2197)):
+
+```swift
+var config = TurnConfig()
+config.generation.temperature = 0.5   // was: config.temperature = 0.5
+```
+
+The runtime owns tools: `generation.tools` on a `TurnConfig` is *not* the tool source —
+register tools with `ToolRegistry` as before.
+
+#### The deprecated parameterized enqueue overloads are gone
+
+The three `@available(*, deprecated)` `InferenceService.enqueue` builders (tuple-of-strings,
+`[Message]` + individual sampling params, structured + individual params) are deleted per
+the pre-1.0 delete-don't-deprecate policy ([#2197](https://github.com/ManifoldKit/ManifoldKit/issues/2197)).
+Build a `GenerationConfig` and pass `config:`:
+
+```swift
+// Before (deleted):
+let (_, stream) = try service.enqueue(messages: history, temperature: 0.7, topP: 0.9)
+// After:
+let (_, stream) = try service.enqueue(
+    messages: history,
+    config: GenerationConfig(temperature: 0.7, topP: 0.9)
+)
+```
+
+#### Clearer names for three generic types
+
+`Agent` → `AgentDefinition` (ManifoldContract), `Skill` → `SkillDefinition`
+(ManifoldSkills), `Score` → `EvalScore` (ManifoldInference) — pure renames, no behavior
+change, no compatibility typealiases ([#2197](https://github.com/ManifoldKit/ManifoldKit/issues/2197)).
+The SwiftData `PersistedAgent`/`ManifoldSchemaV9.Agent` persistence row is unrelated and
+unchanged.
+
+#### ModelType is an extensible struct
+
+`ModelType` follows the `BackendName` pattern: a `RawRepresentable` struct with static
+`.gguf` / `.mlx` / `.foundation` members and unchanged raw values and `Codable` shape, so
+persisted catalogs round-trip byte-identically ([#2198](https://github.com/ManifoldKit/ManifoldKit/issues/2198)).
+Exhaustive switches need a `default:` arm:
+
+```swift
+switch model.modelType {
+case .gguf: loadGGUF()
+case .mlx: loadMLX()
+default: throw ModelError.unsupportedType(model.modelType)
+}
+```
+
+There is no `CaseIterable` replacement; use `LocalModelDescriptor.builtIns.map(\.modelType)`
+for "every built-in local model type".
+
+#### APIProvider raw values are stable opaque codes
+
+`APIProvider.rawValue` changed from display strings ("OpenAI Responses", "LM Studio", …)
+to stable codes ("openAIResponses", "lmStudio", …) ([#2192](https://github.com/ManifoldKit/ManifoldKit/issues/2192)).
+Persisted values written by older builds decode in place via `APIProvider.parse(_:)`;
+re-encoding emits the stable code. Use `displayName` for user-facing labels:
+
+```swift
+let provider = APIProvider.parse(persistedRawValue) ?? .custom
+label.text = provider.displayName   // "OpenAI Responses"
+```
+
+#### Historical schema versions are internal
+
+`ManifoldSchemaV3`/`V7`/`V8`/`V10` and `ManifoldSchemaV4.ChatMessage`/`.ChatSession` are
+no longer public ([#2196](https://github.com/ManifoldKit/ManifoldKit/issues/2196)). Use the
+`Persisted*` aliases (`PersistedChatMessage`, `PersistedChatSession`, `PersistedAgent`, …)
+— consumer screening across both companions, manifold-eval, and all five reference apps
+found zero direct `ManifoldSchemaVN` references. Migration behavior is byte-identical.
+
+#### The capability-claims registry is instance-scoped
+
+Every `BackendContractChecks` claim function now takes a
+`BackendContractChecks.ClaimRegistry` as its first argument, replacing the process-global
+registry that was unsafe under `swift test --parallel` ([#2194](https://github.com/ManifoldKit/ManifoldKit/issues/2194)):
+
+```swift
+final class MyBackendContractTests: XCTestCase {
+    let capabilityClaimRegistry = BackendContractChecks.ClaimRegistry()
+    // pass it as the first argument to resetCapabilityClaims, capturedClaims, …
+}
+```
+
+#### Persistence test mocks moved to ManifoldPersistenceTestSupport
+
+`GlassBoxDemoRAG`, `InMemoryPersistenceHarness`, and `makeInMemoryContainer()` moved out
+of `ManifoldTestSupport` into the new `ManifoldPersistenceTestSupport` product, so
+non-persistence consumers of the mocks no longer link SwiftData ([#2195](https://github.com/ManifoldKit/ManifoldKit/issues/2195)).
+Consumers of those three add the product and `import ManifoldPersistenceTestSupport`;
+everything else in `ManifoldTestSupport` is source-compatible. Both are semver-exempt
+dev-tool products.
+
+#### Capability requirement names match their fields
+
+`GenerationCapabilityRequirement.streamingToolCalls` →
+`.streamsToolCallArguments`, so every requirement case textually names its
+`BackendCapabilities` field and the correspondence tripwire holds with no tracked
+exceptions ([#2202](https://github.com/ManifoldKit/ManifoldKit/issues/2202), closes
+[#2153](https://github.com/ManifoldKit/ManifoldKit/issues/2153)).
+
+#### Credentialed hosts are pinned and server auth is opt-in
+
+Cloud requests carrying credentials now require the host to be pinned or explicitly
+allowed — unpinned credentialed hosts throw the new
+`CloudBackendError.unpinnedCredentialedHost` unless
+`ManifoldConfiguration.allowUnpinnedCredentialedHosts` (default `false`) is set — and
+`manifold-server` refuses anonymous connections unless `--allow-anonymous` is passed
+([#2193](https://github.com/ManifoldKit/ManifoldKit/issues/2193)). Exhaustive switches
+over `CloudBackendError` need a new case or `@unknown default`; the old
+`ManifoldConfiguration` initializer gained a defaulted parameter.
+
+### Features
+
+**Codable APIEndpointRecord** — `APIEndpointRecord` conforms to `Codable` with stable
+keys, plus error-rim and event-posture documentation truth fixes ([#2188](https://github.com/ManifoldKit/ManifoldKit/issues/2188)).
+
+**BackendCapabilities.updating(...)** — copy-with API plus capability-surface tripwires
+(field-completeness and requirement↔field correspondence tests); fixes
+`AnyLanguageModelBackend`'s capability rebuild dropping fields ([#2190](https://github.com/ManifoldKit/ManifoldKit/issues/2190)).
+
+### Documentation
+
+**AGENTS.md Part 0** — adds first-principles guidance for AI assistants and trims
+history/rationale prose ([#2186](https://github.com/ManifoldKit/ManifoldKit/issues/2186)).
+
+### Internal
+
+**Public-surface baseline enforced nightly** — all 27 library modules are baselined and
+checked nightly; the API-design levers are inlined into AGENTS.md ([#2189](https://github.com/ManifoldKit/ManifoldKit/issues/2189)).
+
 ## [0.68.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.67.0...v0.68.0) (2026-07-10)
 
 No public API changes in this release — it hardens the assurance tooling around the
