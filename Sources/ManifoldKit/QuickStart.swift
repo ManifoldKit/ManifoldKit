@@ -276,10 +276,13 @@ public enum ManifoldKit {
     ///   - makeModelContainer: Factory closure that produces the SwiftData container.
     ///   - downloadManagerOverride: Injectable download manager for tests. When
     ///     nil, a `BackgroundDownloadManager` is created.
-    ///   - foundationAvailableOverride: Test seam for the seed path's "is a
-    ///     zero-cost Foundation model available?" probe, which otherwise
-    ///     depends on the host's Apple Intelligence state. Nil uses the live
-    ///     probe.
+    ///   - foundationAvailableOverride: Test seam for "is a zero-cost
+    ///     Foundation model available?", which otherwise depends on the
+    ///     host's Apple Intelligence state. Nil uses the live probe. Shared
+    ///     by two call sites: the seed path's download-skip check, and the
+    ///     backend-availability diagnostic's OS-gate detection (#2157) —
+    ///     both ask the same underlying question, so one override covers
+    ///     both deterministically in tests regardless of the test host's OS.
     ///   - storageServiceOverride: Test seam for the seed path's "is a model
     ///     already on disk?" probe, which otherwise scans the host's real
     ///     models directory. Nil uses the default service.
@@ -374,10 +377,14 @@ public enum ManifoldKit {
             }
             switch backendAvailabilityDiagnostic(
                 snapshot: snapshot,
-                configuredEndpointCount: configuredEndpointCount
+                configuredEndpointCount: configuredEndpointCount,
+                registrars: baseRegistrars + backends,
+                foundationModelsOSAvailable: foundationAvailableOverride ?? ManifoldKit.foundationModelsOSAvailable
             ) {
             case .noBackends:
                 throw ManifoldKitError.noBackendsRegistered
+            case .noBackendsOSGated(let reason):
+                throw ManifoldKitError.noBackendsRegisteredOSGated(reason: reason)
             case .cloudOnlyWithoutEndpoint(let message):
                 // Warn rather than throw: endpoints are commonly configured
                 // *after* quickStart() returns (settings UI, first-run flow),
@@ -559,6 +566,21 @@ public enum ManifoldKit {
 
     // MARK: - Backend availability diagnostic
 
+    /// Whether the host OS meets `FoundationBackends`' Apple Intelligence
+    /// floor (iOS 26 / macOS 26) — mirrors the `#available` gate inside
+    /// `FoundationBackends.register(with:)` exactly, so this is `true` if and
+    /// only if that registrar's `declareSupport(for: .foundation)` runs.
+    /// Read live at each `_quickStart` call rather than cached, matching the
+    /// registrar's own always-re-checked `#available`.
+    static var foundationModelsOSAvailable: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 26, macOS 26, *) {
+            return true
+        }
+        #endif
+        return false
+    }
+
     /// The actionable diagnostics ``quickStart(configuration:)`` derives from
     /// the live registration state. Internal and pure so tests can pin the
     /// decision table without driving a full bootstrap.
@@ -566,6 +588,13 @@ public enum ManifoldKit {
         /// Nothing is registered at all — the service can never generate.
         /// `quickStart` throws `ManifoldKitError.noBackendsRegistered`.
         case noBackends
+        /// Nothing is registered, but the cause can be pinned to an OS/platform
+        /// gate rather than a missing registration call — e.g. every registrar
+        /// passed to `quickStart(backends:)` was `FoundationBackends` and the
+        /// host is below the Apple Intelligence floor (#2157). `quickStart`
+        /// throws `ManifoldKitError.noBackendsRegisteredOSGated(reason:)`
+        /// instead of the generic `.noBackendsRegistered`.
+        case noBackendsOSGated(reason: String)
         /// Cloud providers are registered but no local backend is, and no
         /// endpoint has been configured — the service is degraded until the
         /// host configures one. `quickStart` logs the associated message.
@@ -579,11 +608,51 @@ public enum ManifoldKit {
     /// ``quickStart(backends:configuration:seed:)``, and once cloud registrars
     /// register unconditionally a bare "count > 0" check goes permanently
     /// quiet for the local-inference failure mode.
+    ///
+    /// - Parameters:
+    ///   - snapshot: The live registration state (declared support only —
+    ///     see ``EnabledBackends``).
+    ///   - configuredEndpointCount: Number of persisted cloud endpoints.
+    ///   - registrars: Every registrar `quickStart` attempted to register
+    ///     (compiled-in defaults + caller-supplied), used only to distinguish
+    ///     ``BackendAvailabilityDiagnostic/noBackends`` from
+    ///     ``BackendAvailabilityDiagnostic/noBackendsOSGated(reason:)`` when
+    ///     `snapshot` is empty. Defaults to `[]` so existing callers (and
+    ///     tests pinning the pre-#2157 decision table) are unaffected.
+    ///   - foundationModelsOSAvailable: Whether the host OS meets the
+    ///     Foundation Models floor (iOS 26 / macOS 26). Injectable so this
+    ///     stays a pure function testable on every OS version. Defaults to
+    ///     `true` (i.e. "assume no OS gate") so existing callers see
+    ///     unchanged behavior.
     static func backendAvailabilityDiagnostic(
         snapshot: EnabledBackends,
-        configuredEndpointCount: Int
+        configuredEndpointCount: Int,
+        registrars: [any BackendRegistrar.Type] = [],
+        foundationModelsOSAvailable: Bool = true
     ) -> BackendAvailabilityDiagnostic? {
         if snapshot.isEmpty {
+            // Every OS-gated registrar this core package ships is
+            // `FoundationBackends`: `register(with:)` always runs (it is not
+            // itself `#available`-gated), but the `declareSupport(for:)` call
+            // inside it only fires when the host meets the iOS 26 / macOS 26
+            // floor — so a factory can be registered while `snapshot` stays
+            // empty. Detecting this precisely (rather than guessing) only
+            // works for the one gate this package can introspect; a
+            // companion-package registrar (manifold-mlx / manifold-llama)
+            // that is itself OS/hardware-gated is invisible here and still
+            // falls through to the generic `.noBackends` diagnostic.
+            if !foundationModelsOSAvailable,
+               registrars.contains(where: { $0 == FoundationBackends.self }) {
+                return .noBackendsOSGated(reason: """
+                    FoundationBackends was registered, but the host OS is below the \
+                    Apple Intelligence floor (iOS 26 / macOS 26) that Foundation \
+                    Models requires, so it declared no supported model type. \
+                    Upgrade the OS, or register a different backend — a cloud \
+                    endpoint (bootstrap.endpointStore.insertEndpoint(_:)) or a \
+                    companion local backend (quickStart(backends: [LlamaBackends.self]) \
+                    for GGUF, [MLXBackends.self] for MLX).
+                    """)
+            }
             return .noBackends
         }
         if !snapshot.supportsLocalInference && configuredEndpointCount == 0 {

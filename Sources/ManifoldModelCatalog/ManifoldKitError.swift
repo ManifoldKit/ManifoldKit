@@ -52,6 +52,21 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
     /// throw on the first turn.
     case noBackendsRegistered
 
+    /// No inference backend is registered, and the diagnostic can pin the
+    /// cause to an OS/platform gate rather than a missing registration call —
+    /// e.g. `FoundationBackends` was passed to
+    /// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)`` but
+    /// the host OS is below the Apple Intelligence floor (iOS 26 / macOS 26),
+    /// so `declareSupport(for:)` never ran even though `register(with:)` did.
+    /// Distinct from ``noBackendsRegistered`` (#2157): that case fires for
+    /// "nothing was registered at all" (a code/config gap the host can fix
+    /// immediately); this case fires for "something was registered but the
+    /// current environment doesn't qualify" (a runtime condition the host
+    /// cannot fix by calling another registrar). `reason` is a short,
+    /// human-readable explanation of the gate — see
+    /// `ManifoldKit.backendAvailabilityDiagnostic(snapshot:configuredEndpointCount:)`.
+    case noBackendsRegisteredOSGated(reason: String)
+
     /// Catch-all for errors that did not match any of the more specific cases.
     /// The underlying error is reduced to a string at construction time to
     /// keep the rim `Sendable`.
@@ -86,6 +101,8 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
             return "Couldn't read the server response: \(detail)"
         case .noBackendsRegistered:
             return "No inference backends are registered. Call OllamaBackends.register(with:), CloudSaaSBackends.register(with:), and/or FoundationBackends.register(with:) on your InferenceService (or pass companion registrars such as LlamaBackends.register(with:) for local GGUF). SwiftUI apps can use ManifoldKit.quickStart(backends:) instead."
+        case .noBackendsRegisteredOSGated(let reason):
+            return "No inference backends are registered: \(reason)"
         case .unknown(let underlyingDescription):
             if underlyingDescription.isEmpty {
                 return "An unexpected error occurred."
@@ -109,9 +126,11 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
     /// - ``cancelled`` — cooperative cancellation, not a failure to retry.
     /// - ``tlsFailure``, ``keychainUnavailable`` — need user or host action
     ///   (fix pinning/trust, unlock the device) rather than a blind retry.
-    /// - ``decodingFailure``, ``noBackendsRegistered``, ``unknown`` — a
-    ///   wire-format mismatch or a configuration gap; retrying the identical
-    ///   call reproduces the same failure.
+    /// - ``decodingFailure``, ``noBackendsRegistered``,
+    ///   ``noBackendsRegisteredOSGated``, ``unknown`` — a wire-format
+    ///   mismatch or a configuration gap; retrying the identical call
+    ///   reproduces the same failure. ``noBackendsRegisteredOSGated`` in
+    ///   particular needs an OS upgrade or a different backend, not a retry.
     public var isRetryable: Bool {
         switch self {
         case .notConnectedToInternet, .timedOut, .dnsFailure:
@@ -119,7 +138,8 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
         case .serverError(let statusCode, _):
             return statusCode == 0 || statusCode >= 500
         case .cancelled, .tlsFailure, .keychainUnavailable,
-             .decodingFailure, .noBackendsRegistered, .unknown:
+             .decodingFailure, .noBackendsRegistered,
+             .noBackendsRegisteredOSGated, .unknown:
             return false
         }
     }
