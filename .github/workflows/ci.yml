@@ -883,6 +883,13 @@ jobs:
   # scripts/api-surface-baseline.sh's header.
   api-digester-check:
     needs: [changes]
+    # Job-level gate (mirrors server-tests/macros-tests): without it this job
+    # boots a macOS runner on every push/merge_group/docs-only PR just to
+    # no-op the digester step — see the `changes` job's rationale comment.
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.api-any == 'true' &&
+      needs.changes.outputs.already-validated != 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
@@ -896,15 +903,6 @@ jobs:
           # paths-filter needs the parent commit to diff against on `push` events;
           # `pull_request` works with the default shallow clone.
           fetch-depth: 2
-
-      - name: Detect dependency-graph changes
-        id: deps-changed
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
-        with:
-          filters: |
-            deps:
-              - 'Package.swift'
-              - 'Package.resolved'
 
       # Same path/key shape as the `test` job — both jobs share the SwiftPM dep
       # tarball cache so we don't re-download the graph twice per workflow run.
