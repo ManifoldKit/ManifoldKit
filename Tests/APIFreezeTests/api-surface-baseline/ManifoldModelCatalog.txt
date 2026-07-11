@@ -374,7 +374,6 @@ ManifoldKitError.from(_:) Func
 ManifoldKitError.isRetryable Var
 ManifoldKitError.keychainUnavailable EnumElement
 ManifoldKitError.noBackendsRegistered EnumElement
-ManifoldKitError.noBackendsRegisteredOSGated EnumElement
 ManifoldKitError.notConnectedToInternet EnumElement
 ManifoldKitError.serverError EnumElement
 ManifoldKitError.timedOut EnumElement

@@ -352,10 +352,13 @@ final class QuickStartBackendsTests: XCTestCase {
     }
 
     /// End-to-end: `_quickStart` with only `FoundationBackends` registered on
-    /// a genuinely pre-floor OS must throw
-    /// `ManifoldKitError.noBackendsRegisteredOSGated`, not the generic
-    /// `.noBackendsRegistered` — exercised through the real assembly path
-    /// (not just the pure decision table above).
+    /// a genuinely pre-floor OS must still throw
+    /// `ManifoldKitError.noBackendsRegistered` (there is no dedicated public
+    /// case for the OS-gate cause — see that case's doc comment), but the
+    /// error's diagnostic MESSAGE must name the OS floor + a concrete
+    /// remediation rather than only the generic "call register(with:)" text
+    /// — exercised through the real assembly path (not just the pure
+    /// decision table above).
     ///
     /// `FoundationBackends.register(with:)` gates `declareSupport(for:)`
     /// behind the REAL `#available(iOS 26, macOS 26, *)` check, not the
@@ -378,12 +381,19 @@ final class QuickStartBackendsTests: XCTestCase {
             )
             XCTFail("_quickStart must throw when only an OS-gated backend is registered and the OS gate is closed")
         } catch let error as ManifoldKitError {
-            guard case .noBackendsRegisteredOSGated(let reason) = error else {
-                XCTFail("Expected ManifoldKitError.noBackendsRegisteredOSGated, got \(error)")
+            guard case .noBackendsRegistered = error else {
+                XCTFail("Expected ManifoldKitError.noBackendsRegistered, got \(error)")
                 return
             }
-            XCTAssertFalse(reason.isEmpty, "OS-gate reason must be non-empty")
-            XCTAssertNotNil(error.errorDescription, "noBackendsRegisteredOSGated must supply errorDescription")
+            let description = try XCTUnwrap(error.errorDescription, "noBackendsRegistered must supply errorDescription")
+            XCTAssertTrue(
+                description.contains("Apple Intelligence") || description.contains("iOS 26") || description.contains("macOS 26"),
+                "Diagnostic message must name the OS floor so the host knows exactly why: \(description)"
+            )
+            XCTAssertTrue(
+                description.contains("APIEndpointRecord") || description.contains("cloud endpoint"),
+                "Diagnostic message must offer a concrete remediation: \(description)"
+            )
             XCTAssertFalse(error.isRetryable, "An OS gate is not resolved by retrying")
         }
     }

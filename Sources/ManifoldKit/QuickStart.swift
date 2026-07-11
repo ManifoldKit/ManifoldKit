@@ -384,7 +384,15 @@ public enum ManifoldKit {
             case .noBackends:
                 throw ManifoldKitError.noBackendsRegistered
             case .noBackendsOSGated(let reason):
-                throw ManifoldKitError.noBackendsRegisteredOSGated(reason: reason)
+                // No new public ManifoldKitError case for the OS-gate cause
+                // (readiness/error-surface-completeness follow-up — a new
+                // case on a public non-frozen enum is source-breaking). The
+                // concrete reason is logged here so it isn't lost; the
+                // thrown case's `errorDescription` carries generic-but-
+                // actionable OS-gate guidance for callers that only read
+                // `error.localizedDescription`.
+                Log.quickStart.error("quickStart: \(reason, privacy: .public)")
+                throw ManifoldKitError.noBackendsRegistered
             case .cloudOnlyWithoutEndpoint(let message):
                 // Warn rather than throw: endpoints are commonly configured
                 // *after* quickStart() returns (settings UI, first-run flow),
@@ -592,8 +600,8 @@ public enum ManifoldKit {
         /// gate rather than a missing registration call — e.g. every registrar
         /// passed to `quickStart(backends:)` was `FoundationBackends` and the
         /// host is below the Apple Intelligence floor (#2157). `quickStart`
-        /// throws `ManifoldKitError.noBackendsRegisteredOSGated(reason:)`
-        /// instead of the generic `.noBackendsRegistered`.
+        /// logs `reason` and still throws `ManifoldKitError.noBackendsRegistered`
+        /// (no dedicated public case — see that case's doc comment).
         case noBackendsOSGated(reason: String)
         /// Cloud providers are registered but no local backend is, and no
         /// endpoint has been configured — the service is degraded until the
