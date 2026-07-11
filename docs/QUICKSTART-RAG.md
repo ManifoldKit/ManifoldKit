@@ -235,7 +235,7 @@ fragments, anything that doesn't already live on disk — use
 persist pipeline as `ingest(url:)`, so retrieval and citation behaviour are
 identical; you just skip writing (and cleaning up) a scratch file:
 
-```swift
+```swift,no-build
 let record = try await bootstrap.ragService?.ingest(
     text: generatedScene.body,
     documentID: generatedScene.id,   // caller-owned ID — reuse it to delete later
