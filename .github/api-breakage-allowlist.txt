@@ -19,6 +19,9 @@ API breakage: enumelement BackendName.llama has declared type change from (Manif
 API breakage: constructor BackendName.init(rawValue:) has return type change from ManifoldContract.BackendName? to ManifoldContract.BackendName
 API breakage: typealias BackendName.AllCases has been removed
 API breakage: enum BackendVisionCapability has been removed
+API breakage: func BuiltInCheckpointScorers.scoreRequiredContent(_:) has been renamed to func scoreRequiredContent(_:options:)
+API breakage: func BuiltInCheckpointScorers.scoreForbiddenContent(_:) has been renamed to func scoreForbiddenContent(_:options:)
+API breakage: constructor CheckpointEvaluationContext.init(output:snapshot:checkpoint:eventKinds:producedMessageCount:lastContextAssembledSlotCount:lastCompressionInsertedRecordCount:fixtureID:) has been removed
 API breakage: enum EmbeddingError has been removed
 API breakage: enum GenerationEvent has been removed
 API breakage: enum HandoffDetectionResult has been removed

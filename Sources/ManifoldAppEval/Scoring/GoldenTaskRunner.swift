@@ -123,7 +123,8 @@ public enum GoldenTaskRunner {
                 producedMessageCount: context.producedMessageCount,
                 lastContextAssembledSlotCount: context.lastContextAssembledSlotCount,
                 lastCompressionInsertedRecordCount: context.lastCompressionInsertedRecordCount,
-                fixtureID: context.fixtureID
+                fixtureID: context.fixtureID,
+                latestTurnVisibleText: context.latestTurnVisibleText
             )
 
             var scores: [String: EvalScore] = [:]
@@ -252,6 +253,21 @@ public enum GoldenTaskRunner {
             .map(\.content)
             .joined(separator: "\n")
 
+        // "Latest turn" = everything after the most recent user message (a
+        // tool-call turn can contribute more than one assistant message), so
+        // this is a suffix slice of the same array, not a re-derivation from
+        // event/turn indices `EvalRunOutput` doesn't carry.
+        let latestTurnVisibleText: String = {
+            guard let lastUserIndex = runResult.producedMessages.lastIndex(where: { $0.role == .user }) else {
+                return visibleText
+            }
+            let afterLastUser = runResult.producedMessages[runResult.producedMessages.index(after: lastUserIndex)...]
+            return afterLastUser
+                .filter { $0.role == .assistant }
+                .map(\.content)
+                .joined(separator: "\n")
+        }()
+
         let toolCalls: [ToolCall] = events.compactMap { event in
             if case .toolCallRequested(let call) = event { return call }
             return nil
@@ -280,7 +296,8 @@ public enum GoldenTaskRunner {
             producedMessageCount: runResult.producedMessages.count,
             lastContextAssembledSlotCount: lastContextAssembledSlotCount,
             lastCompressionInsertedRecordCount: lastCompressionInsertedRecordCount,
-            fixtureID: fixtureID
+            fixtureID: fixtureID,
+            latestTurnVisibleText: latestTurnVisibleText
         )
     }
 
