@@ -12,11 +12,22 @@ import ManifoldAppEval
 /// own transcript-slicing (not a test fixture) produces the scope split.
 final class GoldenTaskRunnerContentMatchOptionsTests: XCTestCase {
 
+    /// Actor-backed capture box — `GoldenTaskRunner.run` invokes scorers from
+    /// its own async context, so a plain `var` capture in an escaping
+    /// `@Sendable` closure is a real data race, not just a style nit (see
+    /// AGENTS.md Swift 6 concurrency gotcha #2).
+    private actor ContextBox {
+        private(set) var context: CheckpointEvaluationContext?
+        func store(_ context: CheckpointEvaluationContext) {
+            self.context = context
+        }
+    }
+
     private struct CapturingScorer: CheckpointScorer {
         let id = "capture-context"
-        let onCapture: @Sendable (CheckpointEvaluationContext) -> Void
+        let box: ContextBox
         func score(_ context: CheckpointEvaluationContext) async -> EvalScore {
-            onCapture(context)
+            await box.store(context)
             return EvalScore(value: .bool(true))
         }
     }
@@ -38,12 +49,16 @@ final class GoldenTaskRunnerContentMatchOptionsTests: XCTestCase {
     }
 
     func test_latestTurnVisibleText_isPopulatedByRealRun_andExcludesEarlierTurnText() async throws {
-        var captured: CheckpointEvaluationContext?
-        let scorer = CapturingScorer { context in captured = context }
+        let box = ContextBox()
+        let scorer = CapturingScorer(box: box)
 
         _ = try await GoldenTaskRunner.run(twoTurnFixture(), customScorers: [scorer])
 
-        let context = try XCTUnwrap(captured, "GoldenTaskRunner must invoke the custom scorer with a real context")
+        let capturedContext = await box.context
+        let context = try XCTUnwrap(
+            capturedContext,
+            "GoldenTaskRunner must invoke the custom scorer with a real context"
+        )
 
         // Cumulative (output.visibleText) sees both turns' text.
         XCTAssertTrue(context.output.visibleText.contains("earlier-turn-only-phrase"))
@@ -61,11 +76,12 @@ final class GoldenTaskRunnerContentMatchOptionsTests: XCTestCase {
     /// Same real run, but drives the verdict flip through the public
     /// `ContentMatchOptions` seam a consumer (e.g. Fireside) would actually use.
     func test_realRun_requiredContent_latestTurnScope_flipsVerdict_vsCumulativeDefault() async throws {
-        var captured: CheckpointEvaluationContext?
-        let scorer = CapturingScorer { context in captured = context }
+        let box = ContextBox()
+        let scorer = CapturingScorer(box: box)
 
         _ = try await GoldenTaskRunner.run(twoTurnFixture(), customScorers: [scorer])
-        let context = try XCTUnwrap(captured)
+        let capturedContext = await box.context
+        let context = try XCTUnwrap(capturedContext)
 
         let checkpointWithRequirement = GoldenCheckpoint(
             afterTurnIndex: 1,
