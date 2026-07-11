@@ -110,6 +110,52 @@ final class RAGServiceRerankIntegrationTests: XCTestCase {
         XCTAssertEqual(result.citations.map(\.chunkIndex), [0, 1],
                        "no reranker must preserve descending cosine order")
     }
+
+    // MARK: - #2199: in-memory text ingestion round trip
+
+    /// Ingest through the real chunk → embed → SwiftData/flat-file pipeline
+    /// via `ingest(text:documentID:title:)` (not `ingest(url:)`), then
+    /// retrieve and delete — the acceptance criterion from #2199: an
+    /// ingest→retrieve→delete round-trip for text ingestion against the
+    /// shipped stores, not fakes.
+    func test_ingestTextThenRetrieveThenDelete_roundTripsThroughRealStores() async throws {
+        let documentStore = SwiftDataDocumentStore(modelContext: container.mainContext)
+        let vectorStore = FlatFileVectorStore(storageURL: vectorURL)
+
+        let sut = RAGService(
+            documentStore: documentStore,
+            vectorStore: vectorStore,
+            embeddingBackend: AxisEmbeddingBackend()
+        )
+
+        let documentID = UUID()
+        let record = try await sut.ingest(
+            text: "This is a story scene generated in-memory, with enough words to form at least one chunk.",
+            documentID: documentID,
+            title: "Scene 1"
+        )
+
+        XCTAssertEqual(record.id, documentID)
+        XCTAssertEqual(record.title, "Scene 1")
+
+        let storedDocuments = try await documentStore.fetchDocuments()
+        XCTAssertTrue(storedDocuments.contains { $0.id == documentID },
+                       "the SwiftData document store must carry the text-ingested record")
+
+        let result = try await sut.retrieve(query: "story scene", limit: 3)
+        XCTAssertFalse(result.citations.isEmpty, "retrieval must find the in-memory-ingested chunk through the real flat-file index")
+        XCTAssertTrue(result.citations.allSatisfy { $0.documentID == documentID })
+
+        try await sut.deleteDocument(id: documentID)
+
+        let documentsAfterDelete = try await documentStore.fetchDocuments()
+        XCTAssertFalse(documentsAfterDelete.contains { $0.id == documentID },
+                        "deleteDocument(id:) must remove text-ingested documents from the real document store")
+
+        let resultAfterDelete = try await sut.retrieve(query: "story scene", limit: 3)
+        XCTAssertTrue(resultAfterDelete.citations.isEmpty,
+                       "deleteDocument(id:) must remove text-ingested chunks from the real vector store")
+    }
 }
 
 // MARK: - Fakes
