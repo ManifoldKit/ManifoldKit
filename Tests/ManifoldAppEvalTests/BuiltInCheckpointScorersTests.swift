@@ -18,7 +18,8 @@ final class BuiltInCheckpointScorersTests: XCTestCase {
         eventKinds: [ConversationEventKind] = [],
         producedMessageCount: Int = 0,
         lastContextAssembledSlotCount: Int? = nil,
-        lastCompressionInsertedRecordCount: Int? = nil
+        lastCompressionInsertedRecordCount: Int? = nil,
+        latestTurnVisibleText: String = ""
     ) -> CheckpointEvaluationContext {
         CheckpointEvaluationContext(
             output: EvalRunOutput(visibleText: visibleText, toolCalls: toolCalls),
@@ -27,7 +28,8 @@ final class BuiltInCheckpointScorersTests: XCTestCase {
             eventKinds: eventKinds,
             producedMessageCount: producedMessageCount,
             lastContextAssembledSlotCount: lastContextAssembledSlotCount,
-            lastCompressionInsertedRecordCount: lastCompressionInsertedRecordCount
+            lastCompressionInsertedRecordCount: lastCompressionInsertedRecordCount,
+            latestTurnVisibleText: latestTurnVisibleText
         )
     }
 
@@ -73,6 +75,106 @@ final class BuiltInCheckpointScorersTests: XCTestCase {
         let context = makeContext(checkpoint: checkpoint, visibleText: "hello there")
         let score = try XCTUnwrap(BuiltInCheckpointScorers.scoreForbiddenContent(context))
         XCTAssertEqual(score.value, .bool(false))
+    }
+
+    // MARK: - ContentMatchOptions: caseInsensitive
+
+    /// Default (case-sensitive) call disagrees with the `caseInsensitive:
+    /// true` call on the same context — proves the option actually flips the
+    /// verdict, not just that it compiles.
+    func test_requiredContent_caseInsensitive_flipsVerdict_vsDefault() throws {
+        let checkpoint = GoldenCheckpoint(afterTurnIndex: 0, requiredContent: ["HELLO"])
+        let context = makeContext(checkpoint: checkpoint, visibleText: "hello there")
+
+        let defaultScore = try XCTUnwrap(BuiltInCheckpointScorers.scoreRequiredContent(context))
+        XCTAssertEqual(defaultScore.value, .bool(false), "default is case-sensitive: 'HELLO' should not match 'hello'")
+
+        let caseInsensitiveScore = try XCTUnwrap(
+            BuiltInCheckpointScorers.scoreRequiredContent(
+                context,
+                options: .init(caseInsensitive: true)
+            )
+        )
+        XCTAssertEqual(caseInsensitiveScore.value, .bool(true), "caseInsensitive: true should match 'HELLO' against 'hello'")
+    }
+
+    func test_forbiddenContent_caseInsensitive_flipsVerdict_vsDefault() throws {
+        let checkpoint = GoldenCheckpoint(afterTurnIndex: 0, forbiddenContent: ["FORBIDDEN"])
+        let context = makeContext(checkpoint: checkpoint, visibleText: "this is forbidden content")
+
+        let defaultScore = try XCTUnwrap(BuiltInCheckpointScorers.scoreForbiddenContent(context))
+        XCTAssertEqual(defaultScore.value, .bool(true), "default is case-sensitive: 'FORBIDDEN' should not match 'forbidden'")
+
+        let caseInsensitiveScore = try XCTUnwrap(
+            BuiltInCheckpointScorers.scoreForbiddenContent(
+                context,
+                options: .init(caseInsensitive: true)
+            )
+        )
+        XCTAssertEqual(caseInsensitiveScore.value, .bool(false), "caseInsensitive: true should catch 'FORBIDDEN' present as 'forbidden'")
+    }
+
+    // MARK: - ContentMatchOptions: scope
+
+    /// `.cumulative` (default) sees content from an earlier turn that
+    /// `.latestTurn` does not — proves the option changes which text is
+    /// searched, not just that it compiles.
+    func test_requiredContent_latestTurnScope_flipsVerdict_vsCumulativeDefault() throws {
+        let checkpoint = GoldenCheckpoint(afterTurnIndex: 1, requiredContent: ["earlier-turn-only-phrase"])
+        let context = makeContext(
+            checkpoint: checkpoint,
+            visibleText: "earlier-turn-only-phrase\nlatest turn reply",
+            latestTurnVisibleText: "latest turn reply"
+        )
+
+        let defaultScore = try XCTUnwrap(BuiltInCheckpointScorers.scoreRequiredContent(context))
+        XCTAssertEqual(defaultScore.value, .bool(true), "default cumulative scope sees the earlier turn's text")
+
+        let latestTurnScore = try XCTUnwrap(
+            BuiltInCheckpointScorers.scoreRequiredContent(
+                context,
+                options: .init(scope: .latestTurn)
+            )
+        )
+        XCTAssertEqual(latestTurnScore.value, .bool(false), "latestTurn scope should not see content from an earlier turn")
+    }
+
+    func test_forbiddenContent_latestTurnScope_flipsVerdict_vsCumulativeDefault() throws {
+        let checkpoint = GoldenCheckpoint(afterTurnIndex: 1, forbiddenContent: ["earlier-turn-only-phrase"])
+        let context = makeContext(
+            checkpoint: checkpoint,
+            visibleText: "earlier-turn-only-phrase\nlatest turn reply",
+            latestTurnVisibleText: "latest turn reply"
+        )
+
+        let defaultScore = try XCTUnwrap(BuiltInCheckpointScorers.scoreForbiddenContent(context))
+        XCTAssertEqual(defaultScore.value, .bool(false), "default cumulative scope sees the forbidden phrase from an earlier turn")
+
+        let latestTurnScore = try XCTUnwrap(
+            BuiltInCheckpointScorers.scoreForbiddenContent(
+                context,
+                options: .init(scope: .latestTurn)
+            )
+        )
+        XCTAssertEqual(latestTurnScore.value, .bool(true), "latestTurn scope should not see the forbidden phrase confined to an earlier turn")
+    }
+
+    /// Both options composed together (Fireside's actual shape).
+    func test_requiredContent_caseInsensitiveAndLatestTurn_composeCorrectly() throws {
+        let checkpoint = GoldenCheckpoint(afterTurnIndex: 1, requiredContent: ["LATEST"])
+        let context = makeContext(
+            checkpoint: checkpoint,
+            visibleText: "earlier turn\nlatest turn reply",
+            latestTurnVisibleText: "latest turn reply"
+        )
+
+        let score = try XCTUnwrap(
+            BuiltInCheckpointScorers.scoreRequiredContent(
+                context,
+                options: .init(caseInsensitive: true, scope: .latestTurn)
+            )
+        )
+        XCTAssertEqual(score.value, .bool(true))
     }
 
     // MARK: - expectedEvents

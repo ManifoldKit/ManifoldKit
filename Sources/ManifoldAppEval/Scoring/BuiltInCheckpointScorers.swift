@@ -21,9 +21,50 @@ public enum BuiltInCheckpointAssertion: String, Sendable, CaseIterable {
 /// seam ``CheckpointScorer`` provides doesn't apply.
 public enum BuiltInCheckpointScorers {
 
-    public static func scoreRequiredContent(_ context: CheckpointEvaluationContext) -> EvalScore? {
+    /// Matching options for the content-presence scorers
+    /// (``scoreRequiredContent(_:options:)``/``scoreForbiddenContent(_:options:)``).
+    ///
+    /// Defaults reproduce the scorers' original, unparameterized behavior
+    /// exactly — cumulative transcript, case-sensitive substring match — so
+    /// every option here is opt-in and existing callers (including the
+    /// zero-arg call sites in ``GoldenTaskRunner``) see no behavior change.
+    ///
+    /// Added for #2201: apps whose checkpoint semantics differ from the
+    /// harness's default (e.g. Fireside scores the current scene only, case
+    /// insensitively) can now parameterize the built-ins instead of forking
+    /// them.
+    public struct ContentMatchOptions: Sendable {
+        /// Which slice of the transcript a content scorer reads.
+        public enum Scope: Sendable {
+            /// Every assistant message produced up to and including this
+            /// checkpoint's turn. Default — matches the scorers' original
+            /// behavior.
+            case cumulative
+            /// Only the assistant message(s) produced by this checkpoint's
+            /// own turn (``CheckpointEvaluationContext/latestTurnVisibleText``).
+            case latestTurn
+        }
+
+        /// Case-insensitive substring matching. `false` (case-sensitive)
+        /// reproduces the scorers' original behavior.
+        public var caseInsensitive: Bool
+        /// Which slice of the transcript to match against. `.cumulative`
+        /// reproduces the scorers' original behavior.
+        public var scope: Scope
+
+        public init(caseInsensitive: Bool = false, scope: Scope = .cumulative) {
+            self.caseInsensitive = caseInsensitive
+            self.scope = scope
+        }
+    }
+
+    public static func scoreRequiredContent(
+        _ context: CheckpointEvaluationContext,
+        options: ContentMatchOptions = ContentMatchOptions()
+    ) -> EvalScore? {
         guard let required = context.checkpoint.requiredContent, !required.isEmpty else { return nil }
-        let missing = required.filter { !context.output.visibleText.contains($0) }
+        let haystack = matchText(context, options: options)
+        let missing = required.filter { !contains(haystack, needle: $0, options: options) }
         if missing.isEmpty {
             return EvalScore(value: .bool(true), metadata: ["assertion": "requiredContent"])
         }
@@ -34,9 +75,13 @@ public enum BuiltInCheckpointScorers {
         )
     }
 
-    public static func scoreForbiddenContent(_ context: CheckpointEvaluationContext) -> EvalScore? {
+    public static func scoreForbiddenContent(
+        _ context: CheckpointEvaluationContext,
+        options: ContentMatchOptions = ContentMatchOptions()
+    ) -> EvalScore? {
         guard let forbidden = context.checkpoint.forbiddenContent, !forbidden.isEmpty else { return nil }
-        let present = forbidden.filter { context.output.visibleText.contains($0) }
+        let haystack = matchText(context, options: options)
+        let present = forbidden.filter { contains(haystack, needle: $0, options: options) }
         if present.isEmpty {
             return EvalScore(value: .bool(true), metadata: ["assertion": "forbiddenContent"])
         }
@@ -45,6 +90,20 @@ public enum BuiltInCheckpointScorers {
             explanation: "Forbidden content present: \(present.joined(separator: ", "))",
             metadata: ["assertion": "forbiddenContent"]
         )
+    }
+
+    /// Selects the transcript slice ``ContentMatchOptions/scope`` asks for.
+    private static func matchText(_ context: CheckpointEvaluationContext, options: ContentMatchOptions) -> String {
+        switch options.scope {
+        case .cumulative: return context.output.visibleText
+        case .latestTurn: return context.latestTurnVisibleText
+        }
+    }
+
+    /// Substring containment honoring ``ContentMatchOptions/caseInsensitive``.
+    private static func contains(_ haystack: String, needle: String, options: ContentMatchOptions) -> Bool {
+        guard options.caseInsensitive else { return haystack.contains(needle) }
+        return haystack.range(of: needle, options: .caseInsensitive) != nil
     }
 
     public static func scoreExpectedEvents(_ context: CheckpointEvaluationContext) -> EvalScore? {

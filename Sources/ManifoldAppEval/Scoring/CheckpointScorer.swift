@@ -44,6 +44,13 @@ public struct CheckpointEvaluationContext: Sendable {
     /// `insertedRecords.count` of the most recent `historyCompressed` event up
     /// to this checkpoint, or `nil` if compression hasn't fired yet.
     public let lastCompressionInsertedRecordCount: Int?
+    /// Assistant text produced by this checkpoint's own turn only —
+    /// everything after the most recent user message — as opposed to
+    /// ``output``'s `visibleText`, which is the full cumulative transcript up
+    /// to this checkpoint. Feeds
+    /// ``BuiltInCheckpointScorers/ContentMatchOptions/Scope/latestTurn``.
+    /// Empty for hand-built contexts (unit tests) that don't set it.
+    public let latestTurnVisibleText: String
 
     public init(
         output: EvalRunOutput,
@@ -53,7 +60,8 @@ public struct CheckpointEvaluationContext: Sendable {
         producedMessageCount: Int,
         lastContextAssembledSlotCount: Int?,
         lastCompressionInsertedRecordCount: Int?,
-        fixtureID: String = ""
+        fixtureID: String = "",
+        latestTurnVisibleText: String = ""
     ) {
         self.fixtureID = fixtureID
         self.output = output
@@ -63,6 +71,7 @@ public struct CheckpointEvaluationContext: Sendable {
         self.producedMessageCount = producedMessageCount
         self.lastContextAssembledSlotCount = lastContextAssembledSlotCount
         self.lastCompressionInsertedRecordCount = lastCompressionInsertedRecordCount
+        self.latestTurnVisibleText = latestTurnVisibleText
     }
 }
 
