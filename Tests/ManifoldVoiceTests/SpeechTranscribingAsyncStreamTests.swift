@@ -95,7 +95,12 @@ final class SpeechTranscribingAsyncStreamTests: XCTestCase {
         consumer.cancel()
         _ = try? await consumer.value
 
-        try await waitUntil(timeout: .seconds(2)) { transcriber.cancelCalls > 0 }
+        // Generous deadline: the propagation chain (task cancel → onTermination
+        // → inner-task catch → cancelTranscribing) crosses several actor hops,
+        // and a CI runner under parallel load has blown a 2s budget (run
+        // 29153269857). The loop exits as soon as the condition holds, so a
+        // large timeout costs nothing on the passing path.
+        try await waitUntil(timeout: .seconds(30)) { transcriber.cancelCalls > 0 }
         XCTAssertGreaterThan(transcriber.cancelCalls, 0)
     }
 
