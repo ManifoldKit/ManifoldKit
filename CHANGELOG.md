@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.70.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.69.0...v0.70.0) (2026-07-11)
+
+Two additive consumer APIs from app dogfooding, plus post-wave verification housekeeping
+after the v0.69.0 breaking train. No breaking changes.
+
+### Highlights
+
+#### Ingest in-memory text into RAG — no scratch files
+
+`RAGService` gains an in-memory counterpart to `ingest(url:)`, so generated or
+transient content (chat exports, synthesized scenes) can enter the retrieval corpus
+without touching the filesystem ([#2213](https://github.com/ManifoldKit/ManifoldKit/issues/2213)):
+
+```swift
+let doc = try await bootstrap.ragService.ingest(
+    text: sceneText,
+    documentID: UUID(),
+    title: "Scene 12"
+)
+```
+
+Both entry points share the same chunk → embed → persist pipeline, and deletion and
+retrieval work identically for in-memory documents.
+
+#### Consume speech transcription as an AsyncSequence
+
+`SpeechTranscribing` gains a stream-shaped adapter over the callback API
+([#2216](https://github.com/ManifoldKit/ManifoldKit/issues/2216)). The stream finishes
+on the final update, throws on setup failure, and cancelling the consuming task tears
+down the underlying transcription session:
+
+```swift
+for try await update in transcriber.transcriptionUpdates() {
+    composerText = update.text
+    if update.isFinal { break }
+}
+```
+
+### Documentation
+
+* AGENTS.md tells the truth about `BackendName` again (extensible struct since [#1742](https://github.com/ManifoldKit/ManifoldKit/issues/1742), not an enum), and `AgentsMdAuditTest` now trips on documented-kind drift for `BackendName`/`ModelType` so the doc can't rot silently ([#2217](https://github.com/ManifoldKit/ManifoldKit/issues/2217))
+* Post-wave Phase 3 sweep: public-surface baselines frozen across all 28 library targets, and the target tables gained the missing `ManifoldAppEval` row ([#2221](https://github.com/ManifoldKit/ManifoldKit/issues/2221))
+
+### Continuous Integration
+
+* The ~25-minute api-digester source-compatibility check moved out of the `test` job's critical path into a parallel, path-gated job; the nightly surface-baseline check was already in place ([#2214](https://github.com/ManifoldKit/ManifoldKit/issues/2214))
+
 ## [0.69.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.68.0...v0.69.0) (2026-07-11)
 
 The final pre-1.0 breaking wave (the Wave-2 API program, [#2158](https://github.com/ManifoldKit/ManifoldKit/issues/2158)).

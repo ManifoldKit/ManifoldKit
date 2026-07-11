@@ -301,7 +301,7 @@ Tagged release:
 // always compile since v0.48; no traits needed.
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.69.0" // x-release-please-version
+    from: "0.70.0" // x-release-please-version
 )
 ```
 
