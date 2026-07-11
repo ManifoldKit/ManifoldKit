@@ -154,13 +154,44 @@ struct PromptRenderer {
     ///   template's `{% for document in documents %}` block. The enum fallback
     ///   has no `documents` channel, so they are silently absent there — RAG
     ///   text still reaches that path through the system-prompt slot injection.
+    /// - Parameter renderingMode: per-request override from
+    ///   ``GenerationRuntimeHints/renderingMode`` (#2200). `.completion` renders
+    ///   plain continuation text instead of any chat template — but only when
+    ///   `tools` is empty; a non-empty `tools` array takes precedence and forces
+    ///   `.chatTemplate` (with a diagnostic) so tool declarations are never
+    ///   silently dropped. Defaults to `.chatTemplate`, matching the unchanged
+    ///   0.54+ behaviour.
     func render(
         messages: [StructuredMessage],
         systemPrompt: String?,
         tools: [ToolDefinition] = [],
         documents: [RetrievedDocument] = [],
-        warnOnCapabilityLoss: Bool = true
+        warnOnCapabilityLoss: Bool = true,
+        renderingMode: PromptRenderingMode = .chatTemplate
     ) throws -> String {
+        if renderingMode == .completion {
+            if tools.isEmpty {
+                return Self.renderCompletionStyle(messages: messages, systemPrompt: systemPrompt)
+            }
+            // Precedence rule (#2200): a completion-mode request that also
+            // carries tool definitions would either silently strip tool
+            // declarations from the prompt (identical failure shape to the
+            // fail-fast below) or require completion rendering to grow its own
+            // tool-declaration syntax. Neither is worth it for what is a rare
+            // combination — fall back to the chat-template path, which already
+            // knows how to render tools natively or fold them into the system
+            // prompt, and say so loudly rather than silently.
+            // Gated on warnOnCapabilityLoss for the same reason as the
+            // tool-drop warning below: the preflight trim loop re-renders up
+            // to 20 times with warnOnCapabilityLoss == false, so an ungated
+            // warning here would repeat once per trim attempt.
+            if warnOnCapabilityLoss {
+                Log.inference.warning(
+                    "PromptRenderer: renderingMode == .completion requested alongside \(tools.count) tool definition(s); ignoring the completion override and rendering the chat-template path so tool declarations are not silently dropped."
+                )
+            }
+        }
+
         // FAIL-FAST (#1957 Tier 3 / #1909): an embedded chat template that is
         // present but unusable would otherwise silently degrade to the text-only
         // enum fallback, which renders tool definitions only for `.gemma4` and
@@ -255,6 +286,28 @@ struct PromptRenderer {
             tools: tools,
             warnOnCapabilityLoss: warnOnCapabilityLoss
         )
+    }
+
+    /// Renders `messages` as plain continuation text (#2200): `systemPrompt`
+    /// (when non-empty) followed by each message's textual content, in
+    /// document order, joined by blank lines. No role labels, no special
+    /// tokens, and no trailing "assistant turn" delimiter — the opposite of
+    /// every ``PromptTemplate`` case and the embedded-Jinja path, which all
+    /// close with an open assistant turn that nudges the model toward a short,
+    /// bounded reply. Intentionally bypasses `chatTemplateRaw` entirely: this
+    /// is not "the enum fallback" (still a chat template, just a different
+    /// one) — it is a distinct render strategy for long-form continuation.
+    private static func renderCompletionStyle(
+        messages: [StructuredMessage],
+        systemPrompt: String?
+    ) -> String {
+        var parts: [String] = []
+        if let systemPrompt, !systemPrompt.isEmpty {
+            parts.append(systemPrompt)
+        }
+        let projected = GenerationHistoryInstaller.toolAwareProjection(messages)
+        parts.append(contentsOf: projected.map(\.content).filter { !$0.isEmpty })
+        return parts.joined(separator: "\n\n")
     }
 
     /// The text-only enum projection used when no embedded template applies (or

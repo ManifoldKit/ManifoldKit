@@ -1,4 +1,5 @@
 API breakage: class GenerationStream has been removed
+API breakage: constructor GenerationRuntimeHints.init(jsonMode:thinkingMarkers:structuredOutput:documents:maxRunTokens:captureRenderedPrompt:) has been removed
 API breakage: class SSEEventIDTracker has been removed
 API breakage: class StreamingArgumentAccumulator has been removed
 API breakage: enum BackendName has been changed to a struct

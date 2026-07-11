@@ -193,9 +193,10 @@ GenerationRuntimeHints Struct
 GenerationRuntimeHints.__derived_struct_equals(_:_:) Func
 GenerationRuntimeHints.captureRenderedPrompt Var
 GenerationRuntimeHints.documents Var
-GenerationRuntimeHints.init(jsonMode:thinkingMarkers:structuredOutput:documents:maxRunTokens:captureRenderedPrompt:) Constructor
+GenerationRuntimeHints.init(jsonMode:thinkingMarkers:structuredOutput:documents:maxRunTokens:captureRenderedPrompt:renderingMode:) Constructor
 GenerationRuntimeHints.jsonMode Var
 GenerationRuntimeHints.maxRunTokens Var
+GenerationRuntimeHints.renderingMode Var
 GenerationRuntimeHints.structuredOutput Var
 GenerationRuntimeHints.thinkingMarkers Var
 GenerationStream Class
@@ -335,6 +336,12 @@ PassthroughReranker Struct
 PassthroughReranker.init() Constructor
 PassthroughReranker.isReady Var
 PassthroughReranker.rerank(query:candidates:limit:) Func
+PromptRenderingMode Enum
+PromptRenderingMode.__derived_enum_equals(_:_:) Func
+PromptRenderingMode.chatTemplate EnumElement
+PromptRenderingMode.completion EnumElement
+PromptRenderingMode.hash(into:) Func
+PromptRenderingMode.hashValue Var
 Reranker Protocol
 Reranker.isReady Var
 Reranker.rerank(query:candidates:limit:) Func
