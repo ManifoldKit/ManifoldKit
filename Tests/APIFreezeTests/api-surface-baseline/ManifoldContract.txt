@@ -337,13 +337,11 @@ PassthroughReranker.init() Constructor
 PassthroughReranker.isReady Var
 PassthroughReranker.rerank(query:candidates:limit:) Func
 PromptRenderingMode Enum
-PromptRenderingMode.AllCases TypeAlias
-PromptRenderingMode.RawValue TypeAlias
-PromptRenderingMode.allCases Var
+PromptRenderingMode.__derived_enum_equals(_:_:) Func
 PromptRenderingMode.chatTemplate EnumElement
 PromptRenderingMode.completion EnumElement
-PromptRenderingMode.init(rawValue:) Constructor
-PromptRenderingMode.rawValue Var
+PromptRenderingMode.hash(into:) Func
+PromptRenderingMode.hashValue Var
 Reranker Protocol
 Reranker.isReady Var
 Reranker.rerank(query:candidates:limit:) Func

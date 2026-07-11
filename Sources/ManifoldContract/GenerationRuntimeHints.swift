@@ -142,7 +142,7 @@ public struct GenerationRuntimeHints: Sendable, Equatable {
 /// A rendering-mode choice is a per-call, never-persisted decision exactly like
 /// `jsonMode`, so it belongs where those already live, not on the persistable
 /// sampler config.
-public enum PromptRenderingMode: String, Sendable, Equatable, CaseIterable {
+public enum PromptRenderingMode: Sendable, Equatable {
     /// Render through the model's embedded Jinja chat template when one is
     /// present and usable (falling back to the hand-rolled ``PromptTemplate``
     /// enum otherwise) — unchanged 0.54+ behaviour, and the default.

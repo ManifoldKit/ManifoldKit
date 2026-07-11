@@ -181,9 +181,15 @@ struct PromptRenderer {
             // combination — fall back to the chat-template path, which already
             // knows how to render tools natively or fold them into the system
             // prompt, and say so loudly rather than silently.
-            Log.inference.warning(
-                "PromptRenderer: renderingMode == .completion requested alongside \(tools.count) tool definition(s); ignoring the completion override and rendering the chat-template path so tool declarations are not silently dropped."
-            )
+            // Gated on warnOnCapabilityLoss for the same reason as the
+            // tool-drop warning below: the preflight trim loop re-renders up
+            // to 20 times with warnOnCapabilityLoss == false, so an ungated
+            // warning here would repeat once per trim attempt.
+            if warnOnCapabilityLoss {
+                Log.inference.warning(
+                    "PromptRenderer: renderingMode == .completion requested alongside \(tools.count) tool definition(s); ignoring the completion override and rendering the chat-template path so tool declarations are not silently dropped."
+                )
+            }
         }
 
         // FAIL-FAST (#1957 Tier 3 / #1909): an embedded chat template that is
