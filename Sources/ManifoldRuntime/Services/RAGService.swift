@@ -134,6 +134,87 @@ public actor RAGService {
         let text = try await parser.parse(url: url)
         let title = url.deletingPathExtension().lastPathComponent
         let documentID = UUID()
+        return try await ingestParsedText(
+            text,
+            documentID: documentID,
+            title: title,
+            sourceURL: url,
+            fileType: ext
+        )
+    }
+
+    /// Chunks, embeds, and persists caller-supplied text without routing
+    /// through ``DocumentParser``/the filesystem (#2199).
+    ///
+    /// Consumers whose corpus is produced in-memory — e.g. Fireside's
+    /// generated story scenes — previously had to write a scratch file per
+    /// document just to reach ``ingest(url:)``, then own that temp file's
+    /// lifecycle themselves (MK never cleaned it up). This overload shares the
+    /// same chunk → embed → insert pipeline as ``ingest(url:)`` after parsing,
+    /// so retrieval/citation behaviour is identical between the two entry
+    /// points; only the source of the text differs.
+    ///
+    /// The stored ``DocumentRecord/sourceURL`` is a synthetic
+    /// `manifold-inmemory://` URL keyed to `documentID` — there is no file to
+    /// point at. The full-context path (``retrieveWholeDocuments()``) re-parses
+    /// documents from `sourceURL` using the registered ``DocumentParser``s;
+    /// documents ingested this way have no matching parser for their synthetic
+    /// `fileType`, so they degrade gracefully to the chunked retrieval path
+    /// rather than attempting (and failing) a filesystem read.
+    ///
+    /// - Parameters:
+    ///   - text: The document body to chunk, embed, and index.
+    ///   - documentID: Caller-supplied identity. Passing the same ID as an
+    ///     earlier ingest is treated as a brand-new document (this call does
+    ///     not diff/replace) — callers that re-ingest under a stable ID should
+    ///     ``deleteDocument(id:)`` first. Threading the caller's own ID (rather
+    ///     than minting a fresh ``UUID``) is what makes ``deleteDocument(id:)``
+    ///     usable against caller-managed corpora, e.g. one document per
+    ///     `StoryNode`.
+    ///   - title: Human-readable label surfaced in citations and the document
+    ///     list. Defaults to the `documentID` string when omitted.
+    /// - Returns: The ``DocumentRecord`` stored for the new document.
+    /// - Throws: ``RAGError/embeddingFailed`` if the embedding call fails, or
+    ///   whatever `documentStore`/`vectorStore` throw on write failure.
+    @discardableResult
+    public func ingest(text: String, documentID: UUID, title: String? = nil) async throws -> DocumentRecord {
+        try await ingestParsedText(
+            text,
+            documentID: documentID,
+            title: title ?? documentID.uuidString,
+            sourceURL: Self.inMemorySourceURL(documentID: documentID),
+            fileType: Self.inMemoryFileType
+        )
+    }
+
+    /// Marker `fileType` for text ingested via ``ingest(text:documentID:title:)``.
+    /// Deliberately does not match any registered ``DocumentParser``'s
+    /// `supportedExtensions`, so the full-context re-parse path
+    /// (``retrieveWholeDocuments()``) skips these documents with a log
+    /// rather than attempting a filesystem read against the synthetic URL.
+    private static let inMemoryFileType = "manifold-inmemory"
+
+    /// Synthesizes a stable, non-file `sourceURL` for in-memory ingestion.
+    /// `DocumentRecord/sourceURL` is non-optional, so text ingested without a
+    /// backing file still needs *some* URL to satisfy the record shape; this
+    /// scheme makes the origin unambiguous to anyone inspecting a record.
+    private static func inMemorySourceURL(documentID: UUID) -> URL {
+        URL(string: "manifold-inmemory:///\(documentID.uuidString)")
+            ?? URL(filePath: "/manifold-inmemory/\(documentID.uuidString)")
+    }
+
+    /// Shared tail of both ingestion entry points: chunk → embed → persist,
+    /// with the same orphan-rollback behaviour on a `documentStore` write
+    /// failure. `ingest(url:)` and ``ingest(text:documentID:title:)`` differ
+    /// only in how `text`/`sourceURL`/`fileType` are produced upstream of this
+    /// call.
+    private func ingestParsedText(
+        _ text: String,
+        documentID: UUID,
+        title: String,
+        sourceURL: URL,
+        fileType: String
+    ) async throws -> DocumentRecord {
         let chunks = chunker.chunk(text: text, documentID: documentID)
 
         let embeddings: [[Float]]
@@ -156,8 +237,8 @@ public actor RAGService {
         let record = DocumentRecord(
             id: documentID,
             title: title,
-            sourceURL: url,
-            fileType: ext,
+            sourceURL: sourceURL,
+            fileType: fileType,
             chunkCount: chunks.count,
             indexedAt: Date()
         )
