@@ -772,6 +772,67 @@ final class GenerationQueueTests: XCTestCase {
         )
     }
 
+    /// The thermal `.throttleDiagnostic` must reach a secondary event tap
+    /// (#2206), not just the request's own stream. `pauseWhileThermalCritical`
+    /// emits this event OUTSIDE the `runToolDispatchLoop` `yieldEvent`
+    /// closure (the pause runs between the loop's stream-consumption awaits),
+    /// so it is the one `GenerationEvent` that must explicitly fan out to the
+    /// taps — a tap tracing a thermal-critical generation would otherwise
+    /// silently omit it.
+    ///
+    /// Sabotage check: deleting the `self.eventTaps.broadcast(throttleEvent)`
+    /// line in `pauseWhileThermalCritical` leaves `tapThrottles` empty and
+    /// this assertion fails while the primary-stream throttle assertion still
+    /// passes — pinning the fix to the tap fan-out specifically.
+    func test_perTokenLoop_criticalThermal_throttleReachesEventTap() async throws {
+        let states: [ProcessInfo.ThermalState] = [.critical, .critical, .nominal]
+        let thermalReads = ThermalReadCounter()
+        let coord = GenerationQueue(
+            thermalStateProvider: { @Sendable in
+                let idx = thermalReads.next()
+                return idx < states.count ? states[idx] : .nominal
+            },
+            thermalSleep: { @Sendable _ in await Task.yield() }
+        )
+        provider.bind(to: coord)
+        provider.backend.tokensToYield = ["a", "b"]
+
+        // Install the secondary tap BEFORE enqueuing and drain it into a
+        // pollable actor collector. The tap's stream only finishes when the
+        // queue deinits, so we poll the collector (mirroring the #2206
+        // direct-drive tests) rather than iterate to stream-end.
+        let collector = TapThrottleCollector()
+        let tap = coord.addEventTap()
+        let drain = Task {
+            for await event in tap {
+                if case .throttleDiagnostic(let reason) = event { await collector.add(reason) }
+            }
+        }
+        defer { drain.cancel() }
+
+        let (_, stream) = try coord.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "hi")], config: GenerationConfig(), priority: .normal)
+
+        var primaryThrottles: [String] = []
+        for try await event in stream.events {
+            if case .throttleDiagnostic(let reason) = event { primaryThrottles.append(reason) }
+        }
+
+        // The broadcast is synchronous into the tap's buffer at throttle time
+        // (during generation, already past by now); the drain task pulls it
+        // asynchronously. Poll until it lands, bounded so a fan-out regression
+        // fails deterministically instead of hanging.
+        var tapThrottles = await collector.snapshot()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while tapThrottles.isEmpty && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            tapThrottles = await collector.snapshot()
+        }
+
+        XCTAssertEqual(primaryThrottles.count, 1, "primary stream must still see the throttle")
+        XCTAssertEqual(tapThrottles.count, 1, "the tap must independently receive the throttle diagnostic")
+        XCTAssertTrue(tapThrottles.first?.contains("critical") ?? false, "tap throttle reason must reference the thermal state")
+    }
+
     /// `stopGenerationAndWait()` must unwind cleanly while the per-token
     /// loop is parked in the thermal-pause re-check loop — no deadlock,
     /// no hang waiting for thermal state to drop. The pause loop bails on
@@ -1330,6 +1391,15 @@ private final class ThermalReadCounter: @unchecked Sendable {
         defer { lock.unlock() }
         return index
     }
+}
+
+/// Accumulates `.throttleDiagnostic` reasons a secondary event tap
+/// delivers, so `test_perTokenLoop_criticalThermal_throttleReachesEventTap`
+/// can poll for the event without depending on the tap stream terminating.
+private actor TapThrottleCollector {
+    private var reasons: [String] = []
+    func add(_ reason: String) { reasons.append(reason) }
+    func snapshot() -> [String] { reasons }
 }
 
 /// Counts calls to the injected `thermalSleep` hook so the test can

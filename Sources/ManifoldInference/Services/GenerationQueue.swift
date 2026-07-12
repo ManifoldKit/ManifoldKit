@@ -278,10 +278,19 @@ final class GenerationQueue {
 
     /// Fan-out registry for secondary event consumers installed via
     /// ``addEventTap(bufferingPolicy:)`` (#2206). Broadcasts every
-    /// ``GenerationEvent`` that flows through ANY `enqueue()`-driven
-    /// request's `yieldEvent` chokepoint — independent of that request's own
-    /// per-token stream, so a slow tap consumer never stalls generation and
-    /// installing a tap never competes with the request's own listener.
+    /// ``GenerationEvent`` an `enqueue()`-driven request emits — independent
+    /// of that request's own per-token stream, so a slow tap consumer never
+    /// stalls generation and installing a tap never competes with the
+    /// request's own listener.
+    ///
+    /// There are exactly two broadcast sites, both of which also yield to the
+    /// request's own continuation: the `yieldEvent` closure in
+    /// ``runToolDispatchLoop(request:)`` (which forwards every backend/queue
+    /// event for the turn) and ``pauseWhileThermalCritical(token:)`` (whose
+    /// `.throttleDiagnostic` is emitted between the loop's stream-consumption
+    /// awaits, outside that closure). Keep any future direct
+    /// `continuations[...]?.yield(...)` in step with a matching
+    /// `eventTaps.broadcast(...)` so the tap never silently under-reports.
     private let eventTaps = GenerationEventTapRegistry()
 
     /// Timestamp of the most recent queue activity: enqueue, dequeue-to-active, or
@@ -1092,9 +1101,19 @@ final class GenerationQueue {
         // bloat the stream and make UI debouncing harder. The event is fired
         // once and the consumer keeps showing the throttle hint until the
         // next regular event flows through.
-        self.continuations[token]?.yield(
-            .throttleDiagnostic(reason: "thermalState=.critical")
-        )
+        //
+        // Fan out to BOTH the request's own stream AND the secondary event
+        // taps (#2206), exactly as the `yieldEvent` closure in
+        // `runToolDispatchLoop` does for every other event. This emission is
+        // the one `GenerationEvent` produced outside that closure (the pause
+        // loop runs between the loop's stream-consumption awaits), so without
+        // the explicit `eventTaps.broadcast` here a tap trace would silently
+        // omit `.throttleDiagnostic` during a thermal-critical generation —
+        // the only gap in the "every enqueue()-driven event reaches the tap"
+        // guarantee. Yield to the own-continuation once (no double-yield).
+        let throttleEvent = GenerationEvent.throttleDiagnostic(reason: "thermalState=.critical")
+        self.continuations[token]?.yield(throttleEvent)
+        self.eventTaps.broadcast(throttleEvent)
         Log.inference.warning(
             "GenerationQueue: pausing generation — ProcessInfo.thermalState == .critical"
         )
