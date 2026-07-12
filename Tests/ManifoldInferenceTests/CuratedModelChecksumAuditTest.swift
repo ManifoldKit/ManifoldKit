@@ -18,6 +18,10 @@ import XCTest
 ///   The fixture-based tests below exercise the audit FILTER logic itself
 ///   (verified vs. unverified, GGUF vs. non-GGUF) with a synthetic
 ///   `CuratedModel.all` so the predicate stays correct as the schema evolves.
+///
+/// ``missingChecksums(in:)`` and ``invalidChecksums(in:)`` are the two
+/// filters the audit and hard-gate tests run; the sabotage test exercises
+/// them directly against in-memory fixtures.
 final class CuratedModelChecksumAuditTest: XCTestCase {
 
     // MARK: - Fixtures
@@ -92,9 +96,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
             return
         }
 
-        let missing = previousAll
-            .filter { $0.modelType == .gguf && $0.expectedSHA256 == nil }
-            .map(\.repoID)
+        let missing = Self.missingChecksums(in: previousAll)
 
         XCTAssertTrue(
             missing.isEmpty,
@@ -107,9 +109,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
     /// Exercises the audit filter against the synthetic fixture installed in
     /// setUp. Guards the predicate so the hard gate above stays meaningful.
     func test_auditFilter_classifiesFixtureCorrectly() {
-        let missing = CuratedModel.all
-            .filter { $0.modelType == .gguf && $0.expectedSHA256 == nil }
-            .map(\.repoID)
+        let missing = Self.missingChecksums(in: CuratedModel.all)
 
         let missingSet = Set(missing)
         XCTAssertFalse(
@@ -125,10 +125,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
     // MARK: - Hard gate: populated checksums must be valid 64-char hex
 
     func test_populatedChecksums_areValid64CharHex() {
-        let invalid = CuratedModel.all
-            .filter { $0.modelType == .gguf }
-            .compactMap { $0.expectedSHA256 }
-            .filter { $0.count != 64 || !$0.allSatisfy(\.isHexDigit) }
+        let invalid = Self.invalidChecksums(in: CuratedModel.all)
 
         XCTAssertTrue(
             invalid.isEmpty,
@@ -152,9 +149,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
             expectedSHA256: ""
         )
 
-        let invalid = [badEntry]
-            .compactMap { $0.expectedSHA256 }
-            .filter { $0.count != 64 || !$0.allSatisfy(\.isHexDigit) }
+        let invalid = Self.invalidChecksums(in: [badEntry])
 
         XCTAssertFalse(
             invalid.isEmpty,
@@ -177,9 +172,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
             expectedSHA256: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
         )
 
-        let invalid = [shortEntry]
-            .compactMap { $0.expectedSHA256 }
-            .filter { $0.count != 64 || !$0.allSatisfy(\.isHexDigit) }
+        let invalid = Self.invalidChecksums(in: [shortEntry])
 
         XCTAssertFalse(
             invalid.isEmpty,
@@ -197,9 +190,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
 
         // The fixture has one MLX model without a hash — confirm it doesn't
         // appear in the GGUF-only filter.
-        let ggufMissing = CuratedModel.all
-            .filter { $0.modelType == .gguf && $0.expectedSHA256 == nil }
-            .map(\.repoID)
+        let ggufMissing = Self.missingChecksums(in: CuratedModel.all)
 
         XCTAssertFalse(mlxMissing.isEmpty, "Fixture should have at least one MLX model without a hash")
 
@@ -209,5 +200,82 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
                 "MLX model \(repoID) must not appear in the GGUF checksum audit"
             )
         }
+    }
+
+    // MARK: - Sabotage (exercises the same filters the audit runs)
+
+    /// Builds `CuratedModel` fixtures in-memory (mirroring the shapes in
+    /// `setUp`) and asserts the real filters flag exactly what they should:
+    /// a nil-SHA GGUF entry in `missingChecksums`, a 32-char-hex GGUF entry
+    /// in `invalidChecksums`, and a nil-SHA MLX entry in NEITHER.
+    func test_sabotage_filtersFlagPlantedViolations() {
+        let missingGGUF = CuratedModel(
+            id: "sabotage-missing",
+            displayName: "Sabotage Missing Model",
+            fileName: "missing.gguf",
+            repoID: "example/sabotage-missing-GGUF",
+            modelType: .gguf,
+            approximateSizeBytes: 1_000_000_000,
+            recommendedFor: [.small],
+            contextSize: 2048,
+            promptTemplate: .llama3,
+            description: "Deliberately missing expectedSHA256.",
+            expectedSHA256: nil
+        )
+        let invalidGGUF = CuratedModel(
+            id: "sabotage-invalid",
+            displayName: "Sabotage Invalid Model",
+            fileName: "invalid.gguf",
+            repoID: "example/sabotage-invalid-GGUF",
+            modelType: .gguf,
+            approximateSizeBytes: 1_000_000_000,
+            recommendedFor: [.small],
+            contextSize: 2048,
+            promptTemplate: .llama3,
+            description: "Deliberately 32-char (MD5-length) checksum.",
+            expectedSHA256: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+        )
+        let missingMLX = CuratedModel(
+            id: "sabotage-mlx",
+            displayName: "Sabotage MLX Model",
+            fileName: "sabotage.mlpackage",
+            repoID: "example/sabotage-mlx",
+            modelType: .mlx,
+            approximateSizeBytes: 1_000_000_000,
+            recommendedFor: [.small],
+            contextSize: 2048,
+            promptTemplate: .llama3,
+            description: "MLX with no SHA — must not be audited as GGUF."
+        )
+
+        let fixture = [missingGGUF, invalidGGUF, missingMLX]
+
+        let missing = Set(Self.missingChecksums(in: fixture))
+        let invalid = Set(Self.invalidChecksums(in: fixture))
+
+        XCTAssertTrue(missing.contains("example/sabotage-missing-GGUF"))
+        XCTAssertFalse(missing.contains("example/sabotage-invalid-GGUF"))
+        XCTAssertFalse(missing.contains("example/sabotage-mlx"))
+
+        XCTAssertTrue(invalid.contains("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"))
+        XCTAssertFalse(missing.contains("example/sabotage-mlx"))
+    }
+
+    // MARK: - Detection
+
+    /// GGUF entries with no `expectedSHA256` — the hard-gate filter (SEC-14).
+    static func missingChecksums(in models: [CuratedModel]) -> [String] {
+        models
+            .filter { $0.modelType == .gguf && $0.expectedSHA256 == nil }
+            .map(\.repoID)
+    }
+
+    /// Populated `expectedSHA256` values on GGUF entries that are not
+    /// 64-char lowercase hex.
+    static func invalidChecksums(in models: [CuratedModel]) -> [String] {
+        models
+            .filter { $0.modelType == .gguf }
+            .compactMap { $0.expectedSHA256 }
+            .filter { $0.count != 64 || !$0.allSatisfy(\.isHexDigit) }
     }
 }

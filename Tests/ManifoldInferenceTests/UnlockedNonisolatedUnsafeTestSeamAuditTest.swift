@@ -28,6 +28,9 @@ import Foundation
 /// (`relative/path.swift:trimmed line`) either appears in the allowlist or
 /// the build fails. A stale-allowlist check fails the other direction too,
 /// so removed declarations get their allowlist line cleaned up.
+///
+/// The scan lives in ``scan(sourcesRoot:allowlist:)`` so the in-file
+/// sabotage test exercises the exact function the audit runs.
 final class UnlockedNonisolatedUnsafeTestSeamAuditTest: XCTestCase {
 
     /// Lazily loaded set of approved fingerprints from
@@ -44,27 +47,10 @@ final class UnlockedNonisolatedUnsafeTestSeamAuditTest: XCTestCase {
 
     func test_sourcesDirectoryContainsNoUnapprovedUnlockedTestSeams() throws {
         let sourcesURL = try Self.locateSourcesDirectory()
-        var found: Set<String> = []
-        var offenders: [(file: String, line: Int, text: String)] = []
-
         let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesURL)
         XCTAssertFalse(swiftFiles.isEmpty, "Sources directory yielded no .swift files — path probably wrong")
 
-        for fileURL in swiftFiles {
-            let relativePath = fileURL.path.replacingOccurrences(of: sourcesURL.path + "/", with: "")
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
-            let lines = content.components(separatedBy: "\n")
-
-            for (index, rawLine) in lines.enumerated() {
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                guard Self.lineDeclaresNonisolatedUnsafeStaticVar(line) else { continue }
-                let fingerprint = "\(relativePath):\(line)"
-                found.insert(fingerprint)
-                if !Self.allowlist.contains(fingerprint) {
-                    offenders.append((file: relativePath, line: index + 1, text: line))
-                }
-            }
-        }
+        let (offenders, found) = try Self.scan(sourcesRoot: sourcesURL, allowlist: Self.allowlist)
 
         if !offenders.isEmpty {
             let formatted = offenders
@@ -90,6 +76,68 @@ final class UnlockedNonisolatedUnsafeTestSeamAuditTest: XCTestCase {
                   \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `scan(sourcesRoot:allowlist:)` the audit runs)
+
+    /// Plants a temp source tree containing an unlocked
+    /// `nonisolated(unsafe) static var` test-injection seam and asserts the
+    /// REAL scan flags it — and that a fingerprint allowlist entry exempts it.
+    func test_sabotage_scanFlagsPlantedUnlockedSeam() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unlocked-seam-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldSomeModule", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let declaration = "nonisolated(unsafe) static var _resolverForTesting: ((String) -> [String]?)? = nil"
+        try """
+        import Foundation
+
+        enum BadSeam {
+            \(declaration)
+        }
+        """.write(to: root.appendingPathComponent("BadSeam.swift"), atomically: true, encoding: .utf8)
+
+        let (offenders, found) = try Self.scan(sourcesRoot: tmp, allowlist: [])
+        XCTAssertEqual(offenders.count, 1, "The planted unlocked seam must be flagged")
+        XCTAssertEqual(offenders.first?.file, "ManifoldSomeModule/BadSeam.swift")
+
+        let fingerprint = "ManifoldSomeModule/BadSeam.swift:\(declaration)"
+        XCTAssertTrue(found.contains(fingerprint), "The planted seam must appear in `found`")
+
+        let (exempted, _) = try Self.scan(sourcesRoot: tmp, allowlist: [fingerprint])
+        XCTAssertTrue(exempted.isEmpty, "An allowlisted fingerprint must exempt the matching declaration")
+    }
+
+    // MARK: - Detection
+
+    static func scan(
+        sourcesRoot: URL,
+        allowlist: Set<String>
+    ) throws -> (offenders: [(file: String, line: Int, text: String)], found: Set<String>) {
+        var found: Set<String> = []
+        var offenders: [(file: String, line: Int, text: String)] = []
+
+        let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesRoot)
+
+        for fileURL in swiftFiles {
+            let relativePath = fileURL.path.replacingOccurrences(of: sourcesRoot.path + "/", with: "")
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = content.components(separatedBy: "\n")
+
+            for (index, rawLine) in lines.enumerated() {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                guard Self.lineDeclaresNonisolatedUnsafeStaticVar(line) else { continue }
+                let fingerprint = "\(relativePath):\(line)"
+                found.insert(fingerprint)
+                if !allowlist.contains(fingerprint) {
+                    offenders.append((file: relativePath, line: index + 1, text: line))
+                }
+            }
+        }
+
+        return (offenders, found)
     }
 
     // MARK: - Allowlist loading

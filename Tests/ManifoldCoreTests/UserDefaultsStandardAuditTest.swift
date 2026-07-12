@@ -42,9 +42,9 @@ import XCTest
 ///
 /// DO NOT add an allowlist to silence this test. The whole point of the
 /// audit is that one bare reference is enough to reintroduce the
-/// cross-process race. (The only excluded files are this audit itself and
-/// the sabotage-coverage suite, both of which contain the pattern purely as
-/// inert text — see the exclusion set below.)
+/// cross-process race. (The only excluded file is this audit itself, which
+/// contains the pattern purely as inert text — the search needle, the
+/// sabotage payload, and error messages.)
 ///
 /// The detection logic lives in ``violations(testsRoot:excludedFileNames:)``
 /// so the in-file sabotage test exercises the exact function the audit runs.
@@ -54,16 +54,13 @@ final class UserDefaultsStandardAuditTest: XCTestCase {
         let testsURL = try Self.locateTestsDirectory()
 
         // The audit file itself mentions the string in code paths (the
-        // search needle below) and in error messages. Scope the audit to
-        // every other file. AuditSabotageSuiteTests.swift is the second
-        // exception: it is the sabotage-coverage suite that deliberately
-        // embeds every audit's forbidden pattern (as string-literal payloads,
-        // search needles, and error messages) to prove the audits still fire.
-        // Neither exclusion silences a real violation — both files contain the
-        // pattern only as inert text.
+        // search needle, the sabotage payload) and in error messages — all
+        // inert text. Scope the audit to every other file; the exclusion
+        // silences no real violation. (The retired external sabotage suite
+        // was a second exclusion until 2026-07; in-file sabotage needs only
+        // the self-exclusion.)
         let excludedFileNames: Set<String> = [
             (#filePath as NSString).lastPathComponent,
-            "AuditSabotageSuiteTests.swift",
         ]
 
         let violations = try Self.violations(testsRoot: testsURL, excludedFileNames: excludedFileNames)
