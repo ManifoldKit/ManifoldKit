@@ -69,7 +69,9 @@ docs/plans/runs/**
 SECURITY_REMEDIATION_PLAN*.md
 SECURITY_AUDIT*.md
 
-# Muter mutation-testing artifacts (see docs/MUTATION-BASELINE-2026-06.md)
+# Muter mutation-testing artifacts (baseline rationale was recorded in
+# docs/MUTATION-BASELINE-2026-06.md, removed in a 2026-07 hygiene pass —
+# see git history)
 muter_logs/
 *_mutated/
 .local-integration-runs/

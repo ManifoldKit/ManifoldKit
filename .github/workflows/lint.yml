@@ -432,4 +432,10 @@ jobs:
       # locally with `bash --posix`.
       - name: large-file-guard — reject newly added files over 1MB
         if: always() && github.event_name == 'pull_request'
-        run: bash scripts/large-file-guard.sh "origin/${{ github.base_ref }}" "HEAD"
+        run: |
+          set -euo pipefail
+          # A pull_request checkout has no refs/remotes/origin/<base> —
+          # fetch it explicitly before merge-base, same pattern as the
+          # dep-budget step above.
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          bash scripts/large-file-guard.sh "origin/${{ github.base_ref }}" "HEAD"

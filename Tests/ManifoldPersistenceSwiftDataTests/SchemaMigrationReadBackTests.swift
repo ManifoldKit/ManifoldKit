@@ -1,4 +1,6 @@
-// Validates Phase 2 acceptance criterion from docs/plans/runtime-ports-phase-1-2.md:
+// Validates the Phase 2 acceptance criterion from the runtime-ports plan
+// (docs/plans/archive/runtime-ports-phase-1-2.md, removed in a 2026-07
+// docs/plans hygiene pass — see git history):
 // "A read-back test opens a v0.13.x-era store fixture and asserts data integrity."
 //
 // v0.13.x shipped ManifoldSchemaV3, before the V4 sampler-penalty columns and the

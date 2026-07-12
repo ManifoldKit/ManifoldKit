@@ -2,7 +2,9 @@ import XCTest
 @testable import ManifoldRuntime
 import ManifoldInference
 
-/// Compile-time tripwire enforcing invariant 6 from target-architecture.md:
+/// Compile-time tripwire enforcing invariant 6 from the target-architecture
+/// plan (docs/plans/archive/target-architecture.md, removed in a 2026-07
+/// docs/plans hygiene pass — see git history):
 ///
 /// > "New modality/run-level events ride their own event types — never new
 /// > `GenerationEvent` cases on the text path."
