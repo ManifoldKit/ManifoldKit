@@ -70,6 +70,7 @@ SpeechTranscribing.cancelTranscribing() Func
 SpeechTranscribing.requestAuthorization() Func
 SpeechTranscribing.startTranscribing(onUpdate:) Func
 SpeechTranscribing.stopTranscribing() Func
+SpeechTranscribing.transcriptionUpdates() Func
 SpeechTranscriptionUpdate Struct
 SpeechTranscriptionUpdate.__derived_struct_equals(_:_:) Func
 SpeechTranscriptionUpdate.init(text:isFinal:) Constructor
