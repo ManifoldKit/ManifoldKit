@@ -15,6 +15,33 @@ Use ``ConversationRuntime/addEventTap(bufferingPolicy:)`` when you need a **seco
 
 For single-consumer flows where `events` is not already taken — bare scripts, lightweight CLIs, one-off utilities — iterating `events` directly is simpler.
 
+## Without `ConversationRuntime` (#2206)
+
+Everything above requires a `ConversationRuntime`. Apps that drive `InferenceService` directly — a supported mode; see `ManifoldInference`'s docs — don't have one, and previously had no path onto Glass Box observability short of migrating their entire turn loop. `InferenceService.addGenerationEventTap(bufferingPolicy:)` (in `ManifoldInference`) closes that gap: it's the same fan-out shape one layer down, so a direct-`InferenceService` host can adopt event-subsequence assertions, JSONL tracing, or a diagnostic sink incrementally, without ever constructing a runtime.
+
+```swift,no-build
+import ManifoldInference
+
+let recorder = GenerationEventRecorder()
+let drainTask = await recorder.start(on: service)   // service: InferenceService
+
+let (_, stream) = try service.enqueue(messages: [.user("hi")], config: GenerationConfig())
+for try await _ in stream.events {}                 // drive the turn to completion
+
+drainTask.cancel()
+await drainTask.value
+
+let trace = await recorder.trace
+let url = URL(fileURLWithPath: "/tmp/generation.jsonl")
+try GenerationEventTrace(events: trace).save(to: url)
+```
+
+`GenerationEventRecorder` / `GenerationEventTrace` mirror `ConversationEventRecorder` / `ConversationEventTrace` field-for-field (`index` / `kind` / `summary` JSONL lines), but key off `GenerationEvent` — the vocabulary that already exists at the `InferenceService` layer — rather than `ConversationEvent`, which lives in this module and cannot be referenced from `ManifoldInference` (dependencies flow one way).
+
+**What's observable at this layer, and what isn't.** The generation-scoped subset flows through both taps: prompt rendering (`promptRendered`, opt-in via `GenerationConfig.captureRenderedPrompt`), tokens, thinking, tool calls, and the terminal completion/cancellation/error signal (`generationCompleted`, classified by `GenerationCompletion.Reason`). Turn-level concerns that only the runtime layer knows about — message persistence identity (`messageInserted`/`messageRemoved`/`messageUpdated`), history shaping (`historyShaped`), compression (`compressionTriggered`/`historyCompressed`), and multi-agent handoff bookkeeping tied to a session (`agentHandoff`) — remain **runtime-only**, because `InferenceService` has no concept of a persisted message, session, or compression policy. A host that later adopts `ConversationRuntime` gains those events without losing anything it already had; nothing here needs to be migrated away.
+
+The tap covers the **queued** path — `InferenceService.enqueue(...)`, which is what `ConversationRuntime`, `ChatViewModel`, and direct-drive hosts all use. The low-level, non-queued `InferenceService.generate(...)` entry point returns its own private stream and is not multicast, so drive `enqueue` if you want the tap to see the generation. Cancelling a turn keeps it observable: the tap receives the dispatch loop's terminal `generationCompleted` as the request unwinds (a cancelled turn is not silently truncated), while the request's own stream carries the authoritative `CancellationError`.
+
 ## Installing a tap
 
 `addEventTap` returns an `AsyncStream<ConversationEvent>` that begins delivering events immediately. Install it before driving the turn you want to observe, then drain it on a `Task`:
