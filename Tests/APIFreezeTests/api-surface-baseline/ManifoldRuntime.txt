@@ -561,6 +561,7 @@ RAGService.ingest(text:documentID:title:) Func
 RAGService.ingest(url:) Func
 RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:fullContextMode:fullContextBudgetTokens:retrievalStrategy:) Constructor
 RAGService.retrieve(query:limit:) Func
+RAGService.retrieve(query:tokenBudget:tokenizer:) Func
 RAGService.retrieveSlots(query:limit:) Func
 RAGService.unownedExecutor Var
 ReciprocalRankFusion Enum

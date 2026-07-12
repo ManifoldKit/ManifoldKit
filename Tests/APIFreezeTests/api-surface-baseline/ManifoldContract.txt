@@ -349,10 +349,11 @@ Reranker.rerank(query:candidates:limit:) Func
 RetrievedDocument Struct
 RetrievedDocument.__derived_struct_equals(_:_:) Func
 RetrievedDocument.docID Var
+RetrievedDocument.documentID Var
 RetrievedDocument.encode(to:) Func
 RetrievedDocument.hash(into:) Func
 RetrievedDocument.hashValue Var
-RetrievedDocument.init(docID:title:text:) Constructor
+RetrievedDocument.init(docID:documentID:title:text:) Constructor
 RetrievedDocument.init(from:) Constructor
 RetrievedDocument.text Var
 RetrievedDocument.title Var
