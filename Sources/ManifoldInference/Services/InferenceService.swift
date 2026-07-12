@@ -584,6 +584,26 @@ public final class InferenceService {
     /// per-request `GenerationStream` returned by `enqueue(...)`, and a slow
     /// tap consumer never stalls generation.
     ///
+    /// **Scope: the queued path.** The tap observes generations driven
+    /// through ``enqueue(messages:systemPrompt:config:hints:priority:requestGroupID:route:)``
+    /// and its overloads — the mainstream path (`ConversationRuntime`,
+    /// `ChatViewModel`, and direct-drive hosts all enqueue). The low-level,
+    /// non-queued ``generate(structuredMessages:systemPrompt:...)`` entry
+    /// point returns its own private stream and is **not** multicast here;
+    /// it deliberately bypasses the queue (see its doc comment), so it also
+    /// bypasses the tap. Consumers that want observability drive `enqueue`.
+    ///
+    /// **Cancellation.** A cancelled generation stays observable: the tap
+    /// receives the dispatch loop's terminal ``GenerationEvent/generationCompleted(_:)``
+    /// as the request unwinds, so a cancelled turn is not silently truncated
+    /// in the trace. A mid-flight ``cancel(_:)`` finishes the request's OWN
+    /// `GenerationStream` by throwing `CancellationError` (that stream carries
+    /// the authoritative cancel signal); the terminal `generationCompleted`
+    /// the tap sees reflects the queue's existing stop/cancel classification
+    /// at unwind, which for a backend-`stopGeneration()`-driven cancel is
+    /// often ``GenerationCompletion/Reason/stop``. A tool-dispatch-loop
+    /// cancellation classifies as ``GenerationCompletion/Reason/cancelled``.
+    ///
     /// Use ``GenerationEventRecorder`` to capture the trace into an
     /// in-memory array and write it to JSONL, mirroring
     /// `ManifoldRuntime`'s `ConversationEventRecorder` /
