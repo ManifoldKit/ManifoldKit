@@ -42,6 +42,38 @@ public final class ChatViewModel {
         case failed(any Error)
     }
 
+    // MARK: - ModelLoadState
+
+    /// Lifecycle of the most recent (or in-flight) model/endpoint load.
+    ///
+    /// `loadSelectedEndpoint()` / `loadSelectedModel()` already let a caller
+    /// `await` a load to completion; this property is the second option the
+    /// contract promises — a consumer that dispatches a load fire-and-forget
+    /// (`dispatchSelectedLoad()`, relaunch auto-load) can instead observe this
+    /// single property rather than combining `isLoading` + `isModelLoaded` +
+    /// `activeError` to work out whether a load is still running or silently
+    /// failed (#2222). `.failed` carries the real `Error` — never a bare `nil`.
+    ///
+    /// Unlike ``ModelLoadStatus`` (`ManifoldInference`, shared with the
+    /// headless `ModelSelection` façade and reason-stringified for a
+    /// multi-observer stream), this type is chat-specific and keeps the
+    /// original `Error` intact.
+    public enum ModelLoadState {
+        case idle
+        case loading
+        case loaded
+        case failed(any Error)
+    }
+
+    /// Derived from `activityPhase` / `isModelLoaded` / ``lastModelLoadFailure``
+    /// — see ``ModelLoadState``.
+    public var modelLoadState: ModelLoadState {
+        if isLoading { return .loading }
+        if let lastModelLoadFailure { return .failed(lastModelLoadFailure) }
+        if isModelLoaded { return .loaded }
+        return .idle
+    }
+
     // MARK: - Services
 
     /// Internal-only handle to the inference service. View code in sibling
@@ -318,6 +350,15 @@ public final class ChatViewModel {
 
     /// Structured error with recovery information for the UI.
     public var activeError: ChatError?
+
+    /// The error from the most recent failed model/endpoint load, or `nil`.
+    ///
+    /// Set by ``ModelLoadCoordinator/onSurfaceError`` and cleared by
+    /// ``ModelLoadCoordinator/onClearError`` (i.e. at the start of the next
+    /// load). Backs ``modelLoadState``'s `.failed` case — kept separate from
+    /// `activeError` because `activeError` is a general-purpose surface that
+    /// other paths (sends, persistence) also write to and clear independently.
+    var lastModelLoadFailure: (any Error)?
 
     /// Backward-compatible string accessor for error display.
     /// Returns the message from the active error, or nil if no error.
@@ -907,11 +948,20 @@ public final class ChatViewModel {
         coordinator.onTransitionPhase = { [weak self] phase in
             self?.transitionPhase(to: phase) ?? false
         }
-        coordinator.onSurfaceError = { [weak self] message in
-            self?.errorMessage = message
+        coordinator.onSurfaceError = { [weak self] message, error in
+            guard let self else { return }
+            self.lastModelLoadFailure = error
+            // Preserve the coordinator's friendlier "Failed to load model: …" /
+            // "Failed to connect: …" framing for `message`, but derive `recovery`
+            // from the real error (#2222) instead of the hardcoded `.dismissOnly`
+            // the old string-only seam produced — e.g. an OOM deny now offers
+            // `.selectModel`, a cloud auth failure `.configureAPIKey`.
+            let recovery = ChatError.from(error, kind: .configuration).recovery
+            self.activeError = ChatError(kind: .configuration, message: message, underlyingError: error, recovery: recovery)
         }
         coordinator.onClearError = { [weak self] in
             self?.errorMessage = nil
+            self?.lastModelLoadFailure = nil
         }
         coordinator.onSetSelectedPromptTemplate = { [weak self] template in
             self?.selectedPromptTemplate = template

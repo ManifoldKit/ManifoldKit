@@ -355,3 +355,7 @@ API breakage: enumelement GenerationCapabilityRequirement.streamsToolCallArgumen
 API breakage: func DefaultCompressionPolicy.truncating(threshold:contextSize:reservedTokens:tokenizer:) has been renamed to func truncating(threshold:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:)
 API breakage: func DefaultCompressionPolicy.extractive(threshold:headBudgetFraction:contextSize:reservedTokens:tokenizer:) has been renamed to func extractive(threshold:headBudgetFraction:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:)
 API breakage: func DefaultCompressionPolicy.anchored(threshold:contextSize:reservedTokens:summarizerInputWindow:summaryTemplate:tokenizer:) has been renamed to func anchored(threshold:contextSize:reservedTokens:summarizerInputWindow:summaryTemplate:tokenizer:isPinned:onOutcome:)
+API breakage: enumelement SendMessageError.modelLoading has been added as a new enum case
+API breakage: var ModelLoadCoordinator.onSurfaceError has declared type change from (Swift.String) -> Swift.Void to (Swift.String, any Swift.Error) -> Swift.Void
+API breakage: accessor ModelLoadCoordinator.onSurfaceError.Get() has return type change from (Swift.String) -> Swift.Void to (Swift.String, any Swift.Error) -> Swift.Void
+API breakage: accessor ModelLoadCoordinator.onSurfaceError.Set() has parameter 0 type change from (Swift.String) -> Swift.Void to (Swift.String, any Swift.Error) -> Swift.Void
