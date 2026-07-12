@@ -166,6 +166,94 @@ final class InferenceServiceStructuredOutputEnvelopeTests: XCTestCase {
         // coincidentally matching. Verified failing, then restored.
     }
 
+    // MARK: - (d2) Stall frees the shared queue slot — retry re-issues, and a
+    // later unrelated request on the same service still succeeds.
+    //
+    // The blocker this guards: the generation queue is strictly serial and its
+    // active slot clears only when the active task finishes. A stalled attempt
+    // stops draining but leaves the backend hung, so unless `structured()`
+    // CANCELS the underlying generation, the slot stays occupied forever —
+    // wedging the retry (which queues behind it and just re-stalls) and every
+    // later request sharing the service (AGENTS.md "Service sharing").
+
+    func test_structured_stallThenRetry_freesSlot_reissuesAndKeepsServing() async throws {
+        let backend = MockInferenceBackend(capabilities: weakCapabilities())
+        backend.isModelLoaded = true
+        // Turn 1: a single token, gated on a gate we NEVER release, so the
+        // attempt can only end via the stall-cancel path (not by the backend
+        // finishing on its own). Turn 2: valid JSON.
+        backend.tokensToYieldPerTurn = [
+            ["x"],
+            tokens(#"{"city":"Oslo","celsius":3}"#),
+        ]
+        let stuckGate = TokenEmissionGate()
+        backend.tokenEmissionGate = stuckGate
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        // Run the request off the test task so we can flip the gate off for
+        // the retry while the first attempt is stalling.
+        let resultTask = Task {
+            try await service.structured(
+                Weather.self,
+                to: "Weather?",
+                policy: StructuredOutputReliabilityPolicy(
+                    maxRetries: 1,
+                    stallTimeout: .milliseconds(80),
+                    retryDelay: .milliseconds(300)
+                )
+            )
+        }
+
+        // Attempt 1 stalls at ~80ms and (with the fix) is cancelled, freeing
+        // the slot. Clear the gate PROPERTY so the retry's fresh generate()
+        // call streams normally — turn 1's mock task stays parked on the
+        // captured `stuckGate` object (never released), so ONLY the cancel
+        // could have freed the slot. This flip lands well before the retry
+        // re-enqueues at ~380ms (stall + retryDelay).
+        try await Task.sleep(for: .milliseconds(150))
+        backend.tokenEmissionGate = nil
+
+        let result = try await resultTask.value
+        switch result {
+        case .success(let output):
+            XCTAssertEqual(output.value, Weather(city: "Oslo", celsius: 3))
+        case .failure(let error):
+            XCTFail("retry should re-issue and succeed once the stalled slot frees; got \(error)")
+        }
+        XCTAssertEqual(backend.generateCallCount, 2, "the retry must actually re-issue a second generation")
+
+        // (b) The service still serves after the stall — a fresh, unrelated
+        // request on the SAME service completes, proving the queue wasn't
+        // wedged.
+        backend.tokensToYieldPerTurn = []
+        backend.tokensToYield = tokens(#"{"city":"Bern","celsius":12}"#)
+        // A stall timeout on this probe means a REGRESSION (slot not freed)
+        // surfaces as a fast `.stalled` failure below rather than hanging CI
+        // for the whole test timeout on the wedged queue.
+        let after = try await service.structured(
+            Weather.self,
+            to: "Again?",
+            policy: StructuredOutputReliabilityPolicy(stallTimeout: .seconds(5))
+        )
+        guard case .success(let out2) = after else {
+            return XCTFail("service wedged after a stall; a later request failed: \(after)")
+        }
+        XCTAssertEqual(out2.value, Weather(city: "Bern", celsius: 12))
+        XCTAssertEqual(backend.generateCallCount, 3, "the later request must reach the backend")
+
+        // Let turn 1's parked mock task drain and exit cleanly.
+        await stuckGate.release()
+
+        // Sabotage check (run manually before commit, then remove): deleting
+        // the `cancel(token)` call in runStructuredGeneration's catch leaves
+        // the stalled slot occupied — the retry queues behind it and re-stalls,
+        // so `result` comes back `.failure(.stalled)` and this test fails at
+        // the `.success` assertion; the later probe request then also fails
+        // `.stalled` (its 5s timeout is the fail-fast guard that keeps the
+        // wedged queue from hanging the whole run). Verified failing without
+        // the cancel, then restored.
+    }
+
     // MARK: - (e) Empty output → failure, never a silent success
 
     func test_structured_emptyOutput_classifiedAsFailure_notSilentSuccess() async throws {
