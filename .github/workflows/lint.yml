@@ -427,9 +427,8 @@ jobs:
       # guard fails a PR that ADDS any file over 1MB, computed against the
       # true merge-base diff so renames/moves of pre-existing large files
       # don't false-positive. Written for POSIX sh / Bash 3.2 (no
-      # `declare -A`) since GitHub's ubuntu-latest runner ships Bash 3.2 by
-      # default for non-interactive shells invoked this way — verified
-      # locally with `bash --posix`.
+      # `declare -A`) since this repo's CI runs on macOS runners, which
+      # ship Bash 3.2 — verified locally with `bash --posix`.
       - name: large-file-guard — reject newly added files over 1MB
         if: always() && github.event_name == 'pull_request'
         run: |
