@@ -399,6 +399,25 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  TEST SUMMARY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# ── Check for stale .build desync landmine ────────────────────────────────────
+# If swift test failed, check for known stale-build-artifact error signatures.
+# This is a preflight hint only — we don't auto-wipe .build, which would hide
+# real breaks and burn ~8min. Just point at the documented fix.
+if [[ $SWIFT_EXIT -ne 0 ]]; then
+    # Patterns that signal a .build cache desync rather than a real source bug:
+    # - "missing required module" (the _NumericsShims case from #2181)
+    # - "build.db" / "workspace-state.json" (SwiftPM metadata corruption)
+    # - "module cache" (Clang incremental-build desync)
+    if grep -qiE "(missing required module|build\.db|workspace-state\.json|module cache)" "$OUTPUT_FILE"; then
+        echo ""
+        echo "  ⚠️  DETECTED: Stale .build artifact error"
+        echo ""
+        echo "  This looks like a .build directory desync (not a source bug)."
+        echo "  Fix: Run 'scripts/clean-build.sh' to wipe .build and resolve cleanly."
+        echo ""
+    fi
+fi
+
 # ── Parse XCTest events ───────────────────────────────────────────────────────
 # Individual test-case results
 xctest_passed=$(grep -c "^Test Case '.*' passed" "$OUTPUT_FILE" || true)
