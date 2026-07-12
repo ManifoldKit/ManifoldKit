@@ -146,6 +146,11 @@ public API but is intentionally shared with backend packages; don't reach for
 
 ## 4. Pin and release lifecycle
 
+> **1.0 semantics.** Core and companion packages version independently —
+> core reaching 1.0 does not require or wait for a companion's 1.0, and a
+> companion is free to stay pre-1.0 tracking core's stable API from the
+> outside. See [`docs/RELEASE-1.0.md` Policy 4](RELEASE-1.0.md#policy-4--corecompanion-10-semantics).
+
 - **Pin core with `.upToNextMinor`.** Core's own `companion-compat.yml`
   documents this explicitly: `swift package edit manifoldkit --path ../core`
   is described as "bypassing the `.upToNextMinor` pin (which only resolves to
