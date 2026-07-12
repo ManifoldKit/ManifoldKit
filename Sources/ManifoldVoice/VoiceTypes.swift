@@ -90,6 +90,87 @@ public protocol SpeechTranscribing: AnyObject {
     func cancelTranscribing()
 }
 
+public extension SpeechTranscribing {
+    /// Stream-based alternative to ``startTranscribing(onUpdate:)`` for callers
+    /// that prefer `for try await` consumption over a callback closure.
+    ///
+    /// This is a thin adapter over the callback API — it does not introduce a
+    /// second transcription pipeline. Unlike ``ManifoldContract/GenerationStream``
+    /// (which layers idle-timeout detection, phase tracking, and stall callbacks
+    /// on top of its base stream), transcription has no equivalent cross-cutting
+    /// concern to justify a bespoke wrapper type: a plain `AsyncThrowingStream`
+    /// is the whole story. The callback-based API remains the source of truth;
+    /// callback removal is a deliberate breaking-change wave, not part of this
+    /// addition (see issue #2157).
+    ///
+    /// The stream finishes normally when an update arrives with
+    /// ``SpeechTranscriptionUpdate/isFinal`` set to `true`, or with the thrown
+    /// error if ``startTranscribing(onUpdate:)`` fails. Cancelling iteration
+    /// (or letting the stream's task fall out of scope) calls
+    /// ``cancelTranscribing()`` on the receiver.
+    ///
+    /// ```swift
+    /// for try await update in transcriber.transcriptionUpdates() {
+    ///     print(update.text, update.isFinal)
+    /// }
+    /// ```
+    @MainActor
+    func transcriptionUpdates() -> AsyncThrowingStream<SpeechTranscriptionUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            // `self` (the generic, protocol-constrained `Self`) is not statically
+            // provable `Sendable`, so it cannot be captured `[weak self]` inside
+            // `onTermination`, which is `@Sendable`. Route cancellation through
+            // this `Task` handle instead — `Task<Void, Never>` is `Sendable` on
+            // its own, and `self` stays captured strongly inside the one
+            // `@MainActor` closure literal that formed it, which is fine.
+            let task = Task { @MainActor in
+                do {
+                    try await startTranscribing { update in
+                        continuation.yield(update)
+                        if update.isFinal {
+                            continuation.finish()
+                        }
+                    }
+                    // `startTranscribing` only awaits setup (registering the
+                    // tap/callback), not completion, so this task must stay
+                    // alive until torn down. Park on a *bounded* sleep in a
+                    // cancellation-checked loop rather than a single
+                    // `Task.sleep(nanoseconds: .max)`: the deadline arithmetic
+                    // for `.max` nanoseconds overflows on older concurrency
+                    // runtimes (the macos-15 CI runner), so that sleep returns
+                    // immediately instead of parking — the task then finishes
+                    // before `onTermination` fires, `task.cancel()` no-ops
+                    // against an already-completed task, and
+                    // `cancelTranscribing()` is never reached (cancellation
+                    // propagation silently lost). A short, overflow-safe
+                    // duration re-parked while `!Task.isCancelled` holds
+                    // unconditionally: `Task.sleep` throws `CancellationError`
+                    // the instant `onTermination` cancels `task`, and the guard
+                    // re-parks if any sleep ever returns early — so teardown
+                    // fires exactly once, on cancellation, on every toolchain.
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .seconds(60))
+                    }
+                    // Reached only if the task was cancelled between sleeps;
+                    // funnel into the same teardown path as an interrupted sleep.
+                    throw CancellationError()
+                } catch is CancellationError {
+                    cancelTranscribing()
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            // `continuation.finish()` (e.g. from the `isFinal` branch above)
+            // also triggers `onTermination`, which cancels this already-finished
+            // task — a harmless no-op re-entry into the `catch is
+            // CancellationError` branch.
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
 /// Voice/rate/pitch/language controls for a single spoken utterance.
 ///
 /// A default-initialised `SpeechOptions()` reproduces the historical behaviour:

@@ -114,6 +114,40 @@ isn't expressive enough — see the escape hatch below.
 
 ---
 
+## 3b. Matching options for `requiredContent`/`forbiddenContent` (optional)
+
+The built-in content-presence scorers default to **cumulative transcript,
+case-sensitive** matching — every assistant message produced up to and
+including the checkpoint's turn, exact case. That default never changes.
+
+Apps whose own checkpoint semantics differ (e.g. a scene-scoped chat surface
+that only cares about the current turn, and wants case-insensitive matching)
+can call the built-in scorers directly with `ContentMatchOptions` instead of
+forking them — from a custom `CheckpointScorer`, or from any code that holds a
+`CheckpointEvaluationContext`:
+
+```swift
+import ManifoldAppEval
+
+let score = BuiltInCheckpointScorers.scoreRequiredContent(
+    context,
+    options: .init(caseInsensitive: true, scope: .latestTurn)
+)
+```
+
+- `caseInsensitive: Bool` (default `false`) — case-insensitive substring
+  matching instead of exact case.
+- `scope: ContentMatchOptions.Scope` (default `.cumulative`) — `.latestTurn`
+  restricts matching to `CheckpointEvaluationContext/latestTurnVisibleText`,
+  the assistant text from the checkpoint's own turn only (everything after
+  the most recent user message), instead of the full cumulative transcript.
+
+`GoldenTaskRunner`'s own built-in scoring always uses the defaults — these
+options are an opt-in seam for scorers you register yourself, not a per-checkpoint
+schema field.
+
+---
+
 ## 4. Plug in your own domain scorer (optional)
 
 For state your app owns that the trace can't see (a SwiftData-backed

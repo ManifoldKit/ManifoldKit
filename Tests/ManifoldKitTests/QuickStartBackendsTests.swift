@@ -300,6 +300,104 @@ final class QuickStartBackendsTests: XCTestCase {
         )
     }
 
+    /// #2157: when the only registrar(s) passed to `quickStart(backends:)`
+    /// are `FoundationBackends`, and the host is below the Apple Intelligence
+    /// OS floor, the diagnostic must pin the cause to the OS gate rather than
+    /// falling back to the generic "nothing registered" message — the
+    /// registrar DID run, it just declared no supported model type.
+    func test_backendAvailabilityDiagnostic_osGatedFoundationOnly_producesTargetedDiagnostic() {
+        let diagnostic = ManifoldKit.backendAvailabilityDiagnostic(
+            snapshot: EnabledBackends(),
+            configuredEndpointCount: 0,
+            registrars: [FoundationBackends.self],
+            foundationModelsOSAvailable: false
+        )
+        guard case .noBackendsOSGated(let reason) = diagnostic else {
+            XCTFail("Expected .noBackendsOSGated when FoundationBackends is the only registrar and the OS is below the floor, got \(String(describing: diagnostic))")
+            return
+        }
+        XCTAssertTrue(reason.contains("Apple Intelligence") || reason.contains("iOS 26") || reason.contains("macOS 26"),
+            "Reason must name the OS floor so the host knows exactly why: \(reason)")
+    }
+
+    /// Counterpart: the same empty snapshot with NO `FoundationBackends` in
+    /// the registrar list must still fall back to the generic diagnostic —
+    /// the OS-gate detection is deliberately narrow (it can only introspect
+    /// the one registrar it knows the gating shape of), not a catch-all for
+    /// "empty snapshot with any registrar present".
+    func test_backendAvailabilityDiagnostic_osGateDetection_scopedToFoundationBackendsOnly() {
+        let diagnostic = ManifoldKit.backendAvailabilityDiagnostic(
+            snapshot: EnabledBackends(),
+            configuredEndpointCount: 0,
+            registrars: [MockGGUFBackends.self],
+            foundationModelsOSAvailable: false
+        )
+        XCTAssertEqual(diagnostic, .noBackends,
+            "A non-Foundation registrar producing an empty snapshot must stay the generic .noBackends diagnostic")
+    }
+
+    /// Counterpart: `FoundationBackends` present but the OS floor IS met
+    /// must not misfire the OS-gated diagnostic (an empty snapshot in that
+    /// case indicates a different, non-OS problem — e.g. Apple Intelligence
+    /// disabled by the user — which the generic message already covers).
+    func test_backendAvailabilityDiagnostic_foundationBackendsPresent_osAvailable_staysGeneric() {
+        let diagnostic = ManifoldKit.backendAvailabilityDiagnostic(
+            snapshot: EnabledBackends(),
+            configuredEndpointCount: 0,
+            registrars: [FoundationBackends.self],
+            foundationModelsOSAvailable: true
+        )
+        XCTAssertEqual(diagnostic, .noBackends,
+            "FoundationBackends registered with the OS floor met must not report an OS gate that isn't the cause")
+    }
+
+    /// End-to-end: `_quickStart` with only `FoundationBackends` registered on
+    /// a genuinely pre-floor OS must still throw
+    /// `ManifoldKitError.noBackendsRegistered` (there is no dedicated public
+    /// case for the OS-gate cause — see that case's doc comment), but the
+    /// error's diagnostic MESSAGE must name the OS floor + a concrete
+    /// remediation rather than only the generic "call register(with:)" text
+    /// — exercised through the real assembly path (not just the pure
+    /// decision table above).
+    ///
+    /// `FoundationBackends.register(with:)` gates `declareSupport(for:)`
+    /// behind the REAL `#available(iOS 26, macOS 26, *)` check, not the
+    /// `foundationAvailableOverride` test seam (that seam only feeds the
+    /// downstream diagnostic/seed logic) — so this negative case is only
+    /// arrangeable on a build whose host OS is itself below the floor.
+    /// Mirrors `buildHasCompiledInGGUFBackend`'s honest-skip precedent above
+    /// rather than asserting a vacuous pass on a capable host.
+    func test_quickStart_osGatedFoundationOnly_throwsTargetedError() async throws {
+        try XCTSkipIf(ManifoldKit.foundationModelsOSAvailable,
+            "Host OS meets the Apple Intelligence floor — the OS-gated-registration case is not arrangeable on this build")
+
+        do {
+            _ = try await ManifoldKit._quickStart(
+                configuration: .default,
+                backends: [FoundationBackends.self],
+                includeDefaultBackends: false,
+                makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+                selectionPolicy: { _ in nil }
+            )
+            XCTFail("_quickStart must throw when only an OS-gated backend is registered and the OS gate is closed")
+        } catch let error as ManifoldKitError {
+            guard case .noBackendsRegistered = error else {
+                XCTFail("Expected ManifoldKitError.noBackendsRegistered, got \(error)")
+                return
+            }
+            let description = try XCTUnwrap(error.errorDescription, "noBackendsRegistered must supply errorDescription")
+            XCTAssertTrue(
+                description.contains("Apple Intelligence") || description.contains("iOS 26") || description.contains("macOS 26"),
+                "Diagnostic message must name the OS floor so the host knows exactly why: \(description)"
+            )
+            XCTAssertTrue(
+                description.contains("APIEndpointRecord") || description.contains("cloud endpoint"),
+                "Diagnostic message must offer a concrete remediation: \(description)"
+            )
+            XCTAssertFalse(error.isRetryable, "An OS gate is not resolved by retrying")
+        }
+    }
+
     // MARK: - Local-only / replace-mode (includeDefaultBackends: false)
 
     /// The privacy guarantee: with `includeDefaultBackends: false`, the cloud

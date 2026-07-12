@@ -4,8 +4,9 @@
 # deterministic, trait-disabled XCTest subset so each mutant costs ~5s
 # rather than the ~6.5 min a full scoped suite takes.
 #
-# Why this exact shape (see docs/MUTATION-BASELINE-2026-06.md for the full
-# rationale and the constraints that forbid a naive whole-suite run):
+# Why this exact shape (rationale and the constraints that forbid a naive
+# whole-suite run were recorded in docs/MUTATION-BASELINE-2026-06.md, removed
+# in a 2026-07 docs/plans hygiene pass — see git history for the full writeup):
 #   * `--disable-default-traits` keeps MLX / Llama / Metal out of the build,
 #     so no metallib and no process-global `llama_backend_init`.
 #   * The `--filter` targets ONLY XCTest suites. ManifoldRuntimeTests and

@@ -51,7 +51,7 @@ companion package:
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.69.0" // x-release-please-version
+        from: "0.70.0" // x-release-please-version
     ),
     // Only needed for semantic search (§3) / reranking (§4) —
     // keyword-fallback RAG works with core alone.
@@ -225,6 +225,27 @@ struct DocumentsButton: View {
 To drive ingestion yourself instead of through the sheet, call the
 `RAGService` directly: `ingest(url:)`, `fetchDocuments()` (returns
 `[DocumentRecord]`), and `deleteDocument(id:)`.
+
+### Ingesting in-memory text
+
+`ingest(url:)` requires a filesystem URL routed through a `DocumentParser`.
+If your corpus is produced in-memory — generated scenes, transcript
+fragments, anything that doesn't already live on disk — use
+`ingest(text:documentID:title:)` instead. It shares the same chunk → embed →
+persist pipeline as `ingest(url:)`, so retrieval and citation behaviour are
+identical; you just skip writing (and cleaning up) a scratch file:
+
+```swift,no-build
+let record = try await bootstrap.ragService?.ingest(
+    text: generatedScene.body,
+    documentID: generatedScene.id,   // caller-owned ID — reuse it to delete later
+    title: generatedScene.title
+)
+```
+
+Pass your own stable `documentID` (rather than letting one get minted for
+you) when you want `deleteDocument(id:)` to work against your own
+caller-managed corpus, e.g. one document per generated scene.
 
 ---
 

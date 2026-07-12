@@ -90,13 +90,35 @@ public struct GenerationRuntimeHints: Sendable, Equatable {
     /// prompt for debugging.
     public var captureRenderedPrompt: Bool
 
+    /// Per-request override of how the prompt-template render path formats
+    /// `messages` for a GGUF model whose embedded Jinja `tokenizer.chat_template`
+    /// is present (#2200).
+    ///
+    /// Since 0.54 (#1898) an embedded chat template always wins over the
+    /// hand-rolled ``PromptTemplate`` enum fallback — the render-honest default,
+    /// and still the default here. But an honest instruct-tuned chat template
+    /// pushes a model toward short, turn-bounded replies, which regresses
+    /// long-form continuation use cases (story generation, prose completion)
+    /// hard. Setting this to ``PromptRenderingMode/completion`` opts a single
+    /// request into a plain-text continuation render instead — see
+    /// ``PromptRenderingMode`` for the exact format and its tool-calling
+    /// precedence rule.
+    ///
+    /// - `.chatTemplate` (the default) — unchanged behaviour: the embedded
+    ///   Jinja template wins when present and renderable.
+    /// - `.completion` — render `messages` as plain continuation text instead,
+    ///   ignored (with a diagnostic) when `config.tools` is non-empty so tool
+    ///   declarations are never silently dropped.
+    public var renderingMode: PromptRenderingMode
+
     public init(
         jsonMode: Bool = false,
         thinkingMarkers: ThinkingMarkers? = nil,
         structuredOutput: StructuredOutputStrategy? = nil,
         documents: [RetrievedDocument] = [],
         maxRunTokens: Int? = nil,
-        captureRenderedPrompt: Bool = false
+        captureRenderedPrompt: Bool = false,
+        renderingMode: PromptRenderingMode = .chatTemplate
     ) {
         self.jsonMode = jsonMode
         self.thinkingMarkers = thinkingMarkers
@@ -104,5 +126,40 @@ public struct GenerationRuntimeHints: Sendable, Equatable {
         self.documents = documents
         self.maxRunTokens = maxRunTokens
         self.captureRenderedPrompt = captureRenderedPrompt
+        self.renderingMode = renderingMode
     }
+}
+
+/// How the prompt-template render path should format a generation request
+/// against a GGUF model that carries an embedded Jinja chat template (#2200).
+///
+/// This is the **only** layer this knob lives at — it rides on
+/// ``GenerationRuntimeHints`` alongside the other per-request, never-persisted
+/// fields (``GenerationRuntimeHints/jsonMode``, ``GenerationRuntimeHints/thinkingMarkers``,
+/// …). It is deliberately **not** duplicated onto `GenerationConfig` or
+/// `TurnConfig` — see the `TurnConfig`/`GenerationConfig` sampler-duplication
+/// anti-pattern this project's API design policy calls out (docs/API-DESIGN.md).
+/// A rendering-mode choice is a per-call, never-persisted decision exactly like
+/// `jsonMode`, so it belongs where those already live, not on the persistable
+/// sampler config.
+public enum PromptRenderingMode: Sendable, Equatable {
+    /// Render through the model's embedded Jinja chat template when one is
+    /// present and usable (falling back to the hand-rolled ``PromptTemplate``
+    /// enum otherwise) — unchanged 0.54+ behaviour, and the default.
+    case chatTemplate
+
+    /// Render `messages` as plain continuation text instead of through any
+    /// chat template, even when an embedded template is present: `systemPrompt`
+    /// (if any) followed by each message's textual content, in order, joined by
+    /// blank lines — no role labels, no special tokens, and no trailing
+    /// "assistant turn" delimiter. The model sees prose to continue, not a
+    /// chat turn to answer.
+    ///
+    /// **Tool precedence**: when `GenerationConfig.tools` is non-empty for the
+    /// same request, this override is ignored — the render path falls back to
+    /// ``chatTemplate`` and a diagnostic is logged — rather than silently
+    /// shipping a prompt with no tool declarations (mirrors the existing
+    /// fail-fast precedent for unusable embedded templates in
+    /// `PromptRenderer.render`).
+    case completion
 }

@@ -2,7 +2,9 @@ import XCTest
 @testable import ManifoldRuntime
 import ManifoldInference
 
-/// Tripwire enforcing invariant 6 from target-architecture.md:
+/// Tripwire enforcing invariant 6 from the target-architecture plan
+/// (docs/plans/archive/target-architecture.md, removed in a 2026-07
+/// docs/plans hygiene pass — see git history):
 ///
 /// > "New modality/run-level events ride their own event types — never new
 /// > `GenerationEvent` cases on the text path."
@@ -45,7 +47,8 @@ final class GenerationEventClosedAuditTest: XCTestCase {
             XCTAssertFalse(
                 allKinds.contains(keyword),
                 "ConversationEventKind must not contain run-level case '\(keyword)'. " +
-                "Run-lifecycle events ride RunEvent (invariant 6 from target-architecture.md)."
+                "Run-lifecycle events ride RunEvent (target-architecture invariant 6; " +
+                "see this test's doc comment)."
             )
         }
     }

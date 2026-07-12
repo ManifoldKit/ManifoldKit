@@ -53,8 +53,10 @@ AudioGenerationService.state Var
 AudioGenerationServiceError Enum
 AudioGenerationServiceError.__derived_enum_equals(_:_:) Func
 AudioGenerationServiceError.alreadyGenerating EnumElement
+AudioGenerationServiceError.errorDescription Var
 AudioGenerationServiceError.hash(into:) Func
 AudioGenerationServiceError.hashValue Var
+AudioGenerationServiceError.isRetryable Var
 AutoApproveGate Struct
 AutoApproveGate.approve(_:) Func
 AutoApproveGate.init() Constructor
@@ -407,6 +409,8 @@ ImageGenerationService.state Var
 ImageGenerationService.unload() Func
 ImageGenerationServiceError Enum
 ImageGenerationServiceError.__derived_enum_equals(_:_:) Func
+ImageGenerationServiceError.errorDescription Var
+ImageGenerationServiceError.isRetryable Var
 ImageGenerationServiceError.noFactoryRegistered EnumElement
 ImageGenerationServiceError.notLoaded EnumElement
 InMemoryMetricSink Class
@@ -1067,8 +1071,10 @@ VideoGenerationService.state Var
 VideoGenerationServiceError Enum
 VideoGenerationServiceError.__derived_enum_equals(_:_:) Func
 VideoGenerationServiceError.alreadyGenerating EnumElement
+VideoGenerationServiceError.errorDescription Var
 VideoGenerationServiceError.hash(into:) Func
 VideoGenerationServiceError.hashValue Var
+VideoGenerationServiceError.isRetryable Var
 VoiceDescriptor Struct
 VoiceDescriptor.ID TypeAlias
 VoiceDescriptor.Quality Enum

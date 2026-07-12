@@ -408,9 +408,11 @@ jobs:
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
     # Backstop against an org-wide macOS-slot stall (see the `changes` job's
     # timeout-minutes comment). 150 is a backstop, not a budget: the worst
-    # legitimate step-budget sum is 15 (dep pre-fetch) + 3×30 (test steps) +
-    # 25 (api-digester) = 130, plus checkout/setup/lint slack. Typical full
-    # runs finish in ~12 min; this only exists to bound a hang.
+    # legitimate step-budget sum is 15 (dep pre-fetch) + 3×30 (test steps) =
+    # 105, plus checkout/setup/lint slack. Typical full runs finish in ~12
+    # min; this only exists to bound a hang. The api-digester check used to
+    # add another 25 min to this job's critical path — it now runs in its
+    # own parallel `api-digester-check` job (#2157 item 1) instead.
     timeout-minutes: 150
 
     steps:
@@ -611,101 +613,6 @@ jobs:
             exit 1
           }
           echo "Tier 0 affected-suites graph snapshot OK."
-
-      - name: Public API source-compatibility check (all library-product targets)
-        # Guards `import ManifoldKit` source-compat for downstream consumers
-        # (TavernPad / localclaw): a public symbol removed by accident from any
-        # published target would break those builds.
-        #
-        # Runs when any Sources/** file changed (path-gated via the `changes`
-        # job's single `api-any` flag) and always checks the full, fixed list
-        # of library-product targets below — NOT just the module the diff
-        # touched. This replaced per-module scoping (docs/plans/
-        # api-review-2026-07.md item 0.0): swift-api-digester builds the
-        # ENTIRE package per invocation regardless of --targets (empirically
-        # verified — extra targets in the list cost only seconds each, a
-        # module-interface diff, not a rebuild), so narrowing bought no
-        # compile-cost savings. It did buy a false sense of coverage: the old
-        # 5-target list never analyzed ManifoldContract's own compiled
-        # interface, ManifoldHardware, ManifoldTestSupport, or ~20 other
-        # published targets — a rename in ManifoldHardware's
-        # BackendCapabilities was empirically invisible (exit 0) to
-        # `--targets ManifoldInference`, because swift-api-digester analyzes
-        # each target's own emitted interface and does NOT follow
-        # `@_exported import` re-exports. The list below is every
-        # `.library(...)` product in Package.swift (executables and the
-        # ManifoldMacrosPlugin build plugin are not analyzable this way).
-        #
-        # `--targets` is REQUIRED: whole-package mode fails on the trait-gated
-        # `llama` C module — swift-api-digester reports "missing required module
-        # 'llama'" when checking out the baseline source.
-        #
-        # Skipped on push to main: on a push event origin/main IS the commit
-        # being tested, so the diff would be HEAD against HEAD — a guaranteed
-        # no-op (measured 526s in run 27209277711). PRs already ran this check
-        # before merge; nightly-slow-tests.yml runs it unconditionally as the
-        # 24h backstop for Sources-only regressions not touched by a PR.
-        if: |
-          github.event_name == 'pull_request' && needs.changes.outputs.api-any == 'true'
-        timeout-minutes: 25
-        run: |
-          set -euo pipefail
-          # Fixed, always-complete list — every .library() product in
-          # Package.swift, derived by hand from the products: array. Keep in
-          # sync with Package.swift and with the nightly full-run step in
-          # nightly-slow-tests.yml when a product is added/removed/renamed.
-          TARGETS=(
-            --targets ManifoldKit
-            --targets ManifoldInference
-            --targets ManifoldContract
-            --targets ManifoldNetworking
-            --targets ManifoldSecrets
-            --targets ManifoldHardware
-            --targets ManifoldModelCatalog
-            --targets ManifoldMCP
-            --targets ManifoldMCPHost
-            --targets ManifoldRuntime
-            --targets ManifoldPersistenceSwiftData
-            --targets ManifoldCloudCore
-            --targets ManifoldFoundation
-            --targets ManifoldOllama
-            --targets ManifoldCloudSaaS
-            --targets ManifoldAnyLanguageModel
-            --targets ManifoldUI
-            --targets ManifoldUIModelManagement
-            --targets ManifoldHuggingFace
-            --targets ManifoldVoice
-            --targets ManifoldTestSupport
-            --targets ManifoldPersistenceTestSupport
-            --targets ManifoldBackendTestKit
-            --targets ManifoldTools
-            --targets ManifoldAppIntents
-            --targets ManifoldSkills
-            --targets ManifoldTelemetryOTLP
-            --targets ManifoldAppEval
-          )
-          echo "Checking API surface for: ${TARGETS[*]}"
-          # diagnose-api-breaking-changes checks out the baseline tree object
-          # from origin/main. A shallow clone (actions/checkout default) omits
-          # those objects and causes "unable to read tree" (#1723). --unshallow
-          # converts the shallow clone to a full one; fall back to a plain fetch
-          # if the repo is already full-depth (e.g. local runs).
-          git fetch --unshallow origin main 2>/dev/null || git fetch origin main
-          # The allowlist (.github/api-breakage-allowlist.txt) carries the
-          # false-positive "X has been removed" entries produced when public
-          # types are relocated DOWNWARD into a leaf module that ManifoldInference
-          # re-exports via `@_exported import` (P2a Contract extraction, #1719).
-          # swift-api-digester analyses each target's own emitted interface and
-          # does NOT follow `@_exported` re-exports, so a relocated-but-still-
-          # source-reachable symbol reads as "removed" against the pre-merge
-          # baseline. The build gates prove source-compat is intact. Each
-          # entry self-expires: once the relocation lands on main the baseline
-          # no longer sees the symbol in ManifoldInference, the digester stops
-          # emitting that message, and the unmatched allowlist line becomes an
-          # inert no-op (a genuine future removal of a DIFFERENT symbol still
-          # trips the gate). See #1723.
-          swift package diagnose-api-breaking-changes origin/main "${TARGETS[@]}" \
-            --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests
@@ -962,6 +869,151 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
+
+  # Public API source-compatibility (breakage) check, hoisted out of the
+  # `test` job's critical path into its own parallel job (#2157 item 1).
+  # It used to be a step inside `test`, adding ~25 min to that job's
+  # sequential run whenever Sources/** changed on a PR; as a sibling job it
+  # now runs concurrently with `test`/`server-tests`/`macros-tests` instead
+  # of extending them. Complements (does not replace)
+  # `scripts/api-surface-baseline.sh --check`, which nightly-slow-tests.yml
+  # already runs as its own job (`api-surface-baseline`) — that one catches
+  # pure member ADDITIONS and public→package DEMOTIONS; this one catches
+  # REMOVALS and TYPE/SIGNATURE changes. See the division-of-labor table in
+  # scripts/api-surface-baseline.sh's header.
+  api-digester-check:
+    needs: [changes]
+    # Job-level gate (mirrors server-tests/macros-tests): without it this job
+    # boots a macOS runner on every push/merge_group/docs-only PR just to
+    # no-op the digester step — see the `changes` job's rationale comment.
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.api-any == 'true' &&
+      needs.changes.outputs.already-validated != 'true'
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    # Backstop against an org-wide macOS-slot stall — see the `changes` job's
+    # timeout-minutes comment. Sized above the step-budget sum: 15 (dep
+    # pre-fetch, fires when deps changed) + 25 (digester step) + setup slack.
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # paths-filter needs the parent commit to diff against on `push` events;
+          # `pull_request` works with the default shallow clone.
+          fetch-depth: 2
+
+      # Same path/key shape as the `test` job — both jobs share the SwiftPM dep
+      # tarball cache so we don't re-download the graph twice per workflow run.
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+        with:
+          verify-toolchain: "true"
+
+      - name: Pre-fetch newly pinned dependency commits (deps changed on a PR)
+        # See the `test` job's identical step: the digester's internal
+        # checkout below cannot see a brand-new dependency commit absent from
+        # the restored cache (cache-prime is push-only), so resolve once here
+        # when the dep graph changed.
+        if: needs.changes.outputs.deps == 'true'
+        timeout-minutes: 15
+        run: swift package resolve
+
+      - name: Public API source-compatibility check (all library-product targets)
+        # Guards `import ManifoldKit` source-compat for downstream consumers
+        # (TavernPad / localclaw): a public symbol removed by accident from any
+        # published target would break those builds.
+        #
+        # Runs when any Sources/** file changed (path-gated via the `changes`
+        # job's single `api-any` flag) and always checks the full, fixed list
+        # of library-product targets below — NOT just the module the diff
+        # touched. This replaced per-module scoping (docs/plans/
+        # api-review-2026-07.md item 0.0): swift-api-digester builds the
+        # ENTIRE package per invocation regardless of --targets (empirically
+        # verified — extra targets in the list cost only seconds each, a
+        # module-interface diff, not a rebuild), so narrowing bought no
+        # compile-cost savings. It did buy a false sense of coverage: the old
+        # 5-target list never analyzed ManifoldContract's own compiled
+        # interface, ManifoldHardware, ManifoldTestSupport, or ~20 other
+        # published targets — a rename in ManifoldHardware's
+        # BackendCapabilities was empirically invisible (exit 0) to
+        # `--targets ManifoldInference`, because swift-api-digester analyzes
+        # each target's own emitted interface and does NOT follow
+        # `@_exported import` re-exports. The list below is every
+        # `.library(...)` product in Package.swift (executables and the
+        # ManifoldMacrosPlugin build plugin are not analyzable this way).
+        #
+        # `--targets` is REQUIRED: whole-package mode fails on the trait-gated
+        # `llama` C module — swift-api-digester reports "missing required module
+        # 'llama'" when checking out the baseline source.
+        #
+        # Skipped on push to main: on a push event origin/main IS the commit
+        # being tested, so the diff would be HEAD against HEAD — a guaranteed
+        # no-op (measured 526s in run 27209277711). PRs already ran this check
+        # before merge; nightly-slow-tests.yml runs it unconditionally as the
+        # 24h backstop for Sources-only regressions not touched by a PR.
+        if: |
+          github.event_name == 'pull_request' && needs.changes.outputs.api-any == 'true'
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          # Fixed, always-complete list — every .library() product in
+          # Package.swift, derived by hand from the products: array. Keep in
+          # sync with Package.swift and with the nightly full-run step in
+          # nightly-slow-tests.yml when a product is added/removed/renamed.
+          TARGETS=(
+            --targets ManifoldKit
+            --targets ManifoldInference
+            --targets ManifoldContract
+            --targets ManifoldNetworking
+            --targets ManifoldSecrets
+            --targets ManifoldHardware
+            --targets ManifoldModelCatalog
+            --targets ManifoldMCP
+            --targets ManifoldMCPHost
+            --targets ManifoldRuntime
+            --targets ManifoldPersistenceSwiftData
+            --targets ManifoldCloudCore
+            --targets ManifoldFoundation
+            --targets ManifoldOllama
+            --targets ManifoldCloudSaaS
+            --targets ManifoldAnyLanguageModel
+            --targets ManifoldUI
+            --targets ManifoldUIModelManagement
+            --targets ManifoldHuggingFace
+            --targets ManifoldVoice
+            --targets ManifoldTestSupport
+            --targets ManifoldPersistenceTestSupport
+            --targets ManifoldBackendTestKit
+            --targets ManifoldTools
+            --targets ManifoldAppIntents
+            --targets ManifoldSkills
+            --targets ManifoldTelemetryOTLP
+            --targets ManifoldAppEval
+          )
+          echo "Checking API surface for: ${TARGETS[*]}"
+          # diagnose-api-breaking-changes checks out the baseline tree object
+          # from origin/main. A shallow clone (actions/checkout default) omits
+          # those objects and causes "unable to read tree" (#1723). --unshallow
+          # converts the shallow clone to a full one; fall back to a plain fetch
+          # if the repo is already full-depth (e.g. local runs).
+          git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # The allowlist (.github/api-breakage-allowlist.txt) carries the
+          # false-positive "X has been removed" entries produced when public
+          # types are relocated DOWNWARD into a leaf module that ManifoldInference
+          # re-exports via `@_exported import` (P2a Contract extraction, #1719).
+          # swift-api-digester analyses each target's own emitted interface and
+          # does NOT follow `@_exported` re-exports, so a relocated-but-still-
+          # source-reachable symbol reads as "removed" against the pre-merge
+          # baseline. The build gates prove source-compat is intact. Each
+          # entry self-expires: once the relocation lands on main the baseline
+          # no longer sees the symbol in ManifoldInference, the digester stops
+          # emitting that message, and the unmatched allowlist line becomes an
+          # inert no-op (a genuine future removal of a DIFFERENT symbol still
+          # trips the gate). See #1723.
+          swift package diagnose-api-breaking-changes origin/main "${TARGETS[@]}" \
+            --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
   # Server tests are split out of the per-PR mega-batch because the
   # Hummingbird transitive graph (~18 extra pins, swift-nio + NIOSSL +

@@ -1,4 +1,5 @@
 import XCTest
+import ManifoldContract
 
 /// Tripwire for `AGENTS.md` (the consumer-facing AI-coding-assistant guide
 /// shipped at the repo root, alongside `CLAUDE.md` for contributors).
@@ -13,6 +14,13 @@ import XCTest
 /// markdown that sometimes wraps API names in inline code, sometimes in a
 /// table cell, sometimes in prose. Greppy substring tests survive layout
 /// edits; an HTML/markdown parser would couple us to formatting.
+///
+/// The type-*kind* checks below (§ "Type-kind drift") are the one exception:
+/// they use `Mirror(reflecting:).displayStyle` to read the actual runtime
+/// kind straight from source, then assert AGENTS.md's prose doesn't claim
+/// the opposite. That combination — structural ground truth, textual
+/// doc-claim check — is what caught #2210 (AGENTS.md called `BackendName`
+/// an "enum" for multiple releases after #1742 converted it to a struct).
 final class AgentsMdAuditTest: XCTestCase {
 
     /// Resolve `<repo-root>/AGENTS.md` from the test source location. Mirrors
@@ -42,6 +50,80 @@ final class AgentsMdAuditTest: XCTestCase {
 
     func testAgentsMdExists() throws {
         _ = try Self.loadAgentsMd()
+    }
+
+    // MARK: - Type-kind drift (#2210)
+
+    /// Does `body` claim `typeName` "is a/an ... enum" (in prose or inline
+    /// code) at ANY occurrence of `typeName` in the file? `typeName` is
+    /// mentioned multiple times (an imports table, a hallucinations list,
+    /// the dedicated section) — checking only the first occurrence missed
+    /// the description sentence entirely in an earlier draft of this test,
+    /// so every occurrence is scanned.
+    ///
+    /// Requires an actual "is a/an ... enum" claim — not just co-occurrence
+    /// of the type name and the word "enum" — because the correct doc text
+    /// legitimately says things like "is an extensible struct ..., **not an
+    /// enum**"; a bare substring check on "enum" false-positives on that
+    /// negation. The regex forbids crossing a `not` (or a sentence-ending
+    /// period) between "is a/an" and "enum", so the negated phrasing above
+    /// does not match while "is a Swift `enum: String`" still does.
+    private static func claimsTypeIsEnum(_ typeName: String, in body: String) -> Bool {
+        let regex: NSRegularExpression
+        do {
+            regex = try NSRegularExpression(pattern: #"is\s+an?\b(?:(?!\bnot\b)[^.])*?\benum\b"#)
+        } catch {
+            XCTFail("Failed to compile type-kind-claim regex: \(error)")
+            return false
+        }
+        var searchStart = body.startIndex
+        while let typeRange = body.range(of: typeName, range: searchStart..<body.endIndex) {
+            let windowEnd = body.index(typeRange.upperBound, offsetBy: 300, limitedBy: body.endIndex) ?? body.endIndex
+            let window = String(body[typeRange.upperBound..<windowEnd])
+            let nsWindow = window as NSString
+            let match = regex.firstMatch(in: window, range: NSRange(location: 0, length: nsWindow.length))
+            if match != nil {
+                return true
+            }
+            searchStart = typeRange.upperBound
+        }
+        return false
+    }
+
+    /// `BackendName` (`Sources/ManifoldContract/BackendName.swift`) has been
+    /// an extensible `RawRepresentable` struct since #1742 — never call it an
+    /// enum in AGENTS.md. `Mirror` reads the runtime kind straight from
+    /// source so this assertion can't silently drift if the type changes
+    /// shape again; the doc-claim half still has to be updated by hand.
+    func testBackendNameDocumentedKindMatchesSource() throws {
+        let mirror = Mirror(reflecting: BackendName(rawValue: "probe"))
+        XCTAssertEqual(
+            mirror.displayStyle, .struct,
+            "BackendName is no longer a struct in source — update AGENTS.md's Backend identity section to match the new kind, then update this assertion."
+        )
+        let body = try Self.loadAgentsMd()
+        XCTAssertFalse(
+            Self.claimsTypeIsEnum("BackendName", in: body),
+            "AGENTS.md must not describe BackendName as an enum — it has been an extensible struct since #1742 (see Sources/ManifoldContract/BackendName.swift)."
+        )
+    }
+
+    /// `ModelType` (`Sources/ManifoldHardware/ModelType.swift`) is the same
+    /// extensible-struct pattern as `BackendName` (P2.5b precedent cited by
+    /// #2198). AGENTS.md doesn't currently document it by name; this
+    /// assertion guards against a future edit reintroducing the stale "enum"
+    /// framing if/when a `ModelType` section is added.
+    func testModelTypeDocumentedKindMatchesSource() throws {
+        let mirror = Mirror(reflecting: ModelType(rawValue: "probe"))
+        XCTAssertEqual(
+            mirror.displayStyle, .struct,
+            "ModelType is no longer a struct in source — update AGENTS.md (if it documents ModelType) to match the new kind, then update this assertion."
+        )
+        let body = try Self.loadAgentsMd()
+        XCTAssertFalse(
+            Self.claimsTypeIsEnum("ModelType", in: body),
+            "AGENTS.md must not describe ModelType as an enum — it is an extensible struct (see Sources/ManifoldHardware/ModelType.swift)."
+        )
     }
 
     // MARK: - Required current-API references

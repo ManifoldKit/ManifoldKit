@@ -557,6 +557,7 @@ RAGService.RetrievalResult.init(slots:citations:documents:) Constructor
 RAGService.RetrievalResult.slots Var
 RAGService.deleteDocument(id:) Func
 RAGService.fetchDocuments() Func
+RAGService.ingest(text:documentID:title:) Func
 RAGService.ingest(url:) Func
 RAGService.init(documentStore:vectorStore:embeddingBackend:reranker:chunker:parsers:defaultLimit:similarityThreshold:fullContextMode:fullContextBudgetTokens:retrievalStrategy:) Constructor
 RAGService.retrieve(query:limit:) Func

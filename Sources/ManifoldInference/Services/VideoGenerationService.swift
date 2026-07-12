@@ -7,6 +7,27 @@ public enum VideoGenerationServiceError: Error, Equatable, Sendable {
     case alreadyGenerating
 }
 
+// `VideoGenerationServiceError` is the concrete error type that escapes
+// `VideoGenerationRuntime`'s public `AsyncThrowingStream<VideoGenerationEvent,
+// Error>` event stream — a separate public boundary from the four chat-path
+// surfaces `ErrorHandlingAtTheBoundary.md` documents (#2157). Conforming it to
+// `BackendError` mirrors that spine.
+extension VideoGenerationServiceError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .alreadyGenerating:
+            return "A video generation is already in progress. Wait for it to finish, or cancel it, before starting another."
+        }
+    }
+}
+
+extension VideoGenerationServiceError: BackendError {
+    /// A blind retry reproduces the same error while the in-flight generation
+    /// is still running — the caller must wait for it to finish (or cancel
+    /// it) rather than simply retrying.
+    public var isRetryable: Bool { false }
+}
+
 /// Orchestrates a video-generation backend's lifecycle.
 ///
 /// Sibling to ``ImageGenerationService`` for the video path. Unlike image

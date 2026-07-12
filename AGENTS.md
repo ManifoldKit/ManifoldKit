@@ -81,7 +81,7 @@ not a rule.**
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.69.0") // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.70.0") // x-release-please-version
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
@@ -289,8 +289,13 @@ method enforces both preconditions.
 
 ## Backend identity
 
-`BackendName` is a Swift `enum: String` with six cases. Compare via the typed
-accessor — never against raw string literals:
+`BackendName` is an extensible `RawRepresentable` struct — the
+`Notification.Name` / `URLResourceKey` pattern — **not an enum**. It was
+converted from `enum: String` to a struct in #1742 so third-party backends
+(including those added after ManifoldKit 1.0 ships) can mint new identifiers
+via `BackendName(rawValue:)` without breaking every downstream exhaustive
+`switch`. Six well-known identifiers ship as `public static let` constants.
+Compare via the typed accessor — never against raw string literals:
 
 ```swift
 import ManifoldKit   // re-exports ManifoldInference
@@ -300,9 +305,13 @@ if vm.activeBackendName == BackendName.foundation.rawValue {
 }
 ```
 
-Available cases (canonical raw values shown):
+Because the type is open, a `switch` over `BackendName` needs a `default:`
+arm now — `case .foundation:` style pattern matching still works (Swift's
+default `~=` for `Equatable` types), but the compiler can no longer prove the
+well-known constants are exhaustive. `BackendName.wellKnown` lists them (also
+available as `.allCases` for source compatibility with the pre-#1742 enum):
 
-| Case | Raw value (0.19+) | Legacy (0.18.x) |
+| Identifier | Raw value (0.19+) | Legacy (0.18.x) |
 |------|-------------------|-----------------|
 | `.foundation` | `"foundation"` | `"Apple"` |
 | `.ollama` | `"ollama"` | `"Ollama"` |
@@ -359,7 +368,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.69.0", // x-release-please-version
+    from: "0.70.0", // x-release-please-version
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -438,7 +447,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.69.0" // x-release-please-version
+    from: "0.70.0" // x-release-please-version
 )
 ```
 
@@ -459,12 +468,14 @@ of them:
 2. **The send method is `vm.sendMessage(_:)`, NOT `vm.send(_:)`.**
    `ChatViewModel.send` does not exist. Use `try await vm.sendMessage("hi")`
    for scripted use, or set `vm.inputText` and call `await vm.sendMessage()`.
-3. **Backend identity comparisons go through `BackendName.<case>.rawValue`**
+3. **Backend identity comparisons go through `BackendName.<identifier>.rawValue`**
    (e.g. `vm.activeBackendName == BackendName.foundation.rawValue`). The raw
    values flipped from `"Apple"`/`"Ollama"`/`"llama.cpp"` to lowercase
    canonical (`"foundation"`/`"ollama"`/`"llama"`) in 0.19 — code that
    hardcoded the legacy strings breaks. Use `BackendName.parse(_:)` when
-   reading already-persisted strings off disk.
+   reading already-persisted strings off disk. `BackendName` is an
+   extensible struct (since #1742), not an enum — a `switch` over it needs a
+   `default:` arm.
 4. **Local model loading goes through
    `ModelManagementViewModel.dispatchSelectedLoad()`** — there is no shortcut
    like `vm.loadModel(url:)` or `vm.loadModel(from:)`. Foundation Models are
@@ -562,6 +573,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
 | `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
 | `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. |
+| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
 
 ### UI modules
 
@@ -782,6 +794,13 @@ Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, a
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 
 `changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.
+
+**Capability-field release-notes discipline:** a release that adds a new `BackendCapabilities`
+field ships a one-line CHANGELOG callout — "new capability field `X`, default `Y` — backends
+that support `X` must opt in." New fields default to their old-behavior value, so a companion
+backend (manifold-mlx / manifold-llama) that doesn't yet construct the literal with the new
+field silently reports the default rather than failing to compile; the callout is the only
+signal that tells a companion maintainer opt-in is available and expected.
 
 ## PR workflow
 
