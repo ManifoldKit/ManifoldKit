@@ -5,7 +5,9 @@ import ManifoldInference
 //
 // P3b: run-level lifecycle events for ConversationRun.
 //
-// Per target-architecture.md invariant 6 and target-architecture-migration.md:
+// Per invariant 6 from the target-architecture plans (docs/plans/archive/
+// target-architecture.md and docs/plans/target-architecture-migration.md,
+// removed in a 2026-07 docs/plans hygiene pass — see git history):
 //   "run-level events must NOT be added as GenerationEvent cases — they
 //    ride their own event type (precedent: ImageRuntimeEvent is deliberately
 //    separate from the text-path event vocabulary so exhaustive switches
