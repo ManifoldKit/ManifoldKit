@@ -203,20 +203,19 @@ every version to date) undocumented and unenforced, so a future custom-stage
 migration could quietly ship in a minor and break the one property persistence
 consumers care about most.
 
-**Tripwire shape (to ship in this policy's PR — do not implement here).** An
-XCTest audit in the persistence test target that verifies every element of
-`ManifoldMigrationPlan.stages` is the `.lightweight` case. Because
-`MigrationStage` is a SwiftData enum whose cases are not trivially introspectable
-by pattern-match alone across SDK versions, the robust shape is a
-**source-scanning audit** (mirroring the existing audit-test family, e.g.
-`SilentCatchAuditTest`): read `ManifoldMigrationPlan.swift`, find each stage
-literal in the `stages` array, and fail if any stage is constructed with a
-non-`.lightweight` initializer (`.custom(...)` or any future destructive
-constructor). The scan approach also survives the enum gaining new cases without
-a compile break. Pair it with the audit-sabotage suite the way the other audits
-are: plant a `.custom` stage in the sabotage fixture and confirm the audit
-fires. Allowlist the sabotage fixture path in the scanner so it doesn't trip on
-its own plant.
+**Tripwire (shipped in this PR).**
+`ManifoldMigrationPlanLightweightAuditTest`
+(`Tests/ManifoldPersistenceSwiftDataTests/ManifoldMigrationPlanLightweightAuditTest.swift`)
+walks `ManifoldMigrationPlan.stages` and fails if any stage's
+`String(describing:)` does not start with `"lightweight("`. `MigrationStage`
+has no public case-introspection API, so this string-prefix comparison
+(rather than a `switch`/pattern-match, which isn't available across every
+SDK version) is the practical way to distinguish `.lightweight(...)` from
+`.custom(...)` — SwiftData ships exactly those two cases today, so failing
+the prefix match means the stage is a `.custom` (destructive-capable) stage.
+Sabotage-verified: temporarily changing a stage to `.custom(fromVersion:toVersion:willMigrate:didMigrate:)`
+made the test fail with a message pointing at this policy; reverting restored
+a clean `git diff` and a passing test.
 
 **Decision ask:** Promise "lightweight-only within a major, destructive only at
 majors with an export path," enforced by the audit above (recommended)?
@@ -284,65 +283,61 @@ type onto/off a global actor. This matters because such a change is
 be invisible to a symbol-level diff, since global-actor isolation is a
 source-level property and not part of a function's ABI or mangled signature.
 
-**Analytical verdict (no build was run — see the note below).**
+**Confirmed verdict (empirically verified 2026-07-12 — both gates blind).**
 
+The experiment below was run against a scratch public type
+(`ScratchIsolationProbe`, a throwaway `public struct` added to and then
+removed from `ManifoldContract`) so the before/after diff is real rather than
+inferred:
+
+1. Added `public struct ScratchIsolationProbe { public var value: Int; public
+   init(value: Int) { … }; public func double() -> Int { … } }` — no
+   isolation, no explicit `Sendable`.
+2. Snapshotted that state with `git stash create` and dumped
+   `ManifoldContract`'s digester JSON (the "before" side).
+3. Edited the struct to `@MainActor public struct ScratchIsolationProbe`,
+   snapshotted again, dumped again (the "after" side).
+4. Ran the exact per-PR-shaped command,
+   `swift package diagnose-api-breaking-changes <before-snapshot> --targets ManifoldContract --baseline-dir …`,
+   comparing the unisolated "before" against the `@MainActor`-isolated
+   working tree.
+5. Repeated steps 1–4 for an explicit `Sendable`-conformance-only change
+   (`public struct ScratchIsolationProbe: Sendable`, no `@MainActor`) as a
+   distinct case.
+6. Deleted the scratch file; confirmed `git status` clean and `swift build`
+   green afterward.
+
+**Findings:**
+
+- **Per-PR breakage-diff gate** (`swift package diagnose-api-breaking-changes`,
+  `ci.yml`): **confirmed blind spot.** Step 4's command printed `No breaking
+  changes detected in ManifoldContract` for both the `@MainActor` addition and
+  the explicit `Sendable` addition. Neither isolation-only change registers as
+  breakage.
 - **Nightly public-surface baseline** (`scripts/api-surface-baseline.sh`):
-  **definite blind spot.** The baseline is keyed on the digester's
-  `printedName`, which carries parameter *labels* but not types, and certainly
-  not decl attributes like `@MainActor`. An isolation-only change leaves
-  `printedName` byte-identical, so the normalized text diff shows zero drift.
-  This follows directly from the script's own documented normalization (it
-  filters to public decls and diffs `printedName`-keyed lines).
+  **confirmed blind spot, and the raw digester dump is not itself blind** —
+  this is the more precise finding. The raw ABIRoot JSON for
+  `ScratchIsolationProbe` genuinely changes: adding `@MainActor` adds
+  `"declAttributes": ["Custom"]` (a generic "has some custom attribute"
+  marker, not naming which) and extends `conformances` with the implicit
+  `Sendable` + `SendableMetatype` the actor isolation grants; adding explicit
+  `: Sendable` alone adds the same two conformance entries without the
+  `declAttributes` marker. But `scripts/_lib/api-surface-extract.py` — the
+  normalizer that produces the checked-in baseline text CI actually diffs —
+  reads only `declKind` for a type and `printedName` + `declKind` for its
+  members. It never reads `declAttributes` or `conformances`. Confirmed by
+  running the normalizer directly on both dumps: the emitted line for the type
+  is `ScratchIsolationProbe Struct` in every one of the three states (no
+  isolation, `@MainActor`, explicit `Sendable`) — byte-identical, zero drift.
 
-- **Per-PR breakage-diff gate**
-  (`swift package diagnose-api-breaking-changes`, `ci.yml`): **very likely a
-  blind spot, not confirmed.** The gate reports ABI/API *breakage*. Global-actor
-  isolation does not change a symbol's ABI — a `@MainActor func` and a
-  `nonisolated func` of the same signature mangle and link identically;
-  isolation is enforced at the call site by the compiler at source level. The
-  digester compares declarations by name and type, so an isolation-only change
-  should produce no breakage finding. This is strong reasoning but not a
-  certainty, because swift-api-digester's ABIRoot dump *may* record some
-  isolation/`Sendable`-related fields whose change it could flag — that behavior
-  is toolchain-version-dependent and must be observed, not assumed.
-
-**Consequence for 1.0.** Treat actor-isolation changes on public symbols as
-**not covered by automated gates** until proven otherwise. Until the experiment
-below is run and the result recorded here, isolation changes are a **manual
-review item**: any PR that adds/removes `@MainActor` or global-actor isolation
-on a public symbol must call it out in its PR body, the same way a public-surface
-addition already must be justified.
-
-**Note:** this appendix was written analytically. The definitive check requires
-running `swift package diagnose-api-breaking-changes`, which cannot run
-concurrently with a build (it takes a package build lock and self-deadlocks), so
-it was deferred rather than run inside an active test gate.
-
-### Morning experiment (to confirm the verdict)
-
-Run against a warm build cache, off any other build:
-
-1. On a scratch branch, take a public symbol currently without isolation — e.g.
-   a `public` method on a `public` type in `ManifoldContract` — and add
-   `@MainActor` to it (or mark a `public final class` as `@MainActor`). Commit.
-2. Run the per-PR gate exactly as CI does:
-   `swift package diagnose-api-breaking-changes <parent-commit> --targets ManifoldContract --baseline-dir /tmp/apidiff`.
-   Record whether it exits non-zero and whether it names the isolation change.
-   *Expected: exit 0, no finding.*
-3. Run `scripts/api-surface-baseline.sh --check --modules ManifoldContract`
-   against the checked-in baseline. Record drift. *Expected: no drift.*
-4. Directly inspect the digester's raw dump for the symbol: grep the JSON under
-   `/tmp/apidiff/<hash>/ManifoldContract.json` for `MainActor`, `isolation`,
-   `actor`, and `Sendable` on the changed declaration, before and after. This
-   answers definitively whether the digester even *records* isolation — the
-   root question behind steps 2–3.
-5. Repeat step 4 for a `Sendable`-conformance change on a public type (add, then
-   remove `: Sendable`), which is a distinct case from global-actor isolation and
-   may behave differently in the dump.
-
-Record the observed results back into this appendix, and — if confirmed blind —
-add "actor-isolation / `Sendable` changes on public symbols" to the standing
-manual-review checklist for 1.0, or build a small `swiftinterface`-scanning
-tripwire that greps emitted `.swiftinterface` files for isolation-attribute
-drift (the `.swiftinterface` text *does* print `@MainActor`, unlike the digester
-dump — a promising cheap enforcement path worth measuring).
+**Consequence for 1.0.** Actor-isolation and `Sendable`-conformance changes on
+public symbols are **not covered by either automated gate**, confirmed rather
+than inferred. Until closed, treat this as a **manual review item**: any PR
+that adds/removes `@MainActor`, `nonisolated`, or `Sendable` on a public
+symbol must call it out in its PR body, the same way a public-surface addition
+already must be justified. The fix, if ever prioritized, is narrow and
+data-already-exists: teach `api-surface-extract.py` to also emit a
+`declAttributes`/`conformances` line per type — the raw digester dump already
+carries the signal, only the normalizer discards it. (`.swiftinterface`
+text is a second, independent path worth measuring — it does print
+`@MainActor` in source form — but wasn't exercised in this experiment.)
