@@ -179,14 +179,22 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
 
     private func loadMLXBackend(modelOverride: String?) async throws -> any InferenceBackend {
         // MLXBackend moved to the manifold-mlx companion package (v0.48,
-        // PR C2, #1749) — core's server cannot load it.
-        throw ServerError.backendUnavailable("No MLX backend is compiled into this build. The MLX family lives in the manifold-mlx companion package — see docs/MIGRATION-0.48.md.")
+        // PR C2, #1749) — core's server cannot load it. A host app that links
+        // manifold-mlx can serve it anyway via the public seam (v0.71+):
+        // implement ServerBackendProvider and call
+        // ManifoldServer.serve(configuration:backendProvider:) — this CLI
+        // provider is not the only path in.
+        throw ServerError.backendUnavailable("No MLX backend is compiled into this build. The MLX family lives in the manifold-mlx companion package — see docs/MIGRATION-0.48.md. A host app can serve it directly by implementing ServerBackendProvider and calling ManifoldServer.serve(configuration:backendProvider:).")
     }
 
     private func loadLlamaBackend() async throws -> any InferenceBackend {
         // LlamaBackend moved to the manifold-llama companion package (v0.48,
-        // PR C2, #1749) — core's server cannot load it.
-        throw ServerError.backendUnavailable("No llama.cpp (GGUF) backend is compiled into this build. The GGUF family lives in the manifold-llama companion package — see docs/MIGRATION-0.48.md.")
+        // PR C2, #1749) — core's server cannot load it. A host app that links
+        // manifold-llama can serve it anyway via the public seam (v0.71+):
+        // implement ServerBackendProvider and call
+        // ManifoldServer.serve(configuration:backendProvider:) — this CLI
+        // provider is not the only path in.
+        throw ServerError.backendUnavailable("No llama.cpp (GGUF) backend is compiled into this build. The GGUF family lives in the manifold-llama companion package — see docs/MIGRATION-0.48.md. A host app can serve it directly by implementing ServerBackendProvider and calling ManifoldServer.serve(configuration:backendProvider:).")
     }
 
     private func loadFoundationBackend() async throws -> any InferenceBackend {

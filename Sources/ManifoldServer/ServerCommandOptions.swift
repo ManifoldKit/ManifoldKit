@@ -2,7 +2,10 @@
 import ArgumentParser
 import Foundation
 
-internal struct ServerCommandOptions: ParsableArguments, Sendable {
+// `package` (not `internal`): referenced as the type of `ManifoldServerCommand.options`,
+// which is `package` because `ManifoldServerCommand` itself is invoked from the
+// `ManifoldServerCLI` executable target (see ManifoldServerCommand.swift).
+package struct ServerCommandOptions: ParsableArguments, Sendable {
     @Option(help: "Host interface to bind.")
     internal var host = "127.0.0.1"
 
@@ -39,7 +42,9 @@ internal struct ServerCommandOptions: ParsableArguments, Sendable {
     @Flag(help: "Enable server metrics endpoints when HTTP routing is available.")
     internal var metrics = false
 
-    internal init() {}
+    // package (not internal): ParsableArguments requires this witness be as
+    // accessible as the enclosing (package-level) type.
+    package init() {}
 
     internal static func == (lhs: ServerCommandOptions, rhs: ServerCommandOptions) -> Bool {
         lhs.host == rhs.host
@@ -72,7 +77,9 @@ internal struct ServerCommandOptions: ParsableArguments, Sendable {
         return false
     }
 
-    internal func validate() throws {
+    // package (not internal): ParsableArguments requires this witness be as
+    // accessible as the enclosing (package-level) type.
+    package func validate() throws {
         guard (1...65_535).contains(port) else {
             throw ValidationError("--port must be between 1 and 65535")
         }

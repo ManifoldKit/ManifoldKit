@@ -2,18 +2,24 @@
 import Foundation
 import Hummingbird
 
-internal struct ModelsListResponse: Codable, Equatable, Sendable {
-    internal struct Model: Codable, Equatable, Sendable {
-        internal var id: String
-        internal var object: String
-        internal var created: Int
-        internal var ownedBy: String
-        internal var status: String?
-        internal var backend: String?
-        internal var source: String?
-        internal var current: Bool?
+/// The `/v1/models` response envelope. `public` because `Model`'s owning
+/// namespace has to be as visible as `Model` itself for
+/// `ServerBackendProvider.listModelRecords()` (public) to reference
+/// `[ModelsListResponse.Model]`.
+public struct ModelsListResponse: Codable, Equatable, Sendable {
+    /// Public (v0.71+): the return element of ``ServerBackendProvider/listModelRecords()``
+    /// — the seam a host-injected provider vends its model catalog through.
+    public struct Model: Codable, Equatable, Sendable {
+        public var id: String
+        public var object: String
+        public var created: Int
+        public var ownedBy: String
+        public var status: String?
+        public var backend: String?
+        public var source: String?
+        public var current: Bool?
 
-        internal init(
+        public init(
             id: String,
             object: String = "model",
             created: Int = 0,
