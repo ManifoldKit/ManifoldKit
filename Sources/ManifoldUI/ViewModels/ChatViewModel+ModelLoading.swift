@@ -70,9 +70,17 @@ extension ChatViewModel {
 
     /// Loads a cloud API endpoint for the active session.
     ///
+    /// Loading an endpoint *is* selecting it: this syncs ``selectedEndpoint`` to
+    /// the endpoint being loaded so a SwiftUI picker bound to it reflects the live
+    /// backend, instead of rendering "nothing selected" over a serving endpoint
+    /// (#2233). This mirrors explicit selection — the same assignment the host
+    /// would make by hand — and the property's `didSet` clears any stale
+    /// ``selectedModel`` so local/cloud selection stay mutually exclusive.
+    ///
     /// - Note: Prefer `dispatchSelectedLoad()` for UI-driven loads — it coordinates
     ///   intent and cancels superseded requests.
     public func loadCloudEndpoint(_ endpoint: APIEndpointRecord) async {
+        selectedEndpoint = endpoint
         await loadCoordinator.loadCloudEndpointInternal(endpoint, generation: nil)
     }
 

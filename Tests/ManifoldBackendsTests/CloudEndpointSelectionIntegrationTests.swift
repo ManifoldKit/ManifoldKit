@@ -157,6 +157,39 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         XCTAssertFalse(freshVM.isModelLoaded, "Without load, isModelLoaded must be false")
     }
 
+    /// Regression for #2233: `loadCloudEndpoint(_:)` — the endpoint-loading entry
+    /// point the documented 5-step cloud recipe calls (AGENTS.md step 4) — must
+    /// sync `selectedEndpoint` to the endpoint it loads, so a picker bound to
+    /// `selectedEndpoint` reflects the live backend instead of "nothing selected"
+    /// over a serving endpoint. Before the fix, `loadCloudEndpoint` loaded the
+    /// backend but left `selectedEndpoint` untouched (nil).
+    func test_loadCloudEndpoint_syncsSelectedEndpoint() async throws {
+        let endpoint = APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.2"
+        )
+        try persistEndpoint(endpoint)
+
+        try await makeSession(title: "Cloud Recipe")
+
+        // Do NOT pre-set selectedEndpoint — the recipe hands the endpoint straight
+        // to loadCloudEndpoint. Loading must select it.
+        XCTAssertNil(vm.selectedEndpoint, "Precondition: nothing selected before the load")
+        await vm.loadCloudEndpoint(endpoint)
+
+        // Endpoint is serving …
+        XCTAssertTrue(vm.isModelLoaded)
+        XCTAssertEqual(vm.activeBackendName, BackendName.ollama.rawValue)
+        XCTAssertNil(vm.errorMessage)
+        // … and selectedEndpoint reflects it (the #2233 fix).
+        XCTAssertEqual(
+            vm.selectedEndpoint?.id, endpoint.id,
+            "loadCloudEndpoint(_:) must sync selectedEndpoint to the endpoint it loads (#2233)"
+        )
+    }
+
     // MARK: - Streaming Generation via MockURLProtocol
 
     func test_sendMessage_streamsCloudResponseViaMockURLProtocol() async throws {
