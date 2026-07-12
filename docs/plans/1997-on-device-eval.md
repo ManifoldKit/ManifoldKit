@@ -2,7 +2,8 @@
 
 > **Status:** v3 — converged after TWO adversarial review rounds (3 reviewers on the v1
 > strawman, 2 on the v2 revision). Ground-truthed against MK source 2026-06-28. The
-> product-motivated successor that `docs/plans/1993-eval-surface.md` step 4 invited —
+> product-motivated successor that `docs/plans/1993-eval-surface.md` step 4 invited (that
+> plan was rejected and removed in a 2026-07 docs/plans hygiene pass; see git history) —
 > justified on on-device differentiation, NOT on deduping downstream apps (rejected at N=2).
 >
 > **Headline decision (v3):** Ship the **scorer surface + BFCL adoption** in-core now. **Move

@@ -1,5 +1,8 @@
 # Pre-1.0 public API review — 2026-07 (v2)
 
+**Status:** ~80% executed via v0.67.0 (Phases 0–1 + most of Phase 2 shipped). Successor plan
+`api-review-wave2-2026-07.md` covers the residue; Track 3 (seal, #2156) remains open there.
+
 Scope: the **public API as a consumer contract** — naming, type design, ergonomics, visibility,
 and what to break while breaking is still cheap. Complementary lens to
 `architecture-improvements-2026-07.md` (internal quality/reliability); overlapping items are

@@ -1,6 +1,6 @@
 # QA Evaluation Process
 
-A repeatable, principle-driven audit of ManifoldKit's architecture, QA, DX, and CI economics. Run it periodically (suggested: each minor-version train, or quarterly) to catch drift, regressions in discipline, and rules that have quietly expired. The most recent run is [`QA-EVALUATION-2026-06.md`](QA-EVALUATION-2026-06.md).
+A repeatable, principle-driven audit of ManifoldKit's architecture, QA, DX, and CI economics. Run it periodically (suggested: each minor-version train, or quarterly) to catch drift, regressions in discipline, and rules that have quietly expired. The most recent run (`QA-EVALUATION-2026-06.md`) was removed in a 2026-07 docs/plans hygiene pass — see git history for that snapshot.
 
 This process turns the principles in [`TESTING-CI-PRINCIPLES.md`](TESTING-CI-PRINCIPLES.md) from a reference into an **audit instrument**. The principles are the rubric; this doc is the procedure.
 

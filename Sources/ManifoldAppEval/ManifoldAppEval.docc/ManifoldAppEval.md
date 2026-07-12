@@ -9,10 +9,11 @@ turn sequence plus checkpoints — and run them deterministically against a
 scripted backend and in-memory stores, with no model, no network, and no
 disk. It exists because the alternative (every app hand-rolling its own
 scenario runner against `ConversationRuntime`) is exactly what fireside and
-idlewick had already done before this module existed — see
-`docs/plans/1993-eval-surface.md` in the ManifoldKit repo for the prior-art
-survey that motivated generalizing the *harness spine*, never the *domain
-vocabulary*, into core.
+idlewick had already done before this module existed — the prior-art survey
+that motivated generalizing the *harness spine*, never the *domain
+vocabulary*, into core was `docs/plans/1993-eval-surface.md` in the
+ManifoldKit repo (removed in a 2026-07 docs/plans hygiene pass; see git
+history).
 
 ### The boundary: apps grading themselves, not MK grading itself
 

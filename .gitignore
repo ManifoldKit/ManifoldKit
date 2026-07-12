@@ -46,19 +46,32 @@ xcuserdata/
 !.claude/skills/**
 tmp/
 .worktrees/
-# DX walkthrough per-run artefacts — large + ephemeral. Keep only the
-# synthesized SUMMARY.md / ROOT_CAUSES.md at the iteration root (those
-# live one level up from run-*/ and are tracked explicitly).
-scripts/dx-walkthrough/runs/*/*/run-*/
+# DX walkthrough + docs/plans per-run artefacts — large + ephemeral (a stray
+# 2.9GB run tree once slipped into a checkout via `git add -A`). Ignore
+# everything under these run directories EXCEPT the curated markdown
+# summaries the repo intentionally tracks (SUMMARY.md, ROOT_CAUSES.md,
+# MATRIX.md, RUN-CONFIG.md's siblings). Gitignore negation requires
+# un-ignoring each parent directory explicitly (`!dir/`) before a nested
+# `!dir/**/*.md` re-inclusion pattern can take effect.
+scripts/dx-walkthrough/runs/**
+!scripts/dx-walkthrough/runs/**/
+!scripts/dx-walkthrough/runs/**/*.md
 # Phase 4 (iPhone on-device) per-run config — contains device UDID + team ID.
-# Never commit; each developer fills in their own.
+# Never commit; each developer fills in their own. Takes precedence over the
+# blanket *.md re-inclusion above (gitignore evaluates rules in file order,
+# last match wins).
 scripts/dx-walkthrough/runs/**/RUN-CONFIG.md
+docs/plans/runs/**
+!docs/plans/runs/**/
+!docs/plans/runs/**/*.md
 # Security audit artefacts — must never be committed; contain detailed
 # vulnerability maps with file paths and line numbers.
 SECURITY_REMEDIATION_PLAN*.md
 SECURITY_AUDIT*.md
 
-# Muter mutation-testing artifacts (see docs/MUTATION-BASELINE-2026-06.md)
+# Muter mutation-testing artifacts (baseline rationale was recorded in
+# docs/MUTATION-BASELINE-2026-06.md, removed in a 2026-07 hygiene pass —
+# see git history)
 muter_logs/
 *_mutated/
 .local-integration-runs/

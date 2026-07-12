@@ -1,5 +1,7 @@
 # Architecture improvement plan — 2026-07
 
+**Status:** Awaiting sign-off (Rory) before scheduling execution.
+
 Scope: the ManifoldKit family. **Part I** covers core; **Part II** covers the companions
 (manifold-llama, manifold-mlx, manifold-eval) — both the verified ripple of Part I's changes on
 them and their own improvement backlogs. Goal: the next wave of architectural improvements for
@@ -10,7 +12,8 @@ Grounding: a four-agent read-only survey of core (2026-07-05) — module/depende
 turn-loop + engine core, backend-extensibility surface, runtime ports / persistence / UI — plus
 a second three-agent survey of the companion repos' `origin/main`, plus reconciliation against
 the executed `target-architecture-migration.md` and `cross-repo-simplification-2026-07.md`
-(the latter is now fully executed through Wave D). Load-bearing claims were spot-verified by
+(both fully executed and since removed in a 2026-07 docs/plans hygiene pass — see git history;
+the latter completed through Wave D). Load-bearing claims were spot-verified by
 hand before inclusion (core refs as of 71f026e0; llama d88dfdc, mlx 5ad93e5, eval fd7afb7).
 
 ---

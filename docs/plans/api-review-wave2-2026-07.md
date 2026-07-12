@@ -1,5 +1,8 @@
 # Pre-1.0 API program — Wave 2 execution plan (2026-07-10, v2 — post adversarial review)
 
+**Status:** Active. D1–D3 executed via v0.69.0 (PR #2191 held for Rory) and Track 3 seal
+(#2156); D4 (#2128 adjudication) remains open and decoupled.
+
 **DECISIONS MADE (Rory, 2026-07-10):** D1 = (a) fix APIProvider in place (stable opaque
 raw codes + `displayName` + legacy display-string decode migration; enum stays closed).
 D2 = rename `Score`→`EvalScore` WITH a pre-staged manifold-eval adapt draft.
