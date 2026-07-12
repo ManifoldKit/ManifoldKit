@@ -1,5 +1,7 @@
 # Tested Local Models — Cross-Repo Consolidated View
 
+**Status:** Reference snapshot, not a live gate — re-derive from the sources below when in doubt.
+
 **Compiled:** 2026-06-26 · **Scope:** ManifoldKit (Ollama) + `manifold-llama` (llama.cpp/GGUF) + `manifold-mlx` (MLX) companion repos.
 
 This doc consolidates which **local models** have been exercised against each backend family, pulling together signal that is otherwise scattered across two `MATRIX.md` conformance runs in this repo and the native test suites of the two companion repos. It is a snapshot, not a live gate — re-derive from the sources below when in doubt.

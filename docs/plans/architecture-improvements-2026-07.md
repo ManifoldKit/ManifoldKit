@@ -1,5 +1,7 @@
 # Architecture improvement plan — 2026-07
 
+**Status:** Awaiting sign-off (Rory) before scheduling execution.
+
 Scope: the ManifoldKit family. **Part I** covers core; **Part II** covers the companions
 (manifold-llama, manifold-mlx, manifold-eval) — both the verified ripple of Part I's changes on
 them and their own improvement backlogs. Goal: the next wave of architectural improvements for

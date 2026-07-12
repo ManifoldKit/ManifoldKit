@@ -1,5 +1,7 @@
 # Prompt/template render-path fidelity (Opportunity 1, slices A+B)
 
+**Status:** Active opportunity; render-path consolidation tracked by the open-issue cluster below.
+
 _Scoped 2026-06-20. Tracks the render-path consolidation surfaced by the open-issue
 cluster #1961 / #1909 / #1938 / #1944 / #1932 / #1957-Tier3._
 

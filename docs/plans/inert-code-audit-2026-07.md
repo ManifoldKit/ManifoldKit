@@ -1,5 +1,7 @@
 # Inert-code audit — 2026-07-03
 
+**Status:** 54 confirmed gaps; 6 fix waves merged. Remaining decision list awaits Rory.
+
 Systematic audit for code that exists but is not wired up: read paths with no writer, seam-only
 ports, ignored config, orphan events, stubs behind real-looking APIs, and doc-claimed capabilities
 the code cannot deliver.

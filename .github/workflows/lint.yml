@@ -419,3 +419,17 @@ jobs:
             echo "::error::PR adds $new new package pins (limit: 2). Either reduce the dep additions or add the 'deps-ok' label to the PR with a justification in the description."
             exit 1
           fi
+
+      # ── large-file-guard ─────────────────────────────────────────────────
+      # A stray large file (an accidental `git add -A` of a run-artifact tree,
+      # a vendored binary, a debug dump) is cheap to add and expensive to
+      # remove — history rewrite is the only real fix once it's merged. This
+      # guard fails a PR that ADDS any file over 1MB, computed against the
+      # true merge-base diff so renames/moves of pre-existing large files
+      # don't false-positive. Written for POSIX sh / Bash 3.2 (no
+      # `declare -A`) since GitHub's ubuntu-latest runner ships Bash 3.2 by
+      # default for non-interactive shells invoked this way — verified
+      # locally with `bash --posix`.
+      - name: large-file-guard — reject newly added files over 1MB
+        if: always() && github.event_name == 'pull_request'
+        run: bash scripts/large-file-guard.sh "origin/${{ github.base_ref }}" "HEAD"

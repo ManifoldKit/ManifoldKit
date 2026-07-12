@@ -105,9 +105,7 @@ and forward-looking design notes. Most are also linked from
 
 | Doc | Covers |
 |-----|--------|
-| [LAUNCH-BRIEF.md](LAUNCH-BRIEF.md) | Distribution-readiness audit, imagery briefs, draft announcement, post-WWDC sequencing. |
 | [SCOPE_DECISION.md](SCOPE_DECISION.md) | Scope rationale for what's in vs. out. |
 | [QA-PRACTICES.md](QA-PRACTICES.md) | The four cross-cutting QA practices (DX walkthroughs, audit tests, the sabotage suite, cold-start gates). |
 | [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The pre-wired stub traits for whatever Apple ships next. |
-| [voice-realtime-agent-design.md](voice-realtime-agent-design.md) | Forward-looking design note for a realtime voice agent. |
 | [plans/](plans) | In-flight release plans. |
