@@ -53,9 +53,12 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
         contextSize: Int,
         reservedTokens: Int,
         tokenizer: (any TokenizerProvider)?,
+        isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
-    ) async throws -> [ChatMessage] {
-        guard !history.isEmpty else { return [] }
+    ) async throws -> StrategyCompressionResult {
+        guard !history.isEmpty else {
+            return StrategyCompressionResult(messages: [], outcome: .notNeeded)
+        }
 
         let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
         let tokens = history.map { estimateTokens($0, tokenizer: tokenizer) }
@@ -63,7 +66,7 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
 
         // Everything fits, or a single message: never evict all history.
         if originalTokens <= budget || history.count == 1 {
-            return history
+            return StrategyCompressionResult(messages: history, outcome: .notNeeded)
         }
 
         let count = history.count
@@ -71,7 +74,7 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
         var used = 0
 
         // Load-bearing records are always kept.
-        for i in 0..<count where isLoadBearing(history[i]) {
+        for i in 0..<count where isLoadBearing(history[i], isPinned: isPinned) {
             keep.insert(i)
             used += tokens[i]
         }
@@ -147,13 +150,17 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
             for i in 0..<count where keep.contains(i) {
                 if used <= budget { break }
                 if i == newest { continue }
-                if isLoadBearing(history[i]) { continue }
+                if isLoadBearing(history[i], isPinned: isPinned) { continue }
                 keep.remove(i)
                 used -= tokens[i]
             }
         }
 
-        return keep.sorted().map { history[$0] }
+        // Every message survived (all load-bearing/pinned, or the greedy
+        // selection happened to re-admit everything) — nothing was actually
+        // dropped even though the input was over budget.
+        let outcome: CompressionOutcome = keep.count == count ? .nothingToSummarize : .reduced(strategyName: name)
+        return StrategyCompressionResult(messages: keep.sorted().map { history[$0] }, outcome: outcome)
     }
 
     /// Ratio of capitalized words to total words — a rough proper-noun proxy.

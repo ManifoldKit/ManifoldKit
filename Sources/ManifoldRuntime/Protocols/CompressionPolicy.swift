@@ -11,16 +11,18 @@ import ManifoldInference
 /// Compression failures are logged and do not abort the turn — the existing
 /// history is preserved.
 ///
-/// ## Per-message pins are not yet threaded through this seam
+/// ## Per-message pins (#2204)
 ///
-/// `compress(history:sessionID:generate:)` passes only a `[ChatMessage]` and
-/// the `sessionID` — **not** the set of user-pinned message IDs. The data
-/// already exists (`ChatSession.pinnedMessageIDsRaw` / `pinnedMessageIDs` on
-/// the session record), but honoring pins inside a policy requires a
-/// protocol-signature change to carry the pinned-ID set (a new parameter or a
-/// session handle). Until that lands, ``DefaultCompressionPolicy`` treats only
-/// `.system`-role and `.memory`-kind records as load-bearing; explicit
-/// per-message pins are not preserved across compression.
+/// `compress(history:sessionID:generate:)` still passes only a `[ChatMessage]`
+/// and the `sessionID` — **not** the set of user-pinned message IDs — because
+/// threading a pinned-ID set through this protocol's signature would be a
+/// breaking change to every conformance, not just `DefaultCompressionPolicy`.
+/// Instead, ``DefaultCompressionPolicy``'s strategy factories (`.anchored`,
+/// `.extractive`, `.truncating`) accept an `isPinned` predicate at
+/// construction time, resolved fresh on every `compress` call and honored
+/// alongside `.system`-role and `.memory`-kind records as load-bearing. A
+/// custom `CompressionPolicy` conformance that is not `DefaultCompressionPolicy`
+/// must still capture whatever pin source it needs itself.
 ///
 /// ## v0.26.0 Migration
 ///
