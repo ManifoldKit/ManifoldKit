@@ -1,0 +1,46 @@
+name: Release train version-matrix tripwire
+
+# Nightly source of truth for whether the ManifoldKit release train (core ->
+# repository_dispatch -> manifold-mlx / manifold-llama / manifold-eval
+# core-bump.yml, see ManifoldKit/.github RELEASE-PROCESS.md) is actually
+# coherent right now. A drifted companion pin is otherwise invisible until a
+# companion build fails or an eval run silently tests stale core behavior.
+#
+# Checks (scripts/release-train-check.sh):
+#   1. manifold-mlx / manifold-llama core pins match the latest core tag.
+#   2. manifold-eval pins with `exact:` (not a range) and is current.
+#   3. No companion/eval release-please PR has sat open past the age budget.
+#   4. README.md's install-pin snippet matches the latest core tag.
+#
+# This is metadata-only (Package.swift/README text + `gh pr list`) — no Swift
+# build, so ubuntu-latest is fine (no macOS-runner budget consumed) and the
+# job is cheap enough to run nightly rather than on a manual button.
+#
+# Read-only cross-repo access to manifold-mlx / manifold-llama / manifold-eval
+# needs no special token: all three are public, same as companion-compat.yml's
+# checkout — the default GITHUB_TOKEN suffices for `gh api`/`gh pr list` reads.
+
+on:
+  schedule:
+    # 05:15 UTC — offset from nightly-slow-tests.yml's 04:30 UTC cron so the
+    # two nightly jobs don't contend for the same slot.
+    - cron: "15 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out ManifoldKit (with tags)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Run release-train-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/release-train-check.sh
