@@ -73,24 +73,7 @@ final class DirectURLSessionConstructionAuditTest: XCTestCase {
         let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesURL)
         XCTAssertFalse(swiftFiles.isEmpty, "Sources directory yielded no .swift files — path probably wrong")
 
-        var offenders: [(file: String, line: Int, text: String)] = []
-        for fileURL in swiftFiles {
-            let relativePath = fileURL.path.replacingOccurrences(of: sourcesURL.path + "/", with: "")
-            // Check against shared-session allowlist (prefix-only — no file-level exceptions).
-            let isAllowlisted = Self.sharedSessionAllowlistedPrefixes.contains { relativePath.hasPrefix($0) }
-            if isAllowlisted { continue }
-
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
-            let lines = content.components(separatedBy: "\n")
-            for (index, rawLine) in lines.enumerated() {
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                if line.hasPrefix("//") || line.hasPrefix("///") || line.hasPrefix("*") || line.hasPrefix("*/") {
-                    continue
-                }
-                guard line.contains("URLSession.shared") else { continue }
-                offenders.append((file: relativePath, line: index + 1, text: line))
-            }
-        }
+        let offenders = try Self.sharedSessionOffenders(sourcesRoot: sourcesURL)
 
         if !offenders.isEmpty {
             let formatted = offenders
@@ -111,19 +94,7 @@ final class DirectURLSessionConstructionAuditTest: XCTestCase {
         let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesURL)
         XCTAssertFalse(swiftFiles.isEmpty, "Sources directory yielded no .swift files — path probably wrong")
 
-        var offenders: [(file: String, line: Int, text: String)] = []
-        for fileURL in swiftFiles {
-            let relativePath = fileURL.path.replacingOccurrences(of: sourcesURL.path + "/", with: "")
-            if Self.isAllowlisted(relativePath) { continue }
-
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
-            let lines = content.components(separatedBy: "\n")
-            for (index, rawLine) in lines.enumerated() {
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                guard Self.lineConstructsURLSession(line) else { continue }
-                offenders.append((file: relativePath, line: index + 1, text: line))
-            }
-        }
+        let offenders = try Self.constructionOffenders(sourcesRoot: sourcesURL)
 
         if !offenders.isEmpty {
             let formatted = offenders
@@ -140,6 +111,98 @@ final class DirectURLSessionConstructionAuditTest: XCTestCase {
                 \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same detection functions the audits run)
+
+    /// Plants both violation shapes in a temp tree shaped like `Sources/`
+    /// and asserts the REAL detection functions flag them — and that the
+    /// allowlisted seam and test-support prefixes stay exempt.
+    func test_sabotage_detectsDirectConstructionAndSharedSession() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("direct-urlsession-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let runtimeDir = tmp.appendingPathComponent("ManifoldRuntime", isDirectory: true)
+        try FileManager.default.createDirectory(at: runtimeDir, withIntermediateDirectories: true)
+        try """
+        import Foundation
+        // Unauthorised direct URLSession construction.
+        let session = URLSession(configuration: .ephemeral)
+        let shared = URLSession.shared
+        """.write(to: runtimeDir.appendingPathComponent("BadNetworkService.swift"), atomically: true, encoding: .utf8)
+
+        let construction = try Self.constructionOffenders(sourcesRoot: tmp)
+        XCTAssertEqual(construction.count, 1, "The planted URLSession(configuration:) call must be flagged")
+        XCTAssertEqual(construction.first?.file, "ManifoldRuntime/BadNetworkService.swift")
+
+        let shared = try Self.sharedSessionOffenders(sourcesRoot: tmp)
+        XCTAssertEqual(shared.count, 1, "The planted URLSession.shared reference must be flagged")
+
+        // Allowlisted seam file and test-support prefix must stay exempt.
+        let seamDir = tmp.appendingPathComponent("ManifoldInference/Networking", isDirectory: true)
+        try FileManager.default.createDirectory(at: seamDir, withIntermediateDirectories: true)
+        try """
+        let session = URLSession(configuration: .ephemeral)
+        """.write(to: seamDir.appendingPathComponent("URLSessionFactory.swift"), atomically: true, encoding: .utf8)
+        let supportDir = tmp.appendingPathComponent("ManifoldTestSupport", isDirectory: true)
+        try FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        try """
+        let session = URLSession(configuration: .ephemeral)
+        let shared = URLSession.shared
+        """.write(to: supportDir.appendingPathComponent("Fake.swift"), atomically: true, encoding: .utf8)
+
+        let afterAllowlisted = try Self.constructionOffenders(sourcesRoot: tmp)
+        XCTAssertEqual(
+            afterAllowlisted.map(\.file), ["ManifoldRuntime/BadNetworkService.swift"],
+            "Seam and test-support paths must not be flagged"
+        )
+        let sharedAfter = try Self.sharedSessionOffenders(sourcesRoot: tmp)
+        XCTAssertEqual(
+            sharedAfter.map(\.file), ["ManifoldRuntime/BadNetworkService.swift"],
+            "Test-support prefix must stay exempt from the shared-session rule"
+        )
+    }
+
+    // MARK: - Detection
+
+    static func sharedSessionOffenders(sourcesRoot: URL) throws -> [(file: String, line: Int, text: String)] {
+        var offenders: [(file: String, line: Int, text: String)] = []
+        for fileURL in try Self.enumerateSwiftFiles(under: sourcesRoot) {
+            let relativePath = fileURL.path.replacingOccurrences(of: sourcesRoot.path + "/", with: "")
+            // Check against shared-session allowlist (prefix-only — no file-level exceptions).
+            let isAllowlisted = Self.sharedSessionAllowlistedPrefixes.contains { relativePath.hasPrefix($0) }
+            if isAllowlisted { continue }
+
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = content.components(separatedBy: "\n")
+            for (index, rawLine) in lines.enumerated() {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("//") || line.hasPrefix("///") || line.hasPrefix("*") || line.hasPrefix("*/") {
+                    continue
+                }
+                guard line.contains("URLSession.shared") else { continue }
+                offenders.append((file: relativePath, line: index + 1, text: line))
+            }
+        }
+        return offenders
+    }
+
+    static func constructionOffenders(sourcesRoot: URL) throws -> [(file: String, line: Int, text: String)] {
+        var offenders: [(file: String, line: Int, text: String)] = []
+        for fileURL in try Self.enumerateSwiftFiles(under: sourcesRoot) {
+            let relativePath = fileURL.path.replacingOccurrences(of: sourcesRoot.path + "/", with: "")
+            if Self.isAllowlisted(relativePath) { continue }
+
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = content.components(separatedBy: "\n")
+            for (index, rawLine) in lines.enumerated() {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                guard Self.lineConstructsURLSession(line) else { continue }
+                offenders.append((file: relativePath, line: index + 1, text: line))
+            }
+        }
+        return offenders
     }
 
     // MARK: - Helpers

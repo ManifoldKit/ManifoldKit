@@ -16,6 +16,9 @@ import XCTest
 /// envelope-level concern, full stop. `SSECloudBackend.swift` is the
 /// only allowed reference in `Sources/ManifoldCloud*` (the guard's own
 /// file in `ManifoldCloudCore` is permitted since that *is* the guard).
+///
+/// The detection logic lives in ``offenders(underRoots:)`` so the in-file
+/// sabotage test exercises the exact function the audit runs — not a copy.
 final class DNSRebindingCoverageAuditTest: XCTestCase {
 
     /// Files permitted to reference `DNSRebindingGuard` directly. Anything
@@ -43,8 +46,58 @@ final class DNSRebindingCoverageAuditTest: XCTestCase {
         let cloudRoots = try Self.locateCloudSourceRoots()
         XCTAssertFalse(cloudRoots.isEmpty)
 
+        let offenders = try Self.offenders(underRoots: cloudRoots)
+
+        if !offenders.isEmpty {
+            let listing = offenders.map { "  \($0.file):\($0.line)" }.joined(separator: "\n")
+            XCTFail("""
+                DNSRebindingGuard referenced outside the envelope.
+                The guard runs once per generation in SSECloudBackend; per-
+                provider references either duplicate it (per-retry thrash)
+                or skip it. Move the call back to the envelope.
+                Offenders:
+                \(listing)
+                """)
+        }
+    }
+
+    // MARK: - Sabotage (exercises the same `offenders(underRoots:)` the audit runs)
+
+    /// Plants a direct `DNSRebindingGuard` reference in a temp tree shaped
+    /// like a cloud source root and asserts the REAL detection function flags
+    /// it — and that an allowlisted envelope path stays exempt.
+    func test_sabotage_detectsGuardReferenceOutsideEnvelope() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dns-rebinding-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldCloudSaaS", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try """
+        import Foundation
+        // Deliberately referencing DNSRebindingGuard outside the envelope.
+        func check() { _ = DNSRebindingGuard() }
+        """.write(to: root.appendingPathComponent("GeminiBackend.swift"), atomically: true, encoding: .utf8)
+
+        let offenders = try Self.offenders(underRoots: [SourceRoot(name: "ManifoldCloudSaaS", url: root)])
+        XCTAssertEqual(offenders.count, 1, "The planted DNSRebindingGuard reference must be flagged")
+        XCTAssertEqual(offenders.first?.file, "ManifoldCloudSaaS/GeminiBackend.swift")
+
+        // The allowlisted envelope call site must stay exempt for the same content.
+        let coreRoot = tmp.appendingPathComponent("ManifoldCloudCore", isDirectory: true)
+        try FileManager.default.createDirectory(at: coreRoot, withIntermediateDirectories: true)
+        try """
+        func generate() { _ = DNSRebindingGuard() }
+        """.write(to: coreRoot.appendingPathComponent("SSECloudBackend.swift"), atomically: true, encoding: .utf8)
+        let envelopeOffenders = try Self.offenders(underRoots: [SourceRoot(name: "ManifoldCloudCore", url: coreRoot)])
+        XCTAssertTrue(envelopeOffenders.isEmpty, "The allowlisted envelope file must not be flagged")
+    }
+
+    // MARK: - Detection
+
+    static func offenders(underRoots roots: [SourceRoot]) throws -> [(file: String, line: Int)] {
         var offenders: [(file: String, line: Int)] = []
-        for root in cloudRoots {
+        for root in roots {
             let swiftFiles = try Self.enumerateSwiftFiles(under: root.url)
             for fileURL in swiftFiles {
                 let rel = "\(root.name)/" + fileURL.path
@@ -60,23 +113,12 @@ final class DNSRebindingCoverageAuditTest: XCTestCase {
                 }
             }
         }
-
-        if !offenders.isEmpty {
-            let listing = offenders.map { "  \($0.file):\($0.line)" }.joined(separator: "\n")
-            XCTFail("""
-                DNSRebindingGuard referenced outside the envelope.
-                The guard runs once per generation in SSECloudBackend; per-
-                provider references either duplicate it (per-retry thrash)
-                or skip it. Move the call back to the envelope.
-                Offenders:
-                \(listing)
-                """)
-        }
+        return offenders
     }
 
     // MARK: - Filesystem discovery (mirrors SessionConstructionAuditTest)
 
-    private struct SourceRoot {
+    struct SourceRoot {
         let name: String
         let url: URL
     }

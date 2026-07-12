@@ -41,6 +41,10 @@ import XCTest
 /// owner lands the corresponding fix. DO NOT add an entry to silence a freshly
 /// introduced broken link — fix the link instead. The allowlist exists only
 /// for cross-PR ownership boundaries and genuinely-deleted targets.
+///
+/// ``auditMarkdown(repoRoot:)`` and ``auditWorkflows(repoRoot:)`` are already
+/// pure functions over a root URL, so the in-file sabotage test exercises
+/// them directly against a planted temp tree.
 final class DocSourcePathReferenceAuditTest: XCTestCase {
 
     /// References that resolve to a missing path but are *not* this PR's to
@@ -85,6 +89,63 @@ final class DocSourcePathReferenceAuditTest: XCTestCase {
                 \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `auditMarkdown`/`auditWorkflows` the audit runs)
+
+    /// Plants a Markdown link to a nonexistent `Sources/…` path, and a link
+    /// to a planted EXISTING file, in a temp repo root, and asserts the
+    /// REAL `auditMarkdown(repoRoot:)` flags only the missing one.
+    func test_sabotage_auditMarkdownDetectsMissingSourcesLink() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("doc-source-path-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        try FileManager.default.createDirectory(
+            at: tmp.appendingPathComponent("docs"), withIntermediateDirectories: true
+        )
+        let realFileDir = tmp.appendingPathComponent("Sources/ManifoldRealModule", isDirectory: true)
+        try FileManager.default.createDirectory(at: realFileDir, withIntermediateDirectories: true)
+        try "".write(to: realFileDir.appendingPathComponent("RealFile.swift"), atomically: true, encoding: .utf8)
+
+        try """
+        See [the module](Sources/ManifoldTotallyFakeModule/DoesNotExist.swift) for details.
+        Also see [the real file](Sources/ManifoldRealModule/RealFile.swift).
+        """.write(to: tmp.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        let violations = try Self.auditMarkdown(repoRoot: tmp)
+        XCTAssertTrue(
+            violations.contains { $0.contains("ManifoldTotallyFakeModule") },
+            "The planted broken Markdown link must be flagged; got \(violations)"
+        )
+        XCTAssertFalse(
+            violations.contains { $0.contains("ManifoldRealModule") },
+            "A link to an existing planted file must not be flagged"
+        )
+    }
+
+    /// Plants a workflow `paths:` filter entry pointing at a nonexistent
+    /// `Sources/…` path in a temp repo root, and asserts the REAL
+    /// `auditWorkflows(repoRoot:)` flags it.
+    func test_sabotage_auditWorkflowsDetectsMissingSourcesPath() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("doc-source-path-workflow-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let workflowsDir = tmp.appendingPathComponent(".github/workflows", isDirectory: true)
+        try FileManager.default.createDirectory(at: workflowsDir, withIntermediateDirectories: true)
+        try """
+        on:
+          pull_request:
+            paths:
+              - 'Sources/ManifoldTotallyFakeModule/**'
+        """.write(to: workflowsDir.appendingPathComponent("fake.yml"), atomically: true, encoding: .utf8)
+
+        let violations = try Self.auditWorkflows(repoRoot: tmp)
+        XCTAssertTrue(
+            violations.contains { $0.contains("ManifoldTotallyFakeModule") },
+            "The planted broken workflow paths: entry must be flagged; got \(violations)"
+        )
     }
 
     // MARK: - Surfaces

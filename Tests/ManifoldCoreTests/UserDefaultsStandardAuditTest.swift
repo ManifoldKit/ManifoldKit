@@ -45,11 +45,13 @@ import XCTest
 /// cross-process race. (The only excluded files are this audit itself and
 /// the sabotage-coverage suite, both of which contain the pattern purely as
 /// inert text — see the exclusion set below.)
+///
+/// The detection logic lives in ``violations(testsRoot:excludedFileNames:)``
+/// so the in-file sabotage test exercises the exact function the audit runs.
 final class UserDefaultsStandardAuditTest: XCTestCase {
 
     func test_noDirectUserDefaultsStandardAccessInTests() throws {
         let testsURL = try Self.locateTestsDirectory()
-        let swiftFiles = try Self.enumerateSwiftFiles(under: testsURL)
 
         // The audit file itself mentions the string in code paths (the
         // search needle below) and in error messages. Scope the audit to
@@ -64,20 +66,7 @@ final class UserDefaultsStandardAuditTest: XCTestCase {
             "AuditSabotageSuiteTests.swift",
         ]
 
-        var violations: [String] = []
-
-        for fileURL in swiftFiles {
-            if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
-
-            let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-            let hits = Self.findNonCommentHits(of: "UserDefaults.standard", in: content)
-            if !hits.isEmpty {
-                let relativePath = Self.relativePath(of: fileURL, under: testsURL)
-                for lineNumber in hits {
-                    violations.append("\(relativePath):\(lineNumber)")
-                }
-            }
-        }
+        let violations = try Self.violations(testsRoot: testsURL, excludedFileNames: excludedFileNames)
 
         if !violations.isEmpty {
             let formatted = violations
@@ -99,6 +88,63 @@ final class UserDefaultsStandardAuditTest: XCTestCase {
                 \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `violations(testsRoot:excludedFileNames:)` the audit runs)
+
+    /// Plants a file containing a bare `UserDefaults.standard` access in a
+    /// temp tree shaped like `Tests/` and asserts the REAL detection
+    /// function flags it — and that excluding the file name exempts it.
+    func test_sabotage_detectsDirectUserDefaultsStandardAccess() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("userdefaults-standard-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldCoreTests", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let badFile = root.appendingPathComponent("BadTests.swift")
+        try """
+        import XCTest
+        final class BadTests: XCTestCase {
+            func test_flag() {
+                UserDefaults.standard.set(true, forKey: "flag")
+            }
+        }
+        """.write(to: badFile, atomically: true, encoding: .utf8)
+
+        let violations = try Self.violations(testsRoot: tmp, excludedFileNames: [])
+        XCTAssertEqual(violations.count, 1, "The planted UserDefaults.standard access must be flagged")
+        XCTAssertEqual(violations.first, "ManifoldCoreTests/BadTests.swift:4")
+
+        let exempted = try Self.violations(testsRoot: tmp, excludedFileNames: ["BadTests.swift"])
+        XCTAssertTrue(exempted.isEmpty, "An excluded file name must exempt its violations")
+    }
+
+    // MARK: - Detection
+
+    /// Full audit pipeline: walk `testsRoot`, skip `excludedFileNames`, and
+    /// collect every non-comment `UserDefaults.standard` occurrence as a
+    /// `relative/path:line` violation string. Both the audit and the
+    /// sabotage test call this.
+    static func violations(testsRoot: URL, excludedFileNames: Set<String>) throws -> [String] {
+        let swiftFiles = try Self.enumerateSwiftFiles(under: testsRoot)
+
+        var violations: [String] = []
+
+        for fileURL in swiftFiles {
+            if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
+
+            let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            let hits = Self.findNonCommentHits(of: "UserDefaults.standard", in: content)
+            if !hits.isEmpty {
+                let relativePath = Self.relativePath(of: fileURL, under: testsRoot)
+                for lineNumber in hits {
+                    violations.append("\(relativePath):\(lineNumber)")
+                }
+            }
+        }
+
+        return violations
     }
 
     // MARK: - Helpers

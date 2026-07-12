@@ -54,6 +54,12 @@ import XCTest
 /// The assertions are intentionally substring/brace-based and not AST-based:
 /// a syntactic check is enough to catch the regression class and avoids
 /// pulling SwiftSyntax into the default test build.
+///
+/// The three checks each live in a pure `static func` over the manifest
+/// text (``ungatedTraitSymbolViolations(manifest:)``,
+/// ``dualNatureEdgeViolations(manifest:)``,
+/// ``traitSurfaceViolations(manifest:)``) so the in-file sabotage tests
+/// exercise the exact functions the audits run.
 final class PackageTraitGateAuditTest: XCTestCase {
 
     // MARK: - Rule 1: family-based generic gate check
@@ -126,21 +132,7 @@ final class PackageTraitGateAuditTest: XCTestCase {
         let manifestURL = try Self.locatePackageManifest()
         let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
 
-        var violations: [String] = []
-        for (idx, rawLine) in manifest.components(separatedBy: "\n").enumerated() {
-            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-            for (symbol, trait) in Self.traitDefiningSymbols {
-                guard Self.lineIsDependencyReference(trimmed, to: symbol) else { continue }
-                let hasCondition = trimmed.contains("condition:")
-                    && trimmed.contains(".when(")
-                    && trimmed.contains("traits: [\"\(trait)\"]")
-                if !hasCondition {
-                    violations.append(
-                        "line \(idx + 1): `\(symbol)` referenced as a dependency without `condition: .when(traits: [\"\(trait)\"])` — \(trimmed)"
-                    )
-                }
-            }
-        }
+        let violations = Self.ungatedTraitSymbolViolations(manifest: manifest)
 
         if !violations.isEmpty {
             let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
@@ -163,25 +155,7 @@ final class PackageTraitGateAuditTest: XCTestCase {
         let manifestURL = try Self.locatePackageManifest()
         let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
 
-        var violations: [String] = []
-        for edge in Self.dualNatureConsumerEdges {
-            guard let block = Self.targetBlock(in: manifest, targetName: edge.consumer) else {
-                violations.append("could not locate a target block named \"\(edge.consumer)\" at all")
-                continue
-            }
-            var found = false
-            for rawLine in block.components(separatedBy: "\n") {
-                let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-                guard Self.lineIsDependencyReference(trimmed, to: edge.dependency) else { continue }
-                if trimmed.contains("condition:"), trimmed.contains(".when("),
-                   trimmed.contains("traits: [\"\(edge.trait)\"]") {
-                    found = true
-                }
-            }
-            if !found {
-                violations.append("\(edge.consumer) → \(edge.dependency) — missing `condition: .when(traits: [\"\(edge.trait)\"])`")
-            }
-        }
+        let violations = Self.dualNatureEdgeViolations(manifest: manifest)
 
         if !violations.isEmpty {
             let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
@@ -209,6 +183,145 @@ final class PackageTraitGateAuditTest: XCTestCase {
         let manifestURL = try Self.locatePackageManifest()
         let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
 
+        let violations = Self.traitSurfaceViolations(manifest: manifest)
+
+        if !violations.isEmpty {
+            let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
+            XCTFail("""
+                Package.swift references traits outside the post-C2 surface
+                (survivors: Server, Macros + the WWDC stubs). The MLX/Llama
+                families live in the manifold-mlx / manifold-llama companion
+                packages (#1749) — retired traits must not reappear.
+
+                Violations:
+                \(formatted)
+
+                If a new trait is intentional, add it to `allowedTraits` in
+                this test in the same PR with a rationale.
+                """)
+        }
+    }
+
+    // MARK: - Sabotage (exercises the same detection functions the audits run)
+
+    /// Plants an ungated trait-defining-symbol dependency in a manifest
+    /// snippet and asserts the REAL detection function flags it — and that
+    /// the same line with the required `condition:` clause is clean.
+    ///
+    /// Built via string concatenation rather than a literal so this snippet
+    /// doesn't itself read as a real manifest edit.
+    func test_sabotage_detectsUngatedTraitDefiningSymbol() {
+        let ungated = ".target(name: \"ManifoldMacrosPlugin\"),"
+        let gated = ".target(name: \"ManifoldMacrosPlugin\", " + "condition: .when(traits: [\"Macros\"])),"
+
+        let ungatedViolations = Self.ungatedTraitSymbolViolations(manifest: ungated)
+        XCTAssertTrue(
+            ungatedViolations.contains { $0.contains("ManifoldMacrosPlugin") },
+            "The planted ungated ManifoldMacrosPlugin dependency must be flagged; got \(ungatedViolations)"
+        )
+
+        let gatedViolations = Self.ungatedTraitSymbolViolations(manifest: gated)
+        XCTAssertTrue(
+            gatedViolations.isEmpty,
+            "A properly-gated ManifoldMacrosPlugin dependency must not be flagged; got \(gatedViolations)"
+        )
+    }
+
+    /// Plants a `ManifoldServer` target block whose dependency on
+    /// `ManifoldInference` is bare (no `condition:`) and asserts the REAL
+    /// detection function flags it.
+    func test_sabotage_detectsUngatedDualNatureEdge() {
+        let manifest = """
+            .target(
+                name: "ManifoldServer",
+                dependencies: [
+                    "ManifoldInference",
+                ]
+            ),
+            """
+
+        let violations = Self.dualNatureEdgeViolations(manifest: manifest)
+        XCTAssertTrue(
+            violations.contains { $0.contains("ManifoldServer") && $0.contains("ManifoldInference") },
+            "The planted bare ManifoldServer → ManifoldInference edge must be flagged; got \(violations)"
+        )
+    }
+
+    /// Plants a retired-trait declaration and a retired-trait `.when(...)`
+    /// reference and asserts the REAL detection function flags both.
+    func test_sabotage_detectsRetiredAndUnknownTraitSurface() {
+        let declaration = ".trait(name: \"MLX\"),"
+        let declarationViolations = Self.traitSurfaceViolations(manifest: declaration)
+        XCTAssertTrue(
+            declarationViolations.contains { $0.contains("MLX") },
+            "A retired trait declared via `.trait(name:)` must be flagged; got \(declarationViolations)"
+        )
+
+        let condition = "condition: " + ".when(traits: [\"Llama\"]),"
+        let conditionViolations = Self.traitSurfaceViolations(manifest: condition)
+        XCTAssertTrue(
+            conditionViolations.contains { $0.contains("Llama") },
+            "A retired trait referenced in a `.when(traits:)` condition must be flagged; got \(conditionViolations)"
+        )
+    }
+
+    // MARK: - Detection
+
+    /// Rule 1 (family-based generic gate check): every reference to a
+    /// trait-defining symbol anywhere in `manifest` must carry its
+    /// required `condition: .when(traits: [...])` clause. Both the audit
+    /// and the sabotage test call this.
+    static func ungatedTraitSymbolViolations(manifest: String) -> [String] {
+        var violations: [String] = []
+        for (idx, rawLine) in manifest.components(separatedBy: "\n").enumerated() {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+            for (symbol, trait) in Self.traitDefiningSymbols {
+                guard Self.lineIsDependencyReference(trimmed, to: symbol) else { continue }
+                let hasCondition = trimmed.contains("condition:")
+                    && trimmed.contains(".when(")
+                    && trimmed.contains("traits: [\"\(trait)\"]")
+                if !hasCondition {
+                    violations.append(
+                        "line \(idx + 1): `\(symbol)` referenced as a dependency without `condition: .when(traits: [\"\(trait)\"])` — \(trimmed)"
+                    )
+                }
+            }
+        }
+        return violations
+    }
+
+    /// Rule 2 (explicit dual-nature list): every edge in
+    /// `dualNatureConsumerEdges` must be gated with its trait inside its
+    /// consumer's target block in `manifest`. Both the audit and the
+    /// sabotage test call this.
+    static func dualNatureEdgeViolations(manifest: String) -> [String] {
+        var violations: [String] = []
+        for edge in Self.dualNatureConsumerEdges {
+            guard let block = Self.targetBlock(in: manifest, targetName: edge.consumer) else {
+                violations.append("could not locate a target block named \"\(edge.consumer)\" at all")
+                continue
+            }
+            var found = false
+            for rawLine in block.components(separatedBy: "\n") {
+                let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+                guard Self.lineIsDependencyReference(trimmed, to: edge.dependency) else { continue }
+                if trimmed.contains("condition:"), trimmed.contains(".when("),
+                   trimmed.contains("traits: [\"\(edge.trait)\"]") {
+                    found = true
+                }
+            }
+            if !found {
+                violations.append("\(edge.consumer) → \(edge.dependency) — missing `condition: .when(traits: [\"\(edge.trait)\"])`")
+            }
+        }
+        return violations
+    }
+
+    /// Rule 3 (trait surface): only `allowedTraits` may be declared via
+    /// `.trait(name:)`, and no `retiredTraits` entry may appear in any
+    /// `.when(traits:)` condition in `manifest`. Both the audit and the
+    /// sabotage test call this.
+    static func traitSurfaceViolations(manifest: String) -> [String] {
         var violations: [String] = []
 
         // Declared traits.
@@ -226,21 +339,7 @@ final class PackageTraitGateAuditTest: XCTestCase {
             }
         }
 
-        if !violations.isEmpty {
-            let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
-            XCTFail("""
-                Package.swift references traits outside the post-C2 surface
-                (survivors: Server, Macros + the WWDC stubs). The MLX/Llama
-                families live in the manifold-mlx / manifold-llama companion
-                packages (#1749) — retired traits must not reappear.
-
-                Violations:
-                \(formatted)
-
-                If a new trait is intentional, add it to `allowedTraits` in
-                this test in the same PR with a rationale.
-                """)
-        }
+        return violations
     }
 
     // MARK: - Helpers

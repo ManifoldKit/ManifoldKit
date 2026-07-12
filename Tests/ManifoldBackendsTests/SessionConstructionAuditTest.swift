@@ -19,6 +19,9 @@ import XCTest
 /// occurrences" cap, so a new file leaking a `URLSession(` constructor
 /// fails the test immediately rather than slipping under a numeric
 /// threshold.
+///
+/// The detection logic lives in ``offenders(underRoots:)`` so the in-file
+/// sabotage test exercises the exact function the audit runs — not a copy.
 final class SessionConstructionAuditTest: XCTestCase {
 
     /// Relative paths (under `Sources/`) permitted to call `URLSession(`
@@ -35,8 +38,59 @@ final class SessionConstructionAuditTest: XCTestCase {
         let cloudRoots = try Self.locateCloudSourceRoots()
         XCTAssertFalse(cloudRoots.isEmpty, "Cloud source roots not found")
 
+        let offenders = try Self.offenders(underRoots: cloudRoots)
+
+        if !offenders.isEmpty {
+            let listing = offenders.map { "  \($0.file):\($0.line) — \($0.text)" }.joined(separator: "\n")
+            XCTFail("""
+                Unauthorized URLSession construction in cloud sources.
+                Pinning + DNS-rebind + redirect-guard live on URLSessionProvider;
+                routing around that seam bypasses the security envelope.
+                Offenders:
+                \(listing)
+                """)
+        }
+    }
+
+    // MARK: - Sabotage (exercises the same `offenders(underRoots:)` the audit runs)
+
+    /// Plants an unauthorised `URLSession(` constructor in a temp tree shaped
+    /// like a cloud source root and asserts the REAL detection function flags
+    /// it — and that the allowlisted seam path stays exempt.
+    func test_sabotage_detectsUnauthorisedURLSessionConstruction() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("session-construction-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldCloudSaaS", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try """
+        import Foundation
+        // Deliberately constructs URLSession outside the seam.
+        let session = URLSession(configuration: .default)
+        """.write(to: root.appendingPathComponent("BadBackend.swift"), atomically: true, encoding: .utf8)
+
+        let offenders = try Self.offenders(underRoots: [SourceRoot(name: "ManifoldCloudSaaS", url: root)])
+        XCTAssertEqual(offenders.count, 1, "The planted URLSession( constructor must be flagged")
+        XCTAssertEqual(offenders.first?.file, "ManifoldCloudSaaS/BadBackend.swift")
+
+        // The allowlisted seam path must stay exempt for the same content.
+        let coreRoot = tmp.appendingPathComponent("ManifoldCloudCore", isDirectory: true)
+        try FileManager.default.createDirectory(at: coreRoot, withIntermediateDirectories: true)
+        try """
+        let session = URLSession(configuration: .default)
+        """.write(to: coreRoot.appendingPathComponent("URLSessionProvider.swift"), atomically: true, encoding: .utf8)
+        let seamOffenders = try Self.offenders(underRoots: [SourceRoot(name: "ManifoldCloudCore", url: coreRoot)])
+        XCTAssertTrue(seamOffenders.isEmpty, "The allowlisted seam must not be flagged")
+    }
+
+    // MARK: - Detection
+
+    static func offenders(
+        underRoots roots: [SourceRoot]
+    ) throws -> [(file: String, line: Int, text: String)] {
         var offenders: [(file: String, line: Int, text: String)] = []
-        for root in cloudRoots {
+        for root in roots {
             let swiftFiles = try Self.enumerateSwiftFiles(under: root.url)
             for fileURL in swiftFiles {
                 let rel = "\(root.name)/" + fileURL.path
@@ -51,17 +105,7 @@ final class SessionConstructionAuditTest: XCTestCase {
                 }
             }
         }
-
-        if !offenders.isEmpty {
-            let listing = offenders.map { "  \($0.file):\($0.line) — \($0.text)" }.joined(separator: "\n")
-            XCTFail("""
-                Unauthorized URLSession construction in cloud sources.
-                Pinning + DNS-rebind + redirect-guard live on URLSessionProvider;
-                routing around that seam bypasses the security envelope.
-                Offenders:
-                \(listing)
-                """)
-        }
+        return offenders
     }
 
     // MARK: - Substring check
@@ -77,7 +121,7 @@ final class SessionConstructionAuditTest: XCTestCase {
 
     // MARK: - Filesystem discovery
 
-    private struct SourceRoot {
+    struct SourceRoot {
         let name: String
         let url: URL
     }

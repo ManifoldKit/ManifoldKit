@@ -30,18 +30,21 @@ import ManifoldInference
 ///   AND add the name to `expectedCaseNames`.
 /// - **`test_noRunLevelShapedCaseNames` fails**: a run/step-lifecycle-shaped
 ///   name leaked onto the text path. Relocate it to ``RunEvent``.
+///
+/// The detection logic lives in ``reservedPrefixViolations(caseNames:)`` so
+/// the in-file sabotage test exercises the exact function the audit runs.
 final class ConversationEventClosedSwitchAuditTest: XCTestCase {
 
     // MARK: Reserved run-level vocabulary (owned by RunEvent, never ConversationEvent)
 
     /// Prefixes reserved for run-level lifecycle events. A ``ConversationEvent``
     /// case name starting with any of these is an invariant-6 violation.
-    private let reservedRunPrefixes = ["run", "step"]
+    private static let reservedRunPrefixes = ["run", "step"]
 
     /// The exact, asserted set of ``ConversationEvent`` case names. This is the
     /// text-path event contract. It must stay in lock-step with the closed
     /// `switch` in `caseName(for:)` below.
-    private let expectedCaseNames: Set<String> = [
+    private static let expectedCaseNames: Set<String> = [
         // Lifecycle
         "messageInserted",
         "messageRemoved",
@@ -158,7 +161,7 @@ final class ConversationEventClosedSwitchAuditTest: XCTestCase {
     func test_caseNameSurfaceMatchesAssertedAllowlist() {
         let observed = Set(sampleEvents().map(caseName(for:)))
         XCTAssertEqual(
-            observed, expectedCaseNames,
+            observed, Self.expectedCaseNames,
             "ConversationEvent case surface drifted from the asserted allowlist. " +
             "If you added a text-path case, add it to expectedCaseNames AND the sample list. " +
             "If you added a run-level case, move it to RunEvent (invariant 6)."
@@ -168,15 +171,12 @@ final class ConversationEventClosedSwitchAuditTest: XCTestCase {
     /// No ``ConversationEvent`` case name may be run/step-lifecycle-shaped —
     /// that vocabulary is reserved for ``RunEvent``.
     func test_noRunLevelShapedCaseNames() {
-        for name in expectedCaseNames {
-            for prefix in reservedRunPrefixes {
-                XCTAssertFalse(
-                    name.hasPrefix(prefix),
-                    "ConversationEvent case '\(name)' uses reserved run-level prefix '\(prefix)'. " +
-                    "Run-lifecycle events ride RunEvent, not the text path (invariant 6)."
-                )
-            }
-        }
+        let violations = Self.reservedPrefixViolations(caseNames: Self.expectedCaseNames)
+        XCTAssertTrue(
+            violations.isEmpty,
+            "ConversationEvent cases \(violations) use a reserved run-level prefix. " +
+            "Run-lifecycle events ride RunEvent, not the text path (invariant 6)."
+        )
     }
 
     /// The mirror ``ConversationEventKind`` must enumerate the same surface as
@@ -188,5 +188,21 @@ final class ConversationEventClosedSwitchAuditTest: XCTestCase {
             switchSurface, kindSurface,
             "ConversationEvent and its ConversationEventKind mirror have drifted apart."
         )
+    }
+
+    // MARK: - Sabotage (exercises the same `reservedPrefixViolations(caseNames:)` the audit runs)
+
+    func test_sabotage_detectsReservedPrefixViolations() {
+        let violations = Self.reservedPrefixViolations(caseNames: ["runStarted"])
+        XCTAssertEqual(violations, ["runStarted"], "The planted run-level case name must be flagged")
+
+        let clean = Self.reservedPrefixViolations(caseNames: ["messageInserted", "tokenEmitted"])
+        XCTAssertTrue(clean.isEmpty, "Clean case names must not be flagged")
+    }
+
+    // MARK: - Detection
+
+    static func reservedPrefixViolations(caseNames: Set<String>) -> [String] {
+        caseNames.filter { name in reservedRunPrefixes.contains { name.hasPrefix($0) } }
     }
 }
