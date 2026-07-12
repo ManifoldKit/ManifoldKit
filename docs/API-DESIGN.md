@@ -127,13 +127,22 @@ seams instead of the type system enforcing it universally.
 
 ## 7. Semver-exempt products
 
-Four dev-tool products **may break in any minor release, always migration-noted.** This is
+Five products **may break in any minor release, always migration-noted.** This is
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
-deprecation cycles or api-digester gates slowing removal. The exemption reflects their
-purpose (developer tooling), not their reachability — an app CAN link them from any target
-(the surveyed consumers below all link from test targets), it just accepts the looser
-stability promise when it does:
+deprecation cycles or api-digester gates slowing removal. The exemption is **documentation-only**:
+these products stay in `scripts/api-surface-baseline.sh`'s `DEFAULT_MODULES`, in ci.yml's and
+nightly-slow-tests.yml's digester `--targets` list, and in `PublicSurfaceBaselineTests
+.expectedModules`, same as every other published product — the gates keep running and keep
+catching *accidental* breaks. What the exemption removes is the ceremony around an
+*intentional* one: no deprecation cycle, no migration-window shim — just a
+`.github/api-breakage-allowlist.txt` entry (same mechanism already used for false-positive
+"removed" reports) and a changelog note, same as any other pre-1.0 delete-don't-deprecate
+change (Part 0, principle 9).
+
+Four of the five are exempt because of their **purpose** (developer tooling), not their
+reachability — an app CAN link them from any target (the surveyed consumers below all link
+from test targets), it just accepts the looser stability promise when it does:
 
 - **`ManifoldTestSupport`** — shared mocks and testing utilities. Published as a `.library`
   product. Real consumers: `idlewick` (surveyed local app, test-target import — re-verified
@@ -156,6 +165,18 @@ stability promise when it does:
 
 (`ManifoldContractTestSupport` is deliberately absent from this list: it is a target, not a
 published product — external pins cannot reach it, so it needs no exemption.)
+
+The fifth is exempt for a different reason — a leaked *dependency* type, not developer tooling:
+
+- **`ManifoldAnyLanguageModel`** — the AnyLanguageModel provider bridge (Gemini, xAI, Groq,
+  Mistral, OpenRouter). `AnyLanguageModelDescriptor.model: any LanguageModel`
+  (`Sources/ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift`) names a protocol
+  owned by the external [AnyLanguageModel](https://github.com/huggingface/AnyLanguageModel)
+  package, pinned pre-1.0 (`from: "0.8.0"`, Package.swift). The module's entire purpose is
+  bridging that dependency, so its public surface can only ever be as stable as the upstream
+  package — a wrapper around `any LanguageModel` would insulate nothing (it breaks whenever
+  the protocol does) while adding a layer every consumer must learn. Its stability tracks
+  AnyLanguageModel's, not ManifoldKit's release cadence (#2209).
 
 ## 8. Review-loop standing question
 

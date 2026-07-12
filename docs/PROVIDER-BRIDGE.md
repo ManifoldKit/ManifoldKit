@@ -4,6 +4,8 @@ ManifoldKit ships native backends for Apple Foundation Models, OpenAI (Chat + Re
 
 AnyLanguageModel operates at the model-access altitude (one protocol, many providers). ManifoldKit operates at the application-framework altitude and consumes it as one more backend, so a bridged provider plugs into the same `ChatViewModel`, conversation runtime, and persistence path as a native backend.
 
+> **Semver-exempt module.** `ManifoldAnyLanguageModel`'s public surface names `any LanguageModel`, a type owned by the AnyLanguageModel package (pinned pre-1.0). Its stability tracks that upstream package, not ManifoldKit's release cadence — see [API-DESIGN.md § 7](API-DESIGN.md) (#2209).
+
 ## Providers unlocked
 
 The bridge is the supported path for providers ManifoldKit does not implement natively, including:
