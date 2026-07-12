@@ -33,12 +33,12 @@ final class ModelLoadStateTests: XCTestCase {
         )
     }
 
-    private func makeModel(fileName: String = "gated.gguf") -> ModelInfo {
+    private func makeModel(fileName: String = "gated.gguf", fileSize: UInt64 = 1_024) -> ModelInfo {
         ModelInfo(
             name: fileName,
             fileName: fileName,
             url: URL(fileURLWithPath: "/virtual/\(fileName)"),
-            fileSize: 1_024,
+            fileSize: fileSize,
             modelType: .gguf
         )
     }
@@ -111,6 +111,41 @@ final class ModelLoadStateTests: XCTestCase {
             .plannedFailure,
             "modelLoadState.failed must carry the ORIGINAL thrown error, not a stringified/erased copy."
         )
+    }
+
+    /// The `.deny` load-plan verdict is a separate failure path from the two
+    /// tests above: `ModelLoadCoordinator.loadLocalModel` returns on `.deny`
+    /// *before* ever calling `backend.loadModel`, so it never reaches the
+    /// `catch` block `test_modelLoadState_failedCarriesTheRealErrorNotAString`
+    /// exercises. `.deny` synthesizes its own `InferenceError` via
+    /// `loadPlanDenyError(for:model:)` (`ModelLoadCoordinator.swift`) — this
+    /// asserts that path also lands on `modelLoadState.failed` with a real,
+    /// typed error rather than a bare message string.
+    func test_modelLoadState_denyVerdict_failedCarriesSynthesizedInferenceError() async {
+        let backend = GatedLoadBackend()
+        let vm = makeViewModel(backend: backend)
+        // Tiny available memory (128 MB) against a 2 GB model forces
+        // ModelLoadPlan.compute to return .deny with .insufficientResident —
+        // mirrors ChatViewModelLoadPlanWiringTests's deny-verdict recipe.
+        vm.loadPlanEnvironment = ModelLoadPlan.Environment(
+            availableMemoryBytes: { 128 * 1_024 * 1_024 },
+            physicalMemoryBytes: 8 * oneGB
+        )
+        vm.selectedModel = makeModel(fileName: "huge.gguf", fileSize: 2 * oneGB)
+
+        vm.dispatchSelectedLoad()
+        await waitUntil {
+            if case .failed = vm.modelLoadState { return true }
+            return false
+        }
+
+        guard case .failed(let error) = vm.modelLoadState else {
+            return XCTFail("Expected .failed after a .deny verdict, got \(vm.modelLoadState)")
+        }
+        guard case .memoryInsufficient = error as? InferenceError else {
+            return XCTFail("Expected a synthesized InferenceError.memoryInsufficient, got \(error)")
+        }
+        XCTAssertEqual(backend.isModelLoaded, false, "A denied load must never reach the backend.")
     }
 
     // MARK: - sendMessage(_:) during load
