@@ -43,8 +43,11 @@ public final class ModelLoadCoordinator {
     /// transition was accepted (matches `transitionPhase`'s own return value).
     public var onTransitionPhase: @MainActor (BackendActivityPhase) -> Bool = { _ in false }
 
-    /// Forwards to setting `ChatViewModel.errorMessage` to a non-nil string.
-    public var onSurfaceError: @MainActor (String) -> Void = { _ in }
+    /// Forwards to setting `ChatViewModel.errorMessage` to a non-nil string
+    /// and — since #2222 — the real `Error` that caused the failure, so the
+    /// chat surface can carry it on `ChatViewModel.modelLoadState` instead of
+    /// stringifying it away at the seam boundary.
+    public var onSurfaceError: @MainActor (String, any Error) -> Void = { _, _ in }
 
     /// Clears `ChatViewModel.errorMessage` (sets it to `nil`).
     public var onClearError: @MainActor () -> Void = {}
@@ -266,6 +269,7 @@ public final class ModelLoadCoordinator {
         case .deny:
             setLoadErrorIfCurrent(
                 loadPlanDenyMessage(for: plan, model: model),
+                error: loadPlanDenyError(for: plan, model: model),
                 generation: generation
             )
             return
@@ -300,7 +304,7 @@ public final class ModelLoadCoordinator {
         } catch is CancellationError {
             return
         } catch {
-            setLoadErrorIfCurrent("Failed to load model: \(error.localizedDescription)", generation: generation)
+            setLoadErrorIfCurrent("Failed to load model: \(error.localizedDescription)", error: error, generation: generation)
         }
     }
 
@@ -320,7 +324,7 @@ public final class ModelLoadCoordinator {
         } catch is CancellationError {
             return
         } catch {
-            setLoadErrorIfCurrent("Failed to connect: \(error.localizedDescription)", generation: generation)
+            setLoadErrorIfCurrent("Failed to connect: \(error.localizedDescription)", error: error, generation: generation)
         }
     }
 
@@ -438,10 +442,10 @@ public final class ModelLoadCoordinator {
         }
     }
 
-    private func setLoadErrorIfCurrent(_ message: String, generation: UInt64?) {
+    private func setLoadErrorIfCurrent(_ message: String, error: any Error, generation: UInt64?) {
         guard isCurrentLoadIntentGeneration(generation) else { return }
         if currentLoadDrivesChatSeams {
-            onSurfaceError(message)
+            onSurfaceError(message, error)
         }
         publish(.failed(reason: message))
     }
@@ -470,6 +474,25 @@ public final class ModelLoadCoordinator {
             return "Model weights fit, but the requested context window doesn't (\(Self.formatBytes(required)) needed vs \(Self.formatBytes(available)) available). Try reducing the context size or closing other apps."
         default:
             return "This model (\(model.fileSizeFormatted)) may be too large for this device. Try a smaller quantisation."
+        }
+    }
+
+    /// Same primary-reason selection as ``loadPlanDenyMessage(for:model:)``,
+    /// but yields a typed `InferenceError` instead of a string so a `.deny`
+    /// verdict — which never throws, unlike the `do`/`catch` load paths — still
+    /// reaches ``ChatViewModel/modelLoadState`` as a real `Error` (#2222).
+    private func loadPlanDenyError(for plan: ModelLoadPlan, model: ModelInfo) -> InferenceError {
+        let primary = plan.reasons.first { reason in
+            switch reason {
+            case .insufficientResident, .insufficientKVCache: return true
+            default: return false
+            }
+        }
+        switch primary {
+        case .insufficientResident(let required, let available), .insufficientKVCache(let required, let available):
+            return .memoryInsufficient(required: required, available: available)
+        default:
+            return .inferenceFailure(loadPlanDenyMessage(for: plan, model: model))
         }
     }
 

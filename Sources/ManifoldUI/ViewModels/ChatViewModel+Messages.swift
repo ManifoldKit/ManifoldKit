@@ -12,7 +12,14 @@ import ManifoldInference
 /// outcome of a single-turn drive:
 ///
 /// - ``noActiveSession`` — `activeSessionID` was `nil` at call time.
-/// - ``noModelLoaded`` — `isModelLoaded` was `false` at call time.
+/// - ``noModelLoaded`` — `isModelLoaded` was `false` at call time and no load
+///   was in flight.
+/// - ``modelLoading`` — `isModelLoaded` was `false` because a load was still
+///   in flight — distinguishable from ``noModelLoaded`` so a caller isn't left
+///   guessing whether the missing model is "still loading" or "silently
+///   failed" (#2222). Check ``ChatViewModel/modelLoadState`` or `await` the
+///   original `loadSelectedEndpoint()` / `loadSelectedModel()` call instead of
+///   racing this precondition.
 /// - ``empty`` — the turn ended (`lastTurnState == .idle`) with no assistant
 ///   record produced and no error surfaced.
 /// - ``runtime(_:)`` — the underlying `ConversationRuntime` produced an
@@ -20,8 +27,13 @@ import ManifoldInference
 public enum SendMessageError: Error, Sendable {
     /// `activeSessionID` was `nil`. Create or select a session first.
     case noActiveSession
-    /// No model is loaded. Select a model from the sidebar first.
+    /// No model is loaded and none is loading. Select a model from the
+    /// sidebar first.
     case noModelLoaded
+    /// A model/endpoint load is in flight (``ChatViewModel/isLoading``).
+    /// Wait for it — poll or observe ``ChatViewModel/modelLoadState`` — then
+    /// retry, rather than treating this as a configuration failure.
+    case modelLoading
     /// The turn ended without producing tokens and without an error.
     /// Maps to a runtime ``FinishReason/empty`` or a precondition that
     /// was satisfied at call time but produced no output downstream.
@@ -38,6 +50,8 @@ extension SendMessageError: LocalizedError {
             return "No active session. Create or select a session first."
         case .noModelLoaded:
             return "No model loaded. Select a model from the sidebar first."
+        case .modelLoading:
+            return "A model is still loading. Wait for it to finish before sending."
         case .empty:
             return "Turn ended without producing a response."
         case let .runtime(error):
@@ -62,6 +76,9 @@ extension SendMessageError: BackendError {
     /// - ``noActiveSession``, ``noModelLoaded`` — preconditions the caller
     ///   can observe and fix (select a session, load a model) before calling
     ///   again; retrying the identical call reproduces the same failure.
+    /// - ``modelLoading`` — the missing precondition resolves itself once the
+    ///   in-flight load finishes; unlike ``noModelLoaded`` the caller doesn't
+    ///   need to change anything before retrying, just wait.
     /// - ``empty`` — the turn ran and produced no visible content but raised
     ///   no error. Sampling is stochastic, so re-sending the identical turn
     ///   can legitimately produce output next time; this is the one case
@@ -76,7 +93,7 @@ extension SendMessageError: BackendError {
         switch self {
         case .noActiveSession, .noModelLoaded:
             return false
-        case .empty:
+        case .modelLoading, .empty:
             return true
         case .runtime(let error):
             return (error as? any BackendError)?.isRetryable ?? false
@@ -106,10 +123,10 @@ extension ChatViewModel {
     /// Convenience for scripted drivers and integration tests that want to drive
     /// one turn without setting `inputText` and polling observation surfaces.
     ///
-    /// - Throws: ``SendMessageError`` — `.noActiveSession` / `.noModelLoaded` for
-    ///   precondition failures, `.empty` when the turn produces no assistant
-    ///   record, or `.runtime(error)` when the underlying runtime surfaces an
-    ///   error.
+    /// - Throws: ``SendMessageError`` — `.noActiveSession` / `.noModelLoaded` /
+    ///   `.modelLoading` for precondition failures, `.empty` when the turn
+    ///   produces no assistant record, or `.runtime(error)` when the
+    ///   underlying runtime surfaces an error.
     @discardableResult
     public func sendMessage(_ text: String) async throws -> ChatMessage {
         // Check preconditions BEFORE invoking the runtime so callers that
@@ -121,6 +138,13 @@ extension ChatViewModel {
             throw SendMessageError.noActiveSession
         }
         guard isModelLoaded else {
+            // A load in flight is not the same failure as nothing selected:
+            // the old bare `.noModelLoaded` here was indistinguishable from a
+            // silent failure to a caller with no visibility into `activeError`
+            // (#2222) — surface the distinct, self-resolving case instead.
+            if isLoading {
+                throw SendMessageError.modelLoading
+            }
             throw SendMessageError.noModelLoaded
         }
 
@@ -165,15 +189,18 @@ extension ChatViewModel {
         }
 
         guard isModelLoaded else {
-            // Distinguish "nothing selected" from "selected but never loaded". The
-            // latter is the silent-inert-surface trap: setting `selectedModel` /
-            // `selectedEndpoint` only *records* a choice — a host must still call
-            // `dispatchSelectedLoad()` (or `loadSelectedModel()` /
-            // `loadSelectedEndpoint()`) to bring the backend up. A send that lands
-            // here with a live selection means that dispatch was missed, so make it
-            // loud (a warning + a distinct, actionable message) rather than the
-            // generic "select a model" text that misleads a host who already did.
-            if selectedModel != nil || selectedEndpoint != nil {
+            // Distinguish "still loading" from "nothing selected" from "selected
+            // but never loaded" (#2222). The middle case is the silent-inert-surface
+            // trap: setting `selectedModel` / `selectedEndpoint` only *records* a
+            // choice — a host must still call `dispatchSelectedLoad()` (or
+            // `loadSelectedModel()` / `loadSelectedEndpoint()`) to bring the backend
+            // up. A send that lands here with a live selection means that dispatch
+            // was missed, so make it loud (a warning + a distinct, actionable
+            // message) rather than the generic "select a model" text that misleads
+            // a host who already did.
+            if isLoading {
+                activeError = ChatError(kind: .configuration, message: "A model is still loading. Wait for it to finish before sending.", recovery: .dismissOnly)
+            } else if selectedModel != nil || selectedEndpoint != nil {
                 Log.ui.warning("sendMessage with a selected but unloaded model/endpoint — selection records intent only; call dispatchSelectedLoad() (or loadSelectedModel()/loadSelectedEndpoint()) before sending.")
                 activeError = ChatError(kind: .configuration, message: "A model is selected but not loaded yet. Load it before sending.", recovery: .selectModel)
             } else {

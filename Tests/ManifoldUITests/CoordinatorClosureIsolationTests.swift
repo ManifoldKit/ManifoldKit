@@ -10,7 +10,7 @@ final class CoordinatorClosureIsolationTests: XCTestCase {
         let coordinator = ModelLoadCoordinator(inferenceService: InferenceService())
 
         acceptsMainActorTransition(coordinator.onTransitionPhase)
-        acceptsMainActorStringWriter(coordinator.onSurfaceError)
+        acceptsMainActorStringErrorWriter(coordinator.onSurfaceError)
         acceptsMainActorVoid(coordinator.onClearError)
         acceptsMainActorPromptTemplateWriter(coordinator.onSetSelectedPromptTemplate)
         acceptsMainActorVoid(coordinator.onInvalidateTokenCaches)
@@ -50,7 +50,7 @@ private func acceptsMainActorTransition(_ closure: @MainActor (BackendActivityPh
     _ = closure
 }
 
-private func acceptsMainActorStringWriter(_ closure: @MainActor (String) -> Void) {
+private func acceptsMainActorStringErrorWriter(_ closure: @MainActor (String, any Error) -> Void) {
     _ = closure
 }
 

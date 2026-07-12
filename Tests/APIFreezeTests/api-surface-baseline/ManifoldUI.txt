@@ -133,6 +133,11 @@ ChatView.init(showModelManagement:linkPreviewProvider:) Constructor
 ChatView.init(showModelManagement:linkPreviewProvider:apiConfiguration:) Constructor
 ChatView.showModelManagement Var
 ChatViewModel Class
+ChatViewModel.ModelLoadState Enum
+ChatViewModel.ModelLoadState.failed EnumElement
+ChatViewModel.ModelLoadState.idle EnumElement
+ChatViewModel.ModelLoadState.loaded EnumElement
+ChatViewModel.ModelLoadState.loading EnumElement
 ChatViewModel.TurnState Enum
 ChatViewModel.TurnState.completed EnumElement
 ChatViewModel.TurnState.failed EnumElement
@@ -210,6 +215,7 @@ ChatViewModel.maxOutputTokens Var
 ChatViewModel.maxThinkingTokens Var
 ChatViewModel.memoryPressureLevel Var
 ChatViewModel.messages Var
+ChatViewModel.modelLoadState Var
 ChatViewModel.modelRegistry Var
 ChatViewModel.modelsDirectoryPath Var
 ChatViewModel.onFirstLaunch Var
@@ -463,6 +469,7 @@ SendMessageError Enum
 SendMessageError.empty EnumElement
 SendMessageError.errorDescription Var
 SendMessageError.isRetryable Var
+SendMessageError.modelLoading EnumElement
 SendMessageError.noActiveSession EnumElement
 SendMessageError.noModelLoaded EnumElement
 SendMessageError.runtime EnumElement

@@ -111,6 +111,20 @@ separate `loadSelectedEndpoint()` / `dispatchSelectedLoad()` call after
 same dispatch when the user picks a different sidebar row, so the
 `onChange` handler above does not need an extra `dispatchSelectedLoad()`
 either.
+>
+> **"Dispatches" is not "awaits" (#2222).** Every one of those dispatches —
+> `quickStart()`'s own selection, ``switchToSession(_:)``'s restore, the
+> `onChange` handler — calls the fire-and-forget `dispatchSelectedLoad()`.
+> `quickStart()` (and `switchToSession(_:)`) can therefore return, and the
+> view can appear, while the backend is still connecting: `isModelLoaded` is
+> not guaranteed `true` on the first observation, and a `sendMessage(_:)`
+> that races the in-flight load throws the distinguishable
+> `SendMessageError.modelLoading` rather than the ambiguous
+> `.noModelLoaded`. Bind chat-surface "ready" state to
+> `chatVM.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(error)`)
+> instead of inferring it from `isModelLoaded` alone — it's the one property
+> that distinguishes "still loading" from "loaded" from "failed with a real
+> `Error`".
 
 > **First-launch Ollama seeding.** If you insert an endpoint *after*
 > `quickStart()` returns (the pattern in [QUICKSTART.md → Seeding an Ollama
