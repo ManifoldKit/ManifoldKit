@@ -559,6 +559,49 @@ public final class InferenceService {
         await generation.discardRequests(notMatching: requestGroupID)
     }
 
+    /// Installs a secondary multicast tap on every ``GenerationEvent`` this
+    /// service emits, across ALL `enqueue()`-driven generations — the
+    /// direct-`InferenceService` observability tap (#2206).
+    ///
+    /// `ManifoldRuntime`'s `ConversationRuntime.addEventTap()` surfaces
+    /// turn-level `ConversationEvent`s (message persistence, context
+    /// assembly, compression, …) to hosts that have adopted the runtime's
+    /// turn loop. This tap surfaces the generation-scoped subset one layer
+    /// down — prompt rendering, tokens, thinking, tool calls, and the
+    /// terminal ``GenerationEvent/generationCompleted(_:)`` (which
+    /// classifies stop / cancellation / error via
+    /// ``GenerationCompletion/Reason``) — to hosts that drive
+    /// `InferenceService` directly and never construct a
+    /// `ConversationRuntime` at all (the Fireside case; see #2206). Turn-level
+    /// concerns that only the runtime layer knows about (message identity,
+    /// history shaping, compression policy) are NOT observable here — those
+    /// remain runtime-only, by design, because `InferenceService` has no
+    /// concept of a persisted message or session.
+    ///
+    /// The returned stream receives every ``GenerationEvent`` from every
+    /// concurrent/queued request this service serves — it is not scoped to a
+    /// single `enqueue()` call. Installing a tap does not compete with the
+    /// per-request `GenerationStream` returned by `enqueue(...)`, and a slow
+    /// tap consumer never stalls generation.
+    ///
+    /// Use ``GenerationEventRecorder`` to capture the trace into an
+    /// in-memory array and write it to JSONL, mirroring
+    /// `ManifoldRuntime`'s `ConversationEventRecorder` /
+    /// `ConversationEventTrace` pattern without requiring `ManifoldRuntime`
+    /// as a dependency.
+    ///
+    /// - Parameter bufferingPolicy: Controls what happens when the tap
+    ///   consumer falls behind. Defaults to `.unbounded` so no events are
+    ///   dropped; pass a bounded policy if you need backpressure semantics.
+    /// - Returns: An `AsyncStream` that delivers events until this service
+    ///   is deallocated, at which point the stream finishes normally.
+    public func addGenerationEventTap(
+        bufferingPolicy: AsyncStream<GenerationEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<GenerationEvent> {
+        ensureProviderWired()
+        return generation.addEventTap(bufferingPolicy: bufferingPolicy)
+    }
+
     public var lastTokenUsage: (promptTokens: Int, completionTokens: Int)? {
         ensureProviderWired()
         return generation.lastTokenUsage
