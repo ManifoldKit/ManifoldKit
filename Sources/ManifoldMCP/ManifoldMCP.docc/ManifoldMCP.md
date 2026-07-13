@@ -12,6 +12,16 @@ Model Context Protocol (MCP) client primitives for ManifoldKit.
 
 Use this module to model and audit tool boundaries before wiring concrete transport internals.
 
+## Experimental tier
+
+`ManifoldMCP` is in ManifoldKit's **experimental tier** (declared 2026-07-13) — it
+may break in any minor release, always migration-noted, until it graduates.
+Graduation requires a real adopter: a shipping app or companion that pins
+ManifoldKit and imports this module from non-test code. Documentation and
+examples don't count as adoption. See
+[docs/API-DESIGN.md § 7b](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/API-DESIGN.md)
+for the full policy.
+
 ## Topics
 
 ### Articles
