@@ -24,7 +24,7 @@
 ///   `String.range(of:)` / `String.suffix(_:)` semantics the transforms use.
 ///   This keeps holdback boundaries aligned with how Swift slices the buffer
 ///   and avoids ever splitting a UTF-8 scalar.
-func overlap(_ buffer: Substring, _ marker: String) -> Int {
+package func overlap(_ buffer: Substring, _ marker: String) -> Int {
     let maxCheck = min(buffer.count, marker.count - 1)
     var length = maxCheck
     while length >= 1 {
@@ -37,7 +37,7 @@ func overlap(_ buffer: Substring, _ marker: String) -> Int {
 }
 
 /// Convenience overload for a full `String` buffer.
-func overlap(_ buffer: String, _ marker: String) -> Int {
+package func overlap(_ buffer: String, _ marker: String) -> Int {
     overlap(buffer[...], marker)
 }
 

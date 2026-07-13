@@ -175,9 +175,21 @@ public final class GenerationStream: Sendable {
                     continuation.finish()
                 } catch {
                     streamFinished.store(true)
-                    if error is CancellationError || Task.isCancelled {
+                    if Task.isCancelled {
+                        // The consumer stopped iterating (onTermination
+                        // cancelled this task) — nobody is listening, so a
+                        // clean finish is the only sensible terminal.
                         continuation.finish()
                     } else {
+                        // Propagate upstream errors verbatim — INCLUDING an
+                        // upstream `CancellationError`. Swallowing it here
+                        // (the pre-B.3 behaviour) defeated downstream
+                        // cancel-race guards: the runtime turn executor maps
+                        // `error is CancellationError` to a user-cancelled
+                        // outcome even when its registry flip hasn't landed
+                        // yet, and the structured-output envelope classifies
+                        // it as `.cancelled` rather than `.emptyOutput`.
+                        // Both need to observe the error, not a clean finish.
                         continuation.finish(throwing: error)
                     }
                 }

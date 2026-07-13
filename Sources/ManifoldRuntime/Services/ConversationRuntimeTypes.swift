@@ -71,6 +71,15 @@ public enum FinishReason: Sendable, Hashable {
     /// Backend reached its declared output-token cap or another
     /// length-limited stop condition.
     case length
+
+    /// The turn's progress/stall timeout (``TurnConfig/progressStallTimeout``)
+    /// fired — no stream event arrived within the configured window — so the
+    /// runtime cancelled the in-flight generation. Distinct from
+    /// ``cancelled`` (a user-initiated cancel) and from a generic inference
+    /// failure: the backend went unresponsive rather than erroring. Any
+    /// partial content streamed before the stall is persisted, exactly like
+    /// the mid-stream-failure path.
+    case timedOut
 }
 
 // MARK: - CompressionReason
