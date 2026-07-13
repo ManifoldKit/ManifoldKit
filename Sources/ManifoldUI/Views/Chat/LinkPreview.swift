@@ -32,8 +32,8 @@ public struct LinkPreviewMetadata: Equatable, Sendable {
 public typealias LinkPreviewProvider = @Sendable (URL) async throws -> LinkPreviewMetadata?
 
 /// Detects previewable URLs in message text.
-public enum LinkPreviewDetector {
-    public static func firstURL(in text: String) -> URL? {
+package enum LinkPreviewDetector {
+    package static func firstURL(in text: String) -> URL? {
         guard !text.isEmpty,
               let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
         else {
@@ -52,7 +52,7 @@ public enum LinkPreviewDetector {
     }
 }
 
-public enum LinkPreviewRenderPhase: Equatable, Sendable {
+package enum LinkPreviewRenderPhase: Equatable, Sendable {
     case idle
     case loading(URL)
     case loaded(LinkPreviewMetadata)

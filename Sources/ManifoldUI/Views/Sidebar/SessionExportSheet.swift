@@ -7,12 +7,12 @@ import ManifoldInference
 /// Distinct from ``ExportFormat`` (the chat-toolbar's live but narrower
 /// Markdown/plain-text-only `String` pipeline) — this enum drives the richer
 /// file-based ``ConversationExporter`` pipeline, which also supports JSON.
-public enum SessionExportFormatOption: String, CaseIterable, Identifiable, Sendable {
+package enum SessionExportFormatOption: String, CaseIterable, Identifiable, Sendable {
     case markdown
     case plainText
     case json
 
-    public var id: String { rawValue }
+    package var id: String { rawValue }
 
     /// Display text for the segmented picker.
     ///
@@ -21,7 +21,7 @@ public enum SessionExportFormatOption: String, CaseIterable, Identifiable, Senda
     /// line, not a single JSON document. The enum case name stays `.json` to
     /// avoid rippling the rename through call sites; only the user-visible
     /// label needs to be honest.
-    public var title: String {
+    package var title: String {
         switch self {
         case .markdown: "Markdown"
         case .plainText: "Plain Text"

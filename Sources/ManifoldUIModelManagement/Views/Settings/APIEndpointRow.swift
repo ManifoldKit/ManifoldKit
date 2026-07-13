@@ -9,15 +9,15 @@ import ManifoldInference
 /// ``APIEndpointRecord/validateBaseURL()``. When the endpoint is invalid,
 /// the specific ``APIEndpointValidationReason`` is surfaced as a subtitle
 /// so the user knows what to fix.
-public struct APIEndpointRow: View {
+package struct APIEndpointRow: View {
 
-    public let endpoint: APIEndpointRecord
+    package let endpoint: APIEndpointRecord
 
-    public init(endpoint: APIEndpointRecord) {
+    package init(endpoint: APIEndpointRecord) {
         self.endpoint = endpoint
     }
 
-    public var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(endpoint.name)
