@@ -74,7 +74,7 @@ public enum InferenceError: LocalizedError, CategorizedError {
 
     // MARK: - CategorizedError
 
-    public var category: InferenceErrorCategory {
+    package var category: InferenceErrorCategory {
         switch self {
         case .contextExhausted:
             return .contextExceeded

@@ -22,7 +22,7 @@ import Foundation
 ///     // warn the user
 /// }
 /// ```
-public enum DeviceCapability {
+package enum DeviceCapability {
 
     // MARK: - Tier Membership
 
@@ -47,7 +47,7 @@ public enum DeviceCapability {
     ///
     /// - Parameter tier: The capability tier to test.
     /// - Returns: `true` if a representative model at that tier should fit in memory.
-    public static func supports(tier: ModelCapabilityTier) -> Bool {
+    package static func supports(tier: ModelCapabilityTier) -> Bool {
         let physical = ProcessInfo.processInfo.physicalMemory
         return ModelLoadPlan.canRunModel(sizeBytes: probeSizeBytes(for: tier),
                                         physicalMemoryBytes: physical)
@@ -67,7 +67,7 @@ public enum DeviceCapability {
     ///
     /// - Parameter framework: The ``ModelType`` (backend framework) being queried.
     /// - Returns: The highest tier this device can comfortably run.
-    public static func highestSupportedTier(for framework: ModelType) -> ModelCapabilityTier {
+    package static func highestSupportedTier(for framework: ModelType) -> ModelCapabilityTier {
         // Foundation models are managed by the OS — no local memory budget applies.
         // Apple's on-device model is approximately 3B parameters → .fast floor.
         if framework == .foundation {
@@ -112,7 +112,7 @@ public enum DeviceCapability {
     ///   Pass the model's file size for a conservative (`.resident`) estimate, or
     ///   a backend-specific active footprint when available.
     /// - Returns: `true` if the estimated memory need is within 85 % of available memory.
-    public static func canLoadModel(estimatedMemoryMB: Int) -> Bool {
+    package static func canLoadModel(estimatedMemoryMB: Int) -> Bool {
         guard estimatedMemoryMB > 0 else { return true }
         let estimatedBytes = UInt64(estimatedMemoryMB) * 1_048_576   // MB → bytes
         let available = DeviceCapabilityService.queryAvailableMemory()

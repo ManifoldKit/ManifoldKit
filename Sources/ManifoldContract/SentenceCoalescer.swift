@@ -50,12 +50,12 @@ import NaturalLanguage
 /// For an `AsyncSequence` ergonomic entry point see
 /// ``Swift/AsyncSequence/coalescedSentences()`` and
 /// ``Swift/AsyncSequence/coalescedSentences()-(GenerationEvent)``.
-public struct SentenceCoalescer: Sendable {
+package struct SentenceCoalescer: Sendable {
 
     /// Fragments accumulated since the last emitted segment.
     private var buffer: String = ""
 
-    public init() {}
+    package init() {}
 
     /// Accumulates `tokenFragment` and returns zero or more newly-completed
     /// sentence segments.
@@ -64,7 +64,7 @@ public struct SentenceCoalescer: Sendable {
     /// buffer, which is how we know the earlier sentence's boundary is final.
     /// The trailing incomplete sentence remains buffered. Emitted segments
     /// retain their original whitespace (so they re-join losslessly).
-    public mutating func push(_ tokenFragment: String) -> [String] {
+    package mutating func push(_ tokenFragment: String) -> [String] {
         guard !tokenFragment.isEmpty else { return [] }
         buffer += tokenFragment
         return drainCompletedSentences()
@@ -74,7 +74,7 @@ public struct SentenceCoalescer: Sendable {
     /// sentence is not lost, or `nil` if the buffer is empty.
     ///
     /// After this call the buffer is empty; the coalescer can be reused.
-    public mutating func flush() -> String? {
+    package mutating func flush() -> String? {
         guard !buffer.isEmpty else { return nil }
         let remainder = buffer
         buffer = ""

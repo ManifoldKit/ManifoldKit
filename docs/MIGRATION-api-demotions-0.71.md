@@ -182,3 +182,91 @@ checks only look at external consumer repos and docs, not in-repo public signatu
 The screen's own Step 2 output says as much ("Step 2 anchor hits ... still need
 reviewer eyes before demotion"). Future clusters should budget real time for Step 2
 review even on a `PASS` verdict, not just on `NEEDS-HAND-ADJUDICATION`.
+
+## A.3 — Leaf-module internals (ManifoldContract, ManifoldHardware, ManifoldModelCatalog)
+
+- `ManifoldContract`: `SentenceCoalescer` (struct) — the accessibility
+  sentence-coalescing utility whose only consumer is `ManifoldUI`'s
+  `AccessibilityAnnouncer` (in-package). Reachable via `import ManifoldContract`
+  but had zero external consumer, companion, or doc references.
+- `ManifoldHardware`: `CategorizedError` (protocol), `InferenceErrorCategory`
+  (enum) — the `error.category` routing view on `InferenceError` /
+  `CloudBackendError` is now `package`-only; `ChatTemplateIntegritySidecar`
+  (struct) — internal chat-template drift-detection sidecar, only ever
+  constructed by `ModelLifecycleCoordinator`'s private load path;
+  `DeviceCapability` (enum) — a namespace of static query predicates
+  (`supports(tier:)`, `highestSupportedTier(for:)`, `canLoadModel(...)`)
+  layered over `DeviceCapabilityService`/`ModelLoadPlan`, unused by any
+  consumer; `DownloadedModelPackageManifest` (struct) — the on-disk
+  readiness marker for multi-file model packages, an internal storage
+  concern of `ModelStorageService`/`ManifoldHuggingFace`.
+- `ManifoldModelCatalog`: `NetworkPolicyGuard` (enum) — the stateless
+  URL-vs-network-policy check called internally by
+  `NetworkPolicyURLProtocol`/`CompositeURLSessionDelegate`.
+
+### A.3 candidates that were screened but rejected (stayed public)
+
+Several A.3 candidates listed in the plan's Appendix 1 turned out, on hand
+adjudication, to back a live public signature, a companion/app cross-package
+usage the mechanical grep screen couldn't see (member-access syntax like
+`.cooperative` doesn't name the type), or a DocC article the screen script's
+Step 3 glob couldn't match before its `**/*.docc/**` fix (PR #2254). Every A.3
+candidate was re-screened with the corrected glob before this PR was marked
+ready. Recorded here so the next pass over Appendix 1 doesn't re-propose them:
+
+- `StreamTransform` (Contract) — listed under "Topics > Transforms" in
+  `ManifoldInference.docc/Extensions/OutputParserSession.md`, documenting it
+  as part of the `OutputParserSession` pipeline-construction API. The
+  original screen's DocC check missed this due to the glob bug above.
+- `CancellationStyle` (Hardware) — backs `BackendCapabilities.cancellationStyle`,
+  a public field constructed by both companion backends
+  (`manifold-mlx`, `manifold-llama`) via `BackendCapabilities(cancellationStyle: .cooperative, ...)`.
+- `ModelPackageKind` (Hardware) — backs `DownloadableModel.packageKind`, a
+  public field on a type idlewick (a first-party consumer) constructs
+  directly.
+- `ModelUseCase` (Hardware) — backs `ModelManagementViewModel.selectedUseCase`,
+  a public var on a view model actively injected by all three first-party
+  apps (basechat, fireside, idlewick).
+- `UnloadReason` (Hardware) — fireside pattern-matches
+  `MemoryPressureEvent.willUnload`/`.didUnload` cases directly
+  (`reason == .criticalMemoryPressure`, etc.) — a live consumer dependency
+  the type-name-only screen missed.
+- `LocalModelDescriptor` (Hardware) — backs the public
+  `BackendDescriptorRegistry.shared.register(_ descriptor: LocalModelDescriptor)`
+  third-party-registration seam (same pattern documented for
+  `CloudProviderDescriptor`); no current caller, but the public entry point
+  requires the type to stay public.
+- `ContentFilteringDisclosure` (Hardware) — backs the public
+  `ModelSelectionProfile.contentFiltering` field and initializer parameter;
+  `ModelSelectionProfile` itself is public (used as
+  `ModelSelectionCandidate.resident(_:)`'s associated value), even though an
+  in-source note marks the whole cluster "not yet wired" as of the
+  2026-07-03 inert-surface audit.
+- `CacheBreakpointPlan` / `PromptCachePolicy` (ManifoldCloudCore) — **verified
+  live**: `ClaudeBackend.cachePolicy` is a public get/set property, and
+  `annotateCacheBreakpoints(plan:...)` is a public function; both back the
+  shipped Anthropic prompt-cache-breakpoint feature (`cache_control:
+  {type: "ephemeral"}` tagging on the system prompt and tool catalog,
+  reducing repeat-turn input costs 4–10× for large system prompts/tool
+  catalogs). Not an inert-surface / #2128 candidate — this is a working,
+  documented, user-facing cost-control knob.
+- `DiagnosticsService` (ManifoldModelCatalog) — backs
+  `ManifoldBootstrap.diagnostics`, a public stored property on ManifoldKit's
+  canonical bootstrap entry point every consumer app constructs.
+- `DiffusionDownloadProgress` (ManifoldHuggingFace) — backs the public
+  `HuggingFaceService.downloadDiffusionModel(..., progress:)` closure
+  parameter; `HuggingFaceService` itself is actively instantiated directly
+  by idlewick (`HuggingFaceService()`), so the type fails A.0 check #2 (not
+  a parameter/return type on a public signature of an externally-used type).
+
+### Digester allowlist note
+
+`swift package diagnose-api-breaking-changes` (the CI `api-digester-check` job)
+does not flag pure `public → package` visibility demotions in this repo: without
+`-enable-library-evolution`, the plain `.swiftmodule` the digester reads keeps
+`package`-visible symbols in its symbol table on both the baseline and current
+side, so a bare visibility narrowing (no signature/rename change) is invisible to
+it by construction. Confirmed three independent ways across A.2/A.3: the exact CI
+command run locally, a controlled flip-an-untouched-type test, and a manual
+low-level `swift-api-digester -dump-sdk` reproduction. No `.github/api-breakage-allowlist.txt`
+entries were needed for any Phase A cluster.
