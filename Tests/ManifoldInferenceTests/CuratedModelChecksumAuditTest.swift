@@ -247,8 +247,25 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
             promptTemplate: .llama3,
             description: "MLX with no SHA — must not be audited as GGUF."
         )
+        // Carries a malformed SHA (not just a missing one) so the assertion
+        // below proves invalidChecksums' `.gguf`-only filter actually
+        // excludes it, rather than it merely being absent because nil SHAs
+        // are compactMap'd away regardless of modelType.
+        let invalidMLX = CuratedModel(
+            id: "sabotage-invalid-mlx",
+            displayName: "Sabotage Invalid MLX Model",
+            fileName: "invalid-sabotage.mlpackage",
+            repoID: "example/sabotage-invalid-mlx",
+            modelType: .mlx,
+            approximateSizeBytes: 1_000_000_000,
+            recommendedFor: [.small],
+            contextSize: 2048,
+            promptTemplate: .llama3,
+            description: "MLX with a malformed SHA — must not be audited as GGUF.",
+            expectedSHA256: "deadbeef"
+        )
 
-        let fixture = [missingGGUF, invalidGGUF, missingMLX]
+        let fixture = [missingGGUF, invalidGGUF, missingMLX, invalidMLX]
 
         let missing = Set(Self.missingChecksums(in: fixture))
         let invalid = Set(Self.invalidChecksums(in: fixture))
@@ -258,7 +275,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
         XCTAssertFalse(missing.contains("example/sabotage-mlx"))
 
         XCTAssertTrue(invalid.contains("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"))
-        XCTAssertFalse(missing.contains("example/sabotage-mlx"))
+        XCTAssertFalse(invalid.contains("deadbeef"))
     }
 
     // MARK: - Detection
