@@ -1,9 +1,12 @@
 import Foundation
 
-/// A public, self-contained facade over MK's JSON-Schema → constrained-output
-/// machinery, intended to replace the hand-rolled schema layers that downstream
-/// apps built when MK's tool-calling path was unreliable (Idlewick's
-/// `DeclarativeTool`, Fireside's `ExtractionSchema` — see #1992).
+/// A self-contained facade over MK's JSON-Schema → constrained-output
+/// machinery, originally intended to replace the hand-rolled schema layers that
+/// downstream apps built when MK's tool-calling path was unreliable (Idlewick's
+/// `DeclarativeTool`, Fireside's `ExtractionSchema` — see #1992). No app ever
+/// adopted it, so it is package-internal (API-v1-rationalisation Phase A.1);
+/// kept as the in-package facade `ToolGrammarBuilder`/`JSONSchemaValidator`
+/// callers use instead of the two lower-level pieces directly.
 ///
 /// One schema in, three capabilities out:
 ///
@@ -23,7 +26,7 @@ import Foundation
 /// The underlying pieces — ``ToolGrammarBuilder`` (lowering) and
 /// ``JSONSchemaValidator`` (validation) — already existed but were discovered
 /// piecemeal and documented for the internal tool-call path. This type is the
-/// single, documented package entry point so a consumer can write:
+/// single in-package entry point so callers can write:
 ///
 /// ```swift
 /// let schema = StructuredOutputSchema(
