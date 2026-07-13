@@ -312,3 +312,8 @@ documentation for the high-level vs. direct-backend chooser.
 - ``TurnContext``
 - ``PromptSlot``
 - ``PromptSlotPosition``
+
+### Lifecycle signals
+
+- <doc:LifecycleSignals>
+- ``ModelLoadCoordinator``
