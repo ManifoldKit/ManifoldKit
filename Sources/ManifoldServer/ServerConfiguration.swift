@@ -2,20 +2,25 @@
 import Foundation
 import ManifoldInference
 
-internal struct ServerConfiguration: Equatable, Sendable {
-    internal var host: String
-    internal var port: Int
-    internal var apiKey: String?
-    internal var parallelSlots: Int
-    internal var unsafeCORS: Bool
-    internal var corsOrigin: String?
-    internal var metricsEnabled: Bool
+/// Public (v0.71+): the host-configurable knobs for
+/// ``ManifoldServer/serve(configuration:backendProvider:)``. A `nil`/empty
+/// `apiKey` means anonymous access, mirroring the CLI's `--allow-anonymous`
+/// behavior — there is no separate `allowAnonymous` flag because `ServerApp`
+/// derives it from `apiKey` alone (see its `authMiddleware` init logic).
+public struct ServerConfiguration: Equatable, Sendable {
+    public var host: String
+    public var port: Int
+    public var apiKey: String?
+    public var parallelSlots: Int
+    public var unsafeCORS: Bool
+    public var corsOrigin: String?
+    public var metricsEnabled: Bool
     /// Maximum HTTP request body size accepted by the server in bytes.
     /// Requests whose body exceeds this limit are rejected with 413 before any
     /// handler logic runs. Defaults to the value in ``ManifoldConfiguration``.
-    internal var maxServerRequestBodyBytes: Int
+    public var maxServerRequestBodyBytes: Int
 
-    internal init(
+    public init(
         host: String = "127.0.0.1",
         port: Int = 8080,
         apiKey: String? = nil,

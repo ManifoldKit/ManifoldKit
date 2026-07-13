@@ -405,12 +405,19 @@
       ]
     },
     "ManifoldServer": {
-      "type": "executable",
+      "type": "regular",
       "path": "Sources/ManifoldServer",
       "deps": [
         "ManifoldFoundation",
         "ManifoldInference",
         "ManifoldOllama"
+      ]
+    },
+    "ManifoldServerCLI": {
+      "type": "executable",
+      "path": "Sources/ManifoldServerCLI",
+      "deps": [
+        "ManifoldServer"
       ]
     },
     "ManifoldServerTests": {
