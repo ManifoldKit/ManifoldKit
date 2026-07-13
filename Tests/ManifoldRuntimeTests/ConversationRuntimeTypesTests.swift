@@ -34,12 +34,14 @@ final class ConversationRuntimeTypesTests: XCTestCase {
             case .cancelled: return "cancelled"
             case .empty: return "empty"
             case .length: return "length"
+            case .timedOut: return "timedOut"
             }
         }
         XCTAssertEqual(describe(.stop), "stop")
         XCTAssertEqual(describe(.cancelled), "cancelled")
         XCTAssertEqual(describe(.empty), "empty")
         XCTAssertEqual(describe(.length), "length")
+        XCTAssertEqual(describe(.timedOut), "timedOut")
     }
 
     // MARK: - CompressionReason

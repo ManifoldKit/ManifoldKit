@@ -1509,6 +1509,7 @@ final class ConversationRuntimeTests: XCTestCase {
             case .cancelled: return "streamFinished-cancelled"
             case .empty: return "streamFinished-empty"
             case .length: return "streamFinished-length"
+            case .timedOut: return "streamFinished-timedOut"
             }
         case .errorRaised: return "errorRaised"
         case .sessionTouchFailed: return "sessionTouchFailed"

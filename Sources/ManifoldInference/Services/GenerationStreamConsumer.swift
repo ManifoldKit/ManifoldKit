@@ -9,8 +9,16 @@ public struct GenerationStreamConsumer: Sendable {
     /// Whether to check for repetitive looping in appended text.
     public var loopDetectionEnabled: Bool
 
-    public init(loopDetectionEnabled: Bool = true) {
+    /// Threshold tuning for the repetition guard. Defaults to
+    /// ``RepetitionGuardConfig/default`` — the historic hardcoded thresholds.
+    public var repetitionGuard: RepetitionGuardConfig
+
+    public init(
+        loopDetectionEnabled: Bool = true,
+        repetitionGuard: RepetitionGuardConfig = .default
+    ) {
         self.loopDetectionEnabled = loopDetectionEnabled
+        self.repetitionGuard = repetitionGuard
     }
 
     /// Processes a single generation event and returns the action the caller should take.
@@ -124,8 +132,8 @@ public struct GenerationStreamConsumer: Sendable {
     /// has been accumulated (the caller decides the threshold).
     public func shouldStopForLoop(content: String) -> Bool {
         guard loopDetectionEnabled else { return false }
-        guard content.count >= 100 else { return false }
-        return RepetitionDetector.looksLikeLooping(content)
+        guard content.count >= repetitionGuard.minimumTriggerCharacters else { return false }
+        return RepetitionDetector.looksLikeLooping(content, config: repetitionGuard)
     }
 
     /// Actions the caller should take in response to a generation event.

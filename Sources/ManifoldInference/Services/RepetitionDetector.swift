@@ -18,7 +18,21 @@ public enum RepetitionDetector {
     /// - **Double repeat (2x):** Any unit of 50+ characters repeated twice consecutively.
     ///
     /// Requires at least 100 characters for 2x detection and 48 for 3x detection.
+    ///
+    /// Uses ``RepetitionGuardConfig/default`` thresholds. Callers that expose
+    /// tuning (the runtime turn loop) call ``looksLikeLooping(_:config:)``.
     public static func looksLikeLooping(_ text: String) -> Bool {
+        looksLikeLooping(text, config: .default)
+    }
+
+    /// Threshold-parameterised variant of ``looksLikeLooping(_:)``.
+    ///
+    /// The hardcoded window/unit/character thresholds the single-argument form
+    /// bakes in are lifted onto `config` so a host can tune the guard's
+    /// sensitivity (``RepetitionGuardConfig``). Passing
+    /// ``RepetitionGuardConfig/default`` reproduces the original behaviour
+    /// byte-for-byte.
+    public static func looksLikeLooping(_ text: String, config: RepetitionGuardConfig) -> Bool {
         // The algorithm only ever inspects the tail: 2x detection compares the last
         // 200-char unit against the preceding 200 (≤400 chars), and 3x detection the
         // last three 120-char units (≤360 chars). Bounding the input to the final 500
@@ -26,30 +40,32 @@ public enum RepetitionDetector {
         // detector is called once per streamed token over the whole accumulated text.
         // Behaviour is preserved exactly: detection is purely tail-local, and the
         // `count >= 100` / `count >= 48` thresholds saturate immediately past the bound.
-        let tail = text.suffix(500)
+        let tail = text.suffix(config.tailWindow)
         let trimmed = tail.trimmingCharacters(in: .whitespacesAndNewlines)
         let characters = Array(trimmed)
 
         // 2x detection for longer units (50+ chars repeated twice).
         // A single sentence repeated once is common in prose; requiring 50+ chars
         // and checking only the tail reduces false positives.
-        if characters.count >= 100 {
-            let maxUnit2x = min(characters.count / 2, 200)
-            for unitLength in stride(from: maxUnit2x, through: 50, by: -1) {
-                let last = characters.suffix(unitLength)
-                let prev = characters.dropLast(unitLength).suffix(unitLength)
-                if prev.count == unitLength && last.elementsEqual(prev) {
-                    return true
+        if characters.count >= config.doubleRepeatMinimumCharacters {
+            let maxUnit2x = min(characters.count / 2, config.doubleRepeatMaximumUnit)
+            if maxUnit2x >= config.doubleRepeatMinimumUnit {
+                for unitLength in stride(from: maxUnit2x, through: config.doubleRepeatMinimumUnit, by: -1) {
+                    let last = characters.suffix(unitLength)
+                    let prev = characters.dropLast(unitLength).suffix(unitLength)
+                    if prev.count == unitLength && last.elementsEqual(prev) {
+                        return true
+                    }
                 }
             }
         }
 
         // 3x detection (original algorithm with tightened min unit)
-        guard characters.count >= 48 else { return false }
-        let maxUnit = min(120, characters.count / 3)
-        guard maxUnit >= 8 else { return false }
+        guard characters.count >= config.tripleRepeatMinimumCharacters else { return false }
+        let maxUnit = min(config.tripleRepeatMaximumUnit, characters.count / 3)
+        guard maxUnit >= config.tripleRepeatMinimumUnit else { return false }
 
-        for unitLength in stride(from: maxUnit, through: 8, by: -1) {
+        for unitLength in stride(from: maxUnit, through: config.tripleRepeatMinimumUnit, by: -1) {
             let last = characters.suffix(unitLength)
             let middle = characters.dropLast(unitLength).suffix(unitLength)
             let first = characters.dropLast(unitLength * 2).suffix(unitLength)
