@@ -882,6 +882,45 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0)
     }
 
+    // MARK: - Progress/stall timeout (B.3 item 1)
+
+    func test_stallTimeout_hangingBackend_completesWithTimedOutReason() async throws {
+        // A backend that starts but never yields any event must, when the turn
+        // carries a `progressStallTimeout`, terminate with `.timedOut` — the
+        // distinct outcome the origin app's runner reports for an unresponsive
+        // backend. Without the knob (nil, the default) the turn would wait
+        // indefinitely; the whole feature is this branch.
+        let backend = HangingRuntimeBackend()
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            sessionStore: nil,
+            inferenceService: inference
+        )
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "will stall"),
+            config: TurnConfig(progressStallTimeout: .milliseconds(200))
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn, deadline: .seconds(5))
+
+        XCTAssertEqual(outcome.reason, .timedOut,
+                       "a stalled generation must report the distinct timed-out reason")
+        XCTAssertEqual(outcome.classification, .timedOut)
+        XCTAssertNotNil(outcome.error, "the stall carries the idle-timeout error")
+        // Sabotage check (removed before commit) — would fail if `.timedOut`
+        // silently collapsed into the generic `.stop` failure reason:
+        // XCTAssertEqual(outcome.reason, .stop)
+
+        // The backend work is cancelled, not left running.
+        try await waitForBackendTermination(backend, deadline: .seconds(2))
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "no visible content streamed, so no assistant message persists")
+    }
+
     func test_finishState_cancelAfterPartialOutput_persistsPartialAndEmitsSingleCancelledTerminal() async throws {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["one", " two"]

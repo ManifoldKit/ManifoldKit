@@ -359,3 +359,6 @@ API breakage: enumelement SendMessageError.modelLoading has been added as a new 
 API breakage: var ModelLoadCoordinator.onSurfaceError has declared type change from (Swift.String) -> Swift.Void to (Swift.String, any Swift.Error) -> Swift.Void
 API breakage: accessor ModelLoadCoordinator.onSurfaceError.Get() has return type change from (Swift.String) -> Swift.Void to (Swift.String, any Swift.Error) -> Swift.Void
 API breakage: accessor ModelLoadCoordinator.onSurfaceError.Set() has parameter 0 type change from (Swift.String) -> Swift.Void to (Swift.String, any Swift.Error) -> Swift.Void
+API breakage: constructor GenerationStreamConsumer.init(loopDetectionEnabled:) has been removed
+API breakage: constructor TurnConfig.init(systemPrompt:generation:maxOutputTokens:maxThinkingTokens:streamingUpdateInterval:streamingBatchCharacterLimit:thinkingStreamingUpdateInterval:thinkingStreamingBatchCharacterLimit:loopDetectionEnabled:) has been removed
+API breakage: enumelement FinishReason.timedOut has been added as a new enum case

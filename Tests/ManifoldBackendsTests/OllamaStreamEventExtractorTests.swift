@@ -115,6 +115,59 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
         } else { XCTFail("event[4] expected .usage, got \(events[4])") }
     }
 
+    // MARK: - Inline <think> conversion (B.3 item 3 — thinking-block parity)
+    //
+    // Characterization test for the plan §B.3 item-3 VERIFICATION: MK's shipped
+    // Ollama backend already converts inline `<think>…</think>` markers that a
+    // local reasoning model emits in the plain `content` field into STRUCTURED
+    // `.thinkingToken` / `.thinkingCompleted` events — before they reach the
+    // turn executor. So raw reasoning markup cannot leak into user-visible turn
+    // output for the Ollama path, and no inline-marker filtering is needed at
+    // the turn-executor level. This test pins that behaviour so a regression
+    // (dropping the `OutputParserSession([.thinking(ThinkingTransform)])` route
+    // in `appendContentEvents`) fails loudly.
+    func test_extractor_inlineThinkInContent_convertsToStructuredThinkingEvents() throws {
+        // A model with no native `thinking` field that streams `<think>` inline
+        // in `content` across NDJSON frames.
+        let payloads = [
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":"<think>Let me reason."},"done":false}"#,
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":" Still reasoning.</think>Visible answer."},"done":false}"#,
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":9}"#
+        ]
+        let extractor = OllamaStreamEventExtractor(config: GenerationConfig())
+        var events: [GenerationEvent] = []
+        for payload in payloads {
+            events.append(contentsOf: extractor.consume(payload: payload))
+        }
+        events.append(contentsOf: extractor.finish())
+
+        // 1. Reasoning was re-routed to structured thinking events.
+        let thinkingText = events.compactMap { event -> String? in
+            if case .thinkingToken(let t) = event { return t } else { return nil }
+        }.joined()
+        XCTAssertTrue(thinkingText.contains("Let me reason."),
+                      "inline <think> content must surface as .thinkingToken (saw \(events))")
+        XCTAssertTrue(events.contains { if case .thinkingCompleted = $0 { return true } else { return false } },
+                      "the </think> close must fire .thinkingCompleted")
+
+        // 2. Visible text is exactly the post-</think> content — reasoning stripped.
+        let visibleText = events.compactMap { event -> String? in
+            if case .token(let t) = event { return t } else { return nil }
+        }.joined()
+        XCTAssertEqual(visibleText, "Visible answer.",
+                       "only the post-</think> text is visible; the reasoning is not")
+
+        // 3. Raw markers never leak into a visible .token — the key parity claim.
+        //    Sabotage check (removed before commit): route content straight to
+        //    `.token(content)` and this fails because "<think>" appears verbatim.
+        for event in events {
+            if case .token(let t) = event {
+                XCTAssertFalse(t.contains("<think>") || t.contains("</think>"),
+                               "raw <think> markup must never reach a visible token (leaked: \(t))")
+            }
+        }
+    }
+
     // MARK: - Cross-stream isolation (sabotage)
 
     func test_extractor_isFreshPerInstance_stateDoesNotLeakAcrossStreams() throws {
