@@ -12,16 +12,16 @@ import ManifoldInference
 /// Hosts extend the menu by passing a `@ViewBuilder` closure to
 /// ``SwiftUICore/View/messageActionMenu(message:viewModel:contextMenuItems:)``;
 /// the extra items render after the default set.
-public struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
+package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
 
-    public let message: ChatMessage
-    public let viewModel: ChatViewModel
+    package let message: ChatMessage
+    package let viewModel: ChatViewModel
     private let extraItems: (ChatMessage) -> ExtraItems
 
     @State private var isEditing: Bool = false
     @State private var editText: String = ""
 
-    public init(
+    package init(
         message: ChatMessage,
         viewModel: ChatViewModel,
         @ViewBuilder extraItems: @escaping (ChatMessage) -> ExtraItems
@@ -31,7 +31,7 @@ public struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         self.extraItems = extraItems
     }
 
-    public func body(content: Content) -> some View {
+    package func body(content: Content) -> some View {
         content
             .contextMenu {
                 if viewModel.isMessagePinned(id: message.id) {

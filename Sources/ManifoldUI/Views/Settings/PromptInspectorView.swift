@@ -7,24 +7,24 @@ import ManifoldInference
 /// Shows a token budget bar at the top with colored segments for each slot,
 /// an expandable list of slots with content previews, and a summary footer.
 /// Designed for debugging and understanding how the prompt is assembled.
-public struct PromptInspectorView: View {
+package struct PromptInspectorView: View {
 
     @Environment(\.dismiss) private var dismiss
 
     /// The assembled prompt to inspect. When `nil`, a placeholder is shown.
-    public let assembledPrompt: AssembledPrompt?
+    package let assembledPrompt: AssembledPrompt?
 
     /// Maximum context size for computing the budget bar proportions.
-    public let contextSize: Int
+    package let contextSize: Int
 
     @State private var expandedSlots: Set<String> = []
 
-    public init(assembledPrompt: AssembledPrompt?, contextSize: Int) {
+    package init(assembledPrompt: AssembledPrompt?, contextSize: Int) {
         self.assembledPrompt = assembledPrompt
         self.contextSize = contextSize
     }
 
-    public var body: some View {
+    package var body: some View {
         NavigationStack {
             Group {
                 if let prompt = assembledPrompt {
@@ -241,7 +241,7 @@ public struct PromptInspectorView: View {
 extension PromptInspectorView {
 
     /// Builds realistic sample data for previewing the inspector UI.
-    public static var samplePrompt: AssembledPrompt {
+    package static var samplePrompt: AssembledPrompt {
         let slots: [ResolvedSlot] = [
             ResolvedSlot(
                 id: "system",

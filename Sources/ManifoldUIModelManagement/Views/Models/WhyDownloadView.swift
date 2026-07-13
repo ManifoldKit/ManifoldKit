@@ -5,15 +5,15 @@ import ManifoldRuntime
 /// to download a model instead of using the built-in Foundation model.
 ///
 /// Collapsed by default to keep the model browser clean for returning users.
-public struct WhyDownloadView: View {
+package struct WhyDownloadView: View {
 
     @Environment(ModelManagementViewModel.self) private var viewModel
 
     @State private var isExpanded = false
 
-    public init() {}
+    package init() {}
 
-    public var body: some View {
+    package var body: some View {
         DisclosureGroup("Why download a model?", isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("The built-in Apple Foundation Model works great for quick chats with no setup required.")

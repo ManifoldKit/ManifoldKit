@@ -163,7 +163,7 @@ for pattern in "${REPO_ROOT}"/docs/*.md "${REPO_ROOT}"/README.md; do
 ${pattern}:
 ${h}"
 done
-docc_hits="$(rg -w -n -g '*.docc/**' "$TYPE_NAME" "${REPO_ROOT}/Sources" 2>/dev/null || true)"
+docc_hits="$(rg -w -n -g '**/*.docc/**' "$TYPE_NAME" "${REPO_ROOT}/Sources" 2>/dev/null || true)"
 [ -n "$docc_hits" ] && docs_hits="${docs_hits}
 DocC:
 ${docc_hits}"
