@@ -107,9 +107,13 @@ Specialised modules stay opt-in and are imported by name when you need them:
 | `ManifoldUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
 | `ManifoldHuggingFace` *(optional)* | Hub search, browse, background downloads. Compiles unconditionally (the `HuggingFace` trait retired in v0.48). |
 | `ManifoldVoice` *(optional)* | Speech I/O composer accessory. |
-| `ManifoldMCP` *(optional)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
-| `ManifoldAppIntents` *(optional)* | AppIntent ↔ ToolDefinition bridge. |
+| `ManifoldMCP` *(optional, experimental¹)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
+| `ManifoldAppIntents` *(optional, experimental¹)* | AppIntent ↔ ToolDefinition bridge. |
 | `ManifoldMLX` / `ManifoldLlama` *(companion packages)* | MLX / llama.cpp local inference — add `manifold-mlx` / `manifold-llama` as separate package dependencies and pass `MLXBackends.self` / `LlamaBackends.self` to `quickStart(backends:)` (v0.48 split). |
+
+¹ Experimental — may break in any minor, always migration-noted; graduates on first
+real adopter (a shipping app or companion that pins and imports it). See
+docs/API-DESIGN.md § 7b.
 
 Contributors changing ManifoldKit internals can still import the individual products
 (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the backend
@@ -560,7 +564,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldCloud` | **Retired** — `import ManifoldCloud` no longer compiles. Use `ManifoldCloudCore` + a provider family, or the `ManifoldKit` umbrella. See docs/MIGRATION-shims-retired.md. |
 | `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`), the provider-agnostic encoding/parsing surface shared by both cloud families, and `DefaultWebSearchRuntime`. Always linked. Depends on `ManifoldInference` + `ManifoldRuntime` (the latter for `DefaultWebSearchRuntime`'s port conformance — an un-gated library→library edge; see Package.swift comment). |
 | `ManifoldBackends` | **Retired** — `import ManifoldBackends` and `DefaultBackends` are gone. Import the families directly or the `ManifoldKit` umbrella; pass explicit registrars to `quickStart(backends:)`. See docs/MIGRATION-shims-retired.md. |
-| `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own always-compiled product, never re-exported by the umbrella; opt in by importing. Depends on `ManifoldInference`. |
+| `ManifoldAnyLanguageModel` **(Experimental¹)** | AnyLanguageModel provider bridge for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own always-compiled product, never re-exported by the umbrella; opt in by importing. Depends on `ManifoldInference`. |
 
 **Companion packages:** the heavy local-inference families live outside this repo. [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) hosts the MLX backend family (text inference, diffusion/image gen, video gen, vendored FluxSwift/StableDiffusion, MLX integration tests); [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) hosts the llama.cpp/GGUF family. Module names stay `ManifoldMLX` / `ManifoldLlama`. Consumers add the companion `.package(...)` and pass registrars: `try await ManifoldKit.quickStart(backends: [LlamaBackends.self])`. Their conventions, hardware constraints, and test docs live in those repos. Building a new companion package? See [docs/COMPANION-BACKENDS.md](docs/COMPANION-BACKENDS.md).
 
@@ -568,13 +572,13 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally, catalog descriptors included. Depends on `ManifoldInference`. |
-| `ManifoldMCPHost` | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. |
+| `ManifoldMCP` **(Experimental¹)** | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally, catalog descriptors included. Depends on `ManifoldInference`. |
+| `ManifoldMCPHost` **(Experimental¹)** | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. |
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. |
-| `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
-| `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
+| `ManifoldAppIntents` **(Experimental¹)** | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
+| `ManifoldSkills` **(Experimental¹)** | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
 | `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. |
-| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
+| `ManifoldAppEval` **(Experimental¹)** | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
 
 ### UI modules
 
@@ -594,7 +598,11 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldFuzzBackends` | Real-backend factory shim for `fuzz-chat` (Ollama / OpenAI / Foundation). Depends on `ManifoldFuzz` + `ManifoldInference` + the backend families. Also not a published product. |
 | `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama). Run via `scripts/fuzz.sh`. |
 | `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` + `ManifoldCloudSaaS` directly (never the umbrella — #982 dual-llama Xcode-scheme hazard). |
-| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
+| `ManifoldTelemetryOTLP` **(Experimental¹)** | OTLP/HTTP trace exporter. Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
+
+¹ Experimental — may break in any minor, always migration-noted; graduates on first
+real adopter (a shipping app or companion that pins and imports it). See
+docs/API-DESIGN.md § 7b.
 
 ### Test support targets
 

@@ -24,6 +24,18 @@ breaking change here in any ManifoldKit minor release, migration-noted in the ch
 without a deprecation cycle. A wrapper type would not change this — it would still break
 whenever the upstream protocol does, while adding a layer consumers must learn.
 
+## Experimental tier
+
+`ManifoldAnyLanguageModel` also carries ManifoldKit's **experimental tier** marker
+(declared 2026-07-13), alongside the semver exemption above — the two are separate
+policies. The semver exemption tracks the *upstream* AnyLanguageModel package's
+release cadence; the experimental tier tracks *adoption*: it graduates once a
+shipping app or companion pins ManifoldKit and imports this module from non-test
+code (documentation and examples don't count). Until then, expect it to break in
+any minor, always migration-noted. See
+[docs/API-DESIGN.md § 7b](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/API-DESIGN.md)
+for the full policy.
+
 ## Topics
 
 ### Backend
