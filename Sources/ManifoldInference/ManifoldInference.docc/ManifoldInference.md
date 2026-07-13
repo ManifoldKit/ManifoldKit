@@ -303,3 +303,12 @@ documentation for the high-level vs. direct-backend chooser.
 
 - <doc:Capabilities>
 - ``CuratedModelCapabilities``
+
+### Contributing prompt context
+
+- <doc:ContributingPromptContext>
+- ``PromptContextProvider``
+- ``ProviderBudget``
+- ``TurnContext``
+- ``PromptSlot``
+- ``PromptSlotPosition``
