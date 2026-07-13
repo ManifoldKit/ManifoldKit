@@ -8,7 +8,7 @@ For day-to-day test conventions (suites, traits, layering), see [`Tests/README.m
 |---|---|---|---|
 | DX walkthroughs | Forced-blindness fresh-developer DX regression | [`scripts/dx-walkthrough/`](../scripts/dx-walkthrough/) | [README](../scripts/dx-walkthrough/README.md) |
 | Audit tests | File-walking discipline rules (19 files) | `Tests/*/Manifold*AuditTest*.swift` | this doc |
-| Sabotage suite | Verifies the audit tests still catch what they claim | [`Tests/ManifoldAuditSabotageSuiteTests/`](../Tests/ManifoldAuditSabotageSuiteTests/) | this doc |
+| In-file sabotage tests | Verify the audit tests still catch what they claim | `test_sabotage_*` methods in each `Tests/**/*Audit*.swift` file | this doc |
 | Cold-start conformance gates | Public-surface tests run from a fresh consumer outside the repo | [`scripts/cold-start-*.sh`](../scripts/) | [Tests/README § Cold-start](../Tests/README.md#cold-start-conformance-gates) |
 
 ---
@@ -78,32 +78,52 @@ Failures print the offending file/line plus the allowlist mechanism. Most audits
 
 ---
 
-## 3. Audit sabotage suite
+## 3. In-file audit sabotage tests
 
-**What.** [`Tests/ManifoldAuditSabotageSuiteTests/AuditSabotageSuiteTests.swift`](../Tests/ManifoldAuditSabotageSuiteTests/AuditSabotageSuiteTests.swift) (454 LOC). One test per file-walking audit. Each test:
+**What.** Every audit test carries a `test_sabotage_*` method **in the same
+file**, calling the **same static detection function** the audit itself runs.
+Each sabotage test:
 
-1. Creates a temp directory mimicking the relevant source layout.
-2. Writes a file containing a known violation of the rule the audit enforces.
-3. Reimplements the audit's check logic inline (SwiftPM forbids `@testable import` of test targets, so logic is inlined minimally).
-4. Asserts the violation is detected.
+1. Creates a temp directory (or in-memory input) containing a known violation
+   of the rule the audit enforces.
+2. Calls the audit's real detection function against it — the exact function
+   the main test runs against `Sources/` (or `Package.swift`, or the fixture
+   tree).
+3. Asserts the violation is detected — and, where an allowlist or idiom rule
+   exists, that an exempted equivalent is *not* flagged.
 
-**Why.** Audit tests are line-grep heuristics with allowlists. Over time, an allowlist entry can drift, a regex can be loosened to land an unrelated fix, or the audit can be skipped for trait reasons and quietly turn into a no-op. The sabotage suite is the "who watches the watchers" guard. Without it, an audit could pass for a year while no longer catching what it advertises. Originated in PR #1290 (Phase 5 cloud-helper deletion).
+`AuditSabotageCoverageAuditTest` (in `ManifoldCoreTests`) enforces the pairing:
+any `Tests/**/*Audit*.swift` file without a `func test_sabotage...` method
+fails per-PR CI.
 
-**Run it.**
-```bash
-SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests
-```
-Without `SABOTAGE=1` every test skips immediately — the suite is nightly-only because it does temp-dir setup per test. The scheduled `nightly-slow-tests` workflow runs it with `SABOTAGE=1`, `--min-passed 1`, and a log proof check for `ManifoldAuditSabotageSuiteTests` test-case lines so a skipped sabotage lane cannot look green.
+**Why.** Audit tests are line-grep heuristics with allowlists. Over time, an
+allowlist entry can drift, a regex can be loosened to land an unrelated fix,
+or the audit can quietly turn into a no-op. The sabotage tests are the "who
+watches the watchers" guard. They originally lived in a separate nightly
+`ManifoldAuditSabotageSuiteTests` target that *reimplemented* each audit's
+logic inline — which meant a green sabotage run proved a hand-copied replica
+still fired, not the shipped audit, and several replicas had measurably
+drifted from their audits by mid-2026. The in-file pattern (established by
+`TrafficBoundaryAuditTest`'s `test_sabotage_rule1..7`) makes replica drift
+structurally impossible — one file, one detection function, two callers — and
+runs per-PR instead of nightly, so a broken audit is caught before merge
+rather than up to 24 h after. Originated in PR #1290; converted to in-file in
+the 2026-07 audit-hardening pass.
 
-**Extend.** When you add a new audit (practice 2), pair it with a sabotage test:
+**Run them.** Nothing special — they are ordinary tests in the audit's home
+target, so `scripts/test.sh --profile local` and per-PR CI run them
+automatically.
 
-1. Pick a representative violation of the rule.
-2. Create a temp dir, write the violating file at the right relative path.
-3. Inline the audit's detection logic (regex, scan, whatever the audit uses).
-4. Assert the violation is detected. The test PASSES when the audit would correctly flag the file.
-5. Open the suite with `try requireSabotageMode()` so the test no-ops without `SABOTAGE=1`.
+**Extend.** When you add a new audit (practice 2), pair it in the same file:
 
-Existing tests in the suite serve as templates — `test_sessionConstructionAudit_detectsViolation` is the simplest shape.
+1. Put the detection logic in a `static func` parameterized by the scanned
+   root/input (and the allowlist, if the sabotage should prove exemption).
+2. The main test calls it with the real root; the `test_sabotage_*` test
+   calls it with a temp tree containing a representative violation.
+3. Assert the violation is flagged and an allowlisted equivalent is not.
+
+`SessionConstructionAuditTest` is the simplest converted shape;
+`SilentCatchAuditTest` shows the allowlist + stale-check split.
 
 ---
 

@@ -42,6 +42,10 @@ import XCTest
 /// share but executables also need, put it in `ManifoldTestSupport`
 /// (XCTest-free). If it must use `XCTAssert*` / `XCTestCase`, put it in
 /// `ManifoldContractTestSupport`.
+///
+/// ``xctestImportOffenders(supportDir:)`` and
+/// ``executableTargetOffenders(manifest:)`` are the detection functions
+/// shared by their audit and the in-file sabotage tests.
 final class ContractTestSupportSplitAuditTest: XCTestCase {
 
     func test_manifoldContractTestSupport_directoryExists() throws {
@@ -70,23 +74,7 @@ final class ContractTestSupportSplitAuditTest: XCTestCase {
             .appendingPathComponent("Sources")
             .appendingPathComponent("ManifoldTestSupport")
 
-        let enumerator = FileManager.default.enumerator(atPath: supportDir.path)
-        var offenders: [String] = []
-        while let relative = enumerator?.nextObject() as? String {
-            guard relative.hasSuffix(".swift") else { continue }
-            let url = supportDir.appendingPathComponent(relative)
-            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            // Match a top-level `import XCTest` line — also catches the
-            // `#if canImport(XCTest)\nimport XCTest` shape that PR #1409
-            // introduced.
-            for line in text.split(separator: "\n") {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed == "import XCTest" {
-                    offenders.append(relative)
-                    break
-                }
-            }
-        }
+        let offenders = Self.xctestImportOffenders(supportDir: supportDir)
 
         XCTAssertTrue(
             offenders.isEmpty,
@@ -122,9 +110,97 @@ final class ContractTestSupportSplitAuditTest: XCTestCase {
         let packageURL = repoRoot.appendingPathComponent("Package.swift")
         let manifest = try String(contentsOf: packageURL, encoding: .utf8)
 
-        // Extract each .executableTarget(...) block by brace matching from the
-        // declaration to the matching close paren, then scan its dependency
-        // text for the XCTest-linking target names.
+        let offenders = Self.executableTargetOffenders(manifest: manifest)
+
+        XCTAssertTrue(
+            offenders.isEmpty,
+            """
+            Executable targets must never depend on XCTest-linking targets
+            (ManifoldContractTestSupport, ManifoldBackendTestKit) — dyld cannot
+            resolve libXCTestSwiftSupport.dylib outside an xctest host (#1409).
+            Offenders: \(offenders)
+            """
+        )
+    }
+
+    // MARK: - Sabotage (exercises the same detection functions the audits run)
+
+    /// Plants a file with a top-level `import XCTest` line and a file whose
+    /// only mention is a commented-out import, in a temp tree shaped like
+    /// `Sources/ManifoldTestSupport/`, and asserts the REAL detection
+    /// function flags only the real top-level import.
+    func test_sabotage_detectsTopLevelXCTestImport() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("contract-test-support-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        try """
+        import XCTest
+        func badHelper() {}
+        """.write(to: tmp.appendingPathComponent("BadHelper.swift"), atomically: true, encoding: .utf8)
+
+        try """
+        #if canImport(XCTest)
+        // import XCTest
+        func fine() {}
+        #endif
+        """.write(to: tmp.appendingPathComponent("FineHelper.swift"), atomically: true, encoding: .utf8)
+
+        let offenders = Self.xctestImportOffenders(supportDir: tmp)
+        XCTAssertTrue(offenders.contains("BadHelper.swift"), "The planted top-level `import XCTest` must be flagged; got \(offenders)")
+        XCTAssertFalse(offenders.contains("FineHelper.swift"), "A commented-out import must not be flagged; got \(offenders)")
+    }
+
+    /// Plants an `.executableTarget(...)` block depending on
+    /// `ManifoldBackendTestKit` and asserts the REAL detection function
+    /// flags it.
+    func test_sabotage_detectsExecutableTargetXCTestLinkingDependency() {
+        let manifest = """
+            .executableTarget(
+                name: "bad-tool",
+                dependencies: [
+                    "ManifoldBackendTestKit",
+                ]
+            ),
+            """
+
+        let offenders = Self.executableTargetOffenders(manifest: manifest)
+        XCTAssertTrue(
+            offenders.contains { $0.contains("bad-tool") && $0.contains("ManifoldBackendTestKit") },
+            "The planted executable-target dependency on ManifoldBackendTestKit must be flagged; got \(offenders)"
+        )
+    }
+
+    // MARK: - Detection
+
+    /// Walks `supportDir` for `.swift` files with a top-level
+    /// `import XCTest` line (also catches the `#if canImport(XCTest)`
+    /// shape that masked the crash in PR #1409). Both the audit and the
+    /// sabotage test call this.
+    static func xctestImportOffenders(supportDir: URL) -> [String] {
+        let enumerator = FileManager.default.enumerator(atPath: supportDir.path)
+        var offenders: [String] = []
+        while let relative = enumerator?.nextObject() as? String {
+            guard relative.hasSuffix(".swift") else { continue }
+            let url = supportDir.appendingPathComponent(relative)
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            for line in text.split(separator: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed == "import XCTest" {
+                    offenders.append(relative)
+                    break
+                }
+            }
+        }
+        return offenders
+    }
+
+    /// Extracts each `.executableTarget(...)` block by brace matching from
+    /// the declaration to the matching close paren, then scans its
+    /// dependency text for the XCTest-linking target names. Both the audit
+    /// and the sabotage test call this.
+    static func executableTargetOffenders(manifest: String) -> [String] {
         var offenders: [String] = []
         var searchRange = manifest.startIndex..<manifest.endIndex
         while let declRange = manifest.range(of: ".executableTarget(", range: searchRange) {
@@ -146,16 +222,7 @@ final class ContractTestSupportSplitAuditTest: XCTestCase {
             }
             searchRange = index..<manifest.endIndex
         }
-
-        XCTAssertTrue(
-            offenders.isEmpty,
-            """
-            Executable targets must never depend on XCTest-linking targets
-            (ManifoldContractTestSupport, ManifoldBackendTestKit) — dyld cannot
-            resolve libXCTestSwiftSupport.dylib outside an xctest host (#1409).
-            Offenders: \(offenders)
-            """
-        )
+        return offenders
     }
 
     // MARK: - Helpers

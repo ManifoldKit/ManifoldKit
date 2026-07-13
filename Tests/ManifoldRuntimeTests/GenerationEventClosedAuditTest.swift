@@ -27,13 +27,16 @@ import ManifoldInference
 ///
 /// - Note: If this test fails after adding a new ``ConversationEvent`` case,
 ///   the correct fix is to put the new events in ``RunEvent`` instead.
+///
+/// The detection logic lives in ``runLevelLeaks(inCaseNames:)`` so the
+/// in-file sabotage test exercises the exact function the audit runs.
 final class GenerationEventClosedAuditTest: XCTestCase {
 
     // MARK: Run-level vocabulary
 
     /// Keywords that identify run-lifecycle concepts. These must never appear
     /// as ``ConversationEvent`` / ``ConversationEventKind`` case names.
-    private let runLevelKeywords: Set<String> = [
+    private static let runLevelKeywords: Set<String> = [
         "runStarted", "runPaused", "runResumed", "runCompleted",
         "runCancelled", "runFailed", "stepStarted", "stepCompleted",
         "stepFailed"
@@ -42,26 +45,39 @@ final class GenerationEventClosedAuditTest: XCTestCase {
     // MARK: Tests
 
     func test_noRunLevelPayloadInConversationEventKind() {
-        let allKinds = ConversationEventKind.allCases.map(\.rawValue)
-        for keyword in runLevelKeywords {
-            XCTAssertFalse(
-                allKinds.contains(keyword),
-                "ConversationEventKind must not contain run-level case '\(keyword)'. " +
-                "Run-lifecycle events ride RunEvent (target-architecture invariant 6; " +
-                "see this test's doc comment)."
-            )
-        }
+        let leaks = Self.runLevelLeaks(inCaseNames: ConversationEventKind.allCases.map(\.rawValue))
+        XCTAssertTrue(
+            leaks.isEmpty,
+            "ConversationEventKind must not contain run-level cases \(leaks). " +
+            "Run-lifecycle events ride RunEvent (target-architecture invariant 6; " +
+            "see this test's doc comment)."
+        )
     }
 
     func test_runEventCasesDisjointFromConversationEventKindCases() {
-        let conversationKinds = Set(ConversationEventKind.allCases.map(\.rawValue))
-        for keyword in runLevelKeywords {
-            XCTAssertFalse(
-                conversationKinds.contains(keyword),
-                "ConversationEventKind '\(keyword)' overlaps with RunEvent vocabulary. " +
-                "These two event surfaces must remain disjoint (invariant 6)."
-            )
-        }
+        let leaks = Self.runLevelLeaks(inCaseNames: ConversationEventKind.allCases.map(\.rawValue))
+        XCTAssertTrue(
+            leaks.isEmpty,
+            "ConversationEventKind cases \(leaks) overlap with RunEvent vocabulary. " +
+            "These two event surfaces must remain disjoint (invariant 6)."
+        )
+    }
+
+    // MARK: - Sabotage (exercises the same `runLevelLeaks(inCaseNames:)` the audit runs)
+
+    func test_sabotage_detectsRunLevelLeaks() {
+        let leaked = Self.runLevelLeaks(inCaseNames: ["messageInserted", "runStarted"])
+        XCTAssertEqual(leaked, ["runStarted"], "The planted run-level case name must be flagged")
+
+        let clean = Self.runLevelLeaks(inCaseNames: ["messageInserted"])
+        XCTAssertTrue(clean.isEmpty, "A clean case-name list must not be flagged")
+    }
+
+    // MARK: - Detection
+
+    static func runLevelLeaks(inCaseNames caseNames: [String]) -> [String] {
+        let names = Set(caseNames)
+        return runLevelKeywords.filter { names.contains($0) }
     }
 
     func test_runEventCasesExistInRunEvent() {

@@ -23,6 +23,10 @@ import XCTest
 ///
 /// Modelled on `DirectURLSessionConstructionAuditTest` — file-walk plus
 /// substring check plus an exact-set allowlist.
+///
+/// The detection logic lives in ``offenders(underDirs:legacyAllowlist:)``
+/// so the in-file sabotage test exercises the exact function the audit
+/// runs — not a copy.
 final class CloudSeamUsageAuditTest: XCTestCase {
 
     /// Cloud backend files still on the legacy path. Each entry carries an
@@ -32,23 +36,10 @@ final class CloudSeamUsageAuditTest: XCTestCase {
     ]
 
     func test_everyCloudBackend_eitherComposesAdapter_orIsAllowlistedWithTODO() throws {
-        let files = try Self.locateCloudSourceDirs().flatMap(Self.enumerateSwiftFiles(under:))
-
-        var offenders: [String] = []
-        for fileURL in files {
-            let name = fileURL.lastPathComponent
-            // Only audit files matching `*Backend.swift` in the top level
-            // of `Sources/ManifoldCloud/` (mirrors how new providers get
-            // added historically).
-            guard name.hasSuffix("Backend.swift") else { continue }
-            if Self.legacyPathAllowlist.contains(name) { continue }
-
-            // Not allowlisted — must compose the adapter.
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
-            if !content.contains("CloudHTTPProviderAdapter") {
-                offenders.append(name)
-            }
-        }
+        let offenders = try Self.offenders(
+            underDirs: Self.locateCloudSourceDirs(),
+            legacyAllowlist: Self.legacyPathAllowlist
+        )
 
         if !offenders.isEmpty {
             XCTFail("""
@@ -61,6 +52,51 @@ final class CloudSeamUsageAuditTest: XCTestCase {
                 \(offenders.map { "  - \($0)" }.joined(separator: "\n"))
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `offenders(underDirs:legacyAllowlist:)` the audit runs)
+
+    /// Plants a `*Backend.swift` file that composes no adapter in a temp dir
+    /// and asserts the REAL detection function flags it — and that the
+    /// legacy allowlist exempts it when listed.
+    func test_sabotage_detectsBackendWithoutAdapterComposition() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-seam-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        try """
+        import Foundation
+        // New backend — missing required adapter composition.
+        final class GeminiBackend: NSObject {}
+        """.write(to: tmp.appendingPathComponent("GeminiBackend.swift"), atomically: true, encoding: .utf8)
+
+        let offenders = try Self.offenders(underDirs: [tmp], legacyAllowlist: [])
+        XCTAssertEqual(offenders, ["GeminiBackend.swift"], "The adapter-less backend file must be flagged")
+
+        let allowlisted = try Self.offenders(underDirs: [tmp], legacyAllowlist: ["GeminiBackend.swift"])
+        XCTAssertTrue(allowlisted.isEmpty, "An allowlisted legacy-path backend must not be flagged")
+    }
+
+    // MARK: - Detection
+
+    static func offenders(underDirs dirs: [URL], legacyAllowlist: Set<String>) throws -> [String] {
+        let files = try dirs.flatMap(Self.enumerateSwiftFiles(under:))
+        var offenders: [String] = []
+        for fileURL in files {
+            let name = fileURL.lastPathComponent
+            // Only audit files matching `*Backend.swift` in the top level
+            // of the cloud source dirs (mirrors how new providers get
+            // added historically).
+            guard name.hasSuffix("Backend.swift") else { continue }
+            if legacyAllowlist.contains(name) { continue }
+
+            // Not allowlisted — must compose the adapter.
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            if !content.contains("CloudHTTPProviderAdapter") {
+                offenders.append(name)
+            }
+        }
+        return offenders
     }
 
     // MARK: - Filesystem discovery

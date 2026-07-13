@@ -21,6 +21,9 @@ import ManifoldContract
 /// the opposite. That combination — structural ground truth, textual
 /// doc-claim check — is what caught #2210 (AGENTS.md called `BackendName`
 /// an "enum" for multiple releases after #1742 converted it to a struct).
+///
+/// ``claimsTypeIsEnum(_:in:)`` and ``deletedSendMethodViolations(in:)`` are
+/// shared by their respective audit test and in-file sabotage test.
 final class AgentsMdAuditTest: XCTestCase {
 
     /// Resolve `<repo-root>/AGENTS.md` from the test source location. Mirrors
@@ -68,7 +71,7 @@ final class AgentsMdAuditTest: XCTestCase {
     /// negation. The regex forbids crossing a `not` (or a sentence-ending
     /// period) between "is a/an" and "enum", so the negated phrasing above
     /// does not match while "is a Swift `enum: String`" still does.
-    private static func claimsTypeIsEnum(_ typeName: String, in body: String) -> Bool {
+    static func claimsTypeIsEnum(_ typeName: String, in body: String) -> Bool {
         let regex: NSRegularExpression
         do {
             regex = try NSRegularExpression(pattern: #"is\s+an?\b(?:(?!\bnot\b)[^.])*?\benum\b"#)
@@ -191,8 +194,19 @@ final class AgentsMdAuditTest: XCTestCase {
     /// `vm.sendMessage(` from matching.
     func testDoesNotInstructConsumersToCallDeletedSendMethod() throws {
         let body = try Self.loadAgentsMd()
-        // Match `vm.send(`, `viewModel.send(`, or `chatViewModel.send(` —
-        // any "<identifier>.send(" that is not "<identifier>.sendMessage(".
+        for violation in try Self.deletedSendMethodViolations(in: body) {
+            XCTFail("AGENTS.md \(violation)")
+        }
+    }
+
+    /// Scans `body` line by line for a code-shaped `<identifier>.send(`
+    /// invocation (the deleted `vm.send(_:)` shape) that isn't
+    /// `.sendMessage(` and isn't on a line carrying an explicit negation cue
+    /// ("removed", "deleted", "not ", "no longer"). Returns one formatted
+    /// violation string per match, in the same wording the audit test fails
+    /// with.
+    static func deletedSendMethodViolations(in body: String) throws -> [String] {
+        var violations: [String] = []
         let lines = body.split(separator: "\n", omittingEmptySubsequences: false)
         for (idx, line) in lines.enumerated() {
             // Allow lines that explicitly mention the deletion (those contain
@@ -210,9 +224,38 @@ final class AgentsMdAuditTest: XCTestCase {
             for match in matches {
                 let matchedText = nsLine.substring(with: match.range)
                 if matchedText.contains(".sendMessage(") { continue }
-                XCTFail("AGENTS.md line \(idx + 1) instructs consumers to call deleted method `\(matchedText)`: \(line)")
+                violations.append("line \(idx + 1) instructs consumers to call deleted method `\(matchedText)`: \(line)")
             }
         }
+        return violations
+    }
+
+    // MARK: - Sabotage (exercises the shared detection functions above)
+
+    /// `deletedSendMethodViolations(in:)`: a code-shaped `vm.send(` call
+    /// must be flagged, the canonical `vm.sendMessage(` call must not, and
+    /// a negated prose mention ("the old `vm.send(` was removed") must not.
+    func test_sabotage_deletedSendMethodViolationsFlagsPlantedCall() throws {
+        let violating = "Call `vm.send(\"hello\")` to send a message."
+        XCTAssertEqual(try Self.deletedSendMethodViolations(in: violating).count, 1)
+
+        let clean = "Use `vm.sendMessage(\"hi\")`."
+        XCTAssertEqual(try Self.deletedSendMethodViolations(in: clean).count, 0)
+
+        let negated = "the old `vm.send(` was removed"
+        XCTAssertEqual(try Self.deletedSendMethodViolations(in: negated).count, 0)
+    }
+
+    /// `claimsTypeIsEnum(_:in:)`: a direct "is a ... enum" claim must be
+    /// flagged, while the real doc's negated phrasing ("is an extensible
+    /// struct — not an enum") must not.
+    func test_sabotage_claimsTypeIsEnumDetectsPlantedClaim() {
+        XCTAssertTrue(
+            Self.claimsTypeIsEnum("BackendName", in: "BackendName is a Swift `enum: String` with six cases.")
+        )
+        XCTAssertFalse(
+            Self.claimsTypeIsEnum("BackendName", in: "BackendName is an extensible struct — not an enum.")
+        )
     }
 
     // MARK: - Hallucination-list completeness

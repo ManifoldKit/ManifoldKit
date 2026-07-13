@@ -53,6 +53,9 @@ import XCTest
 ///
 /// DO NOT add entries solely to make this test pass without completing
 /// those verification steps.
+///
+/// The detection logic lives in ``scan(testsRoot:auditedTargets:allowlist:excludedFileNames:)``
+/// so the in-file sabotage test exercises the exact function the audit runs.
 final class SwiftTestingAuditTest: XCTestCase {
 
     /// Files in the audited targets that are known to use Swift Testing
@@ -88,42 +91,14 @@ final class SwiftTestingAuditTest: XCTestCase {
         // the same way `UserDefaultsStandardAuditTest` skips itself.
         let auditFileName = (#filePath as NSString).lastPathComponent
 
-        var violations: [String] = []
-        var observedSwiftTestingFiles: Set<String> = []
-
-        for targetName in Self.auditedTargetDirectories {
-            let targetURL = testsURL.appendingPathComponent(targetName)
-            let swiftFiles = (try? Self.enumerateSwiftFiles(under: targetURL)) ?? []
-
-            for fileURL in swiftFiles {
-                if fileURL.lastPathComponent == auditFileName { continue }
-
-                let relativePath = "\(targetName)/\(fileURL.lastPathComponent)"
-                let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-
-                let usesSwiftTesting = Self.containsSwiftTestingAnnotation(in: content)
-                let usesXCTestCase = Self.containsXCTestCaseSubclass(in: content)
-
-                if usesSwiftTesting && usesXCTestCase {
-                    violations.append("""
-                        \(relativePath): file declares an XCTestCase subclass AND uses @Suite/@Test — \
-                        this file alone trips the libmalloc SIGABRT (#681). Split the file so each \
-                        harness lives in its own source file.
-                        """.trimmingCharacters(in: .whitespacesAndNewlines))
-                    continue
-                }
-
-                if usesSwiftTesting {
-                    observedSwiftTestingFiles.insert(relativePath)
-                    if !Self.swiftTestingFilesAllowlist.contains(relativePath) {
-                        violations.append("""
-                            \(relativePath): introduces @Suite/@Test in a merged-filter CI target without \
-                            being allowlisted in SwiftTestingAuditTest.swiftTestingFilesAllowlist.
-                            """.trimmingCharacters(in: .whitespacesAndNewlines))
-                    }
-                }
-            }
-        }
+        let result = Self.scan(
+            testsRoot: testsURL,
+            auditedTargets: Self.auditedTargetDirectories,
+            allowlist: Self.swiftTestingFilesAllowlist,
+            excludedFileNames: [auditFileName]
+        )
+        let violations = result.violations
+        let observedSwiftTestingFiles = result.observed
 
         if !violations.isEmpty {
             let formatted = violations
@@ -162,6 +137,123 @@ final class SwiftTestingAuditTest: XCTestCase {
                   \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `scan(...)` the audit runs)
+
+    /// Plants a mixed-harness file (XCTestCase + @Test in one file) and a
+    /// Swift-Testing-only file not on the allowlist, in a temp tree shaped
+    /// like `Tests/`, and asserts the REAL `scan(...)` flags both — and
+    /// that allowlisting the second file exempts it.
+    func test_sabotage_detectsMixedHarnessAndUnapprovedGrowth() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("swift-testing-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let targetDir = tmp.appendingPathComponent("ManifoldBackendsTests", isDirectory: true)
+        try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+
+        try """
+        import XCTest
+        import Testing
+        final class MixedHarness: XCTestCase {
+            func test_old() {}
+        }
+        @Test func newStyle() {}
+        """.write(to: targetDir.appendingPathComponent("MixedHarness.swift"), atomically: true, encoding: .utf8)
+
+        try """
+        import Testing
+        @Suite struct NewSuite {
+            @Test func example() {}
+        }
+        """.write(to: targetDir.appendingPathComponent("NewSuiteOnly.swift"), atomically: true, encoding: .utf8)
+
+        let result = Self.scan(
+            testsRoot: tmp,
+            auditedTargets: ["ManifoldBackendsTests"],
+            allowlist: [],
+            excludedFileNames: []
+        )
+        XCTAssertTrue(
+            result.violations.contains { $0.contains("MixedHarness.swift") && $0.contains("trips the libmalloc SIGABRT") },
+            "The planted mixed-harness file must be flagged; got \(result.violations)"
+        )
+        XCTAssertTrue(
+            result.violations.contains { $0.contains("NewSuiteOnly.swift") && $0.contains("without being allowlisted") },
+            "The planted unapproved Swift Testing file must be flagged; got \(result.violations)"
+        )
+
+        // Allowlisting the Swift-Testing-only file exempts it from growth
+        // violations (the mixed-harness file is never exemptable).
+        let allowlisted = Self.scan(
+            testsRoot: tmp,
+            auditedTargets: ["ManifoldBackendsTests"],
+            allowlist: ["ManifoldBackendsTests/NewSuiteOnly.swift"],
+            excludedFileNames: []
+        )
+        XCTAssertFalse(
+            allowlisted.violations.contains { $0.contains("NewSuiteOnly.swift") },
+            "An allowlisted Swift Testing file must not be flagged for growth"
+        )
+        XCTAssertTrue(
+            allowlisted.observed.contains("ManifoldBackendsTests/NewSuiteOnly.swift"),
+            "The allowlisted file must still appear in observed Swift Testing files"
+        )
+    }
+
+    // MARK: - Detection
+
+    /// Full audit pipeline: walk the audited targets under `testsRoot`,
+    /// skip `excludedFileNames`, and flag mixed-harness files plus
+    /// unapproved Swift Testing growth against `allowlist`. Returns the
+    /// violation strings and the set of observed Swift Testing files (so
+    /// the main test's stale-allowlist check can compare against it). Both
+    /// the audit and the sabotage test call this.
+    static func scan(
+        testsRoot: URL,
+        auditedTargets: [String],
+        allowlist: Set<String>,
+        excludedFileNames: Set<String>
+    ) -> (violations: [String], observed: Set<String>) {
+        var violations: [String] = []
+        var observedSwiftTestingFiles: Set<String> = []
+
+        for targetName in auditedTargets {
+            let targetURL = testsRoot.appendingPathComponent(targetName)
+            let swiftFiles = (try? Self.enumerateSwiftFiles(under: targetURL)) ?? []
+
+            for fileURL in swiftFiles {
+                if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
+
+                let relativePath = "\(targetName)/\(fileURL.lastPathComponent)"
+                let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+
+                let usesSwiftTesting = Self.containsSwiftTestingAnnotation(in: content)
+                let usesXCTestCase = Self.containsXCTestCaseSubclass(in: content)
+
+                if usesSwiftTesting && usesXCTestCase {
+                    violations.append("""
+                        \(relativePath): file declares an XCTestCase subclass AND uses @Suite/@Test — \
+                        this file alone trips the libmalloc SIGABRT (#681). Split the file so each \
+                        harness lives in its own source file.
+                        """.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continue
+                }
+
+                if usesSwiftTesting {
+                    observedSwiftTestingFiles.insert(relativePath)
+                    if !allowlist.contains(relativePath) {
+                        violations.append("""
+                            \(relativePath): introduces @Suite/@Test in a merged-filter CI target without \
+                            being allowlisted in SwiftTestingAuditTest.swiftTestingFilesAllowlist.
+                            """.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            }
+        }
+
+        return (violations, observedSwiftTestingFiles)
     }
 
     // MARK: - Helpers

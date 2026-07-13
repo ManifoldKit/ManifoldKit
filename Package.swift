@@ -1246,18 +1246,6 @@ let package = Package(
                 "ManifoldTestSupport",
             ]
         ),
-        // Nightly sabotage suite: verifies every file-walking audit test
-        // actually catches known violations (the "who watches the watchers"
-        // guard). Run with `SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests`.
-        // Without SABOTAGE=1, all tests skip immediately via XCTSkip so they
-        // don't inflate the per-PR build time.
-        .testTarget(
-            name: "ManifoldAuditSabotageSuiteTests",
-            dependencies: [
-                "ManifoldInference",
-                "ManifoldTestSupport",
-            ]
-        ),
         .testTarget(
             name: "ManifoldTelemetryOTLPTests",
             dependencies: [

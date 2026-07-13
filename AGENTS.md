@@ -42,9 +42,10 @@ not a rule.**
    package. A consumer who wants only chat pays only for chat. *(No default
    traits — a structural fact of the manifest.)*
 4. **Every rule has a tripwire, and the tripwires are tested.** Forbidden
-   patterns get audit tests that scan the source; a sabotage suite plants
-   known violations nightly and confirms each audit still fires.
-   *(`ManifoldAuditSabotageSuiteTests` + the per-run coverage check.)*
+   patterns get audit tests that scan the source; every audit carries an
+   in-file `test_sabotage_*` that plants a known violation and runs the
+   audit's own detection function against it, per-PR.
+   *(In-file sabotage tests + `AuditSabotageCoverageAuditTest`.)*
 5. **Tests are honest.** Classified truthfully (SwiftData ⇒ integration
    test), real `async`/`await`, never a mocked persistence layer, shipped in
    the same PR as the change. A test that cannot be shown to fail is not

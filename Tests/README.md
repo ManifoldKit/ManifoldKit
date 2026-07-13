@@ -182,7 +182,7 @@ The shared model-fixture manifest (`~/Library/Caches/ManifoldKit/test-models/man
 
 ### Cross-cutting QA practices
 
-Beyond the unit/integration/E2E pyramid below, ManifoldKit ships four cross-cutting QA practices: **DX walkthroughs** ([`scripts/dx-walkthrough/`](../scripts/dx-walkthrough/README.md)), **audit tests** (19 files matching `Tests/*/*AuditTest*.swift`), an **audit sabotage suite** ([`Tests/ManifoldAuditSabotageSuiteTests/`](ManifoldAuditSabotageSuiteTests/AuditSabotageSuiteTests.swift)), and **cold-start conformance gates** (described below). For the discovery doc — what each catches, why it exists, how to run, how to extend — see [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.md).
+Beyond the unit/integration/E2E pyramid below, ManifoldKit ships four cross-cutting QA practices: **DX walkthroughs** ([`scripts/dx-walkthrough/`](../scripts/dx-walkthrough/README.md)), **audit tests** (the files matching `Tests/*/*AuditTest*.swift`), **in-file audit sabotage tests** (a `test_sabotage_*` method in every audit file, enforced by `AuditSabotageCoverageAuditTest`), and **cold-start conformance gates** (described below). For the discovery doc — what each catches, why it exists, how to run, how to extend — see [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.md).
 
 ### Cold-start conformance gates
 
