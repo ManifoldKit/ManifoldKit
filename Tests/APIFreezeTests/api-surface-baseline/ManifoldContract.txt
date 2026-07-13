@@ -366,6 +366,9 @@ SSEPayloadHandler.isStreamEnd(_:) Func
 Stage Enum
 Stage.thinking EnumElement
 Stage.tool EnumElement
+StreamTransform Protocol
+StreamTransform.finalize() Func
+StreamTransform.process(_:) Func
 StructuredHistoryReceiver Protocol
 StructuredHistoryReceiver.setStructuredHistory(_:) Func
 StructuredMessage Struct
