@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 import Foundation
 
 /// Guards against regression on issue #2094: `nonisolated(unsafe) static var`
@@ -84,8 +85,9 @@ final class UnlockedNonisolatedUnsafeTestSeamAuditTest: XCTestCase {
     /// `nonisolated(unsafe) static var` test-injection seam and asserts the
     /// REAL scan flags it — and that a fingerprint allowlist entry exempts it.
     func test_sabotage_scanFlagsPlantedUnlockedSeam() throws {
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("unlocked-seam-sabotage-\(UUID().uuidString)", isDirectory: true)
+        let tmp = try Self.makeSabotageTempDirectory(
+            name: "unlocked-seam-sabotage-\(UUID().uuidString)"
+        )
         defer { try? FileManager.default.removeItem(at: tmp) }
 
         let root = tmp.appendingPathComponent("ManifoldSomeModule", isDirectory: true)
@@ -211,4 +213,23 @@ final class UnlockedNonisolatedUnsafeTestSeamAuditTest: XCTestCase {
         }
         return result
     }
+
+    /// Builds a fresh, UUID-suffixed temp directory and returns it fully
+    /// resolved via POSIX `realpath()`. `/var` (macOS's temp-dir root) is an
+    /// APFS firmlink to `/private/var`, not a classic symlink — so
+    /// `URL.resolvingSymlinksInPath()` leaves it untouched while
+    /// `FileManager`'s directory enumerator returns the fully-resolved
+    /// `/private/var/...` form for every child it walks. Without this,
+    /// string-prefix stripping of `root.path` against an enumerated child's
+    /// `.path` silently fails to match (the prefixes differ), corrupting
+    /// every relative-path fingerprint this sabotage test asserts against.
+    private static func makeSabotageTempDirectory(name: String) throws -> URL {
+        let unresolved = FileManager.default.temporaryDirectory
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: unresolved, withIntermediateDirectories: true)
+        var buffer = [Int8](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(unresolved.path, &buffer) != nil else { return unresolved }
+        return URL(fileURLWithPath: String(cString: buffer), isDirectory: true)
+    }
+
 }

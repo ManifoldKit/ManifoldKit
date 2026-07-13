@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 
 /// Phase 2 audit: `DNSRebindingGuard` must only be referenced inside the
 /// `SSECloudBackend` envelope, never directly by a provider-level backend
@@ -67,8 +68,9 @@ final class DNSRebindingCoverageAuditTest: XCTestCase {
     /// like a cloud source root and asserts the REAL detection function flags
     /// it — and that an allowlisted envelope path stays exempt.
     func test_sabotage_detectsGuardReferenceOutsideEnvelope() throws {
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dns-rebinding-sabotage-\(UUID().uuidString)", isDirectory: true)
+        let tmp = try Self.makeSabotageTempDirectory(
+            name: "dns-rebinding-sabotage-\(UUID().uuidString)"
+        )
         defer { try? FileManager.default.removeItem(at: tmp) }
 
         let root = tmp.appendingPathComponent("ManifoldCloudSaaS", isDirectory: true)
@@ -151,4 +153,23 @@ final class DNSRebindingCoverageAuditTest: XCTestCase {
         }
         return out
     }
+
+    /// Builds a fresh, UUID-suffixed temp directory and returns it fully
+    /// resolved via POSIX `realpath()`. `/var` (macOS's temp-dir root) is an
+    /// APFS firmlink to `/private/var`, not a classic symlink — so
+    /// `URL.resolvingSymlinksInPath()` leaves it untouched while
+    /// `FileManager`'s directory enumerator returns the fully-resolved
+    /// `/private/var/...` form for every child it walks. Without this,
+    /// string-prefix stripping of `root.path` against an enumerated child's
+    /// `.path` silently fails to match (the prefixes differ), corrupting
+    /// every relative-path fingerprint this sabotage test asserts against.
+    private static func makeSabotageTempDirectory(name: String) throws -> URL {
+        let unresolved = FileManager.default.temporaryDirectory
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: unresolved, withIntermediateDirectories: true)
+        var buffer = [Int8](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(unresolved.path, &buffer) != nil else { return unresolved }
+        return URL(fileURLWithPath: String(cString: buffer), isDirectory: true)
+    }
+
 }

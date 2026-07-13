@@ -587,14 +587,6 @@
         "ManifoldTestSupport"
       ]
     },
-    "ManifoldAuditSabotageSuiteTests": {
-      "type": "test",
-      "path": "Tests/ManifoldAuditSabotageSuiteTests",
-      "deps": [
-        "ManifoldInference",
-        "ManifoldTestSupport"
-      ]
-    },
     "ManifoldTelemetryOTLPTests": {
       "type": "test",
       "path": "Tests/ManifoldTelemetryOTLPTests",
