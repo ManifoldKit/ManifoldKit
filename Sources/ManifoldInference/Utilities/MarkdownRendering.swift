@@ -149,7 +149,7 @@ public enum MarkdownRendering {
     // MARK: - Internals (also consumed by AssistantMarkdownParser)
 
     /// Returns the tick count and trailing info-string for a fence line, or
-    /// `nil` if the line isn't a fence. Public-public surface so the
+    /// `nil` if the line isn't a fence. Public-package surface so the
     /// `ManifoldUI` parser can delegate without re-implementing.
     public static func parseFenceLine(_ line: String) -> (ticks: Int, rest: String)? {
         let trimmedLeading = line.trimmingCharacters(in: .whitespaces)
