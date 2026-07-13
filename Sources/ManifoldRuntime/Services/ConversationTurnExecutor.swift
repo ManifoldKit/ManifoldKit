@@ -920,13 +920,22 @@ package struct ConversationTurnExecutor: Sendable {
                     break
                 }
             }
-        } catch let InferenceError.idleTimeout(timeout) {
+        } catch let InferenceError.idleTimeout(timeout) where config.progressStallTimeout != nil {
             // Progress/stall timeout fired: the backend went unresponsive for
             // longer than `config.progressStallTimeout`. Cancel the in-flight
             // backend work so it doesn't keep running after we stop consuming,
             // then classify this as a distinct timed-out outcome (not a generic
             // inference failure). A user cancel that raced ahead still wins —
             // the `isCancelled` check below re-derives the terminal reason.
+            //
+            // The `where` clause scopes the `.timedOut` reclassification to
+            // turns that actually armed this executor's stall wrapper. An
+            // `InferenceError.idleTimeout` surfacing from a deeper layer (a
+            // cloud backend's own stream-idle policy) on a turn with no
+            // `progressStallTimeout` falls through to the generic catch below
+            // and stays a plain `.inference` failure — the turn-level
+            // timed-out outcome means "the turn's own stall knob fired",
+            // nothing broader.
             await inferenceService.cancelAsync(token)
             if await isCancelled(handle: handle) {
                 streamFailed = .cancelled

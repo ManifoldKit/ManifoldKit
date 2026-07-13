@@ -32,7 +32,11 @@ public enum RepetitionDetector {
     /// sensitivity (``RepetitionGuardConfig``). Passing
     /// ``RepetitionGuardConfig/default`` reproduces the original behaviour
     /// byte-for-byte.
-    public static func looksLikeLooping(_ text: String, config: RepetitionGuardConfig) -> Bool {
+    ///
+    /// `package`-scoped deliberately: hosts tune via
+    /// `TurnConfig.repetitionGuard` / ``GenerationStreamConsumer/repetitionGuard``;
+    /// the only direct caller is same-module ``GenerationStreamConsumer``.
+    package static func looksLikeLooping(_ text: String, config: RepetitionGuardConfig) -> Bool {
         // The algorithm only ever inspects the tail: 2x detection compares the last
         // 200-char unit against the preceding 200 (≤400 chars), and 3x detection the
         // last three 120-char units (≤360 chars). Bounding the input to the final 500

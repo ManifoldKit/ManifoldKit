@@ -174,6 +174,35 @@ private final class HangingRuntimeBackend: InferenceBackend, @unchecked Sendable
     }
 }
 
+/// Backend that yields one token, then finishes its stream by throwing
+/// `CancellationError` — simulating a backend whose cancellation lands before
+/// the runtime's cancellation registry observes the flip (the cancel-race the
+/// executor's `error is CancellationError` guard exists for). Used to prove
+/// the guard still works when the turn's progress/stall timeout wrapper is
+/// interposed between the queue stream and the drain loop.
+private final class CancellationThrowingRuntimeBackend: InferenceBackend, @unchecked Sendable {
+    var isModelLoaded: Bool { true }
+    var isGenerating: Bool { false }
+    let capabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP, .repeatPenalty],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true
+    )
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
+
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
+        GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in
+            continuation.yield(.token("partial"))
+            continuation.finish(throwing: CancellationError())
+        })
+    }
+
+    func stopGeneration() {}
+    func unloadModel() {}
+}
+
 /// Phase 1.2.5 PR-A — coverage for the new `ConversationRuntime` send sub-flow.
 ///
 /// Send is the only sub-flow PR-A ships. Regenerate / edit / branch are
@@ -919,6 +948,43 @@ final class ConversationRuntimeTests: XCTestCase {
         try await waitForBackendTermination(backend, deadline: .seconds(2))
         XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
                        "no visible content streamed, so no assistant message persists")
+    }
+
+    func test_stallTimeout_backendCancellationError_survivesWrapperAndMapsToCancelled() async throws {
+        // Review finding (PR #2259): the idle-timeout wrapper used to swallow
+        // an upstream `CancellationError` as a clean finish, defeating the
+        // executor's cancel-race guard whenever `progressStallTimeout` was
+        // set — a backend-cancelled turn would classify as `.completed`/`.empty`
+        // instead of carrying the cancellation signal. This pins the fix: the
+        // error must propagate through the wrapper so the drain loop's
+        // `error is CancellationError` mapping produces `ConversationError.cancelled`.
+        let backend = CancellationThrowingRuntimeBackend()
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            sessionStore: nil,
+            inferenceService: inference
+        )
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "race"),
+            // Generous timeout: it must NOT fire — the CancellationError
+            // arrives immediately. This test is about signal propagation
+            // through the armed wrapper, not the stall itself.
+            config: TurnConfig(progressStallTimeout: .seconds(30))
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn, deadline: .seconds(5))
+
+        XCTAssertNotEqual(outcome.reason, .timedOut,
+                          "the stall timeout must not fire for an immediate backend error")
+        let error = try XCTUnwrap(outcome.error,
+                                  "the backend's CancellationError must survive the idle wrapper — a nil error means it was swallowed as a clean finish")
+        guard case .cancelled = error else {
+            return XCTFail("expected ConversationError.cancelled from the cancel-race guard, got \(error)")
+        }
     }
 
     func test_finishState_cancelAfterPartialOutput_persistsPartialAndEmitsSingleCancelledTerminal() async throws {

@@ -846,7 +846,6 @@ RenderedPrompt.stopSequences Var
 RenderedPrompt.text Var
 RepetitionDetector Enum
 RepetitionDetector.looksLikeLooping(_:) Func
-RepetitionDetector.looksLikeLooping(_:config:) Func
 RepetitionDetector.repetitionRate(of:unitRange:) Func
 RepetitionGuardConfig Struct
 RepetitionGuardConfig.__derived_struct_equals(_:_:) Func

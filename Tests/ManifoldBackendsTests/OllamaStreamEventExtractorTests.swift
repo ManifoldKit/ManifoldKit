@@ -168,6 +168,63 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
         }
     }
 
+    // Review finding (PR #2259): the activation check keys on a whole open
+    // marker within ONE content frame, but Ollama streams model-token-sized
+    // chunks — `<think>` can arrive as `<thi` + `nk>`. Without the extractor's
+    // partial-marker holdback the first fragment leaks as a visible `.token`
+    // and the parser never activates. This test pins the fixed behaviour.
+    func test_extractor_openMarkerSplitAcrossFrames_stillConvertsAndDoesNotLeak() throws {
+        let payloads = [
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":"<thi"},"done":false}"#,
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":"nk>Split reasoning."},"done":false}"#,
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":"</think>Answer."},"done":false}"#,
+            #"{"model":"qwen3-fixture","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":9}"#
+        ]
+        let extractor = OllamaStreamEventExtractor(config: GenerationConfig())
+        var events: [GenerationEvent] = []
+        for payload in payloads {
+            events.append(contentsOf: extractor.consume(payload: payload))
+        }
+        events.append(contentsOf: extractor.finish())
+
+        let thinkingText = events.compactMap { event -> String? in
+            if case .thinkingToken(let t) = event { return t } else { return nil }
+        }.joined()
+        XCTAssertTrue(thinkingText.contains("Split reasoning."),
+                      "reasoning behind a frame-split <think> must surface as .thinkingToken (saw \(events))")
+        XCTAssertTrue(events.contains { if case .thinkingCompleted = $0 { return true } else { return false } })
+
+        let visibleText = events.compactMap { event -> String? in
+            if case .token(let t) = event { return t } else { return nil }
+        }.joined()
+        XCTAssertEqual(visibleText, "Answer.",
+                       "no fragment of the split marker or the reasoning may leak into visible tokens")
+    }
+
+    // The holdback must not swallow genuinely visible text: a trailing `<`
+    // that never completes into a marker is flushed as a token on the done
+    // frame, so ordinary prose containing comparisons survives intact.
+    func test_extractor_partialMarkerHoldback_flushesAsVisibleWhenNoMarkerFollows() throws {
+        let payloads = [
+            #"{"model":"plain-fixture","message":{"role":"assistant","content":"a <"},"done":false}"#,
+            #"{"model":"plain-fixture","message":{"role":"assistant","content":"= b"},"done":false}"#,
+            #"{"model":"plain-fixture","message":{"role":"assistant","content":" holds"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":4}"#
+        ]
+        let extractor = OllamaStreamEventExtractor(config: GenerationConfig())
+        var events: [GenerationEvent] = []
+        for payload in payloads {
+            events.append(contentsOf: extractor.consume(payload: payload))
+        }
+        events.append(contentsOf: extractor.finish())
+
+        let visibleText = events.compactMap { event -> String? in
+            if case .token(let t) = event { return t } else { return nil }
+        }.joined()
+        XCTAssertEqual(visibleText, "a <= b holds",
+                       "held-back non-marker text must be flushed, not dropped")
+        XCTAssertFalse(events.contains { if case .thinkingToken = $0 { return true } else { return false } })
+    }
+
     // MARK: - Cross-stream isolation (sabotage)
 
     func test_extractor_isFreshPerInstance_stateDoesNotLeakAcrossStreams() throws {
