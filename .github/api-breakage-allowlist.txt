@@ -366,3 +366,5 @@ API breakage: class MockBackgroundTaskScheduler has been removed
 API breakage: struct MemoryBudget has been removed
 API breakage: protocol BackgroundTaskScheduler has been removed
 API breakage: class DefaultBackgroundTaskScheduler has been removed
+API breakage: enumelement HookEvent.postGeneration has been added as a new enum case
+API breakage: constructor HookInput.init(event:sessionID:toolName:toolArguments:) has been removed
