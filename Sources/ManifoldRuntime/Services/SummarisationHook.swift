@@ -171,6 +171,31 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
         await performSummarisation(sessionID: turn.sessionID)
     }
 
+    // MARK: - HookRegistry adapter (B.2)
+
+    /// Exposes this hook's summarisation trigger as a ``HookRegistry``
+    /// `.postGeneration` handler, so hosts standardising on the unified
+    /// registry seam can register `SummarisationHook` there instead of
+    /// threading it through ``ConversationRuntime``'s separate
+    /// `generationHooks` parameter:
+    ///
+    /// ```swift,no-build
+    /// await registry.register(.postGeneration, handler: summarisationHook.makeHookHandler())
+    /// ```
+    ///
+    /// A thin adapter over the existing ``postGeneration(_:)`` — the trigger
+    /// policy and summarisation logic are not duplicated. Returns
+    /// `.passthrough` unconditionally: summarisation is observational from
+    /// the registry's point of view (it mutates the message store directly,
+    /// not the turn's `HookOutput`).
+    public func makeHookHandler() -> HookRegistry.Handler {
+        { [weak self] input in
+            guard let self, let turn = input.completedTurn else { return .passthrough }
+            await self.postGeneration(turn)
+            return .passthrough
+        }
+    }
+
     // MARK: - Summarisation
 
     private func performSummarisation(sessionID: UUID) async {
