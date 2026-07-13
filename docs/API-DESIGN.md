@@ -71,12 +71,14 @@ store write, not just generation turns, and stay outside the generation-lifecycl
 **Lifecycle signals are two seams, owned by two tiers** (decided 2026-07-14,
 v1-rationalisation plan B.4): a generation turn's lifecycle (queued → connecting →
 loading/streaming → stalled/retrying → done/failed) is **stream-scoped** — owned by
-``GenerationStream/phase`` in `ManifoldContract`, one instance per in-flight request.
+`GenerationStream.phase` in `ManifoldContract`, one instance per in-flight request.
 A model load's lifecycle (idle → loading → loaded/failed) is **coordinator-scoped** —
-owned by `ModelLoadStatus` via ``ModelLoadCoordinator/statusUpdates()`` in
+owned by `ModelLoadStatus` via `ModelLoadCoordinator.statusUpdates()` in
 `ManifoldInference`, one multi-observer fan-out per `InferenceService`. These are the
-canonical signals for their respective lifecycles going forward; see
-`ManifoldInference`'s <doc:LifecycleSignals> DocC article for consumption examples.
+canonical signals for their respective lifecycles going forward; see the
+LifecycleSignals DocC article
+(`Sources/ManifoldInference/ManifoldInference.docc/Articles/LifecycleSignals.md`)
+for consumption examples.
 
 Two older signals overlap these and are **legacy, slated for demotion only after the
 origin app migrates onto the canonical pair** (plan B.0/B.4 — this decision documents
@@ -87,8 +89,8 @@ internally by `InferenceService.waitUntilModelReady`). Point new work at
 `GenerationStream.phase` / `ModelLoadStatus` — do not add new consumers of either
 legacy signal. This resolves the #2128 `.phase` item ("emitted, nothing renders")
 with a documented consumer path instead of a cut: the writer side was already live
-across `GenerationQueue` and the cloud/Ollama SSE paths (see <doc:LifecycleSignals>
-for file:line evidence) — the actual gap was the absence of an in-repo reader and of
+across `GenerationQueue` and the cloud/Ollama SSE paths (see the LifecycleSignals
+article for file:line evidence) — the actual gap was the absence of an in-repo reader and of
 this ownership documentation, not a dead write.
 
 ## 3. Visibility policy
