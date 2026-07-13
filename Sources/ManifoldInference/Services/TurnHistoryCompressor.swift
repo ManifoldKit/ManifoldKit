@@ -10,7 +10,7 @@ import Foundation
 /// Mirrors Goose AI's three triggers (`crates/goose/src/context_mgmt/mod.rs`):
 /// automatic budget overflow, in-loop tool compaction, and explicit user
 /// request.
-public enum CompactionTrigger: Sendable {
+package enum CompactionTrigger: Sendable {
     /// Budget exceeded mid-conversation. The compaction was not user-driven
     /// and is not happening inside an active tool-calling loop.
     case automatic
@@ -35,28 +35,28 @@ public enum CompactionTrigger: Sendable {
 /// that summarisers can quote arguments or excerpt outputs verbatim and so
 /// that round-trip tests can verify older facts are still recoverable from
 /// a compressed transcript.
-public struct TurnHistoryRecord: Sendable, Equatable {
+package struct TurnHistoryRecord: Sendable, Equatable {
 
     /// 1-indexed step number in the orchestrator's loop. Stable across
     /// compression — a record's `step` does not change when it is folded
     /// into a summary, so consumers can reliably reference "step 3" in
     /// summary text without worrying about renumbering.
-    public let step: Int
+    package let step: Int
 
     /// Visible text fragments the model produced during this round before
     /// (or in addition to) any tool calls. Empty when the round consisted
     /// solely of tool calls.
-    public let intermediateTokens: [String]
+    package let intermediateTokens: [String]
 
     /// Tool calls emitted by the model in this round, in batch-emission
     /// order (matches the orchestrator's deterministic next-prompt layout).
-    public let toolCalls: [ToolCall]
+    package let toolCalls: [ToolCall]
 
     /// Tool results in the same order as ``toolCalls``. Always one-to-one
     /// with ``toolCalls`` — the orchestrator pairs them before recording.
-    public let toolResults: [ToolResult]
+    package let toolResults: [ToolResult]
 
-    public init(
+    package init(
         step: Int,
         intermediateTokens: [String] = [],
         toolCalls: [ToolCall] = [],
@@ -70,7 +70,7 @@ public struct TurnHistoryRecord: Sendable, Equatable {
 
     /// Concatenated visible text for this round. Used by compressors and
     /// for `approximateSize` accounting.
-    public var visibleText: String {
+    package var visibleText: String {
         intermediateTokens.joined()
     }
 
@@ -79,7 +79,7 @@ public struct TurnHistoryRecord: Sendable, Equatable {
     /// Sums the visible text plus every tool call's argument string and
     /// every result's content string. Compressors compare this against
     /// their byte-budget to decide what to fold.
-    public var approximateSize: Int {
+    package var approximateSize: Int {
         var n = visibleText.count
         for call in toolCalls {
             n += call.toolName.count + call.arguments.count
@@ -99,23 +99,23 @@ public struct TurnHistoryRecord: Sendable, Equatable {
 /// Agent-loop drivers rebuild the next-turn prompt as
 /// `initialPrompt + summary + verbatim record appendix`, so an empty summary
 /// with all records preserved is a no-op.
-public struct CompressedTranscript: Sendable, Equatable {
+package struct CompressedTranscript: Sendable, Equatable {
 
     /// Summary text covering folded rounds. Inserted into the next prompt
     /// before the preserved records' appendix.
     ///
     /// Empty when nothing was folded.
-    public let summary: String
+    package let summary: String
 
     /// Records that were folded into ``summary``. Surfaced for tests and
     /// for compressors that chain (e.g. summarise-then-resummarise).
-    public let foldedRecords: [TurnHistoryRecord]
+    package let foldedRecords: [TurnHistoryRecord]
 
     /// Records that must be re-appended verbatim to the next-turn prompt.
     /// Order is preserved — compressors must not reorder.
-    public let preservedRecords: [TurnHistoryRecord]
+    package let preservedRecords: [TurnHistoryRecord]
 
-    public init(
+    package init(
         summary: String,
         foldedRecords: [TurnHistoryRecord],
         preservedRecords: [TurnHistoryRecord]
@@ -126,7 +126,7 @@ public struct CompressedTranscript: Sendable, Equatable {
     }
 
     /// A pass-through compression — the input records are preserved unchanged.
-    public static func unchanged(_ records: [TurnHistoryRecord]) -> CompressedTranscript {
+    package static func unchanged(_ records: [TurnHistoryRecord]) -> CompressedTranscript {
         CompressedTranscript(summary: "", foldedRecords: [], preservedRecords: records)
     }
 }
@@ -145,7 +145,7 @@ public struct CompressedTranscript: Sendable, Equatable {
 /// ``BudgetTurnHistoryCompressor``; drivers default to
 /// ``NoOpTurnHistoryCompressor()`` for no compression so existing callers
 /// see no behaviour change.
-public protocol TurnHistoryCompressor: Sendable {
+package protocol TurnHistoryCompressor: Sendable {
 
     /// Decides whether (and how) to fold older rounds.
     ///
@@ -169,7 +169,7 @@ public protocol TurnHistoryCompressor: Sendable {
     func compress(records: [TurnHistoryRecord], trigger: CompactionTrigger) -> CompressedTranscript
 }
 
-public extension TurnHistoryCompressor {
+package extension TurnHistoryCompressor {
     /// Default implementation forwards to the trigger-agnostic method so
     /// that adopters which were written before ``CompactionTrigger`` keep
     /// working. New implementations should override this to consume the
@@ -204,29 +204,29 @@ public extension TurnHistoryCompressor {
 /// The format is plain text by design — every backend's prompt
 /// concatenation path accepts strings, so the summary travels with the
 /// next-turn prompt without needing a structured-message channel.
-public struct BudgetTurnHistoryCompressor: TurnHistoryCompressor {
+package struct BudgetTurnHistoryCompressor: TurnHistoryCompressor {
 
     /// Approximate character budget across the whole transcript. Once the
     /// running total exceeds this, the compressor begins folding from the
     /// front. Defaults to 8_000 — a conservative choice that keeps a
     /// 4k-token model well within window after system + initial prompt.
-    public let characterBudget: Int
+    package let characterBudget: Int
 
     /// Lower bound on how many of the most recent records must remain
     /// verbatim, regardless of budget. Defaults to 2 — enough that the
     /// model sees the immediately preceding round's call/result pair so
     /// it can continue reasoning about it without needing the summary.
-    public let preserveRecentTurns: Int
+    package let preserveRecentTurns: Int
 
     /// Maximum number of "notable results" to inline in the summary.
     /// Defaults to 5. Older folded rounds beyond this collapse to a count.
-    public let maxResultExcerpts: Int
+    package let maxResultExcerpts: Int
 
     /// Maximum length of each excerpted result value before truncation.
     /// Defaults to 80 characters.
-    public let maxResultExcerptLength: Int
+    package let maxResultExcerptLength: Int
 
-    public init(
+    package init(
         characterBudget: Int = 8_000,
         preserveRecentTurns: Int = 2,
         maxResultExcerpts: Int = 5,
@@ -240,11 +240,11 @@ public struct BudgetTurnHistoryCompressor: TurnHistoryCompressor {
         self.maxResultExcerptLength = max(8, maxResultExcerptLength)
     }
 
-    public func compress(records: [TurnHistoryRecord]) -> CompressedTranscript {
+    package func compress(records: [TurnHistoryRecord]) -> CompressedTranscript {
         compress(records: records, trigger: .automatic)
     }
 
-    public func compress(
+    package func compress(
         records: [TurnHistoryRecord],
         trigger: CompactionTrigger
     ) -> CompressedTranscript {
@@ -365,9 +365,9 @@ public struct BudgetTurnHistoryCompressor: TurnHistoryCompressor {
 /// A compressor that never folds anything. Useful as a sentinel and as the
 /// implicit default when an agent-loop driver is constructed without a
 /// `compressor` argument — existing callers see no behaviour change.
-public struct NoOpTurnHistoryCompressor: TurnHistoryCompressor {
-    public init() {}
-    public func compress(records: [TurnHistoryRecord]) -> CompressedTranscript {
+package struct NoOpTurnHistoryCompressor: TurnHistoryCompressor {
+    package init() {}
+    package func compress(records: [TurnHistoryRecord]) -> CompressedTranscript {
         .unchanged(records)
     }
 }

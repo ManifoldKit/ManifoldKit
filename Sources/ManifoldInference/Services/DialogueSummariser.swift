@@ -116,10 +116,10 @@ public struct DefaultDialogueSummariser: DialogueSummariser {
 ///
 /// Useful as a compile-time stand-in or for disabling summarisation in a
 /// context where the type system requires a concrete `DialogueSummariser`.
-public struct NoOpDialogueSummariser: DialogueSummariser {
-    public init() {}
+package struct NoOpDialogueSummariser: DialogueSummariser {
+    package init() {}
 
-    public func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String {
+    package func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String {
         ""
     }
 }

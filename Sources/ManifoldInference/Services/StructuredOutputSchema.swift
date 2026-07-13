@@ -1,9 +1,12 @@
 import Foundation
 
-/// A public, self-contained facade over MK's JSON-Schema → constrained-output
-/// machinery, intended to replace the hand-rolled schema layers that downstream
-/// apps built when MK's tool-calling path was unreliable (Idlewick's
-/// `DeclarativeTool`, Fireside's `ExtractionSchema` — see #1992).
+/// A self-contained facade over MK's JSON-Schema → constrained-output
+/// machinery, originally intended to replace the hand-rolled schema layers that
+/// downstream apps built when MK's tool-calling path was unreliable (Idlewick's
+/// `DeclarativeTool`, Fireside's `ExtractionSchema` — see #1992). No app ever
+/// adopted it, so it is package-internal (API-v1-rationalisation Phase A.1);
+/// kept as the in-package facade `ToolGrammarBuilder`/`JSONSchemaValidator`
+/// callers use instead of the two lower-level pieces directly.
 ///
 /// One schema in, three capabilities out:
 ///
@@ -23,7 +26,7 @@ import Foundation
 /// The underlying pieces — ``ToolGrammarBuilder`` (lowering) and
 /// ``JSONSchemaValidator`` (validation) — already existed but were discovered
 /// piecemeal and documented for the internal tool-call path. This type is the
-/// single, documented public entry point so a consumer can write:
+/// single in-package entry point so callers can write:
 ///
 /// ```swift
 /// let schema = StructuredOutputSchema(
@@ -61,17 +64,17 @@ import Foundation
 /// closed* on unsupported keywords (it refuses to claim validity it cannot
 /// enforce) — a ``SchemaViolation`` naming the unsupported keyword is returned
 /// from ``validate(_:)`` / ``parse(_:)`` in that case.
-public struct StructuredOutputSchema: Sendable, Equatable, Hashable {
+package struct StructuredOutputSchema: Sendable, Equatable, Hashable {
 
     /// The JSON-Schema document this facade wraps.
-    public let schema: JSONSchemaValue
+    package let schema: JSONSchemaValue
 
     /// Wraps a JSON-Schema document for constrained output.
     ///
     /// - Parameter schema: the schema, typically an object schema with
     ///   `properties`/`required`. A bare scalar schema carries no structure to
     ///   constrain — ``gbnfGrammar()`` returns `nil` for it.
-    public init(_ schema: JSONSchemaValue) {
+    package init(_ schema: JSONSchemaValue) {
         self.schema = schema
     }
 
@@ -93,7 +96,7 @@ public struct StructuredOutputSchema: Sendable, Equatable, Hashable {
     ///
     /// - Returns: a GBNF grammar string, or `nil` if the schema constrains
     ///   nothing.
-    public func gbnfGrammar() -> String? {
+    package func gbnfGrammar() -> String? {
         // Prefer the object-payload lowering: it accepts type-omitted object
         // schemas (common in extraction payloads) and always returns a grammar
         // for object-shaped input. For non-object schemas it returns nil, in
@@ -113,14 +116,14 @@ public struct StructuredOutputSchema: Sendable, Equatable, Hashable {
     ///
     /// This re-exports ``JSONSchemaValidator/ValidationFailure`` under the
     /// facade's vocabulary so consumers need not reach into the validator type.
-    public typealias SchemaViolation = JSONSchemaValidator.ValidationFailure
+    package typealias SchemaViolation = JSONSchemaValidator.ValidationFailure
 
     /// Validates an already-parsed JSON value against the schema.
     ///
     /// - Parameter value: the value to check, as a ``JSONSchemaValue`` tree.
     /// - Returns: `nil` when the value satisfies the schema; otherwise the first
     ///   ``SchemaViolation`` encountered.
-    public func validate(_ value: JSONSchemaValue) -> SchemaViolation? {
+    package func validate(_ value: JSONSchemaValue) -> SchemaViolation? {
         JSONSchemaValidator().validate(value, against: schema)
     }
 
@@ -130,7 +133,7 @@ public struct StructuredOutputSchema: Sendable, Equatable, Hashable {
     /// - Parameter json: the raw JSON text emitted by the model.
     /// - Returns: `nil` when the text parses and satisfies the schema; otherwise
     ///   a ``SchemaViolation`` describing the parse error or first violation.
-    public func validate(json: String) -> SchemaViolation? {
+    package func validate(json: String) -> SchemaViolation? {
         JSONSchemaValidator().validate(arguments: json, against: schema)
     }
 
@@ -146,7 +149,7 @@ public struct StructuredOutputSchema: Sendable, Equatable, Hashable {
     /// - Parameter json: the raw JSON text emitted by the model.
     /// - Returns: `.success(value)` with the validated tree, or
     ///   `.failure(violation)` describing the parse error or first violation.
-    public func parse(_ json: String) -> Result<JSONSchemaValue, SchemaViolation> {
+    package func parse(_ json: String) -> Result<JSONSchemaValue, SchemaViolation> {
         guard let data = json.data(using: .utf8) else {
             return .failure(SchemaViolation(
                 modelReadableMessage: "output was not valid UTF-8 JSON.",
