@@ -39,10 +39,6 @@ BM25Scorer.defaultB Var
 BM25Scorer.defaultK1 Var
 BM25Scorer.init(corpus:k1:b:) Constructor
 BM25Scorer.score(query:limit:) Func
-BackgroundTaskScheduler Protocol
-BackgroundTaskScheduler.cancel(identifier:) Func
-BackgroundTaskScheduler.schedule(identifier:budget:work:) Func
-BackgroundTaskScheduler.schedule(identifier:work:) Func
 BenchmarkCache Protocol
 BenchmarkCache.fetchAll() Func
 BenchmarkCache.upsert(modelFileName:result:) Func
@@ -292,11 +288,6 @@ ConversationTurnOutcome.promptTokens Var
 ConversationTurnOutcome.reason Var
 ConversationTurnOutcome.sessionID Var
 ConversationTurnOutcome.streamHandle Var
-DefaultBackgroundTaskScheduler Class
-DefaultBackgroundTaskScheduler.MemorySampler TypeAlias
-DefaultBackgroundTaskScheduler.cancel(identifier:) Func
-DefaultBackgroundTaskScheduler.init(memorySampler:) Constructor
-DefaultBackgroundTaskScheduler.schedule(identifier:budget:work:) Func
 DefaultCompressionPolicy Struct
 DefaultCompressionPolicy.anchored(threshold:contextSize:reservedTokens:summarizerInputWindow:summaryTemplate:tokenizer:isPinned:onOutcome:) Func
 DefaultCompressionPolicy.compress(history:sessionID:generate:) Func
@@ -500,12 +491,6 @@ MarkdownExportFormat.contentType Var
 MarkdownExportFormat.export(session:messages:) Func
 MarkdownExportFormat.fileExtension Var
 MarkdownExportFormat.init() Constructor
-MemoryBudget Struct
-MemoryBudget.__derived_struct_equals(_:_:) Func
-MemoryBudget.default Var
-MemoryBudget.init(maxBytes:sampleInterval:) Constructor
-MemoryBudget.maxBytes Var
-MemoryBudget.sampleInterval Var
 MessageSearchHit Struct
 MessageSearchHit.ID TypeAlias
 MessageSearchHit.__derived_struct_equals(_:_:) Func

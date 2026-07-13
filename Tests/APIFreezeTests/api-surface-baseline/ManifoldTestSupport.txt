@@ -129,17 +129,6 @@ MidStreamErrorBackend.loadModel(from:plan:) Func
 MidStreamErrorBackend.stopGeneration() Func
 MidStreamErrorBackend.tokensBeforeError Var
 MidStreamErrorBackend.unloadModel() Func
-MockBackgroundTaskScheduler Class
-MockBackgroundTaskScheduler.ScheduledCall Struct
-MockBackgroundTaskScheduler.ScheduledCall.budget Var
-MockBackgroundTaskScheduler.ScheduledCall.identifier Var
-MockBackgroundTaskScheduler.calls Var
-MockBackgroundTaskScheduler.cancel(identifier:) Func
-MockBackgroundTaskScheduler.cancellations Var
-MockBackgroundTaskScheduler.init() Constructor
-MockBackgroundTaskScheduler.schedule(identifier:budget:work:) Func
-MockBackgroundTaskScheduler.simulateMemoryBudgetExceeded(identifier:) Func
-MockBackgroundTaskScheduler.waitForFinish(identifier:) Func
 MockBenchmarkRunner Class
 MockBenchmarkRunner.callCount Var
 MockBenchmarkRunner.init(result:) Constructor
