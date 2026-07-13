@@ -11,7 +11,7 @@
 /// `finalize()` flushes any bytes the transform is holding back at the chunk
 /// boundary — an unterminated marker resolves to plain text (or thinking text),
 /// and a dangling open tool block is discarded.
-public protocol StreamTransform: Sendable {
+package protocol StreamTransform: Sendable {
     /// Re-scan the `.token` payloads in `events`; pass all other cases through.
     mutating func process(_ events: [GenerationEvent]) -> [GenerationEvent]
 

@@ -54,7 +54,7 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
 
     // MARK: - CategorizedError
 
-    public var category: InferenceErrorCategory {
+    package var category: InferenceErrorCategory {
         switch self {
         case .rateLimited(let retryAfter):
             return .rateLimited(retryAfter: retryAfter)

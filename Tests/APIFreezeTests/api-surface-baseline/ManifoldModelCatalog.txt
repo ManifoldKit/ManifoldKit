@@ -97,7 +97,6 @@ CloudBackendError Enum
 CloudBackendError.authenticationFailed EnumElement
 CloudBackendError.backendDeallocated EnumElement
 CloudBackendError.blockedAddress EnumElement
-CloudBackendError.category Var
 CloudBackendError.contentFiltered EnumElement
 CloudBackendError.errorDescription Var
 CloudBackendError.invalidURL EnumElement
@@ -550,8 +549,6 @@ ModelStorageService.userDocumentsModelsDirectory Var
 NetworkPolicyError Enum
 NetworkPolicyError.__derived_enum_equals(_:_:) Func
 NetworkPolicyError.hostNotAllowed EnumElement
-NetworkPolicyGuard Enum
-NetworkPolicyGuard.check(url:policy:) Func
 OperationalError Enum
 OperationalError.__derived_enum_equals(_:_:) Func
 OperationalError.benchmarkCacheUnavailable EnumElement

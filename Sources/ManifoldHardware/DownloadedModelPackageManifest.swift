@@ -6,19 +6,19 @@ import Foundation
 /// layer tracked by #977. Downloaders write it only after every component file has
 /// been validated and moved into its final package directory, so discovery can
 /// treat the package atomically.
-public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
-    public static let fileName = ".manifoldkit-package.json"
+package struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
+    package static let fileName = ".manifoldkit-package.json"
 
-    public let packageKind: ModelPackageKind
-    public let id: String
-    public let displayName: String
-    public let format: ImageModelFormat?
-    public let huggingFaceRepoID: String?
-    public let files: [String]
+    package let packageKind: ModelPackageKind
+    package let id: String
+    package let displayName: String
+    package let format: ImageModelFormat?
+    package let huggingFaceRepoID: String?
+    package let files: [String]
     /// Numeric precision of the on-disk weights for diffusion packages. Optional
     /// so pre-fp16-detection manifests still decode; missing → consumers should
     /// treat as full-precision.
-    public let variant: PrecisionVariant?
+    package let variant: PrecisionVariant?
 
     /// SHA-256 (lowercase hex) of the package's embedded chat template, for
     /// chat-template drift detection (#1932). Optional so manifests produced
@@ -31,9 +31,9 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
     /// Currently unwritten in core — multi-file/MLX coverage is a documented
     /// follow-up (those types carry no load-time `chatTemplateRaw` without
     /// altering rendering); kept so that coverage is an additive write.
-    public let chatTemplateSHA256: String?
+    package let chatTemplateSHA256: String?
 
-    public init(
+    package init(
         packageKind: ModelPackageKind,
         id: String,
         displayName: String,

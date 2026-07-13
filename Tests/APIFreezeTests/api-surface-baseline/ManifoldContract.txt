@@ -363,16 +363,9 @@ SSEPayloadHandler.extractStreamError(from:) Func
 SSEPayloadHandler.extractToken(from:) Func
 SSEPayloadHandler.extractUsage(from:) Func
 SSEPayloadHandler.isStreamEnd(_:) Func
-SentenceCoalescer Struct
-SentenceCoalescer.flush() Func
-SentenceCoalescer.init() Constructor
-SentenceCoalescer.push(_:) Func
 Stage Enum
 Stage.thinking EnumElement
 Stage.tool EnumElement
-StreamTransform Protocol
-StreamTransform.finalize() Func
-StreamTransform.process(_:) Func
 StructuredHistoryReceiver Protocol
 StructuredHistoryReceiver.setStructuredHistory(_:) Func
 StructuredMessage Struct
