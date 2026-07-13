@@ -2,6 +2,45 @@
 import BackgroundTasks
 import Foundation
 
+/// Recommended task identifier strings for `BGTaskScheduler`.
+///
+/// `BGTaskScheduler` requires task identifiers to be declared in the host
+/// app's `Info.plist` under `BGTaskSchedulerPermittedIdentifiers`. These
+/// constants are the recommended values so multiple ManifoldKit-based apps
+/// share a stable convention; callers are free to use their own strings.
+///
+/// `continueGeneration` is the identifier ``ConversationRuntimeBackgroundBridge``
+/// documents for its `BGContinuedProcessingTask` recipe (see the
+/// <doc:BackgroundTaskSupport> article). The remaining constants are reserved
+/// conventions for other background-task shapes a host app may wire up itself
+/// (post-generation extraction, index maintenance, chat archiving) — ManifoldKit
+/// does not schedule that work; they exist so multiple ManifoldKit-based apps
+/// converge on the same `Info.plist` strings.
+///
+/// Example `Info.plist` entry:
+///
+/// ```xml
+/// <key>BGTaskSchedulerPermittedIdentifiers</key>
+/// <array>
+///     <string>com.manifoldkit.background.post-generation</string>
+///     <string>com.manifoldkit.background.indexing</string>
+///     <string>com.manifoldkit.background.archive</string>
+///     <string>com.manifoldkit.runtime.continueGeneration</string>
+/// </array>
+/// ```
+public enum ManifoldBackgroundTaskIdentifiers {
+    /// Identifier for post-generation extraction / summarisation work.
+    public static let postGeneration = "com.manifoldkit.background.post-generation"
+    /// Identifier for vector / search index maintenance.
+    public static let indexing = "com.manifoldkit.background.indexing"
+    /// Identifier for chat archive and export work.
+    public static let archive = "com.manifoldkit.background.archive"
+    /// Task identifier for continuing an in-progress generation turn after the app backgrounds.
+    ///
+    /// Register this in your app's `Info.plist` under `BGTaskSchedulerPermittedIdentifiers`.
+    public static let continueGeneration = "com.manifoldkit.runtime.continueGeneration"
+}
+
 /// Bridges ``ConversationRuntime`` into a `BGContinuedProcessingTask` expiration handler.
 ///
 /// `BGContinuedProcessingTask.expirationHandler` is synchronous; ``ConversationRuntime/cancelAllTurns()``

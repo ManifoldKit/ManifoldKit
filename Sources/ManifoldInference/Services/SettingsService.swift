@@ -5,6 +5,17 @@ import Observation
 ///
 /// Per-session overrides live in `ChatSession`; when a session's override is
 /// `nil`, the view model falls back to these global defaults.
+///
+/// This is the host-facing global-defaults + appearance layer: a host app
+/// injects ``shared`` (or its own instance) into its main store to read and
+/// write generation defaults and ``appearanceMode``. The `effective*(session:)`
+/// resolvers implement the session-overrides-global fallback described above,
+/// and are the seam a host's chat surface calls to get the value that should
+/// actually drive a turn. Adopted by a first-party ManifoldKit-based app via
+/// `.shared` injection at three call sites in its main store (2026-07, plan
+/// §B.5) — this keep-and-document adjudication reversed an earlier read of
+/// this type as unwritten/unused (#2128 item A.9); the resolvers are load-
+/// bearing, not dead code.
 @Observable
 public final class SettingsService: @unchecked Sendable {
 

@@ -362,3 +362,7 @@ API breakage: accessor ModelLoadCoordinator.onSurfaceError.Set() has parameter 0
 API breakage: constructor GenerationStreamConsumer.init(loopDetectionEnabled:) has been removed
 API breakage: constructor TurnConfig.init(systemPrompt:generation:maxOutputTokens:maxThinkingTokens:streamingUpdateInterval:streamingBatchCharacterLimit:thinkingStreamingUpdateInterval:thinkingStreamingBatchCharacterLimit:loopDetectionEnabled:) has been removed
 API breakage: enumelement FinishReason.timedOut has been added as a new enum case
+API breakage: class MockBackgroundTaskScheduler has been removed
+API breakage: struct MemoryBudget has been removed
+API breakage: protocol BackgroundTaskScheduler has been removed
+API breakage: class DefaultBackgroundTaskScheduler has been removed
