@@ -12,7 +12,7 @@ surveyed consumer repos (three first-party apps, manifold-mlx, manifold-llama,
 manifold-eval) or documented anywhere in `docs/`, `README.md`, or a DocC catalog as of
 2026-07-13.
 
-## A.2 — ManifoldUI + ManifoldUIModelManagement (this PR)
+## A.2 — ManifoldUI + ManifoldUIModelManagement
 
 **ManifoldUI:**
 
@@ -70,3 +70,109 @@ article. Fixed; re-running the screen for `ModelPicker`, `ChatMessageRenderParam
 `GenerativeContextMenuItems`, and `SpotlightIndexer` after the fix produced a `FAIL`
 each. Other Phase A clusters should re-screen anything they already marked
 `NEEDS-HAND-ADJUDICATION` or `PASS` before this fix landed.
+
+## A.1 — ManifoldInference
+
+- `TurnHistoryCompressor` (protocol) and its two in-tree conformers,
+  `BudgetTurnHistoryCompressor` and `NoOpTurnHistoryCompressor`
+- `CompactionTrigger`, `CompressedTranscript`, `TurnHistoryRecord` — the
+  `TurnHistoryCompressor` family's supporting value types
+- `NoOpDialogueSummariser` (the `DialogueSummariser` protocol and
+  `DefaultDialogueSummariser` stay public — see rejected list below)
+- `ModelSelecting` (protocol only — `ModelSelection`, the concrete class, and every
+  type its own public methods return, e.g. `ScoredModel`, stay public; see below)
+- `StructuredOutputSchema`
+- `ToolSpillReaper`
+- `HuggingFaceProbe`
+- `MarkdownRendering`
+
+All of the above are internal implementation detail: never a parameter, return,
+thrown, generic-constraint, or default-argument type on another public declaration's
+signature, and (re-confirmed directly against `Sources/ManifoldInference/ManifoldInference.docc/`
+after the A.2 DocC-glob screen-script bug was found) not documented anywhere.
+
+### A.1 candidates that were screened but rejected (stayed public)
+
+The A.0 verification screen (`scripts/api-demotion-screen.sh`) flagged most of these as
+`NEEDS-HAND-ADJUDICATION` or even `PASS`; hand adjudication against the actual source
+(the screen's Step 2 in-repo signature-anchor check explicitly does not gate its own
+verdict — it says so in its own output) found each one anchored to a public
+declaration's signature elsewhere, so demoting it would not compile. Recorded here so
+the next pass over Appendix 1 doesn't re-propose them without re-deriving the same
+reasoning:
+
+- `BudgetPolicy` — parameter type of the public `PromptAssembler.assemble(...)`
+  overloads; also about to be documented by the in-flight `ContributingPromptContext.md`
+  DocC article (PR #2253).
+- `PromptSlotRole`, `ResolvedSlot` — same in-flight DocC article (PR #2253);
+  `ResolvedSlot` is additionally the element type of `AssembledPrompt.orderedSlots`,
+  and `AssembledPrompt` is explicitly excluded from demotion by the plan (B.5 —
+  manifold-eval reproduces production prompt assembly against it).
+- `SchemaProviding`, `StructuredOutput`, `ReaskPolicy` — generic constraint / return
+  type / parameter type (respectively) of the public
+  `InferenceService.respond<T>(_:to:config:)` family.
+- `StructuredOutputError` — the thrown error type of the same `respond` family;
+  documented by name in `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/ErrorHandlingAtTheBoundary.md`.
+- `PartialSnapshot` — return type (`AsyncThrowingStream<PartialSnapshot<T>, Error>`) of
+  the public `InferenceService.streamObject(_:to:config:)`. The screen's single-line
+  Step 2 grep missed this because the return type sits on a wrapped line below the
+  `public func` line.
+- `GBNFSchemaPreValidator` — parameter type of the public
+  `ToolGrammarBuilder.init(preValidator:)`.
+- `JSONSchemaValidating` — type of the public, settable `ToolRegistry.validator`
+  property.
+- `ToolOutputPolicy` — type of the public, settable `ToolRegistry.outputPolicy`
+  property.
+- `OversizeAction` — type of `ToolOutputPolicy.onOversize`, chained from the above.
+- `WedgeWatchdog` — parameter type (`any WedgeWatchdog`) of the public
+  `ModelExecutor.init(key:backendName:loader:makeWatchdog:)`.
+- `RealWedgeWatchdog` — used only as that init's *default argument value*
+  (`{ RealWedgeWatchdog(budget: .seconds(120)) }`); confirmed via compiler error
+  (`initializer 'init(budget:)' is package and cannot be referenced from a default
+  argument value`) that default-argument expressions require the same visibility as
+  the enclosing public function, not just module-internal reachability.
+- `DialogueSummariser` — parameter type (`any DialogueSummariser`) of the public
+  `SummarisationHook.init(...)` (ManifoldRuntime).
+- `DefaultDialogueSummariser` — same init's default argument value; rejected for the
+  same reason as `RealWedgeWatchdog` above (confirmed via the identical compiler
+  error).
+- `ToolApprovalDecision` — return type of the public `AutoApproveGate.approve(_:)`
+  and consumed by `ManifoldUI`'s public `UIToolApprovalGate.approve`/`.resolve`.
+- `PreToolUseOutcome` — the resolved return type of the public `PreToolUseHook`
+  typealias, itself a parameter type of the public
+  `InferenceService.enqueue(structuredMessages:...)`.
+- `ExecutorState` — type of the public `ModelExecutor.state` computed property.
+- `ModelExecutorKey` — type of multiple public `ModelExecutor`/`ModelExecutorPool`
+  properties and init parameters (`ModelExecutor` is a public actor).
+- `MessageKind`, `MessageStatus` — types of the public `ChatMessage.kind` /
+  `.status` properties (`ChatMessage` is the core transport type); `MessageKind` is
+  additionally referenced from public computed properties in
+  `ManifoldPersistenceSwiftData`'s schema versions.
+- `PostGenerationTask` — element type of the public, settable
+  `ChatViewModel.postGenerationTasks` array (`ManifoldUI`).
+- `LoadIntent` — parameter type of the public `ModelLoadCoordinator.dispatchLoad(_:)`.
+- `ModelLoadStatus` — type of public `ModelLoadCoordinator.status` /
+  `.statusUpdates()` and `ModelSelection.loadStatusUpdates()`.
+- `ScoredModel`, `ModelSelectionGroup`, `ModelSelectionSortOrder` — return/parameter
+  types of `ModelSelection`'s own public methods (`scoredModels`, `rankedModels`,
+  `sortedModels`, `groupedModels`) — `ModelSelection` (the concrete class) is not
+  itself a demotion candidate, so these stay public independent of the
+  `ModelSelecting` protocol's fate.
+- `ContextBudget` — return type of the public
+  `ContextWindowManager.calculateBudget(...)`.
+- `RenderedPrompt` — return type of the public `ChatTemplate.format(...)`.
+- `ProbeResult` — return type of `probe(timeout:)`, a default-implemented method on
+  the public `HuggingFaceServiceProtocol` (members of a `public extension` default to
+  public in Swift, so this is a real public API surface despite reading like an
+  internal helper).
+
+### Screen-verdict accuracy note
+
+None of the four candidates the screen scored a clean **PASS** (`JSONSchemaValidating`,
+`SchemaProviding`, `ToolOutputPolicy`, `WedgeWatchdog`) actually survived hand
+adjudication — every one is anchored to a public signature elsewhere in the package
+that the screen's Step 1–3 checks do not (and by design cannot) see, since those
+checks only look at external consumer repos and docs, not in-repo public signatures.
+The screen's own Step 2 output says as much ("Step 2 anchor hits ... still need
+reviewer eyes before demotion"). Future clusters should budget real time for Step 2
+review even on a `PASS` verdict, not just on `NEEDS-HAND-ADJUDICATION`.

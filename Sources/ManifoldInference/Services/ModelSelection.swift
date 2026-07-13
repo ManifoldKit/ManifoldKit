@@ -70,7 +70,7 @@ public struct ScoredModel: Identifiable, Sendable {
 /// scored list as data, the current selection, the device recommendation, and a
 /// synchronous auto-load entry point — no chat, no UI.
 @MainActor
-public protocol ModelSelecting: AnyObject {
+package protocol ModelSelecting: AnyObject {
     /// All selectable models, unsorted (as the registry discovered them).
     var availableModels: [ModelInfo] { get }
 

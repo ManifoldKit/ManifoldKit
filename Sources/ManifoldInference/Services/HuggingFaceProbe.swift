@@ -11,18 +11,18 @@ import Foundation
 /// Allowed` on `/api/models`, so a `GET` is used instead — the JSON body is
 /// drained into memory but discarded. `limit=1` keeps the response under a
 /// few hundred bytes.
-public enum HuggingFaceProbe {
+package enum HuggingFaceProbe {
 
     /// Default probe URL. Public so tests in this module can construct
     /// requests against the same endpoint used in production.
-    public static let defaultURL = URL(string: "https://huggingface.co/api/models?limit=1")!
+    package static let defaultURL = URL(string: "https://huggingface.co/api/models?limit=1")!
 
     /// Runs the probe against ``defaultURL`` using a redirect-guarded
     /// ephemeral session from ``URLSessionFactory``.
     ///
     /// Never throws — failures are reported via
     /// ``ProbeResult/failureReason``.
-    public static func run(timeout: TimeInterval) async -> ProbeResult {
+    package static func run(timeout: TimeInterval) async -> ProbeResult {
         // Cap the underlying URL request as well as the outer wall-clock
         // budget. `timeoutIntervalForRequest` bounds idle time between bytes;
         // we still want the wall-clock cap to dominate on a wedged TLS

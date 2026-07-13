@@ -11,11 +11,11 @@ import Foundation
 ///
 /// The parser is intentionally kept deterministic and free of SwiftUI / Combine
 /// imports so it builds on every supported target — see issue #543.
-public enum MarkdownRendering {
+package enum MarkdownRendering {
 
     /// One block produced by ``parseBlocks(from:)``. The UI builds a SwiftUI
     /// view per block; the fuzzer flattens the array back into a string.
-    public enum Block: Equatable, Sendable {
+    package enum Block: Equatable, Sendable {
         /// Plain prose / inline-formatted markdown (anything that isn't a
         /// fenced code block).
         case markdown(String)
@@ -35,7 +35,7 @@ public enum MarkdownRendering {
     /// - Salvages a stream that ends mid-fence by returning the entire input
     ///   as a single markdown block — what the UI renders during streaming
     ///   when the closing fence hasn't arrived yet.
-    public static func parseBlocks(from source: String) -> [Block] {
+    package static func parseBlocks(from source: String) -> [Block] {
         guard !source.isEmpty else { return [] }
         var blocks: [Block] = []
         var markdownBuffer = ""
@@ -113,7 +113,7 @@ public enum MarkdownRendering {
     /// This is **not** a full CommonMark renderer — it's the minimum viable
     /// flattening that lets fuzz detectors notice when a UI transform breaks
     /// (mid-stream cancellation, partial fences, mis-terminated tables, etc.).
-    public static func renderToVisibleString(_ source: String) -> String {
+    package static func renderToVisibleString(_ source: String) -> String {
         let blocks = parseBlocks(from: source)
         var out = ""
         for (i, block) in blocks.enumerated() {
@@ -136,7 +136,7 @@ public enum MarkdownRendering {
     /// Flattens a list of ``MessagePart`` values to the user-visible string.
     /// Only ``MessagePart/text(_:)`` parts contribute — images, tool calls,
     /// thinking blocks render as separate UI affordances, not inline text.
-    public static func renderVisibleText(parts: [MessagePart]) -> String {
+    package static func renderVisibleText(parts: [MessagePart]) -> String {
         var pieces: [String] = []
         for part in parts {
             if case .text(let text) = part {
@@ -151,7 +151,7 @@ public enum MarkdownRendering {
     /// Returns the tick count and trailing info-string for a fence line, or
     /// `nil` if the line isn't a fence. Public-package surface so the
     /// `ManifoldUI` parser can delegate without re-implementing.
-    public static func parseFenceLine(_ line: String) -> (ticks: Int, rest: String)? {
+    package static func parseFenceLine(_ line: String) -> (ticks: Int, rest: String)? {
         let trimmedLeading = line.trimmingCharacters(in: .whitespaces)
         guard trimmedLeading.first == "`" else { return nil }
 
@@ -184,7 +184,7 @@ public enum MarkdownRendering {
     /// - Strips leading list/heading markers (`#`, `- `, `* `, `1. `) since
     ///   the UI renders them as glyphs / indentation rather than literal
     ///   characters in the selection.
-    public static func stripMarkdownSyntax(_ source: String) -> String {
+    package static func stripMarkdownSyntax(_ source: String) -> String {
         // Scan once, character by character. Regex would be tidier but pulls
         // Foundation's Regex engine in unnecessarily.
         var out = ""
