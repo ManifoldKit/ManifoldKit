@@ -82,7 +82,7 @@ not a rule.**
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.70.0") // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.71.0") // x-release-please-version
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
@@ -373,7 +373,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0", // x-release-please-version
+    from: "0.71.0", // x-release-please-version
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -452,7 +452,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0" // x-release-please-version
+    from: "0.71.0" // x-release-please-version
 )
 ```
 
