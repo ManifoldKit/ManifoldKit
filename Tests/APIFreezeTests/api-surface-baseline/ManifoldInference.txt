@@ -570,6 +570,16 @@ MacroAveragedMetrics.init(perClass:) Constructor
 MacroAveragedMetrics.init(precision:recall:f1:) Constructor
 MacroAveragedMetrics.precision Var
 MacroAveragedMetrics.recall Var
+MarkdownRendering Enum
+MarkdownRendering.Block Enum
+MarkdownRendering.Block.__derived_enum_equals(_:_:) Func
+MarkdownRendering.Block.code EnumElement
+MarkdownRendering.Block.markdown EnumElement
+MarkdownRendering.parseBlocks(from:) Func
+MarkdownRendering.parseFenceLine(_:) Func
+MarkdownRendering.renderToVisibleString(_:) Func
+MarkdownRendering.renderVisibleText(parts:) Func
+MarkdownRendering.stripMarkdownSyntax(_:) Func
 MessageKind Enum
 MessageKind.__derived_enum_equals(_:_:) Func
 MessageKind.annotation EnumElement

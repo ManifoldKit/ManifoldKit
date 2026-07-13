@@ -84,12 +84,12 @@ each. Other Phase A clusters should re-screen anything they already marked
 - `StructuredOutputSchema`
 - `ToolSpillReaper`
 - `HuggingFaceProbe`
-- `MarkdownRendering`
 
 All of the above are internal implementation detail: never a parameter, return,
 thrown, generic-constraint, or default-argument type on another public declaration's
-signature, and (re-confirmed directly against `Sources/ManifoldInference/ManifoldInference.docc/`
-after the A.2 DocC-glob screen-script bug was found) not documented anywhere.
+signature, and (re-confirmed with the corrected `**/*.docc/**` glob after the A.2
+DocC-glob screen-script bug was found, against every `.docc` catalog in `Sources/`,
+not just ManifoldInference's own) not documented anywhere.
 
 ### A.1 candidates that were screened but rejected (stayed public)
 
@@ -101,10 +101,16 @@ declaration's signature elsewhere, so demoting it would not compile. Recorded he
 the next pass over Appendix 1 doesn't re-propose them without re-deriving the same
 reasoning:
 
+- `MarkdownRendering` — documented by name in
+  `Sources/ManifoldFuzz/ManifoldFuzz.docc/RunRecordSchema.md`, which cites
+  `MarkdownRendering.renderToVisibleString` as the exact transform a persisted
+  `RunRecord` fixture's `rendered` field depends on. Found only after re-running the
+  docs/DocC check with the corrected `**/*.docc/**` glob (the original glob never
+  matched a catalog nested under `Sources/<Module>/` — same bug the A.2 cluster found
+  and fixed in PR #2254).
 - `BudgetPolicy` — parameter type of the public `PromptAssembler.assemble(...)`
-  overloads; also about to be documented by the in-flight `ContributingPromptContext.md`
-  DocC article (PR #2253).
-- `PromptSlotRole`, `ResolvedSlot` — same in-flight DocC article (PR #2253);
+  overloads; also now documented by `ContributingPromptContext.md` (PR #2253, merged).
+- `PromptSlotRole`, `ResolvedSlot` — same DocC article (PR #2253, merged);
   `ResolvedSlot` is additionally the element type of `AssembledPrompt.orderedSlots`,
   and `AssembledPrompt` is explicitly excluded from demotion by the plan (B.5 —
   manifold-eval reproduces production prompt assembly against it).
