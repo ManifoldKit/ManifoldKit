@@ -148,27 +148,23 @@ on any of this.**
 
 ### B.0 Origin-app upgrade plan (deliverable, not a gate) — DECIDED (B-D1): go
 
-**Corrected by the origin-app-context review (2026-07-13, fix-first):** the adaptation
-items are NOT independent. The seams that replace the app's workarounds —
-`HostTurnContextProvider`/`resolveTurnAppData` and `GenerationHook.postGeneration` —
-are invoked ONLY inside `ConversationTurnExecutor`; the app's live generation never
-runs that path (it calls `inferenceService.enqueue` plus its own streaming runner
-directly). So the true structure is: **precondition — the app adopts
-`ConversationRuntime` for generation; the #1518 workaround removal, hook migration,
-and appData/lifecycle migrations are consequences of that one move**, not parallel
-items. Severability therefore applies to B.0 as a whole (all-or-nothing per the B.3
-fallback), not per-item.
+**Corrected by the origin-app-context review (2026-07-13, fix-first) and narrowed by
+the app-side plan drafting (2026-07-13, evidence re-verified against the app's current
+main — the review had sampled a stale branch):** the app's live generation calls
+`inferenceService.enqueue` plus its own streaming runner directly; it never runs
+`ConversationTurnExecutor`. The pre-turn half of the adaptation is ALREADY DONE — the
+app retired its #1518 prepareTurn workaround upstream and consumes
+`TurnContext.appData` through the `ContextBudgetPlanner` planner path today, without
+`ConversationRuntime` (MK's planner-path appData handoff exists and is adopted; the
+"incremental escape hatch" question is moot). What remains coupled is the
+**post-generation half**: `GenerationHook.postGeneration` fires only inside
+`ConversationTurnExecutor`, so the hook migration, the extraction observer/token
+migration, and the lifecycle-UI migration are consequences of: **precondition — the
+app adopts `ConversationRuntime` for generation.** Severability still applies to that
+remaining bundle as a whole.
 
-A worker drafts the upgrade plan in the app's own repo (private — it may name
-everything this document cannot) once this plan merges. Two of its requirements the
-MK side should weigh:
-
-- **An incremental escape hatch:** a per-turn appData handoff on the
-  `ContextBudgetPlanner`/`PromptContextPipeline` path (not only inside
-  `ConversationRuntime`) would let the prepareTurn workaround retire incrementally
-  instead of all-or-nothing. Decide deliberately whether to offer it or hold the line
-  on ConversationRuntime-only (principle 8 cuts toward the latter; migration risk cuts
-  toward the former).
+The app-side upgrade plan is drafted (in the app's own private repo, where everything
+this document cannot name is named). One requirement the MK side must weigh:
 - **Branch-aware turn semantics:** the app persists turns into a branching node tree
   with regeneration-undo. Verify `ConversationRuntime`'s session/message model
   accommodates node-tree branching and partial persistence before committing to the
@@ -188,7 +184,9 @@ is **both seams stay, with documented ownership**:
   (recorded alongside this plan).
 - DocC + AGENTS.md document both seams (today all of it is undocumented public API).
 - The genuinely redundant residue is assessed for retirement: `HostTurnContextProvider`
-  vs the prepareTurn-workaround path (the origin app migrates to the #1518 successor),
+  vs the planner-path appData handoff (the origin app already migrated — its
+  prepareTurn workaround is retired upstream and `TurnContext.appData` via
+  `ContextBudgetPlanner` is its live path; both mechanisms now have a consumer),
   `SummarisationHook` (folds into B.2), `HistoryShaper` overlap with compression
   policies.
 
@@ -410,7 +408,7 @@ ManifoldKit umbrella types; MCPHost module (small, coherent, documented).
 
 | Type(s) | Origin-app use | v1 path |
 |---|---|---|
-| PromptContextProvider, ProviderBudget, TurnContext, PromptSlotPosition (+PromptSlot, docs'd) | memory-pipeline context providers via the stale #1518 workaround | B.1 — seam stays (Inference-tier owner), workaround removed via B.0 |
+| PromptContextProvider, ProviderBudget, TurnContext, PromptSlotPosition (+PromptSlot, docs'd) | memory-pipeline context providers; consumes `TurnContext.appData` via the planner path (its former #1518 workaround is already retired upstream) | B.1 — seam stays (Inference-tier owner); no migration pending |
 | ContextBudgetPlanner, ContextBudgetEntry, PromptContextPipeline | budget-weighted context assembly | B.1 — stay public, gain docs |
 | HistoryProvider, HistoryContribution, HistoryInsertionPosition | memory-brief history provider | B.1 — stays (Runtime-tier owner), gains docs |
 | GenerationHook, CompletedTurn | post-generation extraction adapter — TEST-ONLY today; the live extraction path is a turn-observer via GenerationRequestToken (origin-app review) | B.2 — hook seam is staged/not-live; retires after the observer path migrates (B.3) |
@@ -471,3 +469,13 @@ review, all fix-first; v1 → v4)
   severed from demotion; reframed as an AppEval graduation test. (5) The app wants:
   an incremental appData handoff on the planner path, repetition tuning knobs, and
   branch-aware turn semantics verified before the re-base — recorded in B.0.
+- **App-side plan drafting (post-merge correction, 2026-07-13):** the review's
+  evidence had been sampled from a branch behind the app's main. Re-verified against
+  current main: the #1518 prepareTurn workaround is ALREADY retired and the planner-
+  path `TurnContext.appData` handoff is the app's live mechanism — B.0's pre-turn
+  consequence was done, not pending, and only the post-generation bundle remains
+  coupled to ConversationRuntime adoption (B.0/B.1/Appendix 2 corrected). Also
+  clarified: the app's five-value outcome enum is completed / cancelled-by-user /
+  timed-out / looped / interrupted (cancelled-empty is a derived telemetry string),
+  and MK's structured thinking events exist — the B.3 parity risk narrows to
+  verifying which shipped local backends emit `<think>` as plain `.token` text.
