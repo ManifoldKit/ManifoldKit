@@ -240,6 +240,94 @@ final class PostGenerationHookWiringTests: XCTestCase {
         XCTAssertEqual(received.count, 0, "postGeneration must not fire on an empty-response turn")
     }
 
+    // MARK: - Test 2c: not fired on a timed-out turn (B.3 interplay)
+
+    /// Backend that starts a stream and never yields — the shape that trips
+    /// `TurnConfig.progressStallTimeout` (B.3). Private minimal copy of
+    /// `ConversationRuntimeTests.HangingRuntimeBackend` so fixtures stay
+    /// file-independent.
+    private final class StallingBackend: InferenceBackend, @unchecked Sendable {
+        var isModelLoaded: Bool { true }
+        var isGenerating: Bool { false }
+        let capabilities = BackendCapabilities(
+            supportedParameters: [],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true
+        )
+        private let lock = NSLock()
+        private var activeContinuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation?
+
+        func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
+        func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
+            GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
+                lock.lock()
+                activeContinuation = continuation
+                lock.unlock()
+                continuation.onTermination = { @Sendable [self] _ in
+                    lock.lock()
+                    activeContinuation = nil
+                    lock.unlock()
+                }
+            })
+        }
+        func stopGeneration() {
+            lock.lock()
+            let continuation = activeContinuation
+            activeContinuation = nil
+            lock.unlock()
+            continuation?.finish(throwing: CancellationError())
+        }
+        func unloadModel() {}
+    }
+
+    func test_postGeneration_notFiredWhenTurnTimesOut() async throws {
+        // B.3 (#2259) added the `.timedOut` terminal routing: a stalled turn
+        // exits through the streamFailed path, which returns before the
+        // post-generation hook block. This pins that the registry event
+        // honours the same contract.
+        let recorder = PostGenerationRecorder()
+        let registry = HookRegistry()
+        await registry.register(.postGeneration) { input in
+            await recorder.record(input)
+            return .passthrough
+        }
+
+        let backend = StallingBackend()
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            hookRegistry: registry
+        )
+        let sessionID = UUID()
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "will stall", attachments: []),
+            config: TurnConfig(progressStallTimeout: .milliseconds(200))
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await withThrowingTaskGroup(of: ConversationTurnOutcome.self) { group in
+            group.addTask { await turn.outcome }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                throw TestError.deadlineElapsed
+            }
+            let first = try await group.next()
+            group.cancelAll()
+            return try XCTUnwrap(first)
+        }
+        XCTAssertEqual(outcome.reason, .timedOut, "precondition: this turn must exercise the timed-out terminal path")
+
+        // The outcome resolves on the same terminal path that skips the hook
+        // block; a brief settle guards against a hypothetical late fire.
+        try await Task.sleep(for: .milliseconds(200))
+        let received = await recorder.received
+        XCTAssertEqual(received.count, 0, "postGeneration must not fire on a timed-out turn")
+    }
+
     // MARK: - Test 3: emits the hookFired telemetry event
 
     func test_postGeneration_emitsHookFiredEvent() async throws {
