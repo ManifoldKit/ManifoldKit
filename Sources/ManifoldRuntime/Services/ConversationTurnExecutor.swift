@@ -1230,7 +1230,7 @@ package struct ConversationTurnExecutor: Sendable {
         // Post-generation hooks: fire and await with a per-hook timeout.
         // Not called on cancel, error, or empty-response paths (those all
         // return before reaching this point).
-        if !generationHooks.isEmpty {
+        if !generationHooks.isEmpty || turnHookRegistry != nil {
             let completedTurn = CompletedTurn(
                 sessionID: sessionID,
                 assistantMessage: assistantMessage,
@@ -1243,6 +1243,27 @@ package struct ConversationTurnExecutor: Sendable {
                 let timeout = hookTimeout
                 await withHookTimeout(timeout, label: hookLabel) {
                     await hook.postGeneration(completedTurn)
+                }
+            }
+
+            // B.2 unified hook seam: the same completed-turn payload also
+            // flows through the HookRegistry so hosts standardised on the
+            // registry (preToolUse/preCompact) get postGeneration without
+            // adopting the separate `GenerationHook` protocol. Observational
+            // like `.preCompact` — `block` is not honoured, there is no
+            // mutation channel once the turn has committed.
+            if let turnHookRegistry {
+                let input = HookInput(
+                    event: .postGeneration,
+                    sessionID: sessionID,
+                    completedTurn: completedTurn
+                )
+                let output = await turnHookRegistry.run(input)
+                emit(.hookFired(event: "postGeneration", sessionID: sessionID))
+                if output.block {
+                    Log.inference.warning(
+                        "postGeneration hook returned block:true — block is not honoured for postGeneration; the turn has already completed."
+                    )
                 }
             }
         }

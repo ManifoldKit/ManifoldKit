@@ -411,12 +411,14 @@ HookEvent.AllCases TypeAlias
 HookEvent.RawValue TypeAlias
 HookEvent.allCases Var
 HookEvent.init(rawValue:) Constructor
+HookEvent.postGeneration EnumElement
 HookEvent.preCompact EnumElement
 HookEvent.preToolUse EnumElement
 HookEvent.rawValue Var
 HookInput Struct
+HookInput.completedTurn Var
 HookInput.event Var
-HookInput.init(event:sessionID:toolName:toolArguments:) Constructor
+HookInput.init(event:sessionID:toolName:toolArguments:completedTurn:) Constructor
 HookInput.sessionID Var
 HookInput.toolArguments Var
 HookInput.toolName Var
@@ -704,6 +706,7 @@ SingleTurnDriver Struct
 SingleTurnDriver.init() Constructor
 SummarisationHook Class
 SummarisationHook.init(messageStore:backend:sessionStore:summariser:policy:recentTurnsToPreserve:contextSizeProvider:) Constructor
+SummarisationHook.makeHookHandler() Func
 SummarisationHook.postGeneration(_:) Func
 SummarisationHook.recentTurnsToPreserve Var
 SummarisationHook.willBeginTurn(sessionID:) Func
