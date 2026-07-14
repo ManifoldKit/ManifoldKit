@@ -7,6 +7,7 @@
 6  messageInserted  id:<uuid:3> role:assistant content:"Done"
 7  streamFinished  id:<uuid:3> reason:stop
 8  afterGeneration  id:<uuid:3> finalText:"Done"
-9  hookFired  event:preCompact
-10  compressionTriggered  removed:2 reason:contextWindowExceeded
-11  historyCompressed  session:<uuid:2> inserted:1
+9  hookFired  event:postGeneration
+10  hookFired  event:preCompact
+11  compressionTriggered  removed:2 reason:contextWindowExceeded
+12  historyCompressed  session:<uuid:2> inserted:1
