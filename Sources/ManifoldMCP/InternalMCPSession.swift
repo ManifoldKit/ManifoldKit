@@ -69,7 +69,15 @@ internal actor MCPSession {
             ]),
         ])
 
-        let response = try await sendRequest(method: "initialize", params: initializeParams)
+        // The initialize handshake is bounded by `initializationTimeout`, not the
+        // steady-state `requestTimeout`: a server's first-response latency (process
+        // spawn, model warm-up, auth) is a separate budget from ordinary
+        // request/response, and callers set the two independently on the descriptor.
+        let response = try await sendRequest(
+            method: "initialize",
+            params: initializeParams,
+            timeout: descriptor.initializationTimeout
+        )
         let capabilities = try parseInitializeResponse(response)
         try await sendNotification(method: "notifications/initialized", params: nil)
 
@@ -78,7 +86,14 @@ internal actor MCPSession {
         return capabilities
     }
 
-    func sendRequest(method: String, params: JSONSchemaValue?) async throws -> JSONSchemaValue? {
+    /// - Parameter timeout: overrides the session's steady-state `requestTimeout`
+    ///   for this one call. The initialize handshake passes
+    ///   `descriptor.initializationTimeout` here; all other callers omit it.
+    func sendRequest(
+        method: String,
+        params: JSONSchemaValue?,
+        timeout: Duration? = nil
+    ) async throws -> JSONSchemaValue? {
         guard state != .closed else { throw MCPError.transportClosed }
 
         if pendingRequests.count >= maxConcurrentRequests {
@@ -94,7 +109,7 @@ internal actor MCPSession {
         // synchronously and cannot be async, so we spawn a detached Task to deliver
         // notifications/cancelled before the server wastes work on an abandoned call.
         return try await withTaskCancellationHandler {
-            try await withTimeout(requestTimeout) { [self] in
+            try await withTimeout(timeout ?? requestTimeout) { [self] in
                 try await withCheckedThrowingContinuation { continuation in
                     Task {
                         await registerPendingAndSend(
