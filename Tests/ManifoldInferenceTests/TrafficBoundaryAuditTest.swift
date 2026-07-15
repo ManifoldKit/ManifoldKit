@@ -300,9 +300,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     private static let processSpawnAllowlist: Set<String> = [
         // Fuzz harness CLI: HarnessMetadata captures git/sw_vers via
         // subprocess for reproducibility; Replayer launches a child
-        // process to replay a corpus seed in isolation.
+        // process to replay a corpus seed in isolation. The actual
+        // `Process()` spawn for both lives in BoundedSubprocess (shared
+        // timeout+kill wrapper, #2266) — HarnessMetadata/Replayer now call
+        // through it rather than spawning directly.
         "ManifoldFuzz/HarnessMetadata.swift",
         "ManifoldFuzz/Replay/Replayer.swift",
+        "ManifoldFuzz/BoundedSubprocess.swift",
         // MCP stdio transport intentionally launches local server binaries
         // to support offline and local-tooling integrations.
         "ManifoldMCP/InternalMCPTransport.swift",
