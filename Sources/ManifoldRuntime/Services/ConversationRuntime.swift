@@ -202,14 +202,8 @@ public final class ConversationRuntime: Sendable {
     ///     A throwing provider aborts the current turn with a
     ///     ``ConversationError/persistence(_:)`` error. Defaults to `[]` so
     ///     existing call sites compile unchanged.
-    ///   - hostTurnContextProvider: Optional richer async/throwing provider that
-    ///     builds per-turn ``TurnContext/appData`` from full request metadata.
-    ///     When supplied, its result is threaded through history shaping,
-    ///     history providers, prompt-context assembly, and
-    ///     ``GenerationHook/postGeneration(_:)``. A thrown error aborts the turn
-    ///     with ``ConversationError/contextAssembly(_:)``.
     ///   - turnContextProvider: Legacy source-compatible session-ID-only appData
-    ///     provider. Used only when `hostTurnContextProvider` is `nil`.
+    ///     provider.
     public convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
@@ -224,7 +218,59 @@ public final class ConversationRuntime: Sendable {
         preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
         historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
-        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
+        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil,
+        runStore: (any RunStore)? = nil
+    ) {
+        self.init(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: inferenceService,
+            pipeline: pipeline,
+            budgetPlanner: budgetPlanner,
+            ragService: ragService,
+            auxiliaryInferenceService: auxiliaryInferenceService,
+            usageStore: usageStore,
+            generationHooks: generationHooks,
+            compressionPolicy: compressionPolicy,
+            preTurnCompressionPolicy: preTurnCompressionPolicy,
+            historyShaper: historyShaper,
+            historyProviders: historyProviders,
+            hostTurnContextProvider: nil,
+            turnContextProvider: turnContextProvider,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry,
+            runStore: runStore
+        )
+    }
+
+    /// Internal-construction path for hosts wired through ``ManifoldBootstrap``
+    /// (`ManifoldPersistenceSwiftData`, same SwiftPM package). Demoted to
+    /// `package` alongside ``HostTurnContextProvider`` (2026-07 residual
+    /// sweep, D.6) — the protocol has zero external adopters, so the public
+    /// initializer above no longer accepts it.
+    ///
+    /// `hostTurnContextProvider` is required (no default) so this overload
+    /// never becomes ambiguous with the public initializer above at call
+    /// sites that omit the label entirely — the public initializer is the
+    /// sole match in that case, and this one is the sole match whenever the
+    /// label is supplied explicitly.
+    package convenience init(
+        messageStore: any MessageStore,
+        sessionStore: (any SessionStore)? = nil,
+        inferenceService: InferenceService,
+        pipeline: PromptContextPipeline? = nil,
+        budgetPlanner: ContextBudgetPlanner? = nil,
+        ragService: RAGService? = nil,
+        auxiliaryInferenceService: InferenceService? = nil,
+        usageStore: (any UsageStore)? = nil,
+        generationHooks: [any GenerationHook] = [],
+        compressionPolicy: (any CompressionPolicy)? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
+        historyShaper: (any HistoryShaper)? = nil,
+        historyProviders: [any HistoryProvider] = [],
+        hostTurnContextProvider: (any HostTurnContextProvider)?,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,

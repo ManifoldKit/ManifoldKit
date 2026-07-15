@@ -35,9 +35,19 @@ public struct TurnContextBuildRequest: Sendable {
 
 /// Builds host-owned per-turn app context for ``TurnContext/appData``.
 ///
-/// Register via ``ConversationRuntime/init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:sessionToolSources:hookRegistry:)``.
+/// `package`-visibility only (2026-07 residual sweep, D.6): zero external
+/// adopters across all six consumer repos. The runtime still wires this
+/// internally (`ConversationTurnExecutor.appData(for:)` calls it on the real
+/// turn path) and `ManifoldBootstrap` still threads
+/// `ConversationRuntimeOptions.hostTurnContextProvider` through to it, but
+/// hosts building against the public API cannot construct a conformance
+/// anymore. Host apps that need per-turn data should use the planner-path
+/// `TurnContext.appData` handoff instead — see
+/// ``ContextBudgetPlanner`` and the "Providing app-specific per-turn data"
+/// section of <doc:ContributingConversationHistory>.
+///
 /// The runtime awaits this provider once per turn; any thrown error aborts the
 /// turn as ``ConversationError/contextAssembly(_:)``.
-public protocol HostTurnContextProvider: Sendable {
+package protocol HostTurnContextProvider: Sendable {
     func appData(for request: TurnContextBuildRequest) async throws -> (any Sendable)?
 }
