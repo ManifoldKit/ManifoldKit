@@ -28,17 +28,17 @@ import Foundation
 ///     <string>com.manifoldkit.runtime.continueGeneration</string>
 /// </array>
 /// ```
-public enum ManifoldBackgroundTaskIdentifiers {
+package enum ManifoldBackgroundTaskIdentifiers {
     /// Identifier for post-generation extraction / summarisation work.
-    public static let postGeneration = "com.manifoldkit.background.post-generation"
+    package static let postGeneration = "com.manifoldkit.background.post-generation"
     /// Identifier for vector / search index maintenance.
-    public static let indexing = "com.manifoldkit.background.indexing"
+    package static let indexing = "com.manifoldkit.background.indexing"
     /// Identifier for chat archive and export work.
-    public static let archive = "com.manifoldkit.background.archive"
+    package static let archive = "com.manifoldkit.background.archive"
     /// Task identifier for continuing an in-progress generation turn after the app backgrounds.
     ///
     /// Register this in your app's `Info.plist` under `BGTaskSchedulerPermittedIdentifiers`.
-    public static let continueGeneration = "com.manifoldkit.runtime.continueGeneration"
+    package static let continueGeneration = "com.manifoldkit.runtime.continueGeneration"
 }
 
 /// Bridges ``ConversationRuntime`` into a `BGContinuedProcessingTask` expiration handler.
@@ -54,10 +54,10 @@ public enum ManifoldBackgroundTaskIdentifiers {
 /// task.expirationHandler = { bridge.handleExpiration() }
 /// BGTaskScheduler.shared.submit(task, toQueue: nil)
 /// ```
-public struct ConversationRuntimeBackgroundBridge: Sendable {
+package struct ConversationRuntimeBackgroundBridge: Sendable {
     private let runtime: ConversationRuntime
 
-    public init(runtime: ConversationRuntime) {
+    package init(runtime: ConversationRuntime) {
         self.runtime = runtime
     }
 
@@ -74,7 +74,7 @@ public struct ConversationRuntimeBackgroundBridge: Sendable {
     /// captured strongly because expiration MUST complete — a `[weak runtime]`
     /// capture could allow the runtime to be released before cancellation finishes,
     /// silently dropping in-flight turns.
-    public func handleExpiration() {
+    package func handleExpiration() {
         Task.detached { [runtime] in
             await runtime.cancelAllTurns()
         }
@@ -89,7 +89,7 @@ public struct ConversationRuntimeBackgroundBridge: Sendable {
     /// On macOS, GPU access is not restricted when the app is backgrounded.
     #if os(iOS)
     @available(iOS 26, *)
-    public static var backgroundGPUAvailable: Bool {
+    package static var backgroundGPUAvailable: Bool {
         BGTaskScheduler.supportedResources.contains(.gpu)
     }
     #endif

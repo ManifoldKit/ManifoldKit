@@ -31,7 +31,7 @@ import ManifoldInference
 ///
 /// Invariant: no run-level payload appears as a ``ConversationEvent`` case.
 /// ``GenerationEventClosedAuditTest`` enforces this with a tripwire.
-public enum RunEvent: Sendable, Equatable {
+package enum RunEvent: Sendable, Equatable {
 
     /// The run transitioned from `.pending` to `.running`. Fires once per
     /// run, before the first step begins.

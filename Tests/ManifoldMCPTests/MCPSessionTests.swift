@@ -325,6 +325,57 @@ final class MCPSessionTests: XCTestCase {
         await session.close()
     }
 
+    // The initialize handshake must be bounded by `descriptor.initializationTimeout`,
+    // not the session's steady-state `requestTimeout`. A server that starts its
+    // transport but never answers `initialize` should fail fast on the short
+    // initialization budget even when the request timeout is long.
+    func test_startBoundsInitializeByInitializationTimeout() async throws {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Init Timeout",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            initializationTimeout: .milliseconds(150),
+            dataDisclosure: "test"
+        )
+
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 4096, maxJSONNestingDepth: 8)
+        let transport = MockSessionTransport(codec: codec)
+        // Never answer initialize — force the initialization-timeout path.
+        await transport.setRequestHandler { _, _, _ in nil }
+
+        let session = MCPSession(
+            descriptor: descriptor,
+            transport: transport,
+            codec: codec,
+            requestTimeout: .seconds(10),
+            maxConcurrentRequests: 4
+        )
+
+        let clock = ContinuousClock()
+        let started = clock.now
+        do {
+            _ = try await session.start()
+            XCTFail("Expected requestTimeout from the initialize handshake")
+        } catch let error as MCPError {
+            XCTAssertEqual(error, .requestTimeout)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        let elapsed = clock.now - started
+
+        // The 150ms initialization budget must win, not the 10s request timeout.
+        // A generous 3s ceiling keeps CI stable while still proving the wrong
+        // timeout (10s) was not used.
+        XCTAssertLessThan(
+            elapsed, .seconds(3),
+            "initialize must time out on initializationTimeout (150ms), not requestTimeout (10s)"
+        )
+        // Sabotage: reverting MCPSession.start() to pass no `timeout:` to the initialize
+        // sendRequest (falling back to requestTimeout) makes this take ~10s, blowing the
+        // 3s ceiling above.
+
+        await session.close()
+    }
+
     func test_sendRequestEnforcesMaxConcurrentRequests() async throws {
         let descriptor = MCPServerDescriptor(
             displayName: "Session Test",

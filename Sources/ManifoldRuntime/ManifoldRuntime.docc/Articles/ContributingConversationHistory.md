@@ -21,7 +21,7 @@ vocabulary (``PromptContextProvider``, ``PromptSlot``, ``TurnContext``).
 |---|---|
 | Inject retrieved documents, world/lore text, or other content into the assembled prompt under a token budget | ``PromptContextProvider`` (`ManifoldInference`) |
 | Insert or reshape *messages* in the history array the model sees this turn | ``HistoryProvider`` (this module) |
-| Make host-app state (a feature flag, an active persona, a request ID) available to providers on both seams | ``HostTurnContextProvider`` (this module) |
+| Make host-app state (a feature flag, an active persona, a request ID) available to providers on both seams | The `turnContextProvider` closure on ``ConversationRuntime``'s initializer, read back as `TurnContext.appData` — see below |
 | React to every persisted write, regardless of whether it happened during a generation turn | `MessageStorePostWriteHook` / `SessionStorePostWriteHook` — see the note at the end of this article |
 
 A history insertion is not expressible as a prompt slot, and the two seams
@@ -89,8 +89,7 @@ registered.
 
 ## Wiring providers into `ConversationRuntime`
 
-Register providers and the host context provider through
-``ConversationRuntime``'s initializer:
+Register providers through ``ConversationRuntime``'s initializer:
 
 ```swift,no-build
 import ManifoldRuntime
@@ -99,8 +98,7 @@ let runtime = ConversationRuntime(
     messageStore: myMessageStore,
     inferenceService: myInferenceService,
     historyShaper: nil,
-    historyProviders: [RecapProvider()],
-    hostTurnContextProvider: MyHostTurnContextProvider()
+    historyProviders: [RecapProvider()]
 )
 ```
 
@@ -109,32 +107,37 @@ transform of the *canonical* history — see that type's own documentation)
 and before prompt-context slot assembly and RAG, so later stages see the
 augmented history, not just the shaper's output.
 
-## `HostTurnContextProvider` — per-turn host data for both seams
+## Per-turn host data — `turnContextProvider` and `TurnContext.appData`
 
-``HostTurnContextProvider`` builds ``TurnContext/appData`` once per turn from
-full request metadata (``TurnContextBuildRequest``: session ID, turn kind,
-message count, user input, conversation text, tokenizer) before history
-shaping, history providers, and prompt-context assembly all run:
+Host-app state (a feature flag, an active persona, a request ID) that
+providers on both seams need reaches them through `appData`. Pass a
+`turnContextProvider` closure to ``ConversationRuntime``'s initializer —
+it receives the session ID and returns any `Sendable` payload:
 
 ```swift,no-build
 import ManifoldRuntime
 
-struct ActivePersonaProvider: HostTurnContextProvider {
-    func appData(for request: TurnContextBuildRequest) async throws -> (any Sendable)? {
-        try await personaStore.activePersona(for: request.sessionID)
+let runtime = ConversationRuntime(
+    messageStore: myMessageStore,
+    inferenceService: myInferenceService,
+    turnContextProvider: { sessionID in
+        personaStore.activePersonaSync(for: sessionID)
     }
-}
+)
 ```
 
 The returned value flows through to every `HistoryProvider` and
-`PromptContextProvider` as `context.appData`, and to `GenerationHook`'s
-`postGeneration(_:)` via `CompletedTurn.appData` — one payload, read
-anywhere a provider or hook needs host state without a side-channel
-registry. A thrown error aborts the turn with
-``ConversationError/contextAssembly(_:)``. The legacy
-`turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?` parameter is a
-source-compatible, session-ID-only shortcut used only when
-`hostTurnContextProvider` is `nil`.
+`PromptContextProvider` as `context.appData` (see ``ContextBudgetPlanner``,
+which reads it off ``TurnContext`` for budget-aware providers), and to
+`GenerationHook`'s `postGeneration(_:)` via `CompletedTurn.appData` — one
+payload, read anywhere a provider or hook needs host state without a
+side-channel registry. This `turnContextProvider` closure is the supported
+public seam for per-turn host data (a richer async/throwing alternative
+existed pre-1.0 but had zero adopters and was retired from the public
+contract; see `docs/MIGRATION-api-demotions-0.71.md`). Hosts that need
+throwing/async per-turn data resolution should compute it ahead of the turn
+and capture it in the closure, or store it centrally and read it inside a
+``HistoryProvider``/``PromptContextProvider`` conformance.
 
 ## Store post-write hooks are a different seam
 
@@ -146,10 +149,10 @@ manual import, a background sync, a debug tool all trigger them the same
 way a turn's message insert does. They are a persistence-tier seam, live
 outside the generation lifecycle, cannot see `TurnContext` or `appData`, and
 must not throw (errors are logged and swallowed; a failing hook cannot roll
-back the write). Use a `HistoryProvider` or `HostTurnContextProvider` for
-anything that needs to reason about a specific turn; reach for a store
-post-write hook only for unconditional per-write side effects like audit
-logging or search indexing.
+back the write). Use a `HistoryProvider` or the `turnContextProvider`/
+`appData` handoff for anything that needs to reason about a specific turn;
+reach for a store post-write hook only for unconditional per-write side
+effects like audit logging or search indexing.
 
 ## Topics
 
@@ -162,5 +165,4 @@ logging or search indexing.
 
 ### Host-owned per-turn context
 
-- ``HostTurnContextProvider``
 - ``TurnContextBuildRequest``

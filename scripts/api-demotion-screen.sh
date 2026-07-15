@@ -40,10 +40,36 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BASELINE_FILE="${REPO_ROOT}/Tests/APIFreezeTests/api-surface-baseline/${MODULE}.txt"
 
 # Default consumer repo roots: the six known local checkouts (three
-# first-party apps + the two companion backends + manifold-eval). Override
-# with MK_CONSUMER_REPOS (colon-separated) for a different machine layout.
-DEFAULT_CONSUMER_REPOS="${HOME}/Repos/basechat:${HOME}/Repos/idlewick:${HOME}/Repos/fireside:${HOME}/Repos/manifold-mlx:${HOME}/Repos/manifold-llama:${HOME}/Repos/manifold-eval"
+# first-party apps under ~/Repos/roryford-apps/ + the two companion backends
+# and manifold-eval under ~/Repos/ManifoldKit/). Override with
+# MK_CONSUMER_REPOS (colon-separated) for a different machine layout.
+DEFAULT_CONSUMER_REPOS="${HOME}/Repos/roryford-apps/basechat:${HOME}/Repos/roryford-apps/idlewick:${HOME}/Repos/roryford-apps/fireside:${HOME}/Repos/ManifoldKit/manifold-mlx:${HOME}/Repos/ManifoldKit/manifold-llama:${HOME}/Repos/ManifoldKit/manifold-eval"
 CONSUMER_REPOS="${MK_CONSUMER_REPOS:-${DEFAULT_CONSUMER_REPOS}}"
+
+# Hard-fail (rather than silently WARN-and-skip) if any consumer repo root is
+# missing, so a pasted PASS verdict actually proves something. Set
+# MK_ALLOW_MISSING_CONSUMERS=1 to opt back into the old skip-and-continue
+# behavior (e.g. a machine that deliberately doesn't have all six checkouts).
+MISSING_CONSUMER_REPOS=0
+OLD_IFS_PRECHECK="$IFS"
+IFS=':'
+for root in $CONSUMER_REPOS; do
+  IFS="$OLD_IFS_PRECHECK"
+  if [ ! -d "$root" ]; then
+    echo "error: consumer repo root not found: ${root}" >&2
+    MISSING_CONSUMER_REPOS=1
+  fi
+  IFS=':'
+done
+IFS="$OLD_IFS_PRECHECK"
+
+if [ "$MISSING_CONSUMER_REPOS" -ne 0 ] && [ "${MK_ALLOW_MISSING_CONSUMERS:-0}" != "1" ]; then
+  echo "error: one or more consumer repo roots are missing (see above). A screen run" >&2
+  echo "against fewer than the real consumer set is not evidence of a clean demotion." >&2
+  echo "Set MK_ALLOW_MISSING_CONSUMERS=1 to run anyway (verdict will not be a real PASS)," >&2
+  echo "or set MK_CONSUMER_REPOS to the correct colon-separated paths for this machine." >&2
+  exit 1
+fi
 
 STEP1_HITS=0
 STEP1B_HITS=0
