@@ -248,7 +248,13 @@ private enum MCPSampling {
     static func intValue(_ value: JSONSchemaValue?) -> Int? {
         switch value {
         case .integer(let value): return Int(value)
-        case .number(let value): return Int(value)
+        case .number(let value):
+            // `Int(Double)` is the non-failable rounding init and TRAPS on
+            // out-of-range/NaN/Inf. The JSON codec decodes every wire number as
+            // `.number(Double)` (never `.integer`), so this arm is the live path for
+            // maxTokens off an untrusted server — `Int(exactly:)` never traps; an
+            // out-of-range/NaN/Inf value just drops the field instead of crashing.
+            return Int(exactly: value.rounded())
         default: return nil
         }
     }
