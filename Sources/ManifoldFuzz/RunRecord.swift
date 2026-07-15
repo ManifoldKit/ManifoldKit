@@ -53,9 +53,8 @@ public struct RunRecord: Codable, Sendable, Equatable {
     /// Snapshot of the tool definitions made available to the model for this run.
     /// Empty when the run did not configure tools. Schema validation in
     /// `ToolCallValidityDetector.schema-violation` matches `ToolCall.toolName` against
-    /// this array; calls naming an unknown tool currently skip the schema
-    /// check silently — adding a dedicated `unknown-tool-name` sub-check is
-    /// tracked as a follow-up to #627.
+    /// this array; calls naming an unknown tool trip the dedicated
+    /// `unknown-tool-name` sub-check instead (the #627 follow-up).
     public var toolDefinitions: [ToolDefinition]
 
     public init(

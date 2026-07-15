@@ -5,11 +5,13 @@ import ManifoldInference
 /// real integration. Targeted unit tests cover known cases; this detector catches
 /// drift that nobody thought to test.
 ///
-/// Five sub-checks against any `RunRecord` whose tool-call list is non-empty:
+/// Six sub-checks against any `RunRecord` whose tool-call list is non-empty:
 ///
 /// - `malformed-json-args` — every `ToolCall.arguments` parses as JSON.
 /// - `schema-violation` — every `ToolCall.arguments` validates against the
 ///   corresponding `ToolDefinition.parameters` (reuses `JSONSchemaValidator`).
+/// - `unknown-tool-name` — every `ToolCall.toolName` (with valid JSON args)
+///   matches a declared `ToolDefinition.name`.
 /// - `id-reuse` — no `ToolCall.id` appears twice in a single conversation.
 /// - `orphan-result` — every `ToolResult.callId` references a preceding
 ///   `ToolCall.id`.
@@ -22,10 +24,11 @@ import ManifoldInference
 ///   transcript invariants — duplicate call IDs and results-for-unknown-calls
 ///   are zero-FP-by-construction (any honest backend respects them) so they
 ///   need no calibration corpus to graduate.
-/// - `malformed-json-args`, `schema-violation`, and `toolchoice-violation`
-///   ship at `.flaky` pending calibration corpus work tracked under #488 —
-///   model decoding ambiguity and toolchoice-prompt drift can produce
-///   defensible-but-noisy positives until the corpus settles FP < 2%.
+/// - `malformed-json-args`, `schema-violation`, `unknown-tool-name`, and
+///   `toolchoice-violation` ship at `.flaky` pending calibration corpus work
+///   tracked under #488 — model decoding ambiguity, hallucinated tool names,
+///   and toolchoice-prompt drift can all produce defensible-but-noisy
+///   positives until the corpus settles FP < 2%.
 public struct ToolCallValidityDetector: Detector {
     public let id = "tool-call-validity"
     public let humanName = "Tool-call invariant violations"
@@ -77,6 +80,17 @@ public struct ToolCallValidityDetector: Detector {
                         modelId: r.model.id
                     ))
                 }
+            } else {
+                // Pending FP calibration like the sibling json/schema checks
+                // above (#488) — a model can hallucinate a plausible-looking
+                // tool name, so this isn't zero-FP-by-construction. .flaky.
+                findings.append(.init(
+                    detectorId: id,
+                    subCheck: "unknown-tool-name",
+                    severity: .flaky,
+                    trigger: "\(call.toolName): not declared in toolDefinitions",
+                    modelId: r.model.id
+                ))
             }
 
             if seenIds.contains(call.id) {
