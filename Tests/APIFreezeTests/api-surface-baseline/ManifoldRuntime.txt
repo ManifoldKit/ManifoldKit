@@ -32,13 +32,6 @@ AudioRuntimeEvent.completed EnumElement
 AudioRuntimeEvent.failed EnumElement
 AudioRuntimeEvent.progress EnumElement
 AudioRuntimeEvent.started EnumElement
-BM25Scorer Struct
-BM25Scorer.Document Struct
-BM25Scorer.Document.id Var
-BM25Scorer.defaultB Var
-BM25Scorer.defaultK1 Var
-BM25Scorer.init(corpus:k1:b:) Constructor
-BM25Scorer.score(query:limit:) Func
 BenchmarkCache Protocol
 BenchmarkCache.fetchAll() Func
 BenchmarkCache.upsert(modelFileName:result:) Func
@@ -577,9 +570,6 @@ RAGService.retrieve(query:limit:) Func
 RAGService.retrieve(query:tokenBudget:tokenizer:) Func
 RAGService.retrieveSlots(query:limit:) Func
 RAGService.unownedExecutor Var
-ReciprocalRankFusion Enum
-ReciprocalRankFusion.defaultK Var
-ReciprocalRankFusion.fuse(_:k:limit:) Func
 ResumableRunDriver Class
 ResumableRunDriver.cancelRun() Func
 ResumableRunDriver.init(runStore:) Constructor
