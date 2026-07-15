@@ -79,7 +79,12 @@ public struct ConversationRuntimeOptions {
     /// ``ConversationRuntime/startRun(_:using:)`` /
     /// ``ConversationRuntime/resumeRun(_:using:)``. Leaving it `nil` (the
     /// default) reproduces pre-P3 single-turn behaviour exactly.
-    public var runStore: (any RunStore)?
+    ///
+    /// `package`-visibility only (2026-07 residual sweep, D.2) — the Agentic
+    /// Run subsystem has zero external adopters, so this property is no
+    /// longer settable from a public initializer. Only `ManifoldBootstrap`
+    /// (same SwiftPM package) sets it, via `enableResumableRuns:`.
+    package var runStore: (any RunStore)?
 
     public init(
         pipeline: PromptContextPipeline? = nil,
@@ -90,8 +95,7 @@ public struct ConversationRuntimeOptions {
         historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
-        auxiliaryInferenceService: InferenceService? = nil,
-        runStore: (any RunStore)? = nil
+        auxiliaryInferenceService: InferenceService? = nil
     ) {
         self.pipeline = pipeline
         self.budgetPlanner = budgetPlanner
@@ -103,6 +107,6 @@ public struct ConversationRuntimeOptions {
         self.hostTurnContextProvider = nil
         self.turnContextProvider = turnContextProvider
         self.auxiliaryInferenceService = auxiliaryInferenceService
-        self.runStore = runStore
+        self.runStore = nil
     }
 }

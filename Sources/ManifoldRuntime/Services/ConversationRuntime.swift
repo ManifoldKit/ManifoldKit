@@ -220,8 +220,7 @@ public final class ConversationRuntime: Sendable {
         historyProviders: [any HistoryProvider] = [],
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
-        hookRegistry: HookRegistry? = nil,
-        runStore: (any RunStore)? = nil
+        hookRegistry: HookRegistry? = nil
     ) {
         self.init(
             messageStore: messageStore,
@@ -241,7 +240,7 @@ public final class ConversationRuntime: Sendable {
             turnContextProvider: turnContextProvider,
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry,
-            runStore: runStore
+            runStore: nil
         )
     }
 
@@ -249,13 +248,15 @@ public final class ConversationRuntime: Sendable {
     /// (`ManifoldPersistenceSwiftData`, same SwiftPM package). Demoted to
     /// `package` alongside ``HostTurnContextProvider`` (2026-07 residual
     /// sweep, D.6) — the protocol has zero external adopters, so the public
-    /// initializer above no longer accepts it.
+    /// initializer above no longer accepts it. `runStore` joined this overload
+    /// in the D.2 residual sweep (2026-07) for the same reason — the Agentic
+    /// Run subsystem has zero external adopters.
     ///
-    /// `hostTurnContextProvider` is required (no default) so this overload
-    /// never becomes ambiguous with the public initializer above at call
-    /// sites that omit the label entirely — the public initializer is the
-    /// sole match in that case, and this one is the sole match whenever the
-    /// label is supplied explicitly.
+    /// `hostTurnContextProvider` and `runStore` are both required (no default)
+    /// so this overload never becomes ambiguous with the public initializer
+    /// above at call sites that omit both labels entirely — the public
+    /// initializer is the sole match in that case, and this one is the sole
+    /// match whenever either label is supplied explicitly.
     package convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
@@ -274,7 +275,7 @@ public final class ConversationRuntime: Sendable {
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        runStore: (any RunStore)? = nil
+        runStore: (any RunStore)?
     ) {
         self.init(
             messageStore: messageStore,
@@ -535,9 +536,12 @@ public final class ConversationRuntime: Sendable {
 
     /// Cancels all in-flight generation turns and waits for them to drain.
     ///
-    /// Call this from a `BGContinuedProcessingTask.expirationHandler` (via
-    /// ``ConversationRuntimeBackgroundBridge``) or any other context where the
-    /// caller needs a clean shutdown without a retained ``ConversationStreamHandle``.
+    /// Call this from a `BGContinuedProcessingTask.expirationHandler` — the
+    /// handler is synchronous, so fire a detached task that awaits this method
+    /// (see the ``ConversationRuntime`` `BGContinuedProcessingTask` recipe in
+    /// the `BackgroundTaskSupport` DocC article) — or any other context where
+    /// the caller needs a clean shutdown without a retained
+    /// ``ConversationStreamHandle``.
     ///
     /// Mirrors the `deinit` teardown path so the two stay in sync. Idempotent —
     /// safe to call when no turns are in flight.
@@ -583,7 +587,7 @@ public final class ConversationRuntime: Sendable {
     ///   - run:      The run record to start. The driver persists it.
     ///   - using:    The input provider that drives step synthesis.
     /// - Returns: A stream of ``RunEvent`` values.
-    public func startRun(
+    package func startRun(
         _ run: ConversationRun,
         using provider: any RunInputProvider = FixedGoalRunInputProvider()
     ) -> AsyncStream<RunEvent> {
@@ -619,7 +623,7 @@ public final class ConversationRuntime: Sendable {
     ///             the idempotency contract on
     ///             ``RunInputProvider/nextInput(for:stepIndex:prior:)``.
     /// - Returns: A stream of ``RunEvent`` values.
-    public func resumeRun(
+    package func resumeRun(
         _ runID: UUID,
         using provider: any RunInputProvider = FixedGoalRunInputProvider()
     ) -> AsyncStream<RunEvent> {
@@ -643,7 +647,7 @@ public final class ConversationRuntime: Sendable {
     /// emits ``RunEvent/runPaused`` once it suspends; the persisted run status
     /// transitions to ``RunStatus/paused`` so a later ``resumeRun(_:using:)``
     /// can pick it up — even across a process restart.
-    public func pauseActiveRun() async {
+    package func pauseActiveRun() async {
         guard let resumableDriver = turnDriver as? ResumableRunDriver else { return }
         await resumableDriver.pauseRun()
     }
@@ -653,7 +657,7 @@ public final class ConversationRuntime: Sendable {
     /// No-op when the runtime uses the default ``SingleTurnDriver``. The run
     /// emits ``RunEvent/runCancelled`` and its persisted status becomes
     /// ``RunStatus/cancelled`` (terminal).
-    public func cancelActiveRun() async {
+    package func cancelActiveRun() async {
         guard let resumableDriver = turnDriver as? ResumableRunDriver else { return }
         await resumableDriver.cancelRun()
     }

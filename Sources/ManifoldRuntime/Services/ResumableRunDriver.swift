@@ -75,7 +75,7 @@ actor ResumableRunState {
 /// strategy. The default implementation (``FixedGoalRunInputProvider``)
 /// synthesises a single `.send(text:)` turn from the run's `goal` and
 /// returns `nil` on subsequent steps.
-public protocol RunInputProvider: Sendable {
+package protocol RunInputProvider: Sendable {
     /// Returns the ``TurnInput`` for the next step, or `nil` when the run
     /// is complete. Called before each step; `stepIndex` is 0-based.
     ///
@@ -110,14 +110,14 @@ public protocol RunInputProvider: Sendable {
 /// Default ``RunInputProvider``: drives one `.send(text: goal)` turn on
 /// step 0, returns `nil` on step 1+ so the run completes after a single
 /// turn. Suitable for simple single-goal runs.
-public struct FixedGoalRunInputProvider: RunInputProvider, Sendable {
+package struct FixedGoalRunInputProvider: RunInputProvider, Sendable {
     private let config: TurnConfig
 
-    public init(config: TurnConfig = TurnConfig()) {
+    package init(config: TurnConfig = TurnConfig()) {
         self.config = config
     }
 
-    public func nextInput(
+    package func nextInput(
         for run: ConversationRun,
         stepIndex: Int,
         prior: RunStep?
@@ -233,7 +233,7 @@ private final class RunStoreProxy: @unchecked Sendable {
 ///
 /// - Invariant 6: run-level events ride ``RunEvent``, never ``ConversationEvent``.
 /// - Invariant 7: adding this driver required zero engine-core edits (EDGE).
-public final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
+package final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
     // `@unchecked Sendable` is safe: all mutable state is isolated behind
     // the `ResumableRunState` actor. `RunStoreProxy` is `@MainActor`-isolated
     // and `Sendable` by explicit declaration above. No bare mutable references
@@ -244,7 +244,7 @@ public final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
 
     // MARK: Init
 
-    public init(runStore: any RunStore) {
+    package init(runStore: any RunStore) {
         self.storeProxy = RunStoreProxy(runStore)
     }
 
@@ -633,19 +633,19 @@ public final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
     /// Requests that the active run pause after its current step.
     /// Returns immediately; the run emits ``RunEvent/runPaused`` when
     /// it actually suspends.
-    public func pauseRun() async {
+    package func pauseRun() async {
         await runState.requestPause()
     }
 
     /// Requests that a paused run resume execution. Returns immediately;
     /// the run emits ``RunEvent/runResumed`` when it continues.
-    public func resumeRun() async {
+    package func resumeRun() async {
         await runState.clearFlags()
     }
 
     /// Requests that the active run cancel. Returns immediately;
     /// the run emits ``RunEvent/runCancelled`` when it stops.
-    public func cancelRun() async {
+    package func cancelRun() async {
         await runState.requestCancel()
     }
 }

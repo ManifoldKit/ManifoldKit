@@ -11,22 +11,22 @@ import SwiftData
 /// boundary. No `@Model` escapes the port. Mirrors the isolation and `save()`
 /// discipline of ``SwiftDataBenchmarkCache`` / ``SwiftDataSamplerPresetStore``.
 @MainActor
-public final class SwiftDataRunStore: RunStore {
+package final class SwiftDataRunStore: RunStore {
 
     private let modelContext: ModelContext
 
-    public init(modelContext: ModelContext) {
+    package init(modelContext: ModelContext) {
         self.modelContext = modelContext
     }
 
     // MARK: - Runs
 
-    public func insertRun(_ run: ConversationRun) async throws {
+    package func insertRun(_ run: ConversationRun) async throws {
         modelContext.insert(ConversationRunModel(run))
         try modelContext.save()
     }
 
-    public func updateRun(_ run: ConversationRun) async throws {
+    package func updateRun(_ run: ConversationRun) async throws {
         guard let existing = try fetchRunModel(run.id) else {
             throw RunStoreError.runNotFound(run.id)
         }
@@ -34,7 +34,7 @@ public final class SwiftDataRunStore: RunStore {
         try modelContext.save()
     }
 
-    public func deleteRun(_ id: UUID) async throws {
+    package func deleteRun(_ id: UUID) async throws {
         guard let existing = try fetchRunModel(id) else {
             throw RunStoreError.runNotFound(id)
         }
@@ -47,7 +47,7 @@ public final class SwiftDataRunStore: RunStore {
         try modelContext.save()
     }
 
-    public func fetchRuns(for sessionID: UUID) async throws -> [ConversationRun] {
+    package func fetchRuns(for sessionID: UUID) async throws -> [ConversationRun] {
         let descriptor = FetchDescriptor<ConversationRunModel>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
@@ -55,18 +55,18 @@ public final class SwiftDataRunStore: RunStore {
         return try modelContext.fetch(descriptor).map { $0.toRecord() }
     }
 
-    public func fetchRun(_ id: UUID) async throws -> ConversationRun? {
+    package func fetchRun(_ id: UUID) async throws -> ConversationRun? {
         try fetchRunModel(id)?.toRecord()
     }
 
     // MARK: - Steps
 
-    public func insertStep(_ step: RunStep) async throws {
+    package func insertStep(_ step: RunStep) async throws {
         modelContext.insert(RunStepModel(step))
         try modelContext.save()
     }
 
-    public func updateStep(_ step: RunStep) async throws {
+    package func updateStep(_ step: RunStep) async throws {
         guard let existing = try fetchStepModel(step.id) else {
             throw RunStoreError.stepNotFound(step.id)
         }
@@ -74,7 +74,7 @@ public final class SwiftDataRunStore: RunStore {
         try modelContext.save()
     }
 
-    public func fetchSteps(for runID: UUID) async throws -> [RunStep] {
+    package func fetchSteps(for runID: UUID) async throws -> [RunStep] {
         try fetchStepModels(for: runID).map { $0.toRecord() }
     }
 

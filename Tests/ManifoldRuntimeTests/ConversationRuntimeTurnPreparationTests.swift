@@ -154,7 +154,8 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
             compressionPolicy: nil,
             historyShaper: historyShaper,
             historyProviders: historyProviders,
-            hostTurnContextProvider: hostTurnContextProvider
+            hostTurnContextProvider: hostTurnContextProvider,
+            runStore: nil
         )
         return (runtime, messageStore, backend)
     }

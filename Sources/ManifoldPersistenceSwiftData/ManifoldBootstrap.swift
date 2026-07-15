@@ -200,19 +200,15 @@ public final class ManifoldBootstrap {
     /// `enableResumableRuns: true`.
     ///
     /// When non-`nil`, ``conversationRuntime`` was built with a
-    /// `ResumableRunDriver` over this store, so you can:
+    /// `ResumableRunDriver` over this store.
     ///
-    /// ```swift
-    /// let bootstrap = try ManifoldBootstrap(configuration: config, enableResumableRuns: true)
-    /// let run = ConversationRun(sessionID: sessionID, goal: "Plan the launch", maxSteps: 4)
-    /// for await event in bootstrap.conversationRuntime.startRun(run) { /* observe */ }
-    /// // After a relaunch over the same store:
-    /// for await event in bootstrap.conversationRuntime.resumeRun(run.id) { /* observe */ }
-    /// ```
-    ///
-    /// Query persisted runs directly through this store
-    /// (`fetchRuns(for:)` / `fetchRun(_:)`).
-    public let runStore: SwiftDataRunStore?
+    /// `package`-visibility only (2026-07 residual sweep, D.2) — the Agentic
+    /// Run subsystem (this property, `enableResumableRuns:`, and
+    /// `ConversationRuntime.startRun`/`resumeRun`/`pauseActiveRun`/
+    /// `cancelActiveRun`) has zero external adopters, so both the flag and
+    /// this store are no longer reachable from the public initializers. See
+    /// `docs/MIGRATION-api-demotions-0.71.md` § D.2+D.3.
+    package let runStore: SwiftDataRunStore?
 
     /// The shared turn-loop runtime, pre-wired against ``persistence`` and
     /// ``inferenceService``. Apps that bootstrap through this type should pass
@@ -287,7 +283,7 @@ public final class ManifoldBootstrap {
     ///   explicit closure to use an in-memory store, a custom directory, or to
     ///   migrate an existing app away from the legacy
     ///   `<Application Support>/default.store` path.
-    public init(
+    public convenience init(
         configuration: ManifoldConfiguration,
         ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
@@ -298,7 +294,52 @@ public final class ManifoldBootstrap {
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        enableResumableRuns: Bool = false,
+        makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
+        isInMemory: Bool = false,
+        // Appended at the tail to keep the existing parameter positions stable
+        // for the API source-compat digester (#1904 UI fast-follow). Grouped
+        // with the other *GenerationService params at the call site by label.
+        audioGenerationService: AudioGenerationService? = nil
+    ) throws {
+        try self.init(
+            configuration: configuration,
+            ragConfiguration: ragConfiguration,
+            inferenceService: inferenceService,
+            imageGenerationService: imageGenerationService,
+            videoGenerationService: videoService,
+            webSearchRuntime: webSearchRuntime,
+            diagnostics: diagnostics,
+            runtimeOptions: runtimeOptions,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry,
+            enableResumableRuns: false,
+            makeModelContainer: makeModelContainer,
+            isInMemory: isInMemory,
+            audioGenerationService: audioGenerationService
+        )
+    }
+
+    /// Full-surface synchronous bootstrap init, including the Agentic Run
+    /// subsystem opt-in. Demoted to `package` in the 2026-07 residual sweep
+    /// (D.2) — the subsystem has zero external adopters, so the public
+    /// initializer above no longer accepts `enableResumableRuns`.
+    ///
+    /// `enableResumableRuns` is required (no default) so this overload never
+    /// becomes ambiguous with the public initializer above at a call site
+    /// that omits the label entirely — omitting it always resolves to the
+    /// public initializer; supplying it always resolves to this one.
+    package init(
+        configuration: ManifoldConfiguration,
+        ragConfiguration: RAGConfiguration? = nil,
+        inferenceService: InferenceService? = nil,
+        imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService videoService: VideoGenerationService? = nil,
+        webSearchRuntime: (any WebSearchRuntime)? = nil,
+        diagnostics: DiagnosticsService = DiagnosticsService(),
+        runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil,
+        enableResumableRuns: Bool,
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         isInMemory: Bool = false,
         // Appended at the tail to keep the existing parameter positions stable
@@ -593,7 +634,48 @@ public final class ManifoldBootstrap {
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        enableResumableRuns: Bool = false,
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
+        // Appended at the tail to keep existing parameter positions stable for
+        // the API source-compat digester (#1904 UI fast-follow).
+        audioGenerationService: AudioGenerationService? = nil
+    ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
+        build(
+            configuration: configuration,
+            ragConfiguration: ragConfiguration,
+            inferenceService: inferenceService,
+            imageGenerationService: imageGenerationService,
+            videoGenerationService: videoGenerationService,
+            webSearchRuntime: webSearchRuntime,
+            diagnostics: diagnostics,
+            runtimeOptions: runtimeOptions,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry,
+            enableResumableRuns: false,
+            makeModelContainer: makeModelContainer,
+            audioGenerationService: audioGenerationService
+        )
+    }
+
+    /// Full-surface async bootstrap factory, including the Agentic Run
+    /// subsystem opt-in. Demoted to `package` in the 2026-07 residual sweep
+    /// (D.2) — the subsystem has zero external adopters, so the public
+    /// `build(...)` factory above no longer accepts `enableResumableRuns`.
+    ///
+    /// `enableResumableRuns` is required (no default) so this overload never
+    /// becomes ambiguous with the public factory above at a call site that
+    /// omits the label entirely.
+    package static func build(
+        configuration: ManifoldConfiguration,
+        ragConfiguration: RAGConfiguration? = nil,
+        inferenceService: InferenceService? = nil,
+        imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
+        webSearchRuntime: (any WebSearchRuntime)? = nil,
+        diagnostics: DiagnosticsService = DiagnosticsService(),
+        runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil,
+        enableResumableRuns: Bool,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         // Appended at the tail to keep existing parameter positions stable for
         // the API source-compat digester (#1904 UI fast-follow).
