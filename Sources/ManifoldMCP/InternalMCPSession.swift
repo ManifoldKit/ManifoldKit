@@ -256,6 +256,13 @@ internal actor MCPSession {
     /// messages from being decoded; `sendResult`/`sendError` reply once it settles.
     /// A request is never silently dropped — even with no handler configured, the
     /// server gets a JSON-RPC error back rather than hanging.
+    ///
+    /// Note: `maxConcurrentRequests`/`pendingRequests` bound only *client*-initiated
+    /// requests (this session's own `sendRequest` calls) — there is no such cap on
+    /// inbound server-initiated requests like `sampling/createMessage`. Rate-limiting
+    /// and budgeting inbound sampling calls is delegated to the host's
+    /// `samplingHandler` by design; see the security note on
+    /// `MCPClientConfiguration.samplingHandler`.
     private func handleServerRequest(id: MCPRequestID, method: String, params: JSONSchemaValue?) {
         guard let serverRequestHandler else {
             Task { [weak self] in
