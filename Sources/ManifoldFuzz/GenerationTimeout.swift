@@ -20,11 +20,21 @@ import os
 /// HTTP transport layer); local backends (Ollama, Foundation, mock, chaos)
 /// generated in-process with no bound at all, so a hung generation stalled
 /// the whole campaign.
+///
+/// `onTimeout` is `async` — like MCP's `handleRequestTimeout` — specifically
+/// so callers can perform REAL cleanup before returning the fallback value,
+/// not just abandon the operation task and hope. Cancelling `operationTask`
+/// alone does not stop a backend's in-flight generation (the fuzz stream
+/// isn't guaranteed to check `Task.isCancelled`), so callers MUST call
+/// `InferenceBackend.stopGeneration()` (or `InferenceService.cancel(_:)` for
+/// the enqueue-based session-script path) from `onTimeout` — that's the
+/// contract-guaranteed way to actually terminate the in-flight generation,
+/// per `InferenceBackend.stopGeneration()`'s doc comment.
 enum GenerationTimeout {
     static func run<T: Sendable>(
         _ timeout: Duration,
         operation: @escaping @Sendable () async -> T,
-        onTimeout: @escaping @Sendable () -> T
+        onTimeout: @escaping @Sendable () async -> T
     ) async -> T {
         await withCheckedContinuation { continuation in
             let resumed = OSAllocatedUnfairLock(initialState: false)
@@ -50,7 +60,8 @@ enum GenerationTimeout {
                 }
                 guard claimResume() else { return }
                 operationTask.cancel()
-                continuation.resume(returning: onTimeout())
+                let fallback = await onTimeout()
+                continuation.resume(returning: fallback)
             }
         }
     }

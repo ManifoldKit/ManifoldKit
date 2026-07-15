@@ -292,30 +292,46 @@ public actor SessionScriptRunner {
                 stopReason: "error"
             )
         case .success(let pair):
-            let (_, stream) = pair
+            let (token, stream) = pair
             let requestTimeout = options.requestTimeout
             let maxOutputTokens = options.maxOutputTokens
-            capture = await GenerationTimeout.run(
-                .seconds(requestTimeout),
-                operation: { await EventRecorder().consume(stream, maxOutputTokens: maxOutputTokens) },
-                onTimeout: {
-                    EventRecorder.Capture(
-                        events: [],
-                        raw: "",
-                        thinkingRaw: "",
-                        thinkingParts: [],
-                        thinkingCompleteCount: 0,
-                        phase: "timeout",
-                        error: "generation exceeded requestTimeout (\(requestTimeout)s)",
-                        firstTokenMs: nil,
-                        totalMs: self.elapsedMs(since: start),
-                        peakBytes: memBefore,
-                        promptTokens: nil,
-                        completionTokens: nil,
-                        stopReason: "timeout"
-                    )
-                }
-            )
+            if options.backendName == "openai" {
+                // See FuzzRunner.runSingle's twin of this branch: the cloud
+                // path already has its own transport-level idle timeout
+                // (which resets on activity), so a second wall-clock cap
+                // here would additionally hard-cut a slow-but-continuously-
+                // streaming completion the idle timeout correctly lets
+                // finish.
+                capture = await EventRecorder().consume(stream, maxOutputTokens: maxOutputTokens)
+            } else {
+                capture = await GenerationTimeout.run(
+                    .seconds(requestTimeout),
+                    operation: { await EventRecorder().consume(stream, maxOutputTokens: maxOutputTokens) },
+                    onTimeout: { [self] in
+                        // Cancelling the operation task alone does not stop
+                        // `InferenceService`'s in-flight generation — the
+                        // request keeps running against the backend.
+                        // `cancel(_:)` is the real stop path (mirrors
+                        // FuzzRunner.runSingle's `stopGeneration()` call).
+                        await self.cancelInFlight(token: token)
+                        return EventRecorder.Capture(
+                            events: [],
+                            raw: "",
+                            thinkingRaw: "",
+                            thinkingParts: [],
+                            thinkingCompleteCount: 0,
+                            phase: "timeout",
+                            error: "generation exceeded requestTimeout (\(requestTimeout)s)",
+                            firstTokenMs: nil,
+                            totalMs: self.elapsedMs(since: start),
+                            peakBytes: memBefore,
+                            promptTokens: nil,
+                            completionTokens: nil,
+                            stopReason: "timeout"
+                        )
+                    }
+                )
+            }
         }
 
         let memAfter = AppMemoryUsage.currentBytes()
@@ -382,6 +398,18 @@ public actor SessionScriptRunner {
               let firstToken = c.firstTokenMs,
               c.totalMs > firstToken else { return nil }
         return Double(completion) / ((c.totalMs - firstToken) / 1000.0)
+    }
+
+    /// Real stop path for a timed-out generation — `InferenceService` is
+    /// `@MainActor`-isolated, so this hops there. Called from
+    /// `GenerationTimeout`'s `onTimeout`, which cannot capture `service`
+    /// directly (a non-`Sendable`, `@MainActor`-isolated type) inside its own
+    /// non-isolated `@Sendable` closure; going through this actor-isolated
+    /// method (actors are `Sendable`, so `self` capture is fine) sidesteps that.
+    private func cancelInFlight(token: GenerationRequestToken) async {
+        await MainActor.run { [service] in
+            service.cancel(token)
+        }
     }
 
     private nonisolated func elapsedMs(since start: ContinuousClock.Instant) -> Double {

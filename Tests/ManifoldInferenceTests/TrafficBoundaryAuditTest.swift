@@ -298,14 +298,11 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// Files where `Process(` is approved. Other C-interop / dynamic-
     /// dispatch patterns have **no** allowlist — each is a hard ban.
     private static let processSpawnAllowlist: Set<String> = [
-        // Fuzz harness CLI: HarnessMetadata captures git/sw_vers via
-        // subprocess for reproducibility; Replayer launches a child
-        // process to replay a corpus seed in isolation. The actual
-        // `Process()` spawn for both lives in BoundedSubprocess (shared
-        // timeout+kill wrapper, #2266) — HarnessMetadata/Replayer now call
-        // through it rather than spawning directly.
-        "ManifoldFuzz/HarnessMetadata.swift",
-        "ManifoldFuzz/Replay/Replayer.swift",
+        // Fuzz harness CLI: BoundedSubprocess is the sole `Process()` spawn
+        // point for git/sw_vers metadata capture (HarnessMetadata) and
+        // replay-time git-rev drift checks (Replayer) — a shared timeout+kill
+        // wrapper (#2266). HarnessMetadata/Replayer themselves no longer spawn
+        // directly, so they carry no allowlist entry of their own.
         "ManifoldFuzz/BoundedSubprocess.swift",
         // MCP stdio transport intentionally launches local server binaries
         // to support offline and local-tooling integrations.

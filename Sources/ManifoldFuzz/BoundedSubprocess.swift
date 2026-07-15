@@ -13,6 +13,16 @@ import ManifoldInference
 /// the fuzz harness forever. This bounds that wait and reclaims the whole
 /// descendant tree (not just the direct child), mirroring leet-llm's
 /// `proc_listchildpids` walk.
+///
+/// Drains stdout/stderr concurrently on background queues rather than
+/// reading after `waitUntilExit()`/termination — a pipe's kernel buffer is a
+/// few tens of KiB; a child that writes more than that before exiting would
+/// otherwise block on `write()` forever while nothing is reading the other
+/// end, turning EVERY such invocation into a guaranteed timeout regardless of
+/// how fast the child actually finished. Current call sites (`git`, `swift
+/// --version`) emit a handful of bytes, but this is a shared wrapper, so it
+/// drains both pipes unconditionally rather than relying on callers staying
+/// small forever.
 enum BoundedSubprocess {
     struct Result {
         /// Captured stdout. `nil` when the process failed to launch, or when
@@ -35,8 +45,9 @@ enum BoundedSubprocess {
         process.executableURL = executableURL
         process.arguments = arguments
         let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
-        process.standardError = Pipe()
+        process.standardError = stderrPipe
 
         let terminated = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in terminated.signal() }
@@ -51,6 +62,11 @@ enum BoundedSubprocess {
             return Result(output: nil, timedOut: false)
         }
 
+        let stdoutCollector = OutputCollector()
+        let readers = DispatchGroup()
+        startDraining(stdoutPipe.fileHandleForReading, into: stdoutCollector, group: readers)
+        startDraining(stderrPipe.fileHandleForReading, into: OutputCollector(), group: readers)
+
         let timedOut = terminated.wait(timeout: .now() + timeout) == .timedOut
         if timedOut {
             let argline = ([executableURL.path] + arguments).joined(separator: " ")
@@ -59,11 +75,35 @@ enum BoundedSubprocess {
             // Best-effort grace period for the termination handler to fire;
             // we don't block indefinitely on it either way.
             _ = terminated.wait(timeout: .now() + 0.5)
+            // Killing the process closes both pipes' write ends, which
+            // unblocks the reader threads' `read()` calls promptly — this
+            // wait is bounded in practice, not indefinite.
+            readers.wait()
             return Result(output: nil, timedOut: true)
         }
 
-        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        readers.wait()
+        let data = stdoutCollector.snapshot()
         return Result(output: String(data: data, encoding: .utf8), timedOut: false)
+    }
+
+    /// Reads a pipe to EOF on a background queue, appending into `collector`.
+    /// Runs concurrently with the parent waiting on `terminated` so the child
+    /// is never blocked on a full pipe buffer.
+    private static func startDraining(
+        _ handle: FileHandle,
+        into collector: OutputCollector,
+        group: DispatchGroup
+    ) {
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            while true {
+                let chunk = handle.availableData
+                guard !chunk.isEmpty else { return }
+                collector.append(chunk)
+            }
+        }
     }
 
     private static func terminateProcessTree(rootProcessID: pid_t) {
@@ -99,5 +139,19 @@ enum BoundedSubprocess {
         }
         guard count > 0 else { return [] }
         return processIDs.prefix(Int(count)).filter { $0 > 0 }
+    }
+}
+
+/// Thread-safe accumulator for a background-drained pipe.
+private final class OutputCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func append(_ chunk: Data) {
+        lock.withLock { data.append(chunk) }
+    }
+
+    func snapshot() -> Data {
+        lock.withLock { data }
     }
 }
