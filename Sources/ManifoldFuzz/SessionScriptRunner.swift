@@ -45,6 +45,12 @@ public actor SessionScriptRunner {
         /// Per-model memory budget in bytes, when the factory can supply one.
         /// Feeds `RunRecord.ModelSnapshot.memoryBudgetBytes`.
         public var memoryBudgetBytes: UInt64?
+        /// Per-turn wall-clock bound on generation, in seconds. Mirrors
+        /// `FuzzConfig.requestTimeout` — see `FuzzRunner.runSingle` for the
+        /// single-turn twin of this wiring. Session scripts are just as
+        /// exposed to a hung local-backend generation as single-turn runs,
+        /// so every `.send`/`.regenerate` step is bounded the same way.
+        public var requestTimeout: TimeInterval
 
         public init(
             modelId: String = "mock-model",
@@ -58,7 +64,8 @@ public actor SessionScriptRunner {
             requestGroupID: UUID? = nil,
             toolDefinitions: [ToolDefinition] = [],
             contextLimit: Int? = nil,
-            memoryBudgetBytes: UInt64? = nil
+            memoryBudgetBytes: UInt64? = nil,
+            requestTimeout: TimeInterval = 90
         ) {
             self.modelId = modelId
             self.modelURL = modelURL
@@ -72,6 +79,7 @@ public actor SessionScriptRunner {
             self.toolDefinitions = toolDefinitions
             self.contextLimit = contextLimit
             self.memoryBudgetBytes = memoryBudgetBytes
+            self.requestTimeout = requestTimeout
         }
     }
 
@@ -285,7 +293,29 @@ public actor SessionScriptRunner {
             )
         case .success(let pair):
             let (_, stream) = pair
-            capture = await EventRecorder().consume(stream, maxOutputTokens: options.maxOutputTokens)
+            let requestTimeout = options.requestTimeout
+            let maxOutputTokens = options.maxOutputTokens
+            capture = await GenerationTimeout.run(
+                .seconds(requestTimeout),
+                operation: { await EventRecorder().consume(stream, maxOutputTokens: maxOutputTokens) },
+                onTimeout: {
+                    EventRecorder.Capture(
+                        events: [],
+                        raw: "",
+                        thinkingRaw: "",
+                        thinkingParts: [],
+                        thinkingCompleteCount: 0,
+                        phase: "timeout",
+                        error: "generation exceeded requestTimeout (\(requestTimeout)s)",
+                        firstTokenMs: nil,
+                        totalMs: self.elapsedMs(since: start),
+                        peakBytes: memBefore,
+                        promptTokens: nil,
+                        completionTokens: nil,
+                        stopReason: "timeout"
+                    )
+                }
+            )
         }
 
         let memAfter = AppMemoryUsage.currentBytes()
@@ -342,7 +372,8 @@ public actor SessionScriptRunner {
             stopReason: capture.stopReason,
             toolCalls: capture.toolCalls,
             toolResults: capture.toolResults,
-            toolDefinitions: options.toolDefinitions
+            toolDefinitions: options.toolDefinitions,
+            truncated: capture.truncated
         )
     }
 
@@ -353,7 +384,7 @@ public actor SessionScriptRunner {
         return Double(completion) / ((c.totalMs - firstToken) / 1000.0)
     }
 
-    private func elapsedMs(since start: ContinuousClock.Instant) -> Double {
+    private nonisolated func elapsedMs(since start: ContinuousClock.Instant) -> Double {
         let comps = start.duration(to: ContinuousClock.now).components
         return Double(comps.seconds) * 1000 + Double(comps.attoseconds) / 1e15
     }

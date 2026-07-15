@@ -28,6 +28,10 @@ public struct EventRecorder: Sendable {
         public var toolCalls: [ToolCall]
         /// Full `.toolResult` payloads.
         public var toolResults: [ToolResult]
+        /// `true` when `consume` dropped some of `raw`/`thinkingRaw`/`events` to
+        /// stay under ``maxBufferedCharacters``/``maxBufferedEvents`` — see
+        /// those constants' doc comments for the truncation strategy.
+        public var truncated: Bool
 
         public init(
             events: [RunRecord.EventSnapshot],
@@ -44,7 +48,8 @@ public struct EventRecorder: Sendable {
             completionTokens: Int?,
             stopReason: String,
             toolCalls: [ToolCall] = [],
-            toolResults: [ToolResult] = []
+            toolResults: [ToolResult] = [],
+            truncated: Bool = false
         ) {
             self.events = events
             self.raw = raw
@@ -61,8 +66,26 @@ public struct EventRecorder: Sendable {
             self.stopReason = stopReason
             self.toolCalls = toolCalls
             self.toolResults = toolResults
+            self.truncated = truncated
         }
     }
+
+    /// Cap on `raw`/`thinkingRaw`, in characters, each. Once either buffer
+    /// exceeds this, ``consume`` drops characters from the FRONT (keeps the
+    /// most recent tail) rather than simply stopping accumulation — a
+    /// genuinely-looping model is exactly the anomaly the fuzzer exists to
+    /// catch, and `LoopingDetector`'s `RepetitionDetector.looksLikeLooping`
+    /// check reads a suffix of `raw`/`thinkingRaw`, so the truncation strategy
+    /// must preserve the tail, not the head. 1 MiB is generous relative to any
+    /// bounded `maxOutputTokens` run (64–512 tokens in this harness); only a
+    /// backend that ignores the token cap and never stops naturally can hit it.
+    public static let maxBufferedCharacters = 1_048_576
+
+    /// Cap on `events.count`. Same front-drop rationale as
+    /// ``maxBufferedCharacters`` — keeps the most recent event history rather
+    /// than the earliest. Generous relative to a normal run's event count
+    /// (one entry per token/thinkingToken plus occasional metadata events).
+    public static let maxBufferedEvents = 50_000
 
     /// - Parameter maxOutputTokens: the cap requested in `GenerationConfig`, used to
     ///   classify the stop reason as `maxTokens` when the final usage report meets/exceeds it.
@@ -82,10 +105,31 @@ public struct EventRecorder: Sendable {
         var errorString: String?
         var toolCalls: [ToolCall] = []
         var toolResults: [ToolResult] = []
+        var truncated = false
 
         func memoryTick() {
             if let now = AppMemoryUsage.currentBytes() {
                 peakBytes = max(peakBytes ?? now, now)
+            }
+        }
+
+        // Keeps `raw`/`thinkingRaw`/`events` bounded for a generation that
+        // never naturally stops (a real anomaly, not just noise — see the
+        // doc comments on `maxBufferedCharacters`/`maxBufferedEvents`).
+        // Dropping from the front preserves the tail, which is what
+        // `LoopingDetector` and "most recent event history" readers need.
+        func capBuffers() {
+            if raw.count > Self.maxBufferedCharacters {
+                raw.removeFirst(raw.count - Self.maxBufferedCharacters)
+                truncated = true
+            }
+            if thinkingRaw.count > Self.maxBufferedCharacters {
+                thinkingRaw.removeFirst(thinkingRaw.count - Self.maxBufferedCharacters)
+                truncated = true
+            }
+            if events.count > Self.maxBufferedEvents {
+                events.removeFirst(events.count - Self.maxBufferedEvents)
+                truncated = true
             }
         }
 
@@ -172,6 +216,7 @@ public struct EventRecorder: Sendable {
                     events.append(.init(t: t, kind: "toolCallTruncated", v: rawBody))
                 }
                 memoryTick()
+                capBuffers()
             }
         } catch {
             phase = "failed"
@@ -216,7 +261,8 @@ public struct EventRecorder: Sendable {
             completionTokens: completionTokens,
             stopReason: stopReason,
             toolCalls: toolCalls,
-            toolResults: toolResults
+            toolResults: toolResults,
+            truncated: truncated
         )
     }
 }

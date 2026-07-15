@@ -215,7 +215,28 @@ public actor FuzzRunner {
                 systemPrompt: entry.system,
                 config: cfg
             )
-            capture = await EventRecorder().consume(stream, maxOutputTokens: maxTokens)
+            let requestTimeout = config.requestTimeout
+            capture = await GenerationTimeout.run(
+                .seconds(requestTimeout),
+                operation: { await EventRecorder().consume(stream, maxOutputTokens: maxTokens) },
+                onTimeout: {
+                    EventRecorder.Capture(
+                        events: [],
+                        raw: "",
+                        thinkingRaw: "",
+                        thinkingParts: [],
+                        thinkingCompleteCount: 0,
+                        phase: "timeout",
+                        error: "generation exceeded requestTimeout (\(requestTimeout)s)",
+                        firstTokenMs: nil,
+                        totalMs: start.duration(to: ContinuousClock.now).milliseconds,
+                        peakBytes: memBefore,
+                        promptTokens: nil,
+                        completionTokens: nil,
+                        stopReason: "timeout"
+                    )
+                }
+            )
         } catch {
             capture = EventRecorder.Capture(
                 events: [],
@@ -292,7 +313,8 @@ public actor FuzzRunner {
             stopReason: capture.stopReason,
             toolCalls: capture.toolCalls,
             toolResults: capture.toolResults,
-            toolDefinitions: toolDefs
+            toolDefinitions: toolDefs,
+            truncated: capture.truncated
         )
     }
 }
