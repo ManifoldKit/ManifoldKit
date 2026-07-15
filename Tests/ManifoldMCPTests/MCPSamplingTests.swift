@@ -147,6 +147,44 @@ final class MCPSamplingTests: XCTestCase {
         XCTAssertThrowsError(try MCPSamplingRequest(params: .object([:])))
     }
 
+    /// The JSON-RPC codec decodes every wire number as `.number(Double)` — never
+    /// `.integer` — so this is the actual production shape `maxTokens` arrives in
+    /// (see `MCPJSONRPCCodec.convertToJSONSchemaValue`). The `.integer(256)` case
+    /// above exercises a shape the wire never produces.
+    func test_samplingRequestParsesIntegralDoubleMaxTokens() throws {
+        let params: JSONSchemaValue = .object([
+            "messages": .array([
+                .object(["role": .string("user"), "content": .object(["type": .string("text"), "text": .string("hi")])]),
+            ]),
+            "maxTokens": .number(256),
+        ])
+
+        let request = try MCPSamplingRequest(params: params)
+        XCTAssertEqual(request.maxTokens, 256)
+    }
+
+    /// #2274 review finding: `Int(Double)` (the non-failable rounding init) traps on
+    /// out-of-range/NaN/Inf. A connected MCP server is a trust boundary — a hostile
+    /// or buggy server sending an out-of-range/NaN/Inf `maxTokens` must not crash the
+    /// host process. `Int(exactly:)` must be used instead, dropping the field rather
+    /// than trapping.
+    func test_samplingRequestDropsOutOfRangeOrNonFiniteMaxTokensWithoutCrashing() throws {
+        for maxTokens: Double in [1e308, .infinity, -.infinity, .nan] {
+            let params: JSONSchemaValue = .object([
+                "messages": .array([
+                    .object(["role": .string("user"), "content": .object(["type": .string("text"), "text": .string("hi")])]),
+                ]),
+                "maxTokens": .number(maxTokens),
+            ])
+
+            let request = try MCPSamplingRequest(params: params)
+            XCTAssertNil(request.maxTokens, "maxTokens \(maxTokens) must be dropped, not crash or silently coerce")
+        }
+        // Sabotage: reverting MCPSampling.intValue's `.number` arm to `Int(value)`
+        // (the non-failable rounding init) would make this test crash the whole
+        // test process instead of failing an assertion, for every one of these inputs.
+    }
+
     func test_samplingResultEncodesToExpectedJSONRPCShape() {
         let result = MCPSamplingResult(
             role: .assistant,
