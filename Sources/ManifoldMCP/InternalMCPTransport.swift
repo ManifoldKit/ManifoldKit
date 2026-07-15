@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Security
 import ManifoldInference
+import os
 
 /// Routing metadata threaded alongside a serialized JSON-RPC payload so the HTTP
 /// transport can emit the `Mcp-Method` / `Mcp-Name` headers the MCP spec mandates
@@ -374,8 +375,20 @@ internal actor MCPStdioTransport: MCPTransport {
 
     func close() async {
         readTask?.cancel()
+        // Signal EOF on the child's stdin so a well-behaved server can exit on its own.
+        closeHandle(stdinHandle, label: "stdin")
+
+        // Unblock a reader stuck in a blocking `FileHandle.read` on a silent child by
+        // closing the read end out from under it. Cooperative cancellation cannot
+        // interrupt an in-flight read, and we must not depend on the child — or a
+        // grandchild that inherited the stdout write end — ever closing it: without
+        // this, `readOutputLoop` would leak until (or unless) EOF ever arrives, and
+        // teardown would hang past the bounded terminate/SIGKILL window. Closing the
+        // handle makes the blocked read throw promptly; the read task observes the
+        // cancellation flag and finishes. Awaiting it makes teardown deterministic.
+        closeHandle(stdoutHandle, label: "stdout")
+        await readTask?.value
         readTask = nil
-        stdinHandle?.closeFile()
 
         if let process, process.isRunning {
             process.terminate()
@@ -386,13 +399,27 @@ internal actor MCPStdioTransport: MCPTransport {
             }
         }
 
-        stdoutHandle?.closeFile()
-        stderrHandle?.closeFile()
+        closeHandle(stderrHandle, label: "stderr")
         stdinHandle = nil
         stdoutHandle = nil
         stderrHandle = nil
         process = nil
         continuation.finish()
+    }
+
+    /// Closes a pipe handle, logging rather than trapping on failure. Uses the
+    /// throwing `close()` (not `closeFile()`) so that closing the stdout handle to
+    /// interrupt a blocked read surfaces any error as a catchable Swift error
+    /// rather than an uncatchable Objective-C exception.
+    private func closeHandle(_ handle: FileHandle?, label: String) {
+        guard let handle else { return }
+        do {
+            try handle.close()
+        } catch {
+            Log.inference.error(
+                "MCPStdioTransport: failed to close \(label, privacy: .public) handle: \(error, privacy: .private)"
+            )
+        }
     }
 
     private nonisolated static func readOutputLoop(

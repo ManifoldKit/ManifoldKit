@@ -99,6 +99,75 @@ final class MCPStdioTransportTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func test_closeUnblocksSilentReaderAndFinishesStream() async throws {
+        // /bin/cat reads stdin and echoes it. We never write, so it stays alive
+        // producing no stdout — the read loop is parked in a blocking read that
+        // will never return data on its own. close() must still return promptly
+        // and end the read task: it closes the stdout handle out from under the
+        // blocked read rather than waiting for the child to close its write end.
+        let transport = MCPStdioTransport(
+            command: .executable(at: URL(fileURLWithPath: "/bin/cat")),
+            maxMessageBytes: 4_096
+        )
+
+        try await transport.start()
+        // Let the read loop reach its blocking read before we tear down.
+        try await Task.sleep(for: .milliseconds(100))
+
+        try await withTimeout(.seconds(8)) {
+            await transport.close()
+        }
+
+        // The read task ended cleanly: draining the (now finished) stream must
+        // complete promptly without throwing.
+        try await withTimeout(.seconds(2)) {
+            for try await _ in transport.incomingMessages {}
+        }
+        // Sabotage: removing the `closeHandle(stdoutHandle, ...)` before `await
+        // readTask?.value` in close() leaves the read parked forever, so close()
+        // never returns and the 8s withTimeout above fires.
+    }
+
+    func test_closeUnblocksReaderWhenGrandchildHoldsStdoutAndParentIgnoresSIGTERM() async throws {
+        // The genuine indefinite-hang case the fix targets: a child that (a) never
+        // writes, (b) ignores SIGTERM so the terminate() step is a no-op, and (c)
+        // leaves a grandchild holding the inherited stdout write end open, so the
+        // reader never sees EOF even after the parent is SIGKILLed. The only thing
+        // that can unblock the read is our explicit close of the read handle. If
+        // close() awaited the read task without first closing the handle, it would
+        // hang here forever and trip the timeout.
+        try XCTSkipUnless(
+            FileManager.default.fileExists(atPath: "/usr/bin/python3"),
+            "python3 not found at /usr/bin/python3"
+        )
+        let script = """
+        import signal, subprocess, sys, time
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        # Grandchild inherits our stdout (fd 1) and outlives us, holding the pipe's
+        # write end open so the parent reader never receives EOF from our death.
+        subprocess.Popen(["/bin/sleep", "20"])
+        sys.stdout.flush()
+        time.sleep(20)
+        """
+        let transport = MCPStdioTransport(
+            command: .executable(
+                at: URL(fileURLWithPath: "/usr/bin/python3"),
+                args: ["-u", "-c", script]
+            ),
+            maxMessageBytes: 4_096
+        )
+
+        try await transport.start()
+        try await Task.sleep(for: .milliseconds(200))
+
+        // close() runs the bounded terminate → 2s → SIGKILL → 1s dance for the
+        // SIGTERM-ignoring parent, so allow generous headroom; the point is that
+        // it returns at all rather than blocking forever on the stuck read.
+        try await withTimeout(.seconds(10)) {
+            await transport.close()
+        }
+    }
     #endif
 
     func test_environmentPolicyScrubsInheritedAndAllowsExplicitOverrides() {
