@@ -1,0 +1,129 @@
+#if Server
+@testable import ManifoldServer
+import ManifoldInference
+import Foundation
+import Hummingbird
+import HummingbirdCore
+import HTTPTypes
+import NIOCore
+import XCTest
+
+/// Regression guard for #2269: `ServerApp.writeSSEChunks` must stream each
+/// token's SSE frame to the wire as it arrives, never buffering the whole
+/// response and flushing it once at the end. Incremental per-token delivery
+/// is `ManifoldServer`'s whole differentiator over a batching server, so a
+/// future change that re-buffers the SSE loop must fail this test.
+///
+/// Drives `writeSSEChunks` directly with a fake `ResponseBodyWriter` and a
+/// fake token stream that pauses between tokens — the in-process
+/// `HummingbirdTesting` client fully drains the connection before handing
+/// back a response, so it can't observe write-by-write timing (see
+/// `SSECancellationTests`'s doc comment); calling the extracted function
+/// directly sidesteps that.
+///
+/// Sabotage-evidence: replace the per-chunk `try await writer.write(buffer)`
+/// call with buffering every frame into one `ByteBuffer` and writing it after
+/// the loop — `testFirstFrameArrivesBeforeLastTokenIsProduced` fails because
+/// the first recorded write timestamp would land after the token-producer
+/// finishes instead of before it.
+final class SSEStreamWritingTests: XCTestCase {
+    func testFirstFrameArrivesBeforeLastTokenIsProduced() async throws {
+        let tokenGap = Duration.milliseconds(200)
+        let tokenCount = 3
+
+        let recordingWriter = RecordingResponseBodyWriter()
+        var writer: any ResponseBodyWriter = recordingWriter
+
+        let lastTokenProducedAt = ManagedAtomic<ContinuousClock.Instant?>(nil)
+        let chunks = AsyncThrowingStream<ChatCompletionChunk, Error> { continuation in
+            let task = Task {
+                for i in 0..<tokenCount {
+                    try await Task.sleep(for: tokenGap)
+                    continuation.yield(ChatCompletionChunk(
+                        id: "chatcmpl-pace",
+                        created: 0,
+                        model: "pace-model",
+                        choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: "tok\(i)"))]
+                    ))
+                    if i == tokenCount - 1 {
+                        await lastTokenProducedAt.set(.now)
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+
+        let app = ServerApp()
+        _ = try await app.writeSSEChunks(
+            chunks,
+            to: &writer,
+            encoder: JSONEncoder()
+        ) { _ in 1 }
+
+        let writes = await recordingWriter.writes
+        // tokenCount data frames + the [DONE] sentinel.
+        XCTAssertEqual(writes.count, tokenCount + 1)
+
+        let firstFrameWrittenAt = writes[0].timestamp
+        let lastTokenAt = await lastTokenProducedAt.value
+        XCTAssertNotNil(lastTokenAt, "producer must have emitted its last token")
+
+        // SABOTAGE: buffer all frames and write them after the loop instead of
+        // per-chunk to verify this assertion catches non-incremental streaming.
+        XCTAssertLessThan(
+            firstFrameWrittenAt,
+            lastTokenAt!,
+            "first SSE frame must reach the writer before the source stream finishes producing tokens — " +
+            "streaming must stay incremental, never buffer-then-flush-at-end"
+        )
+
+        // Every write is spaced out rather than arriving in one final burst —
+        // confirms the loop flushes per-token, not just "first one is early".
+        for index in 1..<writes.count {
+            XCTAssertGreaterThan(
+                writes[index].timestamp,
+                writes[index - 1].timestamp,
+                "writes must be interleaved with token production, not coalesced at the end"
+            )
+        }
+    }
+}
+
+// MARK: - Test doubles
+
+/// Actor-backed timestamp box, since `ContinuousClock.Instant` capture across
+/// concurrent tasks needs a safe hand-off (mirrors the pattern already used
+/// by `ConcurrencyRecorder` in `ManifoldServerSmokeTests`).
+private actor ManagedAtomic<Value: Sendable> {
+    private var storage: Value
+
+    init(_ initial: Value) {
+        self.storage = initial
+    }
+
+    var value: Value { storage }
+
+    func set(_ newValue: Value) {
+        storage = newValue
+    }
+}
+
+/// Fake `ResponseBodyWriter` that timestamps every write instead of sending
+/// bytes anywhere — lets the test assert write-by-write timing.
+private actor RecordingResponseBodyWriter: ResponseBodyWriter {
+    struct RecordedWrite {
+        let buffer: ByteBuffer
+        let timestamp: ContinuousClock.Instant
+    }
+
+    private(set) var writes: [RecordedWrite] = []
+
+    func write(_ buffer: ByteBuffer) async throws {
+        writes.append(RecordedWrite(buffer: buffer, timestamp: .now))
+    }
+
+    func finish(_ trailingHeaders: HTTPFields?) async throws {}
+}
+
+#endif
