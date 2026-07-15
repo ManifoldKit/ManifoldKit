@@ -385,3 +385,172 @@ demoting it (see the updated A.2-rejected entry above).
   `init`) move `public` → `package` together — same pattern as Phase A. No
   digester allowlist entry needed (see the note above; applies identically
   here).
+
+## D.2+D.3 — Agentic Run subsystem + background-task bridge (ManifoldRuntime, ManifoldPersistenceSwiftData, 2026-07-15)
+
+Part of the [runtime residual sweep](plans/api-v1-rationalisation-2026-07.md)
+(items D.2 and D.3, Rory decision 2026-07-15). Both PRs are riding the same
+change because they share a module, a doc gate, and the `ManifoldRuntime`
+baseline; D.3 is folded into this PR per the plan's own note ("Rides the D.2
+PR").
+
+### D.2 — Agentic Run subsystem: demoted whole, not deleted
+
+`ConversationRun`/`RunStep`/`RunStatus`/`RunEvent`/`RunStore`/`RunStoreError`/
+`RunInputProvider`/`FixedGoalRunInputProvider`/`ResumableRunDriver` (all
+`ManifoldRuntime`) and `SwiftDataRunStore` (`ManifoldPersistenceSwiftData`)
+move `public` → `package` together, plus:
+
+- `ConversationRuntime.startRun`/`resumeRun`/`pauseActiveRun`/`cancelActiveRun`
+  — demoted to `package`.
+- `ConversationRuntimeOptions.runStore` — demoted to `package` (same pattern
+  as `hostTurnContextProvider` in D.6: the property still exists and is still
+  mutated by `ManifoldBootstrap`, it just isn't settable through the public
+  memberwise initializer any more).
+- `ManifoldBootstrap.runStore` (public property) — demoted to `package`,
+  since a public property cannot expose a now-package type.
+- `ManifoldBootstrap.init(...)`'s and `ManifoldBootstrap.build(...)`'s
+  `enableResumableRuns: Bool = false` parameter — removed from the public
+  overloads. Each split into a slimmer public overload (no
+  `enableResumableRuns`) and a `package` sibling that keeps the full
+  signature with `enableResumableRuns` **required** (no default) — the exact
+  D.6 pattern (see that section above), applied to both an `init` and a
+  `static func` this time. Omitting the label always resolves to the public
+  overload; supplying it always resolves to the `package` one, so the two can
+  never become ambiguous.
+
+**Zero-adopter evidence:** the plan's addendum (see link above) verified zero
+external adopters for the whole subsystem across all six consumer repos
+(three first-party apps, manifold-mlx, manifold-llama, manifold-eval) —
+`docs/plans/inert-code-audit-2026-07.md` item 51 first flagged it as
+built-wired-tested-but-inert; the only place `enableResumableRuns` was ever
+flipped to `true` anywhere in this repo is
+`Tests/ManifoldPersistenceSwiftDataTests/ResumableRunEndToEndTests.swift`.
+Per-type `scripts/api-demotion-screen.sh` runs (all against
+`ManifoldRuntime`, except `SwiftDataRunStore` against
+`ManifoldPersistenceSwiftData`) confirm this PASSes or is
+NEEDS-HAND-ADJUDICATION-on-noisy-common-names (never a real hit) for every
+demoted type:
+
+| Type | Verdict |
+|------|---------|
+| `ConversationRun` | NEEDS-HAND-ADJUDICATION (21 member-name hits, all noisy generic identifiers — `id`, `status`, `goal`, etc. — hand-checked against the six repos: none are calls into this type) |
+| `RunEvent` | PASS |
+| `RunStatus` | NEEDS-HAND-ADJUDICATION (37 member-name hits, all noisy — `pending`/`running`/`paused`/`completed`/`cancelled`/`failed` are common enum-case names elsewhere; hand-checked, none anchor to this type) |
+| `RunStep` | NEEDS-HAND-ADJUDICATION (14 member-name hits, all noisy — `id`, `isCompleted`, `isFailed`, etc.; hand-checked, none anchor to this type) |
+| `RunStore` | PASS |
+| `RunStoreError` | NEEDS-HAND-ADJUDICATION (4 member-name hits — `errorDescription` is `Error`'s own requirement name, appears everywhere; hand-checked, none anchor to this type) |
+| `RunInputProvider` | PASS |
+| `FixedGoalRunInputProvider` | PASS |
+| `ResumableRunDriver` | PASS |
+| `SwiftDataRunStore` (`ManifoldPersistenceSwiftData`) | PASS |
+
+The screen's Step 2 in-repo signature-anchor check additionally flagged
+`ManifoldSchemaV10.ConversationRunModel`'s/`RunStepModel`'s `public`-keyword
+methods (`init(_:)`, `update(from:)`, `toRecord()`) that take/return
+`ConversationRun`/`RunStep`. These are **not** a real anchor: `ManifoldSchemaV10`
+itself has no access modifier (`enum ManifoldSchemaV10: VersionedSchema`,
+i.e. `internal`), so the `public` keyword on its nested types and their
+members is already capped to the enclosing type's `internal` access by
+Swift's access-level rules — referencing a `package` type from an
+effectively-`internal` member is never a leak. No schema-file edit was
+needed or made (see below).
+
+**What did NOT move — the frozen schema:** `ManifoldSchemaV10` and its
+`@Model` types (`ConversationRunModel`, `RunStepModel`) are untouched.
+SwiftData migration history is immutable by construction — editing a shipped
+schema version is how you corrupt an existing on-disk store on upgrade.
+**Accepted consequence:** V10's run tables remain part of the public schema
+history (any app that ever ran with `enableResumableRuns: true` still
+migrates its rows forward correctly) while the feature surface that reads
+and writes them is now `package`-only — the tables are permanently dormant
+for any host outside this package until the subsystem re-promotes on a first
+real adopter. This is the same trade the plan's addendum called out in
+advance ("demotion preserves migration integrity but leaves a
+permanently-dormant public schema version no host can exercise while the
+flag is `package` — accepted and stated, not hidden").
+
+**Digester allowlist:** five entries appended to
+`.github/api-breakage-allowlist.txt` — three parameter-removal/default-removal
+breakages in `ManifoldRuntime` (`ConversationRuntime.init` splitting into two
+overloads, one with `runStore` moved later in a shrunk parameter list, one
+losing the parameter's default outright; `ConversationRuntimeOptions.init`
+losing its `runStore` parameter) and two in `ManifoldPersistenceSwiftData`
+(`ManifoldBootstrap.init` and `ManifoldBootstrap.build` both losing
+`enableResumableRuns`'s default argument as the public overloads split from
+their `package` siblings):
+
+```
+API breakage: constructor ConversationRuntime.init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:sessionToolSources:hookRegistry:runStore:) has removed default argument from parameter 17
+API breakage: constructor ConversationRuntime.init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:turnContextProvider:sessionToolSources:hookRegistry:runStore:) has been removed
+API breakage: constructor ConversationRuntimeOptions.init(pipeline:budgetPlanner:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:turnContextProvider:auxiliaryInferenceService:runStore:) has been removed
+API breakage: constructor ManifoldBootstrap.init(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:isInMemory:audioGenerationService:) has removed default argument from parameter 10
+API breakage: func ManifoldBootstrap.build(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:audioGenerationService:) has removed default argument from parameter 10
+```
+
+`swift package diagnose-api-breaking-changes origin/main --targets
+ManifoldRuntime ManifoldPersistenceSwiftData --breakage-allowlist-path
+.github/api-breakage-allowlist.txt` is clean with these entries in place.
+
+**Replacement for hosts:** none — this is the same "no replacement API"
+shape as D.4. No host anywhere ever set `enableResumableRuns: true` outside
+this package's own end-to-end test, so there is no live migration path to
+document; a host that genuinely wants checkpointed multi-step runs should
+open an issue describing the use case (re-promotion candidate on first real
+adopter, per the plan's standing bias).
+
+### D.3 — Background-task bridge: demoted, doc rewritten in the same PR
+
+`ConversationRuntimeBackgroundBridge` and `ManifoldBackgroundTaskIdentifiers`
+(both `ManifoldRuntime`) move `public` → `package` together, including every
+member (`handleExpiration()`, `backgroundGPUAvailable`, `init(runtime:)`, and
+the four identifier constants).
+
+**Zero-adopter evidence:** `scripts/api-demotion-screen.sh
+ConversationRuntimeBackgroundBridge ManifoldRuntime` and `...
+ManifoldBackgroundTaskIdentifiers ManifoldRuntime` both report **FAIL**
+against the working tree in this PR — but re-running the screen against the
+pre-this-PR tree (`git stash` the two doc edits, re-run, pop) shows the FAIL
+was never a real external-consumer hit in either direction:
+- **Before this PR:** the FAIL was `BackgroundTaskSupport.md`'s *own*
+  `swift,no-build` recipe constructing `ConversationRuntimeBackgroundBridge`
+  directly and referencing `ManifoldBackgroundTaskIdentifiers.continueGeneration`
+  — i.e. the exact "documented but zero real adopters" shape D.3 exists to
+  fix, not evidence of an adopter. (`README.md`'s historical BaseChatKit→
+  ManifoldKit rename bullet also matches `ManifoldBackgroundTaskIdentifiers`
+  by name; it is a frozen rename note, not a usage instruction — same
+  treatment as D.6's rejected candidates.)
+- **After this PR:** the FAIL is this PR's own migration notes
+  (`docs/MIGRATION-background-task-scheduler-removed.md`'s "Update
+  (2026-07-15)" addendum, and the rewritten `BackgroundTaskSupport` article's
+  explanatory note about the demotion) — the same self-referential-migration-
+  note shape D.6 hit.
+
+Neither state shows a real consumer anywhere in this repo or the six survey
+repos; both types were constructed only in the now-rewritten DocC recipe.
+
+**Doc rewrite (same PR, per the plan's F4 finding):** `BackgroundTaskSupport.md`
+(`Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/`) previously
+instructed host construction of `ConversationRuntimeBackgroundBridge`
+directly. Its code fences are `swift,no-build`, so the doc-snippet compile
+gate would never have caught a recipe that no longer compiles for an outside
+consumer — banner-over-the-recipe was rejected for exactly this reason (see
+F4 in the addendum's review record). The article is rewritten to show the
+`BGContinuedProcessingTask.expirationHandler` recipe calling the still-public
+``ConversationRuntime/cancelAllTurns()`` directly (`Task.detached { await
+conversationRuntime.cancelAllTurns() }`), with a note explaining that the
+internal `ConversationRuntimeBackgroundBridge` helper exists but is
+`package`-only. `ConversationRuntime.cancelAllTurns()`'s own doc comment
+(previously linking the now-package `ConversationRuntimeBackgroundBridge`
+via a DocC symbol link, which would have rendered as a broken link in public
+docs) is rewritten the same way.
+
+**Replacement for hosts:** ``ConversationRuntime/cancelAllTurns()`` — public,
+unaffected by this PR, async, idempotent, safe to call with no turns in
+flight. It is the same one-line call the bridge wrapped; the bridge added
+only the `Task.detached` synchronous-handler bridging, which any host can
+write inline (see the rewritten article).
+
+**No digester allowlist entries needed** for D.3 — both are pure
+`public` → `package` visibility demotions with no public-signature changes
+elsewhere (same as D.1/A.1–A.3; see the note at the top of this file).

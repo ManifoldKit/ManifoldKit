@@ -53,3 +53,16 @@ on.
 
 If you were only using `ManifoldBackgroundTaskIdentifiers`, no action is
 needed — the import path (`ManifoldRuntime`) and the API are unchanged.
+
+## Update (2026-07-15)
+
+The claim above ("ships unchanged", "same public API") no longer holds as of
+the D.2+D.3 residual sweep: `ConversationRuntimeBackgroundBridge` and
+`ManifoldBackgroundTaskIdentifiers` were demoted `public` → `package` — zero
+host apps across all six consumer repos constructed either type. This is a
+different removal from the one this file documents (that one deleted an
+unwired scheduler seam; this one narrows visibility on a real, tested,
+documented integration point that simply had no adopter yet). See
+`docs/MIGRATION-api-demotions-0.71.md` § D.2+D.3 and the rewritten
+`BackgroundTaskSupport` DocC article, which now shows the still-public
+``ConversationRuntime/cancelAllTurns()`` recipe hosts should use directly.

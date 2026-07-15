@@ -44,7 +44,7 @@ public enum HistoryInsertionPosition: Sendable {
 /// chronological-order invariant in debug builds.
 ///
 /// Register via
-/// ``ConversationRuntime/init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:turnContextProvider:sessionToolSources:hookRegistry:runStore:)``.
+/// ``ConversationRuntime/init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:turnContextProvider:sessionToolSources:hookRegistry:)``.
 public protocol HistoryProvider: Sendable {
     func contribute(
         history: [ChatMessage],

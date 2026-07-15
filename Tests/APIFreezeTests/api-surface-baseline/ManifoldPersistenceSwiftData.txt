@@ -28,7 +28,7 @@ ManifoldBootstrap.audioGenerationRuntime Var
 ManifoldBootstrap.audioGenerationService Var
 ManifoldBootstrap.audioRuntime Var
 ManifoldBootstrap.benchmarkCache Var
-ManifoldBootstrap.build(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:audioGenerationService:) Func
+ManifoldBootstrap.build(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:makeModelContainer:audioGenerationService:) Func
 ManifoldBootstrap.conversationRuntime Var
 ManifoldBootstrap.diagnostics Var
 ManifoldBootstrap.diagnosticsService Var
@@ -37,7 +37,7 @@ ManifoldBootstrap.imageGenerationRuntime Var
 ManifoldBootstrap.imageGenerationService Var
 ManifoldBootstrap.imageRuntime Var
 ManifoldBootstrap.inferenceService Var
-ManifoldBootstrap.init(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:enableResumableRuns:makeModelContainer:isInMemory:audioGenerationService:) Constructor
+ManifoldBootstrap.init(configuration:ragConfiguration:inferenceService:imageGenerationService:videoGenerationService:webSearchRuntime:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:makeModelContainer:isInMemory:audioGenerationService:) Constructor
 ManifoldBootstrap.isInMemory Var
 ManifoldBootstrap.makeInMemory(configuration:inferenceService:ragConfiguration:) Func
 ManifoldBootstrap.modelContainer Var
@@ -47,7 +47,6 @@ ManifoldBootstrap.persistenceStores Var
 ManifoldBootstrap.personaStore Var
 ManifoldBootstrap.ragService Var
 ManifoldBootstrap.reapOrphanedKeychainItems(in:) Func
-ManifoldBootstrap.runStore Var
 ManifoldBootstrap.samplerPresetStore Var
 ManifoldBootstrap.toolCallConformanceCache Var
 ManifoldBootstrap.usageStore Var
@@ -328,16 +327,6 @@ SwiftDataPersonaStore.deletePersona(_:) Func
 SwiftDataPersonaStore.fetchPersonas() Func
 SwiftDataPersonaStore.init(modelContext:) Constructor
 SwiftDataPersonaStore.insertPersona(_:) Func
-SwiftDataRunStore Class
-SwiftDataRunStore.deleteRun(_:) Func
-SwiftDataRunStore.fetchRun(_:) Func
-SwiftDataRunStore.fetchRuns(for:) Func
-SwiftDataRunStore.fetchSteps(for:) Func
-SwiftDataRunStore.init(modelContext:) Constructor
-SwiftDataRunStore.insertRun(_:) Func
-SwiftDataRunStore.insertStep(_:) Func
-SwiftDataRunStore.updateRun(_:) Func
-SwiftDataRunStore.updateStep(_:) Func
 SwiftDataSamplerPresetStore Class
 SwiftDataSamplerPresetStore.deletePreset(_:) Func
 SwiftDataSamplerPresetStore.fetchPresets() Func
