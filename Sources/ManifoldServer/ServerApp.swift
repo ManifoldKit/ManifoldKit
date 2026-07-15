@@ -254,17 +254,13 @@ internal struct ServerApp: Sendable {
         headers[HTTPField.Name("X-Accel-Buffering")!] = "no"
 
         let body = ResponseBody { writer in
-            var streamedTokenCount = 0
             do {
                 let chunks = try adapter.chunks(for: request, using: backend)
-                let encoder = JSONEncoder()
-                for try await chunk in chunks {
-                    streamedTokenCount += tokenCount(in: chunk)
-                    let data = try encoder.encode(chunk)
-                    let line = String(decoding: data, as: UTF8.self)
-                    try await writer.write(ByteBuffer(string: "data: \(line)\n\n"))
-                }
-                try await writer.write(ByteBuffer(string: "data: [DONE]\n\n"))
+                let streamedTokenCount = try await writeSSEChunks(
+                    chunks,
+                    to: &writer,
+                    encoder: JSONEncoder()
+                ) { chunk in tokenCount(in: chunk) }
                 metrics.recordGenerationCompleted(tokenCount: streamedTokenCount)
                 await generationGate.signal()
             } catch {
@@ -275,6 +271,42 @@ internal struct ServerApp: Sendable {
         }
 
         return Response(status: .ok, headers: headers, body: body)
+    }
+
+    /// Writes one SSE `data: <json>\n\n` frame per chunk followed by the
+    /// `[DONE]` sentinel, reusing a single ``ByteBuffer`` across tokens and
+    /// writing the encoder's bytes straight in — no `Data` -> `String` ->
+    /// interpolated-`String` -> fresh-`ByteBuffer` round trip per token (#2269).
+    ///
+    /// Each chunk is still written (and flushed to the wire by Hummingbird)
+    /// individually: this must never become buffer-then-flush-at-end, since
+    /// incremental per-token delivery is `ManifoldServer`'s whole
+    /// differentiator over batching servers. `SSEStreamWritingTests` pins that
+    /// behavior by asserting the first frame lands before the source stream
+    /// finishes producing tokens.
+    ///
+    /// Extracted as a free function — rather than inlined in the
+    /// `ResponseBody` closure — so that regression test can drive it directly
+    /// with a fake writer and a paced fake token stream, without spinning up a
+    /// full Hummingbird request.
+    internal func writeSSEChunks(
+        _ chunks: AsyncThrowingStream<ChatCompletionChunk, Error>,
+        to writer: inout any ResponseBodyWriter,
+        encoder: JSONEncoder,
+        tokenCount: (ChatCompletionChunk) -> Int
+    ) async throws -> Int {
+        var streamedTokenCount = 0
+        var buffer = ByteBuffer()
+        for try await chunk in chunks {
+            streamedTokenCount += tokenCount(chunk)
+            buffer.clear()
+            buffer.writeStaticString("data: ")
+            buffer.writeBytes(try encoder.encode(chunk))
+            buffer.writeStaticString("\n\n")
+            try await writer.write(buffer)
+        }
+        try await writer.write(ByteBuffer(string: "data: [DONE]\n\n"))
+        return streamedTokenCount
     }
 
     /// Decodes a request body, mapping decode/parse failures to a 400
