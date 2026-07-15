@@ -69,6 +69,16 @@ final class EventRecorderTruncationTests: XCTestCase {
     /// generation emitting far more discrete events than any bounded
     /// `maxOutputTokens` run would produce still yields a bounded `events`
     /// array, keeping the most recent entries.
+    ///
+    /// This is ALSO the events-only-overflow regression case (per review):
+    /// `raw`'s total length here stays comfortably under
+    /// `maxBufferedCharacters`, so `raw` itself is never trimmed. Before the
+    /// per-buffer trim-flag fix, `truncated` was a single shared bool set by
+    /// ANY buffer overflowing, so `finalize` would reassemble
+    /// `rawHead + raw.suffix(...)` for `raw` too — even though `rawHead` is
+    /// then a full prefix of the untouched `raw`, duplicating its content.
+    /// Asserting `capture.raw` against the exact expected (un-duplicated)
+    /// string is what catches that.
     func test_consume_tooManyEvents_capsEventCountAndSetsFlag() async throws {
         let tokenCount = EventRecorder.maxBufferedEvents + 10
         let tokens = (0..<tokenCount).map { "t\($0) " }
@@ -82,5 +92,13 @@ final class EventRecorderTruncationTests: XCTestCase {
         // The most recently emitted token should be the last one requested —
         // proof the drop happened at the front, not the back.
         XCTAssertEqual(capture.events.last?.v, tokens.last)
+
+        // Regression: `raw` was never trimmed (its total length is well
+        // under `maxBufferedCharacters`) and must come through EXACTLY as
+        // written — not duplicated by an erroneous head+tail reassembly.
+        let expectedRaw = tokens.joined()
+        XCTAssertLessThan(expectedRaw.count, EventRecorder.maxBufferedCharacters, "test setup must keep raw comfortably under its own cap for this to be an events-only overflow")
+        XCTAssertEqual(capture.raw, expectedRaw)
+        XCTAssertEqual(capture.raw.count, expectedRaw.count)
     }
 }

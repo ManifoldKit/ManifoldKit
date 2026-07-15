@@ -131,7 +131,17 @@ public struct EventRecorder: Sendable {
         var errorString: String?
         var toolCalls: [ToolCall] = []
         var toolResults: [ToolResult] = []
-        var truncated = false
+        // Per-buffer trim flags — deliberately NOT a single shared
+        // `truncated` bool. Each buffer overflows independently (e.g. a run
+        // with a huge `events` count but a short `raw`), and `finalize`
+        // below must only reassemble head+tail for a buffer that was ACTUALLY
+        // trimmed: reassembling an untouched buffer would duplicate its
+        // content (`rawHead` is a full prefix of an untrimmed `raw`, so
+        // `rawHead + raw.suffix(...)` overlaps with itself). The record-level
+        // `truncated` field (see below) is the OR of these three.
+        var rawTrimmed = false
+        var thinkingRawTrimmed = false
+        var eventsTrimmed = false
 
         func memoryTick() {
             if let now = AppMemoryUsage.currentBytes() {
@@ -161,15 +171,15 @@ public struct EventRecorder: Sendable {
         func capBuffers() {
             if raw.count > Self.maxBufferedCharacters {
                 raw.removeFirst(raw.count - Self.maxBufferedCharacters)
-                truncated = true
+                rawTrimmed = true
             }
             if thinkingRaw.count > Self.maxBufferedCharacters {
                 thinkingRaw.removeFirst(thinkingRaw.count - Self.maxBufferedCharacters)
-                truncated = true
+                thinkingRawTrimmed = true
             }
             if events.count > Self.maxBufferedEvents {
                 events.removeFirst(events.count - Self.maxBufferedEvents)
-                truncated = true
+                eventsTrimmed = true
             }
         }
 
@@ -291,28 +301,28 @@ public struct EventRecorder: Sendable {
             stopReason = "naturalStop"
         }
 
-        // Only re-assemble head+tail when truncation actually fired — on the
-        // (overwhelmingly common) untruncated path, `raw`/`thinkingRaw`/
-        // `events` already hold the complete stream and `rawHead`/
-        // `thinkingRawHead`/`eventsHead` are redundant. When truncated,
-        // `raw`/`thinkingRaw`/`events` are guaranteed (by `capBuffers`) to
-        // hold at most `maxBufferedCharacters`/`maxBufferedEvents` — taking
-        // only their tail-most `maxBufferedCharacters - headPreserveCharacters`
+        // Only re-assemble head+tail for a buffer that was ACTUALLY trimmed —
+        // gated per-buffer, not on a single shared flag. The three buffers
+        // overflow independently (e.g. a run with a huge `events` count but
+        // a short `raw`); reassembling an UNTRIMMED buffer would duplicate
+        // its content, since `rawHead` is then a full prefix of the whole
+        // (untouched) `raw` and `rawHead + raw.suffix(...)` overlaps with
+        // itself. When a buffer WAS trimmed, `capBuffers` guarantees it holds
+        // at most `maxBufferedCharacters`/`maxBufferedEvents` — taking only
+        // its tail-most `maxBufferedCharacters - headPreserveCharacters`
         // characters (`maxBufferedEvents - eventsHeadReserve` events) before
         // prepending the frozen head guarantees no overlap between the two
         // halves and keeps the combined size at exactly the original cap.
-        let finalRaw: String
-        let finalThinkingRaw: String
-        let finalEvents: [RunRecord.EventSnapshot]
-        if truncated {
-            finalRaw = rawHead + raw.suffix(Self.maxBufferedCharacters - Self.headPreserveCharacters)
-            finalThinkingRaw = thinkingRawHead + thinkingRaw.suffix(Self.maxBufferedCharacters - Self.headPreserveCharacters)
-            finalEvents = eventsHead + events.suffix(Self.maxBufferedEvents - Self.eventsHeadReserve)
-        } else {
-            finalRaw = raw
-            finalThinkingRaw = thinkingRaw
-            finalEvents = events
-        }
+        let finalRaw = rawTrimmed
+            ? rawHead + raw.suffix(Self.maxBufferedCharacters - Self.headPreserveCharacters)
+            : raw
+        let finalThinkingRaw = thinkingRawTrimmed
+            ? thinkingRawHead + thinkingRaw.suffix(Self.maxBufferedCharacters - Self.headPreserveCharacters)
+            : thinkingRaw
+        let finalEvents = eventsTrimmed
+            ? eventsHead + events.suffix(Self.maxBufferedEvents - Self.eventsHeadReserve)
+            : events
+        let truncated = rawTrimmed || thinkingRawTrimmed || eventsTrimmed
 
         return Capture(
             events: finalEvents,

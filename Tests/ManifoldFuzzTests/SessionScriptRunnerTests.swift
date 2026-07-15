@@ -60,7 +60,7 @@ final class SessionScriptRunnerTests: XCTestCase {
     /// abandons the operation task. Regression test for the review finding
     /// that `GenerationTimeout` alone doesn't stop an in-flight generation;
     /// `SessionScriptRunner.cancelInFlight(token:)` is the real stop path.
-    func test_sendStep_hungGeneration_isBoundedAndActuallyCancelled() async {
+    func test_sendStep_hungGeneration_isBoundedAndActuallyCancelled() async throws {
         let (service, mock) = makeService()
         mock.tokenEmissionGate = TokenEmissionGate() // never advanced — first token blocks forever
         let runner = SessionScriptRunner(
@@ -79,8 +79,8 @@ final class SessionScriptRunnerTests: XCTestCase {
 
         XCTAssertLessThan(elapsed, .seconds(5), "a permanently-gated stream must still be bounded by requestTimeout")
         XCTAssertEqual(capture.steps.count, 1)
-        let record = try? XCTUnwrap(capture.steps[0].record)
-        XCTAssertEqual(record?.phase, "timeout")
+        let record = try XCTUnwrap(capture.steps[0].record)
+        XCTAssertEqual(record.phase, "timeout")
         XCTAssertGreaterThanOrEqual(
             mock.stopCallCount, 1,
             "onTimeout must route through InferenceService.cancel(_:) to InferenceBackend.stopGeneration(), not just abandon the operation task"
