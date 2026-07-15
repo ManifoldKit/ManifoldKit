@@ -18,28 +18,20 @@ import AppKit
 /// Streaming model output arrives as token fragments every ~33 ms. Posting an
 /// accessibility announcement per token floods VoiceOver and makes the output
 /// unintelligible — `ThinkingBlockView` documents *omitting* an
-/// `.accessibilityValue` for exactly this reason. Every host that wants spoken
-/// progress otherwise reinvents the same "coalesce a sentence, debounce, post
-/// at a priority" plumbing. This is that plumbing, once, in `ManifoldUI`.
+/// `.accessibilityValue` for exactly this reason. This is that plumbing, once,
+/// wired internally into `ManifoldUI`'s own streaming path.
 ///
-/// ## How to use it
+/// ## Internal wiring
 ///
-/// Drive ``ingest(_:)`` from your token stream and call ``finish(reason:)`` when
-/// the turn ends (wire it to ``ManifoldContract/GenerationEvent/generationCompleted(_:)``):
-///
-/// ```swift
-/// let announcer = AccessibilityAnnouncer()
-/// for await event in stream {
-///     switch event {
-///     case .token(let delta):
-///         announcer.ingest(delta)
-///     case .generationCompleted(let completion):
-///         announcer.finish(reason: completion.reason)
-///     default:
-///         break
-///     }
-/// }
-/// ```
+/// `ChatGenerationCoordinator` (`ManifoldUI`) owns the sole instance and drives
+/// it directly from the real `ConversationEvent` stream: ``ingest(_:)`` on each
+/// `.tokenEmitted` delta, ``finish(reason:)`` on `.streamFinished` /
+/// `.errorRaised` (mapping `ManifoldRuntime`'s `FinishReason` /
+/// `ConversationError` onto ``ManifoldContract/GenerationCompletion/Reason``),
+/// and ``reset()`` on `.streamStarted` so a new turn never inherits a stale
+/// buffered tail. Every chat surface built on `ChatViewModel` gets paced
+/// VoiceOver progress announcements for free — there is no separate opt-in and
+/// no supported way for a host to construct a second instance.
 ///
 /// ## What it does internally
 ///
@@ -58,14 +50,14 @@ import AppKit
 /// server. Production defaults to the platform announcement API.
 @MainActor
 @Observable
-public final class AccessibilityAnnouncer {
+package final class AccessibilityAnnouncer {
 
     /// Announcement priority, mapped to the platform's posting priority.
     ///
     /// On macOS this maps to `NSAccessibilityPriorityLevel`; on iOS the
     /// `.announcement` notification carries the same intent via its
     /// `UIAccessibility.Notification` attributed-string priority key.
-    public enum Priority: Sendable {
+    package enum Priority: Sendable {
         /// Normal streaming progress — does not interrupt a speaking announcement.
         case `default`
         /// Final / terminal announcement — may interrupt a lower-priority one.
@@ -76,11 +68,11 @@ public final class AccessibilityAnnouncer {
     ///
     /// Production wiring posts to the platform announcement API; tests inject a
     /// recording closure to assert on `(text, priority)` without a live server.
-    public typealias PostHandler = @MainActor (_ text: String, _ priority: Priority) -> Void
+    package typealias PostHandler = @MainActor (_ text: String, _ priority: Priority) -> Void
 
     /// Minimum wall-clock interval between two posted announcements. Sentences
     /// that complete inside this window coalesce into the next post.
-    public let minimumInterval: Duration
+    package let minimumInterval: Duration
 
     private let post: PostHandler
 
@@ -95,7 +87,7 @@ public final class AccessibilityAnnouncer {
     ///   - minimumInterval: Smallest gap between posted announcements. Defaults
     ///     to 0.5 s, the conventional VoiceOver debounce; tests set it near-zero.
     ///   - post: The post seam. Defaults to the platform announcement API.
-    public init(
+    package init(
         minimumInterval: Duration = .milliseconds(500),
         post: @escaping PostHandler = AccessibilityAnnouncer.platformPost
     ) {
@@ -105,7 +97,7 @@ public final class AccessibilityAnnouncer {
 
     /// Feeds an incremental token fragment. Completed sentences are enqueued for
     /// rate-limited announcement; partial sentences stay buffered.
-    public func ingest(_ tokenFragment: String) {
+    package func ingest(_ tokenFragment: String) {
         let sentences = coalescer.push(tokenFragment)
         guard !sentences.isEmpty else { return }
         pending.append(contentsOf: sentences)
@@ -113,12 +105,13 @@ public final class AccessibilityAnnouncer {
     }
 
     /// Flushes the trailing partial sentence and posts a final, high-priority
-    /// announcement. Wire to ``ManifoldContract/GenerationEvent/generationCompleted(_:)``.
+    /// announcement. Driven by ``ChatGenerationCoordinator`` on
+    /// `ConversationEvent.streamFinished` / `.errorRaised`.
     ///
     /// A `.cancelled` reason suppresses the final announcement (nothing more
     /// should be spoken once the user cancelled); every other reason flushes the
     /// remaining buffered text immediately at ``Priority/high``.
-    public func finish(reason: GenerationCompletion.Reason = .stop) {
+    package func finish(reason: GenerationCompletion.Reason = .stop) {
         if let tail = coalescer.flush(), !tail.isEmpty {
             pending.append(tail)
         }
@@ -142,7 +135,7 @@ public final class AccessibilityAnnouncer {
 
     /// Drops buffered state without posting. Use when reusing the announcer for a
     /// fresh turn after a cancellation.
-    public func reset() {
+    package func reset() {
         drainTask?.cancel()
         drainTask = nil
         pending.removeAll()
@@ -190,7 +183,7 @@ public final class AccessibilityAnnouncer {
 
     /// The default production post: routes to the platform accessibility
     /// announcement API. Gated for the n-1 OS floor (macOS 15 / iOS 18).
-    public static func platformPost(_ text: String, _ priority: Priority) {
+    package static func platformPost(_ text: String, _ priority: Priority) {
         guard !text.isEmpty else { return }
         #if canImport(UIKit)
         let attributed = NSAttributedString(

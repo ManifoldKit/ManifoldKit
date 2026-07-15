@@ -389,6 +389,132 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         XCTAssertFalse(hintFired, "upgrade hint must NOT fire on a normal .stop completion")
     }
 
+    // MARK: - 12b. AccessibilityAnnouncer wiring
+
+    /// Records every `(text, priority)` posted through the injected
+    /// `AccessibilityAnnouncer.post` seam — mirrors `AccessibilityAnnouncerTests`'s
+    /// recorder so this suite can assert on the coordinator's real wiring
+    /// rather than the announcer in isolation.
+    private final class AnnouncementRecorder {
+        private(set) var posts: [(text: String, priority: AccessibilityAnnouncer.Priority)] = []
+        func record(_ text: String, _ priority: AccessibilityAnnouncer.Priority) {
+            posts.append((text, priority))
+        }
+    }
+
+    func test_tokenEmitted_thenStreamFinishedStop_postsAnnouncementOnCompletion() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+        let recorder = AnnouncementRecorder()
+        coord.accessibilityAnnouncer = AccessibilityAnnouncer(
+            minimumInterval: .milliseconds(1),
+            post: { recorder.record($0, $1) }
+        )
+
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        coord.currentMessages = { [msg] }
+        coord.mutateMessage = { id, mutation in
+            guard id == msgID else { return false }
+            mutation(&msg)
+            return true
+        }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentPostGenerationTasks = { [] }
+
+        await coord.handle(runtimeEvent: .streamStarted(messageID: msgID))
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "Trailing partial with no boundary"))
+
+        // Streaming path only queues completed sentences — with no sentence
+        // boundary yet, nothing should have posted before the turn finishes.
+        XCTAssertTrue(recorder.posts.isEmpty, "Partial sentence must not announce before finish")
+
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .stop))
+
+        XCTAssertEqual(recorder.posts.count, 1, "finish() must flush the trailing partial exactly once")
+        XCTAssertEqual(recorder.posts.first?.priority, .high, "the terminal announcement must post at high priority")
+        XCTAssertTrue(
+            recorder.posts.first?.text.contains("Trailing partial") ?? false,
+            "Got: \(recorder.posts.first?.text ?? "<nil>")"
+        )
+    }
+
+    func test_tokenEmitted_rateLimitCoalescesBurstIntoSinglePost() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+        let recorder = AnnouncementRecorder()
+        // A long window so every sentence completed inside it coalesces into
+        // one post instead of one-per-sentence.
+        coord.accessibilityAnnouncer = AccessibilityAnnouncer(
+            minimumInterval: .seconds(10),
+            post: { recorder.record($0, $1) }
+        )
+
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        coord.currentMessages = { [msg] }
+        coord.mutateMessage = { id, mutation in
+            guard id == msgID else { return false }
+            mutation(&msg)
+            return true
+        }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentPostGenerationTasks = { [] }
+
+        await coord.handle(runtimeEvent: .streamStarted(messageID: msgID))
+        // "One." confirms complete once "Two" starts — the first drain post
+        // fires immediately, opening the 10s rate-limit window.
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "One. Two"))
+
+        let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+        while recorder.posts.count < 1, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        XCTAssertEqual(recorder.posts.count, 1)
+
+        // A burst of further completed sentences must coalesce into a single
+        // follow-up post at finish(), not one per sentence.
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: ". Three. Four. five"))
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .stop))
+
+        XCTAssertEqual(recorder.posts.count, 2, "burst held by the open rate-limit window must coalesce into one post")
+        guard recorder.posts.count >= 2 else { return }
+        XCTAssertTrue(recorder.posts[1].text.contains("Two"), "Got: \(recorder.posts[1].text)")
+        XCTAssertTrue(recorder.posts[1].text.contains("Three"), "Got: \(recorder.posts[1].text)")
+    }
+
+    func test_streamFinished_cancelled_suppressesAnnouncement() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+        let recorder = AnnouncementRecorder()
+        coord.accessibilityAnnouncer = AccessibilityAnnouncer(
+            minimumInterval: .milliseconds(1),
+            post: { recorder.record($0, $1) }
+        )
+
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        coord.currentMessages = { [msg] }
+        coord.mutateMessage = { id, mutation in
+            guard id == msgID else { return false }
+            mutation(&msg)
+            return true
+        }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+
+        await coord.handle(runtimeEvent: .streamStarted(messageID: msgID))
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "Buffered text with no boundary"))
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .cancelled))
+
+        XCTAssertTrue(recorder.posts.isEmpty, "a cancelled turn must not announce buffered text")
+    }
+
     // MARK: - 13. coordinator does not retain ChatViewModel
 
     func test_coordinatorDoesNotRetainChatViewModel() {

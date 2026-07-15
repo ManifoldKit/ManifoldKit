@@ -49,7 +49,7 @@ re-propose them without re-deriving the same reasoning:
 - `SessionSearchScope` — type of the public, settable `SessionManagerViewModel.searchScope` property.
 - `ToolErrorPresentation` — its nested `ReauthenticationCTA` is the parameter type of `ToolInvocationView.onReauthenticate`, a public closure property.
 - `ChatMessageRenderParameters`, `GenerativeContextMenuItems`, `SpotlightIndexer` — each documented with a runnable usage example in a `ManifoldUI.docc` article (`Theming.md`, `GenerationComponents.md`).
-- `AccessibilityAnnouncer` — carries its own `## How to use it` runnable example describing direct host construction (`AccessibilityAnnouncer()` driven from a host's own event loop); despite having no in-repo call site today, the documented contract reads as intentionally host-facing, not internal. Flagged for a human decision on whether to formally deprecate the promise or keep it public — not touched in this PR.
+- `AccessibilityAnnouncer` — **resolved, see "D.4 — AccessibilityAnnouncer" below.** This entry originally flagged it `NEEDS-HAND-ADJUDICATION` for carrying a `## How to use it` runnable example despite zero in-repo call sites; Rory's decision (2026-07-15, residual sweep D.4) was wire-and-demote, landed in a follow-up PR, not this one.
 - `ModelPicker` — documented in its own DocC article (`ModelPickerSample.md`) as "a thin, public **sample**" with runnable usage.
 - `RemoteServerConfigSheet` — carries its own `## Usage` runnable example; not composed by `APIConfigurationView` or anything else in-repo.
 - `StorageManagementView` — canonical + `@available(*, deprecated)` legacy init, i.e. a real historical external API contract; not composed by `ModelManagementSheet` (which uses the separate `LocalModelStorageView`).
@@ -270,3 +270,34 @@ it by construction. Confirmed three independent ways across A.2/A.3: the exact C
 command run locally, a controlled flip-an-untouched-type test, and a manual
 low-level `swift-api-digester -dump-sdk` reproduction. No `.github/api-breakage-allowlist.txt`
 entries were needed for any Phase A cluster.
+
+## D.4 — AccessibilityAnnouncer (wired internally + demoted)
+
+Part of the [runtime residual sweep](plans/api-v1-rationalisation-2026-07.md)
+(item D.4, Rory decision 2026-07-15) — a follow-up to Phase A's A.2 cluster,
+which flagged `AccessibilityAnnouncer` `NEEDS-HAND-ADJUDICATION` rather than
+demoting it (see the updated A.2-rejected entry above).
+
+- `AccessibilityAnnouncer` (`ManifoldUI`) — carried a `## How to use it`
+  runnable example describing direct host construction, but had zero in-repo
+  call sites (only a `// should drive` comment in `ThinkingBlockView.swift`)
+  and zero adopters across all six consumer repos. Rather than either
+  freezing a documented-but-inert public seam or deleting real, tested
+  coalesce/rate-limit/priority logic, this PR **wires it into the real
+  streaming path** and demotes it in the same change: `ChatGenerationCoordinator`
+  now owns the sole instance and drives it from `ConversationEvent` —
+  `ingest(_:)` on `.tokenEmitted`, `finish(reason:)` on `.streamFinished` /
+  `.errorRaised` (mapping `ManifoldRuntime.FinishReason` /
+  `ConversationError` onto `GenerationCompletion.Reason`), `reset()` on
+  `.streamStarted`.
+- **No replacement API.** Every chat surface built on `ChatViewModel` now gets
+  paced VoiceOver announcements on streaming completion automatically — there
+  is nothing for a host to opt into or construct. If your app previously
+  planned to construct `AccessibilityAnnouncer()` directly by following the
+  old doc, stop: the behavior now ships for free, and the type is no longer
+  reachable outside this package.
+- The type, its nested `Priority` enum, `PostHandler` typealias, and all
+  members (`ingest`, `finish`, `reset`, `platformPost`, `minimumInterval`,
+  `init`) move `public` → `package` together — same pattern as Phase A. No
+  digester allowlist entry needed (see the note above; applies identically
+  here).

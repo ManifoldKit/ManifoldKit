@@ -1,6 +1,7 @@
 import Foundation
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldContract
 
 // MARK: - LoopDetectedError
 
@@ -146,6 +147,15 @@ final class ChatGenerationCoordinator {
     /// on every terminal path so a stale buffer can never leak into a later turn.
     @ObservationIgnored
     private var streamingTailMessageID: UUID?
+
+    /// Drives paced VoiceOver announcements from the real streaming path (see
+    /// `AccessibilityAnnouncer`'s doc comment). Owned here — not exposed on
+    /// `ChatViewModel` — so every chat surface gets the behavior for free with
+    /// no host opt-in. Tests substitute a recording `post` closure via this
+    /// var to assert on announcement timing/content without a live
+    /// accessibility server.
+    @ObservationIgnored
+    var accessibilityAnnouncer = AccessibilityAnnouncer()
 
     // MARK: - Init
 
@@ -416,6 +426,10 @@ final class ChatGenerationCoordinator {
             activeConversationMessageID = messageID
             // Fresh turn — drop any leftover accumulator and re-key on demand.
             clearStreamingTailBuffer()
+            // A turn that was interrupted uncleanly (e.g. a cancel that arrived
+            // as `.errorRaised` rather than `.streamFinished`) could leave
+            // buffered-but-unposted text; never let it bleed into this turn.
+            accessibilityAnnouncer.reset()
             if let activeSessionID = currentActiveSessionID(),
                !currentMessages().contains(where: { $0.id == messageID }) {
                 let placeholder = ChatMessage(
@@ -430,6 +444,10 @@ final class ChatGenerationCoordinator {
         case .tokenEmitted(let messageID, let delta):
             transitionPhase(to: .streaming)
             appendStreamingDelta(delta, to: messageID)
+            // Only visible-text deltas reach `.tokenEmitted` (thinking content
+            // streams through the separate `.thinkingUpdated` event), so every
+            // delta here is exactly what `AccessibilityAnnouncer` should coalesce.
+            accessibilityAnnouncer.ingest(delta)
 
         case .tokenUsageRecorded(let messageID, let promptTokens, let completionTokens):
             _ = mutateMessage(messageID) {
@@ -441,6 +459,15 @@ final class ChatGenerationCoordinator {
             guard messageID == activeConversationMessageID else { break }
             activeConversationMessageID = nil
             clearStreamingTailBuffer()
+
+            if let announcementReason = Self.accessibilityCompletionReason(for: reason) {
+                accessibilityAnnouncer.finish(reason: announcementReason)
+            } else {
+                // `.empty`: no visible content ever streamed (guarded by
+                // `.tokenEmitted` above), so there is nothing to flush — just
+                // drop any stale buffered state.
+                accessibilityAnnouncer.reset()
+            }
 
             activeConversationStreamHandle = nil
             resumeStreamCompletionWaiters()
@@ -487,9 +514,11 @@ final class ChatGenerationCoordinator {
             }
             if case .cancelled = error {
                 onSetLastTurnState(.idle)
+                accessibilityAnnouncer.finish(reason: .cancelled)
             } else {
                 markMostRecentUserMessageFailed()
                 onSetLastTurnState(.failed(error))
+                accessibilityAnnouncer.finish(reason: .error)
             }
             activeConversationStreamHandle = nil
             activeConversationMessageID = nil
@@ -592,6 +621,26 @@ final class ChatGenerationCoordinator {
         case .hookFired:
             // Hooks are diagnostic; no UI changes in v1.
             break
+        }
+    }
+
+    // MARK: - Accessibility reason mapping
+
+    /// Maps the runtime's open ``FinishReason`` onto the closed
+    /// ``ManifoldContract/GenerationCompletion/Reason`` vocabulary
+    /// `AccessibilityAnnouncer.finish(reason:)` expects. `nil` means "nothing
+    /// to announce" (`.empty` — no visible content ever streamed).
+    private static func accessibilityCompletionReason(for reason: FinishReason) -> GenerationCompletion.Reason? {
+        switch reason {
+        case .stop: return .stop
+        case .cancelled: return .cancelled
+        case .length: return .length
+        case .empty: return nil
+        case .timedOut:
+            // The backend went unresponsive mid-turn — closer to an error than
+            // an organic stop; whatever streamed before the stall still gets
+            // flushed at high priority so the user hears the partial content.
+            return .error
         }
     }
 
