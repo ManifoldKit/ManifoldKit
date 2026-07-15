@@ -53,10 +53,16 @@ public struct ConversationRuntimeOptions {
 
     /// Async/throwing richer per-turn context provider. Supersedes
     /// ``turnContextProvider`` when both are set.
-    public var hostTurnContextProvider: (any HostTurnContextProvider)?
+    ///
+    /// `package`-visibility only (2026-07 residual sweep, D.6) — the
+    /// `HostTurnContextProvider` protocol has zero external adopters, so
+    /// this property is no longer settable from outside the package. Only
+    /// `ManifoldBootstrap` (same package) reads it; hosts on the public API
+    /// use ``turnContextProvider`` or the planner-path `TurnContext.appData`
+    /// handoff instead.
+    package var hostTurnContextProvider: (any HostTurnContextProvider)?
 
-    /// Legacy synchronous per-turn context provider. Used only when
-    /// ``hostTurnContextProvider`` is `nil`.
+    /// Legacy synchronous per-turn context provider.
     public var turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
 
     /// Auxiliary inference service for internal framework tasks such as
@@ -83,7 +89,6 @@ public struct ConversationRuntimeOptions {
         preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
         historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
-        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         auxiliaryInferenceService: InferenceService? = nil,
         runStore: (any RunStore)? = nil
@@ -95,7 +100,7 @@ public struct ConversationRuntimeOptions {
         self.preTurnCompressionPolicy = preTurnCompressionPolicy
         self.historyShaper = historyShaper
         self.historyProviders = historyProviders
-        self.hostTurnContextProvider = hostTurnContextProvider
+        self.hostTurnContextProvider = nil
         self.turnContextProvider = turnContextProvider
         self.auxiliaryInferenceService = auxiliaryInferenceService
         self.runStore = runStore

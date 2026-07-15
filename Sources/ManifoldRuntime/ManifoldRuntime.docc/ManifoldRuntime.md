@@ -199,7 +199,6 @@ try await endpointStore.insertEndpoint(
 - ``HistoryProvider``
 - ``HistoryContribution``
 - ``HistoryInsertionPosition``
-- ``HostTurnContextProvider``
 - ``TurnContextBuildRequest``
 
 ### Prompt context assembly

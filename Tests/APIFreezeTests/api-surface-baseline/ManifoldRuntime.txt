@@ -226,7 +226,7 @@ ConversationRuntime.cancelActiveRun() Func
 ConversationRuntime.cancelAllTurns() Func
 ConversationRuntime.classificationService Var
 ConversationRuntime.events Var
-ConversationRuntime.init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:sessionToolSources:hookRegistry:runStore:) Constructor
+ConversationRuntime.init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:turnContextProvider:sessionToolSources:hookRegistry:runStore:) Constructor
 ConversationRuntime.makeAsyncIterator() Func
 ConversationRuntime.pauseActiveRun() Func
 ConversationRuntime.processTurn(_:) Func
@@ -245,8 +245,7 @@ ConversationRuntimeOptions.compressionPolicy Var
 ConversationRuntimeOptions.generationHooks Var
 ConversationRuntimeOptions.historyProviders Var
 ConversationRuntimeOptions.historyShaper Var
-ConversationRuntimeOptions.hostTurnContextProvider Var
-ConversationRuntimeOptions.init(pipeline:budgetPlanner:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:auxiliaryInferenceService:runStore:) Constructor
+ConversationRuntimeOptions.init(pipeline:budgetPlanner:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:turnContextProvider:auxiliaryInferenceService:runStore:) Constructor
 ConversationRuntimeOptions.pipeline Var
 ConversationRuntimeOptions.preTurnCompressionPolicy Var
 ConversationRuntimeOptions.runStore Var
@@ -428,8 +427,6 @@ HookRegistry.init(clock:timeout:) Constructor
 HookRegistry.register(_:handler:) Func
 HookRegistry.run(_:) Func
 HookRegistry.unownedExecutor Var
-HostTurnContextProvider Protocol
-HostTurnContextProvider.appData(for:) Func
 IdentityHistoryProvider Struct
 IdentityHistoryProvider.contribute(history:context:) Func
 IdentityHistoryProvider.init() Constructor

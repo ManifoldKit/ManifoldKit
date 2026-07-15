@@ -368,3 +368,5 @@ API breakage: protocol BackgroundTaskScheduler has been removed
 API breakage: class DefaultBackgroundTaskScheduler has been removed
 API breakage: enumelement HookEvent.postGeneration has been added as a new enum case
 API breakage: constructor HookInput.init(event:sessionID:toolName:toolArguments:) has been removed
+API breakage: constructor ConversationRuntime.init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:sessionToolSources:hookRegistry:runStore:) has removed default argument from parameter 13
+API breakage: constructor ConversationRuntimeOptions.init(pipeline:budgetPlanner:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:auxiliaryInferenceService:runStore:) has been removed

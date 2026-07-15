@@ -96,6 +96,65 @@ WARN-skipped all six repos and returned a vacuous PASS — the script now
 hard-fails on a missing consumer repo root instead of silently skipping it,
 unless `MK_ALLOW_MISSING_CONSUMERS=1` is set).
 
+## D.6 — HostTurnContextProvider (ManifoldRuntime, 2026-07-15)
+
+Unlike D.1, this is not a mechanical zero-consumer demotion: `HostTurnContextProvider`
+was live-wired (`ConversationTurnExecutor` still calls `appData(for:)` on the real turn
+path) and DocC-documented with a host-conformance walkthrough, but had zero external
+adopters across all six consumer repos — the origin app's live per-turn-data mechanism
+is the `turnContextProvider` planner-path handoff below, not this protocol. Decided by
+Rory 2026-07-15 (see [the plan's D.6 entry](plans/api-v1-rationalisation-2026-07.md#d6--hostturncontextprovider--decided-demote-to-package)):
+demote, not delete — the framework keeps using it internally.
+
+**What moved to `package`:**
+
+- `HostTurnContextProvider` (protocol) and its `appData(for:)` requirement
+  (`Sources/ManifoldRuntime/Protocols/HostTurnContextProvider.swift`).
+- `ConversationRuntimeOptions.hostTurnContextProvider` — the property is no longer
+  settable from a public initializer; only `ManifoldBootstrap` (same SwiftPM package)
+  reads it.
+- The `hostTurnContextProvider:` parameter on `ConversationRuntime`'s public
+  convenience initializer — removed outright, not just retyped. The old 18-parameter
+  public initializer split into two: a slimmer public initializer without the
+  parameter, and a `package`-visible sibling that still accepts it (used by
+  `ManifoldBootstrap` and test targets in this package). The `package` overload makes
+  `hostTurnContextProvider` a *required* parameter (no default) specifically so it can
+  never become ambiguous with the public overload at a call site that omits the label
+  entirely — omitting the label always resolves to the public initializer; supplying it
+  always resolves to the `package` one.
+
+**What did not move:** `TurnContextBuildRequest` stays `public` — it is also the type
+of `HistoryShaper`'s `turnContextRequest` property, a still-public, still-adopted seam.
+
+**Replacement for hosts:** the `turnContextProvider: (@Sendable (UUID) -> (any
+Sendable)?)?` closure parameter on `ConversationRuntime`'s public initializer is
+unaffected and remains the supported way to seed `TurnContext.appData` — the "planner
+path" referenced above and in `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/ContributingConversationHistory.md`.
+It's synchronous and session-ID-only rather than `HostTurnContextProvider`'s
+async/throwing, full-request-metadata shape; hosts that need throwing/async
+resolution should resolve it ahead of the turn and capture the result in the closure,
+or read host state from inside a `HistoryProvider`/`PromptContextProvider`
+conformance instead.
+
+**Digester allowlist:** unlike D.1's pure visibility demotion (invisible to the
+digester by construction — see the note at the end of this file), removing a
+parameter from a public initializer signature IS digester-visible. Two entries were
+added to `.github/api-breakage-allowlist.txt`:
+
+```
+API breakage: constructor ConversationRuntime.init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:sessionToolSources:hookRegistry:runStore:) has removed default argument from parameter 13
+API breakage: constructor ConversationRuntimeOptions.init(pipeline:budgetPlanner:generationHooks:compressionPolicy:preTurnCompressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:auxiliaryInferenceService:runStore:) has been removed
+```
+
+Verified clean via `scripts/api-demotion-screen.sh HostTurnContextProvider
+ManifoldRuntime` (PASS) run after the docs rewrite above. Before the rewrite, the
+screen FAILed on a single hit: `ContributingConversationHistory.md`'s host-conformance
+walkthrough (the `ActivePersonaProvider` example) and its symbol links in
+`ContributingConversationHistory.md` / `ManifoldRuntime.md`, all removed/replaced by
+this PR — see "What did not move" above for what stayed, and the article's own
+"Per-turn host data" section for the rewritten guidance pointing hosts at
+`turnContextProvider`.
+
 ## A.1 — ManifoldInference
 
 - `TurnHistoryCompressor` (protocol) and its two in-tree conformers,
