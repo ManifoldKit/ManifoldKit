@@ -526,6 +526,9 @@ ManifoldKit is Swift-concurrency-native. The rules:
 - The `Example/Examples/MinimalExample/` app is the canonical runnable wiring.
 - DocC catalogs live alongside the modules
   (`Sources/ManifoldUI/ManifoldUI.docc/`).
+- For a linear, file:line-anchored walk through one message turn — send →
+  runtime → engine → backend → stream back to the UI — see
+  [`docs/ANATOMY-OF-ONE-TURN.md`](docs/ANATOMY-OF-ONE-TURN.md).
 - Contributors changing ManifoldKit internals should use `scripts/test.sh --profile local`
   as the default pre-push gate; **Part 2** below documents the full contributor workflow.
 - For contributor-facing conventions (testing, traits, release process), see
