@@ -368,3 +368,5 @@ API breakage: protocol BackgroundTaskScheduler has been removed
 API breakage: class DefaultBackgroundTaskScheduler has been removed
 API breakage: enumelement HookEvent.postGeneration has been added as a new enum case
 API breakage: constructor HookInput.init(event:sessionID:toolName:toolArguments:) has been removed
+API breakage: constructor MCPServerDescriptor.init(id:displayName:transport:authorization:toolNamespace:resourceURL:initializationTimeout:requestTimeout:dataDisclosure:toolFilter:approvalPolicy:allowsSTDIOTransport:isUnauthenticatedUnsafe:) has been removed
+API breakage: constructor MCPClientConfiguration.init(sseStreamLimits:requestTimeout:maxConcurrentRequestsPerSession:maxMessageBytes:maxJSONNestingDepth:keychain:lifecyclePolicy:networkPathObserver:lifecycleObserver:) has been removed
