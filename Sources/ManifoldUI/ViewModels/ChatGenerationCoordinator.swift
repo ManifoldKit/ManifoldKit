@@ -655,7 +655,33 @@ final class ChatGenerationCoordinator {
         _ = mutateMessage(messages[idx].id) { $0.status = .failed }
     }
 
-    private func applyTerminalOutcome(_ outcome: ConversationTurnOutcome) {
+    // internal (not private) so tests can drive the fallback terminal path
+    // directly — ConversationTurnOutcomeCompletion's initializer is internal
+    // to ManifoldRuntime, so a test cannot mint a ConversationTurnHandle to
+    // reach this through awaitTurnCompletion.
+    func applyTerminalOutcome(_ outcome: ConversationTurnOutcome) {
+        // Terminal announcement for the fallback path too — when the event
+        // drain is delayed past awaitTurnCompletion's window, this method is
+        // the only terminal handler that runs (nulling activeConversationMessageID
+        // below makes the later-drained .streamFinished break early at its
+        // guard), so skipping the announcer here would silently drop the final
+        // announcement. Double-finish with the drain path can't happen: the
+        // caller's handle-identity guard skips this method when the drain
+        // already consumed the terminal event, and the messageID guard skips
+        // the drain's finish when this ran first. Even if both somehow fired,
+        // finish() on an already-drained buffer posts nothing (empty-text guard).
+        if let error = outcome.error {
+            if case .cancelled = error {
+                accessibilityAnnouncer.finish(reason: .cancelled)
+            } else {
+                accessibilityAnnouncer.finish(reason: .error)
+            }
+        } else if let announcementReason = Self.accessibilityCompletionReason(for: outcome.reason) {
+            accessibilityAnnouncer.finish(reason: announcementReason)
+        } else {
+            accessibilityAnnouncer.reset()
+        }
+
         activeConversationStreamHandle = nil
         resumeStreamCompletionWaiters()
         activeConversationMessageID = nil

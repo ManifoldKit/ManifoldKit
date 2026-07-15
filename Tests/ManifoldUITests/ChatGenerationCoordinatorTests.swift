@@ -487,6 +487,65 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         XCTAssertTrue(recorder.posts[1].text.contains("Three"), "Got: \(recorder.posts[1].text)")
     }
 
+    func test_fallbackTerminalPath_awaitTurnCompletion_postsAnnouncement() async {
+        // Covers the coordinator's SECOND terminal path: when the event drain
+        // is delayed past awaitTurnCompletion's 250ms window (here: no drain
+        // running at all), applyTerminalOutcome is the only terminal handler —
+        // it must flush the announcer, or the final announcement is silently
+        // lost in that race.
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+        let recorder = AnnouncementRecorder()
+        coord.accessibilityAnnouncer = AccessibilityAnnouncer(
+            minimumInterval: .milliseconds(1),
+            post: { recorder.record($0, $1) }
+        )
+
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        coord.currentMessages = { [msg] }
+        coord.mutateMessage = { id, mutation in
+            guard id == msgID else { return false }
+            mutation(&msg)
+            return true
+        }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentPostGenerationTasks = { [] }
+
+        await coord.handle(runtimeEvent: .streamStarted(messageID: msgID))
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "Fallback partial with no boundary"))
+        XCTAssertTrue(recorder.posts.isEmpty, "Partial sentence must not announce before the terminal outcome")
+
+        // Deliver the terminal outcome ONLY through applyTerminalOutcome — no
+        // .streamFinished event ever reaches handle(runtimeEvent:), exactly
+        // the delayed-drain race the fallback exists for. (Driven directly
+        // rather than through awaitTurnCompletion because a test cannot mint
+        // a ConversationTurnHandle — its completion actor's initializer is
+        // internal to ManifoldRuntime.)
+        let streamHandle = ConversationStreamHandle(id: UUID())
+        coord.activeConversationStreamHandle = streamHandle
+        coord.applyTerminalOutcome(ConversationTurnOutcome(
+            sessionID: sessionID,
+            streamHandle: streamHandle,
+            assistantMessageID: msgID,
+            assistantMessage: msg,
+            reason: .stop,
+            error: nil,
+            finalText: "Fallback partial with no boundary",
+            promptTokens: nil,
+            completionTokens: nil
+        ))
+
+        XCTAssertEqual(recorder.posts.count, 1, "the fallback terminal path must flush the trailing partial")
+        XCTAssertEqual(recorder.posts.first?.priority, .high)
+        XCTAssertTrue(
+            recorder.posts.first?.text.contains("Fallback partial") ?? false,
+            "Got: \(recorder.posts.first?.text ?? "<nil>")"
+        )
+    }
+
     func test_streamFinished_cancelled_suppressesAnnouncement() async {
         let coord = makeSilentCoordinator()
         let sessionID = UUID()
