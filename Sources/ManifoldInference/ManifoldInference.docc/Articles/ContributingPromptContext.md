@@ -84,8 +84,9 @@ that a higher-priority provider could have used.
 `conversationText` (lowercased, whitespace-joined history text for
 keyword/semantic matching — `nil` on the first turn or in tests that don't
 need it), an optional `tokenizer` for cost estimation, and `appData` — an
-opaque host-supplied payload threaded through from
-``ConversationRuntime``'s `hostTurnContextProvider` (see
+opaque host-supplied payload the host seeds via ``ConversationRuntime``'s
+`turnContextProvider` closure (see the "Per-turn host data —
+`turnContextProvider` and `TurnContext.appData`" section of
 `ManifoldRuntime`'s "Contributing Conversation History" article). A provider reads `appData` when it
 needs per-turn host state (feature flags, a request ID, an active persona)
 that isn't derivable from the conversation itself.

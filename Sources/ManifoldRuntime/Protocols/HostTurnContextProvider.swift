@@ -42,8 +42,8 @@ public struct TurnContextBuildRequest: Sendable {
 /// `ConversationRuntimeOptions.hostTurnContextProvider` through to it, but
 /// hosts building against the public API cannot construct a conformance
 /// anymore. Host apps that need per-turn data should use the planner-path
-/// `TurnContext.appData` handoff instead — see
-/// ``ContextBudgetPlanner`` and the "Providing app-specific per-turn data"
+/// `TurnContext.appData` handoff instead — see ``ContextBudgetPlanner`` and
+/// the "Per-turn host data — `turnContextProvider` and `TurnContext.appData`"
 /// section of <doc:ContributingConversationHistory>.
 ///
 /// The runtime awaits this provider once per turn; any thrown error aborts the
