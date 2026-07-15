@@ -19,9 +19,10 @@ import ManifoldInference
 /// the behavior that existed in ``ConversationRuntime`` before the P3 driver
 /// seam was introduced.
 ///
-/// This is always the right choice for standard chat sessions. Pass
-/// ``ResumableRunDriver`` when you need long-running, checkpointed runs that
-/// survive app suspension.
+/// This is always the right choice for standard chat sessions. The
+/// package-internal `ResumableRunDriver` covers long-running, checkpointed
+/// runs that survive app suspension (2026-07 residual sweep, D.2 — not part
+/// of the public surface).
 ///
 /// ## Behavior preservation
 ///
