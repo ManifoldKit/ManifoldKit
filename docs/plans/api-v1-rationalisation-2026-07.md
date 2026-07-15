@@ -479,3 +479,152 @@ review, all fix-first; v1 → v4)
   timed-out / looped / interrupted (cancelled-empty is a derived telemetry string),
   and MK's structured thinking events exist — the B.3 parity risk narrows to
   verifying which shipped local backends emit `<think>` as plain `.token` text.
+
+## Addendum — Runtime residual sweep (2026-07-15)
+
+**Origin:** a post-Phase-A opus review (2026-07-15, all six consumer repos
+grepped with `rg -w -t swift`) found that Phase A's clusters (A.1 Inference,
+A.2 UI, A.3 leaves) never swept **ManifoldRuntime** or
+**ManifoldPersistenceSwiftData**. All new findings live there. Everything else
+came back clean: recent feature PRs (#2237–#2259) are live+wired+documented
+with no over-exposure; no member-level demotions are mechanically safe
+(view-model members can't be trusted to name-grep under SwiftUI dynamic
+dispatch); no baseline drift. The addendum was adversarially reviewed once
+(opus, FIX-FIRST — all six findings folded; see Review record below), then
+all decision items were **decided by Rory on 2026-07-15**.
+
+Thesis unchanged from the parent plan: the cheapest time to shrink the public
+API is before the 1.0 freeze, and `package → public` re-promotion post-1.0 is
+additive/non-breaking while the reverse is a major — bias toward demote now,
+re-promote on first adopter. The review added a corollary: a demotion of a
+*documented* surface must carry its doc rewrite in the same PR (a banner over
+an impossible recipe is a documented lie; `no-build` fences dodge the
+snippet-compile gate, so the doc has to actually change).
+
+### D.1 — Mechanical demotions (landed via this PR)
+
+Zero external refs, zero docs, not on any public signature, re-verified with
+corrected consumer-repo paths:
+
+- `BM25Scorer` (`ManifoldRuntime/Services/BM25Scorer.swift`) — only consumer
+  is `FlatFileVectorStore` (`ManifoldPersistenceSwiftData`, same SwiftPM
+  package — `package` visibility crosses that module boundary fine).
+- `ReciprocalRankFusion` (`ManifoldRuntime/Services/ReciprocalRankFusion.swift`)
+  — only consumer is `RAGService.retrieve`.
+
+Also bundled: fixed `scripts/api-demotion-screen.sh`'s consumer-repo defaults
+(they didn't match this machine's layout, so every screen run WARN-skipped
+all six repos and returned a vacuous PASS) and made it hard-fail when a
+consumer repo root is missing instead of silently skipping it.
+
+### D.6 — HostTurnContextProvider — DECIDED: demote to `package`
+
+Not a mechanical delete: live-wired (`ConversationTurnExecutor.swift:1441-1442`
+calls `appData(for:)` on the real turn path), a public param on three
+`ConversationRuntime.init` overloads plus a public `ConversationRuntimeOptions`
+property, behaviorally tested, and DocC-documented with a conformance
+walkthrough. Zero external adopters (the origin app's live mechanism is the
+planner-path `appData` handoff, not this protocol). Decision: demote the
+protocol, the three init params, and the options property to `package`;
+rewrite `ContributingConversationHistory.md` and the `ManifoldRuntime.md`
+symbol link to drop the host-conformance walkthrough, carry the api-digester
+allowlist entry for the public-init-signature change, and a migration note
+pointing at the planner-path `TurnContext.appData` replacement. Own PR,
+rebase-serialized on the shared `ManifoldRuntime` baseline.
+
+### D.2 — Agentic Run subsystem — DECIDED: demote the whole surface to `package`
+
+Full surface: ~10 public types (`ConversationRun`, `RunEvent`, `RunStatus`,
+`RunStep`, `RunStore`, `RunStoreError`, `RunInputProvider`,
+`FixedGoalRunInputProvider`, `ResumableRunDriver`, `SwiftDataRunStore`), 4
+`ConversationRuntime` methods (`startRun`/`resumeRun`/`pauseActiveRun`/
+`cancelActiveRun`), the `enableResumableRuns: Bool = false` params on public
+`ManifoldBootstrap` init signatures, and the public property
+`ManifoldBootstrap.runStore: SwiftDataRunStore?`. Wired and test-exercised,
+not #2261-shaped dead code — but zero adopters and about to freeze silently
+into the stable-tier 1.0 contract. `SwiftDataRunStore`'s `@Model` rows live in
+frozen `ManifoldSchemaV10`; demotion preserves migration integrity but leaves
+a permanently-dormant public schema version no host can exercise while the
+flag is `package` — accepted and stated, not hidden. `RunStore` is removed
+from the persistence-ports KEEP list (it backs only the Run subsystem, unlike
+the conscious-KEEP ports which back live adopted features) and follows this
+decision. Own `refactor(runtime)!` PR, same gates, shared baseline
+(rebase-serialize).
+
+### D.3 — ConversationRuntimeBackgroundBridge + ManifoldBackgroundTaskIdentifiers — DECIDED: demote to `package`
+
+Documented (`BackgroundTaskSupport.md` instructs host construction), but
+constructed only in tests/docs — zero adopters across all six consumer repos.
+Same shape as the #2261 BackgroundTaskScheduler removal, but the host-side
+companion to #1713's BGContinuedProcessingTask support. Decision: demote to
+`package` and rewrite `BackgroundTaskSupport.md` from a host-recipe to an
+internal-seam note in the same PR (the article's fences are `swift,no-build`,
+so the snippet-compile gate would not catch a recipe for a now-unconstructable
+type). A `package`-visibility host-facing seam is functionally unavailable to
+hosts — deliberate: unadopted host seams should not be frozen speculatively.
+Rides the D.2 PR (same module, same doc-and-baseline gates).
+
+### D.4 — AccessibilityAnnouncer — DECIDED: wire it internally and demote to `package`
+
+Kept public by #2254 with an explicit "human call" flag: zero call sites
+in-repo (only a `// should drive` comment), zero adopters across all six
+repos, but a `## How to use it` doc describing direct host construction —
+currently lying twice (unwired code, and host-facing docs for a seam nothing
+validates). Decision: wire it internally (`ChatView` drives VoiceOver
+announcements from the real streaming-completion path) and demote to
+`package` in the same PR, rewriting its host-facing doc to match. This is
+honest feature work (correct lifecycle from the streaming path,
+completion-reason mapping, rate-limiting, plus an a11y behavior test — the
+`post` seam is injectable, so testable), not a trivial wire-up: ships as
+`feat(ui):` + demotion in one PR. Not release-gating; can follow the sweep at
+its own pace.
+
+### D.5 — Release sequencing (corrected by review)
+
+**The sweep does not gate release 0.72.0.** The shrinkage only needs to
+precede the **C.2 seal (#2156)** — the baseline freeze — not the release
+closeout. 0.72.0 (#2260) closes out on its own timeline, independent of this
+sweep. D.1 → D.6 → D.2(+D.3) land next, rebase-serialized on the shared
+`ManifoldRuntime` baseline (single-allowlist commits), riding whatever
+release train is open when they merge (`bump-minor-pre-major: true` keeps any
+`refactor!` a minor bump). **The C.2 seal runs only after the sweep lands**,
+so the frozen stable-tier baseline includes this shrinkage — that ordering is
+the one hard dependency. D.4 is fully decoupled.
+
+### Out of scope
+
+#2208 enum-growth sweep (shape hygiene, scheduled separately); the
+single-conformer persistence ports backing live adopted features (PersonaStore,
+UsageStore, BenchmarkCache, WebSearchRuntime, TransactionalMessageStore —
+conscious KEEP, `RunStore` removed per D.2 above); Appendix-2 origin-app
+contingent demotions (still gated on the private B.0 migration); member-level
+view-model demotions (no mechanically safe candidates, revisit only with
+adopter telemetry).
+
+### Review record (2026-07-15, one adversarial opus review — FIX-FIRST, all folded)
+
+- **F1 CONFIRMED (blocker):** HostTurnContextProvider is live-wired, on 3
+  public init overloads + an options property, tested, and DocC-documented
+  with a conformance walkthrough → pulled out of mechanical D.1 into decision
+  item D.6.
+- **F2 CONFIRMED (blocker):** RunStore appeared in both D.2's demote set and
+  the persistence-ports KEEP list → resolved: keep-list ports back live
+  adopted features, RunStore has no life outside the Run subsystem.
+- **F3 CONFIRMED:** D.2's surface list understated the bootstrap-init impact
+  (missed the public `ManifoldBootstrap.runStore` property); dormant-schema
+  consequence now stated.
+- **F4 CONFIRMED:** D.3's "demote + banner over the DocC recipe" was
+  doc-incoherent (`swift,no-build` fences dodge the snippet gate) → article
+  rewrite bound into the same PR, banner option removed.
+- **F5 CONFIRMED:** `api-demotion-screen.sh` default consumer paths didn't
+  match this machine → vacuous PASSes; BM25Scorer/ReciprocalRankFusion
+  re-verified genuinely clean with corrected paths across all six repos;
+  script hard-fail fix bundled into D.1.
+- **F6 CONFIRMED:** sweep decoupled from the 0.72.0 release — only the C.2
+  seal depends on it.
+- **F7 PLAUSIBLE:** D.4 sizing corrected from "small feature work" to honest
+  feature work with lifecycle/rate-limit/test scope.
+- Positive confirmations: zero-adopter claims for Run subsystem, bridge, and
+  AccessibilityAnnouncer verified across all six consumer repos; BM25/RRF
+  anchoring and cross-module `package` visibility sound; release-train math
+  right.

@@ -71,6 +71,31 @@ article. Fixed; re-running the screen for `ModelPicker`, `ChatMessageRenderParam
 each. Other Phase A clusters should re-screen anything they already marked
 `NEEDS-HAND-ADJUDICATION` or `PASS` before this fix landed.
 
+## D.1 — Runtime residual sweep (ManifoldRuntime, 2026-07-15)
+
+Part of the [v1 rationalisation plan's residual-sweep addendum](plans/api-v1-rationalisation-2026-07.md#addendum--runtime-residual-sweep-2026-07-15)
+— Phase A's clusters (A.1/A.2/A.3 below) never swept `ManifoldRuntime` or
+`ManifoldPersistenceSwiftData`; this section (and the D.6/D.2/D.3 sections
+follow-up sweep PRs append below it) covers what that pass found there. Same
+contract as Phase A: `package` types are not part of the public SwiftPM
+surface, and no behavior changed — pure visibility reduction.
+
+- `BM25Scorer` (`ManifoldRuntime/Services/BM25Scorer.swift`, plus its nested
+  `Document` type, `defaultK1`/`defaultB` constants, `init`, and `score`) —
+  only consumer is `FlatFileVectorStore` in `ManifoldPersistenceSwiftData`
+  (a different target, same SwiftPM package — `package` visibility crosses
+  that boundary fine).
+- `ReciprocalRankFusion` (`ManifoldRuntime/Services/ReciprocalRankFusion.swift`,
+  plus `defaultK` and `fuse`) — only consumer is `RAGService.retrieve`.
+
+Verified clean via `scripts/api-demotion-screen.sh` against the real six
+consumer repos (three first-party apps + manifold-mlx + manifold-llama +
+manifold-eval); the script's default consumer-repo paths were also fixed in
+this PR (they didn't match this machine's layout, so every prior screen run
+WARN-skipped all six repos and returned a vacuous PASS — the script now
+hard-fails on a missing consumer repo root instead of silently skipping it,
+unless `MK_ALLOW_MISSING_CONSUMERS=1` is set).
+
 ## A.1 — ManifoldInference
 
 - `TurnHistoryCompressor` (protocol) and its two in-tree conformers,

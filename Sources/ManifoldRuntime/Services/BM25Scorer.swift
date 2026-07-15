@@ -28,13 +28,13 @@ import Foundation
 /// `idf(t) = ln( (N − df(t) + 0.5) / (df(t) + 0.5) + 1 )`. The `+ 1` inside the
 /// log keeps IDF non-negative even for terms appearing in more than half the
 /// corpus, so a common term can never *subtract* from a document's score.
-public struct BM25Scorer: Sendable {
+package struct BM25Scorer: Sendable {
 
     /// One indexed document: its identity plus the pre-tokenized term counts and
     /// length needed to score it. `id` is opaque to the scorer — callers map it
     /// back to whatever record type they hold.
-    public struct Document: Sendable {
-        public let id: UUID
+    package struct Document: Sendable {
+        package let id: UUID
         /// Term → frequency within this document.
         let termFrequencies: [String: Int]
         /// Total token count (sum of term frequencies); the BM25 `|D|`.
@@ -44,12 +44,12 @@ public struct BM25Scorer: Sendable {
     /// Standard BM25 term-frequency saturation parameter. 1.2 is the canonical
     /// default (Robertson et al.); higher values let raw term frequency matter
     /// more before saturating. PROVISIONAL until the eval harness (#1937) lands.
-    public static let defaultK1: Double = 1.2
+    package static let defaultK1: Double = 1.2
 
     /// Standard BM25 length-normalization parameter in `[0, 1]`. 0.75 is the
     /// canonical default; `b = 0` disables length normalization entirely, `b = 1`
     /// applies it fully. PROVISIONAL until #1937.
-    public static let defaultB: Double = 0.75
+    package static let defaultB: Double = 0.75
 
     private let documents: [Document]
     /// term → number of documents containing it (document frequency).
@@ -64,7 +64,7 @@ public struct BM25Scorer: Sendable {
     /// Tokenization and the document-frequency table are computed once here so
     /// each subsequent `score(query:limit:)` is O(|Q| · N) rather than re-walking
     /// the corpus for IDF on every query.
-    public init(
+    package init(
         corpus: [(id: UUID, text: String)],
         k1: Double = BM25Scorer.defaultK1,
         b: Double = BM25Scorer.defaultB
@@ -101,7 +101,7 @@ public struct BM25Scorer: Sendable {
     /// descending BM25 score. Documents scoring `0` (no query term matched) are
     /// dropped — they carry no sparse signal and would only dilute the fused
     /// ranking.
-    public func score(query: String, limit: Int) -> [(id: UUID, score: Double)] {
+    package func score(query: String, limit: Int) -> [(id: UUID, score: Double)] {
         guard limit > 0, documentCount > 0 else { return [] }
         let queryTerms = Set(BM25Scorer.tokenize(query))
         guard !queryTerms.isEmpty else { return [] }
