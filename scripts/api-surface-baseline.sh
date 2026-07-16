@@ -103,7 +103,7 @@
 #   Package.swift:953), so an un-traited scratch-checkout compile emits a
 #   module with zero declarations — just the four implicit stdlib imports.
 #
-#   Verified 2026-07-16, three ways, scoped to just `--targets ManifoldServer`:
+#   Verified 2026-07-16, four ways, scoped to just `--targets ManifoldServer`:
 #     1. `swift package --traits Server diagnose-api-breaking-changes HEAD
 #        --targets ManifoldServer --baseline-dir /tmp/x` → dumped JSON has
 #        0 declarations.
