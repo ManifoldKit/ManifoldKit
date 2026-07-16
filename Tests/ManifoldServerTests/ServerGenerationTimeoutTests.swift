@@ -44,8 +44,8 @@ final class ServerGenerationTimeoutTests: XCTestCase {
             try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
                 XCTAssertEqual(response.status, .gatewayTimeout)
                 let text = String(buffer: response.body)
-                XCTAssertTrue(text.contains("generationTimedOut") || text.contains("timeout"),
-                               "error envelope should mention the timeout: \(text)")
+                XCTAssertTrue(text.contains("timeout"), "error envelope should mention the timeout: \(text)")
+                XCTAssertTrue(text.contains("\"code\":\"generation_timeout\""), "error taxonomy must match the streaming path's code: \(text)")
             }
         }
 
@@ -182,8 +182,8 @@ final class ServerGenerationTimeoutTests: XCTestCase {
             tokens: ["a", "b", "c", "d", "e"]
         )
         // Each chunk arrives 60ms apart; 5 chunks span ~300ms total — well
-        // past a naive single-shot wall-clock cap of, say, 100ms — but the
-        // idle timeout (100ms, reset every chunk) never sees more than 60ms
+        // past a naive single-shot wall-clock cap of, say, 150ms — but the
+        // idle timeout (150ms, reset every chunk) never sees more than 60ms
         // of silence, so the stream must complete uninterrupted.
         adapter.chunkPacing = .milliseconds(60)
 
@@ -291,6 +291,273 @@ final class ServerGenerationTimeoutTests: XCTestCase {
 
         XCTAssertNil(adapter.requests.last?.maxCompletionTokens)
         XCTAssertNil(adapter.requests.last?.maxTokens)
+    }
+
+    /// Pins the clamp half of `boundedForOutputCap`: a request already
+    /// *under* the ceiling must be honored verbatim, not further reduced.
+    /// Without this, `min(requested ?? ceiling, ceiling)` could regress to
+    /// just `ceiling` (always overriding the request) and every other test
+    /// in this file would still pass — none of them assert a below-ceiling
+    /// request is left alone. Verified by temporarily reverting the
+    /// production code to `bounded.maxCompletionTokens = ceiling` and
+    /// confirming this test fails (per-PR review requirement) before
+    /// committing.
+    func testMaxGenerationOutputTokensHonorsRequestBelowCeiling() async throws {
+        let adapter = FakeChatCompletionsAdapter()
+        let app = ServerApp(
+            configuration: ServerConfiguration(maxGenerationOutputTokens: 500),
+            backendProvider: FakeServerBackendProvider(backend: ServerTestBackendFactory.loadedMock()),
+            adapter: adapter
+        ).makeApplication()
+
+        var request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        request.maxTokens = 100
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .ok)
+            }
+        }
+
+        XCTAssertEqual(adapter.requests.last?.maxCompletionTokens, 100, "a request already under the ceiling must be honored, not overridden")
+    }
+
+    // MARK: - max_tokens / max_completion_tokens validation
+
+    /// `max_tokens: 0` (or negative) must be rejected with 400, matching
+    /// OpenAI's own behavior — `min(0, ceiling) == 0` would otherwise flow
+    /// through as a "successful" 200 response with an empty completion,
+    /// which silently discards a malformed request instead of rejecting it.
+    func testNonPositiveMaxTokensIsRejectedWith400() async throws {
+        let adapter = FakeChatCompletionsAdapter()
+        let app = ServerApp(
+            backendProvider: FakeServerBackendProvider(backend: ServerTestBackendFactory.loadedMock()),
+            adapter: adapter
+        ).makeApplication()
+
+        var request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        request.maxTokens = 0
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .badRequest)
+            }
+        }
+        XCTAssertTrue(adapter.requests.isEmpty, "a rejected request must never reach the adapter")
+
+        var negativeRequest = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        negativeRequest.maxCompletionTokens = -1
+        let negativeBody = ByteBuffer(bytes: try JSONEncoder().encode(negativeRequest))
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: negativeBody) { response in
+                XCTAssertEqual(response.status, .badRequest)
+            }
+        }
+    }
+
+    // MARK: - finish_reason truthfulness under the output cap (#2265 review finding 2)
+
+    /// A non-streaming response cut off by the server's output-token
+    /// ceiling must report `finish_reason: "length"`, not `"stop"` —
+    /// `ChatCompletionEventMapper`'s `Accumulator.finishReason` never
+    /// reports `.length` on its own (it only distinguishes `.toolCalls` vs
+    /// `.stop`), so with the cap default-on, every client that omits
+    /// `max_tokens` and gets cut off at the default ceiling would otherwise
+    /// be told the model stopped naturally.
+    func testNonStreamingFinishReasonIsLengthWhenOutputCapTruncates() async throws {
+        // "one two three four five" is 5 whitespace-split tokens — at or
+        // past a ceiling of 3, `correctedForOutputCapTruncation`'s fallback
+        // token-estimate must classify this as cap-truncated.
+        let adapter = FakeChatCompletionsAdapter(
+            response: ChatCompletionResponse(model: "fake-model", content: "one two three four five")
+        )
+        let app = ServerApp(
+            configuration: ServerConfiguration(maxGenerationOutputTokens: 3),
+            backendProvider: FakeServerBackendProvider(backend: ServerTestBackendFactory.loadedMock()),
+            adapter: adapter
+        ).makeApplication()
+
+        let request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .ok)
+                let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: Data(buffer: response.body))
+                XCTAssertEqual(decoded.choices.first?.finishReason, .length)
+            }
+        }
+    }
+
+    /// A non-streaming response that finishes comfortably under the ceiling
+    /// must keep reporting `finish_reason: "stop"` — the correction only
+    /// fires when truncation is actually likely.
+    func testNonStreamingFinishReasonStaysStopWhenUnderCap() async throws {
+        let adapter = FakeChatCompletionsAdapter(
+            response: ChatCompletionResponse(model: "fake-model", content: "hi there")
+        )
+        let app = ServerApp(
+            configuration: ServerConfiguration(maxGenerationOutputTokens: 500),
+            backendProvider: FakeServerBackendProvider(backend: ServerTestBackendFactory.loadedMock()),
+            adapter: adapter
+        ).makeApplication()
+
+        let request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: Data(buffer: response.body))
+                XCTAssertEqual(decoded.choices.first?.finishReason, .stop)
+            }
+        }
+    }
+
+    /// Streaming counterpart: the terminal chunk's `finish_reason` must flip
+    /// to `"length"` when the running token estimate reaches the ceiling.
+    func testStreamingFinishReasonIsLengthWhenOutputCapTruncates() async throws {
+        let adapter = FakeChatCompletionsAdapter(
+            chunkedResponse: ChatCompletionResponse(model: "fake-model", content: "truncated"),
+            tokens: ["one", "two", "three", "four", "five"]
+        )
+
+        let app = ServerApp(
+            configuration: ServerConfiguration(maxGenerationOutputTokens: 3),
+            backendProvider: FakeServerBackendProvider(backend: ServerTestBackendFactory.loadedMock()),
+            adapter: adapter
+        ).makeApplication()
+
+        var request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        request.stream = true
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                let text = String(buffer: response.body)
+                XCTAssertTrue(text.contains("\"finish_reason\":\"length\""), "terminal chunk must report length, not stop: \(text)")
+                XCTAssertFalse(text.contains("\"finish_reason\":\"stop\""), "the truncated finish reason must not also appear as stop: \(text)")
+            }
+        }
+    }
+
+    /// Streaming counterpart of the "stays stop" case: comfortably under the
+    /// ceiling, the terminal chunk keeps `finish_reason: "stop"`.
+    func testStreamingFinishReasonStaysStopWhenUnderCap() async throws {
+        let adapter = FakeChatCompletionsAdapter(
+            chunkedResponse: ChatCompletionResponse(model: "fake-model", content: "hi"),
+            tokens: ["hi"]
+        )
+
+        let app = ServerApp(
+            configuration: ServerConfiguration(maxGenerationOutputTokens: 500),
+            backendProvider: FakeServerBackendProvider(backend: ServerTestBackendFactory.loadedMock()),
+            adapter: adapter
+        ).makeApplication()
+
+        var request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        request.stream = true
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                let text = String(buffer: response.body)
+                XCTAssertTrue(text.contains("\"finish_reason\":\"stop\""), "must stay stop when under the cap: \(text)")
+                XCTAssertFalse(text.contains("\"finish_reason\":\"length\""), "must not be misreported as length: \(text)")
+            }
+        }
+    }
+
+    // MARK: - parallelSlots > 1 gates real cancellation (#2265 review finding 1)
+
+    /// `InferenceBackend.stopGeneration()`'s contract is backend-wide, not
+    /// per-request, and `TraitAwareServerBackendProvider` hands out a single
+    /// cached backend per model — so under `parallelSlots > 1`, cancelling
+    /// on a timeout could kill an unrelated sibling request's healthy
+    /// generation sharing that same backend. This pins that `stopGeneration()`
+    /// must NOT be called when `parallelSlots > 1`, even though the request
+    /// still times out. Without this test, `canCancelInFlightGenerationOnTimeout`
+    /// could regress to always-true (e.g. someone "simplifying" the
+    /// condition) and silently reintroduce the cross-request-cancellation
+    /// hazard.
+    func testNonStreamingTimeoutDoesNotCancelBackendWhenParallelSlotsExceedsOne() async throws {
+        let backend = ServerTestBackendFactory.loadedMock()
+        let adapter = FakeChatCompletionsAdapter()
+        adapter.hangsForever = true
+
+        let app = ServerApp(
+            configuration: ServerConfiguration(parallelSlots: 4, generationTimeout: .milliseconds(50)),
+            backendProvider: FakeServerBackendProvider(backend: backend),
+            adapter: adapter
+        ).makeApplication()
+
+        let request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .gatewayTimeout, "the request must still time out")
+            }
+        }
+
+        XCTAssertEqual(backend.stopCallCount, 0, "must NOT cancel the shared backend when other requests could be using it concurrently")
+    }
+
+    /// Streaming counterpart of the parallel-slots gate.
+    func testStreamingIdleTimeoutDoesNotCancelBackendWhenParallelSlotsExceedsOne() async throws {
+        let backend = ServerTestBackendFactory.loadedMock()
+        let adapter = FakeChatCompletionsAdapter()
+        adapter.hangsAfterFirstChunk = true
+
+        let app = ServerApp(
+            configuration: ServerConfiguration(parallelSlots: 4, streamingIdleTimeout: .milliseconds(80)),
+            backendProvider: FakeServerBackendProvider(backend: backend),
+            adapter: adapter
+        ).makeApplication()
+
+        var request = ChatCompletionRequest(
+            model: "fake-model",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")]
+        )
+        request.stream = true
+        let body = ByteBuffer(bytes: try JSONEncoder().encode(request))
+
+        do {
+            try await app.test(.router) { client in
+                try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { _ in }
+            }
+            XCTFail("expected the idle timeout to still end the stream")
+        } catch {
+            // Expected — the request still times out, it just must not
+            // touch the shared backend. Asserted below.
+        }
+
+        XCTAssertEqual(backend.stopCallCount, 0, "must NOT cancel the shared backend when other requests could be using it concurrently")
     }
 }
 

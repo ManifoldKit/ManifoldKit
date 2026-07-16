@@ -8,9 +8,16 @@ internal enum ServerError: Error, Equatable, Sendable, CustomStringConvertible {
     case notImplemented(String)
     case generationFailed(String)
     /// A `ServerConfiguration.generationTimeout` / `.streamingIdleTimeout`
-    /// expired. The in-flight backend generation has already been cancelled
+    /// expired. The in-flight backend generation has been cancelled for real
     /// via `InferenceBackend.stopGeneration()` by the time this is thrown —
-    /// see `ServerGenerationTimeout` (#2265).
+    /// but ONLY when `ServerConfiguration.parallelSlots == 1`. Under
+    /// `parallelSlots > 1` the backend is shared across concurrent requests
+    /// (`stopGeneration()`'s contract is backend-wide, not per-request), so
+    /// calling it would cancel an unrelated sibling request's healthy
+    /// generation; in that case the operation is only abandoned at the
+    /// `Task` level, not cancelled at the backend. See
+    /// `ServerConfiguration.generationTimeout`'s doc comment and
+    /// `ServerGenerationTimeout` (#2265).
     case generationTimedOut(String)
 
     internal var description: String {

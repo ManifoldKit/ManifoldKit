@@ -23,7 +23,7 @@ final class ServerConfigurationTests: XCTestCase {
         // #2265: request/idle timeouts and the output-token ceiling are all
         // on by default with generous-but-bounded values — nil would mean
         // "no cap", silently reintroducing the unbounded hang/output hazard.
-        XCTAssertEqual(configuration.generationTimeout, .seconds(120))
+        XCTAssertEqual(configuration.generationTimeout, .seconds(600))
         XCTAssertEqual(configuration.streamingIdleTimeout, .seconds(60))
         XCTAssertEqual(configuration.maxGenerationOutputTokens, 4096)
     }

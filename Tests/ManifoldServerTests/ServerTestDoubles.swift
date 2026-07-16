@@ -77,16 +77,30 @@ final class FakeChatCompletionsAdapter: ChatCompletionsAdapter, @unchecked Senda
 
     /// Convenience for streaming-pacing tests that want several distinct
     /// chunks (rather than the single-chunk default) spread across the pace.
-    init(chunkedResponse response: ChatCompletionResponse, tokens: [String]) {
+    /// Appends a trailing empty-delta chunk carrying `finishReason` (default
+    /// `.stop`, pass `nil` to omit it) — mirrors the real
+    /// `ChatCompletionEventMapper.chunks(from:includeUsage:onCancel:)` shape,
+    /// which always emits a separate terminal chunk for the finish reason
+    /// rather than attaching it to the last content delta.
+    init(chunkedResponse response: ChatCompletionResponse, tokens: [String], finishReason: ChatCompletionFinishReason? = .stop) {
         self.result = .success(response)
-        self.chunkResult = .success(tokens.map { token in
+        var chunks = tokens.map { token in
             ChatCompletionChunk(
                 id: response.id,
                 created: response.created,
                 model: response.model,
                 choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: token))]
             )
-        })
+        }
+        if let finishReason {
+            chunks.append(ChatCompletionChunk(
+                id: response.id,
+                created: response.created,
+                model: response.model,
+                choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(), finishReason: finishReason)]
+            ))
+        }
+        self.chunkResult = .success(chunks)
     }
 
     init(error: Error) {

@@ -38,23 +38,37 @@ internal enum ServerGenerationTimeout {
                 }
             }
 
+            // Holds the watchdog `Task` once created, so `operationTask` can
+            // cancel it the moment the operation finishes on its own — without
+            // this, the watchdog is an unstructured task nobody retains, so it
+            // always sleeps out its FULL `timeout` duration even after the
+            // operation already returned (review finding on #2265: at server
+            // request volume this is ~1 sleeping task + continuation per
+            // request for the life of `timeout`, not just untidy).
+            let watchdogBox = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
+
             let operationTask = Task {
                 do {
                     let value = try await operation()
-                    if claimResume() { continuation.resume(returning: value) }
+                    if claimResume() {
+                        watchdogBox.withLock { $0?.cancel() }
+                        continuation.resume(returning: value)
+                    }
                 } catch {
-                    if claimResume() { continuation.resume(throwing: error) }
+                    if claimResume() {
+                        watchdogBox.withLock { $0?.cancel() }
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
 
-            Task {
+            let watchdogTask = Task {
                 do {
                     try await Task.sleep(for: timeout)
                 } catch {
-                    // Sleep was cancelled because the operation already won the
-                    // race (its own Task doesn't cancel this watchdog, but the
-                    // continuation only resumes once — claimResume below is the
-                    // real guard). Nothing to do.
+                    // Cancelled by `operationTask` above (or by the
+                    // already-resumed check just below) — the operation won
+                    // the race. Nothing to do.
                     return
                 }
                 guard claimResume() else { return }
@@ -64,16 +78,35 @@ internal enum ServerGenerationTimeout {
                     "Generation exceeded the configured timeout of \(timeout)."
                 ))
             }
+
+            // Publish the watchdog, then re-check: if `operationTask` already
+            // claimed `resumed` in the window between its own creation and
+            // this publish, its `watchdogBox.withLock { $0?.cancel() }` call
+            // above found the box still empty and could not cancel us — catch
+            // that here so the watchdog is never left sleeping out its full
+            // duration after the operation already finished.
+            let alreadyResumed = watchdogBox.withLock { box -> Bool in
+                box = watchdogTask
+                return resumed.withLock { $0 }
+            }
+            if alreadyResumed {
+                watchdogTask.cancel()
+            }
         }
     }
 }
 
-/// Merges a chunk stream with an idle watchdog: the clock re-arms after
-/// every element the source produces, so a slow-but-continuously-emitting
-/// stream is never killed — only a source that stops producing entirely for
-/// `idleTimeout` trips it. This is the streaming counterpart to
-/// ``ServerGenerationTimeout``, which bounds a single opaque non-streaming
-/// await instead.
+/// Merges a chunk stream with an idle watchdog: the clock re-arms every time
+/// the producer task reads a new element **from `source`** (i.e. from the
+/// backend/adapter) — NOT when that element is subsequently written to the
+/// HTTP client. This bounds a backend/adapter that stops producing chunks;
+/// it does NOT bound a client that stops reading them (a slow or stalled
+/// *reader* on a healthy stream is not covered by this timeout — that would
+/// need a write-side deadline against the `ResponseBodyWriter`, which is out
+/// of scope here). A slow-but-continuously-emitting *source* is never
+/// killed — only a source that stops producing entirely for `idleTimeout`
+/// trips it. This is the streaming counterpart to ``ServerGenerationTimeout``,
+/// which bounds a single opaque non-streaming await instead.
 ///
 /// Deliberately does NOT hold the source's `AsyncIteratorProtocol` iterator
 /// behind an actor and race per-element `next()` calls against a sleep: that
@@ -140,6 +173,21 @@ internal enum ServerIdleTimeoutPuller {
 
             let deadline = IdleDeadline(idleTimeout: idleTimeout)
 
+            // Publish `onTermination` against a box BEFORE creating either
+            // task, so a consumer that cancels immediately (before this
+            // closure finishes running) can never observe an empty handler —
+            // narrows the same "unstructured task nobody could reach to
+            // cancel" gap `ServerGenerationTimeout.run` closes above.
+            let taskBox = OSAllocatedUnfairLock<(producer: Task<Void, Never>?, watchdog: Task<Void, Never>?)>(
+                initialState: (nil, nil)
+            )
+            continuation.onTermination = { _ in
+                taskBox.withLock { pair in
+                    pair.producer?.cancel()
+                    pair.watchdog?.cancel()
+                }
+            }
+
             let producer = Task {
                 do {
                     for try await element in source {
@@ -168,10 +216,7 @@ internal enum ServerIdleTimeoutPuller {
                 }
             }
 
-            continuation.onTermination = { _ in
-                producer.cancel()
-                watchdog.cancel()
-            }
+            taskBox.withLock { $0 = (producer, watchdog) }
         }
     }
 }

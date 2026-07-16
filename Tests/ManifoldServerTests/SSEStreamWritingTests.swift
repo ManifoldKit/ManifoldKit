@@ -27,7 +27,34 @@ import XCTest
 /// the first recorded write timestamp would land after the token-producer
 /// finishes instead of before it.
 final class SSEStreamWritingTests: XCTestCase {
+    /// `idleTimeout: nil` — the legacy simple for-loop branch in
+    /// `writeSSEChunks`. Direct callers/tests that omit the parameter
+    /// exercise this path, but it is NOT what a real `ServerApp` ever runs:
+    /// `ServerConfiguration.streamingIdleTimeout` defaults to 60s (non-nil),
+    /// so live traffic always takes the `ServerIdleTimeoutPuller`-backed
+    /// branch below instead. See `testFirstFrameArrivesBeforeLastTokenIsProducedWithIdleTimeoutSet`.
     func testFirstFrameArrivesBeforeLastTokenIsProduced() async throws {
+        try await assertIncrementalDelivery(idleTimeout: nil)
+    }
+
+    /// Same invariant as above, but with a non-nil `idleTimeout` — the
+    /// branch every real `ServerApp` request actually takes, since
+    /// `ServerConfiguration.streamingIdleTimeout` defaults on (#2265 review
+    /// finding 6: without this, the #2269 incremental-flush guard only
+    /// covered a dead branch once the idle timeout shipped default-on).
+    /// `idleTimeout` here (5s) is far longer than the whole test (3 × 200ms
+    /// token gaps ≈ 600ms), so it never fires — this test is purely about
+    /// delivery timing, not the timeout itself.
+    func testFirstFrameArrivesBeforeLastTokenIsProducedWithIdleTimeoutSet() async throws {
+        try await assertIncrementalDelivery(idleTimeout: .seconds(5))
+    }
+
+    /// Sabotage-evidence: replace the per-chunk `try await writer.write(buffer)`
+    /// call with buffering every frame into one `ByteBuffer` and writing it after
+    /// the loop — both tests above fail because the first recorded write
+    /// timestamp would land after the token-producer finishes instead of
+    /// before it.
+    private func assertIncrementalDelivery(idleTimeout: Duration?) async throws {
         let tokenGap = Duration.milliseconds(200)
         let tokenCount = 3
 
@@ -58,7 +85,8 @@ final class SSEStreamWritingTests: XCTestCase {
         _ = try await app.writeSSEChunks(
             chunks,
             to: &writer,
-            encoder: JSONEncoder()
+            encoder: JSONEncoder(),
+            idleTimeout: idleTimeout
         ) { _ in 1 }
 
         let writes = await recordingWriter.writes
@@ -69,8 +97,6 @@ final class SSEStreamWritingTests: XCTestCase {
         let lastTokenAt = await lastTokenProducedAt.value
         XCTAssertNotNil(lastTokenAt, "producer must have emitted its last token")
 
-        // SABOTAGE: buffer all frames and write them after the loop instead of
-        // per-chunk to verify this assertion catches non-incremental streaming.
         XCTAssertLessThan(
             firstFrameWrittenAt,
             lastTokenAt!,

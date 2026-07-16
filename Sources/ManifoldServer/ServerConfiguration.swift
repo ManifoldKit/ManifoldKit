@@ -34,24 +34,41 @@ public struct ServerConfiguration: Equatable, Sendable {
     /// doc comment, and PR #2268's identical reasoning for the fuzz harness's
     /// OpenAI exemption).
     ///
+    /// **Default-value assumption:** at the default 600s and the default
+    /// ``maxGenerationOutputTokens`` ceiling of 4096, a generation must
+    /// sustain roughly `4096 / 600 ≈ 6.83` tokens/sec to complete within
+    /// budget when it actually uses the full output ceiling. Raise this (or
+    /// lower the ceiling) if you run a model slower than that — a large or
+    /// CPU-bound local model can fall under 7 tok/s.
+    ///
     /// On expiry the backend's in-flight generation is cancelled via
-    /// `InferenceBackend.stopGeneration()` — not merely abandoned — and the
-    /// request fails with `ServerError.generationTimedOut`, mapped to HTTP
-    /// 504.
+    /// `InferenceBackend.stopGeneration()` — but **only when
+    /// `parallelSlots == 1`**. `stopGeneration()`'s contract is backend-wide,
+    /// not per-request, and `TraitAwareServerBackendProvider` hands out a
+    /// single cached backend instance per model — so under `parallelSlots >
+    /// 1`, calling it here would cancel a *different*, healthy sibling
+    /// request sharing that same backend instance, not just the timed-out
+    /// one. With `parallelSlots > 1` the operation is only abandoned
+    /// (cancelled at the `Task` level, not at the backend), which is weaker
+    /// but not actively harmful. Either way the request fails with
+    /// `ServerError.generationTimedOut`, mapped to HTTP 504.
     public var generationTimeout: Duration?
 
     /// Idle-reset timeout for the streaming `/v1/chat/completions` path: the
-    /// clock re-arms on every SSE chunk successfully written to the client,
-    /// so a generation that keeps producing tokens — however slowly — is
-    /// never killed. Only a backend that stops emitting chunks entirely for
-    /// this long trips it. `nil` disables the cap.
+    /// clock re-arms every time the backend/adapter produces a new chunk —
+    /// NOT when that chunk is written to the client — so a generation that
+    /// keeps producing tokens, however slowly, is never killed. Only a
+    /// backend that stops emitting chunks entirely for this long trips it.
+    /// A stalled *client* (one that stops reading a healthy stream) is not
+    /// covered by this timeout. `nil` disables the cap.
     ///
     /// On expiry the backend's in-flight generation is cancelled via
-    /// `InferenceBackend.stopGeneration()`, the client receives one terminal
-    /// SSE `data:` frame carrying a `server_error`/`generation_timeout`
-    /// envelope, and the underlying request then fails with
-    /// `ServerError.generationTimedOut` so metrics/gate bookkeeping runs
-    /// through the normal error path.
+    /// `InferenceBackend.stopGeneration()` — subject to the same
+    /// `parallelSlots == 1` restriction documented on ``generationTimeout``
+    /// — the client receives one terminal SSE `data:` frame carrying a
+    /// `server_error`/`generation_timeout` envelope, and the underlying
+    /// request then fails with `ServerError.generationTimedOut` so
+    /// metrics/gate bookkeeping runs through the normal error path.
     public var streamingIdleTimeout: Duration?
 
     /// Ceiling applied to the effective `max_tokens`/`max_completion_tokens`
@@ -76,7 +93,7 @@ public struct ServerConfiguration: Equatable, Sendable {
         corsOrigin: String? = nil,
         metricsEnabled: Bool = false,
         maxServerRequestBodyBytes: Int = ManifoldConfiguration.shared.maxServerRequestBodyBytes,
-        generationTimeout: Duration? = .seconds(120),
+        generationTimeout: Duration? = .seconds(600),
         streamingIdleTimeout: Duration? = .seconds(60),
         maxGenerationOutputTokens: Int? = 4096
     ) {
