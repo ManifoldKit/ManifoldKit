@@ -7,10 +7,14 @@
 > policy**, ruled on in
 > [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211).
 > Each retains the alternative that was considered and why it was rejected, so
-> the reasoning survives the decision. One item remains open: the
-> [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot)
-> isolation-change blind spot is a confirmed gap in the API-freeze tooling, not
-> a policy question, and must be closed or explicitly accepted before 1.0.
+> the reasoning survives the decision.
+>
+> **Two things remain open, and are marked as such wherever they appear** — a
+> reader should never have to guess which text is a ruling and which is not:
+> [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot)'s
+> isolation-change blind spot (a confirmed gap in the API-freeze tooling, not a
+> policy question), and Policy 2's two sub-questions (what "critical fix"
+> includes, and how a fix reaches the 1.x line). Both need settling before 1.0.
 
 ManifoldKit is built for sustained development — apps operated over months and
 years, not a demo that compiles once. `1.0.0` is the point where that promise
@@ -159,10 +163,12 @@ strict reading that raising a deployment target can break a consumer's build
 resolve-time floor mismatch a pin already solves, and the annual-major cost to
 version-number meaning is worse than the benefit.
 
-**Obligation (manual — no tripwire).** The one-release-ahead changelog
-announcement is a release-checklist item, not an enforced gate: nothing in CI
-can know a September bump is coming. Whoever cuts the release preceding a floor
-bump writes the notice.
+**Obligation (manual — no tripwire).** No gate can know a September bump is
+coming, so the one-release-ahead announcement is hand-kept. It is written into
+the release workflow as *Platform-floor release-notes discipline*
+([`AGENTS.md` § Release workflow](../AGENTS.md)), alongside the existing
+capability-field callout it is modelled on — so the obligation lives in the
+process a releaser actually reads, not only in this document.
 
 ### Policy 2 — Deprecation window and support policy
 
@@ -186,13 +192,25 @@ deprecation cycles).** Rejected: it reads well but promises maintenance labor
 that a single-maintainer project cannot reliably deliver, and an unmet support
 promise is worse than a modest kept one.
 
-**The load-bearing clause is the six-month tail.** "Critical fixes" means
-security fixes and data-loss/corruption bugs — not features, not perf, not
-ordinary bugs — backported to the 1.x line from a maintenance branch. It is the
-only commitment here that obliges labor *after* attention has moved to the next
-major, and it is scoped this narrowly on purpose. If a future review finds the
-tail is not being honored in practice, the honest correction is to narrow it to
-best-effort, not to let a written promise quietly lapse.
+**No tripwire.** Unlike Policy 3, nothing enforces this one: no gate can tell
+that a removal skipped its deprecation minor, and none can notice a support tail
+quietly lapsing. Both halves are kept by hand. Policy 1 carries the same caveat;
+it is recorded here for the same reason.
+
+> **Open sub-question — not part of the 2026-07-16 ruling.** The accepted
+> decision is the *shape* — deprecate-in-minor, remove-in-next-major, six-month
+> tail. Two things it does not settle, flagged rather than assumed:
+>
+> - **What "critical fix" includes.** The narrow reading (security and
+>   data-loss/corruption only) is what makes the tail keepable; a reading that
+>   includes ordinary bugs is a materially larger commitment. Undecided.
+> - **How a fix reaches the 1.x line** once `main` has moved to 2.0. This
+>   implies some maintenance-branch-shaped process, which **does not exist
+>   today** and would be a real operational cost to stand up.
+>
+> The six-month tail is the only clause here obliging labor *after* attention
+> has moved to the next major, which is why these are worth settling before 1.0
+> rather than at the first 1.x security report.
 
 ### Policy 3 — SwiftData schema-stability promise
 

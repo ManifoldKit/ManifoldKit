@@ -802,6 +802,15 @@ backend (manifold-mlx / manifold-llama) that doesn't yet construct the literal w
 field silently reports the default rather than failing to compile; the callout is the only
 signal that tells a companion maintainer opt-in is available and expected.
 
+**Platform-floor release-notes discipline (post-1.0):** raising the iOS/macOS deployment
+floor is a **minor**, not a major ([`docs/RELEASE-1.0.md` Policy 1](docs/RELEASE-1.0.md)),
+and ships a one-line CHANGELOG callout **one release ahead of the bump** — "the next minor
+raises the floor to iOS `X` / macOS `Y`; pin to `x.y.z` to stay on the current floor." The
+n-1 policy lands this every September and no gate can predict it, so it is a hand-kept step:
+a consumer who must stay on an old OS needs the warning *before* their resolve breaks, not
+in the notes of the release that broke it. Whoever cuts the release preceding a floor bump
+writes the notice.
+
 ## PR workflow
 
 All changes go through PRs — direct pushes to `main` are blocked.
