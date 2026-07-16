@@ -1,5 +1,8 @@
 # Migrating to ManifoldKit v0.48 — "The Packaging Release"
 
+**Audience:** consumer
+**Status:** living
+
 > **Partially superseded.** The `ManifoldBackends` umbrella shim and `DefaultBackends` cross-family
 > glue that this guide still shows as importable were **removed in P7 (#1837)** — `import ManifoldBackends`
 > and `import ManifoldCloud` no longer compile. For the current import/registrar model see

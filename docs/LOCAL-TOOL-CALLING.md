@@ -1,5 +1,8 @@
 # Tool calling on local non-Gemma models (Llama / Qwen / Mistral)
 
+**Audience:** consumer
+**Status:** living
+
 A single, end-to-end recipe for making a **local** instruct model call your tools.
 This is the deep-dive companion to [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md): that
 guide covers `ToolDefinition`, `ToolRegistry`, and the dispatch loop that work

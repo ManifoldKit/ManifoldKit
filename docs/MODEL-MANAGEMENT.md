@@ -1,5 +1,8 @@
 # Model Management
 
+**Audience:** consumer
+**Status:** living
+
 A consolidated reference for quantization discovery, device-fit gating, and
 residency policy. For first-run model discovery and the `ModelSelection` list
 API, start at [`QUICKSTART-MODEL-SELECTION.md`](QUICKSTART-MODEL-SELECTION.md);

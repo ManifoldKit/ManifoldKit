@@ -1,5 +1,8 @@
 # Share & Action Extension Recipe (App Group handoff)
 
+**Audience:** consumer
+**Status:** living
+
 This guide explains how the Advanced reference app (`Example/Advanced/`) wires a Share Extension and an Action Extension to hand content into a new `ChatViewModel` session without linking ManifoldKit inside the extension.
 
 ## Architecture overview

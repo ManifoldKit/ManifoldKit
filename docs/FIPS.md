@@ -1,5 +1,8 @@
 # FIPS 140-3 Posture
 
+**Audience:** consumer
+**Status:** living
+
 > **Audience:** procurement, compliance, and security teams evaluating ManifoldKit
 > for use in regulated environments (healthcare, federal-adjacent, finance,
 > defense). This document answers the question

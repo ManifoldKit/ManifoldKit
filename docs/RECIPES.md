@@ -1,5 +1,8 @@
 # ManifoldKit Recipes
 
+**Audience:** consumer
+**Status:** living
+
 Short, runnable patterns for the most common ManifoldKit tasks. Each recipe is
 the minimum viable code — check the linked quickstart for the full walkthrough
 including error handling, multi-turn state, and UI wiring.

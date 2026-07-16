@@ -1,5 +1,8 @@
 # Migration: `BackgroundTaskScheduler` seam removed
 
+**Audience:** consumer
+**Status:** historical
+
 **This is a breaking change.** ManifoldKit no longer ships an in-process
 background-task scheduler protocol, its default implementation, or the
 memory-budget watchdog type that backed it.

@@ -1,5 +1,8 @@
 # ManifoldKit — Per-trait cost table
 
+**Audience:** consumer
+**Status:** living
+
 > **Generated document.** The table sections are regenerated from `docs/trait-costs.json`
 > by `scripts/measure-trait-costs.sh`. The prose section is
 > hand-written (marked below). Do not edit the `BEGIN GENERATED` … `END GENERATED`

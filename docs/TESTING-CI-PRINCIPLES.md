@@ -1,5 +1,8 @@
 # Testing & CI Principles
 
+**Audience:** contributor
+**Status:** living
+
 A first-principles framework for how we test and run CI for an SDK like ManifoldKit. These were derived from fresh research into testing/CI practice, reduced to their underlying drivers, then adversarially stress-tested by a panel of critics (epistemology, practice, economics, reduction). The corrections from that review are baked in.
 
 **How to read this.** Each principle states the rule, then names the *driver* it serves — and, where the rule is contingent on a fact that can change, its *expiry condition* (when to stop obeying it). Hold the drivers, not the rules: when a situation is new, re-derive the move from the driver instead of looking up a principle. The principles are peers — when two conflict, drop to their drivers and let the current facts arbitrate.

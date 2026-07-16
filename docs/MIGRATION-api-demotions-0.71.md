@@ -1,5 +1,8 @@
 # Migration: Phase A API demotions (0.71)
 
+**Audience:** consumer
+**Status:** historical
+
 Part of the [v1 rationalisation plan](plans/api-v1-rationalisation-2026-07.md) — Phase
 A mechanically demotes undocumented, zero-consumer internals from `public` to
 `package` visibility. `package` types are not part of the public SwiftPM contract:
