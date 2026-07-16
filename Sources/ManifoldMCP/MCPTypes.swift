@@ -37,7 +37,14 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     /// `MCPClientConfiguration.samplingHandler` is set; otherwise every
     /// `sampling/createMessage` request gets a JSON-RPC "method not found" error and
     /// is never executed.
-    public var allowsSampling: Bool
+    ///
+    /// `MCPServerDescriptor` is `Codable`, and a stored property's inline default does
+    /// NOT make the compiler-synthesized `init(from:)` tolerate a missing key — Swift
+    /// still hard-requires the key there. Decode tolerance for a persisted pre-#1925
+    /// JSON blob missing this field comes from the custom `init(from:)` below (which
+    /// uses `decodeIfPresent(...) ?? false`), not from this `= false`. The inline
+    /// default here only covers memberwise construction. See #2284 review.
+    public var allowsSampling: Bool = false
 
     /// Opt-in for this server to issue `elicitation/create` requests asking the user
     /// for structured input. Default `false` — mirrors `allowsSampling`'s per-server
@@ -46,7 +53,11 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     /// `MCPClientConfiguration.elicitationHandler` is set; otherwise every
     /// `elicitation/create` request gets a JSON-RPC "method not found" error and is
     /// never executed.
-    public var allowsElicitation: Bool
+    ///
+    /// See the note on `allowsSampling` above — decode tolerance for a persisted blob
+    /// missing this key comes from the custom `init(from:)` below, not from this
+    /// property-level default.
+    public var allowsElicitation: Bool = false
 
     public init(
         id: UUID = UUID(),
@@ -80,6 +91,37 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         self.isUnauthenticatedUnsafe = isUnauthenticatedUnsafe
         self.allowsSampling = allowsSampling
         self.allowsElicitation = allowsElicitation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, transport, authorization, toolNamespace, resourceURL
+        case initializationTimeout, requestTimeout, dataDisclosure, toolFilter, approvalPolicy
+        case allowsSTDIOTransport, isUnauthenticatedUnsafe, allowsSampling, allowsElicitation
+    }
+
+    /// Hand-written to tolerate persisted JSON that predates `allowsSampling`
+    /// (#1925/#2274) and/or `allowsElicitation` (#1926) — both decode via
+    /// `decodeIfPresent(...) ?? false` rather than a hard-requiring `decode(...)`, so
+    /// an older on-disk blob missing either key still decodes instead of throwing
+    /// `DecodingError.keyNotFound`. `encode(to:)` stays compiler-synthesized (it needs
+    /// no such tolerance) since providing only `init(from:)` here does not disable it.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        transport = try container.decode(MCPTransportKind.self, forKey: .transport)
+        authorization = try container.decode(MCPAuthorizationDescriptor.self, forKey: .authorization)
+        toolNamespace = try container.decodeIfPresent(String.self, forKey: .toolNamespace)
+        resourceURL = try container.decodeIfPresent(URL.self, forKey: .resourceURL)
+        initializationTimeout = try container.decode(Duration.self, forKey: .initializationTimeout)
+        requestTimeout = try container.decodeIfPresent(Duration.self, forKey: .requestTimeout)
+        dataDisclosure = try container.decode(String.self, forKey: .dataDisclosure)
+        toolFilter = try container.decode(MCPToolFilter.self, forKey: .toolFilter)
+        approvalPolicy = try container.decode(MCPApprovalPolicy.self, forKey: .approvalPolicy)
+        allowsSTDIOTransport = try container.decode(Bool.self, forKey: .allowsSTDIOTransport)
+        isUnauthenticatedUnsafe = try container.decode(Bool.self, forKey: .isUnauthenticatedUnsafe)
+        allowsSampling = try container.decodeIfPresent(Bool.self, forKey: .allowsSampling) ?? false
+        allowsElicitation = try container.decodeIfPresent(Bool.self, forKey: .allowsElicitation) ?? false
     }
 }
 

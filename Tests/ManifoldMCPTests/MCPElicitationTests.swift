@@ -266,6 +266,42 @@ final class MCPElicitationTests: XCTestCase {
         XCTAssertNil(object["content"], "declined results must omit 'content' entirely, not send null")
     }
 
+    // MARK: - Codable decode-compat (#2284 review finding)
+
+    /// `MCPServerDescriptor` is `Codable`, and `allowsSampling` (#1925/#2274) plus
+    /// `allowsElicitation` (this PR) previously had defaults only on the memberwise
+    /// `init` parameter, not the stored property — so the compiler-synthesized
+    /// `init(from:)` hard-required both keys, and a persisted pre-upgrade JSON blob
+    /// missing them would fail to decode outright. Inline `= false` property defaults
+    /// fix this: Swift's synthesized Decodable uses `decodeIfPresent(...) ?? default`
+    /// for any stored property that has a default value.
+    func test_serverDescriptorDecodesPersistedJSONMissingAllowsKeys() throws {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Persisted",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test",
+            allowsSampling: true,
+            allowsElicitation: true
+        )
+        let data = try JSONEncoder().encode(descriptor)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("Expected a JSON object")
+            return
+        }
+        // Simulate a pre-#1925/#1926 persisted blob: neither opt-in key exists on disk.
+        object.removeValue(forKey: "allowsSampling")
+        object.removeValue(forKey: "allowsElicitation")
+        let strippedData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(MCPServerDescriptor.self, from: strippedData)
+        XCTAssertEqual(decoded.allowsSampling, false, "missing 'allowsSampling' key must decode to the safe default, not fail")
+        XCTAssertEqual(decoded.allowsElicitation, false, "missing 'allowsElicitation' key must decode to the safe default, not fail")
+        // Sabotage: removing the inline `= false` defaults from allowsSampling/allowsElicitation
+        // in MCPTypes.swift (reverting to bare `public var allowsSampling: Bool`) would make
+        // the synthesized Decodable initializer hard-require both keys, and this decode call
+        // would throw `DecodingError.keyNotFound` instead of returning safe defaults.
+    }
+
     // MARK: - Test support
 
     private func makeSession(
