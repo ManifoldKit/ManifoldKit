@@ -1,5 +1,8 @@
 # ManifoldKit Documentation
 
+**Audience:** consumer
+**Status:** living
+
 The single, ordered way in. Read top-to-bottom for the guided path from "why
 this exists" to "install → first token → add a capability → ship it", or jump
 straight to the section you need. Every newcomer-facing doc is listed here; the

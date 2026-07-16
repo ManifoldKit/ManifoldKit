@@ -1,5 +1,8 @@
 # API Design — standing policy
 
+**Audience:** contributor
+**Status:** living
+
 > Written for both humans and coding agents. If a PR adds a public symbol, overload, or
 > knob, it must be justifiable against this page — not against what compiled cleanly.
 > Grounded in `docs/plans/api-review-2026-07.md` (Part A root causes, Phase 0, decision

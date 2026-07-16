@@ -1,5 +1,8 @@
 # ManifoldKit QA practices
 
+**Audience:** contributor
+**Status:** living
+
 Four cross-cutting QA practices guard ManifoldKit beyond its unit / integration / E2E test pyramid. Each one catches a class of regression that ordinary tests miss. This page is the discovery doc — what each practice is, why it exists, how to run it, and how to extend it.
 
 For day-to-day test conventions (suites, traits, layering), see [`Tests/README.md`](../Tests/README.md). For module/architecture rules and pre-push gates, see [`CLAUDE.md`](../CLAUDE.md).

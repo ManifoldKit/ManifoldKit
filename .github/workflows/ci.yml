@@ -419,9 +419,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # paths-filter needs the parent commit to diff against on `push` events;
-          # `pull_request` works with the default shallow clone.
-          fetch-depth: 2
+          # Full history (not the usual fetch-depth: 2 — paths-filter would be
+          # happy with that alone). This job runs ManifoldInferenceTests,
+          # which includes AgentsMdPlansStatusAuditTest's stale-plan-expiry
+          # check (#2226): it reads `git log -1` per docs/plans/*.md file to
+          # decide staleness, and a shallow clone makes every file look
+          # freshly touched (the boundary commit "introduces" everything
+          # reachable from it) instead of failing loudly — the check
+          # degrades to a false-negative that's expensive to notice. The repo
+          # is small (~1800 commits, ~40MB) so the full fetch is cheap;
+          # re-shallow this if that ever stops being true, alongside the
+          # audit's `isShallowRepository` guard in
+          # AgentsMdPlansStatusAuditTest.swift.
+          fetch-depth: 0
 
       - name: Detect dependency-graph changes
         id: deps-changed

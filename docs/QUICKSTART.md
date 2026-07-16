@@ -1,5 +1,8 @@
 # ManifoldKit Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for getting from "empty SwiftUI project" to "working chat UI" in under five minutes. If you already have a working bootstrap, jump to [Customizing backends](#customizing-backends) or [Customizing storage](#customizing-storage).
 
 > If you're building a CLI, headless service, or non-SwiftUI app, see [`QUICKSTART-CLI.md`](QUICKSTART-CLI.md) — it has compile-tested `Package.swift` + `main.swift` examples for Foundation Models, local GGUF via Llama, and Ollama / OpenAI-compatible cloud endpoints.

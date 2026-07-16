@@ -1,5 +1,8 @@
 # ManifoldKit Image-Gen Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for adding on-device image generation to any Swift app. No
 `ChatView`, no `ChatViewModel` — both `FluxDiffusionBackend` and
 `MLXDiffusionBackend` conform to `ImageGenerationBackend` and stream progress

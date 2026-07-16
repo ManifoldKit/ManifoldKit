@@ -1,5 +1,8 @@
 # Cloud OAuth / Token Rotation with `TokenProvider`
 
+**Audience:** consumer
+**Status:** living
+
 `TokenProvider` is the protocol that lets `SSECloudBackend` work with
 short-lived credentials — OAuth access tokens, JWTs, or any credential that
 may expire and needs silent refresh. The backend calls `token()` on every

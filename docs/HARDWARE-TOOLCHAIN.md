@@ -1,5 +1,8 @@
 # Hardware and toolchain constraints
 
+**Audience:** contributor
+**Status:** living
+
 A one-page consolidation of the hardware- and CI-specific constraints that
 recur across core and both companion packages. Each of these has bitten this
 project at least once; they're gathered here instead of staying scattered

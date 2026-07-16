@@ -1,5 +1,8 @@
 # Tool Calling
 
+**Audience:** consumer
+**Status:** living
+
 Register tools the model can invoke, dispatch the calls it emits, and feed results back into the conversation. Tool calling behaves identically across backends that report `BackendCapabilities.supportsToolCalling` — MLX, llama.cpp, Foundation Models, OpenAI, Anthropic, and tool-capable Ollama models.
 
 The types in this guide live in `ManifoldInference`. The umbrella `import ManifoldKit` re-exports them; BYO-UI consumers import `ManifoldInference` directly.

@@ -1,5 +1,8 @@
 # Migrating from Apple Foundation Models / AnyLanguageModel
 
+**Audience:** consumer
+**Status:** living
+
 If you already think in Apple's `LanguageModelSession` / `@Generable` idioms — or
 in HuggingFace **AnyLanguageModel**'s provider abstraction — this guide maps that
 mental model onto ManifoldKit's surface. The translation is mostly a level-up:

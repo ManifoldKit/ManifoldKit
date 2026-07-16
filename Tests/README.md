@@ -194,6 +194,37 @@ Cold-start gates scaffold a fresh SwiftPM consumer in a tmpdir, depend on this r
 | 2 | `scripts/cold-start-tier2-bootstrap.sh` | `ManifoldBootstrap` + `ChatViewModel` orchestration. |
 | 3 | `scripts/cold-start-tier3-chatview.sh` | `ManifoldUI` `ChatView` composition with `@State` view models, `.environment(_:)` injection, and the `apiConfiguration: () -> View` view-builder closure. |
 
+### Documentation freshness headers
+
+Two audits enforce machine-readable freshness metadata on prose docs, so an
+AI assistant or a human skimming a directory listing can tell current
+guidance from historical record without opening every file:
+
+- **`docs/*.md`** (top-level architecture/migration/positioning docs — not
+  `docs/plans/`): every file carries a one-line `**Audience:**` and
+  `**Status:**` header near the top, right after the H1 title.
+  `DocsAudienceStatusAuditTest` (in `Tests/ManifoldInferenceTests/`) fails CI
+  if either is missing. Values:
+  - `Audience: consumer` — written for an app developer using ManifoldKit as
+    a dependency (quickstarts, recipes, migration guides, positioning).
+    `Audience: contributor` — written for someone changing ManifoldKit
+    itself (API design policy, QA practices, hardware/CI constraints,
+    companion-package authoring).
+  - `Status: living` — actively accurate reference material.
+    `Status: historical` — describes a past decision, a completed one-time
+    migration, or an era-scoped record; still worth keeping (git history
+    isn't as discoverable as a file that's still there), but not the current
+    source of truth for new work.
+- **`docs/plans/*.md`**: every plan carries a `Status:` line (free-text,
+  e.g. `**Status:** Active — Phase 1 shipped`) per `docs/plans/README.md`
+  rule 1, enforced by `AgentsMdPlansStatusAuditTest`. That same test also
+  flags a plan whose `Status:` line does not start with "Active" (i.e. it
+  reads as paused/awaiting/reference/historical) and whose most recent
+  `git log` commit touching the file is older than
+  `AgentsMdPlansStatusAuditTest.staleNonActivePlanThresholdDays` (60 days) —
+  forcing a human decision to delete or revive it rather than letting it
+  decay silently while still reading as current.
+
 ## Who runs what
 
 | Audience | Suite |
