@@ -112,6 +112,17 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         withStateLock { _isVisionModel }
     }
 
+    /// Whether the loaded model supports tool calling, as advertised by
+    /// Ollama's `/api/show` `capabilities` list. Guarded by `stateLock` like
+    /// its siblings. Defaults to `true` (the historical assumption, and the
+    /// probe-failure fallback) so a dead probe never disables tool calling;
+    /// only a successful probe that omits "tools" withdraws the claim.
+    private var _supportsTools: Bool = true
+
+    private var supportsTools: Bool {
+        withStateLock { _supportsTools }
+    }
+
     /// Default per-request idle timeout for Ollama connections.
     ///
     /// Large models may need several minutes to load into VRAM and prefill a
@@ -418,8 +429,11 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             // The coordinator dispatches calls through `ToolRegistry`; this
             // backend is responsible only for serialising `tools` /
             // `tool_choice` on the request and parsing `tool_calls` into
-            // `GenerationEvent.toolCall`.
-            supportsToolCalling: true,
+            // `GenerationEvent.toolCall`. Whether the *model* accepts tools is
+            // probed from `/api/show` at load time (like thinking/vision) —
+            // claiming support for a model without it turns into a
+            // generation-time HTTP 400 instead of a truthful pre-flight.
+            supportsToolCalling: supportsTools,
             supportsStructuredOutput: false,
             supportsNativeJSONMode: true,
             cancellationStyle: .cooperative,
@@ -570,6 +584,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         withStateLock {
             _isThinkingModel = probed.thinking
             _isVisionModel = probed.vision
+            _supportsTools = probed.tools
             _autoDetectedThinkingMarkers = probed.thinkingMarkers
             _manifest = manifest
         }
@@ -822,6 +837,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         withStateLock {
             _isThinkingModel = false
             _isVisionModel = false
+            _supportsTools = true
             _manifest = nil
             _autoDetectedThinkingMarkers = nil
             _pendingStreamConfig = nil
