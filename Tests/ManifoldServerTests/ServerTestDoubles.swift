@@ -43,6 +43,26 @@ final class FakeChatCompletionsAdapter: ChatCompletionsAdapter, @unchecked Senda
     var chunkResult: Result<[ChatCompletionChunk], Error>
     private(set) var requests: [ChatCompletionRequest] = []
 
+    /// When set, `response(for:using:)` never returns and never observes
+    /// cancellation — a `withCheckedContinuation` whose continuation is never
+    /// resumed. Simulates a genuinely stuck backend call (a wedged network
+    /// request), the case `ServerGenerationTimeout`'s unstructured-task race
+    /// (rather than `withThrowingTaskGroup`) exists to bound: see
+    /// `ServerGenerationTimeoutTests`.
+    var hangsForever = false
+
+    /// When set, `chunks(for:using:)` yields one chunk and then hangs forever
+    /// (same never-resumed-continuation shape as `hangsForever`) instead of
+    /// finishing. Used to prove the streaming idle timeout actually fires on
+    /// a stalled backend.
+    var hangsAfterFirstChunk = false
+
+    /// When set, `chunks(for:using:)` paces each yielded chunk by this delay
+    /// instead of emitting them all synchronously. Used to prove the idle
+    /// timeout resets per-chunk rather than applying a wall-clock cap over
+    /// the whole stream (#2265).
+    var chunkPacing: Duration?
+
     init(response: ChatCompletionResponse = ChatCompletionResponse(model: "fake-model", content: "fake response")) {
         self.result = .success(response)
         self.chunkResult = .success([
@@ -53,6 +73,20 @@ final class FakeChatCompletionsAdapter: ChatCompletionsAdapter, @unchecked Senda
                 choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: response.content))]
             )
         ])
+    }
+
+    /// Convenience for streaming-pacing tests that want several distinct
+    /// chunks (rather than the single-chunk default) spread across the pace.
+    init(chunkedResponse response: ChatCompletionResponse, tokens: [String]) {
+        self.result = .success(response)
+        self.chunkResult = .success(tokens.map { token in
+            ChatCompletionChunk(
+                id: response.id,
+                created: response.created,
+                model: response.model,
+                choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: token))]
+            )
+        })
     }
 
     init(error: Error) {
@@ -69,6 +103,12 @@ final class FakeChatCompletionsAdapter: ChatCompletionsAdapter, @unchecked Senda
         using backend: any InferenceBackend
     ) async throws -> ChatCompletionResponse {
         requests.append(request)
+        if hangsForever {
+            // Never resumes — not even on cancellation — so a caller can only
+            // observe completion via an external race (ServerGenerationTimeout),
+            // never by awaiting this call to return.
+            return try await withCheckedThrowingContinuation { _ in }
+        }
         return try result.get()
     }
 
@@ -78,16 +118,35 @@ final class FakeChatCompletionsAdapter: ChatCompletionsAdapter, @unchecked Senda
     ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
         requests.append(request)
         let chunkResult = self.chunkResult
+        let hangsAfterFirstChunk = self.hangsAfterFirstChunk
+        let chunkPacing = self.chunkPacing
         return AsyncThrowingStream { continuation in
-            switch chunkResult {
-            case .success(let chunks):
-                for chunk in chunks {
-                    continuation.yield(chunk)
+            let task = Task {
+                switch chunkResult {
+                case .success(let chunks):
+                    for chunk in chunks {
+                        if let chunkPacing {
+                            do {
+                                try await Task.sleep(for: chunkPacing)
+                            } catch {
+                                return
+                            }
+                        }
+                        continuation.yield(chunk)
+                    }
+                    if hangsAfterFirstChunk {
+                        // Suspend forever without finishing — the terminal
+                        // ManifoldServer-side idle timeout is the only thing
+                        // that can end this stream.
+                        try? await Task.sleep(for: .seconds(3600))
+                        return
+                    }
+                    continuation.finish()
+                case .failure(let error):
+                    continuation.finish(throwing: error)
                 }
-                continuation.finish()
-            case .failure(let error):
-                continuation.finish(throwing: error)
             }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
 }
