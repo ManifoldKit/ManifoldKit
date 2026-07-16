@@ -129,21 +129,72 @@ jobs:
       # macOS-min) per push; thresholds are conservative enough that a ≤24h
       # detection delay is acceptable. See scripts/check-coverage.sh for
       # threshold values and rationale.
+      #
+      # Bounded retry (issue #2277): this is the one step in the workflow that
+      # calls `swift test` directly instead of scripts/test.sh, so it doesn't
+      # get that script's tolerance for a proven-benign class of flake: swift
+      # test's own driver occasionally prints
+      # "error: Exited with unexpected signal code N" for a subprocess (SIGTRAP)
+      # near the very end of the run, which aborts the process a few suites
+      # short of the finish line even though every test case that DID run
+      # reported "passed" and 0 failures were ever observed. Run 29478463863
+      # hit exactly this: 0 XCTest/Swift-Testing failures anywhere in the log,
+      # but `set -euo pipefail` killed the step on the tail-end signal before
+      # check-coverage.sh ever ran, filing a false "coverage-thresholds
+      # failed" nightly issue. Any run that recorded a real test failure is
+      # never retried — only "0 observed failures + that exact signal line"
+      # is treated as a retryable runner flake; a genuine hang would instead
+      # be killed by the step's own timeout-minutes with no such line.
       - name: Coverage thresholds
         id: test-coverage-thresholds
         timeout-minutes: 15
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-coverage-thresholds.log
         run: |
-          set -euo pipefail
-          swift test \
-            --filter ManifoldCoreTests \
-            --filter ManifoldRuntimeTests \
-            --filter ManifoldPersistenceSwiftDataTests \
-            --filter ManifoldInferenceTests \
-            --filter ManifoldMCPTests \
-            --enable-code-coverage \
-            --skip-update
+          # GitHub's default bash wrapper for `run:` sets -e; we need it off so
+          # a nonzero swift test exit doesn't abort the script before we can
+          # inspect PIPESTATUS and decide whether to retry.
+          set +e -uo pipefail
+
+          mkdir -p "$(dirname "$MANIFOLD_TEST_OUTPUT_FILE")"
+
+          MAX_ATTEMPTS=2
+          ATTEMPT=1
+          while :; do
+            echo "::group::swift test --enable-code-coverage (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
+            swift test \
+              --filter ManifoldCoreTests \
+              --filter ManifoldRuntimeTests \
+              --filter ManifoldPersistenceSwiftDataTests \
+              --filter ManifoldInferenceTests \
+              --filter ManifoldMCPTests \
+              --enable-code-coverage \
+              --skip-update 2>&1 | tee "$MANIFOLD_TEST_OUTPUT_FILE"
+            SWIFT_EXIT=${PIPESTATUS[0]}
+            echo "::endgroup::"
+
+            if [[ $SWIFT_EXIT -eq 0 ]]; then
+              break
+            fi
+
+            xctest_failed=$(grep -c "^Test Case '.*' failed" "$MANIFOLD_TEST_OUTPUT_FILE" || true)
+            st_failed=$(grep -c "^✘ Test .* failed after " "$MANIFOLD_TEST_OUTPUT_FILE" || true)
+            # Case-insensitive: the observed line is "error: Exited with unexpected
+            # signal code N" (capital E, no "Process '...'" prefix) — match on the
+            # distinguishing substring rather than the exact casing/shape, which
+            # has already varied once between runs.
+            signal_hit=$(grep -ic "unexpected signal code" "$MANIFOLD_TEST_OUTPUT_FILE" || true)
+
+            if [[ $signal_hit -gt 0 && $xctest_failed -eq 0 && $st_failed -eq 0 && $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
+              echo "swift test exited ${SWIFT_EXIT} on a bare 'unexpected signal code' line, but 0 test failures were ever observed in the log — retrying (known flake, issue #2277)."
+              ATTEMPT=$((ATTEMPT + 1))
+              continue
+            fi
+
+            echo "swift test failed (exit ${SWIFT_EXIT}) — see ${MANIFOLD_TEST_OUTPUT_FILE} for full output."
+            exit "$SWIFT_EXIT"
+          done
+
           scripts/check-coverage.sh
 
       - name: Public API source-compatibility check (full — all library-product targets)
