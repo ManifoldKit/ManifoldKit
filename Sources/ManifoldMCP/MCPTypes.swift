@@ -39,6 +39,15 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     /// is never executed.
     public var allowsSampling: Bool
 
+    /// Opt-in for this server to issue `elicitation/create` requests asking the user
+    /// for structured input. Default `false` — mirrors `allowsSampling`'s per-server
+    /// opt-in rationale: a server can prompt the user on demand once this is `true`,
+    /// so treat it the same way. Elicitation is only served when this is `true` AND
+    /// `MCPClientConfiguration.elicitationHandler` is set; otherwise every
+    /// `elicitation/create` request gets a JSON-RPC "method not found" error and is
+    /// never executed.
+    public var allowsElicitation: Bool
+
     public init(
         id: UUID = UUID(),
         displayName: String,
@@ -53,7 +62,8 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         approvalPolicy: MCPApprovalPolicy = .perCall,
         allowsSTDIOTransport: Bool = false,
         isUnauthenticatedUnsafe: Bool = false,
-        allowsSampling: Bool = false
+        allowsSampling: Bool = false,
+        allowsElicitation: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -69,6 +79,7 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         self.allowsSTDIOTransport = allowsSTDIOTransport
         self.isUnauthenticatedUnsafe = isUnauthenticatedUnsafe
         self.allowsSampling = allowsSampling
+        self.allowsElicitation = allowsElicitation
     }
 }
 
@@ -201,6 +212,27 @@ public struct MCPClientConfiguration: Sendable {
     /// "method not found" error.
     public var samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)?
 
+    /// Injected seam for server-initiated `elicitation/create` requests — the server
+    /// asks the user for structured input (a flat object of primitive-typed fields
+    /// per the MCP spec) via a client-rendered form. `ManifoldMCP` is UI-free: it
+    /// parses the request off the wire and hands it to this closure; the host app
+    /// owns presenting the form and mapping the user's answer back to
+    /// `MCPElicitationResult`. Note: this seam is UI-agnostic on purpose — the
+    /// schema-driven SwiftUI form itself is a separate, later addition (tracked as a
+    /// fast-follow), not part of `ManifoldMCP`.
+    ///
+    /// **Security requirement**: unlike sampling, this does not spend inference
+    /// budget, but the returned content still flows to an untrusted server — the
+    /// host's UI must make clear which server is asking and why, and must always
+    /// offer `.decline`/`.cancel` as first-class options rather than only "submit".
+    /// `ManifoldMCP` does not gate calls into this closure beyond the per-server
+    /// `MCPServerDescriptor.allowsElicitation` opt-in.
+    ///
+    /// `nil` (the default) means no server can use elicitation regardless of
+    /// `allowsElicitation`; every `elicitation/create` request gets a JSON-RPC
+    /// "method not found" error.
+    public var elicitationHandler: (@Sendable (MCPElicitationRequest) async throws -> MCPElicitationResult)?
+
     public init(
         sseStreamLimits: SSEStreamLimits = ManifoldConfiguration.shared.sseStreamLimits,
         requestTimeout: Duration = .seconds(30),
@@ -211,7 +243,8 @@ public struct MCPClientConfiguration: Sendable {
         lifecyclePolicy: MCPSessionLifecyclePolicy = .cancelOnBackground,
         networkPathObserver: (any MCPNetworkPathObserver)? = nil,
         lifecycleObserver: (any MCPLifecycleEventObserver)? = MCPNotificationLifecycleEventObserver.platformMemoryWarnings(),
-        samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)? = nil
+        samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)? = nil,
+        elicitationHandler: (@Sendable (MCPElicitationRequest) async throws -> MCPElicitationResult)? = nil
     ) {
         self.sseStreamLimits = sseStreamLimits
         self.requestTimeout = requestTimeout
@@ -223,6 +256,7 @@ public struct MCPClientConfiguration: Sendable {
         self.networkPathObserver = networkPathObserver
         self.lifecycleObserver = lifecycleObserver
         self.samplingHandler = samplingHandler
+        self.elicitationHandler = elicitationHandler
     }
 }
 

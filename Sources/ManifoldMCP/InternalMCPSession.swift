@@ -21,8 +21,8 @@ internal struct MCPNoopSessionStateHook: MCPSessionStateHook {
     func sessionDidReceive(_ message: MCPJSONRPCMessage) async { _ = message }
 }
 
-/// Handles a server-initiated JSON-RPC request (currently only
-/// `sampling/createMessage`). Returning `.failure` replies with a JSON-RPC error
+/// Handles a server-initiated JSON-RPC request (`sampling/createMessage` or
+/// `elicitation/create`). Returning `.failure` replies with a JSON-RPC error
 /// frame rather than dropping the request — a server must never be left hanging.
 internal typealias MCPServerRequestHandler = @Sendable (
     _ method: String,
@@ -37,6 +37,8 @@ internal actor MCPSession {
     private let maxConcurrentRequests: Int
     private let stateHook: any MCPSessionStateHook
     private let serverRequestHandler: MCPServerRequestHandler?
+    private let advertisesSampling: Bool
+    private let advertisesElicitation: Bool
 
     private var state: MCPSessionState = .idle
     private var nextRequestID: Int = 1
@@ -50,7 +52,9 @@ internal actor MCPSession {
         requestTimeout: Duration,
         maxConcurrentRequests: Int,
         stateHook: any MCPSessionStateHook = MCPNoopSessionStateHook(),
-        serverRequestHandler: MCPServerRequestHandler? = nil
+        serverRequestHandler: MCPServerRequestHandler? = nil,
+        advertisesSampling: Bool = false,
+        advertisesElicitation: Bool = false
     ) {
         self.descriptor = descriptor
         self.transport = transport
@@ -59,6 +63,8 @@ internal actor MCPSession {
         self.maxConcurrentRequests = maxConcurrentRequests
         self.stateHook = stateHook
         self.serverRequestHandler = serverRequestHandler
+        self.advertisesSampling = advertisesSampling
+        self.advertisesElicitation = advertisesElicitation
     }
 
     func start() async throws -> MCPCapabilities {
@@ -71,13 +77,20 @@ internal actor MCPSession {
         try await transport.start()
         startReceiveLoop()
 
-        // Advertise `sampling` only when a server-request handler is actually wired up
-        // (descriptor.allowsSampling AND a host samplingHandler configured — see
-        // MCPClient.connect). Advertising unconditionally would invite servers to send
-        // requests this session will just reject.
-        let clientCapabilities: JSONSchemaValue = serverRequestHandler != nil
-            ? .object(["sampling": .object([:])])
-            : .object([:])
+        // Advertise each capability only when its own handler is actually wired up
+        // (descriptor.allowsSampling/allowsElicitation AND a matching host handler
+        // configured — see MCPClient.connect). Advertising unconditionally would
+        // invite servers to send requests this session will just reject, and
+        // advertising `sampling` whenever `elicitation` is configured (or vice
+        // versa) would misrepresent what this session actually serves.
+        var capabilityFields: [String: JSONSchemaValue] = [:]
+        if advertisesSampling {
+            capabilityFields["sampling"] = .object([:])
+        }
+        if advertisesElicitation {
+            capabilityFields["elicitation"] = .object([:])
+        }
+        let clientCapabilities: JSONSchemaValue = .object(capabilityFields)
 
         let initializeParams: JSONSchemaValue = .object([
             "protocolVersion": .string("2025-03-26"),
@@ -274,10 +287,11 @@ internal actor MCPSession {
     ///
     /// Note: `maxConcurrentRequests`/`pendingRequests` bound only *client*-initiated
     /// requests (this session's own `sendRequest` calls) — there is no such cap on
-    /// inbound server-initiated requests like `sampling/createMessage`. Rate-limiting
-    /// and budgeting inbound sampling calls is delegated to the host's
-    /// `samplingHandler` by design; see the security note on
-    /// `MCPClientConfiguration.samplingHandler`.
+    /// inbound server-initiated requests like `sampling/createMessage` or
+    /// `elicitation/create`. Rate-limiting and budgeting inbound calls is delegated
+    /// to the host's `samplingHandler`/`elicitationHandler` by design; see the
+    /// security notes on `MCPClientConfiguration.samplingHandler` and
+    /// `.elicitationHandler`.
     private func handleServerRequest(id: MCPRequestID, method: String, params: JSONSchemaValue?) {
         guard let serverRequestHandler else {
             Task { [weak self] in

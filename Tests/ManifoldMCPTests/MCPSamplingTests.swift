@@ -226,7 +226,8 @@ final class MCPSamplingTests: XCTestCase {
             codec: codec,
             requestTimeout: .seconds(2),
             maxConcurrentRequests: 4,
-            serverRequestHandler: handler
+            serverRequestHandler: handler,
+            advertisesSampling: handler != nil
         )
         return (session, transport)
     }

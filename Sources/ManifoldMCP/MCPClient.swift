@@ -125,6 +125,8 @@ public actor MCPClient {
         do {
             let transport = try makeTransport(for: descriptor, authorization: authorization)
             let stateHook = MCPClientSessionHook(client: self, serverID: descriptor.id)
+            let samplingEnabled = descriptor.allowsSampling && configuration.samplingHandler != nil
+            let elicitationEnabled = descriptor.allowsElicitation && configuration.elicitationHandler != nil
             let session = MCPSession(
                 descriptor: descriptor,
                 transport: transport,
@@ -135,7 +137,12 @@ public actor MCPClient {
                 requestTimeout: descriptor.requestTimeout ?? configuration.requestTimeout,
                 maxConcurrentRequests: configuration.maxConcurrentRequestsPerSession,
                 stateHook: stateHook,
-                serverRequestHandler: makeServerRequestHandler(for: descriptor)
+                serverRequestHandler: makeServerRequestHandler(
+                    samplingEnabled: samplingEnabled,
+                    elicitationEnabled: elicitationEnabled
+                ),
+                advertisesSampling: samplingEnabled,
+                advertisesElicitation: elicitationEnabled
             )
 
             let capabilities = try await session.start()
@@ -205,31 +212,62 @@ public actor MCPClient {
         Array(sourcesByID.values)
     }
 
-    /// Builds the `MCPSession`-level server-request handler for `descriptor`, wiring
-    /// `sampling/createMessage` to the host's `samplingHandler` — but only when the
-    /// server has opted in (`allowsSampling`) AND the host has configured a handler.
-    /// Returning `nil` here is what makes `MCPSession` advertise no `sampling`
-    /// capability and reply "method not found" to any request; see the security note
-    /// on `MCPClientConfiguration.samplingHandler`.
-    private func makeServerRequestHandler(for descriptor: MCPServerDescriptor) -> MCPServerRequestHandler? {
-        guard descriptor.allowsSampling, let samplingHandler = configuration.samplingHandler else {
-            return nil
-        }
+    /// Builds the `MCPSession`-level server-request handler, wiring
+    /// `sampling/createMessage` to the host's `samplingHandler` and
+    /// `elicitation/create` to the host's `elicitationHandler` — each only when the
+    /// server has opted in (`allowsSampling`/`allowsElicitation`) AND the host has
+    /// configured the matching handler. Returning `nil` here (both disabled) is what
+    /// makes `MCPSession` advertise neither capability and reply "method not found"
+    /// to any server-initiated request; see the security notes on
+    /// `MCPClientConfiguration.samplingHandler` and `.elicitationHandler`.
+    ///
+    /// A single combined closure — rather than one per method — keeps `MCPSession`'s
+    /// dispatch seam (`MCPServerRequestHandler`) method-agnostic; capability
+    /// advertisement is driven independently by `advertisesSampling`/
+    /// `advertisesElicitation` at the call site, not by whether this closure is nil.
+    private func makeServerRequestHandler(
+        samplingEnabled: Bool,
+        elicitationEnabled: Bool
+    ) -> MCPServerRequestHandler? {
+        guard samplingEnabled || elicitationEnabled else { return nil }
+        let samplingHandler = configuration.samplingHandler
+        let elicitationHandler = configuration.elicitationHandler
         return { method, params in
-            guard method == "sampling/createMessage" else {
+            switch method {
+            case "sampling/createMessage":
+                guard samplingEnabled, let samplingHandler else {
+                    return .failure(MCPJSONRPCErrorObject(code: -32601, message: "Method not found: \(method)", data: nil))
+                }
+                do {
+                    let request = try MCPSamplingRequest(params: params)
+                    let result = try await samplingHandler(request)
+                    return .success(result.jsonRPCResult)
+                } catch is CancellationError {
+                    return .failure(MCPJSONRPCErrorObject(code: -32800, message: "Request cancelled", data: nil))
+                } catch let error as MCPError {
+                    return .failure(MCPJSONRPCErrorObject(code: -32602, message: error.localizedDescription, data: nil))
+                } catch {
+                    Log.inference.error("MCPClient: sampling/createMessage handler threw: \(error, privacy: .private)")
+                    return .failure(MCPJSONRPCErrorObject(code: -32000, message: "Sampling handler failed", data: nil))
+                }
+            case "elicitation/create":
+                guard elicitationEnabled, let elicitationHandler else {
+                    return .failure(MCPJSONRPCErrorObject(code: -32601, message: "Method not found: \(method)", data: nil))
+                }
+                do {
+                    let request = try MCPElicitationRequest(params: params)
+                    let result = try await elicitationHandler(request)
+                    return .success(result.jsonRPCResult)
+                } catch is CancellationError {
+                    return .failure(MCPJSONRPCErrorObject(code: -32800, message: "Request cancelled", data: nil))
+                } catch let error as MCPError {
+                    return .failure(MCPJSONRPCErrorObject(code: -32602, message: error.localizedDescription, data: nil))
+                } catch {
+                    Log.inference.error("MCPClient: elicitation/create handler threw: \(error, privacy: .private)")
+                    return .failure(MCPJSONRPCErrorObject(code: -32000, message: "Elicitation handler failed", data: nil))
+                }
+            default:
                 return .failure(MCPJSONRPCErrorObject(code: -32601, message: "Method not found: \(method)", data: nil))
-            }
-            do {
-                let request = try MCPSamplingRequest(params: params)
-                let result = try await samplingHandler(request)
-                return .success(result.jsonRPCResult)
-            } catch is CancellationError {
-                return .failure(MCPJSONRPCErrorObject(code: -32800, message: "Request cancelled", data: nil))
-            } catch let error as MCPError {
-                return .failure(MCPJSONRPCErrorObject(code: -32602, message: error.localizedDescription, data: nil))
-            } catch {
-                Log.inference.error("MCPClient: sampling/createMessage handler threw: \(error, privacy: .private)")
-                return .failure(MCPJSONRPCErrorObject(code: -32000, message: "Sampling handler failed", data: nil))
             }
         }
     }
