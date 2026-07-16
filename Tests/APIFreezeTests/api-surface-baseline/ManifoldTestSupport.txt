@@ -210,6 +210,7 @@ MockInferenceBackend.lastSystemPrompt Var
 MockInferenceBackend.loadModel(from:plan:) Func
 MockInferenceBackend.loadModelCallCount Var
 MockInferenceBackend.loadModelCalledOnMainThread Var
+MockInferenceBackend.omitThinkingCompletedEvent Var
 MockInferenceBackend.rejectToolCarryingEnqueues Var
 MockInferenceBackend.resetConversation() Func
 MockInferenceBackend.resetConversationCallCount Var
