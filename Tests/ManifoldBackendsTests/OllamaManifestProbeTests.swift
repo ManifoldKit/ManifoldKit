@@ -185,6 +185,34 @@ final class OllamaManifestProbeTests: XCTestCase {
 
         XCTAssertFalse(backend.capabilities.supportsToolCalling,
                        "a successful probe whose capabilities omit 'tools' must withdraw supportsToolCalling")
+        XCTAssertEqual(backend.manifest?.supportsTools, false,
+                       "the ModelManifest must carry the same probed value — not a stale hardcoded true")
+    }
+
+    /// A pre-April-2025 Ollama server omits the `capabilities` key entirely
+    /// (`json:"capabilities,omitempty"` upstream) — that shape must keep the
+    /// historical `true` default, since such servers never advertise tools
+    /// either way.
+    func test_capabilities_absentCapabilitiesKeyKeepsToolCallingDefault() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "llama3.1:8b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: try! JSONSerialization.data(withJSONObject: ["model_info": ["context_length": 8_192]]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertTrue(backend.capabilities.supportsToolCalling,
+                      "a /api/show response with no capabilities key (pre-2025 server) must keep the true default")
     }
 
     /// A failed probe (HTTP 500) must NOT withdraw tool calling — only a

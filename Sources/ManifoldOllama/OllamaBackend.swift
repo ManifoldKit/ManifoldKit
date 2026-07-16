@@ -569,7 +569,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         let resolvedContextWindow = probed.contextLength ?? max(resolvedNumCtx, Self.defaultNumCtxFloor)
         let manifest = ModelManifest(
             contextWindow: resolvedContextWindow,
-            supportsTools: true,
+            supportsTools: probed.tools,
             supportsThinking: probed.thinking,
             thinkingMarkers: probed.thinkingMarkers,
             supportsSeed: false, // Ollama's /api/chat ignores seed in current releases.
