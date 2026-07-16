@@ -80,6 +80,9 @@ traits.sort { $0.name.lowercased() < $1.name.lowercased() }
 var lines: [String] = []
 lines.append("# ManifoldKit Feature Matrix")
 lines.append("")
+lines.append("**Audience:** consumer")
+lines.append("**Status:** living")
+lines.append("")
 lines.append("Generated from `Sources/ManifoldKit/FeatureMatrix.swift` by `scripts/render-feature-matrix.sh`.")
 lines.append("Do not edit by hand — re-run the script.")
 lines.append("")
