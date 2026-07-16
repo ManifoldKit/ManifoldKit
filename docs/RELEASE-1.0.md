@@ -1,12 +1,16 @@
 # Toward 1.0 — release criteria and the post-1.0 policies
 
-> **Status: proposal.** This document has two halves. The first — *1.0 release
-> criteria* — enumerates what the `1.0.0` freeze actually covers, and is a
-> factual description of the current stability program. The second — *Post-1.0
-> policies* — is five decisions the maintainer has not yet made. Each policy
-> below carries a recommendation, its main alternative, and a one-line decision
-> ask; until each is ruled on, the recommendation is a proposal, not project
-> policy. See [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211).
+> **Status: accepted 2026-07-16.** This document has two halves. The first —
+> *1.0 release criteria* — enumerates what the `1.0.0` freeze actually covers,
+> and is a factual description of the current stability program. The second —
+> *Post-1.0 policies* — is five policies that are now **decided project
+> policy**, ruled on in
+> [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211).
+> Each retains the alternative that was considered and why it was rejected, so
+> the reasoning survives the decision. One item remains open: the
+> [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot)
+> isolation-change blind spot is a confirmed gap in the API-freeze tooling, not
+> a policy question, and must be closed or explicitly accepted before 1.0.
 
 ManifoldKit is built for sustained development — apps operated over months and
 years, not a demo that compiles once. `1.0.0` is the point where that promise
@@ -69,8 +73,8 @@ of this writing) with a migration plan
 whose every stage is a `.lightweight` migration, each covered by a read-back
 test. On-disk stores written by any 1.x release must open in any later 1.x
 release without data loss. The forward-looking promise that makes this a 1.0
-property — lightweight-only within a major — is **Policy 3** below; it is a
-proposal, not yet decided.
+property — lightweight-only within a major — is **Policy 3** below, now decided
+and enforced by `ManifoldMigrationPlanLightweightAuditTest`.
 
 ### 3. Traits
 
@@ -85,10 +89,9 @@ and follows the same major-version rule as removing a symbol.
 
 ManifoldKit targets **n-1**: the current Apple OS and the one before it (macOS
 26 / 15, iOS 26 / 18 today), and bumps both floors each September when Apple
-ships a new major OS. Whether a floor bump is a minor or a major is **Policy 1**
-below — the single most time-sensitive decision here, because the first
-post-1.0 September bump lands roughly twelve months after 1.0 ships and needs a
-written rule before then, not during.
+ships a new major OS. Per **Policy 1** below, a floor bump is a **minor**
+release, announced one release ahead in the changelog: platform floors sit
+outside the API stability promise.
 
 ### 5. Companion independence
 
@@ -97,17 +100,18 @@ The heavy local-inference families live in companion packages
 [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama)) that depend
 on this package's `ManifoldInference` from their own repos, pin it with
 `.upToNextMinor`, and run a compat canary ([`COMPANION-BACKENDS.md`
-§ 4](COMPANION-BACKENDS.md)). What "core 1.0" means relative to "companion 1.0"
-is **Policy 4** below.
+§ 4](COMPANION-BACKENDS.md)). Per **Policy 4** below, core and companions
+version **independently**: core 1.0 neither waits for nor drags a companion to
+1.0.
 
 ### 6. Performance
 
 Performance is measured nightly and is mostly non-gating: the one asserted
 threshold is a streaming-cadence regression tripwire
 (`IntegratedStreamingPerformanceTests`, which fails only on a *profoundly*
-broken cadence, not on baseline drift). Whether performance is a versioned
-property of 1.0 — i.e. whether a perf regression can constitute a breaking
-change — is **Policy 5** below.
+broken cadence, not on baseline drift). Per **Policy 5** below, performance is
+**not a versioned property** of 1.0: a perf regression is a bug to fix, never a
+breaking change requiring a major.
 
 ### Semver-exempt products (unchanged by 1.0)
 
@@ -121,23 +125,26 @@ page.
 
 ---
 
-## Part 2 — Post-1.0 policies (proposals for decision)
+## Part 2 — Post-1.0 policies (decided)
 
-Each policy states its context, a recommendation with rationale, the main
-alternative and why not, and a one-line decision ask phrased so it can be
-accepted or rejected with one word. The recommendations are written to be
-modest and solo-maintainer-sustainable — a policy that assumes a release team
-this project does not have would be a policy nobody can keep.
+All five policies below were accepted on 2026-07-16 (#2211). Each states its
+context, the policy and its rationale, and the main alternative with why it was
+rejected — the alternatives are kept deliberately, so a future reader
+re-litigating a decision finds the reasoning rather than re-deriving it. The
+policies are modest and solo-maintainer-sustainable by design: a policy that
+assumes a release team this project does not have would be a policy nobody can
+keep.
 
 ### Policy 1 — Platform-floor bumps vs semver
 
-**Context.** The n-1 policy bumps deployment targets every September. Nothing
-currently says whether raising the iOS/macOS floor forces a major version. This
-detonates on a schedule: the first post-1.0 September bump arrives about twelve
-months after 1.0, and if the rule isn't written, it gets decided under pressure.
+**Context.** The n-1 policy bumps deployment targets every September. Before
+this ruling, nothing said whether raising the iOS/macOS floor forced a major
+version — a question that detonates on a schedule, since the first post-1.0
+September bump arrives about twelve months after 1.0 and would otherwise have
+been decided under pressure.
 
-**Recommendation.** Platform floors are **outside** the API stability promise.
-A September floor bump is a **minor** release, announced one release ahead in the
+**Policy.** Platform floors are **outside** the API stability promise. A
+September floor bump is a **minor** release, announced one release ahead in the
 changelog. Rationale: the alternative makes ManifoldKit emit a new major every
 year mechanically, decoupled from any actual API change, which drains the
 signal out of the major-version number — a "2.0" that means only "we dropped
@@ -152,19 +159,21 @@ strict reading that raising a deployment target can break a consumer's build
 resolve-time floor mismatch a pin already solves, and the annual-major cost to
 version-number meaning is worse than the benefit.
 
-**Decision ask:** Are September platform-floor bumps MINOR (recommended) or
-MAJOR?
+**Obligation (manual — no tripwire).** The one-release-ahead changelog
+announcement is a release-checklist item, not an enforced gate: nothing in CI
+can know a September bump is coming. Whoever cuts the release preceding a floor
+bump writes the notice.
 
 ### Policy 2 — Deprecation window and support policy
 
 **Context.** [`API-DESIGN.md` § 4](API-DESIGN.md) defers deprecation to
-"post-1.0" but never defines the window: how long a deprecated symbol survives,
+"post-1.0" but never defined the window: how long a deprecated symbol survives,
 and how long a shipped major receives fixes. Pre-1.0 the rule is *delete, don't
 deprecate* — that changes at 1.0, when there is finally a stability promise to
-protect with a migration runway.
+protect with a migration runway. The window below is that missing definition.
 
-**Recommendation (kept deliberately modest).** Deprecate in a minor, remove in
-the next major. That gives every removed API at least one minor's worth of
+**Policy (kept deliberately modest).** Deprecate in a minor, remove in the next
+major. That gives every removed API at least one minor's worth of
 `@available(*, deprecated)` warning with a documented replacement before it
 disappears. Support window: the previous major line (1.x) receives **critical
 fixes for six months after the next major (2.0) ships**, then goes
@@ -177,17 +186,22 @@ deprecation cycles).** Rejected: it reads well but promises maintenance labor
 that a single-maintainer project cannot reliably deliver, and an unmet support
 promise is worse than a modest kept one.
 
-**Decision ask:** Adopt "deprecate-in-minor, remove-in-next-major, 6-month
-critical-fix tail on the prior major" (recommended), or a different window?
+**The load-bearing clause is the six-month tail.** "Critical fixes" means
+security fixes and data-loss/corruption bugs — not features, not perf, not
+ordinary bugs — backported to the 1.x line from a maintenance branch. It is the
+only commitment here that obliges labor *after* attention has moved to the next
+major, and it is scoped this narrowly on purpose. If a future review finds the
+tail is not being honored in practice, the honest correction is to narrow it to
+best-effort, not to let a written promise quietly lapse.
 
 ### Policy 3 — SwiftData schema-stability promise
 
 **Context.** Practice is already clean: every stage in `ManifoldMigrationPlan`
 is `.lightweight`, each with a read-back test, so no store has ever needed a
-destructive migration. But no forward-looking promise exists, and Principle 4
-says a rule ships with its tripwire.
+destructive migration. What was missing was a forward-looking promise — and,
+per Principle 4, a tripwire shipped alongside it.
 
-**Recommendation.** **Lightweight-only within a major.** Any schema change
+**Policy.** **Lightweight-only within a major.** Any schema change
 inside a major version must be expressible as a SwiftData lightweight migration
 (additive/renaming, no data-destroying transform). Destructive or custom-stage
 migrations are permitted **only at a major version boundary**, and only with a
@@ -217,18 +231,21 @@ Sabotage-verified: temporarily changing a stage to `.custom(fromVersion:toVersio
 made the test fail with a message pointing at this policy; reverting restored
 a clean `git diff` and a passing test.
 
-**Decision ask:** Promise "lightweight-only within a major, destructive only at
-majors with an export path," enforced by the audit above (recommended)?
+Note the tripwire's one fragility: because it matches on `String(describing:)`,
+an SDK that changes `MigrationStage`'s description format would break the
+detection rather than the invariant. That is an accepted trade — SwiftData
+exposes no public case introspection — but it means the audit's own failure
+message is worth reading before assuming a real violation.
 
 ### Policy 4 — Core ↔ companion 1.0 semantics
 
 **Context.** The pin lifecycle and compat canary between core and the companion
 backend packages are documented ([`COMPANION-BACKENDS.md`
-§ 4](COMPANION-BACKENDS.md)), but not what "companion 1.0" means relative to
-"core 1.0." A naive reading couples them — core cannot reach 1.0 until the
-companions do, or vice versa.
+§ 4](COMPANION-BACKENDS.md)), but did not say what "companion 1.0" means
+relative to "core 1.0." A naive reading couples them — core cannot reach 1.0
+until the companions do, or vice versa.
 
-**Recommendation.** **Independent versioning.** Core 1.0 neither waits for nor
+**Policy.** **Independent versioning.** Core 1.0 neither waits for nor
 drags `manifold-mlx` / `manifold-llama` to 1.0. Each companion versions on its
 own cadence and declares a **supported-core range** (the existing
 `.upToNextMinor` pin plus the compat canary already express and enforce this).
@@ -243,9 +260,6 @@ line).** Rejected: it forces a companion to cut a major it doesn't need every
 time core does (and vice versa), which is the annual-empty-major problem of
 Policy 1 in a second guise, across repos.
 
-**Decision ask:** Adopt independent core/companion versioning with a
-declared supported-core range (recommended), or lockstep majors?
-
 ### Policy 5 — Performance as a 1.0 property
 
 **Context.** Performance is nightly-measured and mostly non-gating: one asserted
@@ -253,10 +267,10 @@ streaming-cadence tripwire, everything else baseline-tracked without a hard
 threshold. A 1.0 announcement could be read as promising perf stability the same
 way it promises API stability.
 
-**Recommendation.** Performance is **explicitly outside the semver contract.** A
+**Policy.** Performance is **explicitly outside the semver contract.** A
 perf regression is a bug to be fixed, not a breaking change requiring a major.
 Keep the streaming-cadence tripwire and the nightly perf suites as regression
-detectors; state in one sentence in Part 1 that perf is not versioned.
+detectors; Part 1 § 6 states in one sentence that perf is not versioned.
 Rationale: perf on-device is a function of model, hardware, and OS as much as of
 this code, so a hard perf-semver promise would be one the project cannot honestly
 keep across the device matrix it runs on. Documenting the tripwire's existence
@@ -267,9 +281,6 @@ overclaiming a numeric contract.
 regression is a breaking change).** Rejected: attractive in principle, but it
 requires stable per-device baselines the nightly-only, hardware-variable setup
 cannot provide, so the promise would be routinely false.
-
-**Decision ask:** State perf as explicitly out of the semver contract, tripwire
-retained (recommended)?
 
 ---
 
