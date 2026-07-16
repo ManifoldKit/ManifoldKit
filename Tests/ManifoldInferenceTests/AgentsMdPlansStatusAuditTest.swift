@@ -33,12 +33,25 @@ import Foundation
 ///
 /// **Non-flakiness.** The age check uses `git log -1 --format=%ct -- <path>`
 /// (commit time, not file mtime — mtime is unreliable across clones/CI
-/// checkouts per the issue). A shallow clone, a detached/gitless checkout, or
-/// any non-zero/unparseable `git` result yields `lastCommitDate(for:) ==
-/// nil`, and `isStale` treats `nil` as "cannot determine age" → never stale.
-/// The check can only ever suppress a false positive, never manufacture one
-/// from missing history — CI does not go red because a runner's clone is
-/// shallow.
+/// checkouts per the issue). A detached/gitless checkout, or any
+/// non-zero/unparseable `git` result, yields `lastCommitDate(for:) == nil`,
+/// and `isStale` treats `nil` as "cannot determine age" → never stale.
+///
+/// **Shallow clones need an explicit guard, not just "git succeeds."** CI's
+/// `actions/checkout` uses `fetch-depth: 2` — on a shallow clone `git log -1`
+/// does NOT fail or return empty; it happily returns the *boundary commit's*
+/// timestamp for every file (git treats the boundary commit as having
+/// introduced everything reachable from it), which reads as "touched right
+/// now" regardless of the file's true history. An earlier version of this
+/// check missed this and was silently inert in CI (caught in review before
+/// merge). `lastCommitDate(for:repoRoot:)` therefore checks
+/// `git rev-parse --is-shallow-repository` first and returns `nil` whenever
+/// the checkout is shallow, before ever trusting `git log`'s output. The
+/// check can only ever suppress a false positive, never manufacture one from
+/// missing/truncated history — but that means the staleness rule is
+/// currently enforced only where the checkout is a full clone (`scripts/test.sh
+/// --profile local`), not on CI's shallow `actions/checkout`. See
+/// `Tests/README.md` for the fetch-depth follow-up this implies for CI.
 final class AgentsMdPlansStatusAuditTest: XCTestCase {
 
     /// A non-"Active" plan whose most recent commit touching it is older
@@ -105,15 +118,13 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
         statusValue.lowercased().hasPrefix("active")
     }
 
-    /// Last commit time touching `fileURL`, via `git log -1 --format=%ct`.
-    /// Returns `nil` on any failure (git unavailable, no history, shallow
-    /// clone, non-numeric output) — callers must treat `nil` as "cannot
-    /// determine age", never as "definitely stale".
-    static func lastCommitDate(for fileURL: URL, repoRoot: URL) -> Date? {
+    /// Runs `arguments` in `repoRoot` and returns trimmed stdout, or `nil` on
+    /// any non-zero exit / launch failure.
+    private static func runGit(_ arguments: [String], repoRoot: URL) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = repoRoot
-        process.arguments = ["git", "log", "-1", "--format=%ct", "--", fileURL.path]
+        process.arguments = ["git"] + arguments
 
         let stdout = Pipe()
         process.standardOutput = stdout
@@ -127,9 +138,37 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
         let data = stdout.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
-        let raw = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw, !raw.isEmpty, let epochSeconds = TimeInterval(raw) else { return nil }
+    /// `true` if `repoRoot` is a shallow clone (`git rev-parse
+    /// --is-shallow-repository` prints `true`). Conservative on any failure
+    /// to run git at all: returns `false` so the caller falls through to the
+    /// normal `git log` attempt, which will itself fail closed to `nil`.
+    ///
+    /// This exists because `git log -1` on a *shallow* clone does not fail
+    /// or return empty — it returns the boundary commit's timestamp for
+    /// every file (the boundary commit "introduces" everything reachable
+    /// from it), which reads as "touched right now" regardless of the
+    /// file's true history. That silently defeats `isStale` (a fresh
+    /// timestamp can never be >60 days old), so shallowness must be
+    /// detected explicitly rather than inferred from `git log` succeeding.
+    static func isShallowRepository(repoRoot: URL) -> Bool {
+        runGit(["rev-parse", "--is-shallow-repository"], repoRoot: repoRoot) == "true"
+    }
+
+    /// Last commit time touching `fileURL`, via `git log -1 --format=%ct`.
+    /// Returns `nil` on any failure (git unavailable, no history,
+    /// non-numeric output) **or whenever `repoRoot` is a shallow clone** —
+    /// see `isShallowRepository`'s doc for why shallowness can't be inferred
+    /// from `git log`'s own exit status. Callers must treat `nil` as "cannot
+    /// determine age", never as "definitely stale".
+    static func lastCommitDate(for fileURL: URL, repoRoot: URL) -> Date? {
+        guard !isShallowRepository(repoRoot: repoRoot) else { return nil }
+
+        guard let raw = runGit(["log", "-1", "--format=%ct", "--", fileURL.path], repoRoot: repoRoot),
+              !raw.isEmpty,
+              let epochSeconds = TimeInterval(raw) else { return nil }
         return Date(timeIntervalSince1970: epochSeconds)
     }
 
@@ -336,6 +375,87 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
         XCTAssertEqual(
             Self.statusValue(in: "# Plan\n\n**Status:** Reviewed (3× adversarial personas)"),
             "Reviewed (3× adversarial personas)"
+        )
+    }
+
+    /// #2226 sabotage, environment-dependent half: exercises the *impure*
+    /// git-shelling resolvers (`isShallowRepository` / `lastCommitDate`)
+    /// against a real, disposable git repository — not the pure `isStale`
+    /// predicate covered above. This is the exact defect class caught in
+    /// review: a shallow clone doesn't make `git log -1` fail, it makes it
+    /// return the boundary commit's timestamp for every file, which reads
+    /// as "touched right now." Without this test, `isShallowRepository`
+    /// had zero coverage and the bug shipped invisibly (`isStale`'s
+    /// fabricated-date tests all passed regardless).
+    func test_sabotage_shallowCloneNeverReportsAFalseFreshCommitDate() throws {
+        let fm = FileManager.default
+        let fullRepo = fm.temporaryDirectory.appendingPathComponent("AgentsMdPlansStatusAuditTest-sabotage-\(UUID().uuidString)")
+        let shallowRepo = fm.temporaryDirectory.appendingPathComponent("AgentsMdPlansStatusAuditTest-sabotage-shallow-\(UUID().uuidString)")
+        try fm.createDirectory(at: fullRepo, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: fullRepo)
+            try? fm.removeItem(at: shallowRepo)
+        }
+
+        @discardableResult
+        func run(_ arguments: [String], in dir: URL) throws -> String {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.currentDirectoryURL = dir
+            process.arguments = ["git"] + arguments
+            let stdout = Pipe()
+            process.standardOutput = stdout
+            process.standardError = Pipe()
+            try process.run()
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                throw NSError(domain: "sabotage-fixture", code: Int(process.terminationStatus), userInfo: [
+                    NSLocalizedDescriptionKey: "git \(arguments.joined(separator: " ")) failed in \(dir.path)",
+                ])
+            }
+            return String(data: data, encoding: .utf8) ?? ""
+        }
+
+        // Build a two-commit repo: an old "plan" commit, then a newer
+        // unrelated commit — so the plan's true last-touch is commit 1, not
+        // HEAD, and a shallow clone's boundary-commit illusion is
+        // distinguishable from the truth.
+        try run(["init", "-q"], in: fullRepo)
+        try run(["config", "user.email", "sabotage@example.com"], in: fullRepo)
+        try run(["config", "user.name", "Sabotage Fixture"], in: fullRepo)
+        let planFile = fullRepo.appendingPathComponent("plan.md")
+        try "# Old plan\n\n**Status:** Awaiting sign-off\n".write(to: planFile, atomically: true, encoding: .utf8)
+        try run(["add", "plan.md"], in: fullRepo)
+        try run(["commit", "-q", "-m", "add old plan"], in: fullRepo)
+
+        let otherFile = fullRepo.appendingPathComponent("other.md")
+        try "# Unrelated\n".write(to: otherFile, atomically: true, encoding: .utf8)
+        try run(["add", "other.md"], in: fullRepo)
+        try run(["commit", "-q", "-m", "unrelated newer commit"], in: fullRepo)
+
+        // Full clone: real git history intact, isShallowRepository is false.
+        XCTAssertFalse(
+            Self.isShallowRepository(repoRoot: fullRepo),
+            "A normal (non-shallow) git init must not report itself as shallow"
+        )
+        let fullDate = Self.lastCommitDate(for: planFile, repoRoot: fullRepo)
+        XCTAssertNotNil(fullDate, "A full clone with real history should resolve a last-commit date")
+
+        // Shallow clone (depth 1) of that repo: git log -1 on plan.md would
+        // return the boundary (2nd, unrelated) commit's timestamp if this
+        // guard didn't exist — i.e. a *fresh* date for a file the shallow
+        // clone never actually saw change.
+        try run(["clone", "-q", "--depth", "1", "file://\(fullRepo.path)", shallowRepo.path], in: fm.temporaryDirectory)
+        let shallowPlanFile = shallowRepo.appendingPathComponent("plan.md")
+
+        XCTAssertTrue(
+            Self.isShallowRepository(repoRoot: shallowRepo),
+            "Sabotage: expected a --depth 1 clone to report itself as shallow, but it was not detected"
+        )
+        XCTAssertNil(
+            Self.lastCommitDate(for: shallowPlanFile, repoRoot: shallowRepo),
+            "Sabotage: expected lastCommitDate to refuse to answer on a shallow clone (would otherwise return the boundary commit's fresh timestamp, masking a genuinely stale plan)"
         )
     }
 }
