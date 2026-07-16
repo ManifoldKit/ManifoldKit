@@ -175,6 +175,13 @@ final class ServerGenerationTimeoutTests: XCTestCase {
     /// over the whole response — must complete successfully, never killed by
     /// a wall-clock cap. This is the distinction #2268 drew for the fuzz
     /// harness's OpenAI exemption, applied to ManifoldServer's streaming path.
+    ///
+    /// The idle-timeout/chunk-pacing ratio is deliberately generous (~6.7x,
+    /// widened from an initial 150ms/60ms ≈ 2.5x that flaked on loaded CI
+    /// runners — see #2279 review) — only the *gap* between two consecutive
+    /// chunks needs to stay under the timeout for this test to pass, so the
+    /// margin only has to absorb scheduling jitter on a single gap, not
+    /// accumulate across the whole stream.
     func testStreamingIdleTimeoutResetsAndAllowsSlowProgressingStream() async throws {
         let backend = ServerTestBackendFactory.loadedMock()
         let adapter = FakeChatCompletionsAdapter(
@@ -182,13 +189,13 @@ final class ServerGenerationTimeoutTests: XCTestCase {
             tokens: ["a", "b", "c", "d", "e"]
         )
         // Each chunk arrives 60ms apart; 5 chunks span ~300ms total — well
-        // past a naive single-shot wall-clock cap of, say, 150ms — but the
-        // idle timeout (150ms, reset every chunk) never sees more than 60ms
+        // past a naive single-shot wall-clock cap of, say, 400ms — but the
+        // idle timeout (400ms, reset every chunk) never sees more than 60ms
         // of silence, so the stream must complete uninterrupted.
         adapter.chunkPacing = .milliseconds(60)
 
         let app = ServerApp(
-            configuration: ServerConfiguration(streamingIdleTimeout: .milliseconds(150)),
+            configuration: ServerConfiguration(streamingIdleTimeout: .milliseconds(400)),
             backendProvider: FakeServerBackendProvider(backend: backend),
             adapter: adapter
         ).makeApplication()
