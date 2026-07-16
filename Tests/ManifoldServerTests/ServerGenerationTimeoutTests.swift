@@ -176,22 +176,30 @@ final class ServerGenerationTimeoutTests: XCTestCase {
     /// a wall-clock cap. This is the distinction #2268 drew for the fuzz
     /// harness's OpenAI exemption, applied to ManifoldServer's streaming path.
     ///
-    /// The idle-timeout/chunk-pacing ratio is deliberately generous (~6.7x,
-    /// widened from an initial 150ms/60ms ≈ 2.5x that flaked on loaded CI
-    /// runners — see #2279 review) — only the *gap* between two consecutive
-    /// chunks needs to stay under the timeout for this test to pass, so the
-    /// margin only has to absorb scheduling jitter on a single gap, not
-    /// accumulate across the whole stream.
+    /// The idle-timeout/chunk-pacing ratio is deliberately generous per-gap
+    /// (~6.7x, widened from an initial 150ms/60ms ≈ 2.5x that flaked on
+    /// loaded CI runners — see #2279 review) — only the *gap* between two
+    /// consecutive chunks needs to stay under the timeout for the reset to
+    /// matter, so the margin only has to absorb scheduling jitter on a
+    /// single gap, not accumulate across the whole stream. Separately, the
+    /// stream's *total* span (9 chunks × 60ms ≈ 540ms) is deliberately kept
+    /// LONGER than the 400ms idle window: a non-resetting single-shot timer
+    /// armed once at stream start would time out at 400ms and never see the
+    /// later chunks, so this is what actually pins "resets per chunk" rather
+    /// than "happens to fit under one wall-clock window" — sabotage-verified
+    /// by temporarily removing `ServerIdleTimeoutPuller`'s `deadline.touch()`
+    /// call and confirming this test fails.
     func testStreamingIdleTimeoutResetsAndAllowsSlowProgressingStream() async throws {
         let backend = ServerTestBackendFactory.loadedMock()
         let adapter = FakeChatCompletionsAdapter(
             chunkedResponse: ChatCompletionResponse(model: "fake-model", content: "slow"),
-            tokens: ["a", "b", "c", "d", "e"]
+            tokens: ["a", "b", "c", "d", "e", "f", "g", "h"]
         )
-        // Each chunk arrives 60ms apart; 5 chunks span ~300ms total — well
-        // past a naive single-shot wall-clock cap of, say, 400ms — but the
-        // idle timeout (400ms, reset every chunk) never sees more than 60ms
-        // of silence, so the stream must complete uninterrupted.
+        // Each chunk arrives 60ms apart; 8 tokens + 1 terminal finish-reason
+        // chunk = 9 chunks, spanning ~540ms total — longer than the 400ms
+        // idle window itself — but the idle timeout (reset every chunk)
+        // never sees more than 60ms of silence, so the stream must complete
+        // uninterrupted.
         adapter.chunkPacing = .milliseconds(60)
 
         let app = ServerApp(
