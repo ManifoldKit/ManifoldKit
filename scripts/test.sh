@@ -100,6 +100,15 @@ while [[ $# -gt 0 ]]; do
             MINIMAL_MODE=1
             shift
             ;;
+        --enable-code-coverage)
+            # Explicit passthrough (rather than relying on the catch-all `*`
+            # case below) so callers — notably nightly-slow-tests.yml's
+            # coverage-thresholds step (issue #2277) — get this script's
+            # suite-completion crash detection instead of reimplementing a
+            # weaker copy around a bare `swift test --enable-code-coverage`.
+            SWIFT_ARGS+=("$1")
+            shift
+            ;;
         --parallel)
             # Track parallel mode separately so the parser can fall back to
             # SwiftPM's `[N/M] Testing` streaming format when XCTest workers
