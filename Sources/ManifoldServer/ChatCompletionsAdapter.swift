@@ -494,6 +494,20 @@ internal struct ChatCompletionErrorEnvelope: Codable, Equatable, Sendable {
                     code: code
                 )
             }
+            // Non-streaming and streaming timeouts must carry the same
+            // `code` — the streaming path's terminal SSE frame (written
+            // directly in `ServerApp.writeSSEChunks`) already hardcodes
+            // `"generation_timeout"`; without this case here, a non-streaming
+            // timeout fell into the generic `server_error`/`code: nil` branch
+            // below, giving callers no stable machine-readable signal
+            // (#2265 review).
+            if case .generationTimedOut = serverError {
+                return ChatCompletionErrorEnvelope(
+                    message: serverError.description,
+                    type: "server_error",
+                    code: "generation_timeout"
+                )
+            }
             return ChatCompletionErrorEnvelope(message: serverError.description, type: "server_error")
         }
         // A decode failure that bypassed the request-decode normalization is
