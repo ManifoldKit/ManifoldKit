@@ -1036,6 +1036,13 @@ package struct ConversationTurnExecutor: Sendable {
             return false
         }
 
+        // True when the model emitted reasoning/thinking content this turn,
+        // even with no visible text and no tool calls. Without this, a
+        // thinking-only turn fell through `isEmptyResponse` (which only
+        // tracks visible tokens) and was silently dropped below — a real
+        // behavioral bug once thinking content parts are persisted (#2281).
+        let hasThinkingContent = accumulator.hasThinkingContent
+
         let reason: FinishReason
         if cancelled {
             reason = .cancelled
@@ -1051,7 +1058,7 @@ package struct ConversationTurnExecutor: Sendable {
             // distinguishable from a generic inference failure.
             let failureReason: FinishReason = timedOut ? .timedOut : .stop
             writeFinalContent(accumulator.visibleText, into: &assistantMessage)
-            if !accumulator.visibleText.isEmpty || hasToolContent {
+            if !accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent {
                 do {
                     try await persistence.insertMessage(assistantMessage)
                     emit(.messageInserted(assistantMessage))
@@ -1081,7 +1088,7 @@ package struct ConversationTurnExecutor: Sendable {
                 sessionID: sessionID,
                 handle: handle,
                 assistantMessageID: assistantID,
-                assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent) ? assistantMessage : nil,
+                assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent) ? assistantMessage : nil,
                 reason: failureReason,
                 error: streamFailed,
                 finalText: accumulator.visibleText,
@@ -1089,7 +1096,7 @@ package struct ConversationTurnExecutor: Sendable {
                 completionTokens: usage?.completionTokens
             )
             return
-        } else if accumulator.isEmptyResponse && !hasToolContent {
+        } else if accumulator.isEmptyResponse && !hasToolContent && !hasThinkingContent {
             reason = .empty
         } else {
             reason = .stop
@@ -1098,7 +1105,7 @@ package struct ConversationTurnExecutor: Sendable {
         if cancelled {
             // On cancel, persist whatever streamed in so far if non-empty —
             // matches ChatViewModel.stopGeneration's behaviour.
-            if !accumulator.visibleText.isEmpty || hasToolContent {
+            if !accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent {
                 writeFinalContent(accumulator.visibleText, into: &assistantMessage)
                 do {
                     try await persistence.insertMessage(assistantMessage)
@@ -1115,7 +1122,7 @@ package struct ConversationTurnExecutor: Sendable {
                 sessionID: sessionID,
                 handle: handle,
                 assistantMessageID: assistantID,
-                assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent) ? assistantMessage : nil,
+                assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent) ? assistantMessage : nil,
                 reason: reason,
                 error: nil,
                 finalText: accumulator.visibleText,
