@@ -179,7 +179,16 @@ jobs:
             # Per-attempt log so a flake-then-pass sequence stays auditable in
             # the uploaded test-diagnostics artifact instead of the first
             # attempt's output being overwritten by the retry.
+            #
+            # ATTEMPT_LOG (passed as scripts/test.sh's own MANIFOLD_TEST_OUTPUT_FILE)
+            # only ever receives the raw `swift test | tee` stream that script
+            # captures internally (test.sh:~402) — it never contains the
+            # "RESULT: ..." classification line, which test.sh prints to ITS
+            # OWN stdout from the summary block (test.sh:~568-591). That summary
+            # is what we grep below, so it must be captured separately here via
+            # its own tee, with PIPESTATUS[0] (not tee's exit code) as TEST_EXIT.
             ATTEMPT_LOG="${MANIFOLD_TEST_OUTPUT_FILE}.attempt${ATTEMPT}"
+            ATTEMPT_SUMMARY="${ATTEMPT_LOG}.summary"
 
             echo "::group::scripts/test.sh --enable-code-coverage (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
             MANIFOLD_TEST_OUTPUT_FILE="$ATTEMPT_LOG" scripts/test.sh \
@@ -190,8 +199,8 @@ jobs:
               --filter ManifoldMCPTests \
               --enable-code-coverage \
               --skip-update \
-              --min-passed 2500
-            TEST_EXIT=$?
+              --min-passed 2500 2>&1 | tee "$ATTEMPT_SUMMARY"
+            TEST_EXIT=${PIPESTATUS[0]}
             echo "::endgroup::"
 
             cp "$ATTEMPT_LOG" "$MANIFOLD_TEST_OUTPUT_FILE"
@@ -200,13 +209,18 @@ jobs:
               break
             fi
 
-            if grep -q "RESULT: FAILED (swift test exit code" "$ATTEMPT_LOG" && [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
+            # The RESULT line lives in the summary (test.sh's own stdout), not
+            # in ATTEMPT_LOG (the raw swift-test capture) — see the comment
+            # above. test.sh's "FAILED (N test failure(s))" and "FAILED (swift
+            # test exit code N)" branches can both exit 1, so only this printed
+            # classification — not the bare exit code — tells them apart.
+            if grep -q "RESULT: FAILED (swift test exit code" "$ATTEMPT_SUMMARY" && [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
               echo "scripts/test.sh reported 0 test failures and 0 crashed suites, but swift test's own exit code was nonzero — retrying (known flake, issue #2277)."
               ATTEMPT=$((ATTEMPT + 1))
               continue
             fi
 
-            echo "scripts/test.sh failed (exit ${TEST_EXIT}) — see ${ATTEMPT_LOG} for full output. Not retrying: either a real test failure or a suite never completed (RESULT: INCOMPLETE), which is never treated as benign."
+            echo "scripts/test.sh failed (exit ${TEST_EXIT}) — see ${ATTEMPT_LOG} for full test output and ${ATTEMPT_SUMMARY} for the classification. Not retrying: either a real test failure or a suite never completed (RESULT: INCOMPLETE), which is never treated as benign."
             exit "$TEST_EXIT"
           done
 
