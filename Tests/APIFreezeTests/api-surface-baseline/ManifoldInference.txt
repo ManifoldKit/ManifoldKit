@@ -106,6 +106,7 @@ ChatMessage.citations Var
 ChatMessage.completionTokens Var
 ChatMessage.content Var
 ChatMessage.contentParts Var
+ChatMessage.hasThinkingContent Var
 ChatMessage.hasVisibleContent Var
 ChatMessage.hash(into:) Func
 ChatMessage.hashValue Var
