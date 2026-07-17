@@ -994,11 +994,38 @@ jobs:
           )
           echo "Checking API surface for: ${TARGETS[*]}"
           # diagnose-api-breaking-changes checks out the baseline tree object
-          # from origin/main. A shallow clone (actions/checkout default) omits
-          # those objects and causes "unable to read tree" (#1723). --unshallow
+          # by ref. A shallow clone (actions/checkout default) omits those
+          # objects and causes "unable to read tree" (#1723). --unshallow
           # converts the shallow clone to a full one; fall back to a plain fetch
-          # if the repo is already full-depth (e.g. local runs).
+          # if the repo is already full-depth (e.g. local runs). The unshallow
+          # is also what makes the merge-base below computable.
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # Baseline is the MERGE BASE, not the live tip of origin/main.
+          #
+          # This is the same failure nightly-slow-tests.yml already fixed: a
+          # live-resolved moving ref ends up newer than the tree being
+          # analysed, and the digester reports "inverted (spurious) breakages"
+          # (#2113, run 28574236073). Nightly closed it by resolving an
+          # immutable baseline once; this job kept the moving `origin/main`
+          # and kept the bug.
+          #
+          # Here the tree analysed is the PR's merge ref, computed against main
+          # as it stood at the time, while `origin/main` is re-fetched live
+          # above. Diffing those two vintages makes every public symbol main
+          # GAINED since the branch point look like this PR REMOVED it: the
+          # digester flags symbols the diff never touches, and the allowlist
+          # can't suppress them because it is read from the analysed (older)
+          # tree, not from main. The failure grows the further behind a branch
+          # falls, so it lands on whoever rebases last rather than on whoever
+          # actually broke something.
+          #
+          # The merge base puts both sides on the same vintage and asks what
+          # this gate is for: did THIS PR remove public API relative to where
+          # it branched? Main's absolute surface is covered elsewhere —
+          # nightly diffs main against the last release tag, and the merge
+          # queue validates the real merged tree.
+          BASELINE="$(git merge-base origin/main HEAD)"
+          echo "Baseline (merge-base of origin/main and HEAD): $BASELINE"
           # The allowlist (.github/api-breakage-allowlist.txt) carries the
           # false-positive "X has been removed" entries produced when public
           # types are relocated DOWNWARD into a leaf module that ManifoldInference
@@ -1007,12 +1034,15 @@ jobs:
           # does NOT follow `@_exported` re-exports, so a relocated-but-still-
           # source-reachable symbol reads as "removed" against the pre-merge
           # baseline. The build gates prove source-compat is intact. Each
-          # entry self-expires: once the relocation lands on main the baseline
-          # no longer sees the symbol in ManifoldInference, the digester stops
-          # emitting that message, and the unmatched allowlist line becomes an
-          # inert no-op (a genuine future removal of a DIFFERENT symbol still
-          # trips the gate). See #1723.
-          swift package diagnose-api-breaking-changes origin/main "${TARGETS[@]}" \
+          # entry self-expires: once the relocation lands on main AND a branch
+          # rebases past it, that branch's merge base no longer sees the symbol
+          # in ManifoldInference, the digester stops emitting the message, and
+          # the unmatched allowlist line becomes an inert no-op (a genuine
+          # future removal of a DIFFERENT symbol still trips the gate). Under
+          # the merge-base baseline this expiry follows each branch's own base
+          # rather than main's tip, so an entry stays live slightly longer —
+          # inert lines are harmless, an unmatched one is not an error. See #1723.
+          swift package diagnose-api-breaking-changes "$BASELINE" "${TARGETS[@]}" \
             --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
   # Server tests are split out of the per-PR mega-batch because the
