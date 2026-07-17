@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// Editor for creating or editing an ``APIEndpointRecord``.
 ///
@@ -14,6 +15,7 @@ package struct APIEndpointEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.endpointStore) private var endpointStore
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     package let endpoint: APIEndpointRecord? // nil = creating new
 
@@ -83,7 +85,7 @@ package struct APIEndpointEditorView: View {
                                 .font(.caption)
                         } icon: {
                             Image(systemName: "network")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(theme.statusOK)
                         }
                         .accessibilityElement(children: .combine)
                     }
@@ -92,7 +94,7 @@ package struct APIEndpointEditorView: View {
                 if let error = validationError {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.statusError)
                     }
                 }
             }
