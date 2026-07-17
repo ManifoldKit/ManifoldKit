@@ -401,7 +401,7 @@ Honest expectations — ManifoldKit's MCP surface is **tool-and-resource first**
 | **Resources** (`resources/list`, `resources/read`) | ⚠️ partial | ✅ | Host serves list + read; client **detects** `supportsResources` but no outbound `resources/*` call is wired yet (only `tools/*` is consumed). |
 | **Prompts** (`prompts/list`, `prompts/get`) | ⚠️ partial | ❌ | Capability is **detected** (`supportsPrompts`) but not yet consumed — no client call wired. |
 | **OAuth 2.1** | ✅ | — | Authorization-server discovery, token exchange, PKCE, secured token store. |
-| **Sampling** (`sampling/createMessage`) | ❌ | ❌ | Not implemented — the MCP surface is text-passthrough. Tracked in [#1925](https://github.com/ManifoldKit/ManifoldKit/issues/1925). |
+| **Sampling** (`sampling/createMessage`) | ✅ | ❌ | Client parses the request off the wire and routes it through the host-supplied `MCPClientConfiguration.samplingHandler`; `ManifoldMCP` itself runs no inference. Host-side (accepting sampling requests from external MCP clients) not implemented. Closed [#1925](https://github.com/ManifoldKit/ManifoldKit/issues/1925). |
 | **Elicitation** (`elicitation/create`) | ✅ | ❌ | Client parses the request off the wire and routes it through the host-supplied `MCPClientConfiguration.elicitationHandler`; `ManifoldMCP` itself renders no UI. Host-side (accepting elicitation requests from external MCP clients) not implemented. Closes [#1926](https://github.com/ManifoldKit/ManifoldKit/issues/1926). |
 | **Transports** | stdio, streamable-HTTP (SSE) | stdio, streamable-HTTP | Both client and host support both transports. |
 
