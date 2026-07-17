@@ -3083,4 +3083,44 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(persisted.count, 1,
                        "user message at the exact limit must be persisted once")
     }
+
+    /// `pauseActiveRun`/`cancelActiveRun` guard on `turnDriver as? ResumableRunDriver`
+    /// and no-op when the runtime falls back to the default `SingleTurnDriver`
+    /// (`makeRuntime` supplies neither `turnDriver:` nor `runStore:`, so the
+    /// runtime's driver-selection fallback in `ConversationRuntime.init` picks
+    /// `SingleTurnDriver` — see ConversationRuntime.swift's driver-selection
+    /// comment above the `if let turnDriver … else if let runStore … else`
+    /// chain). This pins the FALLBACK BEHAVIOR the ManifoldRuntime logging PR
+    /// touches (both calls return cleanly without invoking a driver that
+    /// doesn't exist) — it does NOT assert that the new `Log.inference.warning`
+    /// call fires. `Log` (Sources/ManifoldModelCatalog/Logging.swift) wraps
+    /// plain `os.Logger` with no injection seam anywhere in this repo, so log
+    /// emission itself is not practically assertable here; see the PR body for
+    /// the fuller rationale. Sabotage-checked: swapping the `guard let
+    /// resumableDriver = turnDriver as? ResumableRunDriver else { return }` for
+    /// a force cast (`as!`) at each call site made this test crash/fail; both
+    /// were confirmed and reverted before landing.
+    func test_pauseAndCancelActiveRun_withoutResumableDriver_returnCleanly() async throws {
+        let (runtime, _, _, _) = makeRuntime()
+
+        // Must return promptly (no driver to call into) rather than hang.
+        try await withTimeout(seconds: 5) {
+            await runtime.pauseActiveRun()
+        }
+        try await withTimeout(seconds: 5) {
+            await runtime.cancelActiveRun()
+        }
+    }
+
+    private func withTimeout(seconds: Double, _ operation: @escaping @Sendable () async -> Void) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw TestError.deadlineElapsed
+            }
+            try await group.next()
+            group.cancelAll()
+        }
+    }
 }

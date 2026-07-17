@@ -247,6 +247,41 @@ final class RAGServiceTests: XCTestCase {
         XCTAssertTrue(slots[0].content.contains("keyword result"))
     }
 
+    /// `denseHits`'s `guard let backend = embeddingBackend, backend.isModelLoaded
+    /// else { ... }` branch (Sources/ManifoldRuntime/Services/RAGService.swift)
+    /// covers two distinct configurations: no backend at all (the sibling test
+    /// above) and a backend that exists but never finished loading. This pins
+    /// the second shape — same fallback-to-keyword-search behavior, and dense
+    /// `vectorStore.search` must never be invoked. This is a
+    /// FALLBACK-BEHAVIOR regression test, not a log-assertion test: it does not
+    /// (and cannot, in this codebase — `Log` wraps plain `os.Logger` with no
+    /// capture/injection seam) assert that the new
+    /// `Log.inference.warning("RAGService: no loaded embedding backend, …")`
+    /// line fires. Sabotage-checked: commenting out the `isModelLoaded` guard
+    /// clause (so an unloaded backend flows into the `embed(...)` call, which
+    /// `FakeEmbeddingBackend` happily serves) made `lastSearchLimit` non-nil
+    /// and this test fail; reverted before landing.
+    func testRetrieveSlotsWithUnloadedEmbeddingBackendFallsBackToKeyword() async throws {
+        let vectorStore = FakeVectorStore()
+        let chunk = DocumentChunk(documentID: UUID(), text: "keyword result", chunkIndex: 0)
+        let hit = VectorSearchHit(chunk: chunk, documentTitle: "Doc", score: 1.0)
+        await vectorStore.setKeywordResults([hit])
+
+        let backend = FakeEmbeddingBackend(isModelLoaded: false)
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: backend
+        )
+
+        let slots = try await sut.retrieveSlots(query: "keyword")
+        XCTAssertEqual(slots.count, 1)
+        XCTAssertTrue(slots[0].content.contains("keyword result"))
+        XCTAssertEqual(backend.embedCallCount, 0, "an unloaded backend must never be asked to embed")
+        let searchLimit = await vectorStore.lastSearchLimit
+        XCTAssertNil(searchLimit, "dense vectorStore.search must not be called when the backend isn't loaded")
+    }
+
     func testRetrieveSlotsWithNoHitsReturnsEmpty() async throws {
         let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: FakeVectorStore())
         let slots = try await sut.retrieveSlots(query: "anything")
