@@ -749,7 +749,7 @@ See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-
 scripts/test.sh --profile local
 ```
 
-Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: implicit scheduling matches historical behavior — keep it. (Historically this also avoided process-global state races in `BackendContractChecks` when backend test classes interleaved, #1601; the capability-claims registry is now instance-scoped per test case, arch-plan item 4.2, so that specific hazard is gone — see `ManifoldBackendTestKit`'s DocC catalog. `--parallel` stays off here as a conservative default, not a correctness requirement.)
+Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Three-invocation shape is preserved internally (XCTest filters, then `ManifoldBackendsTests` serial in its own process, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). `ManifoldBackendsTests` gets its own invocation because that target mixes XCTest with Swift Testing files, so batching it with the other XCTest suites reintroduced the #681 hazard locally while CI ran it serially (#2299). The profile deliberately does NOT pass `--parallel` or `--num-workers`: implicit scheduling matches historical behavior — keep it. (Historically this also avoided process-global state races in `BackendContractChecks` when backend test classes interleaved, #1601; the capability-claims registry is now instance-scoped per test case, arch-plan item 4.2, so that specific hazard is gone — see `ManifoldBackendTestKit`'s DocC catalog. `--parallel` stays off here as a conservative default, not a correctness requirement.)
 
 **Pre-push (CI repro — only when chasing a CI failure):**
 
@@ -757,7 +757,7 @@ Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Tw
 scripts/test.sh --profile ci
 ```
 
-Mirrors CI's two-invocation shape exactly. Use only when reproducing a CI failure; pre-push correctness is `--profile local`.
+Mirrors CI's three-invocation shape exactly. Use only when reproducing a CI failure; pre-push correctness is `--profile local`.
 
 Both profiles respect explicit caller flags: `scripts/test.sh --profile local --filter ManifoldCoreTests` runs *just* that suite, but under the local trait set and worker count. `scripts/test.sh` is the source of truth for the gate shape — the long literal command no longer lives here.
 

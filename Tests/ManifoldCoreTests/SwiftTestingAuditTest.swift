@@ -13,14 +13,22 @@ import XCTest
 /// in separate process invocations.
 ///
 /// The default `Test — XCTest suites` step in CI invokes `swift test` once
-/// across `ManifoldCoreTests`, `ManifoldUITests`, `ManifoldBackendsTests`, and
-/// the other XCTest targets. Existing Swift Testing files in
-/// `ManifoldBackendsTests` predate the discovery of #681 and are committed
-/// as an approved baseline. They are CI-safe because the crash only manifests
-/// when an XCTestCase subclass coexists in the same process with `@Suite`/`@Test`,
-/// and these files use Swift Testing exclusively at file level. Adding more
-/// `@Test` functions to a file already on the allowlist does not change that
-/// safety property.
+/// across `ManifoldCoreTests`, `ManifoldUITests`, and the other XCTest
+/// targets — but deliberately NOT `ManifoldBackendsTests`, which runs in its
+/// own dedicated serial step (`Test — ManifoldBackendsTests (serial,
+/// claims-registry safe)` in `ci.yml`; `scripts/test.sh` mirrors this with
+/// its own re-exec invocation, #2299). `ManifoldBackendsTests` stays in
+/// `auditedTargetDirectories` below regardless: even running alone, that
+/// target's own `swift test` process still mixes its XCTestCase suites with
+/// the Swift Testing files listed in `swiftTestingFilesAllowlist`, so the
+/// harness-mixing hazard is per-target, not just across the CI step's merged
+/// filter set. Existing Swift Testing files in `ManifoldBackendsTests`
+/// predate the discovery of #681 and are committed as an approved baseline.
+/// They are CI-safe because the crash only manifests when an XCTestCase
+/// subclass coexists in the same process with `@Suite`/`@Test`, and these
+/// files use Swift Testing exclusively at file level. Adding more `@Test`
+/// functions to a file already on the allowlist does not change that safety
+/// property.
 ///
 /// ## What this audit asserts
 ///
@@ -105,11 +113,13 @@ final class SwiftTestingAuditTest: XCTestCase {
                 .map { "  \($0)" }
                 .joined(separator: "\n")
             XCTFail("""
-                Swift Testing harness violations detected in merged-filter CI targets.
+                Swift Testing harness violations detected in audited CI targets.
 
                 The default `Test — XCTest suites` CI step links ManifoldCoreTests, ManifoldUITests,
-                and ManifoldBackendsTests into a single `swift test` process. Mixing XCTestCase with
-                @Suite/@Test inside that process triggers a libmalloc double-free SIGABRT (#681).
+                and the other XCTest targets into a single `swift test` process (ManifoldBackendsTests
+                runs in its own dedicated serial step — see ci.yml — but still mixes XCTestCase with
+                @Suite/@Test within that one process). Mixing XCTestCase with @Suite/@Test inside a
+                single `swift test` process triggers a libmalloc double-free SIGABRT (#681).
 
                 See issue #681 and .github/workflows/ci.yml for context.
 

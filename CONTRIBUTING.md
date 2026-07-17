@@ -110,8 +110,10 @@ scripts/test.sh --profile local
 ```
 
 Use `scripts/test.sh` as the source of truth for the gate shape: it preserves the
-required two-invocation split between XCTest and Swift Testing. When you're
-reproducing a CI-only failure locally, use `scripts/test.sh --profile ci`.
+required split across three separate processes — the XCTest batch, then
+`ManifoldBackendsTests` on its own (that target mixes XCTest with Swift Testing
+files), then Swift Testing. When you're reproducing a CI-only failure locally,
+use `scripts/test.sh --profile ci`.
 
 Never push based on a subset passing. After rebasing, always re-run the full suite —
 conflicts can silently break tests that compiled fine before.

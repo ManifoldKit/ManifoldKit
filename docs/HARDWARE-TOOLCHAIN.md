@@ -62,12 +62,14 @@ at `manifold-llama`'s copy. What's still true and visible from core:
 
 Mixing Swift Testing (`@Test`/`@Suite`) and XCTest in the same test process
 triggers a libmalloc double-free `SIGABRT` — tracked as **#681**. This is not
-a "sometimes"; core's own `scripts/test.sh` runs a deliberate two-invocation
-shape specifically to avoid it: XCTest filters first, then
-`ManifoldInferenceSwiftTestingTests` in a fully separate `swift test` process
-(`scripts/test.sh:175,314,348`; `Tests/README.md:11`). A companion package
-that adds Swift Testing suites alongside existing XCTest suites needs the same
-two-invocation split in its own CI, not a single `swift test` call.
+a "sometimes"; core's own `scripts/test.sh` runs a deliberate three-invocation
+shape specifically to avoid it: the XCTest filter batch first, then
+`ManifoldBackendsTests` serial in its own process (that target mixes XCTest
+with Swift Testing files), then `ManifoldInferenceSwiftTestingTests` in a
+fully separate `swift test` process (see the `PROFILE_*_FILTERS` arrays in
+`scripts/test.sh`; `Tests/README.md`). A companion package that adds Swift
+Testing suites alongside existing XCTest suites needs the same per-process
+split in its own CI, not a single `swift test` call.
 
 ## `swift-tools-version` ceiling
 
