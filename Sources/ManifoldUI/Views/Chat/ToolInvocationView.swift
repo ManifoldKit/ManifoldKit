@@ -25,8 +25,6 @@ import ManifoldInference
 /// - Deny button: `approval-deny-button`.
 public struct ToolInvocationView: View {
 
-    @Environment(\.manifoldTheme) private var theme
-
     /// Visual state the view should render.
     ///
     /// The caller decides which state applies based on whether the part is a
@@ -182,7 +180,7 @@ public struct ToolInvocationView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle")
-                    .foregroundStyle(theme.statusOK)
+                    .foregroundStyle(.green)
                 Text(toolName)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
