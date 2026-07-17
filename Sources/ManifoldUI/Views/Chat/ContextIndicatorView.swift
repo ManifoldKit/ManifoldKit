@@ -7,6 +7,8 @@ import ManifoldRuntime
 /// Tapping the indicator shows a popover with additional context details.
 public struct ContextIndicatorView: View {
 
+    @Environment(\.manifoldTheme) private var theme
+
     public let usedTokens: Int
     public let maxTokens: Int
 
@@ -23,9 +25,9 @@ public struct ContextIndicatorView: View {
     }
 
     private var color: Color {
-        if ratio >= 0.95 { return .red }
-        if ratio >= 0.80 { return .yellow }
-        return .green
+        if ratio >= 0.95 { return theme.statusErrorColor }
+        if ratio >= 0.80 { return theme.statusWarnColor }
+        return theme.statusOKColor
     }
 
     private var percentage: Int {

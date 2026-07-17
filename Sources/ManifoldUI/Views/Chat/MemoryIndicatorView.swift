@@ -13,6 +13,8 @@ import ManifoldInference
 /// - Red (.critical) — memory is critically low
 public struct MemoryIndicatorView: View {
 
+    @Environment(\.manifoldTheme) private var theme
+
     public let pressureLevel: MemoryPressureLevel
     /// Physical RAM of the device, in bytes.
     public let physicalMemoryBytes: UInt64
@@ -29,9 +31,9 @@ public struct MemoryIndicatorView: View {
 
     private var indicatorColor: Color {
         switch pressureLevel {
-        case .nominal:  return .green
-        case .warning:  return .yellow
-        case .critical: return .red
+        case .nominal:  return theme.statusOKColor
+        case .warning:  return theme.statusWarnColor
+        case .critical: return theme.statusErrorColor
         }
     }
 
