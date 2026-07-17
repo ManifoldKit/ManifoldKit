@@ -5,6 +5,7 @@ import ManifoldInference
 /// Inline playback control for ``MessagePart/audio(url:duration:waveform:)``.
 @MainActor
 struct AudioMessageView: View {
+    @Environment(\.manifoldTheme) private var theme
     let url: URL
     let duration: TimeInterval
     let waveform: [Float]?
@@ -59,7 +60,7 @@ struct AudioMessageView: View {
                 if let loadError {
                     Text(loadError)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.statusError)
                 }
             }
         }
@@ -163,6 +164,7 @@ struct AudioMessageView: View {
 }
 
 private struct WaveformStrip: View {
+    @Environment(\.manifoldTheme) private var theme
     let samples: [Float]?
     let progress: Double
 
@@ -188,7 +190,7 @@ private struct WaveformStrip: View {
             HStack(alignment: .center, spacing: 2) {
                 ForEach(Array(bars.enumerated()), id: \.offset) { index, sample in
                     Capsule()
-                        .fill(Double(index) / Double(max(bars.count - 1, 1)) <= progress ? Color.accentColor : Color.secondary.opacity(0.35))
+                        .fill(Double(index) / Double(max(bars.count - 1, 1)) <= progress ? theme.accent : AnyShapeStyle(theme.ink2.opacity(0.35)))
                         .frame(width: barWidth(in: proxy.size.width), height: barHeight(sample, maxHeight: proxy.size.height))
                 }
             }
