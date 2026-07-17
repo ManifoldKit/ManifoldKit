@@ -1917,7 +1917,23 @@ final class ConversationRuntimeTests: XCTestCase {
         // which collapses contentParts to a single .text part) causes the
         // `.image` part assertion below to fail — the image is silently
         // dropped even though only the text was edited.
-        let mock = MockInferenceBackend()
+        //
+        // The mock MUST be vision-capable: this test attaches an `.image`
+        // part and then edits, which re-triggers regeneration. A plain
+        // `MockInferenceBackend()` has `supportsVision == false`, so the
+        // runtime rejects the image attachment up front and the turn ends
+        // via the *error* path (`.streamFinished(.stop)`) without ever
+        // emitting `.afterGeneration` — the event this test waits on. That
+        // made the wait below unwinnable: it burned the full deadline on
+        // every run (proven: 20.017s observed pre-fix, vs sub-second after)
+        // and passed only because the assertions read `store.messages`,
+        // mutated synchronously before generation was even attempted. Pass
+        // vs. `deadlineElapsed`-throw was then a scheduling coin flip — the
+        // real cause of the flake CI hit on #2282/#2304/#2212, not the 5s
+        // bound itself. Fixed here at the root; the raised 20s
+        // `defaultDeadline` above remains defence-in-depth for the other
+        // (genuinely event-racing) call sites in this file.
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
         mock.tokensToYield = ["Edited", " response"]
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
