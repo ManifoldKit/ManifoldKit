@@ -121,6 +121,7 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]
@@ -270,6 +271,7 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
             func compress(
                 history: [ChatMessage],
                 sessionID: UUID,
+                systemPrompt: String?,
                 generate: @Sendable ([ChatMessage]) async throws -> String
             ) async throws -> [ChatMessage] {
                 [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]

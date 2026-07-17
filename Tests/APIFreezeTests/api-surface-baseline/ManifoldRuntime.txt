@@ -1,11 +1,9 @@
 (top-level).TurnUsageRecord TypeAlias
 (top-level).makeMessageSearchSnippet(content:query:contextRadius:) Func
 APIEndpointRecord Struct
-APIEndpointRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 APIEndpointRecord.isValid Var
 APIEndpointRecord.validateBaseURL() Func
 APIEndpointValidationReason Enum
-APIEndpointValidationReason conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 APIEndpointValidationReason.__derived_enum_equals(_:_:) Func
 APIEndpointValidationReason.emptyURL EnumElement
 APIEndpointValidationReason.errorDescription Var
@@ -18,8 +16,6 @@ APIEndpointValidationReason.multicastReserved EnumElement
 APIEndpointValidationReason.privateHost EnumElement
 APIEndpointValidationReason.unsupportedScheme EnumElement
 AudioGenerationRuntime Class
-AudioGenerationRuntime attrs: Custom,Final
-AudioGenerationRuntime conformances: AsyncSequence,Copyable,Escapable,Sendable,SendableMetatype
 AudioGenerationRuntime.AsyncIterator TypeAlias
 AudioGenerationRuntime.Element TypeAlias
 AudioGenerationRuntime.__AsyncSequence_Failure TypeAlias
@@ -30,7 +26,6 @@ AudioGenerationRuntime.generate(config:in:) Func
 AudioGenerationRuntime.init(service:messageStore:modelIdentifier:) Constructor
 AudioGenerationRuntime.makeAsyncIterator() Func
 AudioRuntimeEvent Enum
-AudioRuntimeEvent conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AudioRuntimeEvent.==(_:_:) Func
 AudioRuntimeEvent.cancelled EnumElement
 AudioRuntimeEvent.completed EnumElement
@@ -38,15 +33,11 @@ AudioRuntimeEvent.failed EnumElement
 AudioRuntimeEvent.progress EnumElement
 AudioRuntimeEvent.started EnumElement
 BenchmarkCache Protocol
-BenchmarkCache attrs: Custom
-BenchmarkCache conformances: Copyable,Escapable,Sendable,SendableMetatype
 BenchmarkCache.fetchAll() Func
 BenchmarkCache.upsert(modelFileName:result:) Func
 ChatExportService Enum
-ChatExportService conformances: Copyable,Escapable
 ChatExportService.export(messages:sessionTitle:format:) Func
 ChatIntentAction Enum
-ChatIntentAction conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ChatIntentAction.__derived_enum_equals(_:_:) Func
 ChatIntentAction.continueSession EnumElement
 ChatIntentAction.encode(to:) Func
@@ -57,15 +48,12 @@ ChatIntentAction.readLastMessage EnumElement
 ChatIntentAction.startNewSession EnumElement
 ChatIntentAction.summariseSession EnumElement
 ChatPersistenceError Enum
-ChatPersistenceError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ChatPersistenceError.__derived_enum_equals(_:_:) Func
 ChatPersistenceError.errorDescription Var
 ChatPersistenceError.messageNotFound EnumElement
 ChatPersistenceError.providerNotConfigured EnumElement
 ChatPersistenceError.sessionNotFound EnumElement
 ChatRuntimeBootstrap Protocol
-ChatRuntimeBootstrap attrs: Custom
-ChatRuntimeBootstrap conformances: Copyable,Escapable
 ChatRuntimeBootstrap.apiEndpointStore Var
 ChatRuntimeBootstrap.audioGenerationRuntime Var
 ChatRuntimeBootstrap.diagnosticsService Var
@@ -74,10 +62,8 @@ ChatRuntimeBootstrap.persistenceStores Var
 ChatRuntimeBootstrap.videoGenerationRuntime Var
 ChatRuntimeBootstrap.webSearchRuntimePort Var
 ChatSessionIntentHandler Protocol
-ChatSessionIntentHandler conformances: Copyable,Escapable,Sendable,SendableMetatype
 ChatSessionIntentHandler.handle(_:sessionID:) Func
 CompletedTurn Struct
-CompletedTurn conformances: Copyable,Escapable,Sendable,SendableMetatype
 CompletedTurn.appData Var
 CompletedTurn.assistantMessage Var
 CompletedTurn.completionTokens Var
@@ -85,9 +71,7 @@ CompletedTurn.init(sessionID:assistantMessage:promptTokens:completionTokens:appD
 CompletedTurn.promptTokens Var
 CompletedTurn.sessionID Var
 CompressionOutcome Enum
-CompressionOutcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 CompressionOutcome.FallbackReason Enum
-CompressionOutcome.FallbackReason conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 CompressionOutcome.FallbackReason.__derived_enum_equals(_:_:) Func
 CompressionOutcome.FallbackReason.emptySummary EnumElement
 CompressionOutcome.FallbackReason.hash(into:) Func
@@ -102,28 +86,23 @@ CompressionOutcome.reduced EnumElement
 CompressionOutcome.skippedInsufficientBudget EnumElement
 CompressionOutcome.summarized EnumElement
 CompressionPolicy Protocol
-CompressionPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
-CompressionPolicy.compress(history:sessionID:generate:) Func
+CompressionPolicy.compress(history:sessionID:systemPrompt:generate:) Func
 CompressionPolicy.postCompress(sessionID:insertedRecords:) Func
 CompressionPolicy.shouldCompress(promptTokens:contextSize:contextUtilization:) Func
 CompressionReason Enum
-CompressionReason conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 CompressionReason.__derived_enum_equals(_:_:) Func
 CompressionReason.contextWindowExceeded EnumElement
 CompressionReason.hash(into:) Func
 CompressionReason.hashValue Var
 CompressionReason.manual EnumElement
 ContextBudgetEntry Struct
-ContextBudgetEntry conformances: Copyable,Escapable,Sendable,SendableMetatype
 ContextBudgetEntry.budgetWeight Var
 ContextBudgetEntry.init(provider:budgetWeight:) Constructor
 ContextBudgetEntry.provider Var
 ContextBudgetPlanner Struct
-ContextBudgetPlanner conformances: Copyable,Escapable,Sendable,SendableMetatype
 ContextBudgetPlanner.assemble(totalBudget:contextSize:context:) Func
 ContextBudgetPlanner.init(entries:) Constructor
 ConversationError Enum
-ConversationError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ConversationError.cancelled EnumElement
 ConversationError.contextAssembly EnumElement
 ConversationError.errorDescription Var
@@ -136,7 +115,6 @@ ConversationError.persistence EnumElement
 ConversationError.preTurnCompressionFailed EnumElement
 ConversationError.providerNotConfigured EnumElement
 ConversationEvent Enum
-ConversationEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationEvent.afterGeneration EnumElement
 ConversationEvent.agentHandoff EnumElement
 ConversationEvent.beforeContextAssembly EnumElement
@@ -165,7 +143,6 @@ ConversationEvent.toolCallApproved EnumElement
 ConversationEvent.toolCallCompleted EnumElement
 ConversationEvent.toolCallRequested EnumElement
 ConversationEventKind Enum
-ConversationEventKind conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ConversationEventKind.AllCases TypeAlias
 ConversationEventKind.RawValue TypeAlias
 ConversationEventKind.afterGeneration EnumElement
@@ -198,46 +175,35 @@ ConversationEventKind.toolCallApproved EnumElement
 ConversationEventKind.toolCallCompleted EnumElement
 ConversationEventKind.toolCallRequested EnumElement
 ConversationEventRecorder Class
-ConversationEventRecorder conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 ConversationEventRecorder.init() Constructor
 ConversationEventRecorder.start(on:) Func
 ConversationEventRecorder.trace Var
 ConversationEventRecorder.unownedExecutor Var
 ConversationEventTrace Struct
-ConversationEventTrace conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationEventTrace.events Var
 ConversationEventTrace.init(events:) Constructor
 ConversationEventTrace.init(recorder:) Constructor
 ConversationEventTrace.kinds Var
 ConversationEventTrace.save(to:) Func
 ConversationExportError Enum
-ConversationExportError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 ConversationExportError.__derived_enum_equals(_:_:) Func
 ConversationExportError.writeFailed EnumElement
 ConversationExportFormat Protocol
-ConversationExportFormat conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationExportFormat.contentType Var
 ConversationExportFormat.export(session:messages:) Func
 ConversationExportFormat.fileExtension Var
 ConversationExporter Enum
-ConversationExporter conformances: Copyable,Escapable
 ConversationExporter.export(session:messages:format:directory:) Func
 ConversationImportFormat Protocol
-ConversationImportFormat conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationImportFormat.decode(_:) Func
 ConversationImportWriteError Enum
-ConversationImportWriteError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ConversationImportWriteError.errorDescription Var
 ConversationImportWriteError.messageWriteFailed EnumElement
 ConversationImportWriteError.sessionWriteFailed EnumElement
 ConversationImporter Struct
-ConversationImporter attrs: Custom
-ConversationImporter conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationImporter.importConversation(_:) Func
 ConversationImporter.init(sessionStore:messageStore:) Constructor
 ConversationRuntime Class
-ConversationRuntime attrs: Final
-ConversationRuntime conformances: AsyncSequence,Copyable,Escapable,Sendable,SendableMetatype
 ConversationRuntime.AsyncIterator TypeAlias
 ConversationRuntime.Element TypeAlias
 ConversationRuntime.__AsyncSequence_Failure TypeAlias
@@ -254,7 +220,6 @@ ConversationRuntime.processTurnWithOutcome(_:) Func
 ConversationRuntime.updateHookRegistry(_:) Func
 ConversationRuntime.updateSessionToolSources(_:) Func
 ConversationRuntimeOptions Struct
-ConversationRuntimeOptions conformances: Copyable,Escapable
 ConversationRuntimeOptions.auxiliaryInferenceService Var
 ConversationRuntimeOptions.budgetPlanner Var
 ConversationRuntimeOptions.compressionPolicy Var
@@ -266,20 +231,16 @@ ConversationRuntimeOptions.pipeline Var
 ConversationRuntimeOptions.preTurnCompressionPolicy Var
 ConversationRuntimeOptions.turnContextProvider Var
 ConversationStreamHandle Struct
-ConversationStreamHandle conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ConversationStreamHandle.__derived_struct_equals(_:_:) Func
 ConversationStreamHandle.hash(into:) Func
 ConversationStreamHandle.hashValue Var
 ConversationStreamHandle.id Var
 ConversationStreamHandle.init(id:) Constructor
 ConversationTurnHandle Struct
-ConversationTurnHandle conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationTurnHandle.outcome Var
 ConversationTurnHandle.streamHandle Var
 ConversationTurnOutcome Struct
-ConversationTurnOutcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 ConversationTurnOutcome.Classification Enum
-ConversationTurnOutcome.Classification conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ConversationTurnOutcome.Classification.__derived_enum_equals(_:_:) Func
 ConversationTurnOutcome.Classification.cancelled EnumElement
 ConversationTurnOutcome.Classification.cancelledEmpty EnumElement
@@ -300,10 +261,9 @@ ConversationTurnOutcome.reason Var
 ConversationTurnOutcome.sessionID Var
 ConversationTurnOutcome.streamHandle Var
 DefaultCompressionPolicy Struct
-DefaultCompressionPolicy conformances: CompressionPolicy,Copyable,Escapable,PreTurnCompressionPolicy,Sendable,SendableMetatype
 DefaultCompressionPolicy.anchored(threshold:contextSize:reservedTokens:summarizerInputWindow:summaryTemplate:tokenizer:isPinned:onOutcome:) Func
-DefaultCompressionPolicy.compress(history:sessionID:generate:) Func
-DefaultCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
+DefaultCompressionPolicy.compress(history:sessionID:systemPrompt:generate:) Func
+DefaultCompressionPolicy.compressBeforeTurn(history:sessionID:systemPrompt:generate:) Func
 DefaultCompressionPolicy.contextSize Var
 DefaultCompressionPolicy.defaultReservedTokens Var
 DefaultCompressionPolicy.extractive(threshold:headBudgetFraction:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:) Func
@@ -314,42 +274,33 @@ DefaultCompressionPolicy.shouldCompressBeforeTurn(messageCount:lastPromptTokens:
 DefaultCompressionPolicy.threshold Var
 DefaultCompressionPolicy.truncating(threshold:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:) Func
 DocumentChunker Struct
-DocumentChunker conformances: Copyable,Escapable,Sendable,SendableMetatype
 DocumentChunker.chunk(text:documentID:) Func
 DocumentChunker.chunkSize Var
 DocumentChunker.init(chunkSize:overlap:) Constructor
 DocumentChunker.overlap Var
 DocumentParser Protocol
-DocumentParser conformances: Copyable,Escapable,Sendable,SendableMetatype
 DocumentParser.parse(url:) Func
 DocumentParser.supportedExtensions Var
 DocumentParserError Enum
-DocumentParserError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 DocumentParserError.errorDescription Var
 DocumentParserError.parseFailed EnumElement
 DocumentParserError.readFailed EnumElement
 DocumentParserError.unsupportedFileType EnumElement
 DocumentStore Protocol
-DocumentStore attrs: Custom
-DocumentStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 DocumentStore.deleteDocument(id:) Func
 DocumentStore.fetchDocument(id:) Func
 DocumentStore.fetchDocuments() Func
 DocumentStore.insertDocument(_:) Func
 EndpointStore Protocol
-EndpointStore attrs: Custom
-EndpointStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 EndpointStore.deleteEndpoint(_:) Func
 EndpointStore.fetchEndpoints() Func
 EndpointStore.insertEndpoint(_:) Func
 EndpointStore.updateEndpoint(_:) Func
 EndpointStoreError Enum
-EndpointStoreError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 EndpointStoreError.__derived_enum_equals(_:_:) Func
 EndpointStoreError.endpointNotFound EnumElement
 EndpointStoreError.errorDescription Var
 ExportFormat Enum
-ExportFormat conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable
 ExportFormat.AllCases TypeAlias
 ExportFormat.ID TypeAlias
 ExportFormat.RawValue TypeAlias
@@ -362,7 +313,6 @@ ExportFormat.mimeType Var
 ExportFormat.plainText EnumElement
 ExportFormat.rawValue Var
 FinishReason Enum
-FinishReason conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 FinishReason.__derived_enum_equals(_:_:) Func
 FinishReason.cancelled EnumElement
 FinishReason.empty EnumElement
@@ -372,49 +322,38 @@ FinishReason.length EnumElement
 FinishReason.stop EnumElement
 FinishReason.timedOut EnumElement
 GenerationHook Protocol
-GenerationHook conformances: Copyable,Escapable,Sendable,SendableMetatype
 GenerationHook.postGeneration(_:) Func
 GenerationHook.willBeginTurn(sessionID:) Func
 HandoffDetector Enum
-HandoffDetector conformances: Copyable,Escapable
 HandoffDetector.boundaryMessage(from:to:payload:) Func
 HandoffDetector.classify(_:in:) Func
 HandoffDetector.handoffInstructions(for:siblings:) Func
 HandoffDetector.transferToolPrefix Var
 HandoffSourceError Enum
-HandoffSourceError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 HandoffSourceError.__derived_enum_equals(_:_:) Func
 HandoffSourceError.handoffMustBeInterceptedUpstream EnumElement
 HandoffSourceError.unknownTransferTarget EnumElement
 HandoffToolSource Class
-HandoffToolSource attrs: Final
-HandoffToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionToolSource
 HandoffToolSource.agentCountSoftCap Var
 HandoffToolSource.init() Constructor
 HandoffToolSource.resolve(toolName:arguments:session:) Func
 HandoffToolSource.toolDefinitions(for:) Func
 HistoryContribution Struct
-HistoryContribution conformances: Copyable,Escapable,Sendable,SendableMetatype
 HistoryContribution.init(record:position:) Constructor
 HistoryContribution.position Var
 HistoryContribution.record Var
 HistoryInsertionPosition Enum
-HistoryInsertionPosition conformances: Copyable,Escapable,Sendable,SendableMetatype
 HistoryInsertionPosition.afterRecord EnumElement
 HistoryInsertionPosition.atDepth EnumElement
 HistoryInsertionPosition.beforeRecord EnumElement
 HistoryInsertionPosition.head EnumElement
 HistoryInsertionPosition.tail EnumElement
 HistoryProvider Protocol
-HistoryProvider conformances: Copyable,Escapable,Sendable,SendableMetatype
 HistoryProvider.contribute(history:context:) Func
 HistoryShaper Protocol
-HistoryShaper conformances: Copyable,Escapable,Sendable,SendableMetatype
 HistoryShaper.shape(history:request:) Func
 HistoryShapingDiagnostic Struct
-HistoryShapingDiagnostic conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 HistoryShapingDiagnostic.Kind Enum
-HistoryShapingDiagnostic.Kind conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 HistoryShapingDiagnostic.Kind.RawValue TypeAlias
 HistoryShapingDiagnostic.Kind.init(rawValue:) Constructor
 HistoryShapingDiagnostic.Kind.rawValue Var
@@ -429,17 +368,14 @@ HistoryShapingDiagnostic.kind Var
 HistoryShapingDiagnostic.messageID Var
 HistoryShapingDiagnostic.reason Var
 HistoryShapingRequest Struct
-HistoryShapingRequest conformances: Copyable,Escapable,Sendable,SendableMetatype
 HistoryShapingRequest.appData Var
 HistoryShapingRequest.init(turnContextRequest:appData:) Constructor
 HistoryShapingRequest.turnContextRequest Var
 HistoryShapingResult Struct
-HistoryShapingResult conformances: Copyable,Escapable,Sendable,SendableMetatype
 HistoryShapingResult.diagnostics Var
 HistoryShapingResult.init(promptHistory:diagnostics:) Constructor
 HistoryShapingResult.promptHistory Var
 HookEvent Enum
-HookEvent conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 HookEvent.AllCases TypeAlias
 HookEvent.RawValue TypeAlias
 HookEvent.allCases Var
@@ -449,7 +385,6 @@ HookEvent.preCompact EnumElement
 HookEvent.preToolUse EnumElement
 HookEvent.rawValue Var
 HookInput Struct
-HookInput conformances: Copyable,Escapable,Sendable,SendableMetatype
 HookInput.completedTurn Var
 HookInput.event Var
 HookInput.init(event:sessionID:toolName:toolArguments:completedTurn:) Constructor
@@ -457,7 +392,6 @@ HookInput.sessionID Var
 HookInput.toolArguments Var
 HookInput.toolName Var
 HookOutput Struct
-HookOutput conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 HookOutput.__derived_struct_equals(_:_:) Func
 HookOutput.block Var
 HookOutput.denyReason Var
@@ -465,19 +399,15 @@ HookOutput.init(updatedInput:block:denyReason:) Constructor
 HookOutput.passthrough Var
 HookOutput.updatedInput Var
 HookRegistry Class
-HookRegistry conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 HookRegistry.Handler TypeAlias
 HookRegistry.init(clock:timeout:) Constructor
 HookRegistry.register(_:handler:) Func
 HookRegistry.run(_:) Func
 HookRegistry.unownedExecutor Var
 IdentityHistoryProvider Struct
-IdentityHistoryProvider conformances: Copyable,Escapable,HistoryProvider,Sendable,SendableMetatype
 IdentityHistoryProvider.contribute(history:context:) Func
 IdentityHistoryProvider.init() Constructor
 ImageGenerationRuntime Class
-ImageGenerationRuntime attrs: Custom,Final
-ImageGenerationRuntime conformances: AsyncSequence,Copyable,Escapable,Sendable,SendableMetatype
 ImageGenerationRuntime.AsyncIterator TypeAlias
 ImageGenerationRuntime.Element TypeAlias
 ImageGenerationRuntime.__AsyncSequence_Failure TypeAlias
@@ -488,7 +418,6 @@ ImageGenerationRuntime.generate(prompt:config:in:) Func
 ImageGenerationRuntime.init(service:messageStore:modelIdentifier:) Constructor
 ImageGenerationRuntime.makeAsyncIterator() Func
 ImageRuntimeEvent Enum
-ImageRuntimeEvent conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ImageRuntimeEvent.==(_:_:) Func
 ImageRuntimeEvent.cancelled EnumElement
 ImageRuntimeEvent.completed EnumElement
@@ -497,18 +426,21 @@ ImageRuntimeEvent.preview EnumElement
 ImageRuntimeEvent.progress EnumElement
 ImageRuntimeEvent.started EnumElement
 ImportedConversation Struct
-ImportedConversation conformances: Copyable,Escapable,Sendable,SendableMetatype
 ImportedConversation.init(session:messages:) Constructor
 ImportedConversation.messages Var
 ImportedConversation.session Var
+InMemoryToolCallConformanceCache Class
+InMemoryToolCallConformanceCache.fetchAll() Func
+InMemoryToolCallConformanceCache.get(_:) Func
+InMemoryToolCallConformanceCache.init(seed:) Constructor
+InMemoryToolCallConformanceCache.put(_:_:) Func
+InMemoryToolCallConformanceCache.unownedExecutor Var
 JSONLExportFormat Struct
-JSONLExportFormat conformances: ConversationExportFormat,Copyable,Escapable,Sendable,SendableMetatype
 JSONLExportFormat.contentType Var
 JSONLExportFormat.export(session:messages:) Func
 JSONLExportFormat.fileExtension Var
 JSONLExportFormat.init() Constructor
 JSONLImportError Enum
-JSONLImportError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 JSONLImportError.__derived_enum_equals(_:_:) Func
 JSONLImportError.emptyData EnumElement
 JSONLImportError.errorDescription Var
@@ -516,17 +448,14 @@ JSONLImportError.malformedJSON EnumElement
 JSONLImportError.missingField EnumElement
 JSONLImportError.noMessages EnumElement
 JSONLImportFormat Struct
-JSONLImportFormat conformances: ConversationImportFormat,Copyable,Escapable,Sendable,SendableMetatype
 JSONLImportFormat.decode(_:) Func
 JSONLImportFormat.init() Constructor
 MarkdownExportFormat Struct
-MarkdownExportFormat conformances: ConversationExportFormat,Copyable,Escapable,Sendable,SendableMetatype
 MarkdownExportFormat.contentType Var
 MarkdownExportFormat.export(session:messages:) Func
 MarkdownExportFormat.fileExtension Var
 MarkdownExportFormat.init() Constructor
 MessageSearchHit Struct
-MessageSearchHit conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 MessageSearchHit.ID TypeAlias
 MessageSearchHit.__derived_struct_equals(_:_:) Func
 MessageSearchHit.hash(into:) Func
@@ -539,8 +468,6 @@ MessageSearchHit.sessionID Var
 MessageSearchHit.snippet Var
 MessageSearchHit.timestamp Var
 MessageStore Protocol
-MessageStore attrs: Custom
-MessageStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 MessageStore.addPostWriteHook(_:) Func
 MessageStore.deleteMessage(_:) Func
 MessageStore.deleteMessages(for:) Func
@@ -551,53 +478,41 @@ MessageStore.insertMessage(_:) Func
 MessageStore.searchMessages(query:limit:) Func
 MessageStore.updateMessage(_:) Func
 MessageStoreMutation Enum
-MessageStoreMutation conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MessageStoreMutation.__derived_enum_equals(_:_:) Func
 MessageStoreMutation.delete EnumElement
 MessageStoreMutation.deleteMessages EnumElement
 MessageStoreMutation.insert EnumElement
 MessageStoreMutation.update EnumElement
 MessageStorePostWriteHook Protocol
-MessageStorePostWriteHook conformances: Copyable,Escapable,Sendable,SendableMetatype
 MessageStorePostWriteHook.messageDidWrite(_:in:) Func
 PDFDocumentParser Struct
-PDFDocumentParser conformances: Copyable,DocumentParser,Escapable,Sendable,SendableMetatype
 PDFDocumentParser.init() Constructor
 PDFDocumentParser.parse(url:) Func
 PDFDocumentParser.supportedExtensions Var
 PersonaStore Protocol
-PersonaStore attrs: Custom
-PersonaStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 PersonaStore.deletePersona(_:) Func
 PersonaStore.fetchPersonas() Func
 PersonaStore.insertPersona(_:) Func
 PersonaStoreError Enum
-PersonaStoreError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 PersonaStoreError.__derived_enum_equals(_:_:) Func
 PersonaStoreError.errorDescription Var
 PersonaStoreError.personaNotFound EnumElement
 PlainTextExportFormat Struct
-PlainTextExportFormat conformances: ConversationExportFormat,Copyable,Escapable,Sendable,SendableMetatype
 PlainTextExportFormat.contentType Var
 PlainTextExportFormat.export(session:messages:) Func
 PlainTextExportFormat.fileExtension Var
 PlainTextExportFormat.init() Constructor
 PreToolUseHookAdapter Enum
-PreToolUseHookAdapter conformances: Copyable,Escapable
 PreToolUseHookAdapter.make(registry:eventEmitter:) Func
 PreTurnCompressionPolicy Protocol
-PreTurnCompressionPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
-PreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
+PreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:systemPrompt:generate:) Func
 PreTurnCompressionPolicy.postCompressBeforeTurn(sessionID:insertedRecords:) Func
 PreTurnCompressionPolicy.shouldCompressBeforeTurn(messageCount:lastPromptTokens:) Func
 PromptContextPipeline Class
-PromptContextPipeline attrs: Final
-PromptContextPipeline conformances: Copyable,Escapable,Sendable,SendableMetatype
 PromptContextPipeline.assemble(messageCount:) Func
 PromptContextPipeline.assemble(totalBudget:contextSize:context:) Func
 PromptContextPipeline.init(providers:) Constructor
 PromptContextRequest Struct
-PromptContextRequest conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 PromptContextRequest.__derived_struct_equals(_:_:) Func
 PromptContextRequest.hash(into:) Func
 PromptContextRequest.hashValue Var
@@ -606,13 +521,10 @@ PromptContextRequest.messageCount Var
 PromptContextRequest.sessionID Var
 PromptContextRequest.userInput Var
 RAGError Enum
-RAGError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 RAGError.embeddingFailed EnumElement
 RAGError.errorDescription Var
 RAGService Class
-RAGService conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 RAGService.RetrievalResult Struct
-RAGService.RetrievalResult conformances: Copyable,Escapable,Sendable,SendableMetatype
 RAGService.RetrievalResult.citations Var
 RAGService.RetrievalResult.documents Var
 RAGService.RetrievalResult.empty Var
@@ -628,7 +540,6 @@ RAGService.retrieve(query:tokenBudget:tokenizer:) Func
 RAGService.retrieveSlots(query:limit:) Func
 RAGService.unownedExecutor Var
 RetrievalStrategy Enum
-RetrievalStrategy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RetrievalStrategy.__derived_enum_equals(_:_:) Func
 RetrievalStrategy.dense EnumElement
 RetrievalStrategy.hash(into:) Func
@@ -636,7 +547,6 @@ RetrievalStrategy.hashValue Var
 RetrievalStrategy.hybrid EnumElement
 RetrievalStrategy.sparse EnumElement
 RuntimeBootstrapMilestone Enum
-RuntimeBootstrapMilestone conformances: CaseIterable,Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RuntimeBootstrapMilestone.AllCases TypeAlias
 RuntimeBootstrapMilestone.__derived_enum_equals(_:_:) Func
 RuntimeBootstrapMilestone.allCases Var
@@ -650,25 +560,20 @@ RuntimeBootstrapMilestone.installingConfiguration EnumElement
 RuntimeBootstrapMilestone.resolvingInferenceService EnumElement
 RuntimeBootstrapMilestone.wiringPersistence EnumElement
 SamplerPresetStore Protocol
-SamplerPresetStore attrs: Custom
-SamplerPresetStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 SamplerPresetStore.deletePreset(_:) Func
 SamplerPresetStore.fetchPresets() Func
 SamplerPresetStore.insertPreset(_:) Func
 SamplerPresetStoreError Enum
-SamplerPresetStoreError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 SamplerPresetStoreError.__derived_enum_equals(_:_:) Func
 SamplerPresetStoreError.errorDescription Var
 SamplerPresetStoreError.presetNotFound EnumElement
 SearchResults Struct
-SearchResults conformances: Copyable,Escapable,Sendable,SendableMetatype
 SearchResults.empty Var
 SearchResults.init(titleMatches:messageHitsBySession:messageMatchSessions:) Constructor
 SearchResults.messageHitsBySession Var
 SearchResults.messageMatchSessions Var
 SearchResults.titleMatches Var
 SessionListEvent Enum
-SessionListEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionListEvent.persistenceFailure EnumElement
 SessionListEvent.searchResultsChanged EnumElement
 SessionListEvent.sessionDeleted EnumElement
@@ -677,8 +582,6 @@ SessionListEvent.sessionRenamed EnumElement
 SessionListEvent.sessionsLoaded EnumElement
 SessionListEvent.titleGenerated EnumElement
 SessionStore Protocol
-SessionStore attrs: Custom
-SessionStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionStore.addPostWriteHook(_:) Func
 SessionStore.deleteAll() Func
 SessionStore.deleteSession(_:) Func
@@ -690,64 +593,50 @@ SessionStore.setActiveAgent(sessionID:agentID:) Func
 SessionStore.touch(sessionID:date:) Func
 SessionStore.updateSession(_:) Func
 SessionStorePostWriteHook Protocol
-SessionStorePostWriteHook conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionStorePostWriteHook.sessionDidWrite(_:) Func
 SessionToolSource Protocol
-SessionToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionToolSource.allowedToolNames(for:) Func
 SessionToolSource.resolve(toolName:arguments:session:) Func
 SessionToolSource.toolDefinitions(for:) Func
 ShareableFile Struct
-ShareableFile conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ShareableFile.__derived_struct_equals(_:_:) Func
 ShareableFile.contentType Var
 ShareableFile.init(url:suggestedFilename:contentType:) Constructor
 ShareableFile.suggestedFilename Var
 ShareableFile.url Var
 SingleTurnDriver Struct
-SingleTurnDriver conformances: Copyable,Escapable,Sendable,SendableMetatype,TurnDriver
 SingleTurnDriver.init() Constructor
 SummarisationHook Class
-SummarisationHook attrs: Final
-SummarisationHook conformances: Copyable,Escapable,GenerationHook,Sendable,SendableMetatype
 SummarisationHook.init(messageStore:backend:sessionStore:summariser:policy:recentTurnsToPreserve:contextSizeProvider:) Constructor
 SummarisationHook.makeHookHandler() Func
 SummarisationHook.postGeneration(_:) Func
 SummarisationHook.recentTurnsToPreserve Var
 SummarisationHook.willBeginTurn(sessionID:) Func
 SummarisationPolicy Protocol
-SummarisationPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
 SummarisationPolicy.shouldSummarise(promptTokens:contextSize:contextUtilization:) Func
 TextDocumentParser Struct
-TextDocumentParser conformances: Copyable,DocumentParser,Escapable,Sendable,SendableMetatype
 TextDocumentParser.init() Constructor
 TextDocumentParser.parse(url:) Func
 TextDocumentParser.supportedExtensions Var
 ThresholdSummarisationPolicy Struct
-ThresholdSummarisationPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype,SummarisationPolicy
 ThresholdSummarisationPolicy.init(utilizationThreshold:) Constructor
 ThresholdSummarisationPolicy.shouldSummarise(promptTokens:contextSize:contextUtilization:) Func
 ThresholdSummarisationPolicy.utilizationThreshold Var
 ToolApprovalHook Enum
-ToolApprovalHook conformances: Copyable,Escapable
 ToolApprovalHook.ApprovePrompt TypeAlias
 ToolApprovalHook.make(policy:cache:approve:) Func
 ToolApprovalPolicy Enum
-ToolApprovalPolicy conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolApprovalPolicy.__derived_enum_equals(_:_:) Func
 ToolApprovalPolicy.alwaysApprove EnumElement
 ToolApprovalPolicy.alwaysAsk EnumElement
 ToolApprovalPolicy.approveForRun EnumElement
 ToolApprovalStickyCache Class
-ToolApprovalStickyCache conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 ToolApprovalStickyCache.approvedTools() Func
 ToolApprovalStickyCache.init() Constructor
 ToolApprovalStickyCache.unownedExecutor Var
 ToolCall Struct
-ToolCall conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolCall.ID TypeAlias
 ToolCallCapability Enum
-ToolCallCapability conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ToolCallCapability.RawValue TypeAlias
 ToolCallCapability.init(rawValue:) Constructor
 ToolCallCapability.rawValue Var
@@ -755,7 +644,6 @@ ToolCallCapability.supported EnumElement
 ToolCallCapability.unknown EnumElement
 ToolCallCapability.unsupported EnumElement
 ToolCallConformance Struct
-ToolCallConformance conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 ToolCallConformance.__derived_struct_equals(_:_:) Func
 ToolCallConformance.capability Var
 ToolCallConformance.encode(to:) Func
@@ -769,8 +657,11 @@ ToolCallConformance.recall Var
 ToolCallConformance.sampleCount Var
 ToolCallConformance.source Var
 ToolCallConformance.unknownDefault Var
+ToolCallConformanceCache Protocol
+ToolCallConformanceCache.fetchAll() Func
+ToolCallConformanceCache.get(_:) Func
+ToolCallConformanceCache.put(_:_:) Func
 ToolCallConformanceKey Struct
-ToolCallConformanceKey conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolCallConformanceKey.__derived_struct_equals(_:_:) Func
 ToolCallConformanceKey.backend Var
 ToolCallConformanceKey.encode(to:) Func
@@ -781,7 +672,6 @@ ToolCallConformanceKey.init(model:quant:backend:) Constructor
 ToolCallConformanceKey.model Var
 ToolCallConformanceKey.quant Var
 ToolCallConformanceSource Enum
-ToolCallConformanceSource conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ToolCallConformanceSource.RawValue TypeAlias
 ToolCallConformanceSource.init(rawValue:) Constructor
 ToolCallConformanceSource.measured EnumElement
@@ -789,11 +679,8 @@ ToolCallConformanceSource.rawValue Var
 ToolCallConformanceSource.renderConsistent EnumElement
 ToolCallConformanceSource.templateExpressible EnumElement
 TransactionalMessageStore Protocol
-TransactionalMessageStore attrs: Custom
-TransactionalMessageStore conformances: Copyable,Escapable,MessageStore,Sendable,SendableMetatype
 TransactionalMessageStore.performMessageMutations(_:) Func
 TurnConfig Struct
-TurnConfig conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 TurnConfig.__derived_struct_equals(_:_:) Func
 TurnConfig.encode(to:) Func
 TurnConfig.generation Var
@@ -810,7 +697,6 @@ TurnConfig.systemPrompt Var
 TurnConfig.thinkingStreamingBatchCharacterLimit Var
 TurnConfig.thinkingStreamingUpdateInterval Var
 TurnContextBuildRequest Struct
-TurnContextBuildRequest conformances: Copyable,Escapable,Sendable,SendableMetatype
 TurnContextBuildRequest.conversationText Var
 TurnContextBuildRequest.init(sessionID:turnKind:messageCount:userInput:conversationText:tokenizer:) Constructor
 TurnContextBuildRequest.messageCount Var
@@ -819,7 +705,6 @@ TurnContextBuildRequest.tokenizer Var
 TurnContextBuildRequest.turnKind Var
 TurnContextBuildRequest.userInput Var
 TurnInput Struct
-TurnInput conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 TurnInput.config Var
 TurnInput.encode(to:) Func
 TurnInput.init(from:) Constructor
@@ -827,7 +712,6 @@ TurnInput.init(sessionID:kind:config:) Constructor
 TurnInput.kind Var
 TurnInput.sessionID Var
 TurnKind Enum
-TurnKind conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 TurnKind.branch EnumElement
 TurnKind.edit EnumElement
 TurnKind.encode(to:) Func
@@ -835,7 +719,6 @@ TurnKind.init(from:) Constructor
 TurnKind.regenerate EnumElement
 TurnKind.send EnumElement
 TurnUsage Struct
-TurnUsage conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 TurnUsage.cacheWriteTokens Var
 TurnUsage.cachedInputTokens Var
 TurnUsage.completionTokens Var
@@ -849,14 +732,11 @@ TurnUsage.promptTokens Var
 TurnUsage.sessionID Var
 TurnUsage.timestamp Var
 UsageStore Protocol
-UsageStore attrs: Custom
-UsageStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 UsageStore.recentRecords(limit:) Func
 UsageStore.record(_:) Func
 UsageStore.summary(forEndpoint:sinceDays:) Func
 UsageStore.summary(sinceDays:) Func
 UsageSummary Struct
-UsageSummary conformances: Copyable,Escapable,Sendable,SendableMetatype
 UsageSummary.init(totalPromptTokens:totalCompletionTokens:totalCachedInputTokens:totalCacheWriteTokens:turnCount:) Constructor
 UsageSummary.totalCacheWriteTokens Var
 UsageSummary.totalCachedInputTokens Var
@@ -864,7 +744,6 @@ UsageSummary.totalCompletionTokens Var
 UsageSummary.totalPromptTokens Var
 UsageSummary.turnCount Var
 VectorStore Protocol
-VectorStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 VectorStore.bm25Search(query:limit:) Func
 VectorStore.delete(documentID:) Func
 VectorStore.deleteAll() Func
@@ -872,8 +751,6 @@ VectorStore.insert(chunks:documentTitle:embeddings:) Func
 VectorStore.keywordSearch(query:limit:) Func
 VectorStore.search(embedding:limit:) Func
 VideoGenerationRuntime Class
-VideoGenerationRuntime attrs: Custom,Final
-VideoGenerationRuntime conformances: AsyncSequence,Copyable,Escapable,Sendable,SendableMetatype
 VideoGenerationRuntime.AsyncIterator TypeAlias
 VideoGenerationRuntime.Element TypeAlias
 VideoGenerationRuntime.__AsyncSequence_Failure TypeAlias
@@ -884,7 +761,6 @@ VideoGenerationRuntime.generate(prompt:config:in:) Func
 VideoGenerationRuntime.init(service:messageStore:modelIdentifier:) Constructor
 VideoGenerationRuntime.makeAsyncIterator() Func
 VideoRuntimeEvent Enum
-VideoRuntimeEvent conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 VideoRuntimeEvent.==(_:_:) Func
 VideoRuntimeEvent.cancelled EnumElement
 VideoRuntimeEvent.completed EnumElement
@@ -892,6 +768,4 @@ VideoRuntimeEvent.failed EnumElement
 VideoRuntimeEvent.progress EnumElement
 VideoRuntimeEvent.started EnumElement
 WebSearchRuntime Protocol
-WebSearchRuntime attrs: Custom
-WebSearchRuntime conformances: Copyable,Escapable,Sendable,SendableMetatype
 WebSearchRuntime.search(query:) Func

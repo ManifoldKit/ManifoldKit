@@ -95,6 +95,7 @@ final class PreCompactWiringTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             await recorder.record("compress")

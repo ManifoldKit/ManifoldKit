@@ -169,6 +169,7 @@ final class TranscriptHealerLiveTurnPathTests: XCTestCase {
         func compressBeforeTurn(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             receivedHistory = history

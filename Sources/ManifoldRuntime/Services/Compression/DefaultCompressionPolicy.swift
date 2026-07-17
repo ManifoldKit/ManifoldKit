@@ -99,8 +99,9 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     /// pre-turn seam does not pass it and the strategy needs it to size budget.
     public let contextSize: Int
     /// Tokens reserved out of `contextSize` before history is sized: response
-    /// headroom + a system-prompt allowance (the real system prompt is not
-    /// visible to the strategy). Single source of truth for the reservation.
+    /// headroom only (#1957) — the session's real system-prompt cost is
+    /// measured separately from the `systemPrompt` passed into `compress`
+    /// and subtracted on top of this reservation, not folded into it.
     public let reservedTokens: Int
     private let tokenizer: (any TokenizerProvider)?
     /// Predicate honored alongside `.system`-role / `.memory`-kind records as

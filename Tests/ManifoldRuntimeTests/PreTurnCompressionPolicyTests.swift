@@ -35,6 +35,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func compressBeforeTurn(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             await counter.increment()
@@ -59,6 +60,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func compressBeforeTurn(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             await counter.increment()
@@ -76,6 +78,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func compressBeforeTurn(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             throw PolicyError()
@@ -88,6 +91,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func compressBeforeTurn(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             return []
@@ -111,6 +115,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func compressBeforeTurn(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             return [ChatMessage(
@@ -510,6 +515,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
             func compressBeforeTurn(
                 history: [ChatMessage],
                 sessionID: UUID,
+                systemPrompt: String?,
                 generate: @Sendable ([ChatMessage]) async throws -> String
             ) async throws -> [ChatMessage] { history }
         }

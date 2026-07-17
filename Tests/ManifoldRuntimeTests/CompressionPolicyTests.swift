@@ -140,6 +140,7 @@ final class CompressionPolicyTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             await counter.increment()
@@ -162,6 +163,7 @@ final class CompressionPolicyTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             await counter.increment()
@@ -180,6 +182,7 @@ final class CompressionPolicyTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             throw CompressionError()
@@ -196,6 +199,7 @@ final class CompressionPolicyTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             return []  // Intentionally returns nothing — should be treated as an error.
@@ -485,6 +489,7 @@ final class CompressionPolicyTests: XCTestCase {
             func compress(
                 history: [ChatMessage],
                 sessionID: UUID,
+                systemPrompt: String?,
                 generate: @Sendable ([ChatMessage]) async throws -> String
             ) async throws -> [ChatMessage] {
                 // Return history with fresh IDs + same sessionID so they can
@@ -544,6 +549,7 @@ final class CompressionPolicyTests: XCTestCase {
             func compress(
                 history: [ChatMessage],
                 sessionID: UUID,
+                systemPrompt: String?,
                 generate: @Sendable ([ChatMessage]) async throws -> String
             ) async throws -> [ChatMessage] {
                 await capture.capture(history)
@@ -607,6 +613,7 @@ final class CompressionPolicyTests: XCTestCase {
                 return false
             }
             func compress(history: [ChatMessage], sessionID: UUID,
+                          systemPrompt: String?,
                           generate: @Sendable ([ChatMessage]) async throws -> String) async throws -> [ChatMessage] { history }
         }
 

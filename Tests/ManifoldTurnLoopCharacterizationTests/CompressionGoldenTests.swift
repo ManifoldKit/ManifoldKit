@@ -79,6 +79,7 @@ final class CompressionGoldenTests: XCTestCase {
         func compress(
             history: [ManifoldInference.ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ManifoldInference.ChatMessage]) async throws -> String
         ) async throws -> [ManifoldInference.ChatMessage] {
             // Return a single memory record summarising the history. Does NOT
@@ -107,6 +108,7 @@ final class CompressionGoldenTests: XCTestCase {
         func compressBeforeTurn(
             history: [ManifoldInference.ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ManifoldInference.ChatMessage]) async throws -> String
         ) async throws -> [ManifoldInference.ChatMessage] {
             [ManifoldInference.ChatMessage(
