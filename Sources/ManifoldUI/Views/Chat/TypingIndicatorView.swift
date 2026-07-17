@@ -3,6 +3,7 @@ import SwiftUI
 /// Animated typing indicator shown while waiting for the first token from the backend.
 public struct TypingIndicatorView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.manifoldTheme) private var theme
     @State private var animationPhase: Int = 0
 
     public init() {}
@@ -12,7 +13,7 @@ public struct TypingIndicatorView: View {
             ForEach(0..<3, id: \.self) { index in
                 let appearance = Self.dotAppearance(reduceMotion: reduceMotion, isActive: animationPhase == index)
                 Circle()
-                    .fill(Color.secondary)
+                    .fill(theme.ink2)
                     .frame(width: 8, height: 8)
                     .scaleEffect(appearance.scale)
                     .opacity(appearance.opacity)
