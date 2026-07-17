@@ -50,8 +50,8 @@ PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 #             plain `swift test` shape.
 #   local   — Apple-Silicon pre-push: the surviving opt-in traits (Macros;
 #             Server runs in its own CI job and stays out of the batch, as
-#             before), plus the extended suite list (ManifoldKitTests /
-#             ManifoldHuggingFaceTests).
+#             before). The XCTest filter list is identical to `ci`'s — see
+#             PROFILE_LOCAL_XCTEST_FILTERS below.
 #
 # Profile defaults are applied AFTER caller flags are parsed, but only fill
 # slots the caller did not set:

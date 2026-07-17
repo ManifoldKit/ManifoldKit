@@ -53,14 +53,19 @@ import XCTest
 ///   (`"${OTHER[@]}"`). It does not hardcode `PROFILE_CI_XCTEST_FILTERS` /
 ///   `PROFILE_LOCAL_XCTEST_FILTERS` by name, so a new filter-list variable
 ///   (or reordering the existing ones) is picked up automatically.
-/// - `ciFilterTargetNames` scans the *entire* workflow file text for
-///   `--filter <Identifier>` tokens with a single regex, deliberately NOT
-///   trying to parse YAML structure or split on individual `run:` steps —
-///   `ci.yml`'s main XCTest batch is one very long single-line `run:`
-///   command with ~19 `--filter` flags on it, so a line-oriented or
-///   step-oriented parser would either miss most of them or need constant
-///   updates as steps are added/reordered. A flat text scan for the flag
-///   itself is both simpler and more robust to that shape.
+/// - `ciFilterTargetNames` scans the workflow file one LINE at a time
+///   (never splitting a `run:` step across multiple lines the way a
+///   YAML/step-oriented parser would) for `--filter <Identifier>` tokens,
+///   skipping any line that is entirely a comment. `ci.yml`'s main XCTest
+///   batch is one very long single-line `run:` command with ~19 `--filter`
+///   flags on it, and its own line has no `#` prefix, so per-line scanning
+///   still captures every flag on it in one pass — a step-oriented parser
+///   that tried to model job/step boundaries would need constant updates as
+///   steps are added/reordered, which per-line scanning avoids. The comment
+///   skip exists because ci.yml carries prose like `# - Run \`swift test
+///   --filter ManifoldE2ETests\` on physical hardware.` — without it, a
+///   `--filter` token mentioned in a comment reads as CI-execution evidence
+///   for a target CI never actually runs.
 ///
 /// CI runners ship Bash 3.2; both parsers only read files as text (no
 /// `bash`/`yq`/`jq` invoked), so toolchain availability is irrelevant.
@@ -311,6 +316,32 @@ final class TestTargetGateAuditTest: XCTestCase {
         )
     }
 
+    /// A `--filter` token embedded in a COMMENT line (prose like ci.yml's
+    /// real `# - Run \`swift test --filter ManifoldE2ETests\` on physical
+    /// hardware.`) must NOT be treated as CI-execution evidence, while a
+    /// genuine `run:` step's `--filter` on another line must still be
+    /// captured. Without the comment guard, the parser would certify a
+    /// target as CI-executed purely because someone wrote its name in a
+    /// comment or TODO — a false negative inside this false-negative
+    /// detector.
+    func test_sabotage_ciFilterTargetNamesIgnoresCommentLines() {
+        let workflow = """
+              # - Run `swift test --filter ManifoldGhostTests` on physical hardware.
+              - name: Test — XCTest suites [full]
+                run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --skip-update --parallel
+            """
+
+        let names = Self.ciFilterTargetNames(workflowContent: workflow)
+        XCTAssertFalse(
+            names.contains("ManifoldGhostTests"),
+            "A --filter token inside a comment line must never count as CI execution; got \(names)"
+        )
+        XCTAssertTrue(
+            names.contains("ManifoldCoreTests"),
+            "A genuine run: step's --filter must still be captured alongside the comment guard; got \(names)"
+        )
+    }
+
     // MARK: - Detection
 
     /// The full audit: every declared `.testTarget` name in `packageManifest`
@@ -419,22 +450,38 @@ final class TestTargetGateAuditTest: XCTestCase {
     }
 
     /// Extracts every `--filter <Identifier>` argument anywhere in a
-    /// `.github/workflows/*.yml` file's raw text. Deliberately a flat
-    /// whole-file regex scan rather than a YAML/line-oriented parser:
-    /// `ci.yml`'s main XCTest batch step is a single very long `run:` line
-    /// carrying ~19 `--filter` flags, so anchoring per-line or per-YAML-node
-    /// would miss most of them. A `--filter` flag always precedes its
-    /// argument directly (`ci-test-with-watchdog.sh`/`scripts/test.sh` both
-    /// use `--filter <value>`, never `--filter=<value>`, anywhere in this
-    /// repo's workflows), so a single global regex is both sufficient and
-    /// robust to step reordering, added steps, or multi-job files.
+    /// `.github/workflows/*.yml` file's raw text. A per-line regex scan
+    /// (not a YAML/step-oriented parser): `ci.yml`'s main XCTest batch step
+    /// is a single very long `run:` line carrying ~19 `--filter` flags, so
+    /// anchoring per-YAML-node would miss most of them — but each line is
+    /// still scanned on its own (not the whole file as one blob) so a
+    /// comment line can be excluded before matching. A `--filter` flag
+    /// always precedes its argument directly (`ci-test-with-watchdog.sh`/
+    /// `scripts/test.sh` both use `--filter <value>`, never
+    /// `--filter=<value>`, anywhere in this repo's workflows).
+    ///
+    /// Comment lines (trimmed line starts with `#`) are skipped, mirroring
+    /// `gatedTargetNames`'s comment guard. Without this, prose like
+    /// `# - Run \`swift test --filter ManifoldE2ETests\` on physical
+    /// hardware.` (a real line in ci.yml) reads as a genuine CI-execution
+    /// signal for a target CI never actually runs — the exact "listed but
+    /// not executed" bug this audit exists to catch, reproduced one layer up
+    /// inside the audit's own ci.yml parser. `#` can legitimately appear
+    /// inside a `run:` shell command's arguments, so "trimmed line starts
+    /// with #" (not "line contains #") is the conservative rule: it only
+    /// excludes a line that is ENTIRELY a YAML/prose comment, never a
+    /// `run:` step whose shell command happens to contain a `#` mid-line.
     static func ciFilterTargetNames(workflowContent: String) -> Set<String> {
         let regex = Self.requiredRegex(#"--filter\s+([A-Za-z_][A-Za-z0-9_]*)"#)
         var found: Set<String> = []
-        let ns = workflowContent as NSString
-        regex.enumerateMatches(in: workflowContent, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
-            guard let m = match, m.numberOfRanges >= 2 else { return }
-            found.insert(ns.substring(with: m.range(at: 1)))
+        for rawLine in workflowContent.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") { continue }
+            let ns = line as NSString
+            regex.enumerateMatches(in: line, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+                guard let m = match, m.numberOfRanges >= 2 else { return }
+                found.insert(ns.substring(with: m.range(at: 1)))
+            }
         }
         return found
     }
