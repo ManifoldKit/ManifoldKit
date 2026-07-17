@@ -95,6 +95,7 @@ public struct CitationsView: View {
 // MARK: - CitationRow
 
 private struct CitationRow: View {
+    @Environment(\.manifoldTheme) private var theme
     let index: Int
     let citation: Citation
     /// Transient flash applied when an inline `[n]` marker deep-links here.
@@ -157,7 +158,7 @@ private struct CitationRow: View {
     /// Quinary fill normally; the accent tint at low opacity while flashing.
     private var rowBackground: AnyShapeStyle {
         isHighlighted
-            ? AnyShapeStyle(Color.accentColor.opacity(0.18))
+            ? AnyShapeStyle(theme.accent.opacity(0.18))
             : AnyShapeStyle(.fill.quinary)
     }
 
