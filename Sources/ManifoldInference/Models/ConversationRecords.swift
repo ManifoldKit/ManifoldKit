@@ -161,7 +161,7 @@ public struct ChatMessage: Identifiable, Hashable, Sendable {
     /// anything worth completing" is the question — not "did it produce
     /// visible text" — e.g. a thinking-only turn (reasoning tokens, no
     /// visible text, no tool calls) still completed and persisted.
-    public var hasThinkingContent: Bool {
+    package var hasThinkingContent: Bool {
         contentParts.contains(where: { $0.thinkingContent != nil })
     }
 
