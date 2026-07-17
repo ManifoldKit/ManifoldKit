@@ -254,7 +254,7 @@ package struct ConversationTurnExecutor: Sendable {
         // `.messageUpdated` / `.messageRemoved` events unless the whole batch
         // completes successfully.
         var updatedMessage = history[index]
-        updatedMessage.content = text
+        updatedMessage.replaceTextContent(text)
         let trailing = Array(history[(index + 1)...])
 
         var mutations: [MessageStoreMutation] = [.update(updatedMessage)]
