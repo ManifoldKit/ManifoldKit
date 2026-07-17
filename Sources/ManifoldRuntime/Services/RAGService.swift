@@ -564,6 +564,7 @@ public actor RAGService {
     /// dense leg of `.hybrid` share one implementation.
     private func denseHits(query: String, candidateLimit: Int) async throws -> [VectorSearchHit] {
         guard let backend = embeddingBackend, backend.isModelLoaded else {
+            Log.inference.warning("RAGService: no loaded embedding backend, falling back to keyword search.")
             return try await vectorStore.keywordSearch(query: query, limit: candidateLimit)
         }
         do {
