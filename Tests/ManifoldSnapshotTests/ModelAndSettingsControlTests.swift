@@ -35,10 +35,42 @@ final class ModelAndSettingsControlTests: XCTestCase {
         )
     }
 
+    /// A `ChatViewModel` whose `InferenceService` has declared GGUF support —
+    /// mirrors `ModelManagementSheetLogicTests.makeRegistry(supporting:)`, the
+    /// same real `declareSupport(for:)` call a companion backend registrar
+    /// (manifold-mlx / manifold-llama) makes at runtime (#1749). Needed so the
+    /// Download tab is actually reachable: `ModelManagementSheet.availableTabs`
+    /// hides it unless `modelRegistry.compatibility(for:)` reports a
+    /// downloadable type supported, and a bare `InferenceService()` never does.
+    private func makeChatViewModelWithDownloadableBackend() -> ChatViewModel {
+        let oneGB: UInt64 = 1_024 * 1_024 * 1_024
+        let service = InferenceService()
+        service.declareSupport(for: .gguf)
+        return ChatViewModel(
+            inferenceService: service,
+            deviceCapability: DeviceCapabilityService(physicalMemory: 16 * oneGB),
+            modelStorage: ModelStorageService(
+                baseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+            )
+        )
+    }
+
     // MARK: - ModelManagementSheet — Tab Structure
 
     private func modelManagementDump(tab: ModelManagementSheet.Tab = .select) -> String {
         let chatVM = makeChatViewModel()
+        return ViewHierarchyDumper.dump(
+            ModelManagementSheet(modelRegistry: chatVM.modelRegistry, initialTab: tab)
+                .environment(ModelManagementViewModel())
+        )
+    }
+
+    /// Like `modelManagementDump`, but backed by a registry that has declared
+    /// GGUF support so the `.download` tab is actually reachable (see
+    /// `makeChatViewModelWithDownloadableBackend`).
+    private func modelManagementDownloadableDump(tab: ModelManagementSheet.Tab = .download) -> String {
+        let chatVM = makeChatViewModelWithDownloadableBackend()
         return ViewHierarchyDumper.dump(
             ModelManagementSheet(modelRegistry: chatVM.modelRegistry, initialTab: tab)
                 .environment(ModelManagementViewModel())
@@ -54,6 +86,33 @@ final class ModelAndSettingsControlTests: XCTestCase {
             "Tab picker should render as a segmented control"
         )
         #endif
+    }
+
+    // MARK: - ModelManagementSheet — Download Tab Content
+
+    func test_modelManagement_downloadTab_hasWhyDownloadView() {
+        let dump = modelManagementDownloadableDump(tab: .download)
+        XCTAssertTrue(
+            dump.contains("WhyDownloadView"),
+            "Download tab should contain the WhyDownloadView explainer"
+        )
+    }
+
+    func test_modelManagement_downloadTab_hasDownloadableModelRow() {
+        let dump = modelManagementDownloadableDump(tab: .download)
+        // DownloadableModelRow is rendered for recommended models
+        XCTAssertTrue(
+            dump.contains("DownloadableModelRow"),
+            "Download tab should contain DownloadableModelRow for recommended models"
+        )
+    }
+
+    func test_modelManagement_downloadTab_hasDownloadableModelGroup() {
+        let dump = modelManagementDownloadableDump(tab: .download)
+        XCTAssertTrue(
+            dump.contains("DownloadableModelGroup"),
+            "Download tab should reference DownloadableModelGroup for search result grouping"
+        )
     }
 
     // MARK: - ModelManagementSheet — Storage Tab Content

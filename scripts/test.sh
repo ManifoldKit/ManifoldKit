@@ -225,13 +225,25 @@ PROFILE_CI_XCTEST_FILTERS=(
     # Hermetic: MockURLProtocol with UUID-per-suite endpoints, no live OTLP
     # collector needed.
     ManifoldTelemetryOTLPTests
-)
-# Local-profile filters extend the CI list with the umbrella + HuggingFace
-# suites.
-PROFILE_LOCAL_XCTEST_FILTERS=(
-    "${PROFILE_CI_XCTEST_FILTERS[@]}"
+    # Umbrella quickStart()/_quickStart() coverage (ManifoldKitTests) and
+    # HuggingFace download/persistence coverage (ManifoldHuggingFaceTests):
+    # both fully hermetic (in-memory SwiftData, MockURLProtocol-stubbed
+    # huggingface.co calls) and fast (<1s combined). `swift test --filter`
+    # already compiles the whole test tree regardless of filter, so both
+    # were already paid for at build time in every CI run — they were just
+    # never scheduled to execute. Moved out of local-only in the same audit
+    # sweep that caught ManifoldSnapshotTests/ManifoldTelemetryOTLPTests
+    # above.
     ManifoldKitTests
     ManifoldHuggingFaceTests
+)
+# Local profile currently has no suites of its own — it is a pure inherit of
+# the CI list. Kept as a separate array (rather than aliased directly to
+# PROFILE_CI_XCTEST_FILTERS) because other call sites reference it by name;
+# if a genuinely local-only suite (e.g. one needing a resource CI can't
+# provide) shows up later, add it here.
+PROFILE_LOCAL_XCTEST_FILTERS=(
+    "${PROFILE_CI_XCTEST_FILTERS[@]}"
 )
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 
