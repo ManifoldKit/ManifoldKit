@@ -2311,7 +2311,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.thinkingBlocksToYield = [["think", "ing"]]
         mock.signaturesPerThinkingBlock = ["sig-abc"]
         mock.tokensToYield = ["done"]
-        let (runtime, _, _, _) = makeRuntime(mock: mock)
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
         _ = try await runtime.processTurn(TurnInput(
@@ -2357,6 +2357,109 @@ final class ConversationRuntimeTests: XCTestCase {
                        "thinkingFinalized carries the complete thinking text")
         XCTAssertEqual(signature, "sig-abc",
                        "thinkingFinalized round-trips the provider signature")
+
+        // The PERSISTED assistant message must carry a `.thinking` content
+        // part with the same text and signature — not just the event stream.
+        // This is the gap from the original bug: `.thinkingFinalized` fired
+        // but the executor never appended `.thinking(...)` to
+        // `assistantMessage.contentParts`, so a session reload (or any
+        // consumer reading persistence directly, e.g. ManifoldMCPHost) lost
+        // the reasoning text AND the Anthropic replay `signature` needed for
+        // extended-thinking + tool use on a later turn.
+        //
+        // Sabotage check (verified manually): reverting the
+        // `assistantMessage.contentParts.append(.thinking(...))` line added
+        // alongside `.finalizeThinking`'s `emit(...)` call in
+        // ConversationTurnExecutor causes this assertion to fail — no
+        // `.thinking` part is found in the persisted message.
+        let persisted = try XCTUnwrap(
+            store.messages.values.first { $0.role == .assistant },
+            "Expected a persisted assistant message"
+        )
+        let persistedThinking = persisted.contentParts.compactMap { part -> (String, String?)? in
+            if case let .thinking(text, signature) = part { return (text, signature) }
+            return nil
+        }
+        XCTAssertEqual(persistedThinking.count, 1,
+                       "Persisted assistant message carries exactly one .thinking content part")
+        XCTAssertEqual(persistedThinking.first?.0, "thinking",
+                       "Persisted .thinking part carries the complete thinking text")
+        XCTAssertEqual(persistedThinking.first?.1, "sig-abc",
+                       "Persisted .thinking part round-trips the Anthropic replay signature")
+
+        // The .thinking part must precede the final .text part — required so
+        // a later turn's structuredHistory rebuild (from persistence) presents
+        // thinking before text/tool content, matching Anthropic's
+        // extended-thinking + tool-use ordering contract.
+        let thinkingIdx = persisted.contentParts.firstIndex {
+            if case .thinking = $0 { return true } else { return false }
+        }
+        let textIdx = persisted.contentParts.firstIndex {
+            if case .text = $0 { return true } else { return false }
+        }
+        if let thinkingIdx, let textIdx {
+            XCTAssertLessThan(thinkingIdx, textIdx,
+                              "Persisted .thinking part precedes the final .text part")
+        } else {
+            XCTFail("Expected both a .thinking part and a .text part in the persisted message")
+        }
+    }
+
+    func test_runGenerationTurn_unclosedThinkingBlock_persistsThinkingPart() async throws {
+        // Sabotage check (verified manually): reverting the
+        // `assistantMessage.contentParts.append(.thinking(...))` line in the
+        // "unclosed thinking block" finalize branch (the
+        // `accumulator.hasOpenThinkingBlock` check after the drain loop)
+        // causes this test's persisted-content assertions to fail — no
+        // `.thinking` part is found in the persisted message.
+        let mock = MockInferenceBackend()
+        // The backend yields thinking tokens + a signature but never emits
+        // `.thinkingCompleted` — simulating a backend that is cut short or
+        // simply never signals the end of its reasoning block. This exercises
+        // the executor's end-of-stream `accumulator.hasOpenThinkingBlock`
+        // finalize path rather than the in-loop `.finalizeThinking` case.
+        mock.thinkingBlocksToYield = [["reason", "ing"]]
+        mock.signaturesPerThinkingBlock = ["sig-open"]
+        mock.omitThinkingCompletedEvent = true
+        mock.tokensToYield = ["done"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "think"),
+            config: TurnConfig(
+                thinkingStreamingUpdateInterval: .seconds(3600),
+                thinkingStreamingBatchCharacterLimit: 128
+            )
+        ))
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        // The finalize still fires exactly once even though the backend never
+        // sent `.thinkingCompleted` — the executor's post-loop "unclosed
+        // thinking block" branch is what synthesizes it.
+        let thinkingFinalizedCount = events.map(eventKind).filter { $0 == "thinkingFinalized" }.count
+        XCTAssertEqual(thinkingFinalizedCount, 1,
+                       "thinkingFinalized fires exactly once even for an unclosed block")
+
+        let persisted = try XCTUnwrap(
+            store.messages.values.first { $0.role == .assistant },
+            "Expected a persisted assistant message"
+        )
+        let persistedThinking = persisted.contentParts.compactMap { part -> (String, String?)? in
+            if case let .thinking(text, signature) = part { return (text, signature) }
+            return nil
+        }
+        XCTAssertEqual(persistedThinking.count, 1,
+                       "Persisted assistant message carries exactly one .thinking content part for an unclosed block")
+        XCTAssertEqual(persistedThinking.first?.0, "reasoning",
+                       "Persisted .thinking part carries the accumulated (unclosed) thinking text")
+        XCTAssertEqual(persistedThinking.first?.1, "sig-open",
+                       "Persisted .thinking part round-trips the signature recorded before the block was cut short")
     }
 
     // MARK: - Loop detection
