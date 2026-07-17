@@ -50,8 +50,8 @@ PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 #             plain `swift test` shape.
 #   local   — Apple-Silicon pre-push: the surviving opt-in traits (Macros;
 #             Server runs in its own CI job and stays out of the batch, as
-#             before), plus the extended suite list (ManifoldKitTests /
-#             ManifoldHuggingFaceTests).
+#             before). The XCTest filter list is identical to `ci`'s — see
+#             PROFILE_LOCAL_XCTEST_FILTERS below.
 #
 # Profile defaults are applied AFTER caller flags are parsed, but only fill
 # slots the caller did not set:
@@ -216,13 +216,34 @@ PROFILE_CI_XCTEST_FILTERS=(
     # digester-backed check stays behind RUN_API_SURFACE_BASELINE_CHECK=1
     # and the nightly api-surface-baseline job (wave-2 item 0.A).
     APIFreezeTests
-)
-# Local-profile filters extend the CI list with the umbrella + HuggingFace
-# suites.
-PROFILE_LOCAL_XCTEST_FILTERS=(
-    "${PROFILE_CI_XCTEST_FILTERS[@]}"
+    # View-control + .dump-strategy snapshot coverage (ViewSnapshotTests
+    # dumps the SwiftUI view hierarchy to text, not a rendered bitmap — no
+    # retina/font/OS-version pixel dependency). This target has never been
+    # in any gate since it was created (git log -S confirms it), and the
+    # Download-tab control tests rotted unnoticed for a month as a result.
+    ManifoldSnapshotTests
+    # Hermetic: MockURLProtocol with UUID-per-suite endpoints, no live OTLP
+    # collector needed.
+    ManifoldTelemetryOTLPTests
+    # Umbrella quickStart()/_quickStart() coverage (ManifoldKitTests) and
+    # HuggingFace download/persistence coverage (ManifoldHuggingFaceTests):
+    # both fully hermetic (in-memory SwiftData, MockURLProtocol-stubbed
+    # huggingface.co calls) and fast (<1s combined). `swift test --filter`
+    # already compiles the whole test tree regardless of filter, so both
+    # were already paid for at build time in every CI run — they were just
+    # never scheduled to execute. Moved out of local-only in the same audit
+    # sweep that caught ManifoldSnapshotTests/ManifoldTelemetryOTLPTests
+    # above.
     ManifoldKitTests
     ManifoldHuggingFaceTests
+)
+# Local profile currently has no suites of its own — it is a pure inherit of
+# the CI list. Kept as a separate array (rather than aliased directly to
+# PROFILE_CI_XCTEST_FILTERS) because other call sites reference it by name;
+# if a genuinely local-only suite (e.g. one needing a resource CI can't
+# provide) shows up later, add it here.
+PROFILE_LOCAL_XCTEST_FILTERS=(
+    "${PROFILE_CI_XCTEST_FILTERS[@]}"
 )
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 

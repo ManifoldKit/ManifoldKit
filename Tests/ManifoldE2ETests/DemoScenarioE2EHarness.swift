@@ -73,6 +73,21 @@ struct DemoScenarioE2EResult: Sendable {
     }
 }
 
+/// Thrown by `runAndAssert` when the dispatched tool calls don't match the
+/// spec. XCTest's `XCTAssert*` family is non-fatal — it records a failure but
+/// lets the test method fall through — so a caller that then indexes into
+/// `result.dispatchedCalls[n]`/`result.toolTraces[n]` on the assumption the
+/// assertion held crashes the whole test *process* on a short array
+/// (`Fatal error: Index out of range`), taking every other suite in the
+/// invocation down with it. Throwing here converts that into a clean,
+/// single-test failure: the `XCTFail` still reports the failure at the
+/// caller's file/line, and the throw makes every `try await
+/// harness.runAndAssert(...)` call site short-circuit before any subscript
+/// runs.
+struct DemoScenarioAssertionFailure: Error, CustomStringConvertible {
+    let description: String
+}
+
 @MainActor
 struct DemoScenarioE2EHarness {
     let backend: any InferenceBackend & ToolCallingHistoryReceiver
@@ -87,41 +102,42 @@ struct DemoScenarioE2EHarness {
     ) async throws -> DemoScenarioE2EResult {
         let result = try await run(spec, registry: registry)
 
-        XCTAssertFalse(
-            result.dispatchedCalls.isEmpty,
-            "Scenario must invoke at least one tool.\n\(result.diagnostics)",
-            file: file,
-            line: line
-        )
-        XCTAssertFalse(
-            result.finalText.isEmpty,
-            "Scenario must produce a non-empty visible answer.\n\(result.diagnostics)",
-            file: file,
-            line: line
-        )
+        func fail(_ message: String) -> DemoScenarioAssertionFailure {
+            XCTFail(message, file: file, line: line)
+            return DemoScenarioAssertionFailure(description: message)
+        }
+
+        guard !result.dispatchedCalls.isEmpty else {
+            throw fail("Scenario must invoke at least one tool.\n\(result.diagnostics)")
+        }
+        guard !result.finalText.isEmpty else {
+            throw fail("Scenario must produce a non-empty visible answer.\n\(result.diagnostics)")
+        }
         if !spec.expectedToolNames.isEmpty {
+            let actualNames = result.dispatchedCalls.map(\.toolName)
             if spec.allowsAdditionalToolCalls {
-                let actualNames = result.dispatchedCalls.map(\.toolName)
-                XCTAssertTrue(
-                    actualNames.starts(with: spec.expectedToolNames),
-                    "Scenario should start with the expected tool calls.\n\(result.diagnostics)",
-                    file: file,
-                    line: line
-                )
-                XCTAssertTrue(
-                    actualNames.allSatisfy { spec.expectedToolNames.contains($0) },
-                    "Scenario should not dispatch unexpected tool names.\n\(result.diagnostics)",
-                    file: file,
-                    line: line
-                )
+                guard actualNames.starts(with: spec.expectedToolNames) else {
+                    throw fail("""
+                        Scenario should start with the expected tool calls. \
+                        expected=\(spec.expectedToolNames) actual=\(actualNames)
+                        \(result.diagnostics)
+                        """)
+                }
+                guard actualNames.allSatisfy({ spec.expectedToolNames.contains($0) }) else {
+                    throw fail("""
+                        Scenario should not dispatch unexpected tool names. \
+                        expected=\(spec.expectedToolNames) actual=\(actualNames)
+                        \(result.diagnostics)
+                        """)
+                }
             } else {
-                XCTAssertEqual(
-                    result.dispatchedCalls.map(\.toolName),
-                    spec.expectedToolNames,
-                    "Scenario should dispatch exactly the expected tool calls in order.\n\(result.diagnostics)",
-                    file: file,
-                    line: line
-                )
+                guard actualNames == spec.expectedToolNames else {
+                    throw fail("""
+                        Scenario should dispatch exactly the expected tool calls in order. \
+                        expected=\(spec.expectedToolNames) actual=\(actualNames)
+                        \(result.diagnostics)
+                        """)
+                }
             }
         }
 
