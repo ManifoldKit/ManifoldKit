@@ -47,6 +47,11 @@ public struct MessageBubbleView: View {
     /// historical look, so reading the theme is non-breaking.
     @Environment(\.chatTheme) private var theme
 
+    /// The Unit-1 semantic token root (accent/status/ink tiers). Distinct from
+    /// ``theme`` above, which stays bound to the embedded ``ChatTheme`` bubble
+    /// tokens.
+    @Environment(\.manifoldTheme) private var manifoldTheme
+
     /// The bubble chrome style. The default ``PlainMessageBubbleStyle`` reads
     /// ``ChatTheme``, so tokens (Layer 1) and styles (Layer 2) compose.
     @Environment(\.messageBubbleStyle) private var bubbleStyle
@@ -364,7 +369,7 @@ public struct MessageBubbleView: View {
                 .font(.caption.weight(.semibold))
         }
         .buttonStyle(.borderless)
-        .tint(.red)
+        .tint(manifoldTheme.statusError)
         .disabled(viewModel.isGenerating)
         .frame(maxWidth: 700, alignment: alignment)
         .transition(reduceMotion ? .identity : .opacity)
