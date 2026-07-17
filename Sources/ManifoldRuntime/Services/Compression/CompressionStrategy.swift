@@ -13,19 +13,19 @@ import ManifoldInference
 /// those as configuration and forwards them, because the protocol `compress`
 /// signatures intentionally do not.
 ///
-/// ## System-prompt budgeting (seam constraint)
+/// ## System-prompt budgeting (#1957)
 ///
-/// A strategy sees only the `history` array. The session system prompt lives
-/// on `ChatSession.systemPrompt` and is *not* part of `history`, and the
-/// `CompressionPolicy` / `PreTurnCompressionPolicy` protocol `compress`
-/// signatures pass **neither** a system prompt nor a tokenizer — so a strategy
-/// cannot subtract a *real* system-prompt token count and cannot read a live
-/// tokenizer. Both are therefore **configuration** on ``DefaultCompressionPolicy``
-/// (set via the factories) and forwarded in: `reservedTokens` (response
-/// headroom + a system-prompt allowance) and an optional `tokenizer`. The
-/// budget is `contextSize − reservedTokens`. Any `.system`-role or `.memory`-kind
-/// records that *are* in `history` are treated as load-bearing and preserved
-/// verbatim by every strategy.
+/// A strategy sees only the `history` array — the session system prompt
+/// lives on `ChatSession.systemPrompt` and is *not* part of `history`. Since
+/// #1957, `CompressionPolicy` / `PreTurnCompressionPolicy` thread the real
+/// `systemPrompt` string down to `DefaultCompressionPolicy`, which forwards
+/// it here alongside `reservedTokens` (now response headroom only) and the
+/// construction-injected `tokenizer`. The budget is
+/// `contextSize − reservedTokens − systemPromptTokens`, where
+/// `systemPromptTokens` is measured with the same tokenizer (or the chars/4
+/// heuristic when `tokenizer` is `nil`) via ``CompressionStrategy/historyBudget(contextSize:reservedTokens:systemPromptTokens:)``.
+/// Any `.system`-role or `.memory`-kind records that *are* in `history` are
+/// treated as load-bearing and preserved verbatim by every strategy.
 ///
 /// Strategies are `Sendable` value types: `generate` is a parameter, never
 /// stored, so there is no mutable summariser handle to guard.
@@ -39,9 +39,13 @@ protocol CompressionStrategy: Sendable {
     ///   - history: Full message history, oldest-first.
     ///   - contextSize: Backend context window in tokens.
     ///   - reservedTokens: Tokens carved out of `contextSize` before history is
-    ///     sized — response headroom **plus** a system-prompt allowance (the
-    ///     real prompt isn't visible here). Single source of truth for the
-    ///     reservation across all strategies.
+    ///     sized — response headroom. Single source of truth for the response
+    ///     reservation across all strategies. Does NOT need to cover the
+    ///     system prompt any more — pass `systemPrompt` and its real cost is
+    ///     subtracted separately (#1957).
+    ///   - systemPrompt: The session's resolved system prompt, or `nil`.
+    ///     Its real token cost is measured with `tokenizer` and subtracted
+    ///     from the history budget alongside `reservedTokens` (#1957).
     ///   - tokenizer: Optional tokenizer for cost estimation; heuristic
     ///     (chars/4) when `nil`, in which case the budget is **advisory**, not
     ///     guaranteed to match the backend's real token count.
@@ -60,6 +64,7 @@ protocol CompressionStrategy: Sendable {
         history: [ChatMessage],
         contextSize: Int,
         reservedTokens: Int,
+        systemPrompt: String?,
         tokenizer: (any TokenizerProvider)?,
         isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
@@ -90,15 +95,22 @@ extension CompressionStrategy {
         messages.reduce(0) { $0 + estimateTokens($1, tokenizer: tokenizer) }
     }
 
-    /// Token budget available for history: context window minus `reservedTokens`
-    /// (response headroom + system-prompt allowance). The session system prompt
-    /// is not visible here, so its real cost can't be subtracted — the
-    /// allowance baked into `reservedTokens` covers it. Returns `0` when the
-    /// reservation meets or exceeds the window; callers must guard that case
-    /// (`reservedTokens >= contextSize`) and skip compression rather than churn
-    /// against a zero budget.
-    func historyBudget(contextSize: Int, reservedTokens: Int) -> Int {
-        max(0, contextSize - reservedTokens)
+    /// Token estimate for a raw string (e.g. the session system prompt),
+    /// using the same tokenizer (or chars/4 heuristic when `nil`) as message
+    /// estimation, so the two stay comparable (#1957).
+    func estimateTokens(_ text: String, tokenizer: (any TokenizerProvider)?) -> Int {
+        ContextWindowManager.estimateTokenCount(text, tokenizer: tokenizer)
+    }
+
+    /// Token budget available for history: context window minus
+    /// `reservedTokens` (response headroom) minus `systemPromptTokens` (the
+    /// session system prompt's REAL measured cost, #1957 — pass `0` when no
+    /// system prompt applies). Returns `0` when the reservation meets or
+    /// exceeds the window; callers must guard that case
+    /// (`reservedTokens + systemPromptTokens >= contextSize`) and skip
+    /// compression rather than churn against a zero budget.
+    func historyBudget(contextSize: Int, reservedTokens: Int, systemPromptTokens: Int = 0) -> Int {
+        max(0, contextSize - reservedTokens - systemPromptTokens)
     }
 
     /// `true` for records that must survive compression regardless of budget:

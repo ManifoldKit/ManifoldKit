@@ -37,14 +37,17 @@ import ManifoldInference
 /// )
 /// ```
 ///
-/// ## Budget realism (seam constraint)
+/// ## Budget realism (#1957)
 ///
-/// The protocol `compress` signatures pass neither a system prompt nor a
-/// tokenizer, so this policy holds both as configuration. `reservedTokens`
-/// carves response headroom **plus** a system-prompt allowance out of
-/// `contextSize`; the history budget is `contextSize − reservedTokens`. Pass a
-/// real `tokenizer:` to the factories for a guaranteed budget — with
-/// `tokenizer: nil` the budget is **advisory** (a chars/4 heuristic that can
+/// The protocol `compress` signatures now pass the session's real
+/// `systemPrompt`, so this policy's history budget is
+/// `contextSize − reservedTokens − systemPromptTokens` — `reservedTokens` is
+/// response headroom only (no more blind system-prompt allowance folded in),
+/// and `systemPromptTokens` is the ACTUAL system prompt measured with
+/// `tokenizer`. The tokenizer itself stays **construction-injected** (pass a
+/// real `tokenizer:` to the factories for a guaranteed budget); there is no
+/// call-time tokenizer override — with `tokenizer: nil` the whole budget,
+/// system prompt included, is **advisory** (a chars/4 heuristic that can
 /// diverge from the backend's real token count that drives the trigger).
 ///
 /// ## Trigger asymmetry
@@ -114,15 +117,19 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     /// Default reservation when a caller doesn't override it.
     ///
     /// The legacy value was a bare `512`, which only covered a short response
-    /// and left **nothing** for the session system prompt (which is not part of
-    /// `history` and so can't be subtracted directly here). `2048` reserves a
-    /// generous response headroom plus a system-prompt allowance: it matches
-    /// the `maxOutputTokens ?? 2048` default that `GenerationQueue` /
+    /// and left **nothing** for the session system prompt. Since #1957 the
+    /// real system prompt is measured separately and subtracted from the
+    /// history budget on top of this reservation (`compress` now receives
+    /// `systemPrompt`), so `reservedTokens` need only cover response headroom
+    /// — but `2048` is kept as the default because it still matches the
+    /// `maxOutputTokens ?? 2048` default that `GenerationQueue` /
     /// `PromptAssembler` already reserve at the wire layer, so the trigger and
-    /// the budget agree on roughly the same headroom. Reasoning models that
-    /// emit thousands of thinking tokens should raise this further (see
-    /// ``scaledReservedTokens(forContextSize:base:)``) — a too-small reserve is
-    /// the classic thinking-model overflow.
+    /// the budget agree on roughly the same headroom, and the extra margin is
+    /// cheap insurance against a system prompt measured with the chars/4
+    /// heuristic (no `tokenizer` injected) underestimating its real cost.
+    /// Reasoning models that emit thousands of thinking tokens should raise
+    /// this further (see ``scaledReservedTokens(forContextSize:base:)``) — a
+    /// too-small reserve is the classic thinking-model overflow.
     public static let defaultReservedTokens = 2_048
 
     /// A context-scaled reservation: never below `base`, and at least ~12.5% of
@@ -265,22 +272,25 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     public func compress(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
-        // Guard the degenerate window: if the reservation meets or exceeds the
-        // context the history budget is zero, and every pass would report
-        // "over budget" forever (the 512-token simulator cap is the canonical
+        // Guard the degenerate window: if the reservation (response headroom
+        // + the REAL system-prompt cost, #1957) meets or exceeds the context
+        // the history budget is zero, and every pass would report "over
+        // budget" forever (the 512-token simulator cap is the canonical
         // trap). Skip rather than churn.
-        guard contextSize > reservedTokens else {
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt ?? "", tokenizer: tokenizer)
+        guard contextSize > reservedTokens + systemPromptTokens else {
             Log.inference.warning(
-                "[Compression] contextSize \(contextSize) <= reservedTokens \(reservedTokens); skipping compression (no usable history budget)"
+                "[Compression] contextSize \(contextSize) <= reservedTokens \(reservedTokens) + systemPromptTokens \(systemPromptTokens); skipping compression (no usable history budget)"
             )
             onOutcome?(.skippedInsufficientBudget)
             return history
         }
         let result = try await strategy.compress(
             history: history, contextSize: contextSize,
-            reservedTokens: reservedTokens, tokenizer: tokenizer,
+            reservedTokens: reservedTokens, systemPrompt: systemPrompt, tokenizer: tokenizer,
             isPinned: isPinned ?? { _ in false }, generate: generate
         )
         onOutcome?(result.outcome)
@@ -297,8 +307,9 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     public func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
-        try await compress(history: history, sessionID: sessionID, generate: generate)
+        try await compress(history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: generate)
     }
 }

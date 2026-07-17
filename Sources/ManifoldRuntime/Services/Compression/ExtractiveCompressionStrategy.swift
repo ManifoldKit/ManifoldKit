@@ -52,6 +52,7 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
         history: [ChatMessage],
         contextSize: Int,
         reservedTokens: Int,
+        systemPrompt: String?,
         tokenizer: (any TokenizerProvider)?,
         isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
@@ -60,7 +61,8 @@ struct ExtractiveCompressionStrategy: CompressionStrategy {
             return StrategyCompressionResult(messages: [], outcome: .notNeeded)
         }
 
-        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
+        let systemPromptTokens = estimateTokens(systemPrompt ?? "", tokenizer: tokenizer)
+        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens, systemPromptTokens: systemPromptTokens)
         let tokens = history.map { estimateTokens($0, tokenizer: tokenizer) }
         let originalTokens = tokens.reduce(0, +)
 

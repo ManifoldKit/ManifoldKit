@@ -8,12 +8,19 @@ import ManifoldInference
 /// ``shouldCompressBeforeTurn(messageCount:lastPromptTokens:)`` at the start
 /// of each `.send` turn, before the new user record is inserted into the store.
 /// When it returns `true`, the runtime calls
-/// ``compressBeforeTurn(history:sessionID:generate:)``, replaces the stored
+/// ``compressBeforeTurn(history:sessionID:systemPrompt:generate:)``, replaces the stored
 /// messages with the result, emits
 /// ``ConversationEvent/historyCompressed(sessionID:insertedRecords:)``, then
 /// calls ``postCompressBeforeTurn(sessionID:insertedRecords:)``, and *then*
 /// appends the new user message. The just-submitted user action is therefore
 /// always outside the compressed segment.
+///
+/// ## v0.72.0 Migration — `systemPrompt` parameter (#1957)
+///
+/// `compressBeforeTurn` gained a `systemPrompt: String?` parameter in
+/// v0.72.0, mirroring ``CompressionPolicy``'s post-turn seam — see that
+/// protocol's migration note for the full rationale (real budget sizing
+/// instead of a static allowance; the tokenizer stays construction-injected).
 ///
 /// Pre-turn compression adds inference latency before the user's message
 /// appears in the UI — the `generate:` closure is called as part of turn
@@ -49,6 +56,7 @@ import ManifoldInference
 ///     func compressBeforeTurn(
 ///         history: [ChatMessage],
 ///         sessionID: UUID,
+///         systemPrompt: String?,
 ///         generate: @Sendable ([ChatMessage]) async throws -> String
 ///     ) async throws -> [ChatMessage] {
 ///         let summary = try await generate(history)
@@ -89,11 +97,15 @@ public protocol PreTurnCompressionPolicy: Sendable {
     ///   - history: Current full message history, oldest-first, *without* the
     ///     user message being submitted this turn.
     ///   - sessionID: The session being compressed.
+    ///   - systemPrompt: The session's resolved system prompt, or `nil` when
+    ///     none is configured. Not part of `history` — size the budget
+    ///     against its real token cost rather than a static allowance (#1957).
     ///   - generate: Calls the inference backend; receives messages as a
     ///     mini-conversation and returns the model's accumulated text output.
     func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage]
 

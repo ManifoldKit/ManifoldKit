@@ -83,11 +83,13 @@ struct TurnCompressionCoordinator: Sendable {
         ) else { return }
 
         let generate = makeCompressionGenerateClosure()
+        let systemPrompt = await persistence.fetchSession(sessionID: sessionID)?.systemPrompt
         let compressed: [ChatMessage]
         do {
             compressed = try await preTurnPolicy.compressBeforeTurn(
                 history: existingHistory,
                 sessionID: sessionID,
+                systemPrompt: systemPrompt,
                 generate: generate
             )
         } catch {
@@ -153,6 +155,7 @@ struct TurnCompressionCoordinator: Sendable {
         }
 
         let generate = makeCompressionGenerateClosure()
+        let systemPrompt = await persistence.fetchSession(sessionID: sessionID)?.systemPrompt
 
         // preCompact hook: v1 is observational. The plan's hook
         // contract documents that preCompact CANNOT block compression
@@ -180,6 +183,7 @@ struct TurnCompressionCoordinator: Sendable {
             let compressed = try await postTurnPolicy.compress(
                 history: history,
                 sessionID: sessionID,
+                systemPrompt: systemPrompt,
                 generate: generate
             )
             // Guard against an empty result — deleting all messages

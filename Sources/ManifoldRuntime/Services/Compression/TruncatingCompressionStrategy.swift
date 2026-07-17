@@ -12,6 +12,7 @@ struct TruncatingCompressionStrategy: CompressionStrategy {
         history: [ChatMessage],
         contextSize: Int,
         reservedTokens: Int,
+        systemPrompt: String?,
         tokenizer: (any TokenizerProvider)?,
         isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
@@ -20,7 +21,8 @@ struct TruncatingCompressionStrategy: CompressionStrategy {
             return StrategyCompressionResult(messages: [], outcome: .notNeeded)
         }
 
-        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
+        let systemPromptTokens = estimateTokens(systemPrompt ?? "", tokenizer: tokenizer)
+        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens, systemPromptTokens: systemPromptTokens)
         if estimateTokens(history, tokenizer: tokenizer) <= budget {
             return StrategyCompressionResult(messages: history, outcome: .notNeeded)
         }
