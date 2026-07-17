@@ -88,6 +88,35 @@ public struct ManifoldTheme: Sendable {
     /// `statusError` at reduced opacity. Default: `Color.red.opacity(0.15)`.
     package var statusErrorSoft: AnyShapeStyle
 
+    /// `Color`-typed sibling of ``statusOK``/``statusWarn``/``statusError``.
+    ///
+    /// Exists because `ViewInspector` 0.10.x (`Package.swift`) can resolve a
+    /// rendered `.foregroundStyle(_:)`/`.fill(_:)` modifier's argument back to
+    /// a concrete value only when the argument's *static type* is `Color` —
+    /// `foregroundStyleShapeStyle(Color.self)` / `fillShapeStyle(Color.self)`
+    /// look up the modifier by its generic parameter name
+    /// (`_ForegroundStyleModifier<Color>`), so a call site typed
+    /// `AnyShapeStyle` (the ``statusOK``-family tokens) renders identically
+    /// but is invisible to that extraction — confirmed live: migrating
+    /// `ToolInvocationView.swift:183`, `MemoryIndicatorView.swift:32-34`, and
+    /// `ContextIndicatorView.swift:26-28` onto the `AnyShapeStyle` tokens
+    /// failed `DefaultAppearanceCharacterizationTests` despite zero visual
+    /// change, because the characterization test can no longer extract the
+    /// rendered color at all (see that file's class doc comment).
+    ///
+    /// Migration sites that need a plain, ViewInspector-inspectable `Color`
+    /// (a `.foregroundStyle(_:)`/`.fill(_:)`/`.tint(_:)` argument, not a
+    /// `.background(_:in:)` composite) should read `statusOKColor` instead of
+    /// `statusOK`. Both resolve to the same historical literal — this is a
+    /// typed *view* onto the same semantic decision, not a second token.
+    package var statusOKColor: Color
+
+    /// See ``statusOKColor``. Default: `Color.yellow`.
+    package var statusWarnColor: Color
+
+    /// See ``statusOKColor``. Default: `Color.red`.
+    package var statusErrorColor: Color
+
     /// Material reference for translucent chrome. Plain `.regularMaterial` in
     /// Unit 1 — the per-OS `glassEffect`/`GlassEffectContainer` resolution
     /// (`#available(iOS 26, macOS 26, *)`) is a Unit 2 §L1 addition (spec §9).
@@ -121,6 +150,9 @@ public struct ManifoldTheme: Sendable {
         statusWarnSoft: AnyShapeStyle = AnyShapeStyle(Color.yellow.opacity(0.15)),
         statusError: AnyShapeStyle = AnyShapeStyle(Color.red),
         statusErrorSoft: AnyShapeStyle = AnyShapeStyle(Color.red.opacity(0.15)),
+        statusOKColor: Color = .green,
+        statusWarnColor: Color = .yellow,
+        statusErrorColor: Color = .red,
         glass: Material = .regularMaterial,
         shape: ManifoldThemeShapeScale = ManifoldThemeShapeScale(),
         type: ManifoldThemeTypeScale = ManifoldThemeTypeScale()
@@ -139,6 +171,9 @@ public struct ManifoldTheme: Sendable {
         self.statusWarnSoft = statusWarnSoft
         self.statusError = statusError
         self.statusErrorSoft = statusErrorSoft
+        self.statusOKColor = statusOKColor
+        self.statusWarnColor = statusWarnColor
+        self.statusErrorColor = statusErrorColor
         self.glass = glass
         self.shape = shape
         self.type = type

@@ -15,6 +15,27 @@
 # T1-migrate-voice remove their sections' entries (PR 1b, after 1a merges).
 # A stale entry (literal already migrated) fails the audit's staleness check —
 # that's the intended signal to delete the line.
+#
+# "No matching Unit-1 token" sub-case (still category a, but don't try to
+# force these): some sites have no ManifoldTheme value that reproduces the
+# literal without widening the token set past spec §7 — e.g. a semantic
+# mismatch (`.orange` used where the nearest tier is `statusWarn = yellow`,
+# not `statusError`), a composite ShapeStyle a token can't represent
+# (`.quaternary.opacity(0.5)`), white-opacity metadata styling, or a
+# categorical (non-status) badge palette in ManifoldUIModelManagement. Leave
+# these allowlisted with a comment naming which case applies; do not add new
+# ManifoldTheme fields to chase them — that's a Unit 2 §L2 (style-protocol)
+# concern, not a Unit 1 token-plumbing one.
+#
+# `ManifoldTheme.statusOKColor`/`statusWarnColor`/`statusErrorColor` are
+# Color-typed siblings of `statusOK`/`statusWarn`/`statusError` added
+# specifically so status-tier sites CAN migrate without hitting ViewInspector's
+# AnyShapeStyle-extraction ceiling (see `ManifoldTheme.swift`'s doc comment on
+# `statusOKColor` and `DefaultAppearanceCharacterizationTests`'s class doc
+# comment) — migrating `ToolInvocationView.swift:183`,
+# `MemoryIndicatorView.swift:32-34`, and `ContextIndicatorView.swift:26-28`
+# onto those Color-typed accessors (not the AnyShapeStyle ones) should now
+# pass characterization.
 
 # --- ManifoldUI (T1-migrate-ui, PR 1a) ---
 Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))

@@ -58,6 +58,26 @@ final class DefaultAppearanceCharacterizationTests: XCTestCase {
         XCTAssertEqual(standard.metadataFont, .caption, "ChatTheme.swift:51 default metadataFont")
     }
 
+    // MARK: - ManifoldTheme.swift — Color-typed status token defaults
+
+    /// `ManifoldTheme.standard.status{OK,Warn,Error}Color` must equal the
+    /// historical literals the `AnyShapeStyle`-typed `status{OK,Warn,Error}`
+    /// tokens already carry. These Color-typed siblings exist specifically so
+    /// migration sites that need a ViewInspector-inspectable value (a plain
+    /// `.foregroundStyle(_:)`/`.fill(_:)` argument, not a `.background(_:in:)`
+    /// composite) can migrate without breaking the tests below — see
+    /// `ManifoldTheme.swift`'s `statusOKColor` doc comment for the full
+    /// rationale (an `AnyShapeStyle`-typed call site renders identically but
+    /// is invisible to `foregroundStyleShapeStyle(Color.self)` /
+    /// `fillShapeStyle(Color.self)`, which key off the modifier's generic
+    /// parameter name).
+    func test_manifoldTheme_standard_statusColorTokens_matchHistoricalLiterals() {
+        let standard = ManifoldTheme.standard
+        XCTAssertEqual(standard.statusOKColor, .green)
+        XCTAssertEqual(standard.statusWarnColor, .yellow)
+        XCTAssertEqual(standard.statusErrorColor, .red)
+    }
+
     /// `ChatTheme.swift:22-29`'s bubble fills are drawn via
     /// `.background(chrome.background, in: RoundedRectangle(...))`
     /// (`MessageBubbleStyle.swift:86-88`) — a `.background(_:in:)` modifier,
