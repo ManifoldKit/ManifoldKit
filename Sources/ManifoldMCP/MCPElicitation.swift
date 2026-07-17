@@ -13,10 +13,28 @@ import ManifoldInference
 /// code.
 ///
 /// The spec restricts `requestedSchema` to a flat JSON Schema object of primitive
-/// properties (string/number/boolean/enum) — `ManifoldMCP` does not validate that
-/// shape itself; the host's form renderer is expected to reject or best-effort-render
-/// anything else (and can always answer `.decline` for an unsupported shape).
+/// properties (string/number/boolean/enum). `MCPClient` validates that shape via
+/// `MCPElicitationRequest.isSupportedSchema(_:)` before this request ever reaches the
+/// host handler — an unsupported shape is auto-declined (see
+/// `MCPClient.makeServerRequestHandler`), per #1926's resolution. The host's form
+/// renderer should still defensively handle any shape it doesn't recognize.
+///
+/// **Server identity (#2284 review, blocker 1)**: `MCPClientConfiguration.elicitationHandler`
+/// is one closure shared across every connected server, so `serverID` is the ONLY
+/// signal the host has to answer "which server is asking, and do I trust it enough to
+/// show this prompt?" per the security note on `MCPClientConfiguration.elicitationHandler`.
+/// Without it, a low-trust server B can send a message indistinguishable from a
+/// trusted server A's prompt (e.g. spoofing a password re-entry dialog) and the host
+/// has nothing to key a warning or block on. `serverID` is always the connecting
+/// `MCPServerDescriptor.id`, supplied by `MCPClient` — never parsed off the wire, so a
+/// malicious server cannot forge it.
 public struct MCPElicitationRequest: Sendable, Equatable {
+    /// The connecting `MCPServerDescriptor.id` of the server that issued this request.
+    /// Supplied by `MCPClient` from the descriptor used to `connect(_:)`, never from
+    /// server-controlled wire data — the host uses this to look up which server is
+    /// asking (display name, trust level) and must render that identity as part of
+    /// the prompt (see the security note on `MCPClientConfiguration.elicitationHandler`).
+    public let serverID: UUID
     /// Human-readable prompt describing what the server is asking for.
     public let message: String
     /// A JSON Schema (as `JSONSchemaValue`) restricted by spec to a flat object of
@@ -24,7 +42,8 @@ public struct MCPElicitationRequest: Sendable, Equatable {
     /// controls (string→TextField, boolean→Toggle, enum→Picker, etc.).
     public let requestedSchema: JSONSchemaValue
 
-    public init(message: String, requestedSchema: JSONSchemaValue) {
+    public init(serverID: UUID, message: String, requestedSchema: JSONSchemaValue) {
+        self.serverID = serverID
         self.message = message
         self.requestedSchema = requestedSchema
     }
@@ -62,7 +81,9 @@ public struct MCPElicitationResult: Sendable, Equatable {
 
 extension MCPElicitationRequest {
     /// Parses the `params` object of an `elicitation/create` JSON-RPC request.
-    init(params: JSONSchemaValue?) throws {
+    /// `serverID` comes from the connecting `MCPServerDescriptor`, never from `params`
+    /// — see the security note on ``MCPElicitationRequest/serverID``.
+    init(serverID: UUID, params: JSONSchemaValue?) throws {
         guard case .object(let object) = params else {
             throw MCPError.protocolError(
                 code: -32602,
@@ -85,8 +106,42 @@ extension MCPElicitationRequest {
             )
         }
 
+        // The server-authored prompt renders directly in a user-facing dialog —
+        // reuse the same injection-indicator logging already applied to tool
+        // metadata (`MCPToolSource.swift`) so an adversarial "message" surfaces in
+        // operator logs rather than only in the UI. Logging only; never blocks.
+        MCPContentSanitizer.logInjectionIndicators(in: message, field: "elicitation message", toolName: serverID.uuidString)
+
+        self.serverID = serverID
         self.message = message
         self.requestedSchema = requestedSchema
+    }
+
+    /// Validates `requestedSchema` against the MCP spec's restriction to a flat JSON
+    /// Schema object of primitive-typed properties (string/number/integer/boolean).
+    /// `MCPClient.makeServerRequestHandler` calls this before invoking the host's
+    /// `elicitationHandler` and auto-declines unsupported shapes (#1926's resolution:
+    /// "validate and decline on unsupported shapes") rather than forwarding an
+    /// arbitrarily-nested or non-primitive schema to a form renderer that may not
+    /// expect one.
+    static func isSupportedSchema(_ schema: JSONSchemaValue) -> Bool {
+        guard case .object(let object) = schema else { return false }
+        guard case .string("object")? = object["type"] else { return false }
+        guard case .object(let properties)? = object["properties"] else {
+            // No `properties` key: an empty flat object is within the spec's shape.
+            return true
+        }
+        for (_, propertySchema) in properties {
+            guard case .object(let propertyObject) = propertySchema else { return false }
+            guard case .string(let type)? = propertyObject["type"] else { return false }
+            switch type {
+            case "string", "number", "integer", "boolean":
+                continue
+            default:
+                return false
+            }
+        }
+        return true
     }
 }
 

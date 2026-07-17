@@ -176,7 +176,7 @@ final class MCPElicitationTests: XCTestCase {
                     return .failure(MCPJSONRPCErrorObject(code: -32601, message: "Method not found", data: nil))
                 }
                 do {
-                    let request = try MCPElicitationRequest(params: params)
+                    let request = try MCPElicitationRequest(serverID: UUID(), params: params)
                     XCTAssertEqual(request.message, "Confirm?")
                     let result = MCPElicitationResult(action: action, content: content)
                     return .success(result.jsonRPCResult)
@@ -221,7 +221,7 @@ final class MCPElicitationTests: XCTestCase {
             ]),
         ])
 
-        let request = try MCPElicitationRequest(params: params)
+        let request = try MCPElicitationRequest(serverID: UUID(), params: params)
         XCTAssertEqual(request.message, "What city do you live in?")
         guard case .object(let schemaObject) = request.requestedSchema else {
             XCTFail("Expected object schema")
@@ -231,19 +231,19 @@ final class MCPElicitationTests: XCTestCase {
     }
 
     func test_elicitationRequestThrowsOnMissingMessage() {
-        XCTAssertThrowsError(try MCPElicitationRequest(params: .object([
+        XCTAssertThrowsError(try MCPElicitationRequest(serverID: UUID(), params: .object([
             "requestedSchema": .object(["type": .string("object")]),
         ])))
     }
 
     func test_elicitationRequestThrowsOnMissingSchema() {
-        XCTAssertThrowsError(try MCPElicitationRequest(params: .object([
+        XCTAssertThrowsError(try MCPElicitationRequest(serverID: UUID(), params: .object([
             "message": .string("hi"),
         ])))
     }
 
     func test_elicitationRequestThrowsOnNonObjectParams() {
-        XCTAssertThrowsError(try MCPElicitationRequest(params: .string("nope")))
+        XCTAssertThrowsError(try MCPElicitationRequest(serverID: UUID(), params: .string("nope")))
     }
 
     func test_elicitationResultEncodesAcceptWithContent() {
@@ -272,9 +272,14 @@ final class MCPElicitationTests: XCTestCase {
     /// `allowsElicitation` (this PR) previously had defaults only on the memberwise
     /// `init` parameter, not the stored property — so the compiler-synthesized
     /// `init(from:)` hard-required both keys, and a persisted pre-upgrade JSON blob
-    /// missing them would fail to decode outright. Inline `= false` property defaults
-    /// fix this: Swift's synthesized Decodable uses `decodeIfPresent(...) ?? default`
-    /// for any stored property that has a default value.
+    /// missing them would fail to decode outright. The fix is the inline `= false`
+    /// property defaults PLUS `MCPServerDescriptor`'s hand-written `init(from:)`
+    /// (`MCPTypes.swift`), which decodes both keys via `decodeIfPresent(...) ?? false`.
+    /// Swift's *compiler-synthesized* `Decodable` does NOT do this — a synthesized
+    /// `init(from:)` still throws `DecodingError.keyNotFound` for a defaulted stored
+    /// property whose key is absent; the tolerance here comes entirely from the
+    /// custom decoder, not from the property-level default (verified empirically,
+    /// #2284 review finding 5).
     func test_serverDescriptorDecodesPersistedJSONMissingAllowsKeys() throws {
         let descriptor = MCPServerDescriptor(
             displayName: "Persisted",
@@ -300,6 +305,108 @@ final class MCPElicitationTests: XCTestCase {
         // in MCPTypes.swift (reverting to bare `public var allowsSampling: Bool`) would make
         // the synthesized Decodable initializer hard-require both keys, and this decode call
         // would throw `DecodingError.keyNotFound` instead of returning safe defaults.
+    }
+
+    // MARK: - MCPClient consent gate (#2284 review finding 2)
+
+    /// Every test above constructs `MCPSession` directly via `makeSession(...)`, hand-passing
+    /// `advertisesElicitation:`/`serverRequestHandler:` — that never exercises the actual gate
+    /// `MCPClient.connect()` computes. `MCPClient.elicitationEnabled(for:configuration:)`
+    /// (`MCPClient.swift`) was extracted from the inline
+    /// `descriptor.allowsElicitation && configuration.elicitationHandler != nil` expression
+    /// specifically so it is unit-testable — see #2284 review finding 2: "proven sabotage:
+    /// delete `allowsElicitation &&` from that line → all other tests still pass."
+    ///
+    /// This calls the REAL function `connect()` invokes — not a hand-copied re-implementation
+    /// of the boolean.
+    func test_clientGateBlocksElicitationWhenDescriptorOptsOut() throws {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Untrusted Server",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test",
+            allowsElicitation: false
+        )
+        let configuration = MCPClientConfiguration(
+            elicitationHandler: { _ in MCPElicitationResult(action: .accept) }
+        )
+
+        let enabled = MCPClient.elicitationEnabled(for: descriptor, configuration: configuration)
+
+        XCTAssertFalse(enabled, "A server that hasn't set allowsElicitation must never be gated open, even with a host handler configured")
+        // Sabotage (reported literally in the #2284 review): deleting `descriptor.allowsElicitation &&`
+        // from `MCPClient.elicitationEnabled(for:configuration:)` — leaving only
+        // `configuration.elicitationHandler != nil` — makes `enabled` true here despite
+        // `allowsElicitation: false`, failing this assertion. This is the exact function
+        // `connect()` calls; no other test in this file called it before this one.
+    }
+
+    func test_clientGateAllowsElicitationOnlyWhenBothDescriptorAndHandlerOptIn() throws {
+        let allowingDescriptor = MCPServerDescriptor(
+            displayName: "Trusted Server",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test",
+            allowsElicitation: true
+        )
+        let refusingConfiguration = MCPClientConfiguration() // elicitationHandler defaults to nil
+        XCTAssertFalse(
+            MCPClient.elicitationEnabled(for: allowingDescriptor, configuration: refusingConfiguration),
+            "allowsElicitation: true alone must not open the gate without a host handler configured"
+        )
+
+        let acceptingConfiguration = MCPClientConfiguration(
+            elicitationHandler: { _ in MCPElicitationResult(action: .accept) }
+        )
+        XCTAssertTrue(
+            MCPClient.elicitationEnabled(for: allowingDescriptor, configuration: acceptingConfiguration),
+            "Both allowsElicitation: true AND a configured handler must open the gate"
+        )
+    }
+
+    /// Ties `MCPClient`'s real gate function to the end-to-end dispatch outcome `MCPSession`
+    /// produces, closing the loop the two tests above start: proves the boolean
+    /// `elicitationEnabled(for:configuration:)` computes is exactly what determines whether a
+    /// server request gets a live prompt vs. "method not found" — using the same `makeSession`
+    /// harness (mock transport, no live network/subprocess) as every other test in this file.
+    func test_serverRequestHonorsClientGateOutcome_whenDescriptorOptsOut() async throws {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Untrusted Server",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test",
+            allowsElicitation: false
+        )
+        let configuration = MCPClientConfiguration(
+            elicitationHandler: { _ in
+                XCTFail("elicitationHandler must never be invoked when the client gate is closed")
+                return MCPElicitationResult(action: .accept)
+            }
+        )
+        let enabled = MCPClient.elicitationEnabled(for: descriptor, configuration: configuration)
+        XCTAssertFalse(enabled)
+
+        // `enabled == false` is exactly what makes `MCPClient.connect()` pass
+        // `serverRequestHandler: nil` to `MCPSession` (see `makeServerRequestHandler`'s
+        // `guard samplingEnabled || elicitationEnabled else { return nil }`) — reproduce that
+        // wiring here via `withHandler: nil` / `advertisesElicitation: enabled`.
+        let (session, transport) = try await makeSession(withHandler: nil, advertisesElicitation: enabled)
+        _ = try await session.start()
+
+        try await transport.injectRequest(id: .int(400), method: "elicitation/create", params: .object([
+            "message": .string("Corporate VPN session expired — re-enter your password"),
+            "requestedSchema": .object(["type": .string("object")]),
+        ]))
+
+        let reply = try await transport.awaitReply(forID: .int(400))
+        guard case .error(_, let error) = reply else {
+            XCTFail("Expected a .error reply (method not found), got \(reply)")
+            return
+        }
+        XCTAssertEqual(error.code, -32601, "A gate-closed server must get 'method not found', never a live prompt")
+        // Sabotage: same as above — deleting `descriptor.allowsElicitation &&` from
+        // `MCPClient.elicitationEnabled(for:configuration:)` flips `enabled` to `true`, which
+        // flips `advertisesElicitation`/`withHandler` here and turns this into a live `.result`
+        // reply instead of a `-32601` error.
+
+        await session.close()
     }
 
     // MARK: - Test support

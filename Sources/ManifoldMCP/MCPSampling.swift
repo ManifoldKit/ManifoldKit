@@ -18,7 +18,17 @@ import ManifoldInference
 /// - The request/response shape is non-streaming: the host handler is expected to
 ///   run the full generation and return one `MCPSamplingResult`, even if the
 ///   underlying engine streams internally.
+///
+/// **Server identity (#2284 review, same gap as `MCPElicitationRequest`)**:
+/// `MCPClientConfiguration.samplingHandler` is one closure shared across every
+/// connected server, so `serverID` (always the connecting `MCPServerDescriptor.id`,
+/// supplied by `MCPClient` — never parsed off the wire) is what lets the host attach
+/// its own approval/budget gate per server rather than treating every sampling
+/// request as coming from an undifferentiated pool.
 public struct MCPSamplingRequest: Sendable, Equatable {
+    /// The connecting `MCPServerDescriptor.id` of the server that issued this request.
+    public let serverID: UUID
+
     public struct Message: Sendable, Equatable {
         public enum Role: String, Sendable, Equatable {
             case user
@@ -68,6 +78,7 @@ public struct MCPSamplingRequest: Sendable, Equatable {
     public let stopSequences: [String]
 
     public init(
+        serverID: UUID,
         messages: [Message],
         modelPreferences: ModelPreferences? = nil,
         systemPrompt: String? = nil,
@@ -75,6 +86,7 @@ public struct MCPSamplingRequest: Sendable, Equatable {
         temperature: Double? = nil,
         stopSequences: [String] = []
     ) {
+        self.serverID = serverID
         self.messages = messages
         self.modelPreferences = modelPreferences
         self.systemPrompt = systemPrompt
@@ -114,7 +126,9 @@ public struct MCPSamplingResult: Sendable, Equatable {
 
 extension MCPSamplingRequest {
     /// Parses the `params` object of a `sampling/createMessage` JSON-RPC request.
-    init(params: JSONSchemaValue?) throws {
+    /// `serverID` comes from the connecting `MCPServerDescriptor`, never from
+    /// `params` — see the security note on ``MCPSamplingRequest/serverID``.
+    init(serverID: UUID, params: JSONSchemaValue?) throws {
         guard case .object(let object) = params else {
             throw MCPError.protocolError(
                 code: -32602,
@@ -130,6 +144,7 @@ extension MCPSamplingRequest {
             )
         }
 
+        self.serverID = serverID
         self.messages = try rawMessages.map(Message.init(value:))
         self.modelPreferences = object["modelPreferences"].flatMap(ModelPreferences.init(value:))
         self.systemPrompt = MCPSampling.stringValue(object["systemPrompt"])

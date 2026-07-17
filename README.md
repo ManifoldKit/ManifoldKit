@@ -402,7 +402,7 @@ Honest expectations — ManifoldKit's MCP surface is **tool-and-resource first**
 | **Prompts** (`prompts/list`, `prompts/get`) | ⚠️ partial | ❌ | Capability is **detected** (`supportsPrompts`) but not yet consumed — no client call wired. |
 | **OAuth 2.1** | ✅ | — | Authorization-server discovery, token exchange, PKCE, secured token store. |
 | **Sampling** (`sampling/createMessage`) | ❌ | ❌ | Not implemented — the MCP surface is text-passthrough. Tracked in [#1925](https://github.com/ManifoldKit/ManifoldKit/issues/1925). |
-| **Elicitation** | ❌ | ❌ | Not implemented. Tracked in [#1926](https://github.com/ManifoldKit/ManifoldKit/issues/1926). |
+| **Elicitation** (`elicitation/create`) | ✅ | ❌ | Client parses the request off the wire and routes it through the host-supplied `MCPClientConfiguration.elicitationHandler`; `ManifoldMCP` itself renders no UI. Host-side (accepting elicitation requests from external MCP clients) not implemented. Closes [#1926](https://github.com/ManifoldKit/ManifoldKit/issues/1926). |
 | **Transports** | stdio, streamable-HTTP (SSE) | stdio, streamable-HTTP | Both client and host support both transports. |
 
 ## Skills, Handoffs, and Hooks

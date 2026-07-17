@@ -244,7 +244,10 @@ public struct MCPClientConfiguration: Sendable {
     ///
     /// **Security requirement**: the host is responsible for user approval/consent
     /// and for rate-limiting or budgeting the inference spend this closure triggers.
-    /// `ManifoldMCP` does not gate calls into this closure beyond the per-server
+    /// This closure is shared across every connected server, so `MCPSamplingRequest.serverID`
+    /// (stamped by `MCPClient` from the connecting `MCPServerDescriptor.id`) is what
+    /// lets a per-server approval/budget gate exist at all. `ManifoldMCP` does not
+    /// gate calls into this closure beyond the per-server
     /// `MCPServerDescriptor.allowsSampling` opt-in — an app that sets this without its
     /// own approval and budget logic lets any connected, sampling-enabled MCP server
     /// spend inference budget on demand, with no consent prompt and no cap.
@@ -267,6 +270,11 @@ public struct MCPClientConfiguration: Sendable {
     /// budget, but the returned content still flows to an untrusted server — the
     /// host's UI must make clear which server is asking and why, and must always
     /// offer `.decline`/`.cancel` as first-class options rather than only "submit".
+    /// This closure is shared across every connected server, so `MCPElicitationRequest.serverID`
+    /// (stamped by `MCPClient` from the connecting `MCPServerDescriptor.id`, never
+    /// from server-controlled wire data) is the identity signal the host keys its UI
+    /// on — without rendering it, a low-trust server can send a prompt
+    /// indistinguishable from a trusted one (see #2284 review, blocker 1).
     /// `ManifoldMCP` does not gate calls into this closure beyond the per-server
     /// `MCPServerDescriptor.allowsElicitation` opt-in.
     ///

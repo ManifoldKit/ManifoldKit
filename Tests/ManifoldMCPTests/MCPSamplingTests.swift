@@ -131,7 +131,7 @@ final class MCPSamplingTests: XCTestCase {
             ]),
         ])
 
-        let request = try MCPSamplingRequest(params: params)
+        let request = try MCPSamplingRequest(serverID: UUID(), params: params)
         XCTAssertEqual(request.messages.count, 1)
         XCTAssertEqual(request.messages[0].role, .user)
         XCTAssertEqual(request.messages[0].content, .text("hi"))
@@ -144,7 +144,7 @@ final class MCPSamplingTests: XCTestCase {
     }
 
     func test_samplingRequestThrowsOnMissingMessages() {
-        XCTAssertThrowsError(try MCPSamplingRequest(params: .object([:])))
+        XCTAssertThrowsError(try MCPSamplingRequest(serverID: UUID(), params: .object([:])))
     }
 
     /// The JSON-RPC codec decodes every wire number as `.number(Double)` — never
@@ -159,7 +159,7 @@ final class MCPSamplingTests: XCTestCase {
             "maxTokens": .number(256),
         ])
 
-        let request = try MCPSamplingRequest(params: params)
+        let request = try MCPSamplingRequest(serverID: UUID(), params: params)
         XCTAssertEqual(request.maxTokens, 256)
     }
 
@@ -177,7 +177,7 @@ final class MCPSamplingTests: XCTestCase {
                 "maxTokens": .number(maxTokens),
             ])
 
-            let request = try MCPSamplingRequest(params: params)
+            let request = try MCPSamplingRequest(serverID: UUID(), params: params)
             XCTAssertNil(request.maxTokens, "maxTokens \(maxTokens) must be dropped, not crash or silently coerce")
         }
         // Sabotage: reverting MCPSampling.intValue's `.number` arm to `Int(value)`
