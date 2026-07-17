@@ -385,6 +385,19 @@ final class ConversationRuntimeTests: XCTestCase {
         return (runtime, store, backend, sessionStore)
     }
 
+    /// The default bound for the wait helpers below. Each helper already
+    /// races a real completion signal (an event predicate, a turn outcome, a
+    /// backend lifecycle callback) against this wall-clock timer — it is not
+    /// a fixed sleep standing in for a settle point, so there is no faster
+    /// deterministic signal to switch to. The bound itself was raised from
+    /// 5s after CI's `--parallel` full-suite run (`ci.yml` batches ~19
+    /// XCTest targets into one `swift test --parallel` invocation) starved
+    /// this suite's scheduling long enough to blow the old bound on three
+    /// unrelated PRs in one night (#2282, #2304, #2212's queue validation).
+    /// 20s is still a small fraction of the job's 30-minute watchdog ceiling
+    /// even if every call site in this file hit it at once.
+    private static let defaultDeadline: Duration = .seconds(20)
+
     /// Drains events from the runtime until `predicate` returns `true` for
     /// the most recent event, or the deadline elapses. Returns the captured
     /// transcript — tests assert on the order of events without relying on
@@ -392,7 +405,7 @@ final class ConversationRuntimeTests: XCTestCase {
     private func collectEvents(
         from runtime: ConversationRuntime,
         until predicate: @escaping @Sendable (ConversationEvent) -> Bool,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         var collected: [ConversationEvent] = []
         let task = Task {
@@ -418,7 +431,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForEvents(
         from task: Task<[ConversationEvent], Never>,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         try await withThrowingTaskGroup(of: [ConversationEvent].self) { group in
             group.addTask { await task.value }
@@ -435,7 +448,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForOutcome(
         from handle: ConversationTurnHandle,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> ConversationTurnOutcome {
         try await withThrowingTaskGroup(of: ConversationTurnOutcome.self) { group in
             group.addTask { await handle.outcome }
@@ -452,7 +465,7 @@ final class ConversationRuntimeTests: XCTestCase {
     private func waitForActiveTurnTaskCount(
         _ expectedCount: Int,
         in runtime: ConversationRuntime,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         let clock = ContinuousClock()
         let deadlineInstant = clock.now + deadline
@@ -466,7 +479,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForBackendStart(
         _ backend: HangingRuntimeBackend,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await backend.waitUntilStarted() }
@@ -481,7 +494,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForBackendTermination(
         _ backend: HangingRuntimeBackend,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await backend.waitUntilTerminated() }
@@ -496,7 +509,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func collectUntilStreamFinished(
         from runtime: ConversationRuntime,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         try await collectEvents(from: runtime, until: { event in
             if case .streamFinished = event { return true }
@@ -934,7 +947,7 @@ final class ConversationRuntimeTests: XCTestCase {
             config: TurnConfig(progressStallTimeout: .milliseconds(200))
         ))
         let turn = try XCTUnwrap(maybeTurn)
-        let outcome = try await waitForOutcome(from: turn, deadline: .seconds(5))
+        let outcome = try await waitForOutcome(from: turn)
 
         XCTAssertEqual(outcome.reason, .timedOut,
                        "a stalled generation must report the distinct timed-out reason")
@@ -945,7 +958,7 @@ final class ConversationRuntimeTests: XCTestCase {
         // XCTAssertEqual(outcome.reason, .stop)
 
         // The backend work is cancelled, not left running.
-        try await waitForBackendTermination(backend, deadline: .seconds(2))
+        try await waitForBackendTermination(backend)
         XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
                        "no visible content streamed, so no assistant message persists")
     }
@@ -976,7 +989,7 @@ final class ConversationRuntimeTests: XCTestCase {
             config: TurnConfig(progressStallTimeout: .seconds(30))
         ))
         let turn = try XCTUnwrap(maybeTurn)
-        let outcome = try await waitForOutcome(from: turn, deadline: .seconds(5))
+        let outcome = try await waitForOutcome(from: turn)
 
         XCTAssertNotEqual(outcome.reason, .timedOut,
                           "the stall timeout must not fire for an immediate backend error")
@@ -1417,10 +1430,14 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
         // Bound the wait so a hung test fails fast rather than spinning.
+        // Same landmine class as the `collectEvents`-family helpers above
+        // (#2282/#2304/#2212): a wall-clock bound racing a real completion
+        // signal, blown by CI's `--parallel` full-suite scheduling pressure
+        // at 5s. Raised to `ConversationRuntimeTests.defaultDeadline` for the same reason.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await waitTask.value }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 waitTask.cancel()
             }
             try await group.next()
@@ -1900,7 +1917,23 @@ final class ConversationRuntimeTests: XCTestCase {
         // which collapses contentParts to a single .text part) causes the
         // `.image` part assertion below to fail — the image is silently
         // dropped even though only the text was edited.
-        let mock = MockInferenceBackend()
+        //
+        // The mock MUST be vision-capable: this test attaches an `.image`
+        // part and then edits, which re-triggers regeneration. A plain
+        // `MockInferenceBackend()` has `supportsVision == false`, so the
+        // runtime rejects the image attachment up front and the turn ends
+        // via the *error* path (`.streamFinished(.stop)`) without ever
+        // emitting `.afterGeneration` — the event this test waits on. That
+        // made the wait below unwinnable: it burned the full deadline on
+        // every run (proven: 20.017s observed pre-fix, vs sub-second after)
+        // and passed only because the assertions read `store.messages`,
+        // mutated synchronously before generation was even attempted. Pass
+        // vs. `deadlineElapsed`-throw was then a scheduling coin flip — the
+        // real cause of the flake CI hit on #2282/#2304/#2212, not the 5s
+        // bound itself. Fixed here at the root; the raised 20s
+        // `defaultDeadline` above remains defence-in-depth for the other
+        // (genuinely event-racing) call sites in this file.
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
         mock.tokensToYield = ["Edited", " response"]
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
@@ -2956,11 +2989,14 @@ final class ConversationRuntimeTests: XCTestCase {
         await gate.advance()
 
         // Bound the wait so a regression cannot hang CI for the full XCTest
-        // default timeout. 5 s is generous; happy-path is sub-50ms.
+        // default timeout. Happy-path is sub-50ms; the bound itself is
+        // `ConversationRuntimeTests.defaultDeadline` (see rationale above) so CI's `--parallel`
+        // scheduling pressure doesn't false-fail this the way it did
+        // #2282/#2304/#2212.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await drain.value }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 drain.cancel()
             }
             try await group.next()
@@ -3032,11 +3068,13 @@ final class ConversationRuntimeTests: XCTestCase {
                 if case .streamFinished = event { break }
             }
         }
-        // Allow up to 5 s for the drain to complete.
+        // Allow up to `ConversationRuntimeTests.defaultDeadline` for the drain to complete (see
+        // rationale above the helpers block — bounded wait racing a real
+        // completion signal, not a settle-point sleep).
         let waitResult = try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await drainTask.value }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 drainTask.cancel()
             }
             try await group.next()
