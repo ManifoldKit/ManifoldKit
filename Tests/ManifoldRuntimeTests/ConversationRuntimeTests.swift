@@ -1892,6 +1892,51 @@ final class ConversationRuntimeTests: XCTestCase {
         }), "beforeContextAssembly fires with nil prompt for edit")
     }
 
+    // MARK: - Edit: preserves non-text content parts (#A1)
+
+    func test_edit_userMessage_preservesNonTextContentParts() async throws {
+        // Sabotage check (verified manually): reverting runEditFlow to
+        // `updatedMessage.content = text` (the ChatMessage.content setter,
+        // which collapses contentParts to a single .text part) causes the
+        // `.image` part assertion below to fail — the image is silently
+        // dropped even though only the text was edited.
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["Edited", " response"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        var userMsg = ChatMessage(role: .user, content: "original question", sessionID: sessionID)
+        userMsg.contentParts = [.text("original question"), .image(data: imageData, mimeType: "image/png")]
+        try await store.insertMessage(userMsg)
+
+        let input = TurnInput(sessionID: sessionID, kind: .edit(messageID: userMsg.id, text: "edited question"))
+        _ = try await runtime.processTurn(input)
+
+        _ = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        guard let updatedUser = store.messages[userMsg.id] else {
+            XCTFail("User message missing from store")
+            return
+        }
+        XCTAssertEqual(updatedUser.content, "edited question", "Text content updated")
+        XCTAssertEqual(updatedUser.contentParts.count, 2, "Image part preserved alongside updated text part")
+        let imageParts = updatedUser.contentParts.filter {
+            if case .image = $0 { return true }
+            return false
+        }
+        XCTAssertEqual(imageParts.count, 1, "Exactly one image part survives the edit")
+        if case .image(let data, let mimeType, _) = imageParts.first {
+            XCTAssertEqual(data, imageData, "Image bytes unchanged")
+            XCTAssertEqual(mimeType, "image/png")
+        } else {
+            XCTFail("Expected an image part")
+        }
+    }
+
     // MARK: - Edit: assistant message (no generation)
 
     func test_edit_assistantMessage_updatesAndReturnsNilHandle() async throws {

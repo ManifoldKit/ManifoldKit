@@ -215,7 +215,11 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
             return
         }
 
-        // Resolve pinned IDs. Missing session store → treat all as unpinned.
+        // Resolve pinned IDs. Missing session store → treat all as unpinned
+        // (there is no store that could hold a pin). A store that IS present
+        // but fails to fetch is a different case: pin status is unknown, and
+        // folding/deleting messages under that uncertainty could destroy a
+        // pinned message, so abort the whole cycle rather than guess "[]".
         let pinnedIDs: Set<UUID>
         if let sessionStore {
             do {
@@ -223,9 +227,9 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
                 pinnedIDs = sessions.first(where: { $0.id == sessionID })?.pinnedMessageIDs ?? []
             } catch {
                 Log.inference.warning(
-                    "SummarisationHook: sessionStore.fetchSessions failed, treating all messages as unpinned (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"
+                    "SummarisationHook: sessionStore.fetchSessions failed, aborting summarisation because pin status is unknown (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"
                 )
-                pinnedIDs = []
+                return
             }
         } else {
             pinnedIDs = []
