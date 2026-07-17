@@ -193,6 +193,14 @@ public struct GenerationStreamConsumer: Sendable {
 package struct GenerationStreamAccumulator: Sendable {
     public private(set) var visibleText: String
     public private(set) var isEmptyResponse: Bool
+    /// True once any reasoning/thinking token has been received for this turn,
+    /// even if the block is later trimmed empty or the turn never produced
+    /// visible text or tool content. Mirrors ``isEmptyResponse``'s per-turn
+    /// tracking so a thinking-only turn (no visible text, no tool calls) is
+    /// distinguishable from a truly empty one at the caller's empty-response
+    /// gate (#2281's persisted-thinking work made this a real behavioral
+    /// case, not just dead storage).
+    public private(set) var hasThinkingContent: Bool
     public private(set) var tokenUsage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)?
     public var currentThinkingText: String { thinkingText }
 
@@ -206,6 +214,7 @@ package struct GenerationStreamAccumulator: Sendable {
     ) {
         self.visibleText = visibleText
         self.isEmptyResponse = isEmptyResponse
+        self.hasThinkingContent = false
         self.tokenUsage = tokenUsage
         self.thinkingText = ""
         self.thinkingSignature = nil
@@ -234,6 +243,9 @@ package struct GenerationStreamAccumulator: Sendable {
     public mutating func appendThinkingText(_ text: String) -> Bool {
         let startsBlock = thinkingText.isEmpty
         thinkingText += text
+        if !text.isEmpty {
+            hasThinkingContent = true
+        }
         return startsBlock
     }
 

@@ -181,6 +181,17 @@ public struct ChatMessage: Identifiable, Hashable, Sendable {
         !content.isEmpty
     }
 
+    /// True if the message carries a `.thinking` content part, regardless of
+    /// whether that part's text is empty.
+    ///
+    /// Used alongside ``hasVisibleContent`` where "did this turn produce
+    /// anything worth completing" is the question — not "did it produce
+    /// visible text" — e.g. a thinking-only turn (reasoning tokens, no
+    /// visible text, no tool calls) still completed and persisted.
+    package var hasThinkingContent: Bool {
+        contentParts.contains(where: { $0.thinkingContent != nil })
+    }
+
     public init(
         id: UUID = UUID(),
         role: MessageRole,

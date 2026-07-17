@@ -123,6 +123,49 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
                       "Expected .completed in states, got \(states)")
     }
 
+    // MARK: - 4b. streamFinished(.stop) on a thinking-only message still completes
+
+    /// A thinking-only turn (reasoning tokens, no visible text, no tool
+    /// calls) must still reach `.completed` — the coordinator's own empty
+    /// gate must not re-drop a message the runtime already decided was worth
+    /// persisting. Regression coverage for the gap #2282 left open: the
+    /// runtime's `ConversationTurnExecutor` gate was fixed to count thinking
+    /// content, but this coordinator had its own duplicate
+    /// `hasVisibleContent`-only gate at the `.streamFinished` completion path.
+    func test_handleStreamFinished_stop_thinkingOnly_callsOnSetLastTurnStateCompleted() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+
+        var states: [ChatViewModel.TurnState] = []
+        coord.onSetLastTurnState = { states.append($0) }
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+
+        // No visible text at all — only a finalized `.thinking` part.
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        msg.contentParts = [.thinking("Let me consider this carefully.", signature: nil)]
+        let session = ChatSession(id: sessionID, title: "Test")
+
+        coord.currentMessages = { [msg] }
+        coord.currentActiveSession = { session }
+        coord.currentPostGenerationTasks = { [] }
+
+        coord.activeConversationMessageID = msgID
+        coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
+
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .stop))
+
+        XCTAssertTrue(
+            states.contains(where: { if case .completed = $0 { return true }; return false }),
+            "A thinking-only .stop must still complete the turn, got \(states)"
+        )
+        XCTAssertFalse(
+            states.contains(where: { if case .idle = $0 { return true }; return false }),
+            "A thinking-only .stop must not fall back to .idle, got \(states)"
+        )
+    }
+
     // MARK: - 5. streamFinished(.cancelled) calls onSetLastTurnState(.idle)
 
     func test_handleStreamFinished_cancelled_callsOnSetLastTurnStateIdle() async {
@@ -543,6 +586,54 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         XCTAssertTrue(
             recorder.posts.first?.text.contains("Fallback partial") ?? false,
             "Got: \(recorder.posts.first?.text ?? "<nil>")"
+        )
+    }
+
+    // MARK: - 12c. applyTerminalOutcome (non-streaming/fallback path) on a thinking-only message
+
+    /// Same regression as 4b, but for the coordinator's SECOND completion
+    /// gate — `applyTerminalOutcome`, the non-streaming outcome path shared
+    /// by the fallback-drain race (see test 12b) and by regenerate/edit/
+    /// branch turns that terminate via `ConversationTurnOutcome` rather than
+    /// a drained `.streamFinished` event. Before this fix this path also
+    /// only checked `hasVisibleContent`, so a thinking-only outcome would
+    /// fall back to `.idle` even though the message was already persisted.
+    func test_applyTerminalOutcome_thinkingOnly_setsLastTurnStateCompleted() {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+
+        var states: [ChatViewModel.TurnState] = []
+        coord.onSetLastTurnState = { states.append($0) }
+        coord.currentActiveSessionID = { sessionID }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentPostGenerationTasks = { [] }
+
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        msg.contentParts = [.thinking("Let me consider this carefully.", signature: nil)]
+        coord.currentMessages = { [msg] }
+
+        let streamHandle = ConversationStreamHandle(id: UUID())
+        coord.activeConversationStreamHandle = streamHandle
+        coord.applyTerminalOutcome(ConversationTurnOutcome(
+            sessionID: sessionID,
+            streamHandle: streamHandle,
+            assistantMessageID: msgID,
+            assistantMessage: msg,
+            reason: .stop,
+            error: nil,
+            finalText: "",
+            promptTokens: nil,
+            completionTokens: nil
+        ))
+
+        XCTAssertTrue(
+            states.contains(where: { if case .completed = $0 { return true }; return false }),
+            "A thinking-only outcome must still complete the turn, got \(states)"
+        )
+        XCTAssertFalse(
+            states.contains(where: { if case .idle = $0 { return true }; return false }),
+            "A thinking-only outcome must not fall back to .idle, got \(states)"
         )
     }
 
