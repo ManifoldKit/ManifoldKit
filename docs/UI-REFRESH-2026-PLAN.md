@@ -57,26 +57,33 @@ Unit 1** (publicized with docs in Unit 2):
 - `@Entry var manifoldTheme` + `.manifoldTheme(_:)` cascading modifier,
   mirroring `ChatTheme.swift:119-137`.
 
-### 1.3 Migration sites (~57 literals; the inventory)
+### 1.3 Migration sites (~65 literals across ~28 files; the inventory)
 
 Group per file; each change is mechanical (literal → token read):
 
-- **ManifoldUI:** `ToolInvocationView` (`.quaternary.opacity(0.5)`,
-  `.orange.opacity(0.15)`, `.green`, `.orange` — lines 135/183/229/237);
+- **ManifoldUI:** `ToolInvocationView` (`.quaternary.opacity(0.5)`:135,
+  `.green` checkmark:183, `.orange` error icon:229,
+  `.orange.opacity(0.15)` badge:237);
   `ChatShellViews` (`.blue.opacity(0.08)`:45, `.red.opacity(0.1)`:270,
   `.yellow`, `.green`, `.blue`); `SessionListView` swipe tints
   (`.orange/.blue/.yellow`:159-181); `TypingIndicatorView` (`.secondary`:15);
   `StreamingCursorView` (`.primary`:12); `MessagePartsView`
   (`.gray.opacity(0.15)`:281 + placeholder styles); `CitationsView`
-  (`.accentColor.opacity(0.18)`:160, `.fill.quinary`:149);
+  (highlight `.accentColor.opacity(0.18)` and `.fill.quinary` row fills,
+  :149-160);
   `MemoryIndicatorView`/`ContextIndicatorView` (status tiers);
   `AudioMessageView` (role-conditional fills); `MessageBubbleView`
   hardcoded white-opacity metadata styles (:171,176).
 - **ManifoldUIModelManagement:** `ModelPicker.typeBadge()` (:256-259),
   `DownloadableModelRow.fitTint()/speedTint()/badgeColor()` (:165-229),
-  `HuggingFaceBrowserView` curated/best badges (:78, :317),
+  `HuggingFaceBrowserView` curated/best badges (:308, tint :317),
   `DocumentLibraryView` (:186 drop target, `.orange` info),
-  `APIConfigurationView` (`.yellow` warning).
+  `APIConfigurationView` (`.yellow` warning), plus the literal-bearing
+  secondary views the first sweep missed: `SessionExportSheet`,
+  `BackendCapabilityView`, `RemoteServerConfigSheet`,
+  `APIEndpointEditorView`, `APIEndpointRow`, `LocalModelStorageView`,
+  `WhyDownloadView`, `StorageManagementView`, `DownloadProgressView`,
+  `ImageModelInstallView`.
 - **ManifoldVoice:** recording `.red` → `status.error`
   (`VoiceComposerAccessory`, `VoiceInputButton`).
 - **Exempt (functional/data — taxonomy category b):**
@@ -106,10 +113,13 @@ scan target and asserts detection; register with
 - Review criteria: zero rendered-appearance change (characterization green on
   both sides of the diff); no new `public` symbols; audit sabotage registered.
 
-**Size check:** ~20 view files + 3 new files + tests. Within the ~40-file
-soft cap; if the migration list grows past it, split *mechanically* (UI vs
-UIModelManagement migrations) — both PRs still zero-visual-change, so this is
-not a phased feature split.
+**Size check:** ~28 view files + 3 new files + tests — tight against the
+~40-file soft cap, so expect the mechanical split to fire: PR 1a =
+`ManifoldTheme` + characterization + audit + ManifoldUI migrations, PR 1b =
+ManifoldUIModelManagement/Voice migrations. Both are zero-visual-change, so
+this is a mechanical split, not a phased feature split; `HardcodedColorAuditTest`
+lands in 1a with the 1b files temporarily allowlisted, and 1b's diff is
+"remove allowlist entries + migrate."
 
 ---
 
@@ -162,14 +172,16 @@ parallel worktree sessions once L1 lands in the stack.
   `ModelRegistry.availableModels` + `EndpointStore` endpoints (mutual
   exclusion already in `ModelRegistry.swift:37-55` — presentation merge, not
   a selection-model change). Capability glyphs from
-  `supportsReasoning`/`toolCallClaim`/`mmprojURL` (`ModelInfo.swift:80-151`);
+  `supportsReasoning` (`ModelInfo.swift:136`) / `toolCallClaim` (:149) /
+  `mmprojURL` (:31);
   fit dot from `ModelLoadPlan.canRunModel`; dimmed rows from
   `FrameworkCapabilityService`; inline download progress from
   `DownloadStatus`; endpoint-fault rows with fix action.
 - Thinking-budget control: maps Off→`maxThinkingTokens = 0`, Auto→`nil`,
   Extended→named budget; rendered only when
-  `ModelManifest.supportsThinking`; sampler knob visibility gated on
-  `supportedSamplingParameters` (`ModelManifest.swift:27-41`).
+  `ModelManifest.supportsThinking` (`ModelManifest.swift:97`); sampler knob
+  visibility gated on `supportedSamplingParameters` (:120; the
+  `SamplingParameterSet` OptionSet itself is :27-41).
 - Tests: switcher union (endpoints + models co-listed, selection mutual
   exclusion preserved); manifest gating (no thinking row for
   non-thinking models); "+"-menu flag mapping (each flag off → item absent);
@@ -272,10 +284,11 @@ Per `docs/QA-PRACTICES.md`, four lanes:
 
 ```
 current release ships
-  └─ U1 (1 session, ~1 PR) ──────────────► merge
-       └─ U2 stack: L1 ─► L2 ─┬─► L3 ─► L5 ─► merge stack as one
-                              └─► L4 ──┘
-                    (L2 and L4 parallelizable across worktree sessions;
-                     L3 depends on L2's ComposerStyle; L5 last, always)
+  └─ U1 (1 session; 1–2 mechanical PRs) ──► merge
+       └─ U2 stack: L1 ─┬─► L2 ─► L3 ─┬─► L5 ─► merge stack as one
+                        └─► L4 ───────┘
+                    (L2 and L4 both branch from L1 and run in parallel
+                     worktree sessions; L3 depends on L2's ComposerStyle;
+                     L5 last, always)
 release PR → DX walkthrough sign-off → ship
 ```
