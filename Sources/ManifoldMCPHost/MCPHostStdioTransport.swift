@@ -77,11 +77,22 @@ public actor MCPHostStdioTransport: MCPHostTransport {
     /// loop observes the closed handle and exits. Awaiting the read task here
     /// makes shutdown deterministic rather than merely requested.
     ///
+    /// Cancels the read task **before** closing the handle: the close is what
+    /// unblocks the pending read, and the read loop's catch branches on
+    /// `Task.isCancelled` to decide whether the resulting error is an
+    /// intentional shutdown (finish cleanly) or a real transport failure
+    /// (finish throwing). Closing first would race — the read can unblock and
+    /// reach the catch before `cancel()` sets the flag, nondeterministically
+    /// finishing the stream with a thrown EBADF instead of a clean finish.
+    /// Cancelling first makes `Task.isCancelled` reliably true by the time the
+    /// close unblocks the read.
+    ///
     /// Idempotent — a second call is a no-op.
     public func shutdown() async {
         guard didShutdown == false else { return }
         didShutdown = true
 
+        readTask?.cancel()
         do {
             try input.close()
         } catch {
@@ -89,7 +100,6 @@ public actor MCPHostStdioTransport: MCPHostTransport {
                 "MCPHostStdioTransport: failed to close input handle during shutdown: \(error.localizedDescription, privacy: .public)"
             )
         }
-        readTask?.cancel()
         await readTask?.value
         readTask = nil
         continuation.finish()

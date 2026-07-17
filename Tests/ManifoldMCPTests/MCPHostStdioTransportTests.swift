@@ -21,17 +21,18 @@ final class MCPHostStdioTransportTests: XCTestCase {
         // Start consuming before shutdown, mirroring how `MCPHostServer.run`
         // drains `incomingMessages` for the lifetime of the connection.
         let iterationFinished = expectation(description: "iteration terminates")
-        let consumeTask = Task {
+        let consumeTask = Task { () -> Bool in
+            // Returns whether iteration ended by throwing.
             do {
                 for try await _ in transport.incomingMessages {
                     // No messages expected on this fixture — just draining.
                 }
+                iterationFinished.fulfill()
+                return false
             } catch {
-                // Either a clean finish or a surfaced close error is an
-                // acceptable terminal state; what matters is that iteration
-                // ends at all.
+                iterationFinished.fulfill()
+                return true
             }
-            iterationFinished.fulfill()
         }
 
         // Give the detached read task a moment to actually reach its
@@ -41,7 +42,12 @@ final class MCPHostStdioTransportTests: XCTestCase {
         await transport.shutdown()
 
         await fulfillment(of: [iterationFinished], timeout: 5)
-        consumeTask.cancel()
+        // `shutdown()` cancels the read task before closing the handle, so
+        // the unblocked read's error is always observed under
+        // `Task.isCancelled == true` — a deterministic clean finish, never a
+        // thrown EBADF surfaced to the caller as a spurious transport error.
+        let threw = await consumeTask.value
+        XCTAssertFalse(threw, "shutdown() must finish incomingMessages cleanly, not by throwing")
 
         // The write end is still open on our side; close it to avoid leaking
         // the fixture's file descriptor into later tests.
@@ -59,6 +65,15 @@ final class MCPHostStdioTransportTests: XCTestCase {
         // double-closing the handle.
         await transport.shutdown()
 
+        // Positive check that the transport actually reached its terminal
+        // state: consuming the (already-finished) stream after both calls
+        // must complete immediately with no elements and no thrown error.
+        var messages: [Data] = []
+        for try await message in transport.incomingMessages {
+            messages.append(message)
+        }
+        XCTAssertTrue(messages.isEmpty, "no messages were ever written to the fixture pipe")
+
         try? pipe.fileHandleForWriting.close()
     }
 
@@ -69,19 +84,32 @@ final class MCPHostStdioTransportTests: XCTestCase {
         let transport = MCPHostStdioTransport(input: pipe.fileHandleForReading)
 
         let iterationFinished = expectation(description: "iteration terminates on EOF")
-        let consumeTask = Task {
-            for try await _ in transport.incomingMessages {}
-            iterationFinished.fulfill()
+        let consumeTask = Task { () -> Bool in
+            do {
+                for try await _ in transport.incomingMessages {}
+                iterationFinished.fulfill()
+                return false
+            } catch {
+                iterationFinished.fulfill()
+                return true
+            }
         }
 
         // Closing the write end delivers EOF to the blocked read, which the
         // pre-existing (correct) EOF path already handles.
         try pipe.fileHandleForWriting.close()
         await fulfillment(of: [iterationFinished], timeout: 5)
-        consumeTask.cancel()
+        let threw = await consumeTask.value
+        XCTAssertFalse(threw, "a natural peer EOF must finish incomingMessages cleanly")
 
-        // shutdown() after natural EOF must still be safe.
+        // shutdown() after natural EOF must still be safe — and idempotently
+        // reach the same terminal state rather than hanging or crashing.
         await transport.shutdown()
+        var messages: [Data] = []
+        for try await message in transport.incomingMessages {
+            messages.append(message)
+        }
+        XCTAssertTrue(messages.isEmpty, "no messages were ever written before EOF")
     }
 }
 #endif
