@@ -1,5 +1,8 @@
 # Toward 1.0 — release criteria and the post-1.0 policies
 
+**Audience:** contributor
+**Status:** living
+
 > **Status: accepted 2026-07-16.** This document has two halves. The first —
 > *1.0 release criteria* — enumerates what the `1.0.0` freeze actually covers,
 > and is a factual description of the current stability program. The second —
