@@ -1,6 +1,9 @@
 import SwiftUI
+import ManifoldUI
 
 public struct VoiceInputButton: View {
+    @Environment(\.manifoldTheme) private var theme
+
     private let isRecording: Bool
     private let isBusy: Bool
     private let action: () -> Void
@@ -20,7 +23,7 @@ public struct VoiceInputButton: View {
             Label(buttonTitle, systemImage: systemImage)
         }
         .buttonStyle(.borderedProminent)
-        .tint(isRecording ? .red : .accentColor)
+        .tint(isRecording ? theme.statusError : AnyShapeStyle(Color.accentColor))
         .disabled(isBusy)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
