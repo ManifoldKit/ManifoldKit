@@ -29,6 +29,17 @@ import Foundation
 /// `docs/` other than `plans/` — there are none today, but this test only
 /// walks the top level so a future subdirectory doesn't silently need the
 /// same headers without a deliberate decision.
+///
+/// ── DRIFT GUARD ──────────────────────────────────────────────────────────
+/// `scripts/lint-docs-headers.sh` is a deliberately duplicated, cheap Bash
+/// mirror of this test, wired into `.github/workflows/lint.yml`. It exists
+/// because `ci.yml`'s paths-filtered macOS `test` job (which runs THIS test)
+/// skips docs-only PRs entirely, so without the mirror a missing header only
+/// surfaces for the first time in the (paths-unfiltered) merge queue — where
+/// it can also poison other batched PRs. This test stays authoritative; if
+/// you change the accepted `Audience:`/`Status:` values, the lookback
+/// window, the doc set/exclusions, or the header regex shape here, update
+/// `scripts/lint-docs-headers.sh` to match (and vice versa).
 final class DocsAudienceStatusAuditTest: XCTestCase {
 
     static let validAudiences: Set<String> = ["consumer", "contributor"]

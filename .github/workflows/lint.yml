@@ -7,6 +7,11 @@ name: Lint
 #   - changelog-lint                (was changelog-lint.yml)
 #   - commitlint                    (was commitlint.yml — Lint PR Title)
 #   - known-issue-lint              (was known-issue-lint.yml)
+#   - docs-header-lint              (scripts/lint-docs-headers.sh — cheap mirror
+#                                     of DocsAudienceStatusAuditTest so a docs-only
+#                                     PR, which skips ci.yml's paths-filtered macOS
+#                                     `test` job, still gets the check on the PR run
+#                                     instead of first failing in the merge queue)
 #   - availability-audit            (scripts/audit-availability.sh — n-1 floor)
 #   - secret-scan                   (was security-scans.yml: secret-scan)
 #   - dependency-review             (was security-scans.yml: dependency-review)
@@ -330,6 +335,21 @@ jobs:
           fi
 
           echo "✓ All ${#hits[@]} withKnownIssue usage(s) have a tracking // FIXME link."
+
+      # ── docs-header-lint ──────────────────────────────────────────────────
+      # ci.yml's macOS `test` job (which runs the authoritative
+      # DocsAudienceStatusAuditTest) is paths-filtered and excludes docs/**, so
+      # a docs-only PR skips it — the CI Required Test Shim reports green in
+      # its place. The merge queue's `merge_group` trigger has no paths filter
+      # and forces a full run, so a docs-only PR missing headers only fails
+      # for the first time in the queue, where it also poisons up to 4 other
+      # batched PRs (2026-07: PR #2306 failed the queue twice and took #2212
+      # down with it 6 times). Lint runs on every PR unconditionally, so this
+      # step catches the same problem on the cheap ubuntu-latest PR run,
+      # before the queue.
+      - name: "docs-header-lint — verify Audience:/Status: headers"
+        if: always()
+        run: bash scripts/lint-docs-headers.sh
 
       # ── availability-audit ────────────────────────────────────────────────
       # Flags @available / #available annotations that exceed the Package.swift
