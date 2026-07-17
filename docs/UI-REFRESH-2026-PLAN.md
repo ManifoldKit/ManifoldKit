@@ -2,10 +2,12 @@
 
 > Companion to [`UI-REFRESH-2026.md`](UI-REFRESH-2026.md) (the design spec —
 > read it first) and tracking issue #2307. This plan is written for a cold
-> session: each unit names its entry points, touched files, new API, tests,
-> and review criteria. **Release gate: nothing below merges until the current
-> in-flight release has shipped.** File:line anchors reflect `main` at the
-> time of writing (2026-07-17); re-verify before relying on them.
+> **orchestrator** session: it names not only each unit's entry points, touched
+> files, new API, tests, and review criteria, but *who executes each tranche,
+> in which worktree, and in what order* — see **Orchestration model** below.
+> **Release gate: OPEN.** v0.72.0 shipped 2026-07-17 (#2307); implementation
+> may start now. File:line anchors reflect `main` at the time of writing
+> (2026-07-17); re-verify before relying on them.
 
 ## Ground rules (from the spec + review)
 
@@ -22,7 +24,104 @@
 
 ---
 
-## Unit 1 — token refactor (one PR, zero visual change)
+## Orchestration model (multi-worker execution)
+
+This plan runs as an **orchestrator session fanning work out to parallel worker
+agents**, not one cold session working linearly. The technical substance of
+every unit below is unchanged — this section adds only *who does what, in what
+order, in which worktree*. The dependency graph and the exact per-tranche file
+ownership live in **[Worker tranches & dependency graph](#worker-tranches--dependency-graph)**
+at the foot of this document; the rules a cold orchestrator must obey are here.
+
+### Estate execution rules (non-negotiable)
+
+- **Flat dispatch tree.** The orchestrator spawns *every* worker and *every*
+  reviewer directly. Workers implement and **never spawn sub-agents**; a worker
+  that needs more hands reports back and the orchestrator fans out.
+- **Cheap models by default.** Writer workers run on **sonnet**; purely
+  mechanical probes (literal inventories, allowlist edits, grep-shaped file
+  sweeps) run on **haiku**. Reviewers run the `skeptical-reviewer` agent. The
+  orchestrator holds the judgment; workers hold the diffs.
+- **Isolated worktree per writer.** Every writer worker gets its **own git
+  worktree branched off `origin/main`** (Unit 1) or off the named base branch
+  of its tranche (Unit 2 stacked drafts). No two writers share a checkout.
+  Reset the fresh worktree to the intended base immediately — the `wt` helper
+  starts from the primary checkout's (often stale) HEAD, not `origin/main`.
+- **Adversarial review per change.** Each worker draft is reviewed by an
+  independent `skeptical-reviewer` dispatch: correctness, premise/assumptions,
+  scope discipline, conventions, and *is the change live or inert* (the #2064
+  lesson — a read path with no writer is dead code). Fix pushes get a **delta
+  re-review** to the same reviewer. A **ship verdict on the current HEAD** is
+  required before any merge — a stale "looks good" on an earlier push does not
+  count.
+- **Draft PR = zero-CI staging.** Open a draft the moment a worker branch
+  compiles (protect work early). CI is gated off drafts, so the draft is where
+  review and fix iterate. The single deliberate CI trigger is `gh pr ready`,
+  flipped only when the change is review-clean **and** the local gate is green.
+- **Local gate before every ready-flip.** `scripts/test.sh --profile local`
+  (full — never `--filter <featureSuite>`; the cross-cutting audits live
+  outside feature suites, so a filtered run goes green while CI goes red) plus
+  the audit suites by name. Unit 2 adds
+  `swift build --build-tests --traits Server,Macros` and the live-demo
+  verification.
+- **Merge through the queue.** `gh pr merge <N> --squash --auto`. Never
+  `--admin`, never `gh api`-direct.
+
+### Roles
+
+- **Orchestrator** — owns the dependency graph and the synchronization points
+  below; spawns workers and reviewers; packages worker branches into the
+  sanctioned PRs; drives the merge queue. Holds no diffs itself.
+- **Writer worker (sonnet)** — implements one tranche in one worktree; opens and
+  keeps its draft; applies review findings; runs its local gate.
+- **Probe worker (haiku)** — mechanical fan-out only (inventory a literal set,
+  verify an allowlist, confirm a file boundary); returns data, makes no
+  judgment call.
+- **Reviewer (`skeptical-reviewer`)** — adversarial, read-only; verdicts on the
+  current HEAD.
+
+### Synchronization points (hard gates — cross only when the predecessor has landed where stated)
+
+1. **Characterization before migration.** `DefaultAppearanceCharacterizationTests`
+   (§1.1) exist and pass *before* any literal-migration worker touches a view
+   file. The rewiring must prove itself against a locked baseline.
+2. **Token type before literals.** `ManifoldTheme` (§1.2) exists on the Unit-1
+   base branch before the ManifoldUI / ManifoldUIModelManagement / Voice
+   migration workers start — they read tokens that must already be defined.
+3. **Unit 1 merged before Unit 2.** The full Unit-2 stack branches off a `main`
+   that already carries the token refactor; Unit 2 never re-does token plumbing.
+4. **L1 before L2/L4.** Glass/chrome — and the per-OS `glass` resolution it adds
+   to `ManifoldTheme` — is in the integration branch before the style-protocol
+   and state-screen workers branch off it.
+5. **L2's `ComposerStyle` before L3.** The composer redesign consumes it.
+6. **L5 last, always.** The defaults flip runs only after L1–L4 are integrated;
+   no intermediate state ships a half-flipped default.
+7. **Ship-verdict-on-current-HEAD before each merge** — Unit 1's PRs, and the
+   single Unit 2 integration PR.
+
+### PR sizing vs. no-phased-splits (the reconciliation)
+
+The estate's ~40-changed-file / ~800-net-line cap and the "no phased feature
+splits" rule pull against parallelism, and the resolution differs per unit:
+
+- **Unit 1 splits mechanically, not by phase.** PRs 1a/1b are the sanctioned
+  mechanical split (both zero-visual-change; 1b is "remove allowlist entries +
+  migrate"). Parallel migration workers *feed* those two PRs — they do not
+  multiply them.
+- **Unit 2 stays ONE merged feature.** Parallelism happens *inside a stacked
+  draft series*, not across CI-triggering PRs. Workers build L1–L5 on stacked
+  branches, each **reviewed while draft (zero CI)**; the layers integrate onto
+  one Unit-2 branch that is the **single** ready/merge event. The ~40-file cap
+  governs *independently-mergeable, CI-triggering* PRs; the repo's own escape
+  hatch — *"if it's too big to review at once, stack it behind a draft and merge
+  the stack as one — do not open a CI-triggering PR per phase"* — is exactly
+  this case. Review quality is bought by per-layer draft review, **not** by
+  cutting the merge into phase-PRs. **Parallel workers must never turn Unit 2
+  into per-layer ready PRs.**
+
+---
+
+## Unit 1 — token refactor (one feature, PRs 1a/1b, zero visual change)
 
 **Goal:** every themeable color/shape/type decision routes through one
 environment-injected token root; today's rendered appearance is byte-for-byte
@@ -114,21 +213,38 @@ scan target and asserts detection; register with
   both sides of the diff); no new `public` symbols; audit sabotage registered.
 
 **Size check:** ~28 view files + 3 new files + tests — tight against the
-~40-file soft cap, so expect the mechanical split to fire: PR 1a =
+~40-file soft cap, so the mechanical split fires: PR 1a =
 `ManifoldTheme` + characterization + audit + ManifoldUI migrations, PR 1b =
 ManifoldUIModelManagement/Voice migrations. Both are zero-visual-change, so
 this is a mechanical split, not a phased feature split; `HardcodedColorAuditTest`
 lands in 1a with the 1b files temporarily allowlisted, and 1b's diff is
 "remove allowlist entries + migrate."
 
+**Worker fan-out (see the tranche table):** `T1-tokens` (sonnet) is the
+synchronization gate — it lands `ManifoldTheme` + characterization + audit and
+owns `Sources/ManifoldUI/Theming/**` plus the new test files. Once its branch
+exists, three migration workers run in parallel off it against **disjoint**
+directories — `T1-migrate-ui` (sonnet, `Views/**`+`Extensions/**`),
+`T1-migrate-mmgmt` (`Sources/ManifoldUIModelManagement/**`),
+`T1-migrate-voice` (haiku, `Sources/ManifoldVoice/**`) — so no two writers ever
+touch the same file. `T1-migrate-ui` integrates into **PR 1a**; the mmgmt and
+voice migrations integrate into **PR 1b** (which rebases after 1a merges and
+drops the allowlist entries).
+
 ---
 
 ## Unit 2 — the visual overhaul (stacked drafts, merged as one)
 
-One feature. Build as a stacked draft series off the Unit 1 branch — each
-layer reviewed while draft (zero CI) — and merge the stack as a single unit
-through the queue. Layer order is dependency order; L2 and L4 can be built by
-parallel worktree sessions once L1 lands in the stack.
+One feature. Build as a stacked draft series off `main` (post-Unit-1) — each
+layer built by its own **writer worker in an isolated worktree**, reviewed
+while draft (zero CI) — and merge the integrated stack as a single unit through
+the queue. Layer order is dependency order (§sync points 4–6); once L1 lands in
+the stack, `L2-protocols` and `L4-screens` run as **parallel** workers off L1
+against disjoint paths, `L3-composer` follows L2, and `L5-flip` is always last.
+Per-layer owned paths are in the [tranche table](#worker-tranches--dependency-graph);
+the guardrail is that no two concurrently-live layer workers own the same file,
+and **no layer worker flips its own PR ready** — only the orchestrator's
+integration branch does, once.
 
 ### L1 — glass & material chrome
 
@@ -280,15 +396,56 @@ Per `docs/QA-PRACTICES.md`, four lanes:
 - [ ] Artifact mirror updated from the repo HTML if the spec changed during
       implementation.
 
-## Sequencing & parallelism
+## Worker tranches & dependency graph
+
+Each tranche is one writer worker in one isolated worktree. **Owned paths are
+disjoint across any set of concurrently-live tranches**, so parallel workers
+never touch the same file; the boundaries are drawn from the real source layout
+(verified in the worktree). "Base branch" is where the worker branches from and
+resets to.
+
+### Unit 1 (release gate open — starts now)
+
+| Tranche | Model | Base branch | Owns (disjoint) | Depends on | Packaged into |
+|---|---|---|---|---|---|
+| **T1-tokens** *(sync gate)* | sonnet | `origin/main` | `Sources/ManifoldUI/Theming/ManifoldTheme.swift` (new, `.chatTheme` write-through) + the new `DefaultAppearanceCharacterizationTests` and `HardcodedColorAuditTest` files | §1.1 characterization precedes the refactor commit | **PR 1a** |
+| **T1-migrate-ui** | sonnet | T1-tokens | `Sources/ManifoldUI/Views/**`, `Sources/ManifoldUI/Extensions/**` literal→token migration | T1-tokens (`ManifoldTheme` must exist) | **PR 1a** |
+| **T1-migrate-mmgmt** | sonnet | T1-tokens | `Sources/ManifoldUIModelManagement/**` migration + allowlist removal | T1-tokens | **PR 1b** |
+| **T1-migrate-voice** | haiku | T1-tokens | `Sources/ManifoldVoice/**` (`VoiceComposerAccessory`, `VoiceInputButton`) | T1-tokens | **PR 1b** |
+
+### Unit 2 (one merged feature; stacked drafts)
+
+| Tranche | Model | Base branch | Owns (disjoint) | Depends on |
+|---|---|---|---|---|
+| **L1-glass** *(stack sync gate)* | sonnet | `main` (post-U1) | `Views/Chat/ChatView.swift`, `Views/Chat/ChatHistoryView.swift`, macOS toolbar contribution, per-OS `glass` resolution in `Theming/ManifoldTheme.swift`, scroll-to-bottom control | Unit 1 merged |
+| **L2-protocols** | sonnet | L1 | new `Theming/{ComposerStyle,ThinkingBlockStyle,ToolInvocationStyle,SessionRowStyle}.swift`, `Theming/ChatMessageRenderer.swift` (part-renderer seam), publicize `ManifoldTheme` + DocC | L1 |
+| **L4-screens** | sonnet | L1 | `Views/Chat/MessagePartsView.swift` (video/media), new state-screen views under `Views/Chat/`, `Views/Chat/HandoffChipView.swift` (branch chip), `ManifoldUIModelManagement/Views/Settings/**` (Connected Services) + `Views/Image/**` — consumes **tokens only**, not L2's new protocols, which is what keeps it parallel to L2 | L1 (∥ L2) |
+| **L3-composer** | sonnet | L2 | `Views/Composer/**`, `Views/Chat/ChatInputBar.swift`, `ManifoldUIModelManagement/Views/Models/ModelPicker.swift` + the `package` switcher-union type, thinking-budget control | L2 (`ComposerStyle`) |
+| **L5-flip** *(last, always)* | sonnet | integrated L1–L4 | defaults flip across `Theming/**` (ChatTheme + built-in style defaults), `.classic` presets, characterization re-anchor, migration note + CHANGELOG lead + AGENTS.md Part 1 | L1–L4 all integrated |
+
+Within `ManifoldUIModelManagement`, L3 owns `Views/Models/**` and L4 owns
+`Views/Settings/**` + `Views/Image/**` — disjoint, so the two run without
+collision even though both touch that module.
+
+### Dependency graph
 
 ```
-current release ships
-  └─ U1 (1 session; 1–2 mechanical PRs) ──► merge
-       └─ U2 stack: L1 ─┬─► L2 ─► L3 ─┬─► L5 ─► merge stack as one
-                        └─► L4 ───────┘
-                    (L2 and L4 both branch from L1 and run in parallel
-                     worktree sessions; L3 depends on L2's ComposerStyle;
-                     L5 last, always)
+v0.72.0 shipped (release gate OPEN)
+  └─ Unit 1:  T1-tokens ─┬─► T1-migrate-ui ───────► PR 1a ──► merge
+       (sync gate)        ├─► T1-migrate-mmgmt ─┐
+                          └─► T1-migrate-voice ─┴─► PR 1b ──► merge
+                                (three migration workers parallel off T1-tokens,
+                                 disjoint dirs; PR 1b rebases after 1a)
+       └─ Unit 2 stack (ONE merged feature):
+            L1-glass ─┬─► L2-protocols ─► L3-composer ─┐
+             (gate)   └─► L4-screens ───────────────────┼─► L5-flip ─► integrate ─► ONE PR ─► merge queue
+                          (L2 ∥ L4 off L1; L3 after L2;   (defaults flip last)
+                           L5 after all)
 release PR → DX walkthrough sign-off → ship
 ```
+
+Orchestrator loop per tranche: spawn writer (sonnet/haiku) in a fresh worktree →
+draft PR on first compile → spawn `skeptical-reviewer` → workers fix, reviewer
+delta-re-reviews to a ship verdict on current HEAD → orchestrator runs the local
+gate and packages/integrates. Unit 1 flips 1a then 1b ready through the queue;
+Unit 2's integration branch is the single ready/merge event for the whole stack.
