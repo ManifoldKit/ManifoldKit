@@ -51,6 +51,7 @@ public struct SessionExportSheet: View {
 
     @Environment(SessionManagerViewModel.self) private var sessionManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.manifoldTheme) private var theme
 
     private let session: ChatSession
 
@@ -77,7 +78,7 @@ public struct SessionExportSheet: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.statusError)
                     }
                 }
             }

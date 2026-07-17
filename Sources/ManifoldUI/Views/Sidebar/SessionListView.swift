@@ -9,6 +9,7 @@ import ManifoldInference
 public struct SessionListView: View {
 
     @Environment(SessionManagerViewModel.self) private var sessionManager
+    @Environment(\.manifoldTheme) private var theme
 
     @State private var sessionToDelete: ChatSession?
     @State private var sessionToRename: ChatSession?
@@ -158,7 +159,7 @@ public struct SessionListView: View {
                 unpinButton(for: session)
                     .tint(.orange)
                 renameButton(for: session)
-                    .tint(.blue)
+                    .tint(theme.accent)
             }
             .contextMenu {
                 unpinButton(for: session)
@@ -176,9 +177,9 @@ public struct SessionListView: View {
             }
             .swipeActions(edge: .leading) {
                 pinButton(for: session)
-                    .tint(.yellow)
+                    .tint(theme.statusWarn)
                 renameButton(for: session)
-                    .tint(.blue)
+                    .tint(theme.accent)
             }
             .contextMenu {
                 pinButton(for: session)
