@@ -1,5 +1,8 @@
 # ManifoldKit Voice Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for adding speech-to-text and text-to-speech to any Swift
 app — chat or not. If you've read the CHANGELOG and concluded that
 `ManifoldVoice` is for chat composers only: it isn't. The composer accessory
@@ -21,7 +24,7 @@ consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.70.0" // x-release-please-version
+        from: "0.71.0" // x-release-please-version
         // Depending on just the ManifoldVoice product keeps the inference
         // stack out of your app graph — core has no heavy ML deps since v0.48.
     ),

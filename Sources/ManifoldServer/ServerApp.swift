@@ -206,6 +206,21 @@ internal struct ServerApp: Sendable {
         }
     }
 
+    /// `stopGeneration()`'s contract is backend-wide, not per-request
+    /// (`InferenceBackend.swift`), and `TraitAwareServerBackendProvider`
+    /// hands out a single cached backend instance per model. Under
+    /// `parallelSlots > 1` two concurrent requests can share that instance,
+    /// so cancelling it for one timed-out request would also kill a
+    /// sibling's healthy in-flight generation. Real per-request cancellation
+    /// needs an `InferenceBackend` contract change (proposed as a follow-up
+    /// issue in this PR's body — out of scope here). Only cancel for real
+    /// when at most one generation can be in flight at a time; otherwise the
+    /// timeout still ends the *request* (task abandonment), just not the
+    /// backend call.
+    private var canCancelInFlightGenerationOnTimeout: Bool {
+        configuration.parallelSlots == 1
+    }
+
     private func chatCompletionResponse(for request: ChatCompletionRequest) async throws -> Response {
         if request.stream == true {
             return try await streamingChatCompletionResponse(for: request)
@@ -219,7 +234,20 @@ internal struct ServerApp: Sendable {
         metrics.recordGenerationStarted()
         do {
             let backend = try await validatedBackend(for: request)
-            let response = try await adapter.response(for: request, using: backend)
+            let boundedRequest = try boundedForOutputCap(request)
+            var response: ChatCompletionResponse
+            if let generationTimeout = configuration.generationTimeout {
+                response = try await ServerGenerationTimeout.run(
+                    generationTimeout,
+                    operation: { try await adapter.response(for: boundedRequest, using: backend) },
+                    onTimeout: { [canCancelInFlightGenerationOnTimeout] in
+                        if canCancelInFlightGenerationOnTimeout { backend.stopGeneration() }
+                    }
+                )
+            } else {
+                response = try await adapter.response(for: boundedRequest, using: backend)
+            }
+            response = correctedForOutputCapTruncation(response, effectiveMaxTokens: boundedRequest.maxCompletionTokens)
             await generationGate.signal()
             metrics.recordGenerationCompleted(tokenCount: tokenCount(in: response.contentText))
             return jsonResponse(response)
@@ -228,6 +256,93 @@ internal struct ServerApp: Sendable {
             metrics.recordGenerationFailed()
             throw error
         }
+    }
+
+    /// Clamps the client-requested output-token ceiling to
+    /// `configuration.maxGenerationOutputTokens`, and supplies that ceiling
+    /// outright when the request specifies neither `max_tokens` nor
+    /// `max_completion_tokens`. See that property's doc comment for why an
+    /// unset request field is otherwise an unbounded-output hazard (#2265).
+    ///
+    /// Throws `.invalidRequest` (HTTP 400, matching OpenAI's own behavior)
+    /// for a non-positive `max_tokens`/`max_completion_tokens` rather than
+    /// silently clamping it — `min(0, ceiling)` would otherwise flow through
+    /// as a "successful" 200 response with an empty completion, which is a
+    /// confusing way to reject a malformed request.
+    private func boundedForOutputCap(_ request: ChatCompletionRequest) throws -> ChatCompletionRequest {
+        let requested = request.maxCompletionTokens ?? request.maxTokens
+        if let requested, requested <= 0 {
+            throw ServerError.invalidRequest(
+                message: "max_tokens/max_completion_tokens must be a positive integer.",
+                param: "max_tokens",
+                code: "invalid_max_tokens"
+            )
+        }
+        guard let ceiling = configuration.maxGenerationOutputTokens else { return request }
+        var bounded = request
+        bounded.maxCompletionTokens = min(requested ?? ceiling, ceiling)
+        bounded.maxTokens = nil
+        return bounded
+    }
+
+    /// Rewrites `.stop` to `.length` when the response was very likely
+    /// truncated by `effectiveMaxTokens` (the ceiling actually passed to
+    /// generation on this request — see `boundedForOutputCap`).
+    ///
+    /// `ChatCompletionEventMapper`'s `Accumulator.finishReason` (in
+    /// `ChatCompletionsAdapter.swift`) only ever reports `.toolCalls` or
+    /// `.stop` — it has no way to know the output-token cap actually ended
+    /// generation, since `InferenceBackend.generate(...)`'s event stream
+    /// doesn't surface a distinct "hit max tokens" stop reason at this
+    /// layer. Left uncorrected, a client that omits `max_tokens` and gets
+    /// cut off at the server's default ceiling would be told the model
+    /// stopped naturally — a lie the cap must not tell now that it's
+    /// default-on (#2265 review).
+    ///
+    /// Prefers the backend-reported `usage.completionTokens` (exact) when
+    /// present; falls back to the same whitespace-based token estimate used
+    /// elsewhere in this file (`tokenCount(in:)`) when `usage` is absent —
+    /// approximate, but the only signal available without a real
+    /// `InferenceBackend` stop-reason contract.
+    private func correctedForOutputCapTruncation(
+        _ response: ChatCompletionResponse,
+        effectiveMaxTokens: Int?
+    ) -> ChatCompletionResponse {
+        guard let effectiveMaxTokens else { return response }
+        guard var choice = response.choices.first, choice.finishReason == .stop else { return response }
+        let completionTokens = response.usage?.completionTokens ?? tokenCount(in: response.contentText)
+        guard completionTokens >= effectiveMaxTokens else { return response }
+        choice.finishReason = .length
+        var corrected = response
+        corrected.choices[0] = choice
+        return corrected
+    }
+
+    /// Streaming counterpart to `correctedForOutputCapTruncation(_:effectiveMaxTokens:)`
+    /// — same correction (`.stop` → `.length`), applied per-chunk as each one
+    /// is about to be written, since streaming has no single terminal
+    /// response to patch after the fact. Uses `cumulativeTokenCount` (the
+    /// running whitespace-based token estimate `writeSSEChunks` already
+    /// maintains) rather than backend-reported usage, since a streaming
+    /// client rarely sets `stream_options.include_usage` and usage — even
+    /// when present — normally arrives in its own trailing chunk, after the
+    /// finish-reason chunk this needs to correct.
+    private static func correctedChunkForOutputCapTruncation(
+        _ chunk: ChatCompletionChunk,
+        cumulativeTokenCount: Int,
+        effectiveMaxTokens: Int?
+    ) -> ChatCompletionChunk {
+        guard let effectiveMaxTokens, cumulativeTokenCount >= effectiveMaxTokens else { return chunk }
+        guard chunk.choices.contains(where: { $0.finishReason == .stop }) else { return chunk }
+        var corrected = chunk
+        corrected.choices = chunk.choices.map { choice in
+            var choice = choice
+            if choice.finishReason == .stop {
+                choice.finishReason = .length
+            }
+            return choice
+        }
+        return corrected
     }
 
     private func streamingChatCompletionResponse(for request: ChatCompletionRequest) async throws -> Response {
@@ -239,8 +354,10 @@ internal struct ServerApp: Sendable {
         metrics.recordGenerationStarted()
 
         let backend: any InferenceBackend
+        let boundedRequest: ChatCompletionRequest
         do {
             backend = try await validatedBackend(for: request)
+            boundedRequest = try boundedForOutputCap(request)
         } catch {
             await generationGate.signal()
             metrics.recordGenerationFailed()
@@ -253,18 +370,20 @@ internal struct ServerApp: Sendable {
         headers[.connection] = "keep-alive"
         headers[HTTPField.Name("X-Accel-Buffering")!] = "no"
 
+        let idleTimeout = configuration.streamingIdleTimeout
+        let canCancel = canCancelInFlightGenerationOnTimeout
+
         let body = ResponseBody { writer in
-            var streamedTokenCount = 0
             do {
-                let chunks = try adapter.chunks(for: request, using: backend)
-                let encoder = JSONEncoder()
-                for try await chunk in chunks {
-                    streamedTokenCount += tokenCount(in: chunk)
-                    let data = try encoder.encode(chunk)
-                    let line = String(decoding: data, as: UTF8.self)
-                    try await writer.write(ByteBuffer(string: "data: \(line)\n\n"))
-                }
-                try await writer.write(ByteBuffer(string: "data: [DONE]\n\n"))
+                let chunks = try adapter.chunks(for: boundedRequest, using: backend)
+                let streamedTokenCount = try await writeSSEChunks(
+                    chunks,
+                    to: &writer,
+                    encoder: JSONEncoder(),
+                    idleTimeout: idleTimeout,
+                    effectiveMaxTokens: boundedRequest.maxCompletionTokens,
+                    onIdleTimeout: { if canCancel { backend.stopGeneration() } }
+                ) { chunk in tokenCount(in: chunk) }
                 metrics.recordGenerationCompleted(tokenCount: streamedTokenCount)
                 await generationGate.signal()
             } catch {
@@ -275,6 +394,113 @@ internal struct ServerApp: Sendable {
         }
 
         return Response(status: .ok, headers: headers, body: body)
+    }
+
+    /// Writes one SSE `data: <json>\n\n` frame per chunk followed by the
+    /// `[DONE]` sentinel, reusing a single ``ByteBuffer`` across tokens and
+    /// writing the encoder's bytes straight in — no `Data` -> `String` ->
+    /// interpolated-`String` -> fresh-`ByteBuffer` round trip per token (#2269).
+    ///
+    /// Each chunk is still written (and flushed to the wire by Hummingbird)
+    /// individually: this must never become buffer-then-flush-at-end, since
+    /// incremental per-token delivery is `ManifoldServer`'s whole
+    /// differentiator over batching servers. `SSEStreamWritingTests` pins that
+    /// behavior by asserting the first frame lands before the source stream
+    /// finishes producing tokens.
+    ///
+    /// Extracted as a free function — rather than inlined in the
+    /// `ResponseBody` closure — so that regression test can drive it directly
+    /// with a fake writer and a paced fake token stream, without spinning up a
+    /// full Hummingbird request.
+    ///
+    /// `idleTimeout` (default `nil`, preserving the pre-#2265 unbounded
+    /// behavior for direct callers/tests that don't pass it) re-arms every
+    /// time a new chunk is read from `chunks` (i.e. produced by the
+    /// backend/adapter) — NOT when it is subsequently written to `writer`; a
+    /// stalled *reader* on a healthy stream is not covered. See
+    /// `ServerConfiguration.streamingIdleTimeout`'s doc comment for why this
+    /// is idle-reset rather than a wall-clock cap. On expiry, `onIdleTimeout`
+    /// is invoked (real `InferenceBackend.stopGeneration()` cancellation when
+    /// the caller's closure allows it — see
+    /// `ServerApp.canCancelInFlightGenerationOnTimeout` — otherwise mere task
+    /// abandonment), one terminal SSE `data:` frame carrying a
+    /// `generation_timeout` error envelope is written so the client sees a
+    /// well-formed end to the stream, and this then throws
+    /// `ServerError.generationTimedOut` so the caller's existing
+    /// metrics/`generationGate` error path runs.
+    ///
+    /// `effectiveMaxTokens` (default `nil`), when set, corrects a terminal
+    /// chunk's `finishReason` from `.stop` to `.length` once the running
+    /// token estimate reaches it — see `correctedForOutputCapTruncation`'s
+    /// doc comment for why `ChatCompletionEventMapper` can't report this
+    /// itself.
+    internal func writeSSEChunks(
+        _ chunks: AsyncThrowingStream<ChatCompletionChunk, Error>,
+        to writer: inout any ResponseBodyWriter,
+        encoder: JSONEncoder,
+        idleTimeout: Duration? = nil,
+        effectiveMaxTokens: Int? = nil,
+        onIdleTimeout: @escaping @Sendable () -> Void = {},
+        tokenCount: (ChatCompletionChunk) -> Int
+    ) async throws -> Int {
+        var streamedTokenCount = 0
+        var buffer = ByteBuffer()
+
+        func writeChunk(_ chunk: ChatCompletionChunk) throws {
+            streamedTokenCount += tokenCount(chunk)
+            let corrected = Self.correctedChunkForOutputCapTruncation(
+                chunk,
+                cumulativeTokenCount: streamedTokenCount,
+                effectiveMaxTokens: effectiveMaxTokens
+            )
+            buffer.clear()
+            buffer.writeStaticString("data: ")
+            buffer.writeBytes(try encoder.encode(corrected))
+            buffer.writeStaticString("\n\n")
+        }
+
+        guard let idleTimeout else {
+            for try await chunk in chunks {
+                try writeChunk(chunk)
+                try await writer.write(buffer)
+            }
+            try await writer.write(ByteBuffer(string: "data: [DONE]\n\n"))
+            return streamedTokenCount
+        }
+
+        let outcomes = ServerIdleTimeoutPuller.make(chunks, idleTimeout: idleTimeout)
+        for await outcome in outcomes {
+            switch outcome {
+            case .element(let chunk):
+                try writeChunk(chunk)
+                try await writer.write(buffer)
+            case .finished:
+                try await writer.write(ByteBuffer(string: "data: [DONE]\n\n"))
+                return streamedTokenCount
+            case .failure(let error):
+                throw error
+            case .timedOut:
+                onIdleTimeout()
+                let timeoutMessage = "Generation exceeded the configured idle timeout of \(idleTimeout)."
+                let envelope = ChatCompletionErrorEnvelope(
+                    message: timeoutMessage,
+                    type: "server_error",
+                    code: "generation_timeout"
+                )
+                buffer.clear()
+                buffer.writeStaticString("data: ")
+                buffer.writeBytes(try encoder.encode(envelope))
+                buffer.writeStaticString("\n\n")
+                try await writer.write(buffer)
+                throw ServerError.generationTimedOut(timeoutMessage)
+            }
+        }
+        // Unreachable in practice: `ServerIdleTimeoutPuller.make` always
+        // yields exactly one terminal `Outcome` (`.finished`/`.failure`/
+        // `.timedOut`) — each handled above with a `return`/`throw` — before
+        // finishing the underlying `AsyncStream`. This satisfies the
+        // compiler's exhaustiveness requirement for the `-> Int` return type.
+        throw ServerError.generationFailed("Streaming chunk source ended without a terminal outcome.")
     }
 
     /// Decodes a request body, mapping decode/parse failures to a 400
@@ -409,6 +635,8 @@ internal struct ServerApp: Sendable {
             return .serviceUnavailable
         case .invalidConfiguration, .notImplemented, .generationFailed:
             return .internalServerError
+        case .generationTimedOut:
+            return .gatewayTimeout
         }
     }
 

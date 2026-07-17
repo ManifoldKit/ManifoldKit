@@ -1,5 +1,8 @@
 # ManifoldKit CLI / Headless Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for getting from "empty terminal" to "streaming tokens" without SwiftUI. If you're building a CLI, a server, an App Intents extension, a fuzz harness, or any non-SwiftUI consumer, start here.
 
 > **macOS version matters for backend choice.** ManifoldKit officially supports macOS 15+ (its `n-1` floor), but the simplest documented backend — Apple Foundation Models — is macOS 26 / iOS 26 only. The table below maps backend → minimum platform so you don't pick one that won't run.
@@ -46,7 +49,7 @@ Since v0.48 the heavy local backends ship as companion packages — core Manifol
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.70.0" // x-release-please-version
+        from: "0.71.0" // x-release-please-version
     ),
     .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF
     // .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"), // MLX
@@ -92,7 +95,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.70.0" // x-release-please-version
+            from: "0.71.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -180,7 +183,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.70.0" // x-release-please-version
+            from: "0.71.0" // x-release-please-version
         ),
         // The GGUF backend lives in the manifold-llama companion package (v0.48).
         .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
@@ -425,7 +428,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.70.0" // x-release-please-version
+            from: "0.71.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -617,7 +620,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/ManifoldKit/ManifoldKit.git",
-            from: "0.70.0" // x-release-please-version
+            from: "0.71.0" // x-release-please-version
         ),
         // The MLX backend lives in the manifold-mlx companion package (v0.48).
         .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),

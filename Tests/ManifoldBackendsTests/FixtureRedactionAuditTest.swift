@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 
 /// Phase 1a guard: scans committed fixtures for live credentials and PII.
 ///
@@ -51,8 +52,38 @@ final class FixtureRedactionAuditTest: XCTestCase {
 
     func test_fixturesContainNoLiveCredentialsOrPII() throws {
         let fixturesRoot = try Self.locateFixturesDirectory()
-        var offenders: [Offender] = []
+        let offenders = try Self.offenders(fixturesRoot: fixturesRoot, allowlist: Self.allowlist)
 
+        XCTAssertLessThanOrEqual(
+            Self.allowlist.count, 4,
+            "FixtureRedactionAuditTest.allowlist exceeds cap. Each entry weakens the rule — re-record the fixture with `scripts/record-fixture.sh` rather than allowlist a credential."
+        )
+
+        if offenders.isEmpty { return }
+
+        let report = offenders.map { o in
+            "  [\(o.label)] \(o.file):\(o.line)  ≪ \(o.sample) ≫"
+        }.joined(separator: "\n")
+        XCTFail("""
+            FixtureRedactionAuditTest found likely credentials or PII in committed fixtures:
+
+            \(report)
+
+            Fix:
+              - Re-record the fixture via `scripts/record-fixture.sh` (applies the same redaction filter).
+              - Or hand-scrub the offending lines.
+              - Or, if the match is a deliberate test-of-error-handling, add the fingerprint to
+                `FixtureRedactionAuditTest.allowlist` with an inline `// CODEOWNER: security` comment.
+            """)
+    }
+
+    // MARK: - Detection
+
+    /// Full audit pipeline: walk the fixture roots, match every pattern per
+    /// line, filter post-match IPv4 noise, and apply the fingerprint
+    /// allowlist. Both the audit and the sabotage tests call this.
+    static func offenders(fixturesRoot: URL, allowlist: Set<String>) throws -> [Offender] {
+        var offenders: [Offender] = []
         for fileURL in try Self.enumerateFixtureFiles(under: fixturesRoot) {
             let relativePath = fileURL.path.replacingOccurrences(
                 of: fixturesRoot.path + "/", with: ""
@@ -85,7 +116,7 @@ final class FixtureRedactionAuditTest: XCTestCase {
                         if matched.hasPrefix("127.") || matched.hasPrefix("0.") { continue }
                     }
                     let fingerprint = "\(relativePath):\(idx + 1):\(label)"
-                    if Self.allowlist.contains(fingerprint) { continue }
+                    if allowlist.contains(fingerprint) { continue }
                     offenders.append(.init(
                         file: relativePath,
                         line: idx + 1,
@@ -95,31 +126,42 @@ final class FixtureRedactionAuditTest: XCTestCase {
                 }
             }
         }
-
-        XCTAssertLessThanOrEqual(
-            Self.allowlist.count, 4,
-            "FixtureRedactionAuditTest.allowlist exceeds cap. Each entry weakens the rule — re-record the fixture with `scripts/record-fixture.sh` rather than allowlist a credential."
-        )
-
-        if offenders.isEmpty { return }
-
-        let report = offenders.map { o in
-            "  [\(o.label)] \(o.file):\(o.line)  ≪ \(o.sample) ≫"
-        }.joined(separator: "\n")
-        XCTFail("""
-            FixtureRedactionAuditTest found likely credentials or PII in committed fixtures:
-
-            \(report)
-
-            Fix:
-              - Re-record the fixture via `scripts/record-fixture.sh` (applies the same redaction filter).
-              - Or hand-scrub the offending lines.
-              - Or, if the match is a deliberate test-of-error-handling, add the fingerprint to
-                `FixtureRedactionAuditTest.allowlist` with an inline `// CODEOWNER: security` comment.
-            """)
+        return offenders
     }
 
     // MARK: - Sabotage
+
+    /// Plants a fixture containing a live-shaped Anthropic key in a temp
+    /// tree and asserts the REAL pipeline (walk → match → allowlist) flags
+    /// it, and that a fingerprint allowlist entry exempts it.
+    func test_sabotage_pipelineFlagsPlantedCredential() throws {
+        let tmp = try Self.makeSabotageTempDirectory(
+            name: "fixture-redaction-sabotage-\(UUID().uuidString)"
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let fixtureDir = tmp.appendingPathComponent(
+            "backends/claude/streaming/simple-prompt", isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: fixtureDir, withIntermediateDirectories: true)
+        try """
+        data: {"type":"message_start","message":{"id":"msg_01","type":"message"}}
+        x-api-key: sk-ant-api03-fakekey1234567890abcdefghijklmnopqrstuvwxyz
+        """.write(to: fixtureDir.appendingPathComponent("request.sse"), atomically: true, encoding: .utf8)
+
+        let offenders = try Self.offenders(fixturesRoot: tmp, allowlist: [])
+        XCTAssertTrue(
+            offenders.contains { $0.label == "anthropic-key" },
+            "The planted sk-ant- credential must be flagged by the real pipeline; got \(offenders.map(\.label))"
+        )
+
+        let fingerprint = "backends/claude/streaming/simple-prompt/request.sse:2:anthropic-key"
+        let exempted = try Self.offenders(fixturesRoot: tmp, allowlist: [fingerprint])
+        XCTAssertFalse(
+            exempted.contains { $0.label == "anthropic-key" },
+            "An allowlisted fingerprint must exempt the match"
+        )
+    }
 
     func test_sabotage_patternsMatchKnownCredentials() {
         // Every pattern must match a synthetic example; if a future edit
@@ -157,7 +199,7 @@ final class FixtureRedactionAuditTest: XCTestCase {
 
     // MARK: - Helpers
 
-    private struct Offender {
+    struct Offender {
         let file: String
         let line: Int
         let label: String
@@ -224,4 +266,23 @@ final class FixtureRedactionAuditTest: XCTestCase {
         }
         return result
     }
+
+    /// Builds a fresh, UUID-suffixed temp directory and returns it fully
+    /// resolved via POSIX `realpath()`. `/var` (macOS's temp-dir root) is an
+    /// APFS firmlink to `/private/var`, not a classic symlink — so
+    /// `URL.resolvingSymlinksInPath()` leaves it untouched while
+    /// `FileManager`'s directory enumerator returns the fully-resolved
+    /// `/private/var/...` form for every child it walks. Without this,
+    /// string-prefix stripping of `root.path` against an enumerated child's
+    /// `.path` silently fails to match (the prefixes differ), corrupting
+    /// every relative-path fingerprint this sabotage test asserts against.
+    private static func makeSabotageTempDirectory(name: String) throws -> URL {
+        let unresolved = FileManager.default.temporaryDirectory
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: unresolved, withIntermediateDirectories: true)
+        var buffer = [Int8](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(unresolved.path, &buffer) != nil else { return unresolved }
+        return URL(fileURLWithPath: String(cString: buffer), isDirectory: true)
+    }
+
 }

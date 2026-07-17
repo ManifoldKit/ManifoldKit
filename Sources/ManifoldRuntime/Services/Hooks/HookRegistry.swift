@@ -56,7 +56,8 @@ public actor HookRegistry {
                     event: current.event,
                     sessionID: current.sessionID,
                     toolName: current.toolName,
-                    toolArguments: updated
+                    toolArguments: updated,
+                    completedTurn: current.completedTurn
                 )
                 lastOutput = result
             } else if result != .passthrough {

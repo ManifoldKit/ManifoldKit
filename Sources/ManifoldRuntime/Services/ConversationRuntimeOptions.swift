@@ -53,10 +53,16 @@ public struct ConversationRuntimeOptions {
 
     /// Async/throwing richer per-turn context provider. Supersedes
     /// ``turnContextProvider`` when both are set.
-    public var hostTurnContextProvider: (any HostTurnContextProvider)?
+    ///
+    /// `package`-visibility only (2026-07 residual sweep, D.6) — the
+    /// `HostTurnContextProvider` protocol has zero external adopters, so
+    /// this property is no longer settable from outside the package. Only
+    /// `ManifoldBootstrap` (same package) reads it; hosts on the public API
+    /// use ``turnContextProvider`` or the planner-path `TurnContext.appData`
+    /// handoff instead.
+    package var hostTurnContextProvider: (any HostTurnContextProvider)?
 
-    /// Legacy synchronous per-turn context provider. Used only when
-    /// ``hostTurnContextProvider`` is `nil`.
+    /// Legacy synchronous per-turn context provider.
     public var turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
 
     /// Auxiliary inference service for internal framework tasks such as
@@ -73,7 +79,12 @@ public struct ConversationRuntimeOptions {
     /// ``ConversationRuntime/startRun(_:using:)`` /
     /// ``ConversationRuntime/resumeRun(_:using:)``. Leaving it `nil` (the
     /// default) reproduces pre-P3 single-turn behaviour exactly.
-    public var runStore: (any RunStore)?
+    ///
+    /// `package`-visibility only (2026-07 residual sweep, D.2) — the Agentic
+    /// Run subsystem has zero external adopters, so this property is no
+    /// longer settable from a public initializer. Only `ManifoldBootstrap`
+    /// (same SwiftPM package) sets it, via `enableResumableRuns:`.
+    package var runStore: (any RunStore)?
 
     public init(
         pipeline: PromptContextPipeline? = nil,
@@ -83,10 +94,8 @@ public struct ConversationRuntimeOptions {
         preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
         historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
-        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
-        auxiliaryInferenceService: InferenceService? = nil,
-        runStore: (any RunStore)? = nil
+        auxiliaryInferenceService: InferenceService? = nil
     ) {
         self.pipeline = pipeline
         self.budgetPlanner = budgetPlanner
@@ -95,9 +104,9 @@ public struct ConversationRuntimeOptions {
         self.preTurnCompressionPolicy = preTurnCompressionPolicy
         self.historyShaper = historyShaper
         self.historyProviders = historyProviders
-        self.hostTurnContextProvider = hostTurnContextProvider
+        self.hostTurnContextProvider = nil
         self.turnContextProvider = turnContextProvider
         self.auxiliaryInferenceService = auxiliaryInferenceService
-        self.runStore = runStore
+        self.runStore = nil
     }
 }

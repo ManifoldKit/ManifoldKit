@@ -45,10 +45,23 @@ final class SessionController {
         activeSession?.id
     }
 
-    func configure(persistence: any SessionStore & MessageStore) {
-        guard self.persistence == nil else { return }
+    /// Returns `true` when this call actually installed the store (first
+    /// configure), `false` when it was a no-op because a store is already
+    /// set. Callers that rebuild downstream state (e.g. the conversation
+    /// runtime) on configuration must gate on this result — see #A3: firing
+    /// downstream rebuilds unconditionally on a second `configure` call
+    /// silently splits state across two persistence stores.
+    @discardableResult
+    func configure(persistence: any SessionStore & MessageStore) -> Bool {
+        guard self.persistence == nil else {
+            Log.persistence.warning(
+                "SessionController.configure(persistence:) called again after the store was already set; keeping the original store"
+            )
+            return false
+        }
         self.persistence = persistence
         Log.persistence.info("ChatViewModel configured with persistence provider")
+        return true
     }
 
     @discardableResult

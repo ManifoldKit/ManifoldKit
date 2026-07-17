@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 
 /// Guards against regressions on issue #910: tests that read or write
 /// `UserDefaults.standard` directly cannot run safely under
@@ -42,42 +43,28 @@ import XCTest
 ///
 /// DO NOT add an allowlist to silence this test. The whole point of the
 /// audit is that one bare reference is enough to reintroduce the
-/// cross-process race. (The only excluded files are this audit itself and
-/// the sabotage-coverage suite, both of which contain the pattern purely as
-/// inert text — see the exclusion set below.)
+/// cross-process race. (The only excluded file is this audit itself, which
+/// contains the pattern purely as inert text — the search needle, the
+/// sabotage payload, and error messages.)
+///
+/// The detection logic lives in ``violations(testsRoot:excludedFileNames:)``
+/// so the in-file sabotage test exercises the exact function the audit runs.
 final class UserDefaultsStandardAuditTest: XCTestCase {
 
     func test_noDirectUserDefaultsStandardAccessInTests() throws {
         let testsURL = try Self.locateTestsDirectory()
-        let swiftFiles = try Self.enumerateSwiftFiles(under: testsURL)
 
         // The audit file itself mentions the string in code paths (the
-        // search needle below) and in error messages. Scope the audit to
-        // every other file. AuditSabotageSuiteTests.swift is the second
-        // exception: it is the sabotage-coverage suite that deliberately
-        // embeds every audit's forbidden pattern (as string-literal payloads,
-        // search needles, and error messages) to prove the audits still fire.
-        // Neither exclusion silences a real violation — both files contain the
-        // pattern only as inert text.
+        // search needle, the sabotage payload) and in error messages — all
+        // inert text. Scope the audit to every other file; the exclusion
+        // silences no real violation. (The retired external sabotage suite
+        // was a second exclusion until 2026-07; in-file sabotage needs only
+        // the self-exclusion.)
         let excludedFileNames: Set<String> = [
             (#filePath as NSString).lastPathComponent,
-            "AuditSabotageSuiteTests.swift",
         ]
 
-        var violations: [String] = []
-
-        for fileURL in swiftFiles {
-            if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
-
-            let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-            let hits = Self.findNonCommentHits(of: "UserDefaults.standard", in: content)
-            if !hits.isEmpty {
-                let relativePath = Self.relativePath(of: fileURL, under: testsURL)
-                for lineNumber in hits {
-                    violations.append("\(relativePath):\(lineNumber)")
-                }
-            }
-        }
+        let violations = try Self.violations(testsRoot: testsURL, excludedFileNames: excludedFileNames)
 
         if !violations.isEmpty {
             let formatted = violations
@@ -99,6 +86,64 @@ final class UserDefaultsStandardAuditTest: XCTestCase {
                 \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `violations(testsRoot:excludedFileNames:)` the audit runs)
+
+    /// Plants a file containing a bare `UserDefaults.standard` access in a
+    /// temp tree shaped like `Tests/` and asserts the REAL detection
+    /// function flags it — and that excluding the file name exempts it.
+    func test_sabotage_detectsDirectUserDefaultsStandardAccess() throws {
+        let tmp = try Self.makeSabotageTempDirectory(
+            name: "userdefaults-standard-sabotage-\(UUID().uuidString)"
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldCoreTests", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let badFile = root.appendingPathComponent("BadTests.swift")
+        try """
+        import XCTest
+        final class BadTests: XCTestCase {
+            func test_flag() {
+                UserDefaults.standard.set(true, forKey: "flag")
+            }
+        }
+        """.write(to: badFile, atomically: true, encoding: .utf8)
+
+        let violations = try Self.violations(testsRoot: tmp, excludedFileNames: [])
+        XCTAssertEqual(violations.count, 1, "The planted UserDefaults.standard access must be flagged")
+        XCTAssertEqual(violations.first, "ManifoldCoreTests/BadTests.swift:4")
+
+        let exempted = try Self.violations(testsRoot: tmp, excludedFileNames: ["BadTests.swift"])
+        XCTAssertTrue(exempted.isEmpty, "An excluded file name must exempt its violations")
+    }
+
+    // MARK: - Detection
+
+    /// Full audit pipeline: walk `testsRoot`, skip `excludedFileNames`, and
+    /// collect every non-comment `UserDefaults.standard` occurrence as a
+    /// `relative/path:line` violation string. Both the audit and the
+    /// sabotage test call this.
+    static func violations(testsRoot: URL, excludedFileNames: Set<String>) throws -> [String] {
+        let swiftFiles = try Self.enumerateSwiftFiles(under: testsRoot)
+
+        var violations: [String] = []
+
+        for fileURL in swiftFiles {
+            if excludedFileNames.contains(fileURL.lastPathComponent) { continue }
+
+            let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            let hits = Self.findNonCommentHits(of: "UserDefaults.standard", in: content)
+            if !hits.isEmpty {
+                let relativePath = Self.relativePath(of: fileURL, under: testsRoot)
+                for lineNumber in hits {
+                    violations.append("\(relativePath):\(lineNumber)")
+                }
+            }
+        }
+
+        return violations
     }
 
     // MARK: - Helpers
@@ -159,4 +204,23 @@ final class UserDefaultsStandardAuditTest: XCTestCase {
         }
         return fileURL.lastPathComponent
     }
+
+    /// Builds a fresh, UUID-suffixed temp directory and returns it fully
+    /// resolved via POSIX `realpath()`. `/var` (macOS's temp-dir root) is an
+    /// APFS firmlink to `/private/var`, not a classic symlink — so
+    /// `URL.resolvingSymlinksInPath()` leaves it untouched while
+    /// `FileManager`'s directory enumerator returns the fully-resolved
+    /// `/private/var/...` form for every child it walks. Without this,
+    /// string-prefix stripping of `root.path` against an enumerated child's
+    /// `.path` silently fails to match (the prefixes differ), corrupting
+    /// every relative-path fingerprint this sabotage test asserts against.
+    private static func makeSabotageTempDirectory(name: String) throws -> URL {
+        let unresolved = FileManager.default.temporaryDirectory
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: unresolved, withIntermediateDirectories: true)
+        var buffer = [Int8](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(unresolved.path, &buffer) != nil else { return unresolved }
+        return URL(fileURLWithPath: String(cString: buffer), isDirectory: true)
+    }
+
 }

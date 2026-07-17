@@ -17,6 +17,16 @@ The host is opt-in by design. It never starts unless you instantiate
 <doc:MCPHostServer> for the end-to-end setup, the exposed resources and tools,
 and Claude Desktop wiring.
 
+## Experimental tier
+
+`ManifoldMCPHost` is in ManifoldKit's **experimental tier** (declared
+2026-07-13) — it may break in any minor release, always migration-noted,
+until it graduates. Graduation requires a real adopter: a shipping app or
+companion that pins ManifoldKit and imports this module from non-test code.
+Documentation and examples don't count as adoption. See
+[docs/API-DESIGN.md § 7b](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/API-DESIGN.md)
+for the full policy.
+
 ## Topics
 
 ### Articles

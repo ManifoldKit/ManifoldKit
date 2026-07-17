@@ -3,7 +3,7 @@ import Foundation
 /// A coarse-grained, type-erased view of an inference or cloud backend error.
 /// Use this when you need to make a routing decision (retry vs fail-fast vs
 /// user-action-required) without switching on the concrete error type.
-public enum InferenceErrorCategory: Sendable, Equatable {
+package enum InferenceErrorCategory: Sendable, Equatable {
     /// Network blip, 5xx, stream interrupted — a retry may succeed.
     case retryableTransient
     /// Provider throttled the request. The associated value is the
@@ -28,6 +28,6 @@ public enum InferenceErrorCategory: Sendable, Equatable {
 
 /// Implemented by ``InferenceError`` and ``CloudBackendError`` to expose a
 /// uniform category view without changing the concrete enum type.
-public protocol CategorizedError: Error {
+package protocol CategorizedError: Error {
     var category: InferenceErrorCategory { get }
 }

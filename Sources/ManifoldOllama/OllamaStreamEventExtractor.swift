@@ -267,6 +267,19 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
     private var visibleLineCount: Int = 0
     private var sawThinkingField: Bool = false
     private var contentParser: OutputParserSession?
+    /// Holdback buffer for a partial inline open-marker suffix (`<thi` …).
+    ///
+    /// The inline-thinking activation below keys on a whole open marker
+    /// appearing in one NDJSON `content` frame. Ollama streams content in
+    /// model-token-sized chunks, so `<think>` can arrive split across frames
+    /// (`<thi` + `nk>`); without holdback the first fragment is emitted as a
+    /// visible `.token` and the parser never activates — raw reasoning markup
+    /// leaks into user-visible output (B.3 item 3, review finding). Mirrors
+    /// `ThinkingTransform`'s own `overlap(_:_:)` holdback, applied one level
+    /// earlier: only the longest content suffix that is a proper prefix of the
+    /// open marker is ever held, and it is flushed as a visible token on the
+    /// done-frame / stream end when no marker materialises.
+    private var pendingContentHoldback: String = ""
     /// One-shot guard. Ollama can in principle emit `tool_calls[]` on
     /// successive NDJSON lines (older qwen2.5 builds split parallel calls
     /// across lines); finalisation must still be one-per-call. The
@@ -359,6 +372,13 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
             }
             contentParser = parser
         }
+        // Flush a partial-marker suffix held back at the extractor level —
+        // the stream ended, so it can no longer complete into a marker.
+        if !pendingContentHoldback.isEmpty {
+            let leftover = pendingContentHoldback
+            pendingContentHoldback = ""
+            _ = emit(.token(leftover), into: &out)
+        }
         // Safety net: if the stream ends while thinking is still "open"
         // (no done-chunk, no empty-thinking transition), close it out so
         // consumers don't hang in a thinking-only state.
@@ -409,7 +429,7 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
     }
 
     private func appendContentEvents(_ parsed: OllamaParsedLine, into out: inout [GenerationEvent]) {
-        guard let content = parsed.content, !content.isEmpty else { return }
+        guard let rawContent = parsed.content, !rawContent.isEmpty else { return }
         if let limit = visibleLimit {
             // Prefer the server's running `eval_count` for an exact
             // token-count cap; fall back to the NDJSON line counter as an
@@ -420,11 +440,39 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
                 return
             }
         }
-        if contentParser == nil,
-           !sawThinkingField,
-           content.contains(fallbackMarkers.open) {
-            contentParser = OutputParserSession([.thinking(ThinkingTransform(markers: fallbackMarkers))])
+
+        // Re-attach any held-back partial-marker suffix from the previous
+        // frame before scanning: `<thi` + `nk>…` must be seen as one
+        // `<think>…` for the activation check below.
+        var content = rawContent
+        if contentParser == nil, !pendingContentHoldback.isEmpty {
+            content = pendingContentHoldback + content
+            pendingContentHoldback = ""
         }
+
+        if contentParser == nil, !sawThinkingField {
+            if content.contains(fallbackMarkers.open) {
+                contentParser = OutputParserSession([.thinking(ThinkingTransform(markers: fallbackMarkers))])
+            } else {
+                // No whole marker in this frame — but hold back a trailing
+                // partial-marker suffix so a marker split across NDJSON
+                // frames still activates the parser on the next frame
+                // instead of leaking as visible text. `overlap` is the
+                // shared prefix-hold primitive `ThinkingTransform` itself
+                // uses at chunk boundaries.
+                let hold = overlap(content, fallbackMarkers.open)
+                if hold > 0 {
+                    pendingContentHoldback = String(content.suffix(hold))
+                    content = String(content.prefix(content.count - hold))
+                }
+                if !content.isEmpty {
+                    out.append(.token(content))
+                    visibleLineCount += 1
+                }
+                return
+            }
+        }
+
         if var parser = contentParser {
             for event in parser.ingest(content) {
                 if !emit(event, into: &out) {
@@ -451,6 +499,13 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
                 }
             }
             contentParser = parser
+        }
+        // A partial-marker suffix held back at the extractor level (parser
+        // never activated) is ordinary visible text once the stream is done.
+        if !pendingContentHoldback.isEmpty {
+            let leftover = pendingContentHoldback
+            pendingContentHoldback = ""
+            if !emit(.token(leftover), into: &out) { return }
         }
         // Ollama can terminate with `"done":true` while thinking is still
         // the only content emitted (reasoning model hits num_predict mid-

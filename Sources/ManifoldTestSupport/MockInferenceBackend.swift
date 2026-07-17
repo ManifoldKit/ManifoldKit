@@ -77,6 +77,15 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     /// emission for that block. Padded shorter than ``thinkingBlocksToYield``
     /// is fine — missing entries are treated as `nil`.
     public var signaturesPerThinkingBlock: [String?] = []
+
+    /// When `true`, the mock emits `.thinkingToken`/`.thinkingSignature` for
+    /// the configured thinking script but withholds the closing
+    /// `.thinkingCompleted` event — simulating a backend that never signals
+    /// the end of a reasoning block. Lets tests exercise the executor's
+    /// end-of-stream "unclosed thinking block" finalize path (the
+    /// `accumulator.hasOpenThinkingBlock` branch) deterministically, without
+    /// relying on a timing-sensitive mid-stream cancel.
+    public var omitThinkingCompletedEvent: Bool = false
     public var shouldThrowOnGenerate: Error? = nil
     public var shouldThrowOnLoad: Error? = nil
 
@@ -345,14 +354,16 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
                         if idx < signatures.count, let sig = signatures[idx] {
                             continuation.yield(.thinkingSignature(sig))
                         }
-                        continuation.yield(.thinkingCompleted)
+                        if !self.omitThinkingCompletedEvent {
+                            continuation.yield(.thinkingCompleted)
+                        }
                     }
                 } else {
                     for t in thinkingTokens {
                         if Task.isCancelled { break }
                         continuation.yield(.thinkingToken(t))
                     }
-                    if !thinkingTokens.isEmpty && !Task.isCancelled {
+                    if !thinkingTokens.isEmpty && !Task.isCancelled && !self.omitThinkingCompletedEvent {
                         continuation.yield(.thinkingCompleted)
                     }
                 }

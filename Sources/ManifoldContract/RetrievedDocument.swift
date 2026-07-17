@@ -21,14 +21,31 @@ public struct RetrievedDocument: Sendable, Hashable, Codable {
     /// `nil` lets the renderer fall back to the document's positional index.
     public let docID: String?
 
+    /// The ingesting caller's document identity — ``DocumentChunk/documentID``
+    /// for chunked hits, ``DocumentRecord/id`` for the whole-document path
+    /// (#2207).
+    ///
+    /// Distinct from ``docID`` above: `docID` is a template-facing `String?`
+    /// shaped for Command-R's `document.doc_id` convention and is never
+    /// populated by `RAGService` today. `documentID` is the actual
+    /// retrieval-source identity, letting a consumer post-filter
+    /// `RAGService.RetrievalResult/documents` by document — e.g. excluding a
+    /// document already present verbatim elsewhere in the live context —
+    /// without detouring through `Citation` and re-joining on text (whose
+    /// fields aren't guaranteed to match `text` exactly). `nil` only for
+    /// values constructed without a backing document (e.g. ad hoc test
+    /// fixtures); every hit `RAGService` produces populates it.
+    public let documentID: UUID?
+
     /// Human-readable source label, typically the document file name.
     public let title: String
 
     /// The retrieved passage text the model grounds its answer on.
     public let text: String
 
-    public init(docID: String? = nil, title: String, text: String) {
+    public init(docID: String? = nil, documentID: UUID? = nil, title: String, text: String) {
         self.docID = docID
+        self.documentID = documentID
         self.title = title
         self.text = text
     }

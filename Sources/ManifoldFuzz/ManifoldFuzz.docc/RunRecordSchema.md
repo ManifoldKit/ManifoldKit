@@ -41,7 +41,8 @@ in #490) call it before acting on a decoded record.
 | `timing` | `TimingSnapshot` | `firstTokenMs?`, `totalMs`, `tokensPerSec?`. `totalMs` is always present; TPS is derived only when both token counts and first-token time are known. |
 | `phase` | `String` | One of `started`, `streaming`, `done`, `failed`. Invariant: `phase == "failed"` ⇒ `error != nil`. |
 | `error` | `String?` | Human-readable error message when `phase == "failed"`; otherwise `nil`. |
-| `stopReason` | `String?` | Coarse stop classification: `naturalStop`, `maxTokens`, `userStop`, `error`, or `unknown`. Detectors gate on this to avoid false-positive findings caused by token-cap truncation. |
+| `stopReason` | `String?` | Coarse stop classification: `naturalStop`, `maxTokens`, `userStop`, `error`, `timeout`, or `unknown`. Detectors gate on this to avoid false-positive findings caused by token-cap truncation. |
+| `truncated` | `Bool` | `true` when `EventRecorder` dropped some of `raw`/`thinkingRaw`/`events` to stay under its buffering cap (a generation that never naturally stopped). Absent (legacy) records decode as `false`. Added without a `schemaVersion` bump — same additive `decodeIfPresent ?? <default>` precedent as `toolCalls`/`toolResults`/`toolDefinitions`, which also shipped without bumping `currentSchema` despite step 1 below. |
 
 ## Evolving the schema
 

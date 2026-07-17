@@ -1,6 +1,41 @@
 import XCTest
 @testable import ManifoldVoice
 
+/// Polls `condition` until it becomes true or `timeout` elapses, yielding
+/// between checks so a suspended continuation's task gets scheduling hops to
+/// resume and run its teardown. A single `Task.yield()` only guarantees one
+/// hop — not enough for the controller's async continuation to reliably
+/// settle under `swift test --parallel` on a loaded CI runner, which is what
+/// made `test_enqueueKeepsSpeakingUntilAllUtterancesFinish` flaky (#2246).
+/// Fails loudly on timeout rather than silently passing on a lucky guess.
+@MainActor
+private func waitUntil(
+    timeout: Duration = .seconds(2),
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ condition: () -> Bool
+) async {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while !condition() {
+        if ContinuousClock.now >= deadline {
+            XCTFail("condition did not become true within \(timeout)", file: file, line: line)
+            return
+        }
+        await Task.yield()
+    }
+}
+
+/// For settle points that assert the *absence* of a state change (so there is
+/// no positive condition to poll), gives queued continuations many scheduling
+/// hops to resume and run to completion before the assertion. Far more
+/// generous than the single yield that let #2246 through.
+@MainActor
+private func drainScheduler(hops: Int = 50) async {
+    for _ in 0..<hops {
+        await Task.yield()
+    }
+}
+
 @MainActor
 final class VoiceConversationControllerTests: XCTestCase {
 
@@ -153,7 +188,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         )
 
         controller.togglePlayback(for: "Read me")
-        await Task.yield()
+        await waitUntil { synthesizer.spokenTexts == ["Read me"] }
 
         XCTAssertTrue(controller.isSpeaking)
         XCTAssertEqual(synthesizer.spokenTexts, ["Read me"])
@@ -179,7 +214,7 @@ final class VoiceConversationControllerTests: XCTestCase {
         // Start an utterance and stop it — but the mock holds the continuation
         // so the predecessor task hasn't run its teardown yet.
         controller.enqueueReadback(of: "First")
-        await Task.yield()
+        await waitUntil { synthesizer.spokenTexts == ["First"] }
         XCTAssertTrue(controller.isSpeaking)
 
         controller.stopSpeaking()              // bumps generation, zeroes counter
@@ -188,18 +223,21 @@ final class VoiceConversationControllerTests: XCTestCase {
         // Start a new utterance in the new generation BEFORE the predecessor's
         // cancelled continuation resolves.
         controller.enqueueReadback(of: "Second")
-        await Task.yield()
+        await waitUntil { synthesizer.spokenTexts == ["First", "Second"] }
         XCTAssertTrue(controller.isSpeaking)
 
         // Now let the predecessor (generation N-1) resume from cancellation.
         // Without the generation guard it would decrement the new generation's
-        // counter to 0 and clear `isSpeaking`.
-        await Task.yield()
-        await Task.yield()
+        // counter to 0 and clear `isSpeaking`. There's no positive condition to
+        // poll for here — we're asserting an *absence* of change — so give the
+        // cancelled task many scheduling hops to actually reach its guard check
+        // instead of guessing a fixed yield count (the guess is what let #2246
+        // through under a loaded `swift test --parallel` runner).
+        await drainScheduler()
         XCTAssertTrue(controller.isSpeaking, "stale predecessor must not clear the new utterance's speaking state")
 
         synthesizer.finishCurrent()
-        await Task.yield()
+        await waitUntil { !controller.isSpeaking }
         XCTAssertFalse(controller.isSpeaking)
     }
 
@@ -214,19 +252,23 @@ final class VoiceConversationControllerTests: XCTestCase {
         )
 
         controller.enqueueReadback(of: "One")
-        await Task.yield()
+        await waitUntil { synthesizer.spokenEnqueueFlags.count == 1 }
         controller.enqueueReadback(of: "Two")
-        await Task.yield()
+        await waitUntil { synthesizer.spokenEnqueueFlags.count == 2 }
 
         XCTAssertEqual(synthesizer.spokenEnqueueFlags, [true, true])
         XCTAssertTrue(controller.isSpeaking)
 
         synthesizer.finishCurrent()
-        await Task.yield()
+        // "Still speaking" is already true before the resumed task's teardown
+        // runs, so there's no positive condition to poll — drain the scheduler
+        // generously instead of guessing a fixed yield count, so a regression
+        // that clears `isSpeaking` too early is still caught (#2246).
+        await drainScheduler()
         XCTAssertTrue(controller.isSpeaking, "still speaking with one utterance left in queue")
 
         synthesizer.finishCurrent()
-        await Task.yield()
+        await waitUntil { !controller.isSpeaking }
         XCTAssertFalse(controller.isSpeaking)
     }
 

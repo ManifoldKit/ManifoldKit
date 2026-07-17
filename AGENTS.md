@@ -42,9 +42,10 @@ not a rule.**
    package. A consumer who wants only chat pays only for chat. *(No default
    traits — a structural fact of the manifest.)*
 4. **Every rule has a tripwire, and the tripwires are tested.** Forbidden
-   patterns get audit tests that scan the source; a sabotage suite plants
-   known violations nightly and confirms each audit still fires.
-   *(`ManifoldAuditSabotageSuiteTests` + the per-run coverage check.)*
+   patterns get audit tests that scan the source; every audit carries an
+   in-file `test_sabotage_*` that plants a known violation and runs the
+   audit's own detection function against it, per-PR.
+   *(In-file sabotage tests + `AuditSabotageCoverageAuditTest`.)*
 5. **Tests are honest.** Classified truthfully (SwiftData ⇒ integration
    test), real `async`/`await`, never a mocked persistence layer, shipped in
    the same PR as the change. A test that cannot be shown to fail is not
@@ -81,7 +82,7 @@ not a rule.**
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.70.0") // x-release-please-version
+.package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.71.0") // x-release-please-version
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
@@ -106,9 +107,13 @@ Specialised modules stay opt-in and are imported by name when you need them:
 | `ManifoldUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
 | `ManifoldHuggingFace` *(optional)* | Hub search, browse, background downloads. Compiles unconditionally (the `HuggingFace` trait retired in v0.48). |
 | `ManifoldVoice` *(optional)* | Speech I/O composer accessory. |
-| `ManifoldMCP` *(optional)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
-| `ManifoldAppIntents` *(optional)* | AppIntent ↔ ToolDefinition bridge. |
+| `ManifoldMCP` *(optional, experimental¹)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
+| `ManifoldAppIntents` *(optional, experimental¹)* | AppIntent ↔ ToolDefinition bridge. |
 | `ManifoldMLX` / `ManifoldLlama` *(companion packages)* | MLX / llama.cpp local inference — add `manifold-mlx` / `manifold-llama` as separate package dependencies and pass `MLXBackends.self` / `LlamaBackends.self` to `quickStart(backends:)` (v0.48 split). |
+
+¹ Experimental — may break in any minor, always migration-noted; graduates on first
+real adopter (a shipping app or companion that pins and imports it). See
+docs/API-DESIGN.md § 7b.
 
 Contributors changing ManifoldKit internals can still import the individual products
 (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the backend
@@ -368,7 +373,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0", // x-release-please-version
+    from: "0.71.0", // x-release-please-version
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -447,7 +452,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0" // x-release-please-version
+    from: "0.71.0" // x-release-please-version
 )
 ```
 
@@ -521,6 +526,9 @@ ManifoldKit is Swift-concurrency-native. The rules:
 - The `Example/Examples/MinimalExample/` app is the canonical runnable wiring.
 - DocC catalogs live alongside the modules
   (`Sources/ManifoldUI/ManifoldUI.docc/`).
+- For a linear, file:line-anchored walk through one message turn — send →
+  runtime → engine → backend → stream back to the UI — see
+  [`docs/ANATOMY-OF-ONE-TURN.md`](docs/ANATOMY-OF-ONE-TURN.md).
 - Contributors changing ManifoldKit internals should use `scripts/test.sh --profile local`
   as the default pre-push gate; **Part 2** below documents the full contributor workflow.
 - For contributor-facing conventions (testing, traits, release process), see
@@ -559,7 +567,7 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldCloud` | **Retired** — `import ManifoldCloud` no longer compiles. Use `ManifoldCloudCore` + a provider family, or the `ManifoldKit` umbrella. See docs/MIGRATION-shims-retired.md. |
 | `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`), the provider-agnostic encoding/parsing surface shared by both cloud families, and `DefaultWebSearchRuntime`. Always linked. Depends on `ManifoldInference` + `ManifoldRuntime` (the latter for `DefaultWebSearchRuntime`'s port conformance — an un-gated library→library edge; see Package.swift comment). |
 | `ManifoldBackends` | **Retired** — `import ManifoldBackends` and `DefaultBackends` are gone. Import the families directly or the `ManifoldKit` umbrella; pass explicit registrars to `quickStart(backends:)`. See docs/MIGRATION-shims-retired.md. |
-| `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own always-compiled product, never re-exported by the umbrella; opt in by importing. Depends on `ManifoldInference`. |
+| `ManifoldAnyLanguageModel` **(Experimental¹)** | AnyLanguageModel provider bridge for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter. Own always-compiled product, never re-exported by the umbrella; opt in by importing. Depends on `ManifoldInference`. |
 
 **Companion packages:** the heavy local-inference families live outside this repo. [`ManifoldKit/manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx) hosts the MLX backend family (text inference, diffusion/image gen, video gen, vendored FluxSwift/StableDiffusion, MLX integration tests); [`ManifoldKit/manifold-llama`](https://github.com/ManifoldKit/manifold-llama) hosts the llama.cpp/GGUF family. Module names stay `ManifoldMLX` / `ManifoldLlama`. Consumers add the companion `.package(...)` and pass registrars: `try await ManifoldKit.quickStart(backends: [LlamaBackends.self])`. Their conventions, hardware constraints, and test docs live in those repos. Building a new companion package? See [docs/COMPANION-BACKENDS.md](docs/COMPANION-BACKENDS.md).
 
@@ -567,13 +575,13 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 | Target | Role |
 |--------|------|
-| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally, catalog descriptors included. Depends on `ManifoldInference`. |
-| `ManifoldMCPHost` | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. |
+| `ManifoldMCP` **(Experimental¹)** | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally, catalog descriptors included. Depends on `ManifoldInference`. |
+| `ManifoldMCPHost` **(Experimental¹)** | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. |
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. |
-| `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
-| `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
+| `ManifoldAppIntents` **(Experimental¹)** | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
+| `ManifoldSkills` **(Experimental¹)** | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
 | `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. |
-| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
+| `ManifoldAppEval` **(Experimental¹)** | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
 
 ### UI modules
 
@@ -593,7 +601,11 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 | `ManifoldFuzzBackends` | Real-backend factory shim for `fuzz-chat` (Ollama / OpenAI / Foundation). Depends on `ManifoldFuzz` + `ManifoldInference` + the backend families. Also not a published product. |
 | `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama). Run via `scripts/fuzz.sh`. |
 | `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` + `ManifoldCloudSaaS` directly (never the umbrella — #982 dual-llama Xcode-scheme hazard). |
-| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
+| `ManifoldTelemetryOTLP` **(Experimental¹)** | OTLP/HTTP trace exporter. Optional product — not re-exported by the `ManifoldKit` umbrella; consumers add it explicitly and pass an `OTLPTraceSink` to a backend's `traceSink` property. |
+
+¹ Experimental — may break in any minor, always migration-noted; graduates on first
+real adopter (a shipping app or companion that pins and imports it). See
+docs/API-DESIGN.md § 7b.
 
 ### Test support targets
 
@@ -721,10 +733,11 @@ See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-
 | `scripts/test.sh` | Runs configured Swift test suites and prints an honest summary. |
 | `scripts/example-ui-tests.sh` | `build-for-testing` / `test-without-building` for Example app XCUITests. |
 | `scripts/clean-leaked-test-artifacts.sh` | Removes test fixtures that leaked into `~/Documents/Models/`. |
-| `scripts/clean-build.sh` | Full `.build` wipe + `swift package resolve`. Use when builds fail with "XCFramework Info.plist not found" or other `workspace-state.json` desync errors after changing the trait set. |
+| `scripts/clean-build.sh` | Full `.build` wipe + `swift package resolve`. Use when builds fail with "XCFramework Info.plist not found", `workspace-state.json` desync, `build.db` corruption, or "missing required module" errors (e.g. after a rebase — see #2181 preflight detector in `scripts/test.sh`). |
 | `scripts/fuzz.sh` | Runs the ManifoldFuzz harness (default: 5 min against Ollama). CI cadence: **weekly only** (`.github/workflows/fuzz-weekly.yml`, `workflow_dispatch`). PR / nightly / hosted-heartbeat tiers were retired 2026-05 — once a backend is mature the fuzzer goes quiet for months, so per-PR + nightly CI minutes did not pay off. Run `scripts/fuzz.sh` locally (and consider temporarily reintroducing a higher cadence) when adding a new backend or model family. |
 | `scripts/test-ios-simulator.sh` | Runs `ModelContainerFileProtectionTests` on an iOS Simulator via xcodebuild. Required because `NSFileProtection*` is an iOS-only kernel feature skipped by the macOS `swift test` lane. |
 | `scripts/local-integration-sweep.sh` | Repeatable real-model integration + perf sweep across core (Ollama E2E) + manifold-llama (5-family GBNF conformance) + manifold-mlx (text/vision/benchmark) on local Apple Silicon. Run by hand (not scheduled) the nights you want real-hardware signal CI can't produce. See [docs/QA-PRACTICES.md § 5](docs/QA-PRACTICES.md). |
+| `scripts/api-demotion-screen.sh <TypeName> <Module>` | The A.0 verification screen for a public→package demotion candidate: source-restricted consumer-repo grep (type name + public members), an in-repo signature-anchor heuristic, and a docs/DocC check, printed as PASS/FAIL/NEEDS-HAND-ADJUDICATION evidence for the demotion PR body. |
 
 **SwiftPM local-package consumers need explicit `name:`.** When adding `.package(path: ...)` references (worktrees, cold-start gates, scratch consumers), pass `name: "ManifoldKit"` explicitly — `.package(path:)` derives identity from the last path component, which breaks under non-default checkout paths.
 
@@ -736,7 +749,7 @@ See [docs/HARDWARE-TOOLCHAIN.md](docs/HARDWARE-TOOLCHAIN.md) for the full cross-
 scripts/test.sh --profile local
 ```
 
-Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: implicit scheduling matches historical behavior — keep it. (Historically this also avoided process-global state races in `BackendContractChecks` when backend test classes interleaved, #1601; the capability-claims registry is now instance-scoped per test case, arch-plan item 4.2, so that specific hazard is gone — see `ManifoldBackendTestKit`'s DocC catalog. `--parallel` stays off here as a conservative default, not a correctness requirement.)
+Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Three-invocation shape is preserved internally (XCTest filters, then `ManifoldBackendsTests` serial in its own process, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). `ManifoldBackendsTests` gets its own invocation because that target mixes XCTest with Swift Testing files, so batching it with the other XCTest suites reintroduced the #681 hazard locally while CI ran it serially (#2299). The profile deliberately does NOT pass `--parallel` or `--num-workers`: implicit scheduling matches historical behavior — keep it. (Historically this also avoided process-global state races in `BackendContractChecks` when backend test classes interleaved, #1601; the capability-claims registry is now instance-scoped per test case, arch-plan item 4.2, so that specific hazard is gone — see `ManifoldBackendTestKit`'s DocC catalog. `--parallel` stays off here as a conservative default, not a correctness requirement.)
 
 **Pre-push (CI repro — only when chasing a CI failure):**
 
@@ -744,7 +757,7 @@ Runs XCTest + Swift Testing on the full core surface plus the `Macros` trait. Tw
 scripts/test.sh --profile ci
 ```
 
-Mirrors CI's two-invocation shape exactly. Use only when reproducing a CI failure; pre-push correctness is `--profile local`.
+Mirrors CI's three-invocation shape exactly. Use only when reproducing a CI failure; pre-push correctness is `--profile local`.
 
 Both profiles respect explicit caller flags: `scripts/test.sh --profile local --filter ManifoldCoreTests` runs *just* that suite, but under the local trait set and worker count. `scripts/test.sh` is the source of truth for the gate shape — the long literal command no longer lives here.
 

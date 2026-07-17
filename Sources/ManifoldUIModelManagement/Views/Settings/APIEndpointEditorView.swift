@@ -10,12 +10,12 @@ import ManifoldInference
 ///
 /// Reads and writes go through the ``EndpointStore`` injected via the SwiftUI
 /// environment. The view does not import SwiftData.
-public struct APIEndpointEditorView: View {
+package struct APIEndpointEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.endpointStore) private var endpointStore
 
-    public let endpoint: APIEndpointRecord? // nil = creating new
+    package let endpoint: APIEndpointRecord? // nil = creating new
 
     @State private var name: String = ""
     @State private var provider: APIProvider = .openAI
@@ -26,11 +26,11 @@ public struct APIEndpointEditorView: View {
 
     private var isEditing: Bool { endpoint != nil }
 
-    public init(endpoint: APIEndpointRecord?) {
+    package init(endpoint: APIEndpointRecord?) {
         self.endpoint = endpoint
     }
 
-    public var body: some View {
+    package var body: some View {
         NavigationStack {
             Form {
                 Section("Provider") {

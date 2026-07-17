@@ -135,7 +135,7 @@ cd "$EXAMPLE_DIR"
 
 echo "Derived data: $DERIVED_DATA_PATH"
 echo "Destination:  $DESTINATION"
-echo "Command:      xcodebuild -project $PROJECT -scheme $SCHEME -derivedDataPath $DERIVED_DATA_PATH $COMMAND ${EXTRA_ARGS[*]}"
+echo "Command:      xcodebuild -project $PROJECT -scheme $SCHEME -derivedDataPath $DERIVED_DATA_PATH $COMMAND ${EXTRA_ARGS[*]+"${EXTRA_ARGS[*]}"}"
 
 xcodebuild \
     -project "$PROJECT" \
@@ -143,4 +143,4 @@ xcodebuild \
     -derivedDataPath "$DERIVED_DATA_PATH" \
     -destination "$DESTINATION" \
     "$COMMAND" \
-    "${EXTRA_ARGS[@]}"
+    "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"

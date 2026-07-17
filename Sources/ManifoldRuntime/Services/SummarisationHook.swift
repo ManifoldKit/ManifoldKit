@@ -171,6 +171,31 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
         await performSummarisation(sessionID: turn.sessionID)
     }
 
+    // MARK: - HookRegistry adapter (B.2)
+
+    /// Exposes this hook's summarisation trigger as a ``HookRegistry``
+    /// `.postGeneration` handler, so hosts standardising on the unified
+    /// registry seam can register `SummarisationHook` there instead of
+    /// threading it through ``ConversationRuntime``'s separate
+    /// `generationHooks` parameter:
+    ///
+    /// ```swift,no-build
+    /// await registry.register(.postGeneration, handler: summarisationHook.makeHookHandler())
+    /// ```
+    ///
+    /// A thin adapter over the existing ``postGeneration(_:)`` — the trigger
+    /// policy and summarisation logic are not duplicated. Returns
+    /// `.passthrough` unconditionally: summarisation is observational from
+    /// the registry's point of view (it mutates the message store directly,
+    /// not the turn's `HookOutput`).
+    public func makeHookHandler() -> HookRegistry.Handler {
+        { [weak self] input in
+            guard let self, let turn = input.completedTurn else { return .passthrough }
+            await self.postGeneration(turn)
+            return .passthrough
+        }
+    }
+
     // MARK: - Summarisation
 
     private func performSummarisation(sessionID: UUID) async {
@@ -190,7 +215,11 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
             return
         }
 
-        // Resolve pinned IDs. Missing session store → treat all as unpinned.
+        // Resolve pinned IDs. Missing session store → treat all as unpinned
+        // (there is no store that could hold a pin). A store that IS present
+        // but fails to fetch is a different case: pin status is unknown, and
+        // folding/deleting messages under that uncertainty could destroy a
+        // pinned message, so abort the whole cycle rather than guess "[]".
         let pinnedIDs: Set<UUID>
         if let sessionStore {
             do {
@@ -198,9 +227,9 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
                 pinnedIDs = sessions.first(where: { $0.id == sessionID })?.pinnedMessageIDs ?? []
             } catch {
                 Log.inference.warning(
-                    "SummarisationHook: sessionStore.fetchSessions failed, treating all messages as unpinned (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"
+                    "SummarisationHook: sessionStore.fetchSessions failed, aborting summarisation because pin status is unknown (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"
                 )
-                pinnedIDs = []
+                return
             }
         } else {
             pinnedIDs = []

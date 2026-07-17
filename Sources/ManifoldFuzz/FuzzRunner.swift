@@ -215,7 +215,50 @@ public actor FuzzRunner {
                 systemPrompt: entry.system,
                 config: cfg
             )
-            capture = await EventRecorder().consume(stream, maxOutputTokens: maxTokens)
+            if handle.backendName == "openai" {
+                // The cloud path already has its own protection —
+                // `OpenAIFuzzFactory` wires `requestIdleTimeout` at the HTTP
+                // transport layer, which resets on every byte received. A
+                // second, wall-clock `GenerationTimeout` wrap here would
+                // additionally hard-cut a slow-but-continuously-streaming
+                // completion that the idle timeout correctly lets finish —
+                // stacking a coarser cap on top of a finer one changes
+                // behavior for the healthy case, not just the hung one. Only
+                // backends with NO other protection (every non-cloud backend
+                // in this harness) get the wall-clock cap below.
+                capture = await EventRecorder().consume(stream, maxOutputTokens: maxTokens)
+            } else {
+                let requestTimeout = config.requestTimeout
+                capture = await GenerationTimeout.run(
+                    .seconds(requestTimeout),
+                    operation: { await EventRecorder().consume(stream, maxOutputTokens: maxTokens) },
+                    onTimeout: {
+                        // Cancelling the operation task alone does not stop
+                        // the backend's in-flight generation — the fuzz
+                        // stream isn't guaranteed to observe
+                        // `Task.isCancelled`. `stopGeneration()` is the
+                        // contract-guaranteed way to actually terminate it
+                        // (see `InferenceBackend.stopGeneration()`'s doc
+                        // comment) and leave the backend ready for reuse.
+                        handle.backend.stopGeneration()
+                        return EventRecorder.Capture(
+                            events: [],
+                            raw: "",
+                            thinkingRaw: "",
+                            thinkingParts: [],
+                            thinkingCompleteCount: 0,
+                            phase: "timeout",
+                            error: "generation exceeded requestTimeout (\(requestTimeout)s)",
+                            firstTokenMs: nil,
+                            totalMs: start.duration(to: ContinuousClock.now).milliseconds,
+                            peakBytes: memBefore,
+                            promptTokens: nil,
+                            completionTokens: nil,
+                            stopReason: "timeout"
+                        )
+                    }
+                )
+            }
         } catch {
             capture = EventRecorder.Capture(
                 events: [],
@@ -292,7 +335,8 @@ public actor FuzzRunner {
             stopReason: capture.stopReason,
             toolCalls: capture.toolCalls,
             toolResults: capture.toolResults,
-            toolDefinitions: toolDefs
+            toolDefinitions: toolDefs,
+            truncated: capture.truncated
         )
     }
 }

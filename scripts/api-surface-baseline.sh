@@ -75,10 +75,70 @@
 # modules and neither silently drifts ahead of the other. Keep
 # DEFAULT_MODULES in sync with Package.swift's `products:` array (and with
 # PublicSurfaceBaselineTests.swift's `expectedModules`) when a product is
-# added, removed, or renamed. Executables (fuzz-chat, manifold-tools,
-# ManifoldServer) and the ManifoldMacrosPlugin build plugin aren't
+# added, removed, or renamed. Executables (fuzz-chat, manifold-tools, the
+# `ManifoldServer` CLI product → ManifoldServerCLI target, see Package.swift's
+# product comments) and the ManifoldMacrosPlugin build plugin aren't
 # `.library()` products and have no digestible module interface — out of
 # scope by construction, not an exclusion.
+#
+# `ManifoldServerKit` (Package.swift:136, module name `ManifoldServer` — NOT
+# the executable product of the same simple name above) IS a `.library()`
+# product, and does NOT belong in the "out of scope by construction" bucket
+# above — it shipped a real public seam (`ServerBackendProvider`,
+# `ManifoldServer.serve(configuration:backendProvider:)`) in #2242. It is
+# still deliberately absent from DEFAULT_MODULES, for a different reason: a
+# confirmed swift-package-manager tool limitation, not a scoping choice —
+# see #2245 item 4.
+#
+#   `swift package diagnose-api-breaking-changes --baseline-dir <dir>`
+#   builds the target being dumped in an internal SCRATCH CHECKOUT
+#   (`.build/arm64-apple-macosx/apidiff/<hash>-checkout/`) — a separate
+#   `swift build` invocation from the one the outer `swift package` command
+#   itself drives. That scratch-checkout build does NOT receive `--traits`,
+#   no matter where the flag is placed (tried: before the subcommand — the
+#   only grammatically valid position per `swift package --help`'s TRAIT
+#   OPTIONS section — and stacked with `-Xswiftc -DServer` as a forcing
+#   attempt). `ManifoldServerKit`'s entire module body is wrapped in
+#   `#if Server` (`.define("Server", .when(traits: ["Server"]))`,
+#   Package.swift:953), so an un-traited scratch-checkout compile emits a
+#   module with zero declarations — just the four implicit stdlib imports.
+#
+#   Verified 2026-07-16, three ways, scoped to just `--targets ManifoldServer`:
+#     1. `swift package --traits Server diagnose-api-breaking-changes HEAD
+#        --targets ManifoldServer --baseline-dir /tmp/x` → dumped JSON has
+#        0 declarations.
+#     2. Same command WITHOUT `--traits Server` → byte-identical dump
+#        (44315 bytes both times) — the flag had no measurable effect.
+#     3. `-v` output, grepped for the actual `swiftc` invocation: the LIVE
+#        tree build (`.build/arm64-apple-macosx/debug/...`, not the
+#        `-checkout` path) correctly gets `-DServer` on its ManifoldServer
+#        compile line; the CHECKOUT build's ManifoldServer compile line has
+#        only `-DSWIFT_PACKAGE -DDEBUG
+#        -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE` — no `-DServer`. So
+#        `--traits` reaches manifest/target resolution and the live build,
+#        but never the scratch-checkout build the dump is actually taken
+#        from.
+#     4. Forcing the define directly (`-Xswiftc -DServer` stacked with
+#        `--traits Server`) makes the checkout build fail outright —
+#        `error: no such module 'ManifoldInference'` — because the
+#        trait-conditioned product dependencies (`ManifoldInference`,
+#        `Hummingbird`, `HTTPTypes`; Package.swift:940-949) are still
+#        resolved WITHOUT the trait for that build, even though the source
+#        define now says to reference them.
+#
+#   Net effect: for a target whose entire public surface sits behind a
+#   trait-gated `#if`, this tool's `--baseline-dir` dump is *structurally*
+#   always empty — not fixable by flag placement. If someone adds
+#   `ManifoldServer` to DEFAULT_MODULES anyway, the resulting 0-line
+#   baseline is correctly rejected by
+#   `PublicSurfaceBaselineTests.testEachModuleBaselineIsWellFormed`
+#   (`XCTAssertFalse(lines.isEmpty, ...)`) — a loud failure, not a silent
+#   vacuous gate — but it still can't ship until either
+#   swift-package-manager forwards `--traits` into its scratch-checkout
+#   build, or ManifoldServerKit's trait-gated surface is redesigned so the
+#   seam itself (`ServerBackendProvider`, `ServerConfiguration`,
+#   `ManifoldServer.serve`) compiles unconditionally and only the
+#   Hummingbird-touching internals stay behind the trait.
 #
 # ManifoldFoundation note (checked before including it, 2026-07-10): its
 # main surface sits behind `#if canImport(FoundationModels)`, which is a

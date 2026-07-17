@@ -1,5 +1,8 @@
 # Choosing and Loading Models (Headless)
 
+**Audience:** consumer
+**Status:** living
+
 ManifoldKit can choose and load a model **without** a chat view. If you only need
 to pick a model — for an NPC runner, a batch job, a settings screen, or your own
 custom picker — reach for `ModelSelection` instead of standing up a

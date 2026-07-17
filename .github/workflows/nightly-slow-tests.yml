@@ -10,13 +10,13 @@ name: Nightly slow tests
 #    I/O), the fix is to route the call through URLSessionProvider or add the
 #    file to TrafficBoundaryAuditTest.networkIOAllowlist with reviewer sign-off
 #    — the audit is doing its job, not flaking.
-#  - ManifoldAuditSabotageSuiteTests — SABOTAGE=1 audit tripwire proof
 #  - ManifoldMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
 # The perf suites are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
 # job leaves that unset so they skip there. Local `swift test` runs them
-# unconditionally (CI is also unset locally). The sabotage suite is separately
-# gated by SABOTAGE=1, and MCP E2E remains separately gated by RUN_MCP_E2E=1
-# plus a narrow smoke filter so npx/network subprocess tests do not run here.
+# unconditionally (CI is also unset locally). MCP E2E remains separately gated
+# by RUN_MCP_E2E=1 plus a narrow smoke filter so npx/network subprocess tests
+# do not run here. (The former SABOTAGE=1 audit-sabotage suite retired 2026-07:
+# sabotage tests now live in each audit's own file and run per-PR.)
 
 on:
   schedule:
@@ -102,25 +102,6 @@ jobs:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-audit.log
         run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --skip-update --min-passed 1
 
-      - name: Test — Audit sabotage suite
-        id: test-audit-sabotage
-        env:
-          SABOTAGE: "1"
-          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-audit-sabotage.log
-        run: |
-          set -euo pipefail
-          scripts/test.sh --filter "ManifoldAuditSabotageSuiteTests" --skip-update --min-passed 1
-          echo "Audit sabotage suite proof (SABOTAGE=${SABOTAGE}):"
-          grep -E "Test Case '-\\[ManifoldAuditSabotageSuiteTests\\.|TOTAL RUN:|Passed:|RESULT: PASSED" "$MANIFOLD_TEST_OUTPUT_FILE" || true
-          if ! grep -qE "Test Case '-\\[ManifoldAuditSabotageSuiteTests\\." "$MANIFOLD_TEST_OUTPUT_FILE"; then
-            echo "::error::Sabotage suite log did not contain any ManifoldAuditSabotageSuiteTests test-case lines."
-            exit 1
-          fi
-          if grep -q "Set SABOTAGE=1 to run sabotage suite" "$MANIFOLD_TEST_OUTPUT_FILE"; then
-            echo "::error::Sabotage suite skipped despite SABOTAGE=1."
-            exit 1
-          fi
-
       - name: Test — MCP streamable HTTP E2E smoke
         id: test-mcp-e2e-smoke
         env:
@@ -148,21 +129,101 @@ jobs:
       # macOS-min) per push; thresholds are conservative enough that a ≤24h
       # detection delay is acceptable. See scripts/check-coverage.sh for
       # threshold values and rationale.
+      #
+      # Bounded retry (issue #2277): this step used to call `swift test`
+      # directly instead of scripts/test.sh, reimplementing (badly) that
+      # script's crash-vs-failure accounting. It now routes through
+      # scripts/test.sh so it inherits the SAME suite-completion tracking
+      # every other step in this workflow already relies on
+      # (xctest_crashed_suites / st_crashed_suites → "RESULT: INCOMPLETE"),
+      # rather than a hand-rolled, weaker copy.
+      #
+      # scripts/test.sh classifies every run into exactly one of:
+      #   RESULT: PASSED
+      #   RESULT: FAILED (N test failure(s))               — a real assertion failed
+      #   RESULT: INCOMPLETE — N suite(s) crashed (signal…) — a suite started but
+      #                                                        never printed passed/failed
+      #   RESULT: FAILED (swift test exit code N)           — 0 failures AND 0 crashed
+      #                                                        suites (every suite that
+      #                                                        started also finished
+      #                                                        cleanly), yet the
+      #                                                        underlying `swift test`
+      #                                                        process still exited
+      #                                                        nonzero.
+      # Only the last shape is retried: it is the one case scripts/test.sh's
+      # own accounting proves is not an observed regression — a real crashing
+      # test (fatalError/precondition/trap before the failing test ever prints
+      # its own "failed" line) shows up as a crashed suite → INCOMPLETE, which
+      # is NEVER retried, so a nondeterministic crash cannot be retried away
+      # into a false green. Run 29478463863 hit exactly the retryable shape:
+      # 0 XCTest/Swift-Testing failures anywhere in the log, but the raw
+      # `swift test` exit code was nonzero on a stray "unexpected signal code"
+      # line near the tail — check-coverage.sh never even got to run before
+      # the old `set -euo pipefail` inline script killed the step.
       - name: Coverage thresholds
         id: test-coverage-thresholds
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-coverage-thresholds.log
         run: |
-          set -euo pipefail
-          swift test \
-            --filter ManifoldCoreTests \
-            --filter ManifoldRuntimeTests \
-            --filter ManifoldPersistenceSwiftDataTests \
-            --filter ManifoldInferenceTests \
-            --filter ManifoldMCPTests \
-            --enable-code-coverage \
-            --skip-update
+          # GitHub's default bash wrapper for `run:` sets -e; we need it off so
+          # a nonzero scripts/test.sh exit doesn't abort this script before we
+          # can inspect its exit code and decide whether to retry.
+          set +e -uo pipefail
+
+          mkdir -p "$(dirname "$MANIFOLD_TEST_OUTPUT_FILE")"
+
+          MAX_ATTEMPTS=2
+          ATTEMPT=1
+          while :; do
+            # Per-attempt log so a flake-then-pass sequence stays auditable in
+            # the uploaded test-diagnostics artifact instead of the first
+            # attempt's output being overwritten by the retry.
+            #
+            # ATTEMPT_LOG (passed as scripts/test.sh's own MANIFOLD_TEST_OUTPUT_FILE)
+            # only ever receives the raw `swift test | tee` stream that script
+            # captures internally (test.sh:~402) — it never contains the
+            # "RESULT: ..." classification line, which test.sh prints to ITS
+            # OWN stdout from the summary block (test.sh:~568-591). That summary
+            # is what we grep below, so it must be captured separately here via
+            # its own tee, with PIPESTATUS[0] (not tee's exit code) as TEST_EXIT.
+            ATTEMPT_LOG="${MANIFOLD_TEST_OUTPUT_FILE}.attempt${ATTEMPT}"
+            ATTEMPT_SUMMARY="${ATTEMPT_LOG}.summary"
+
+            echo "::group::scripts/test.sh --enable-code-coverage (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
+            MANIFOLD_TEST_OUTPUT_FILE="$ATTEMPT_LOG" scripts/test.sh \
+              --filter ManifoldCoreTests \
+              --filter ManifoldRuntimeTests \
+              --filter ManifoldPersistenceSwiftDataTests \
+              --filter ManifoldInferenceTests \
+              --filter ManifoldMCPTests \
+              --enable-code-coverage \
+              --skip-update \
+              --min-passed 2500 2>&1 | tee "$ATTEMPT_SUMMARY"
+            TEST_EXIT=${PIPESTATUS[0]}
+            echo "::endgroup::"
+
+            cp "$ATTEMPT_LOG" "$MANIFOLD_TEST_OUTPUT_FILE"
+
+            if [[ $TEST_EXIT -eq 0 ]]; then
+              break
+            fi
+
+            # The RESULT line lives in the summary (test.sh's own stdout), not
+            # in ATTEMPT_LOG (the raw swift-test capture) — see the comment
+            # above. test.sh's "FAILED (N test failure(s))" and "FAILED (swift
+            # test exit code N)" branches can both exit 1, so only this printed
+            # classification — not the bare exit code — tells them apart.
+            if grep -q "RESULT: FAILED (swift test exit code" "$ATTEMPT_SUMMARY" && [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
+              echo "scripts/test.sh reported 0 test failures and 0 crashed suites, but swift test's own exit code was nonzero — retrying (known flake, issue #2277)."
+              ATTEMPT=$((ATTEMPT + 1))
+              continue
+            fi
+
+            echo "scripts/test.sh failed (exit ${TEST_EXIT}) — see ${ATTEMPT_LOG} for full test output and ${ATTEMPT_SUMMARY} for the classification. Not retrying: either a real test failure or a suite never completed (RESULT: INCOMPLETE), which is never treated as benign."
+            exit "$TEST_EXIT"
+          done
+
           scripts/check-coverage.sh
 
       - name: Public API source-compatibility check (full — all library-product targets)
@@ -257,7 +318,6 @@ jobs:
           LARGE_SESSION_LIST_FAILED: ${{ steps.test-large-session-list.outcome == 'failure' }}
           INTEGRATED_STREAMING_FAILED: ${{ steps.test-integrated-streaming.outcome == 'failure' }}
           TRAFFIC_BOUNDARY_AUDIT_FAILED: ${{ steps.test-traffic-boundary-audit.outcome == 'failure' }}
-          AUDIT_SABOTAGE_FAILED: ${{ steps.test-audit-sabotage.outcome == 'failure' }}
           MCP_E2E_SMOKE_FAILED: ${{ steps.test-mcp-e2e-smoke.outcome == 'failure' }}
           OPERATIONAL_FAILED: ${{ steps.test-operational.outcome == 'failure' }}
           COVERAGE_THRESHOLDS_FAILED: ${{ steps.test-coverage-thresholds.outcome == 'failure' }}
@@ -271,7 +331,6 @@ jobs:
             echo "large-session-list-failed=${LARGE_SESSION_LIST_FAILED}"
             echo "integrated-streaming-failed=${INTEGRATED_STREAMING_FAILED}"
             echo "traffic-boundary-audit-failed=${TRAFFIC_BOUNDARY_AUDIT_FAILED}"
-            echo "audit-sabotage-failed=${AUDIT_SABOTAGE_FAILED}"
             echo "mcp-e2e-smoke-failed=${MCP_E2E_SMOKE_FAILED}"
             echo "operational-failed=${OPERATIONAL_FAILED}"
             echo "coverage-thresholds-failed=${COVERAGE_THRESHOLDS_FAILED}"
@@ -289,32 +348,62 @@ jobs:
 
       - name: Open GitHub issue on failure
         # Creates a tracking issue so a nightly failure is visible without
-        # relying on GitHub's email digest. De-duplication: if an open issue
-        # with the same title prefix already exists, appends a comment instead
-        # of opening a second issue — avoids spam during multi-day failure runs.
+        # relying on GitHub's email digest. De-duplication keys on the STABLE
+        # search title ("Nightly slow tests failed") so repeat failures keep
+        # threading onto one issue — but the created/commented title and body
+        # inline which step(s) actually failed (from failed-steps.txt, staged
+        # above) instead of a generic "check the logs" pointer. A prior shape
+        # here left failed-steps.txt computed but unused in the issue itself.
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          title="Nightly slow tests failed"
+          search_title="Nightly slow tests failed"
+
+          failed_list=""
+          if [ -f test-diagnostics/failed-steps.txt ]; then
+            while IFS='=' read -r key value; do
+              case "$key" in
+                run-id|run-attempt|job) continue ;;
+              esac
+              if [ "$value" = "true" ]; then
+                step_name="${key%-failed}"
+                if [ -z "$failed_list" ]; then
+                  failed_list="$step_name"
+                else
+                  failed_list="$failed_list, $step_name"
+                fi
+              fi
+            done < test-diagnostics/failed-steps.txt
+          fi
+          first_failed="${failed_list%%,*}"
+
+          if [ -n "$first_failed" ]; then
+            title="${search_title}: ${first_failed}"
+            cause_line="**Failed step(s):** ${failed_list}"
+          else
+            title="$search_title"
+            cause_line="**Failed step(s):** unknown (a step outside the tracked set failed — check the run logs)"
+          fi
+
           existing=$(gh issue list \
             --repo "${{ github.repository }}" \
             --state open \
-            --search "${title} in:title" \
+            --search "${search_title} in:title" \
             --json number \
             --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             echo "Open issue #${existing} already exists — adding comment."
             gh issue comment "$existing" \
               --repo "${{ github.repository }}" \
-              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+              --body "$(printf 'Also failed on [run %s](%s).\n\n%s' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           else
             gh issue create \
               --repo "${{ github.repository }}" \
               --title "${title}" \
-              --body "$(printf '## Nightly slow tests failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+              --body "$(printf '## Nightly slow tests failed\n\n**Run:** [%s](%s)\n\n%s\n\nCheck the run logs for full detail and close this issue once resolved.' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           fi
 
   # Cold-start conformance gates (tier 1/2/3 + specialised MCP/Voice/
@@ -347,62 +436,99 @@ jobs:
         uses: ./.github/actions/setup-swift-ci
 
       - name: Cold-start tier 1 — public consumer surface
+        id: cs-tier1
         timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
       - name: Cold-start tier 2 — ManifoldBootstrap → ChatViewModel
+        id: cs-tier2
         if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
       - name: Cold-start tier 3 — ChatView composition
+        id: cs-tier3
         if: success() || failure()
         timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
 
       - name: Cold-start specialised — ManifoldMCP
+        id: cs-mcp
         if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-mcp.sh
 
       - name: Cold-start specialised — ManifoldVoice
+        id: cs-voice
         if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-voice.sh
 
       - name: Cold-start specialised — ManifoldUIModelManagement
+        id: cs-uimm
         if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
 
       - name: Open GitHub issue on failure
         # Creates a tracking issue so a nightly failure is visible without
-        # relying on GitHub's email digest. De-duplication: if an open issue
-        # with the same title prefix already exists, appends a comment instead
-        # of opening a second issue — avoids spam during multi-day failure runs.
+        # relying on GitHub's email digest. De-duplication keys on the STABLE
+        # search title ("Nightly cold-start gates failed") so repeat failures keep threading
+        # onto one issue — but the created/commented title and body inline
+        # which step(s) actually failed instead of a generic "check the
+        # logs" pointer. GH_TOKEN is still needed for gh; kept alongside the outcome env vars below.
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          CS_TIER1_FAILED: ${{ steps.cs-tier1.outcome == 'failure' }}
+          CS_TIER2_FAILED: ${{ steps.cs-tier2.outcome == 'failure' }}
+          CS_TIER3_FAILED: ${{ steps.cs-tier3.outcome == 'failure' }}
+          CS_MCP_FAILED: ${{ steps.cs-mcp.outcome == 'failure' }}
+          CS_VOICE_FAILED: ${{ steps.cs-voice.outcome == 'failure' }}
+          CS_UIMM_FAILED: ${{ steps.cs-uimm.outcome == 'failure' }}
         run: |
           set -euo pipefail
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          title="Nightly cold-start gates failed"
+          search_title="Nightly cold-start gates failed"
+
+          failed_list=""
+          add_if_failed() {
+            if [ "$2" = "true" ]; then
+              if [ -z "$failed_list" ]; then failed_list="$1"; else failed_list="$failed_list, $1"; fi
+            fi
+          }
+          add_if_failed "cs-tier1" "${CS_TIER1_FAILED}"
+          add_if_failed "cs-tier2" "${CS_TIER2_FAILED}"
+          add_if_failed "cs-tier3" "${CS_TIER3_FAILED}"
+          add_if_failed "cs-mcp" "${CS_MCP_FAILED}"
+          add_if_failed "cs-voice" "${CS_VOICE_FAILED}"
+          add_if_failed "cs-uimm" "${CS_UIMM_FAILED}"
+          first_failed="${failed_list%%,*}"
+
+          if [ -n "$first_failed" ]; then
+            title="${search_title}: ${first_failed}"
+            cause_line="**Failed step(s):** ${failed_list}"
+          else
+            title="$search_title"
+            cause_line="**Failed step(s):** unknown (a step outside the tracked set failed — check the run logs)"
+          fi
+
           existing=$(gh issue list \
             --repo "${{ github.repository }}" \
             --state open \
-            --search "${title} in:title" \
+            --search "${search_title} in:title" \
             --json number \
             --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             echo "Open issue #${existing} already exists — adding comment."
             gh issue comment "$existing" \
               --repo "${{ github.repository }}" \
-              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+              --body "$(printf 'Also failed on [run %s](%s).\n\n%s' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           else
             gh issue create \
               --repo "${{ github.repository }}" \
               --title "${title}" \
-              --body "$(printf '## Nightly cold-start gates failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+              --body "$(printf '## Nightly cold-start gates failed\n\n**Run:** [%s](%s)\n\n%s\n\nCheck the run logs for full detail and close this issue once resolved.' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           fi
 
   # Member-aware public-surface baseline (docs/plans/api-review-wave2-2026-07.md
@@ -463,52 +589,83 @@ jobs:
           verify-toolchain: "true"
 
       - name: Test — Server suite (Server trait)
+        id: test-server
         timeout-minutes: 15
         run: scripts/test.sh --filter ManifoldServerTests --traits Server --skip-update --min-passed 1
 
       - name: Test — @ToolSchema macro suite (Macros trait)
+        id: test-macros
         if: success() || failure()
         timeout-minutes: 15
         run: scripts/test.sh --filter ToolSchemaMacro --traits Macros --skip-update --min-passed 1
 
       - name: Test — ModelContainerFileProtectionTests (iOS Simulator)
+        id: test-ios-file-protection
         if: success() || failure()
         timeout-minutes: 15
         run: scripts/test-ios-simulator.sh --ci
 
       - name: Check MCP provider fixtures are up to date
+        id: check-mcp-fixtures
         if: success() || failure()
         timeout-minutes: 5
         run: scripts/regenerate-mcp-fixtures.sh --check
 
       - name: Open GitHub issue on failure
         # Creates a tracking issue so a nightly failure is visible without
-        # relying on GitHub's email digest. De-duplication: if an open issue
-        # with the same title prefix already exists, appends a comment instead
-        # of opening a second issue — avoids spam during multi-day failure runs.
+        # relying on GitHub's email digest. De-duplication keys on the STABLE
+        # search title ("Nightly queue-merge backstop failed") so repeat failures keep threading
+        # onto one issue — but the created/commented title and body inline
+        # which step(s) actually failed instead of a generic "check the
+        # logs" pointer.
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          TEST_SERVER_FAILED: ${{ steps.test-server.outcome == 'failure' }}
+          TEST_MACROS_FAILED: ${{ steps.test-macros.outcome == 'failure' }}
+          TEST_IOS_FILE_PROTECTION_FAILED: ${{ steps.test-ios-file-protection.outcome == 'failure' }}
+          CHECK_MCP_FIXTURES_FAILED: ${{ steps.check-mcp-fixtures.outcome == 'failure' }}
         run: |
           set -euo pipefail
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          title="Nightly queue-merge backstop failed"
+          search_title="Nightly queue-merge backstop failed"
+
+          failed_list=""
+          add_if_failed() {
+            if [ "$2" = "true" ]; then
+              if [ -z "$failed_list" ]; then failed_list="$1"; else failed_list="$failed_list, $1"; fi
+            fi
+          }
+          add_if_failed "test-server" "${TEST_SERVER_FAILED}"
+          add_if_failed "test-macros" "${TEST_MACROS_FAILED}"
+          add_if_failed "test-ios-file-protection" "${TEST_IOS_FILE_PROTECTION_FAILED}"
+          add_if_failed "check-mcp-fixtures" "${CHECK_MCP_FIXTURES_FAILED}"
+          first_failed="${failed_list%%,*}"
+
+          if [ -n "$first_failed" ]; then
+            title="${search_title}: ${first_failed}"
+            cause_line="**Failed step(s):** ${failed_list}"
+          else
+            title="$search_title"
+            cause_line="**Failed step(s):** unknown (a step outside the tracked set failed — check the run logs)"
+          fi
+
           existing=$(gh issue list \
             --repo "${{ github.repository }}" \
             --state open \
-            --search "${title} in:title" \
+            --search "${search_title} in:title" \
             --json number \
             --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             echo "Open issue #${existing} already exists — adding comment."
             gh issue comment "$existing" \
               --repo "${{ github.repository }}" \
-              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+              --body "$(printf 'Also failed on [run %s](%s).\n\n%s' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           else
             gh issue create \
               --repo "${{ github.repository }}" \
               --title "${title}" \
-              --body "$(printf '## Nightly queue-merge backstop failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+              --body "$(printf '## Nightly queue-merge backstop failed\n\n**Run:** [%s](%s)\n\n%s\n\nCheck the run logs for full detail and close this issue once resolved.' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           fi
 
   # Doc-snippet + human-path cold-start gates — the 24h post-merge backstop.
@@ -540,40 +697,65 @@ jobs:
         uses: ./.github/actions/setup-swift-ci
 
       - name: README + QUICKSTART + DocC snippet compile gate
+        id: doc-snippets
         timeout-minutes: 20
         run: scripts/extract-snippets-test.sh
 
       - name: Cold-start tier 4 — human path (README from line 1)
+        id: cold-start-human
         if: success() || failure()
         timeout-minutes: 10
         run: bash scripts/cold-start-human.sh
 
       - name: Open GitHub issue on failure
         # Creates a tracking issue so a nightly failure is visible without
-        # relying on GitHub's email digest. De-duplication: if an open issue
-        # with the same title prefix already exists, appends a comment instead
-        # of opening a second issue — avoids spam during multi-day failure runs.
+        # relying on GitHub's email digest. De-duplication keys on the STABLE
+        # search title ("Nightly doc gates failed") so repeat failures keep threading
+        # onto one issue — but the created/commented title and body inline
+        # which step(s) actually failed instead of a generic "check the
+        # logs" pointer.
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          DOC_SNIPPETS_FAILED: ${{ steps.doc-snippets.outcome == 'failure' }}
+          COLD_START_HUMAN_FAILED: ${{ steps.cold-start-human.outcome == 'failure' }}
         run: |
           set -euo pipefail
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          title="Nightly doc gates failed"
+          search_title="Nightly doc gates failed"
+
+          failed_list=""
+          add_if_failed() {
+            if [ "$2" = "true" ]; then
+              if [ -z "$failed_list" ]; then failed_list="$1"; else failed_list="$failed_list, $1"; fi
+            fi
+          }
+          add_if_failed "doc-snippets" "${DOC_SNIPPETS_FAILED}"
+          add_if_failed "cold-start-human" "${COLD_START_HUMAN_FAILED}"
+          first_failed="${failed_list%%,*}"
+
+          if [ -n "$first_failed" ]; then
+            title="${search_title}: ${first_failed}"
+            cause_line="**Failed step(s):** ${failed_list}"
+          else
+            title="$search_title"
+            cause_line="**Failed step(s):** unknown (a step outside the tracked set failed — check the run logs)"
+          fi
+
           existing=$(gh issue list \
             --repo "${{ github.repository }}" \
             --state open \
-            --search "${title} in:title" \
+            --search "${search_title} in:title" \
             --json number \
             --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             echo "Open issue #${existing} already exists — adding comment."
             gh issue comment "$existing" \
               --repo "${{ github.repository }}" \
-              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+              --body "$(printf 'Also failed on [run %s](%s).\n\n%s' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           else
             gh issue create \
               --repo "${{ github.repository }}" \
               --title "${title}" \
-              --body "$(printf '## Nightly doc gates failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+              --body "$(printf '## Nightly doc gates failed\n\n**Run:** [%s](%s)\n\n%s\n\nCheck the run logs for full detail and close this issue once resolved.' "${{ github.run_id }}" "${run_url}" "${cause_line}")"
           fi

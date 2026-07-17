@@ -1,5 +1,8 @@
 # ManifoldKit Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for getting from "empty SwiftUI project" to "working chat UI" in under five minutes. If you already have a working bootstrap, jump to [Customizing backends](#customizing-backends) or [Customizing storage](#customizing-storage).
 
 > If you're building a CLI, headless service, or non-SwiftUI app, see [`QUICKSTART-CLI.md`](QUICKSTART-CLI.md) — it has compile-tested `Package.swift` + `main.swift` examples for Foundation Models, local GGUF via Llama, and Ollama / OpenAI-compatible cloud endpoints.
@@ -17,7 +20,7 @@ Add ManifoldKit to your `Package.swift` (or Xcode's *Package Dependencies*):
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0" // x-release-please-version
+    from: "0.71.0" // x-release-please-version
 )
 ```
 
@@ -127,7 +130,9 @@ This section shows the four documented paths to get a model loaded on first laun
 
 ### Seeding a starter model (recommended for new apps)
 
-Pass `seed: .recommendedSmallModel()` and ManifoldKit handles the rest: it downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and leaves `ChatViewModel.isModelLoaded == true` the moment the view appears. No model-management UI required.
+Pass `seed: .recommendedSmallModel()` and ManifoldKit handles the rest: it downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and dispatches the load before returning. No model-management UI required.
+
+That dispatch is fire-and-forget (`dispatchSelectedLoad()`), so the load is typically still in flight when `quickStart()` returns and the view appears — `ChatViewModel.isModelLoaded` is not guaranteed `true` on the first observation. Read `viewModel.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(error)`) to drive an accurate "starting up" indicator instead of assuming the composer is immediately live (#2222).
 
 ```swift,no-build
 @main
@@ -239,7 +244,7 @@ struct MyChatApp: App {
 
 For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint.
 
-On **relaunch**, when the endpoint is already in the store, `quickStart()` selects the first configured endpoint and dispatches a load before returning — no extra `loadSelectedEndpoint()` call is required. On **first launch**, when you seed the endpoint *after* `quickStart()` returns (the snippet below), you still need one explicit `loadSelectedEndpoint()` so the first session is live before the view appears.
+On **relaunch**, when the endpoint is already in the store, `quickStart()` selects the first configured endpoint and dispatches a load before returning — no extra `loadSelectedEndpoint()` call is required. That dispatch (`dispatchSelectedLoad()`) is fire-and-forget, though: the load is commonly still in flight when `quickStart()` returns, so don't treat `isModelLoaded == true` or a completed `sendMessage(_:)` as guaranteed on the first frame. Observe `viewModel.modelLoadState` for the `.loading` → `.loaded` / `.failed(error)` transition, or catch `SendMessageError.modelLoading` from a `sendMessage(_:)` call that raced the load and retry once it resolves (#2222). On **first launch**, when you seed the endpoint *after* `quickStart()` returns (the snippet below), you still need one explicit, **awaited** `loadSelectedEndpoint()` so the first session is live before the view appears — awaiting it (unlike the fire-and-forget dispatch above) does block until the load actually completes or fails.
 
 Ollama support is always compiled in since v0.48 (the `Ollama` trait was retired) — the seeded endpoint is the only configuration step.
 
@@ -338,7 +343,7 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 // Package.swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0" // x-release-please-version
+    from: "0.71.0" // x-release-please-version
 ),
 .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),  // GGUF / llama.cpp
 .package(url: "https://github.com/ManifoldKit/manifold-mlx.git", from: "0.2.13"),    // MLX (+ image gen)

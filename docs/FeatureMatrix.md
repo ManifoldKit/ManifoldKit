@@ -1,5 +1,8 @@
 # ManifoldKit Feature Matrix
 
+**Audience:** consumer
+**Status:** living
+
 Generated from `Sources/ManifoldKit/FeatureMatrix.swift` by `scripts/render-feature-matrix.sh`.
 Do not edit by hand — re-run the script.
 

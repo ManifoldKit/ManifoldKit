@@ -39,6 +39,14 @@ private actor FakeVectorStore: VectorStore {
 /// Reorders candidates with a caller-supplied closure (or reports itself not
 /// ready). Lets a test inject a known re-ranking and assert the service honours
 /// it.
+/// A `TokenizerProvider` that reports a fixed cost per call, regardless of
+/// text length — lets a test assert that the supplied tokenizer (not the
+/// chars/4 heuristic) actually drives ``RAGService``'s budget-packing cutoff.
+private struct FixedCostTokenizer: TokenizerProvider {
+    let cost: Int
+    func tokenCount(_ text: String) -> Int { cost }
+}
+
 private struct FakeReranker: Reranker {
     let ready: Bool
     let reorder: @Sendable ([VectorSearchHit]) -> [VectorSearchHit]
@@ -237,6 +245,41 @@ final class RAGServiceTests: XCTestCase {
         let slots = try await sut.retrieveSlots(query: "keyword")
         XCTAssertEqual(slots.count, 1)
         XCTAssertTrue(slots[0].content.contains("keyword result"))
+    }
+
+    /// `denseHits`'s `guard let backend = embeddingBackend, backend.isModelLoaded
+    /// else { ... }` branch (Sources/ManifoldRuntime/Services/RAGService.swift)
+    /// covers two distinct configurations: no backend at all (the sibling test
+    /// above) and a backend that exists but never finished loading. This pins
+    /// the second shape — same fallback-to-keyword-search behavior, and dense
+    /// `vectorStore.search` must never be invoked. This is a
+    /// FALLBACK-BEHAVIOR regression test, not a log-assertion test: it does not
+    /// (and cannot, in this codebase — `Log` wraps plain `os.Logger` with no
+    /// capture/injection seam) assert that the new
+    /// `Log.inference.warning("RAGService: no loaded embedding backend, …")`
+    /// line fires. Sabotage-checked: commenting out the `isModelLoaded` guard
+    /// clause (so an unloaded backend flows into the `embed(...)` call, which
+    /// `FakeEmbeddingBackend` happily serves) made `lastSearchLimit` non-nil
+    /// and this test fail; reverted before landing.
+    func testRetrieveSlotsWithUnloadedEmbeddingBackendFallsBackToKeyword() async throws {
+        let vectorStore = FakeVectorStore()
+        let chunk = DocumentChunk(documentID: UUID(), text: "keyword result", chunkIndex: 0)
+        let hit = VectorSearchHit(chunk: chunk, documentTitle: "Doc", score: 1.0)
+        await vectorStore.setKeywordResults([hit])
+
+        let backend = FakeEmbeddingBackend(isModelLoaded: false)
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: backend
+        )
+
+        let slots = try await sut.retrieveSlots(query: "keyword")
+        XCTAssertEqual(slots.count, 1)
+        XCTAssertTrue(slots[0].content.contains("keyword result"))
+        XCTAssertEqual(backend.embedCallCount, 0, "an unloaded backend must never be asked to embed")
+        let searchLimit = await vectorStore.lastSearchLimit
+        XCTAssertNil(searchLimit, "dense vectorStore.search must not be called when the backend isn't loaded")
     }
 
     func testRetrieveSlotsWithNoHitsReturnsEmpty() async throws {
@@ -921,6 +964,205 @@ final class RAGServiceTests: XCTestCase {
         // The fallback chunked path ran (and found nothing).
         let keywordLimit = await vectorStore.lastKeywordLimit
         XCTAssertNotNil(keywordLimit, "empty corpus must fall through to the chunk-retrieval search")
+    }
+
+    // MARK: - #2207: token-budget-aware retrieval
+
+    /// The budget-aware entry point must pack score-ordered hits greedily,
+    /// stopping at the first hit that would push the running total over
+    /// `tokenBudget` — never fetching everything and truncating after the fact.
+    func test_retrieveTokenBudget_packsGreedilyWithoutExceedingBudget() async throws {
+        let docID = UUID()
+        // Heuristic fallback estimates ~chars/4 tokens; 400 chars → 100 tokens.
+        let hits = (0..<3).map { i in
+            VectorSearchHit(
+                chunk: DocumentChunk(documentID: docID, text: String(repeating: "x", count: 400), chunkIndex: i),
+                documentTitle: "Doc",
+                score: Float(1.0) - Float(i) * 0.1
+            )
+        }
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults(hits)
+
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        // Budget for 2 hits (200 tokens) but not a 3rd (300 tokens > 250).
+        let result = try await sut.retrieve(query: "widgets", tokenBudget: 250)
+
+        XCTAssertEqual(result.citations.count, 2,
+                       "must pack only as many hits as fit the budget, not all available hits")
+        XCTAssertEqual(result.citations.map(\.chunkIndex), [0, 1])
+
+        // Sabotage: an unbudgeted / count-based fallback would return all 3.
+        XCTAssertNotEqual(result.citations.count, 3)
+    }
+
+    /// A budget wide enough for every hit packs all of them — packing is a
+    /// ceiling, not a forced truncation.
+    func test_retrieveTokenBudget_wideBudgetPacksAllHits() async throws {
+        let docID = UUID()
+        let hits = (0..<3).map { i in
+            VectorSearchHit(
+                chunk: DocumentChunk(documentID: docID, text: String(repeating: "x", count: 400), chunkIndex: i),
+                documentTitle: "Doc",
+                score: Float(1.0) - Float(i) * 0.1
+            )
+        }
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults(hits)
+
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        let result = try await sut.retrieve(query: "widgets", tokenBudget: 10_000)
+
+        XCTAssertEqual(result.citations.count, 3)
+    }
+
+    /// A budget too small for even the first (highest-scoring) hit rounds-trips
+    /// as empty rather than injecting a partial/zero-content slot.
+    func test_retrieveTokenBudget_tooSmallForFirstHit_returnsEmpty() async throws {
+        let docID = UUID()
+        let hit = VectorSearchHit(
+            chunk: DocumentChunk(documentID: docID, text: String(repeating: "x", count: 400), chunkIndex: 0),
+            documentTitle: "Doc",
+            score: 0.9
+        )
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults([hit])
+
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        let result = try await sut.retrieve(query: "widgets", tokenBudget: 1)
+
+        XCTAssertTrue(result.slots.isEmpty)
+        XCTAssertTrue(result.citations.isEmpty)
+        XCTAssertTrue(result.documents.isEmpty)
+    }
+
+    /// A non-positive budget is meaningless — round-trips as empty rather than
+    /// trapping on the packing loop.
+    func test_retrieveTokenBudget_nonPositiveBudget_returnsEmpty() async throws {
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults([
+            VectorSearchHit(chunk: DocumentChunk(documentID: UUID(), text: "x", chunkIndex: 0), documentTitle: "Doc", score: 0.9)
+        ])
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        let zero = try await sut.retrieve(query: "widgets", tokenBudget: 0)
+        let negative = try await sut.retrieve(query: "widgets", tokenBudget: -5)
+
+        XCTAssertTrue(zero.citations.isEmpty)
+        XCTAssertTrue(negative.citations.isEmpty)
+    }
+
+    /// Empty/whitespace-only queries round-trip as empty under the budget-aware
+    /// overload too, matching `retrieve(query:limit:)`.
+    func test_retrieveTokenBudget_emptyQuery_returnsEmpty() async throws {
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: FakeVectorStore())
+        let result = try await sut.retrieve(query: "   ", tokenBudget: 1000)
+        XCTAssertTrue(result.citations.isEmpty)
+    }
+
+    /// A caller-supplied tokenizer must actually drive the packing decision —
+    /// not just be accepted and ignored in favour of the heuristic.
+    func test_retrieveTokenBudget_customTokenizerDrivesPackingDecision() async throws {
+        let docID = UUID()
+        // Heuristically this text is ~1 token (4 chars), but the fake
+        // tokenizer below reports 1000 tokens per hit regardless of length.
+        let hits = (0..<2).map { i in
+            VectorSearchHit(
+                chunk: DocumentChunk(documentID: docID, text: "abcd", chunkIndex: i),
+                documentTitle: "Doc",
+                score: Float(1.0) - Float(i) * 0.1
+            )
+        }
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults(hits)
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        // Budget fits only one 1000-token hit under the custom tokenizer.
+        let result = try await sut.retrieve(query: "widgets", tokenBudget: 1500, tokenizer: FixedCostTokenizer(cost: 1000))
+
+        XCTAssertEqual(result.citations.count, 1,
+                       "the supplied tokenizer's per-hit cost must drive the packing cutoff")
+
+        // Sabotage: the heuristic (~1 token per hit) would have packed both.
+        XCTAssertNotEqual(result.citations.count, 2)
+    }
+
+    // MARK: - #2207: RetrievedDocument.documentID
+
+    /// `retrieve(query:limit:)` must populate `documentID` on every structured
+    /// document, matching the ingesting caller's ID end to end (ingest →
+    /// retrieve round-trip), not leave it `nil`.
+    func test_retrieve_populatesDocumentIDMatchingIngestingCallerID() async throws {
+        let vectorStore = FakeVectorStore()
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        let callerID = UUID()
+        let record = try await sut.ingest(text: "Some passage about widgets.", documentID: callerID, title: "Widgets")
+        XCTAssertEqual(record.id, callerID)
+
+        // Simulate the vector store returning the just-ingested chunk on query.
+        await vectorStore.setKeywordResults([
+            VectorSearchHit(
+                chunk: DocumentChunk(documentID: record.id, text: "Some passage about widgets.", chunkIndex: 0),
+                documentTitle: record.title,
+                score: 0.9
+            )
+        ])
+
+        let result = try await sut.retrieve(query: "widgets")
+
+        XCTAssertEqual(result.documents.count, 1)
+        XCTAssertEqual(result.documents[0].documentID, callerID)
+
+        // Sabotage: a build that dropped documentID at construction would
+        // leave this nil.
+        XCTAssertNotNil(result.documents[0].documentID)
+    }
+
+    /// The budget-aware overload must populate `documentID` too — it shares
+    /// `buildResult(from:)` with the count-based path, but a regression could
+    /// still drop the field on just one call site.
+    func test_retrieveTokenBudget_populatesDocumentID() async throws {
+        let docID = UUID()
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setKeywordResults([
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "widget passage", chunkIndex: 0), documentTitle: "Doc", score: 0.9)
+        ])
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+
+        let result = try await sut.retrieve(query: "widgets", tokenBudget: 1000)
+
+        XCTAssertEqual(result.documents.count, 1)
+        XCTAssertEqual(result.documents[0].documentID, docID)
+    }
+
+    /// The full-context (whole-document) path must also populate `documentID`
+    /// from the source `DocumentRecord.id` — a second, independent
+    /// `RetrievedDocument` construction site from the chunked path above.
+    func test_fullContextMode_populatesDocumentIDFromRecord() async throws {
+        let url = try writeTempFile(content: "Whole document body.")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let docStore = FakeDocumentStore()
+        let docID = UUID()
+        docStore.insertedRecords = [
+            DocumentRecord(id: docID, title: "WholeDoc", sourceURL: url, fileType: "txt", chunkCount: 1)
+        ]
+
+        let sut = RAGService(
+            documentStore: docStore,
+            vectorStore: FakeVectorStore(),
+            fullContextMode: true,
+            fullContextBudgetTokens: 8192
+        )
+
+        let result = try await sut.retrieve(query: "anything")
+
+        XCTAssertEqual(result.documents.count, 1)
+        XCTAssertEqual(result.documents[0].documentID, docID)
     }
 
     // MARK: - Helpers

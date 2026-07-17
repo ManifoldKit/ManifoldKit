@@ -8,9 +8,9 @@ import ManifoldInference
 /// progress indicator, or "Downloaded" badge depending on the model's current state.
 /// When the model's backend is not available in the current build, an informational
 /// note is shown — the user can still download the file for future use.
-public struct DownloadableModelRow: View {
+package struct DownloadableModelRow: View {
 
-    public let model: DownloadableModel
+    package let model: DownloadableModel
 
     /// When `true`, render the device-aware speed badge and (if `rationale` is set)
     /// the one-line "why". The browser passes `true` for search-result variants and
@@ -26,7 +26,7 @@ public struct DownloadableModelRow: View {
     @Environment(ModelManagementViewModel.self) private var viewModel
     @Environment(FrameworkCapabilityService.self) private var capabilityService: FrameworkCapabilityService?
 
-    public init(
+    package init(
         model: DownloadableModel,
         showFitGuidance: Bool = false,
         rationale: String? = nil
@@ -45,7 +45,7 @@ public struct DownloadableModelRow: View {
             ?? CompiledBackends.current.compatibility(for: model.modelType)
     }
 
-    public var body: some View {
+    package var body: some View {
         HStack(alignment: .top, spacing: 12) {
             compatibilityBadge
                 .accessibilityLabel(compatibilityLabel)

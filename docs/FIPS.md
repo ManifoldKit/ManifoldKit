@@ -1,8 +1,11 @@
 # FIPS 140-3 Posture
 
-> **Audience:** procurement, compliance, and security teams evaluating ManifoldKit
-> for use in regulated environments (healthcare, federal-adjacent, finance,
-> defense). This document answers the question
+**Audience:** consumer
+**Status:** living
+
+> **Who this is for:** procurement, compliance, and security teams evaluating
+> ManifoldKit for use in regulated environments (healthcare, federal-adjacent,
+> finance, defense). This document answers the question
 > "are your cryptographic primitives FIPS 140-3 validated?"
 >
 > **TL;DR:** ManifoldKit does not hold a FIPS 140-3 validation certificate, and does not

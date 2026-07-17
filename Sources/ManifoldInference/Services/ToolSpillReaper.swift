@@ -29,7 +29,7 @@ import Foundation
 ///   back. That is the host application's responsibility — emitting a
 ///   pointer to an unreadable file is a host configuration error, not
 ///   a library invariant.
-public enum ToolSpillReaper {
+package enum ToolSpillReaper {
 
     // MARK: - Spill
 
@@ -41,7 +41,7 @@ public enum ToolSpillReaper {
     /// set). The registry catches and logs these so a failed spill
     /// degrades to truncation rather than crashing the chat loop.
     @discardableResult
-    public static func spill(
+    package static func spill(
         content: String,
         directory: URL? = nil
     ) throws -> URL {
@@ -66,7 +66,7 @@ public enum ToolSpillReaper {
     /// The default spill directory: `<caches>/ManifoldKit/tool-spills/`.
     /// Tests can override via ``setDefaultDirectoryOverride(_:)`` to keep
     /// writes out of `~/Library/Caches`.
-    public static func defaultDirectory() throws -> URL {
+    package static func defaultDirectory() throws -> URL {
         if let override = directoryOverride {
             return override
         }
@@ -121,7 +121,7 @@ public enum ToolSpillReaper {
     /// IO errors during enumeration or deletion are logged at warning
     /// level and swallowed — a stale-file sweep is opportunistic. Hosts
     /// that need stronger guarantees can implement their own policy.
-    public static func cleanOldSpills(
+    package static func cleanOldSpills(
         maxAge: TimeInterval = 7 * 24 * 60 * 60,
         directory: URL? = nil
     ) {

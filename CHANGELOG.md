@@ -1,5 +1,146 @@
 # Changelog
 
+## [0.71.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.70.0...v0.71.0) (2026-07-13)
+
+Phase A of the [v1 rationalisation plan](docs/plans/api-v1-rationalisation-2026-07.md):
+29 undocumented, zero-consumer internals leave the public API, and seven unadopted
+modules are formally declared Experimental. Alongside the tightening, a large additive
+train from first-party app dogfooding: a structured-output reliability envelope,
+generation observability without `ConversationRuntime`, compression outcome reporting
+with first-class message pinning, observable model-load state, and an embeddable
+`manifold-server`.
+
+### Highlights
+
+#### 29 internal types are now `package` (breaking)
+
+Undocumented types with zero external consumers were demoted from `public` to
+`package` across `ManifoldInference` (11 — the `TurnHistoryCompressor` family,
+`StructuredOutputSchema`, `ToolSpillReaper`, `HuggingFaceProbe`, the `ModelSelecting`
+protocol, and friends), `ManifoldUI`/`ManifoldUIModelManagement` (11 — internal
+subviews of the shipped sheets, e.g. `APIEndpointEditorView`, `DownloadProgressView`),
+and the leaf modules (7 — e.g. `DeviceCapability`, `CategorizedError`,
+`SentenceCoalescer`, `NetworkPolicyGuard`). No behavior change — pure visibility
+reduction, screened against all six consumer repos.
+
+If you referenced one of these, see
+[docs/MIGRATION-api-demotions-0.71.md](docs/MIGRATION-api-demotions-0.71.md) — it
+lists every demoted symbol, and (just as usefully) the ~63 screened candidates that
+stayed public with the reason each one must. See [#2254](https://github.com/ManifoldKit/ManifoldKit/issues/2254), [#2255](https://github.com/ManifoldKit/ManifoldKit/issues/2255), [#2256](https://github.com/ManifoldKit/ManifoldKit/issues/2256).
+
+#### Seven modules are formally Experimental
+
+`ManifoldMCP`, `ManifoldMCPHost`, `ManifoldSkills`, `ManifoldAppIntents`,
+`ManifoldAnyLanguageModel`, `ManifoldTelemetryOTLP`, and `ManifoldAppEval` are now
+marked Experimental in AGENTS.md and their DocC landing pages: they may break in any
+minor (always migration-noted) and graduate to the stability promise on their first
+real adopter — a shipping app or companion that pins *and* imports them. The policy
+is API-DESIGN.md § 7b. Stable-tier modules are unaffected. See [#2250](https://github.com/ManifoldKit/ManifoldKit/issues/2250).
+
+#### Structured output gains a reliability envelope
+
+`InferenceService.structured(_:messages:config:policy:)` wraps the existing
+structured-output primitives with the reliability layer every background-extraction
+consumer was hand-rolling: stall-timeout monitoring, bounded same-request retries,
+and explicit empty-output classification (a backend that streams zero content is
+reported as `.emptyOutput`, never disguised as a decode failure)
+([#2235](https://github.com/ManifoldKit/ManifoldKit/issues/2235)):
+
+```swift
+let result = try await inferenceService.structured(
+    SceneSummary.self,
+    messages: history,
+    policy: .init(maxRetries: 2, stallTimeout: .seconds(30))
+)
+switch result {
+case .success(let output): use(output.value)
+case .failure(let error):  log(error)   // .emptyOutput / .stalled / .unparsable…
+}
+```
+
+#### Observe generation without ConversationRuntime
+
+Apps that drive `InferenceService` directly can now attach a multicast event tap at
+the generation chokepoint — the same `GenerationEvent` flow (`promptRendered`, tokens,
+tool calls, `generationCompleted`) that `ConversationRuntime` consumers get, with
+`GenerationEventRecorder`/`GenerationEventTrace` for JSONL capture, and no
+`ManifoldRuntime` dependency ([#2239](https://github.com/ManifoldKit/ManifoldKit/issues/2239)):
+
+```swift
+let tap = inferenceService.addGenerationEventTap()
+Task {
+    for await event in tap { trace.record(event) }
+}
+```
+
+#### Compression reports its outcome, and messages can be pinned
+
+`DefaultCompressionPolicy`'s factories gain two seams
+([#2238](https://github.com/ManifoldKit/ManifoldKit/issues/2238)): `onOutcome` fires a
+`CompressionOutcome` classification on every pass (`summarized`, `fallbackUsed`,
+`cancelled`, `skippedInsufficientBudget`, `nothingToSummarize`, …) — cancellation is
+no longer misreported as fallback — and `isPinned` marks messages load-bearing without
+mutating them:
+
+```swift
+let policy = DefaultCompressionPolicy.anchored(
+    threshold: 0.85, contextSize: 8_192,
+    isPinned: { message in session.pinnedMessageIDs.contains(message.id) },
+    onOutcome: { outcome in telemetry.record(outcome) }
+)
+```
+
+#### Model loading is observable — and a racing send says so
+
+`ChatViewModel.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(any Error)`)
+distinguishes "still loading" from "silently failed" for the fire-and-forget load
+dispatches, and `sendMessage(_:)` during an in-flight load now throws the new
+`SendMessageError.modelLoading` instead of the misleading `.noModelLoaded`. Breaking
+for direct `ModelLoadCoordinator` consumers: `onSurfaceError` now carries the real
+`Error`, not a stringified message. See [#2232](https://github.com/ManifoldKit/ManifoldKit/issues/2232).
+
+#### Embed manifold-server with your own backends
+
+The new `ManifoldServerKit` library product (behind the existing `Server` trait)
+exposes `ServerApp` and the `ServerBackendProvider` seam, so a host app or companion
+package can serve the OpenAI-compatible HTTP surface over any `InferenceBackend` —
+including MLX and llama.cpp, which the CLI-only provider could never load
+([#2242](https://github.com/ManifoldKit/ManifoldKit/issues/2242)):
+
+```swift
+struct MyMLXProvider: ServerBackendProvider {
+    func listModels() async throws -> [String] { ["mlx-community/my-model"] }
+    func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend {
+        let backend = MLXBackend()
+        try await backend.loadModel(from: modelURL, plan: .cloud())
+        return backend
+    }
+}
+```
+
+### Features
+
+* RAG retrieval is token-budget-aware: `retrieve(query:tokenBudget:tokenizer:)` packs score-ordered hits greedily into a caller token budget, and every `RetrievalResult` hit now carries its `documentID` ([#2237](https://github.com/ManifoldKit/ManifoldKit/issues/2237))
+* Opt-in `.completion` rendering mode (`GenerationRuntimeHints.renderingMode`) bypasses an embedded GGUF chat template for long-form continuation use cases ([#2215](https://github.com/ManifoldKit/ManifoldKit/issues/2215))
+* The media-generation and embedding error types (`ImageGenerationServiceError`, `VideoGenerationServiceError`, `AudioGenerationServiceError`, `EmbeddingError`) now conform to `BackendError` with documented `isRetryable` reasoning ([#2219](https://github.com/ManifoldKit/ManifoldKit/issues/2219))
+* ManifoldAppEval's built-in checkpoint scorers gain matching options (case/whitespace folding, contains-vs-exact) ([#2218](https://github.com/ManifoldKit/ManifoldKit/issues/2218))
+* A nightly release-train version-matrix tripwire catches core/companion pin drift before consumers do ([#2241](https://github.com/ManifoldKit/ManifoldKit/issues/2241))
+
+### Fixes
+
+* `scripts/test.sh` detects a stale `.build` desync after a rebase and points at `clean-build.sh` instead of failing cryptically ([#2229](https://github.com/ManifoldKit/ManifoldKit/issues/2229))
+
+### Documentation
+
+* The prompt-slot (`PromptContextProvider`) and history-contribution (`HistoryProvider`) seams — previously undocumented public API — each gained a DocC article with runnable examples ([#2253](https://github.com/ManifoldKit/ManifoldKit/issues/2253))
+* The v1 API rationalisation plan and the API-DESIGN § 7b experimental-tier policy are recorded in-repo ([#2249](https://github.com/ManifoldKit/ManifoldKit/issues/2249), [#2251](https://github.com/ManifoldKit/ManifoldKit/issues/2251))
+* Documented the metallib packaging gap for standalone SPM executables ([#2228](https://github.com/ManifoldKit/ManifoldKit/issues/2228)); `ManifoldAnyLanguageModel` is semver-exempt while its 0.x dependency leaks into its surface ([#2231](https://github.com/ManifoldKit/ManifoldKit/issues/2231))
+
+### Internal
+
+* Audit tests now carry in-file sabotage tests exercising their real detection logic; the replica sabotage suite is retired ([#2243](https://github.com/ManifoldKit/ManifoldKit/issues/2243))
+* Nightly failure issues are self-describing — title and body name the failed step(s) ([#2247](https://github.com/ManifoldKit/ManifoldKit/issues/2247))
+
 ## [0.70.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.69.0...v0.70.0) (2026-07-11)
 
 Two additive consumer APIs from app dogfooding, plus post-wave verification housekeeping

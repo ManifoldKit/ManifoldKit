@@ -26,6 +26,16 @@ SwiftData persistence or the full chat UI can adopt it with no transitive
 weight. AppIntents itself ships with the OS, so there is no third-party
 dependency.
 
+## Experimental tier
+
+`ManifoldAppIntents` is in ManifoldKit's **experimental tier** (declared
+2026-07-13) — it may break in any minor release, always migration-noted,
+until it graduates. Graduation requires a real adopter: a shipping app or
+companion that pins ManifoldKit and imports this module from non-test code.
+Documentation and examples don't count as adoption. See
+[docs/API-DESIGN.md § 7b](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/API-DESIGN.md)
+for the full policy.
+
 ## Five-line wiring
 
 Once your `AppIntent` adopts `Decodable`, registering it as a tool is a

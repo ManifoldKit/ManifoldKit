@@ -58,6 +58,59 @@ public struct ConversationTurnOutcome: Sendable {
     }
 }
 
+// MARK: - Outcome classification
+
+extension ConversationTurnOutcome {
+
+    /// The five terminal outcomes a completed turn collapses into.
+    ///
+    /// A hand-rolled streaming runner (the origin app's) that bypasses the turn
+    /// loop distinguishes these five states directly; this classification makes
+    /// the same taxonomy reconstructable from a ``ConversationTurnOutcome`` so a
+    /// consumer can re-base onto ``ConversationRuntime`` without losing the
+    /// distinction between a stall timeout, a user cancel with partial content,
+    /// and a user cancel before any content arrived.
+    public enum Classification: Sendable, Hashable {
+        /// The generation finished normally (``FinishReason/stop``,
+        /// ``FinishReason/length``, or a dropped ``FinishReason/empty`` turn)
+        /// with no error.
+        case completed
+        /// The turn ended with an error (persistence, inference, or context
+        /// assembly) that was not a stall timeout.
+        case failed
+        /// The turn's progress/stall timeout fired
+        /// (``FinishReason/timedOut``).
+        case timedOut
+        /// A user-initiated cancel that still captured some assistant content
+        /// (visible text or a tool call/result).
+        case cancelled
+        /// A user-initiated cancel before any assistant content arrived — the
+        /// runtime dropped the empty assistant turn.
+        case cancelledEmpty
+    }
+
+    /// Collapses ``reason``, ``error``, ``finalText``, and ``assistantMessage``
+    /// into the five-value ``Classification`` taxonomy.
+    ///
+    /// Precedence: a stall timeout and a user cancel are classified from
+    /// ``reason`` first (they carry their own terminal reason); everything else
+    /// is `completed` unless an ``error`` is present, in which case it is
+    /// `failed`.
+    public var classification: Classification {
+        switch reason {
+        case .timedOut:
+            return .timedOut
+        case .cancelled:
+            let hasContent = !finalText.isEmpty || assistantMessage != nil
+            return hasContent ? .cancelled : .cancelledEmpty
+        case .stop, .empty, .length:
+            return error == nil ? .completed : .failed
+        @unknown default:
+            return error == nil ? .completed : .failed
+        }
+    }
+}
+
 /// Per-turn handle that pairs cancellation identity with reliable completion.
 ///
 /// Use ``streamHandle`` with ``ConversationRuntime/cancel(_:)``. Await

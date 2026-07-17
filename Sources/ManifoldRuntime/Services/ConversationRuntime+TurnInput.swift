@@ -47,6 +47,24 @@ public struct TurnConfig: Sendable, Equatable, Codable {
     public let thinkingStreamingBatchCharacterLimit: Int
     public let loopDetectionEnabled: Bool
 
+    /// Progress/stall timeout for the turn. When non-nil, a generation that
+    /// produces no stream event for this long is cancelled and the turn ends
+    /// with ``FinishReason/timedOut`` (reconstructable as
+    /// ``ConversationTurnOutcome/Classification/timedOut``). `nil` (the
+    /// default) disables stall detection — the turn waits indefinitely for the
+    /// backend, exactly as before this knob existed.
+    ///
+    /// Reuses the same idle-stream primitive as the structured-output
+    /// reliability envelope (``GenerationStream``'s `idleTimeout`) rather than
+    /// a separate stall monitor.
+    public let progressStallTimeout: Duration?
+
+    /// Threshold tuning for the streaming repetition guard. Only consulted when
+    /// ``loopDetectionEnabled`` is `true`. Defaults to
+    /// ``RepetitionGuardConfig/default`` — the historic hardcoded thresholds —
+    /// so a host that never sets it sees no behaviour change.
+    public let repetitionGuard: RepetitionGuardConfig
+
     public init(
         systemPrompt: String? = nil,
         generation: GenerationConfig = GenerationConfig(),
@@ -56,7 +74,9 @@ public struct TurnConfig: Sendable, Equatable, Codable {
         streamingBatchCharacterLimit: Int = 128,
         thinkingStreamingUpdateInterval: Duration = .milliseconds(33),
         thinkingStreamingBatchCharacterLimit: Int = 128,
-        loopDetectionEnabled: Bool = true
+        loopDetectionEnabled: Bool = true,
+        progressStallTimeout: Duration? = nil,
+        repetitionGuard: RepetitionGuardConfig = .default
     ) {
         self.systemPrompt = systemPrompt
         self.generation = generation
@@ -67,6 +87,8 @@ public struct TurnConfig: Sendable, Equatable, Codable {
         self.thinkingStreamingUpdateInterval = thinkingStreamingUpdateInterval
         self.thinkingStreamingBatchCharacterLimit = thinkingStreamingBatchCharacterLimit
         self.loopDetectionEnabled = loopDetectionEnabled
+        self.progressStallTimeout = progressStallTimeout
+        self.repetitionGuard = repetitionGuard
     }
 }
 

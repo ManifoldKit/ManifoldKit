@@ -100,15 +100,18 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
         contextSize: Int,
         reservedTokens: Int,
         tokenizer: (any TokenizerProvider)?,
+        isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
-    ) async throws -> [ChatMessage] {
-        guard !history.isEmpty else { return [] }
+    ) async throws -> StrategyCompressionResult {
+        guard !history.isEmpty else {
+            return StrategyCompressionResult(messages: [], outcome: .notNeeded)
+        }
 
         let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
         let tokens = history.map { estimateTokens($0, tokenizer: tokenizer) }
         let originalTokens = tokens.reduce(0, +)
         if originalTokens <= budget {
-            return history
+            return StrategyCompressionResult(messages: history, outcome: .notNeeded)
         }
 
         let sessionID = history.first?.sessionID ?? UUID()
@@ -118,7 +121,7 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
         let tailBudget = Int(Double(budget) * tailBudgetFraction)
         var tailIndices = Set<Int>()
         var tailTokens = 0
-        for i in 0..<count where isLoadBearing(history[i]) {
+        for i in 0..<count where isLoadBearing(history[i], isPinned: isPinned) {
             tailIndices.insert(i)
             tailTokens += tokens[i]
         }
@@ -143,7 +146,9 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
         let oldMessages = (0..<count).filter { !tailIndices.contains($0) }.map { history[$0] }
 
         if oldMessages.isEmpty {
-            return tailMessages
+            // Every message was load-bearing/pinned — nothing eligible to
+            // summarize. Not a failure (#2203): the tail IS the full input.
+            return StrategyCompressionResult(messages: tailMessages, outcome: .nothingToSummarize)
         }
 
         // --- Build summary prompt, sizing input against the REAL window ---
@@ -175,19 +180,31 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
             try Task.checkCancellation()
             summaryText = try await generate([summaryMessage(prompt, sessionID: sessionID)])
         } catch is CancellationError {
-            return tailMessages
+            // Covers BOTH ambient Task cancellation (the checkCancellation()
+            // above) and generate-thrown CancellationError (#2203 acceptance
+            // criterion) — both land in this catch clause and must NOT be
+            // misreported as a summarizer failure.
+            return StrategyCompressionResult(messages: tailMessages, outcome: .cancelled)
         } catch {
             Log.inference.debug("[AnchoredCompression] summarisation failed: \(error); falling back to extractive")
-            return try await fallback.compress(
+            let fallbackResult = try await fallback.compress(
                 history: history, contextSize: contextSize,
-                reservedTokens: reservedTokens, tokenizer: tokenizer, generate: generate
+                reservedTokens: reservedTokens, tokenizer: tokenizer, isPinned: isPinned, generate: generate
+            )
+            return StrategyCompressionResult(
+                messages: fallbackResult.messages,
+                outcome: .fallbackUsed(reason: .summarizerThrew)
             )
         }
 
         guard !summaryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return try await fallback.compress(
+            let fallbackResult = try await fallback.compress(
                 history: history, contextSize: contextSize,
-                reservedTokens: reservedTokens, tokenizer: tokenizer, generate: generate
+                reservedTokens: reservedTokens, tokenizer: tokenizer, isPinned: isPinned, generate: generate
+            )
+            return StrategyCompressionResult(
+                messages: fallbackResult.messages,
+                outcome: .fallbackUsed(reason: .emptySummary)
             )
         }
 
@@ -210,7 +227,8 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
 
         var output: [ChatMessage] = [summaryRecord(finalSummary, sessionID: sessionID)]
         output.append(contentsOf: tailMessages)
-        return output
+        let finalSummaryTokens = ContextWindowManager.estimateTokenCount(finalSummary, tokenizer: tokenizer)
+        return StrategyCompressionResult(messages: output, outcome: .summarized(estimatedTokens: finalSummaryTokens))
     }
 
     // MARK: - Helpers

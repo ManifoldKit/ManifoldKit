@@ -190,6 +190,8 @@ public struct ArchitectEventEntry: Identifiable, Sendable {
             case .cancelled: return "cancelled"
             case .empty:     return "empty"
             case .length:    return "length"
+            case .timedOut:  return "timedOut"
+            @unknown default: return "unknown"
             }
 
         case .errorRaised(let error):

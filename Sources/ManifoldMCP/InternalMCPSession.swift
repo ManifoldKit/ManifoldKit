@@ -21,6 +21,14 @@ internal struct MCPNoopSessionStateHook: MCPSessionStateHook {
     func sessionDidReceive(_ message: MCPJSONRPCMessage) async { _ = message }
 }
 
+/// Handles a server-initiated JSON-RPC request (currently only
+/// `sampling/createMessage`). Returning `.failure` replies with a JSON-RPC error
+/// frame rather than dropping the request — a server must never be left hanging.
+internal typealias MCPServerRequestHandler = @Sendable (
+    _ method: String,
+    _ params: JSONSchemaValue?
+) async -> Result<JSONSchemaValue, MCPJSONRPCErrorObject>
+
 internal actor MCPSession {
     private let descriptor: MCPServerDescriptor
     private let transport: any MCPTransport
@@ -28,6 +36,7 @@ internal actor MCPSession {
     private let requestTimeout: Duration
     private let maxConcurrentRequests: Int
     private let stateHook: any MCPSessionStateHook
+    private let serverRequestHandler: MCPServerRequestHandler?
 
     private var state: MCPSessionState = .idle
     private var nextRequestID: Int = 1
@@ -40,7 +49,8 @@ internal actor MCPSession {
         codec: MCPJSONRPCCodec,
         requestTimeout: Duration,
         maxConcurrentRequests: Int,
-        stateHook: any MCPSessionStateHook = MCPNoopSessionStateHook()
+        stateHook: any MCPSessionStateHook = MCPNoopSessionStateHook(),
+        serverRequestHandler: MCPServerRequestHandler? = nil
     ) {
         self.descriptor = descriptor
         self.transport = transport
@@ -48,6 +58,7 @@ internal actor MCPSession {
         self.requestTimeout = requestTimeout
         self.maxConcurrentRequests = maxConcurrentRequests
         self.stateHook = stateHook
+        self.serverRequestHandler = serverRequestHandler
     }
 
     func start() async throws -> MCPCapabilities {
@@ -60,16 +71,32 @@ internal actor MCPSession {
         try await transport.start()
         startReceiveLoop()
 
+        // Advertise `sampling` only when a server-request handler is actually wired up
+        // (descriptor.allowsSampling AND a host samplingHandler configured — see
+        // MCPClient.connect). Advertising unconditionally would invite servers to send
+        // requests this session will just reject.
+        let clientCapabilities: JSONSchemaValue = serverRequestHandler != nil
+            ? .object(["sampling": .object([:])])
+            : .object([:])
+
         let initializeParams: JSONSchemaValue = .object([
             "protocolVersion": .string("2025-03-26"),
-            "capabilities": .object([:]),
+            "capabilities": clientCapabilities,
             "clientInfo": .object([
                 "name": .string(ManifoldConfiguration.shared.appName),
                 "version": .string("1.0.0"),
             ]),
         ])
 
-        let response = try await sendRequest(method: "initialize", params: initializeParams)
+        // The initialize handshake is bounded by `initializationTimeout`, not the
+        // steady-state `requestTimeout`: a server's first-response latency (process
+        // spawn, model warm-up, auth) is a separate budget from ordinary
+        // request/response, and callers set the two independently on the descriptor.
+        let response = try await sendRequest(
+            method: "initialize",
+            params: initializeParams,
+            timeout: descriptor.initializationTimeout
+        )
         let capabilities = try parseInitializeResponse(response)
         try await sendNotification(method: "notifications/initialized", params: nil)
 
@@ -78,7 +105,14 @@ internal actor MCPSession {
         return capabilities
     }
 
-    func sendRequest(method: String, params: JSONSchemaValue?) async throws -> JSONSchemaValue? {
+    /// - Parameter timeout: overrides the session's steady-state `requestTimeout`
+    ///   for this one call. The initialize handshake passes
+    ///   `descriptor.initializationTimeout` here; all other callers omit it.
+    func sendRequest(
+        method: String,
+        params: JSONSchemaValue?,
+        timeout: Duration? = nil
+    ) async throws -> JSONSchemaValue? {
         guard state != .closed else { throw MCPError.transportClosed }
 
         if pendingRequests.count >= maxConcurrentRequests {
@@ -94,7 +128,7 @@ internal actor MCPSession {
         // synchronously and cannot be async, so we spawn a detached Task to deliver
         // notifications/cancelled before the server wastes work on an abandoned call.
         return try await withTaskCancellationHandler {
-            try await withTimeout(requestTimeout) { [self] in
+            try await withTimeout(timeout ?? requestTimeout) { [self] in
                 try await withCheckedThrowingContinuation { continuation in
                     Task {
                         await registerPendingAndSend(
@@ -149,6 +183,35 @@ internal actor MCPSession {
         }
     }
 
+    /// Replies to a server-initiated request (e.g. `sampling/createMessage`) with a
+    /// JSON-RPC result frame.
+    func sendResult(id: MCPRequestID, result: JSONSchemaValue) async {
+        guard state != .closed else { return }
+        let message = MCPJSONRPCMessage.result(id: id, result: result)
+        do {
+            let payload = try codec.encode(message)
+            try await transport.send(payload, routing: nil)
+            await stateHook.sessionDidSend(message)
+        } catch {
+            Log.inference.error("MCPSession: failed to send result for request \(id.description, privacy: .public): \(error, privacy: .private)")
+        }
+    }
+
+    /// Replies to a server-initiated request with a JSON-RPC error frame. Used both
+    /// when the handler throws and when no handler is configured for the method —
+    /// a server request must always get a reply, never a silent drop.
+    func sendError(id: MCPRequestID, error: MCPJSONRPCErrorObject) async {
+        guard state != .closed else { return }
+        let message = MCPJSONRPCMessage.error(id: id, error: error)
+        do {
+            let payload = try codec.encode(message)
+            try await transport.send(payload, routing: nil)
+            await stateHook.sessionDidSend(message)
+        } catch {
+            Log.inference.error("MCPSession: failed to send error for request \(id.description, privacy: .public): \(error, privacy: .private)")
+        }
+    }
+
     func close(reason: MCPDisconnectReason = .requested) async {
         _ = reason
         state = .closed
@@ -196,8 +259,43 @@ internal actor MCPSession {
                 message: error.message,
                 data: error.data.flatMap(stringify)
             ))
-        case .request, .notification:
+        case .request(let id, let method, let params):
+            handleServerRequest(id: id, method: method, params: params)
+        case .notification:
             return
+        }
+    }
+
+    /// Dispatches a server-initiated request. Runs off the receive loop in its own
+    /// `Task` so a slow sampling generation doesn't block subsequent incoming
+    /// messages from being decoded; `sendResult`/`sendError` reply once it settles.
+    /// A request is never silently dropped — even with no handler configured, the
+    /// server gets a JSON-RPC error back rather than hanging.
+    ///
+    /// Note: `maxConcurrentRequests`/`pendingRequests` bound only *client*-initiated
+    /// requests (this session's own `sendRequest` calls) — there is no such cap on
+    /// inbound server-initiated requests like `sampling/createMessage`. Rate-limiting
+    /// and budgeting inbound sampling calls is delegated to the host's
+    /// `samplingHandler` by design; see the security note on
+    /// `MCPClientConfiguration.samplingHandler`.
+    private func handleServerRequest(id: MCPRequestID, method: String, params: JSONSchemaValue?) {
+        guard let serverRequestHandler else {
+            Task { [weak self] in
+                await self?.sendError(
+                    id: id,
+                    error: MCPJSONRPCErrorObject(code: -32601, message: "Method not found: \(method)", data: nil)
+                )
+            }
+            return
+        }
+        Task { [weak self] in
+            let result = await serverRequestHandler(method, params)
+            switch result {
+            case .success(let value):
+                await self?.sendResult(id: id, result: value)
+            case .failure(let errorObject):
+                await self?.sendError(id: id, error: errorObject)
+            }
         }
     }
 

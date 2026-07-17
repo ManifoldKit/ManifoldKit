@@ -6,17 +6,17 @@ import ManifoldInference
 ///
 /// Displays a circular progress ring, percentage text, bytes transferred,
 /// and a cancel button. Used inline within `DownloadableModelRow`.
-public struct DownloadProgressView: View {
+package struct DownloadProgressView: View {
 
-    public let state: DownloadState
+    package let state: DownloadState
 
     @Environment(ModelManagementViewModel.self) private var viewModel
 
-    public init(state: DownloadState) {
+    package init(state: DownloadState) {
         self.state = state
     }
 
-    public var body: some View {
+    package var body: some View {
         switch state.status {
         case .queued:
             queuedView

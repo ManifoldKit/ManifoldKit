@@ -13,20 +13,23 @@ struct TruncatingCompressionStrategy: CompressionStrategy {
         contextSize: Int,
         reservedTokens: Int,
         tokenizer: (any TokenizerProvider)?,
+        isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
-    ) async throws -> [ChatMessage] {
-        guard !history.isEmpty else { return [] }
+    ) async throws -> StrategyCompressionResult {
+        guard !history.isEmpty else {
+            return StrategyCompressionResult(messages: [], outcome: .notNeeded)
+        }
 
         let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
         if estimateTokens(history, tokenizer: tokenizer) <= budget {
-            return history
+            return StrategyCompressionResult(messages: history, outcome: .notNeeded)
         }
 
         var kept = Set<Int>()
         var used = 0
 
         // Load-bearing records are always retained.
-        for (i, message) in history.enumerated() where isLoadBearing(message) {
+        for (i, message) in history.enumerated() where isLoadBearing(message, isPinned: isPinned) {
             kept.insert(i)
             used += estimateTokens(message, tokenizer: tokenizer)
         }
@@ -44,6 +47,10 @@ struct TruncatingCompressionStrategy: CompressionStrategy {
         // Invariant: never drop the newest message.
         kept.insert(history.count - 1)
 
-        return kept.sorted().map { history[$0] }
+        // Nothing was actually evicted (e.g. every message load-bearing/pinned
+        // and the greedy backward fill re-admitted the rest) even though the
+        // input was over budget.
+        let outcome: CompressionOutcome = kept.count == history.count ? .nothingToSummarize : .reduced(strategyName: name)
+        return StrategyCompressionResult(messages: kept.sorted().map { history[$0] }, outcome: outcome)
     }
 }

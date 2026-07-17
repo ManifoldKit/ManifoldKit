@@ -13,4 +13,13 @@ public enum HookEvent: String, Sendable, Equatable, CaseIterable {
     /// the compression-bound context. Cannot block compression (it always
     /// proceeds with whatever the hook chain produces).
     case preCompact
+
+    /// Fires after a generation turn completes successfully — the unified
+    /// registry counterpart to ``GenerationHook/postGeneration(_:)``. Carries
+    /// the completed turn via ``HookInput/completedTurn``. Not fired on
+    /// cancellation, a stream error, or an empty-response turn (same contract
+    /// as `GenerationHook`). Observational like `.preCompact`: `block` is not
+    /// honoured — the turn has already committed and there is no mutation
+    /// channel.
+    case postGeneration
 }

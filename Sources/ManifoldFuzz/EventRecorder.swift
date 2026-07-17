@@ -28,6 +28,10 @@ public struct EventRecorder: Sendable {
         public var toolCalls: [ToolCall]
         /// Full `.toolResult` payloads.
         public var toolResults: [ToolResult]
+        /// `true` when `consume` dropped some of `raw`/`thinkingRaw`/`events` to
+        /// stay under ``maxBufferedCharacters``/``maxBufferedEvents`` — see
+        /// those constants' doc comments for the truncation strategy.
+        public var truncated: Bool
 
         public init(
             events: [RunRecord.EventSnapshot],
@@ -44,7 +48,8 @@ public struct EventRecorder: Sendable {
             completionTokens: Int?,
             stopReason: String,
             toolCalls: [ToolCall] = [],
-            toolResults: [ToolResult] = []
+            toolResults: [ToolResult] = [],
+            truncated: Bool = false
         ) {
             self.events = events
             self.raw = raw
@@ -61,8 +66,45 @@ public struct EventRecorder: Sendable {
             self.stopReason = stopReason
             self.toolCalls = toolCalls
             self.toolResults = toolResults
+            self.truncated = truncated
         }
     }
+
+    /// Total cap on `raw`/`thinkingRaw`, in characters, each — unchanged when
+    /// truncation fires: the final buffer is always exactly this many
+    /// characters (``headPreserveCharacters`` of frozen head + the rest as a
+    /// sliding tail). `LoopingDetector.RepetitionDetector.looksLikeLooping`
+    /// reads a SUFFIX to catch a genuinely-looping model (exactly the anomaly
+    /// the fuzzer exists to find), so the tail must be preserved. But
+    /// `ThinkingClassificationDetector` and `TemplateTokenLeakDetector` both
+    /// scan for markers that appear near the START of a response (a `<think>`
+    /// open tag, a leaked chat-template token) — pure front-drop would blind
+    /// both of those the moment a run gets long enough to truncate. Keeping
+    /// both ends is the fix: see ``headPreserveCharacters``.
+    public static let maxBufferedCharacters = 1_048_576
+
+    /// How many of the FIRST characters of `raw`/`thinkingRaw` are frozen
+    /// once written and never dropped, carved out of ``maxBufferedCharacters``
+    /// (so the tail budget becomes `maxBufferedCharacters - headPreserveCharacters`).
+    /// 64 KiB is generous relative to where a leaked template token or a
+    /// `<think>` open tag actually appears (the first few hundred characters
+    /// of a response, essentially always) while leaving the overwhelming
+    /// majority of the 1 MiB budget for the tail `LoopingDetector` needs.
+    public static let headPreserveCharacters = 65_536
+
+    /// Cap on `events.count`. Same head+tail rationale as
+    /// ``maxBufferedCharacters`` — `CancellationRaceDetector` reads
+    /// `turn1Events.first` (needs the earliest event), while most other
+    /// consumers want recent history. Total is unchanged when truncation
+    /// fires: ``eventsHeadReserve`` frozen head entries plus the rest as a
+    /// sliding tail.
+    public static let maxBufferedEvents = 50_000
+
+    /// How many of the FIRST `events` entries are frozen once recorded and
+    /// never dropped, carved out of ``maxBufferedEvents``. Generous relative
+    /// to how many events a normal bounded run emits before its first
+    /// meaningful content (metadata + the first handful of tokens).
+    public static let eventsHeadReserve = 1_000
 
     /// - Parameter maxOutputTokens: the cap requested in `GenerationConfig`, used to
     ///   classify the stop reason as `maxTokens` when the final usage report meets/exceeds it.
@@ -71,6 +113,13 @@ public struct EventRecorder: Sendable {
         var events: [RunRecord.EventSnapshot] = []
         var raw = ""
         var thinkingRaw = ""
+        // Frozen-once-full head snapshots — see `headPreserveCharacters`/
+        // `eventsHeadReserve`. Grown in lockstep with `raw`/`thinkingRaw`/
+        // `events` below, but never trimmed once they hit their cap, so they
+        // always hold exactly the first N characters/entries of the stream.
+        var rawHead = ""
+        var thinkingRawHead = ""
+        var eventsHead: [RunRecord.EventSnapshot] = []
         var thinkingBuffer = ""
         var thinkingParts: [String] = []
         var thinkingCompleteCount = 0
@@ -82,10 +131,55 @@ public struct EventRecorder: Sendable {
         var errorString: String?
         var toolCalls: [ToolCall] = []
         var toolResults: [ToolResult] = []
+        // Per-buffer trim flags — deliberately NOT a single shared
+        // `truncated` bool. Each buffer overflows independently (e.g. a run
+        // with a huge `events` count but a short `raw`), and `finalize`
+        // below must only reassemble head+tail for a buffer that was ACTUALLY
+        // trimmed: reassembling an untouched buffer would duplicate its
+        // content (`rawHead` is a full prefix of an untrimmed `raw`, so
+        // `rawHead + raw.suffix(...)` overlaps with itself). The record-level
+        // `truncated` field (see below) is the OR of these three.
+        var rawTrimmed = false
+        var thinkingRawTrimmed = false
+        var eventsTrimmed = false
 
         func memoryTick() {
             if let now = AppMemoryUsage.currentBytes() {
                 peakBytes = max(peakBytes ?? now, now)
+            }
+        }
+
+        // Grows a frozen head snapshot with (a prefix of) `delta`, stopping
+        // once it reaches `cap`. Called alongside every append to `raw`/
+        // `thinkingRaw` so the head snapshot always holds exactly the first
+        // `cap` characters of the stream, independent of any later
+        // front-truncation applied to the main accumulator.
+        func growHead(_ head: inout String, appending delta: String, cap: Int) {
+            guard head.count < cap else { return }
+            let remaining = cap - head.count
+            head += delta.count <= remaining ? delta : String(delta.prefix(remaining))
+        }
+
+        // Keeps `raw`/`thinkingRaw`/`events` bounded for a generation that
+        // never naturally stops (a real anomaly, not just noise — see the
+        // doc comments on `maxBufferedCharacters`/`maxBufferedEvents`).
+        // Trims from the FRONT of the main accumulator (keeps the most
+        // recent tail, which `LoopingDetector` needs), while `rawHead`/
+        // `thinkingRawHead`/`eventsHead` above independently preserve the
+        // earliest characters/events untouched — combined back together at
+        // the end in `finalize`, below.
+        func capBuffers() {
+            if raw.count > Self.maxBufferedCharacters {
+                raw.removeFirst(raw.count - Self.maxBufferedCharacters)
+                rawTrimmed = true
+            }
+            if thinkingRaw.count > Self.maxBufferedCharacters {
+                thinkingRaw.removeFirst(thinkingRaw.count - Self.maxBufferedCharacters)
+                thinkingRawTrimmed = true
+            }
+            if events.count > Self.maxBufferedEvents {
+                events.removeFirst(events.count - Self.maxBufferedEvents)
+                eventsTrimmed = true
             }
         }
 
@@ -106,10 +200,12 @@ public struct EventRecorder: Sendable {
                 case .token(let text):
                     if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                     raw += text
+                    growHead(&rawHead, appending: text, cap: Self.headPreserveCharacters)
                     events.append(.init(t: t, kind: "token", v: text))
                 case .thinkingToken(let text):
                     if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                     thinkingRaw += text
+                    growHead(&thinkingRawHead, appending: text, cap: Self.headPreserveCharacters)
                     thinkingBuffer += text
                     events.append(.init(t: t, kind: "thinkingToken", v: text))
                 case .thinkingCompleted:
@@ -171,7 +267,11 @@ public struct EventRecorder: Sendable {
                 case .toolCallTruncated(let rawBody):
                     events.append(.init(t: t, kind: "toolCallTruncated", v: rawBody))
                 }
+                if eventsHead.count < Self.eventsHeadReserve, let justAppended = events.last {
+                    eventsHead.append(justAppended)
+                }
                 memoryTick()
+                capBuffers()
             }
         } catch {
             phase = "failed"
@@ -201,10 +301,33 @@ public struct EventRecorder: Sendable {
             stopReason = "naturalStop"
         }
 
+        // Only re-assemble head+tail for a buffer that was ACTUALLY trimmed —
+        // gated per-buffer, not on a single shared flag. The three buffers
+        // overflow independently (e.g. a run with a huge `events` count but
+        // a short `raw`); reassembling an UNTRIMMED buffer would duplicate
+        // its content, since `rawHead` is then a full prefix of the whole
+        // (untouched) `raw` and `rawHead + raw.suffix(...)` overlaps with
+        // itself. When a buffer WAS trimmed, `capBuffers` guarantees it holds
+        // at most `maxBufferedCharacters`/`maxBufferedEvents` — taking only
+        // its tail-most `maxBufferedCharacters - headPreserveCharacters`
+        // characters (`maxBufferedEvents - eventsHeadReserve` events) before
+        // prepending the frozen head guarantees no overlap between the two
+        // halves and keeps the combined size at exactly the original cap.
+        let finalRaw = rawTrimmed
+            ? rawHead + raw.suffix(Self.maxBufferedCharacters - Self.headPreserveCharacters)
+            : raw
+        let finalThinkingRaw = thinkingRawTrimmed
+            ? thinkingRawHead + thinkingRaw.suffix(Self.maxBufferedCharacters - Self.headPreserveCharacters)
+            : thinkingRaw
+        let finalEvents = eventsTrimmed
+            ? eventsHead + events.suffix(Self.maxBufferedEvents - Self.eventsHeadReserve)
+            : events
+        let truncated = rawTrimmed || thinkingRawTrimmed || eventsTrimmed
+
         return Capture(
-            events: events,
-            raw: raw,
-            thinkingRaw: thinkingRaw,
+            events: finalEvents,
+            raw: finalRaw,
+            thinkingRaw: finalThinkingRaw,
             thinkingParts: thinkingParts,
             thinkingCompleteCount: thinkingCompleteCount,
             phase: phase,
@@ -216,7 +339,8 @@ public struct EventRecorder: Sendable {
             completionTokens: completionTokens,
             stopReason: stopReason,
             toolCalls: toolCalls,
-            toolResults: toolResults
+            toolResults: toolResults,
+            truncated: truncated
         )
     }
 }

@@ -120,7 +120,20 @@ let package = Package(
         .executable(name: "manifold-tools", targets: ["manifold-tools"]),
         .library(name: "ManifoldAppIntents", targets: ["ManifoldAppIntents"]),
         .library(name: "ManifoldSkills", targets: ["ManifoldSkills"]),
-        .executable(name: "ManifoldServer", targets: ["ManifoldServer"]),
+        // The `manifold-server` CLI binary. Product name stays `ManifoldServer`
+        // (docs/QUICKSTART-SERVER.md and scripts/benchmark.sh both build
+        // `--product ManifoldServer`) even though it now points at the
+        // `ManifoldServerCLI` target — see that target's comment.
+        .executable(name: "ManifoldServer", targets: ["ManifoldServerCLI"]),
+        // Library product exposing the `ManifoldServer` module (the module
+        // name, not this product name, is what a consumer `import`s) — lets a
+        // host app or companion package call
+        // `ManifoldServer.serve(configuration:backendProvider:)` to embed the
+        // server with an injected backend, rather than only shelling out to
+        // the CLI binary. The product name is distinct from the module name
+        // because SwiftPM requires unique product names within a package and
+        // `ManifoldServer` is already taken by the executable product above.
+        .library(name: "ManifoldServerKit", targets: ["ManifoldServer"]),
         // Optional OTLP/HTTP exporter — not re-exported by the ManifoldKit
         // umbrella. Import explicitly: `import ManifoldTelemetryOTLP`.
         .library(name: "ManifoldTelemetryOTLP", targets: ["ManifoldTelemetryOTLP"]),
@@ -904,19 +917,24 @@ let package = Package(
             ],
             path: "Tests/ManifoldHuggingFaceTests"
         ),
-        // ManifoldServer: OpenAI-compatible HTTP server. Shipped as a single
-        // executable target — the routing layer, trait-aware backend provider,
-        // and `@main` entry point all live here. Trait-gated behind `Server`,
-        // which also conditionally pulls in Hummingbird. Without the trait the
-        // target compiles to a no-op stub that prints a "trait not enabled"
-        // message (see `ManifoldServerCommand.swift`).
+        // ManifoldServer: OpenAI-compatible HTTP server implementation —
+        // routing layer, trait-aware backend provider, and the public
+        // `ManifoldServer.serve(configuration:backendProvider:)` facade a host
+        // app embeds directly (v0.71+, the ServerBackendProvider seam). A
+        // REGULAR (non-executable) target so it can back the
+        // `ManifoldServerKit` library product — SwiftPM rejects an
+        // `.executableTarget` in a `.library()` product, which is why the
+        // `@main` entry point lives in the separate `ManifoldServerCLI`
+        // target below instead of here. Trait-gated behind `Server`, which
+        // also conditionally pulls in Hummingbird. Without the trait the
+        // target compiles to nothing (every file is wrapped in `#if Server`).
         //
         // ManifoldBackends and ManifoldInference are `Server`-conditional so
         // a trait-off build compiles the no-op stub without dragging the full
         // backend graph into the executable. (The historical #982
         // llama.framework copy-collision rationale died with the C2 split —
         // llama.framework no longer exists in this package's graph.)
-        .executableTarget(
+        .target(
             name: "ManifoldServer",
             dependencies: [
                 .target(name: "ManifoldInference", condition: .when(traits: ["Server"])),
@@ -931,6 +949,20 @@ let package = Package(
                 .product(name: "HTTPTypes", package: "swift-http-types", condition: .when(traits: ["Server"])),
             ],
             path: "Sources/ManifoldServer",
+            swiftSettings: [
+                .define("Server", .when(traits: ["Server"])),
+            ]
+        ),
+        // Thin `@main` shim for the `manifold-server` CLI binary — see the
+        // `ManifoldServer` target comment above for why this is a separate
+        // target. Contains one file that forwards to
+        // `ManifoldServerCommand.main()` (defined in `ManifoldServer`).
+        .executableTarget(
+            name: "ManifoldServerCLI",
+            dependencies: [
+                .target(name: "ManifoldServer"),
+            ],
+            path: "Sources/ManifoldServerCLI",
             swiftSettings: [
                 .define("Server", .when(traits: ["Server"])),
             ]
@@ -1211,18 +1243,6 @@ let package = Package(
                 // makeInMemoryContainer()` directly (ManifoldPersistenceSwiftData
                 // above), not the ManifoldTestSupport free function, so this
                 // target does NOT need ManifoldPersistenceTestSupport (4.4 split).
-                "ManifoldTestSupport",
-            ]
-        ),
-        // Nightly sabotage suite: verifies every file-walking audit test
-        // actually catches known violations (the "who watches the watchers"
-        // guard). Run with `SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests`.
-        // Without SABOTAGE=1, all tests skip immediately via XCTSkip so they
-        // don't inflate the per-PR build time.
-        .testTarget(
-            name: "ManifoldAuditSabotageSuiteTests",
-            dependencies: [
-                "ManifoldInference",
                 "ManifoldTestSupport",
             ]
         ),

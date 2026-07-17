@@ -76,24 +76,11 @@ public enum HarnessMetadata {
         return "\(info.operatingSystemVersionString)"
     }
 
+    /// Bounded to 5s: `git`/`swift` metadata probes should never legitimately
+    /// run long, and an unbounded `waitUntilExit()` here previously blocked
+    /// the whole fuzz harness forever on a wedged git index lock or a stalled
+    /// toolchain invocation. See `BoundedSubprocess`.
     private static func run(_ path: String, _ args: [String]) -> String? {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: path)
-        proc.arguments = args
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = Pipe()
-        do {
-            try proc.run()
-            proc.waitUntilExit()
-            let data = out.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8)
-        } catch {
-            let argline = ([path] + args).joined(separator: " ")
-            let msg = "HarnessMetadata.run: spawn failed for `\(argline)`: \(error)"
-            Log.inference.error("\(msg, privacy: .public)")
-            FileHandle.standardError.write(Data((msg + "\n").utf8))
-            return nil
-        }
+        BoundedSubprocess.run(executableURL: URL(fileURLWithPath: path), arguments: args).output
     }
 }

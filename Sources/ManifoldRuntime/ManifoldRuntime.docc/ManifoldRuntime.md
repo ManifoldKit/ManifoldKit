@@ -153,6 +153,7 @@ try await endpointStore.insertEndpoint(
 - <doc:ObservingATurn>
 - <doc:BackgroundTaskSupport>
 - <doc:ErrorHandlingAtTheBoundary>
+- <doc:ContributingConversationHistory>
 
 ### Conversation runtime
 
@@ -192,3 +193,16 @@ try await endpointStore.insertEndpoint(
 - ``EndpointStore``
 - ``SamplerPresetStore``
 - ``BenchmarkCache``
+
+### Contributing conversation history
+
+- ``HistoryProvider``
+- ``HistoryContribution``
+- ``HistoryInsertionPosition``
+- ``TurnContextBuildRequest``
+
+### Prompt context assembly
+
+- ``PromptContextPipeline``
+- ``ContextBudgetPlanner``
+- ``ContextBudgetEntry``

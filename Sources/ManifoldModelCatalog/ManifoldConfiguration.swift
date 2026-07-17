@@ -425,7 +425,7 @@ public enum NetworkPolicyError: Error, Sendable, Equatable {
 /// ``URLSessionFactory`` calls ``check(url:)`` before creating tasks and
 /// ``CompositeURLSessionDelegate`` calls it in the redirect callback so
 /// both initial requests and redirect targets are covered.
-public enum NetworkPolicyGuard {
+package enum NetworkPolicyGuard {
 
     /// Throws ``NetworkPolicyError/hostNotAllowed(host:)`` when `url`'s host
     /// is blocked by `policy`.
@@ -433,7 +433,7 @@ public enum NetworkPolicyGuard {
     /// - Localhost addresses always pass regardless of the configured policy.
     /// - Host matching is case-insensitive. A listed apex host also permits
     ///   all of its subdomains (`.hasSuffix("." + apexHost)`).
-    public static func check(url: URL, policy: ManifoldConfiguration.NetworkPolicy) throws {
+    package static func check(url: URL, policy: ManifoldConfiguration.NetworkPolicy) throws {
         guard case .allowlist(let allowed) = policy else { return }
 
         // Localhost is always permitted — it is content under the app's control.

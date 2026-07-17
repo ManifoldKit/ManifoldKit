@@ -1,5 +1,8 @@
 # Migration: built-in inference cost estimation removed
 
+**Audience:** consumer
+**Status:** historical
+
 **This is a breaking change.** ManifoldKit no longer ships a model-pricing
 table or estimates per-call cost. Maintaining accurate, up-to-date pricing for
 every provider and model is out of scope; the metric/trace pipeline already

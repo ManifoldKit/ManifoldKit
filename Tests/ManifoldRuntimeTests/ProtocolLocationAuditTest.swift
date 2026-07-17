@@ -95,4 +95,22 @@ final class ProtocolLocationAuditTest: XCTestCase {
             "Message must live in ManifoldContract — got \(String(reflecting: Message.self))"
         )
     }
+
+    // MARK: - Sabotage (proves the `hasPrefix` shape actually distinguishes modules)
+
+    /// The detection this audit relies on is `String(reflecting:).hasPrefix("ManifoldRuntime.")`
+    /// itself, with no separate detection function to extract. This test proves that shape is
+    /// discriminating rather than trivially true: ``ChatMessage`` lives in ``ManifoldInference``,
+    /// not ``ManifoldRuntime``, so the same assertion must come back false for it and true for a
+    /// genuine ``ManifoldRuntime`` type (``MessageStore``).
+    func test_sabotage_prefixCheckDistinguishesModules() {
+        XCTAssertFalse(
+            String(reflecting: ChatMessage.self).hasPrefix("ManifoldRuntime."),
+            "ChatMessage lives in ManifoldInference — the prefix check must not flag it as ManifoldRuntime"
+        )
+        XCTAssertTrue(
+            String(reflecting: MessageStore.self).hasPrefix("ManifoldRuntime."),
+            "MessageStore genuinely lives in ManifoldRuntime — the prefix check must confirm it"
+        )
+    }
 }

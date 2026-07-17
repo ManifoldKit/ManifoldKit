@@ -1,5 +1,8 @@
 # API Design — standing policy
 
+**Audience:** contributor
+**Status:** living
+
 > Written for both humans and coding agents. If a PR adds a public symbol, overload, or
 > knob, it must be justifiable against this page — not against what compiled cleanly.
 > Grounded in `docs/plans/api-review-2026-07.md` (Part A root causes, Phase 0, decision
@@ -50,9 +53,48 @@ sampling was contract-tier property. Don't repeat this: if you're about to add a
 field to anything above `GenerationConfig`, that's the tripwire — thread the existing type
 through instead.
 
-Decided refactor for the contract tier (2026-07-06, plan 2.3 Option C): the 5 lossy
-non-persisted `GenerationConfig` fields extract into a non-Codable per-request hints
-struct; the config stays flat and becomes fully, honestly Codable.
+The contract-tier refactor decided 2026-07-06 (plan 2.3 Option C) **shipped in #2169**
+(v0.69.0 train): the lossy non-persisted `GenerationConfig` fields moved into
+`GenerationRuntimeHints`; `GenerationConfig` is now flat and honestly Codable. The
+remaining `GenerationConfig.init` parameters are all contract-tier-owned sampler and
+payload knobs — there is no further init-slimming debt.
+
+**Per-turn context contribution is two seams, owned by two tiers** (decided 2026-07-13,
+v1-rationalisation plan B.1, adversarial-review-confirmed): prompt-slot contribution
+(`PromptContextProvider` / `ProviderBudget` / `PromptSlot`, budget-planned assembly) is
+assembly-tier property in `ManifoldInference`; message-level history contribution
+(`HistoryProvider` / `HistoryContribution`) is turn-semantics property in
+`ManifoldRuntime`. A history insertion is not expressible as a prompt slot — do not
+merge these, and do not add a third contribution seam; extend whichever tier owns the
+concern. Store post-write hooks (`MessageStorePostWriteHook` /
+`SessionStorePostWriteHook`) are a third, persistence-tier seam: they fire on any
+store write, not just generation turns, and stay outside the generation-lifecycle
+`HookRegistry`.
+
+**Lifecycle signals are two seams, owned by two tiers** (decided 2026-07-14,
+v1-rationalisation plan B.4): a generation turn's lifecycle (queued → connecting →
+loading/streaming → stalled/retrying → done/failed) is **stream-scoped** — owned by
+`GenerationStream.phase` in `ManifoldContract`, one instance per in-flight request.
+A model load's lifecycle (idle → loading → loaded/failed) is **coordinator-scoped** —
+owned by `ModelLoadStatus` via `ModelLoadCoordinator.statusUpdates()` in
+`ManifoldInference`, one multi-observer fan-out per `InferenceService`. These are the
+canonical signals for their respective lifecycles going forward; see the
+LifecycleSignals DocC article
+(`Sources/ManifoldInference/ManifoldInference.docc/Articles/LifecycleSignals.md`)
+for consumption examples.
+
+Two older signals overlap these and are **legacy, slated for demotion only after the
+origin app migrates onto the canonical pair** (plan B.0/B.4 — this decision documents
+the losers, it does not cut them yet): `BackendActivityPhase` (the hand-maintained
+state machine the origin app's input bar renders directly today) and
+`ModelLoadReadinessState` (an older idle/loading/ready polling enum still used
+internally by `InferenceService.waitUntilModelReady`). Point new work at
+`GenerationStream.phase` / `ModelLoadStatus` — do not add new consumers of either
+legacy signal. This resolves the #2128 `.phase` item ("emitted, nothing renders")
+with a documented consumer path instead of a cut: the writer side was already live
+across `GenerationQueue` and the cloud/Ollama SSE paths (see the LifecycleSignals
+article for file:line evidence) — the actual gap was the absence of an in-repo reader and of
+this ownership documentation, not a dead write.
 
 ## 3. Visibility policy
 
@@ -127,22 +169,31 @@ seams instead of the type system enforcing it universally.
 
 ## 7. Semver-exempt products
 
-Four dev-tool products **may break in any minor release, always migration-noted.** This is
+Five products **may break in any minor release, always migration-noted.** This is
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
-deprecation cycles or api-digester gates slowing removal. The exemption reflects their
-purpose (developer tooling), not their reachability — an app CAN link them from any target
-(the surveyed consumers below all link from test targets), it just accepts the looser
-stability promise when it does:
+deprecation cycles or api-digester gates slowing removal. The exemption is **documentation-only**:
+these products stay in `scripts/api-surface-baseline.sh`'s `DEFAULT_MODULES`, in ci.yml's and
+nightly-slow-tests.yml's digester `--targets` list, and in `PublicSurfaceBaselineTests
+.expectedModules`, same as every other published product — the gates keep running and keep
+catching *accidental* breaks. What the exemption removes is the ceremony around an
+*intentional* one: no deprecation cycle, no migration-window shim — just a
+`.github/api-breakage-allowlist.txt` entry (same mechanism already used for false-positive
+"removed" reports) and a changelog note, same as any other pre-1.0 delete-don't-deprecate
+change (Part 0, principle 9).
+
+Four of the five are exempt because of their **purpose** (developer tooling), not their
+reachability — an app CAN link them from any target (the surveyed consumers below all link
+from test targets), it just accepts the looser stability promise when it does:
 
 - **`ManifoldTestSupport`** — shared mocks and testing utilities. Published as a `.library`
-  product. Real consumers: `idlewick` (surveyed local app, test-target import — re-verified
+  product. Real consumers: a surveyed first-party app (test-target import — re-verified
   2026-07 during the 4.4 split; an earlier survey note claiming app-code import was wrong);
   `manifold-mlx` and `manifold-llama` (companion packages, for backend test fixtures).
 - **`ManifoldPersistenceTestSupport`** — the persistence-dependent test mocks split out of
   `ManifoldTestSupport` (arch-plan 4.4, wave2 P2, #2158): `GlassBoxDemoRAG`,
   `InMemoryPersistenceHarness`, `makeInMemoryContainer()`. Published as a `.library` product.
-  Consumer survey at split time (2026-07): `idlewick`, `manifold-mlx`, and `manifold-llama`
+  Consumer survey at split time (2026-07): the surveyed first-party app, `manifold-mlx`, and `manifold-llama`
   all import `ManifoldTestSupport` from test targets only, and none reference any of the
   three moved symbols — no external consumer needed a migration draft for this split.
 - **`ManifoldBackendTestKit`** — backend contract-check machinery and conformance harness.
@@ -156,6 +207,41 @@ stability promise when it does:
 
 (`ManifoldContractTestSupport` is deliberately absent from this list: it is a target, not a
 published product — external pins cannot reach it, so it needs no exemption.)
+
+The fifth is exempt for a different reason — a leaked *dependency* type, not developer tooling:
+
+- **`ManifoldAnyLanguageModel`** — the AnyLanguageModel provider bridge (Gemini, xAI, Groq,
+  Mistral, OpenRouter). `AnyLanguageModelDescriptor.model: any LanguageModel`
+  (`Sources/ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift`) names a protocol
+  owned by the external [AnyLanguageModel](https://github.com/huggingface/AnyLanguageModel)
+  package, pinned pre-1.0 (`from: "0.8.0"`, Package.swift). The module's entire purpose is
+  bridging that dependency, so its public surface can only ever be as stable as the upstream
+  package — a wrapper around `any LanguageModel` would insulate nothing (it breaks whenever
+  the protocol does) while adding a layer every consumer must learn. Its stability tracks
+  AnyLanguageModel's, not ManifoldKit's release cadence (#2209).
+
+## 7b. Experimental products (declared 2026-07-13, v1-rationalisation plan Phase C)
+
+Products with **zero real adopters** do not enter the 1.0 stability promise. They may
+break in any minor, always migration-noted — pre-1.0 rules (§4) continue to apply to
+them after core 1.0. Roster: `ManifoldMCP`, `ManifoldMCPHost`, `ManifoldSkills`,
+`ManifoldAppIntents`, `ManifoldAnyLanguageModel` (additionally dependency-coupled per
+§7 above), `ManifoldTelemetryOTLP`, `ManifoldAppEval`.
+
+- **Adopter** = a shipping app or companion package that pins the product AND imports
+  it from non-test code, verified by grep — not documentation, not examples, not
+  intent. (This bar is what keeps `ManifoldVoice` stable-tier: a shipping first-party
+  app pins and imports it, verified 2026-07-13. And it is why `ManifoldMCP` is
+  experimental despite being the best-documented module of the set — decided
+  2026-07-13: MCP graduates only when a consumer app has been built and tested
+  against it.)
+- **Not a parking lot:** each experimental product carries a graduate-or-delete
+  decision point — at 1.0 + 2 minors or its named milestone, whichever comes first,
+  it either has an adopter (graduates into the frozen contract, and its internals get
+  the §3 demotion screen as part of graduation) or it gets a wire-or-delete
+  adjudication like any other inert surface (principle 10).
+- The api-surface baseline still tracks experimental products (drift stays visible);
+  the 1.0 freeze discipline applies only to stable-tier products.
 
 ## 8. Review-loop standing question
 

@@ -1,5 +1,8 @@
 # AppIntents Integration
 
+**Audience:** consumer
+**Status:** living
+
 Bridge an `AppIntent` into ManifoldKit's tool-calling pipeline so an inference backend can invoke it like any other registered tool. This is the entry point for surfacing existing Siri / App Shortcuts actions to the model.
 
 The full reference — parameter-type coverage, the `Decodable` boilerplate AppIntents requires, enum handling, and approval policy — lives in the source-of-truth DocC article:
@@ -17,7 +20,7 @@ No trait required — the former `AppIntents` trait was retired in v0.48. Add th
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.70.0" // x-release-please-version
+    from: "0.71.0" // x-release-please-version
 )
 ```
 

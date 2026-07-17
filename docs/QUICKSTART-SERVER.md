@@ -1,5 +1,8 @@
 # manifold-server Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 `manifold-server` is an OpenAI-compatible HTTP server built on top of ManifoldKit. Point Cursor, Continue, LangChain, or any OpenAI SDK at `http://127.0.0.1:8080/v1` and use local or cloud-backed models without changing your tooling.
 
 Endpoints: `POST /v1/chat/completions` (streaming + non-streaming), `GET /v1/models`, `POST /v1/embeddings`, `GET /health`, `GET /metrics`.

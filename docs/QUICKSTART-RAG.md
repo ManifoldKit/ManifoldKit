@@ -1,5 +1,8 @@
 # ManifoldKit RAG Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for adding on-device **retrieval-augmented generation** —
 ingest your own documents, have ManifoldKit retrieve the most relevant passages
 before each turn, and surface inline source **citations** beneath every
@@ -51,7 +54,7 @@ companion package:
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
-        from: "0.70.0" // x-release-please-version
+        from: "0.71.0" // x-release-please-version
     ),
     // Only needed for semantic search (§3) / reranking (§4) —
     // keyword-fallback RAG works with core alone.

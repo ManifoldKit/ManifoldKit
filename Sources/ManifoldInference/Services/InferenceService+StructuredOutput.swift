@@ -292,7 +292,12 @@ extension InferenceService {
 
     /// Encodes a ``JSONSchemaValue`` to a sorted-keys JSON string for staging
     /// on the generation config. Throws ``StructuredOutputError/schemaEncodingFailure(_:)``.
-    private static func encodeSchema(_ schema: JSONSchemaValue) throws -> String {
+    ///
+    /// `internal` (not `private`) so ``InferenceService/structured(_:messages:config:policy:)``
+    /// (#2205), a sibling file in the same module, can reuse it instead of
+    /// re-deriving the same encode step. Not `package` — no cross-package
+    /// consumer exists, and `@testable` covers the tests.
+    static func encodeSchema(_ schema: JSONSchemaValue) throws -> String {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
@@ -306,10 +311,41 @@ extension InferenceService {
     /// Stages the schema on config, enqueues a single generation over
     /// `messages`, and drains the content tokens to a string. Returns the raw
     /// text and the router-selected strategy.
-    private func runStructuredGeneration(
+    ///
+    /// - Parameter stallTimeout: When non-nil, wraps the queue's stream in a
+    ///   fresh ``GenerationStream`` idle-timeout monitor (see
+    ///   ``GenerationStream/init(_:idleTimeout:)``) so a gap longer than this
+    ///   duration between events throws ``InferenceError/idleTimeout(_:)``.
+    ///   `nil` (the default, used by ``respond(_:to:config:)``) disables stall
+    ///   detection — the queue's own stream is drained unmonitored, matching
+    ///   pre-#2205 behavior exactly. Reusing ``GenerationStream``'s existing
+    ///   monitor here — rather than a bespoke timer — is why the structured-
+    ///   output reliability envelope (#2205) needed no new stall-detection
+    ///   primitive of its own.
+    ///
+    /// **Slot freeing on abnormal termination.** The generation queue is
+    /// strictly serial and its active slot clears only when the active task
+    /// finishes. A stall (or a mid-stream cancellation) stops *this* function
+    /// from draining, but the backend behind the queue is still hung, so the
+    /// slot would stay occupied forever — wedging every later request, since
+    /// chat and background structured extraction share one `InferenceService`
+    /// queue (AGENTS.md "Service sharing"). So on ANY terminal throw we
+    /// ``InferenceService/cancel(_:)`` the enqueue token, which calls the
+    /// backend's `stopGeneration()`, cancels the active task, and synchronously
+    /// clears the slot + drains the queue — freeing it before the envelope's
+    /// retry re-enqueues. `cancel` is a no-op when the request already
+    /// finished, so the normal-completion path pays nothing.
+    ///
+    /// `internal` (not `private`) so ``InferenceService/structured(_:messages:config:policy:)``
+    /// (#2205), a sibling file in the same module, can reuse this exact
+    /// staging/draining/strategy-reporting logic instead of re-deriving it.
+    /// Not `package` — no cross-package consumer exists, and `@testable`
+    /// covers the tests.
+    func runStructuredGeneration(
         messages: [Message],
         schemaString: String,
-        config: GenerationConfig
+        config: GenerationConfig,
+        stallTimeout: Duration? = nil
     ) async throws -> (rawText: String, strategy: StructuredOutputStrategy) {
         // Stage the schema on config. The queue's router wiring (#1915) reads
         // `structuredOutput`, lowers the schema to GBNF when the active backend
@@ -318,23 +354,47 @@ extension InferenceService {
         // backends so they never see a grammar they'd reject.
         let hints = GenerationRuntimeHints(structuredOutput: .jsonSchema(schemaString))
 
-        let (_, stream) = try enqueue(messages: messages, config: config, hints: hints)
-
-        // Drain to a string. Collect only content tokens — thinking and tool
-        // events are not part of the structured payload.
-        var collected = ""
-        for try await event in stream {
-            if case .token(let fragment) = event {
-                collected += fragment
-            }
-        }
+        let (token, queueStream) = try enqueue(messages: messages, config: config, hints: hints)
 
         // The strategy the router actually chose for the serving backend, set
         // on the stream by the queue at enqueue time. Reading it back is the
         // single source of truth — no recomputation against a capability set
         // that might differ from the one the queue dispatched to. `nil` means
         // the request carried no resolvable target (treated as prompt-level).
-        let strategy = stream.structuredOutputStrategy ?? .jsonPrompting
+        let strategy = queueStream.structuredOutputStrategy ?? .jsonPrompting
+
+        // Drain to a string. Collect only content tokens — thinking and tool
+        // events are not part of the structured payload. When a stall timeout
+        // is configured, iterate a monitored wrapper instead of the queue
+        // stream directly so a gap between events throws
+        // `InferenceError.idleTimeout` rather than hanging until the backend
+        // itself gives up (or never does).
+        var collected = ""
+        do {
+            if let stallTimeout {
+                let monitored = GenerationStream(queueStream.events, idleTimeout: stallTimeout)
+                for try await event in monitored {
+                    if case .token(let fragment) = event {
+                        collected += fragment
+                    }
+                }
+            } else {
+                for try await event in queueStream {
+                    if case .token(let fragment) = event {
+                        collected += fragment
+                    }
+                }
+            }
+        } catch {
+            // A stall, a mid-stream cancellation, or a backend error left the
+            // queue's active slot occupied (the backend may still be running).
+            // Free it before rethrowing so the envelope's retry — and every
+            // other request sharing this serial queue — can proceed. No-op if
+            // the request already finished (token no longer active/queued).
+            cancel(token)
+            throw error
+        }
+
         return (collected, strategy)
     }
 
@@ -344,7 +404,11 @@ extension InferenceService {
     /// schema-valid-but-rule-violating JSON (enum/required/bounds) surfaces a
     /// `decodeFailure` carrying the validator's model-readable message. Both
     /// are the reask triggers for ``respond(_:to:config:reask:)``.
-    private static func decodeAndValidate<T: Decodable & Sendable>(
+    ///
+    /// `internal` (not `private`) so ``InferenceService/structured(_:messages:config:policy:)``
+    /// (#2205), a sibling file in the same module, can reuse the same
+    /// decode+validate step. Not `package` — no cross-package consumer exists.
+    static func decodeAndValidate<T: Decodable & Sendable>(
         _ type: T.Type,
         rawText: String,
         strategy: StructuredOutputStrategy,

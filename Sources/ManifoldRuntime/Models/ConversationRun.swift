@@ -12,7 +12,7 @@ import ManifoldInference
 ///   `running` → `completed`
 ///   `running` → `cancelled`
 ///   `running` → `failed`
-public enum RunStatus: String, Sendable, CaseIterable, Equatable {
+package enum RunStatus: String, Sendable, CaseIterable, Equatable {
     /// Created but not yet started.
     case pending
     /// Actively executing steps.
@@ -58,43 +58,43 @@ public enum RunStatus: String, Sendable, CaseIterable, Equatable {
 /// IDs and timestamps are constructor-injected so tests can produce
 /// deterministic fixtures without special test hooks. Production callers
 /// use the `init(sessionID:goal:)` convenience that supplies stable defaults.
-public struct ConversationRun: Sendable, Equatable {
+package struct ConversationRun: Sendable, Equatable {
 
     // MARK: Identity
 
     /// Stable run identifier.
-    public let id: UUID
+    package let id: UUID
 
     /// The session this run is executing within.
-    public let sessionID: UUID
+    package let sessionID: UUID
 
     // MARK: Goal
 
     /// The top-level goal or prompt that drives this run.
     /// Persisted verbatim so resume can reconstruct context.
-    public let goal: String
+    package let goal: String
 
     // MARK: Lifecycle
 
     /// Current status. Mutated by the ``ResumableRunDriver`` as the run
     /// progresses through its lifecycle.
-    public var status: RunStatus
+    package var status: RunStatus
 
     /// Total number of steps taken so far (completed or in-progress).
-    public var stepCount: Int
+    package var stepCount: Int
 
     /// Maximum number of steps allowed. The driver halts with
     /// ``RunStatus/completed`` when this limit is reached, regardless
     /// of whether the goal is fully achieved. `nil` means unlimited.
-    public let maxSteps: Int?
+    package let maxSteps: Int?
 
     // MARK: Timestamps
 
     /// When this run record was created.
-    public let createdAt: Date
+    package let createdAt: Date
 
     /// When this run last transitioned to a new status.
-    public var updatedAt: Date
+    package var updatedAt: Date
 
     // MARK: Init
 
@@ -102,7 +102,7 @@ public struct ConversationRun: Sendable, Equatable {
     ///
     /// Prefer the convenience init for production use; this form is for
     /// test fixtures that need deterministic IDs and timestamps.
-    public init(
+    package init(
         id: UUID,
         sessionID: UUID,
         goal: String,
@@ -124,7 +124,7 @@ public struct ConversationRun: Sendable, Equatable {
 
     /// Creates a new pending `ConversationRun` with stable defaults for
     /// production use.
-    public init(
+    package init(
         sessionID: UUID,
         goal: String,
         maxSteps: Int? = nil
@@ -154,18 +154,18 @@ public struct ConversationRun: Sendable, Equatable {
 ///
 /// `stepIndex` is 0-based and assigned by the driver at insertion time;
 /// within a run, steps are ordered by index ascending.
-public struct RunStep: Sendable {
+package struct RunStep: Sendable {
 
     // MARK: Identity
 
     /// Stable step identifier.
-    public let id: UUID
+    package let id: UUID
 
     /// The run this step belongs to.
-    public let runID: UUID
+    package let runID: UUID
 
     /// 0-based position of this step within the run.
-    public let stepIndex: Int
+    package let stepIndex: Int
 
     // MARK: Content
 
@@ -174,31 +174,31 @@ public struct RunStep: Sendable {
     /// Persisted so resume can reconstruct what was requested on each step.
     /// `nil` for steps that were derived from the run's own goal (e.g. the
     /// driver synthesised a follow-up without explicit host input).
-    public let turnInput: TurnInput?
+    package let turnInput: TurnInput?
 
     /// The ID of the assistant message produced by this step, when one was
     /// persisted. `nil` for steps that did not produce a message (cancelled,
     /// failed before enqueue, or tool-only turns with no assistant text).
-    public var messageID: UUID?
+    package var messageID: UUID?
 
     /// Whether this step completed successfully.
-    public var isCompleted: Bool
+    package var isCompleted: Bool
 
     /// Whether this step failed.
-    public var isFailed: Bool
+    package var isFailed: Bool
 
     /// Optional reason string when the step failed.
-    public var failureReason: String?
+    package var failureReason: String?
 
     // MARK: Timestamps
 
-    public let createdAt: Date
-    public var updatedAt: Date
+    package let createdAt: Date
+    package var updatedAt: Date
 
     // MARK: Init
 
     /// Creates a `RunStep` with all fields provided.
-    public init(
+    package init(
         id: UUID,
         runID: UUID,
         stepIndex: Int,
@@ -223,7 +223,7 @@ public struct RunStep: Sendable {
     }
 
     /// Creates a new `RunStep` with stable defaults for production use.
-    public init(
+    package init(
         runID: UUID,
         stepIndex: Int,
         turnInput: TurnInput?

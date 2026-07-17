@@ -1,5 +1,8 @@
 # Hardware and toolchain constraints
 
+**Audience:** contributor
+**Status:** living
+
 A one-page consolidation of the hardware- and CI-specific constraints that
 recur across core and both companion packages. Each of these has bitten this
 project at least once; they're gathered here instead of staying scattered
@@ -59,12 +62,14 @@ at `manifold-llama`'s copy. What's still true and visible from core:
 
 Mixing Swift Testing (`@Test`/`@Suite`) and XCTest in the same test process
 triggers a libmalloc double-free `SIGABRT` — tracked as **#681**. This is not
-a "sometimes"; core's own `scripts/test.sh` runs a deliberate two-invocation
-shape specifically to avoid it: XCTest filters first, then
-`ManifoldInferenceSwiftTestingTests` in a fully separate `swift test` process
-(`scripts/test.sh:175,314,348`; `Tests/README.md:11`). A companion package
-that adds Swift Testing suites alongside existing XCTest suites needs the same
-two-invocation split in its own CI, not a single `swift test` call.
+a "sometimes"; core's own `scripts/test.sh` runs a deliberate three-invocation
+shape specifically to avoid it: the XCTest filter batch first, then
+`ManifoldBackendsTests` serial in its own process (that target mixes XCTest
+with Swift Testing files), then `ManifoldInferenceSwiftTestingTests` in a
+fully separate `swift test` process (see the `PROFILE_*_FILTERS` arrays in
+`scripts/test.sh`; `Tests/README.md`). A companion package that adds Swift
+Testing suites alongside existing XCTest suites needs the same per-process
+split in its own CI, not a single `swift test` call.
 
 ## `swift-tools-version` ceiling
 
@@ -104,6 +109,50 @@ Don't assume core and a companion package need the same tools-version ceiling
   package's CI may need to explicitly `xcode-select` a newer toolchain than
   the runner image default resolves to — don't assume the default Xcode on
   a `macos-15` runner matches what your companion's dependency graph needs.
+
+## Metal .metallib resource bundling for SPM executables
+
+When a SwiftPM executable target (CLI, menubar tool) transitively depends on
+Metal-backed modules (e.g., MLX-related code paths), the executable may fail at
+runtime with:
+
+```
+Failed to load the default metallib
+```
+
+sometimes accompanied by:
+
+```
+Failed to create NSXPCConnection
+```
+
+### Root cause
+
+SwiftPM executable targets do not receive the Metal resource bundle treatment
+that app targets (Xcode-built `.app` bundles) get. The `.metallib` (compiled
+Metal shader library) is not copied into the executable's bundle or working
+directory at build time. An app target's build phase automatically copies this
+resource, but a bare SPM CLI or menubar executable has no equivalent step. At
+runtime, the Metal framework looks for the default metallib next to the binary,
+fails to find it, and the associated XPC service connection (used for Metal
+compilation and loading) fails to establish.
+
+This is a packaging gap, not a logic bug in the Metal-consuming code itself.
+
+### Workaround
+
+Run the Metal-dependent code path via the full app target (Xcode-built `.app`
+bundle), not as a standalone SPM executable via `swift run`. There is no known
+workaround for running a CLI or menubar target standalone with Metal support.
+
+### Durable fix
+
+The real fix — either copying the `.metallib` into the executable's run
+location at build time (via a build plugin or post-build step), or failing fast
+with an actionable error identifying the missing resource — lives in the
+`manifold-mlx` companion package, which owns the Metal-dependent code paths.
+Core has no Metal executables to exercise after v0.48's backend split, so a
+fix here would be inert code. Track this in [ManifoldKit/manifold-mlx#149](https://github.com/ManifoldKit/manifold-mlx/issues/149).
 
 ## Where to go next
 

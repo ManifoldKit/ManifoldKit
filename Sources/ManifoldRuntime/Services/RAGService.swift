@@ -330,20 +330,126 @@ public actor RAGService {
         // vector-store `.prefix` and reranker pool math stay well-defined.
         let limit = max(1, limit ?? defaultLimit)
 
-        // Embedding models can hang or OOM on very long inputs. Truncate to
-        // the configured byte cap before handing off — a shorter query loses
-        // some precision but still produces useful nearest-neighbour results.
-        let cappedQuery: String
-        let maxRAGQueryBytes = ManifoldConfiguration.shared.maxRAGQueryBytes
-        if query.utf8.count > maxRAGQueryBytes {
-            cappedQuery = String(
-                bytes: Array(query.utf8.prefix(maxRAGQueryBytes)),
-                encoding: .utf8
-            ) ?? String(query.prefix(maxRAGQueryBytes / 4))
-        } else {
-            cappedQuery = query
+        let cappedQuery = capQuery(query)
+        let filteredHits = try await rankedFilteredHits(cappedQuery: cappedQuery, limit: limit)
+
+        guard !filteredHits.isEmpty else { return .empty }
+
+        return buildResult(from: filteredHits)
+    }
+
+    /// Returns the prompt slot AND citation list for score-ordered passages
+    /// matching `query`, greedily packed to fit `tokenBudget` (#2207).
+    ///
+    /// Token-budgeted consumers (the norm — MK's own `PromptAssembler` budgets
+    /// slots by tokens) previously had to over-fetch ``retrieve(query:limit:)``
+    /// by a guessed-wide hit count, then re-implement greedy token packing
+    /// themselves. This entry point does that packing internally, reusing
+    /// ``ContextWindowManager/estimateTokenCount(_:tokenizer:)`` — the same
+    /// primitive `trimMessages`/`calculateBudget` use — so "does this hit fit?"
+    /// is answered consistently with the rest of the engine rather than by a
+    /// second, drifting estimator.
+    ///
+    /// Hits are walked in score order (after rerank/threshold, same as
+    /// ``retrieve(query:limit:)``); a hit is appended only while the running
+    /// total plus its estimated token cost stays at or under `tokenBudget`.
+    /// The walk **stops** at the first hit that would overflow rather than
+    /// skipping ahead to a smaller one — packing preserves relevance order,
+    /// it does not bin-pack for maximum fill (mirrors
+    /// ``ContextWindowManager/trimMessages(_:systemPrompt:maxTokens:responseBuffer:tokenizer:)``'s
+    /// walk-and-break shape).
+    ///
+    /// Does **not** consult ``fullContextMode`` — that path answers "does the
+    /// whole corpus fit `fullContextBudgetTokens`?" against a *configured*
+    /// budget, not the caller's per-call `tokenBudget`; conflating the two
+    /// would make this method's behaviour depend on unrelated bootstrap
+    /// configuration. Chunked retrieval only.
+    ///
+    /// - Parameters:
+    ///   - query: The user query. Empty/whitespace-only rounds-trip as
+    ///     ``RetrievalResult/empty``.
+    ///   - tokenBudget: Token ceiling for the packed passages. Must be
+    ///     positive; a non-positive budget rounds-trips as
+    ///     ``RetrievalResult/empty`` (there is no budget to pack into).
+    ///   - tokenizer: Optional tokenizer for accurate per-hit counts. Falls
+    ///     back to the ~4-chars-per-token heuristic when `nil`, same default
+    ///     as every other `ContextWindowManager` entry point.
+    public func retrieve(
+        query: String,
+        tokenBudget: Int,
+        tokenizer: TokenizerProvider? = nil
+    ) async throws -> RetrievalResult {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .empty
+        }
+        guard tokenBudget > 0 else { return .empty }
+
+        let cappedQuery = capQuery(query)
+
+        // Widen the candidate pool relative to the requested budget rather
+        // than a caller-supplied hit count — there is no `limit` here, so the
+        // width has to be derived from `tokenBudget` itself. Conservative
+        // (small) per-chunk floor so the pool stays wide enough for corpora
+        // chunked much smaller than the chunker's default, capped so a huge
+        // budget doesn't force an unbounded fetch/rerank.
+        let candidateLimit = min(
+            Self.maxBudgetCandidates,
+            max(defaultLimit, tokenBudget / Self.minEstimatedTokensPerChunk)
+        )
+
+        let filteredHits = try await rankedFilteredHits(cappedQuery: cappedQuery, limit: candidateLimit)
+        guard !filteredHits.isEmpty else { return .empty }
+
+        var packed: [VectorSearchHit] = []
+        var usedTokens = 0
+        for hit in filteredHits {
+            let hitTokens = ContextWindowManager.estimateTokenCount(hit.chunk.text, tokenizer: tokenizer)
+            guard usedTokens + hitTokens <= tokenBudget else { break }
+            packed.append(hit)
+            usedTokens += hitTokens
         }
 
+        guard !packed.isEmpty else { return .empty }
+
+        return buildResult(from: packed)
+    }
+
+    /// Conservative floor used to size the budget-aware candidate pool
+    /// (``retrieve(query:tokenBudget:tokenizer:)``): assumes chunks could be as
+    /// small as this many tokens, so the first-stage fetch stays wide enough to
+    /// fill the requested budget even for a corpus chunked much finer than
+    /// ``DocumentChunker``'s ~450-token (1800-char) default.
+    private static let minEstimatedTokensPerChunk = 50
+
+    /// Upper bound on the budget-aware candidate pool width, regardless of how
+    /// large `tokenBudget` is — bounds the first-stage fetch and rerank cost
+    /// for pathologically large budgets.
+    private static let maxBudgetCandidates = 200
+
+    /// Embedding models can hang or OOM on very long inputs. Truncates `query`
+    /// to the configured byte cap before it reaches the embedding backend — a
+    /// shorter query loses some precision but still produces useful
+    /// nearest-neighbour results. Shared by both `retrieve` overloads.
+    private func capQuery(_ query: String) -> String {
+        let maxRAGQueryBytes = ManifoldConfiguration.shared.maxRAGQueryBytes
+        guard query.utf8.count > maxRAGQueryBytes else { return query }
+        return String(
+            bytes: Array(query.utf8.prefix(maxRAGQueryBytes)),
+            encoding: .utf8
+        ) ?? String(query.prefix(maxRAGQueryBytes / 4))
+    }
+
+    /// Shared candidate pipeline: first-stage retrieval (dispatching on
+    /// ``retrievalStrategy``) → optional rerank widening/trim → similarity
+    /// threshold filter. Both `retrieve(query:limit:)` and
+    /// `retrieve(query:tokenBudget:tokenizer:)` build their result from this
+    /// same score-ordered hit list — they differ only in how they cut it down
+    /// afterward (by count vs. by greedy token packing).
+    ///
+    /// - Parameter limit: The result-set width the reranker trims to. For the
+    ///   count-based caller this is the requested `limit`; for the
+    ///   budget-based caller it's the derived candidate-pool width.
+    private func rankedFilteredHits(cappedQuery: String, limit: Int) async throws -> [VectorSearchHit] {
         // When a reranker is loaded, widen the first-stage candidate pool so the
         // cross-encoder has more passages to reorder; we trim back to `limit`
         // after reranking. With no reranker active, `candidateLimit == limit`
@@ -354,8 +460,7 @@ public actor RAGService {
             : limit
 
         let hits = try await firstStageHits(query: cappedQuery, candidateLimit: candidateLimit)
-
-        guard !hits.isEmpty else { return .empty }
+        guard !hits.isEmpty else { return [] }
 
         // Rerank stage. Only runs when a reranker is loaded; otherwise `hits`
         // (already capped at `limit`) flows through untouched. A throwing
@@ -373,19 +478,21 @@ public actor RAGService {
             rankedHits = hits
         }
 
-        guard !rankedHits.isEmpty else { return .empty }
+        guard !rankedHits.isEmpty else { return [] }
 
         // Similarity-threshold cutoff. Applied after reranking so the floor is
         // checked against the final score the user sees in citations. A `0`
         // threshold (the default) is a no-op since the vector store already
         // excludes non-positive scores.
-        let filteredHits = similarityThreshold > 0
+        return similarityThreshold > 0
             ? rankedHits.filter { $0.score >= similarityThreshold }
             : rankedHits
+    }
 
-        guard !filteredHits.isEmpty else { return .empty }
-
-        let content = filteredHits.map { hit in
+    /// Builds the slot/citation/document triple from a final, already-cut-down
+    /// hit list. Shared tail of both `retrieve` overloads.
+    private func buildResult(from hits: [VectorSearchHit]) -> RetrievalResult {
+        let content = hits.map { hit in
             "[\(hit.documentTitle)]\n\(hit.chunk.text)"
         }.joined(separator: "\n\n---\n\n")
 
@@ -397,7 +504,7 @@ public actor RAGService {
             label: "Retrieved Documents"
         )
 
-        let citations = filteredHits.map { hit in
+        let citations = hits.map { hit in
             Citation(
                 documentID: hit.chunk.documentID,
                 documentTitle: hit.documentTitle,
@@ -410,9 +517,12 @@ public actor RAGService {
         // Structured form for a template's `documents` block (#1967). Carries the
         // full chunk text (not the citation snippet, which is truncated for the
         // UI) so a grounding template sees the same passage the system-prompt slot
-        // injects. `doc_id` left to the renderer's positional fallback.
-        let documents = filteredHits.map { hit in
-            RetrievedDocument(title: hit.documentTitle, text: hit.chunk.text)
+        // injects. `doc_id` left to the renderer's positional fallback;
+        // `documentID` carries the chunk's actual document identity (#2207) so
+        // consumers can post-filter `documents` without detouring through
+        // `citations`.
+        let documents = hits.map { hit in
+            RetrievedDocument(documentID: hit.chunk.documentID, title: hit.documentTitle, text: hit.chunk.text)
         }
 
         return RetrievalResult(slots: [slot], citations: citations, documents: documents)
@@ -454,6 +564,7 @@ public actor RAGService {
     /// dense leg of `.hybrid` share one implementation.
     private func denseHits(query: String, candidateLimit: Int) async throws -> [VectorSearchHit] {
         guard let backend = embeddingBackend, backend.isModelLoaded else {
+            Log.inference.warning("RAGService: no loaded embedding backend, falling back to keyword search.")
             return try await vectorStore.keywordSearch(query: query, limit: candidateLimit)
         }
         do {
@@ -544,7 +655,7 @@ public actor RAGService {
         // Structured form for a template's `documents` block (#1967): the whole
         // document text per record, mirroring the verbatim slot content.
         let structuredDocuments = parsed.map { doc in
-            RetrievedDocument(title: doc.record.title, text: doc.text)
+            RetrievedDocument(documentID: doc.record.id, title: doc.record.title, text: doc.text)
         }
 
         return RetrievalResult(slots: [slot], citations: citations, documents: structuredDocuments)

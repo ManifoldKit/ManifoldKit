@@ -21,11 +21,11 @@ import ManifoldInference
 ///
 /// This is a pure free function so the fusion ordering is unit-testable against a
 /// hand-computed `Σ 1/(k + rank)` without standing up the retrieval pipeline.
-public enum ReciprocalRankFusion {
+package enum ReciprocalRankFusion {
 
     /// Standard RRF damping constant. PROVISIONAL until the RAG eval harness
     /// (#1937) can defend a tuned value against recall@k / MRR.
-    public static let defaultK: Int = 60
+    package static let defaultK: Int = 60
 
     /// Fuses `rankings` (each already sorted best-first) into a single ranked
     /// list of hits, keeping the top `limit`.
@@ -40,7 +40,7 @@ public enum ReciprocalRankFusion {
     ///     harmless (they contribute no ranks).
     ///   - k: RRF damping constant.
     ///   - limit: Maximum number of fused hits to return. Non-positive returns `[]`.
-    public static func fuse(
+    package static func fuse(
         _ rankings: [[VectorSearchHit]],
         k: Int = ReciprocalRankFusion.defaultK,
         limit: Int

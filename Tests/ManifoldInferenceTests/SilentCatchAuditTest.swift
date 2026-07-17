@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 
 /// Guards against regression on issue #242: silent `try?` and empty
 /// `catch { }` blocks that swallow errors with no logging, no user
@@ -48,6 +49,9 @@ import XCTest
 /// expressions could theoretically confuse it. In practice the codebase
 /// uses idiomatic `} catch {` layout, and the stale-allowlist check
 /// catches drift immediately.
+///
+/// The full two-pass detection pipeline lives in ``scan(sourcesRoot:allowlist:)``
+/// so the in-file sabotage test exercises the exact function the audit runs.
 final class SilentCatchAuditTest: XCTestCase {
 
     /// Idiom prefixes that, when present immediately after `try?` on a
@@ -123,47 +127,10 @@ final class SilentCatchAuditTest: XCTestCase {
 
     func test_sourcesDirectoryContainsNoUnapprovedSilentSwallows() throws {
         let sourcesURL = try Self.locateSourcesDirectory()
-        var found: Set<String> = []
-        var offenders: [(file: String, line: Int, text: String)] = []
-
         let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesURL)
         XCTAssertFalse(swiftFiles.isEmpty, "Sources directory yielded no .swift files — path probably wrong")
 
-        for fileURL in swiftFiles {
-            let relativePath = fileURL.path.replacingOccurrences(of: sourcesURL.path + "/", with: "")
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
-            let lines = content.components(separatedBy: "\n")
-
-            // Pass 1: unbound / unobserved `try?` call sites.
-            for (index, rawLine) in lines.enumerated() {
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                guard Self.lineContainsSilentTry(line) else { continue }
-                // Idiom rules approve broad call patterns globally — refactor
-                // stable, no per-line fingerprint required. Idiom-matched
-                // lines are intentionally NOT added to `found`, so any
-                // stale path entry that's now idiom-covered surfaces in
-                // the stale-allowlist check below.
-                if Self.lineMatchesApprovedTryIdiom(line) {
-                    continue
-                }
-                let fingerprint = "\(relativePath):\(line)"
-                found.insert(fingerprint)
-                if !Self.allowlist.contains(fingerprint) {
-                    offenders.append((file: relativePath, line: index + 1, text: line))
-                }
-            }
-
-            // Pass 2: empty `catch { }` blocks — inline `catch {}` /
-            // `catch { }` and the multi-line form where the next
-            // non-blank, non-comment line after `catch {` is just `}`.
-            for emptyCatch in Self.findEmptyCatches(in: lines) {
-                let fingerprint = "\(relativePath):\(emptyCatch.text)"
-                found.insert(fingerprint)
-                if !Self.allowlist.contains(fingerprint) {
-                    offenders.append((file: relativePath, line: emptyCatch.line, text: emptyCatch.text))
-                }
-            }
-        }
+        let (offenders, found) = try Self.scan(sourcesRoot: sourcesURL, allowlist: Self.allowlist)
 
         if !offenders.isEmpty {
             let formatted = offenders
@@ -189,6 +156,116 @@ final class SilentCatchAuditTest: XCTestCase {
                   \(formatted)
                 """)
         }
+    }
+
+    // MARK: - Sabotage (exercises the same `scan(sourcesRoot:allowlist:)` the audit runs)
+
+    /// Plants a temp source tree containing an unapproved `try?` swallow,
+    /// an idiom-approved `try?` (must NOT be flagged), and a multi-line
+    /// empty `catch { }` block, and asserts the REAL detection pipeline
+    /// flags exactly the unapproved cases — plus that a fingerprint
+    /// allowlist entry exempts the swallow it names.
+    func test_sabotage_scanFlagsPlantedViolations() throws {
+        let tmp = try Self.makeSabotageTempDirectory(
+            name: "silent-catch-sabotage-\(UUID().uuidString)"
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldSomeModule", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try """
+        import Foundation
+
+        func reallyImportantOperation() throws {}
+
+        func swallow() {
+            try? reallyImportantOperation()
+            let x = try? JSONDecoder().decode(Foo.self, from: data)
+            do {
+                try f()
+            } catch {
+            }
+        }
+        """.write(to: root.appendingPathComponent("BadSwallow.swift"), atomically: true, encoding: .utf8)
+
+        let (offenders, found) = try Self.scan(sourcesRoot: tmp, allowlist: [])
+
+        XCTAssertTrue(
+            offenders.contains { $0.text.contains("try? reallyImportantOperation()") },
+            "The unapproved try? swallow must be flagged; got \(offenders)"
+        )
+        XCTAssertFalse(
+            offenders.contains { $0.text.contains("try? JSONDecoder().decode") },
+            "The idiom-approved try? JSONDecoder().decode swallow must NOT be flagged"
+        )
+        XCTAssertTrue(
+            offenders.contains { $0.text == "} catch {" },
+            "The multi-line empty catch block must be flagged; got \(offenders)"
+        )
+
+        let fingerprint = "ManifoldSomeModule/BadSwallow.swift:try? reallyImportantOperation()"
+        XCTAssertTrue(found.contains(fingerprint), "The unapproved swallow must appear in `found`")
+
+        let (exempted, _) = try Self.scan(sourcesRoot: tmp, allowlist: [fingerprint])
+        XCTAssertFalse(
+            exempted.contains { $0.text.contains("try? reallyImportantOperation()") },
+            "An allowlisted fingerprint must exempt the matching swallow"
+        )
+    }
+
+    // MARK: - Detection
+
+    /// Full two-pass scan: unbound `try?` call sites (idiom- and
+    /// path-allowlist-aware) plus empty `catch { }` blocks. Returns the
+    /// unapproved offenders alongside every fingerprint `found` in the
+    /// tree (idiom-approved lines are deliberately excluded from `found`,
+    /// so a now-idiom-covered allowlist entry still surfaces as stale).
+    static func scan(
+        sourcesRoot: URL,
+        allowlist: Set<String>
+    ) throws -> (offenders: [(file: String, line: Int, text: String)], found: Set<String>) {
+        var found: Set<String> = []
+        var offenders: [(file: String, line: Int, text: String)] = []
+
+        let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesRoot)
+
+        for fileURL in swiftFiles {
+            let relativePath = fileURL.path.replacingOccurrences(of: sourcesRoot.path + "/", with: "")
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = content.components(separatedBy: "\n")
+
+            // Pass 1: unbound / unobserved `try?` call sites.
+            for (index, rawLine) in lines.enumerated() {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                guard Self.lineContainsSilentTry(line) else { continue }
+                // Idiom rules approve broad call patterns globally — refactor
+                // stable, no per-line fingerprint required. Idiom-matched
+                // lines are intentionally NOT added to `found`, so any
+                // stale path entry that's now idiom-covered surfaces in
+                // the stale-allowlist check below.
+                if Self.lineMatchesApprovedTryIdiom(line) {
+                    continue
+                }
+                let fingerprint = "\(relativePath):\(line)"
+                found.insert(fingerprint)
+                if !allowlist.contains(fingerprint) {
+                    offenders.append((file: relativePath, line: index + 1, text: line))
+                }
+            }
+
+            // Pass 2: empty `catch { }` blocks — inline `catch {}` /
+            // `catch { }` and the multi-line form where the next
+            // non-blank, non-comment line after `catch {` is just `}`.
+            for emptyCatch in Self.findEmptyCatches(in: lines) {
+                let fingerprint = "\(relativePath):\(emptyCatch.text)"
+                found.insert(fingerprint)
+                if !allowlist.contains(fingerprint) {
+                    offenders.append((file: relativePath, line: emptyCatch.line, text: emptyCatch.text))
+                }
+            }
+        }
+
+        return (offenders, found)
     }
 
     // MARK: - Allowlist loading
@@ -377,4 +454,23 @@ final class SilentCatchAuditTest: XCTestCase {
         }
         return result
     }
+
+    /// Builds a fresh, UUID-suffixed temp directory and returns it fully
+    /// resolved via POSIX `realpath()`. `/var` (macOS's temp-dir root) is an
+    /// APFS firmlink to `/private/var`, not a classic symlink — so
+    /// `URL.resolvingSymlinksInPath()` leaves it untouched while
+    /// `FileManager`'s directory enumerator returns the fully-resolved
+    /// `/private/var/...` form for every child it walks. Without this,
+    /// string-prefix stripping of `root.path` against an enumerated child's
+    /// `.path` silently fails to match (the prefixes differ), corrupting
+    /// every relative-path fingerprint this sabotage test asserts against.
+    private static func makeSabotageTempDirectory(name: String) throws -> URL {
+        let unresolved = FileManager.default.temporaryDirectory
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: unresolved, withIntermediateDirectories: true)
+        var buffer = [Int8](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(unresolved.path, &buffer) != nil else { return unresolved }
+        return URL(fileURLWithPath: String(cString: buffer), isDirectory: true)
+    }
+
 }

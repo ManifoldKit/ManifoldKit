@@ -8,6 +8,7 @@ Synchronous mutation/block points in the turn loop, distinct from the observatio
 
 - ``HookEvent/preToolUse`` — fires before each tool call dispatches. Hooks may **sanitize** the arguments or **block** the call.
 - ``HookEvent/preCompact`` — fires before history compression runs. In v1 hooks are **observational** here; `block: true` is ignored and compression always proceeds.
+- ``HookEvent/postGeneration`` — fires after a generation turn completes successfully, carrying the same completed-turn payload as ``GenerationHook/postGeneration(_:)`` via ``HookInput/completedTurn``. Also observational; `block: true` is ignored (the turn has already committed).
 
 For pure observability (token deltas, message-persisted events, etc.) use ``ConversationEvent`` — it ships without the back-pressure / timeout machinery hook handlers carry.
 
@@ -116,6 +117,43 @@ await registry.register(.preCompact) { input in
 ```
 
 A future revision may let hooks transform the compression-bound context. For now, treat `preCompact` as a structured logging hook.
+
+## `postGeneration` — the unified counterpart to `GenerationHook`
+
+``ConversationRuntime`` has always offered post-turn observability through the separate ``GenerationHook`` protocol (the `generationHooks` init parameter). ``HookEvent/postGeneration`` (B.2) exposes the same completed-turn data through the registry, so a host standardised on the registry seam (`preToolUse`/`preCompact`) doesn't need to adopt a second protocol just for post-turn work:
+
+```swift,no-build
+import ManifoldRuntime
+
+await registry.register(.postGeneration) { input in
+    guard let turn = input.completedTurn else { return .passthrough }
+    print("Turn finished for session \(turn.sessionID): \(turn.assistantMessage.content)")
+    return .passthrough
+}
+```
+
+Like `preCompact`, `postGeneration` is observational — `HookOutput.block` is ignored, since the turn has already committed and there is no mutation channel. It fires under the exact same conditions as `GenerationHook.postGeneration(_:)` — not on cancellation, a stream error, or an empty-response turn — and both seams can be registered simultaneously without double-firing anything (`generationHooks` and the registry are independent lists).
+
+``SummarisationHook`` — the rolling-summarisation `GenerationHook` — exposes ``SummarisationHook/makeHookHandler()`` so its trigger can be registered on the unified seam instead of threaded through `generationHooks`:
+
+```swift,no-build
+import ManifoldRuntime
+
+let summarisationHook = SummarisationHook(
+    messageStore: store,
+    backend: summarisationBackend,
+    contextSizeProvider: { 8192 }
+)
+await registry.register(.postGeneration, handler: summarisationHook.makeHookHandler())
+
+let runtime = ConversationRuntime(
+    messageStore: store,
+    inferenceService: inferenceService,
+    hookRegistry: registry
+)
+```
+
+`GenerationHook`/`CompletedTurn` remain public and fully supported — they retire only after downstream consumers migrate to the registry seam.
 
 ## Telemetry
 

@@ -2,15 +2,27 @@
 import ManifoldInference
 import Foundation
 
-internal struct ServerBackendRequest: Equatable, Sendable {
-    internal var model: String?
+/// Identifies which model a chat/embedding request wants, so a
+/// ``ServerBackendProvider`` can route between multiple loaded backends.
+///
+/// Public (v0.71+): the request shape a host-injected ``ServerBackendProvider``
+/// receives — see that protocol's doc comment for the end-to-end recipe.
+public struct ServerBackendRequest: Equatable, Sendable {
+    public var model: String?
 
-    internal init(model: String? = nil) {
+    public init(model: String? = nil) {
         self.model = model
     }
 }
 
-internal protocol ServerBackendProvider: Sendable {
+/// The extension point ``ManifoldServer/serve(configuration:backendProvider:)``
+/// dispatches every request through to obtain an ``InferenceBackend``. A host
+/// app links a companion package (e.g. manifold-mlx / manifold-llama) and
+/// implements this protocol to serve real local models — the CLI's built-in
+/// `TraitAwareServerBackendProvider` only ever reaches Foundation/Ollama in a
+/// core-only build; `--backend mlx`/`--backend llama` fail there with a
+/// pointer back to this seam.
+public protocol ServerBackendProvider: Sendable {
     func listModels() async throws -> [String]
     func listModelRecords() async throws -> [ModelsListResponse.Model]
     func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend
@@ -20,13 +32,13 @@ internal protocol ServerBackendProvider: Sendable {
 }
 
 extension ServerBackendProvider {
-    internal func listModelRecords() async throws -> [ModelsListResponse.Model] {
+    public func listModelRecords() async throws -> [ModelsListResponse.Model] {
         try await listModels().map { ModelsListResponse.Model(id: $0, status: "available") }
     }
 
     /// Default: no embedding support. Providers that vend an embedding backend
     /// override this method.
-    internal func embeddingBackend(for request: ServerBackendRequest) async -> (any EmbeddingBackend)? {
+    public func embeddingBackend(for request: ServerBackendRequest) async -> (any EmbeddingBackend)? {
         nil
     }
 }

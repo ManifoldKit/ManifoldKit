@@ -1,5 +1,8 @@
 # Building a backend companion package
 
+**Audience:** contributor
+**Status:** living
+
 A guide for anyone standing up a new companion package — a new local-inference
 family alongside [`manifold-mlx`](https://github.com/ManifoldKit/manifold-mlx)
 and [`manifold-llama`](https://github.com/ManifoldKit/manifold-llama), or a

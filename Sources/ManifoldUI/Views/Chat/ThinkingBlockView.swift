@@ -64,10 +64,13 @@ struct ThinkingBlockView: View {
             // asked to hear yet. Expanding the disclosure group exposes the
             // accumulated text via the inner `Text` for assistive reading;
             // the static "Reasoning in progress" label is enough for the
-            // collapsed state. Hosts that *do* want paced spoken progress
-            // should drive `AccessibilityAnnouncer` (coalesce + rate-limit +
-            // priority) from the token stream — the supported path for
-            // announcing streaming output without flooding assistive tech.
+            // collapsed state. Paced spoken progress for the *visible* token
+            // stream is handled automatically: `ChatGenerationCoordinator`
+            // drives `AccessibilityAnnouncer` (coalesce + rate-limit +
+            // priority) from `.tokenEmitted`, so streaming output is
+            // announced without flooding assistive tech. Reasoning deltas
+            // deliberately stay out of that pipeline — same rationale as the
+            // omitted accessibility value above.
             .accessibilityLabel("Reasoning in progress")
         } else {
             DisclosureGroup(isExpanded: $isExpanded) {

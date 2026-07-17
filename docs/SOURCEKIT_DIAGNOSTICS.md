@@ -1,5 +1,8 @@
 # SourceKit stale module diagnostics
 
+**Audience:** consumer
+**Status:** living
+
 Issue [#1109](https://github.com/ManifoldKit/ManifoldKit/issues/1109) tracks an
 editor-only `No such module 'ManifoldPersistenceSwiftData'` diagnostic observed
 after switching SwiftPM trait sets while `swift build` succeeds.

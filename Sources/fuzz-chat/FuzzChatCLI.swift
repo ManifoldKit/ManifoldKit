@@ -48,13 +48,19 @@ struct FuzzChatCLI {
         // explicit opt-out.
         var baseURLString: String?
         var apiKeyArg: String?
-        // Per-request HTTP idle timeout (seconds) for the cloud (`--backend
-        // openai`) path only. Default 90: slow/throttled free OpenRouter models
+        // Per-iteration generation timeout (seconds), applied to every
+        // backend. For `--backend openai` this is additionally enforced at
+        // the HTTP transport layer (`OpenAIFuzzFactory.requestTimeout`, a
+        // finer-grained idle timeout that resets per byte received);
+        // otherwise (`FuzzConfig.requestTimeout`) it's a coarser whole-
+        // generation wall-clock cap enforced by `GenerationTimeout` — the
+        // only bound local backends (Ollama, Foundation, mock, chaos) get,
+        // since they generate in-process with no socket to attach an idle
+        // timeout to. Default 90: slow/throttled free OpenRouter models
         // otherwise hang the full 300s session default per request, and the
         // detectors already flag anything over 60s — so 90s loses no signal
-        // while protecting throughput. Ignored for local backends.
+        // while protecting throughput.
         var requestTimeout: TimeInterval = 90
-        var requestTimeoutProvided = false
         // ChaosBackend failure-mode selection for `--backend chaos`. Defaults
         // to `.none` (happy path) so an unadorned `--backend chaos` campaign
         // stays signal-light, matching the prior hardcoded behavior.
@@ -114,7 +120,6 @@ struct FuzzChatCLI {
                     fail("--request-timeout requires a positive number of seconds")
                 }
                 requestTimeout = seconds
-                requestTimeoutProvided = true
             case "--detector":
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--detector requires a value") }
@@ -171,11 +176,6 @@ struct FuzzChatCLI {
             fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh or xcodebuild.")
         }
 
-        // `--request-timeout` only bounds the cloud HTTP transport; local
-        // backends generate in-process with no per-request socket timeout.
-        if requestTimeoutProvided && backend != .openai {
-            FileHandle.standardError.write(Data("fuzz-chat: note — --request-timeout only applies to --backend openai; ignoring for \(backend.rawValue).\n".utf8))
-        }
 
         // `--chaos-mode` only has an effect on --backend chaos.
         if chaosMode != .none && backend != .chaos {
@@ -311,7 +311,8 @@ struct FuzzChatCLI {
             sessionScripts: sessionScripts,
             corpusSubset: corpusSubset,
             tools: tools,
-            workers: workers
+            workers: workers,
+            requestTimeout: requestTimeout
         )
 
         let reporter = TerminalReporter(quiet: quiet)
@@ -469,12 +470,11 @@ struct FuzzChatCLI {
         // Forward the rotation block size so each worker's RotatingFuzzFactory
         // keeps the same amortisation behaviour as the parent invocation.
         args += ["--rotate-every", "\(options.rotateEvery)"]
-        // Forward the cloud per-request timeout so each openai worker inherits
-        // the same bound. Only for the openai backend — local backends ignore it
-        // (and would otherwise log a spurious "ignoring" note per worker).
-        if options.backend == .openai {
-            args += ["--request-timeout", "\(options.requestTimeout)"]
-        }
+        // Forward the per-iteration generation timeout so every worker
+        // inherits the same bound, regardless of backend — see the
+        // `requestTimeout` doc comment in `main()` for why this now applies
+        // universally rather than only to `--backend openai`.
+        args += ["--request-timeout", "\(options.requestTimeout)"]
         // Forward the chaos failure-mode spec so each worker injects the same
         // failure, not the `.none` default. Only for the chaos backend.
         if options.backend == .chaos, let spec = options.chaosModeSpec {
@@ -677,11 +677,14 @@ struct FuzzChatCLI {
             "                      base = https://openrouter.ai/api",
             "  --api-key <key>     openai backend: API key (discouraged — leaks into ps/history).",
             "                      Prefer the OPENROUTER_API_KEY (or OPENAI_API_KEY) env var.",
-            "  --request-timeout N openai backend: per-request HTTP idle timeout in seconds",
-            "                      (default 90). Bounds how long a hung iteration waits before",
-            "                      abandoning. Slow/free OpenRouter models otherwise hang the",
-            "                      full 300s session default per request; detectors already",
-            "                      flag >60s, so 90s loses no signal. Ignored for local backends.",
+            "  --request-timeout N per-iteration generation timeout in seconds (default 90).",
+            "                      Bounds how long a hung iteration waits before abandoning.",
+            "                      openai backend: enforced as an HTTP idle timeout (resets",
+            "                      per byte received) — slow/free OpenRouter models otherwise",
+            "                      hang the full 300s session default per request. All other",
+            "                      backends: enforced as a coarser whole-generation wall-clock",
+            "                      cap, since local generation has no socket to attach an idle",
+            "                      timeout to. Detectors already flag >60s, so 90s loses no signal.",
             "  --chaos-mode <spec> ChaosBackend failure mode (default: none). One of:",
             "                      none | drop-mid-stream[:afterTokens] |",
             "                      slow-first-token[:delayMs] |",

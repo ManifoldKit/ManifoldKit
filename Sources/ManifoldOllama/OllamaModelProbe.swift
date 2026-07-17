@@ -7,10 +7,16 @@ import ManifoldCloudCore
 struct OllamaShowProbe {
     let thinking: Bool
     let vision: Bool
+    /// Whether the server advertises `"tools"` in `capabilities`. Defaults to
+    /// `true` on probe failure (see ``empty``): tool support was historically
+    /// assumed for every Ollama model, so only a *successful* probe that omits
+    /// the capability may withdraw the claim — a dead probe must not disable
+    /// tool calling for models that support it.
+    let tools: Bool
     let thinkingMarkers: ThinkingMarkers?
     let contextLength: Int?
 
-    static let empty = OllamaShowProbe(thinking: false, vision: false, thinkingMarkers: nil, contextLength: nil)
+    static let empty = OllamaShowProbe(thinking: false, vision: false, tools: true, thinkingMarkers: nil, contextLength: nil)
 }
 
 enum OllamaModelProbe {
@@ -76,9 +82,15 @@ enum OllamaModelProbe {
         // the server advertises it, so we read the flag straight from the list.
         var thinking = false
         var vision = false
+        // Tools default true (the historical assumption); a successful probe
+        // whose capabilities list omits "tools" withdraws the claim so callers
+        // get a truthful pre-flight instead of a generation-time HTTP 400
+        // ("registry.ollama.ai/library/<model> does not support tools").
+        var tools = true
         if let caps = json["capabilities"] as? [String] {
             thinking = caps.contains { $0.lowercased() == "thinking" }
             vision = caps.contains { $0.lowercased() == "vision" }
+            tools = caps.contains { $0.lowercased() == "tools" }
         }
 
         // Thinking markers — auto-detect from the Jinja template via the
@@ -119,6 +131,7 @@ enum OllamaModelProbe {
         return OllamaShowProbe(
             thinking: thinking,
             vision: vision,
+            tools: tools,
             thinkingMarkers: detectedMarkers,
             contextLength: contextLength
         )

@@ -57,6 +57,36 @@ import ManifoldInference
 /// rounding margin: a post-turn caller that hands in an already-rounded
 /// utilisation may cross the threshold while the pre-turn recompute from raw
 /// `lastPromptTokens` stays just below it.
+///
+/// ## Outcome observability (#2203) and message pinning (#2204)
+///
+/// `compress`/`compressBeforeTurn` still return bare `[ChatMessage]` — the
+/// `CompressionPolicy`/`PreTurnCompressionPolicy` protocol shape is unchanged
+/// — but the factories accept `onOutcome` and `isPinned` so a consumer that
+/// constructs a `DefaultCompressionPolicy` directly (this is the layer
+/// Fireside's `DefaultCompressionPolicy` adoption, roryford/fireside#910,
+/// consumes) can observe what happened and pin messages without record-shape
+/// heuristics or squatting on the `.memory` kind namespace:
+///
+/// ```swift
+/// let policy = DefaultCompressionPolicy.anchored(
+///     threshold: 0.85, contextSize: 8_192,
+///     isPinned: { message in session.pinnedMessageIDs.contains(message.id) },
+///     onOutcome: { outcome in
+///         switch outcome {
+///         case .summarized(let tokens): logSummary(tokens: tokens)
+///         case .fallbackUsed(let reason): logFallback(reason: reason)
+///         case .cancelled: break // turn cancelled mid-summarise; not an error
+///         case .skippedInsufficientBudget, .nothingToSummarize, .notNeeded: break
+///         case .reduced(let strategyName): logReduced(strategyName)
+///         }
+///     }
+/// )
+/// ```
+///
+/// `isPinned` is evaluated fresh on every `compress` call (it's a closure,
+/// not a captured snapshot) — capture a live source of truth (e.g. the
+/// session object itself) rather than a `Set<UUID>` copy that goes stale.
 public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPolicy {
     private let strategy: any CompressionStrategy
 
@@ -70,6 +100,16 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     /// visible to the strategy). Single source of truth for the reservation.
     public let reservedTokens: Int
     private let tokenizer: (any TokenizerProvider)?
+    /// Predicate honored alongside `.system`-role / `.memory`-kind records as
+    /// load-bearing (#2204) — lets a consumer pin a message through
+    /// compression without mutating it or squatting on the `.memory` kind
+    /// namespace the anchored strategy uses for its own summary records.
+    /// `nil` (the default) preserves pre-#2204 behavior.
+    private let isPinned: (@Sendable (ChatMessage) -> Bool)?
+    /// Fires with the ``CompressionOutcome`` classification every time
+    /// `compress`/`compressBeforeTurn` runs, including the budget-skip case
+    /// this policy handles itself (#2203). `nil` (the default) is a no-op.
+    private let onOutcome: (@Sendable (CompressionOutcome) -> Void)?
 
     /// Default reservation when a caller doesn't override it.
     ///
@@ -102,13 +142,17 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
         threshold: Double,
         contextSize: Int,
         reservedTokens: Int,
-        tokenizer: (any TokenizerProvider)?
+        tokenizer: (any TokenizerProvider)?,
+        isPinned: (@Sendable (ChatMessage) -> Bool)? = nil,
+        onOutcome: (@Sendable (CompressionOutcome) -> Void)? = nil
     ) {
         self.strategy = strategy
         self.threshold = threshold
         self.contextSize = contextSize
         self.reservedTokens = reservedTokens
         self.tokenizer = tokenizer
+        self.isPinned = isPinned
+        self.onOutcome = onOutcome
     }
 
     // MARK: - Factories
@@ -121,33 +165,51 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     ///     system-prompt headroom (default ``defaultReservedTokens``).
     ///   - tokenizer: Inject the backend's tokenizer for a guaranteed budget;
     ///     `nil` (default) makes the budget advisory (chars/4 heuristic).
+    ///   - isPinned: Predicate marking a message load-bearing regardless of
+    ///     role/kind (#2204), e.g.
+    ///     `{ message in session.pinnedMessageIDs.contains(message.id) }`.
+    ///   - onOutcome: Fires with the ``CompressionOutcome`` classification on
+    ///     every `compress` call (#2203).
     public static func truncating(
         threshold: Double = 0.90,
         contextSize: Int,
         reservedTokens: Int = defaultReservedTokens,
-        tokenizer: (any TokenizerProvider)? = nil
+        tokenizer: (any TokenizerProvider)? = nil,
+        isPinned: (@Sendable (ChatMessage) -> Bool)? = nil,
+        onOutcome: (@Sendable (CompressionOutcome) -> Void)? = nil
     ) -> DefaultCompressionPolicy {
         DefaultCompressionPolicy(
             strategy: TruncatingCompressionStrategy(),
             threshold: threshold, contextSize: contextSize,
-            reservedTokens: reservedTokens, tokenizer: tokenizer
+            reservedTokens: reservedTokens, tokenizer: tokenizer,
+            isPinned: isPinned, onOutcome: onOutcome
         )
     }
 
     /// Zero-inference scored selection (recency / length / keyword density).
     /// `headBudgetFraction > 0` pins the oldest messages to counter the
     /// "lost in the middle" effect.
+    ///
+    /// - Parameters:
+    ///   - isPinned: Predicate marking a message load-bearing regardless of
+    ///     role/kind (#2204), e.g.
+    ///     `{ message in session.pinnedMessageIDs.contains(message.id) }`.
+    ///   - onOutcome: Fires with the ``CompressionOutcome`` classification on
+    ///     every `compress` call (#2203).
     public static func extractive(
         threshold: Double = 0.75,
         headBudgetFraction: Double = 0.0,
         contextSize: Int,
         reservedTokens: Int = defaultReservedTokens,
-        tokenizer: (any TokenizerProvider)? = nil
+        tokenizer: (any TokenizerProvider)? = nil,
+        isPinned: (@Sendable (ChatMessage) -> Bool)? = nil,
+        onOutcome: (@Sendable (CompressionOutcome) -> Void)? = nil
     ) -> DefaultCompressionPolicy {
         DefaultCompressionPolicy(
             strategy: ExtractiveCompressionStrategy(headBudgetFraction: headBudgetFraction),
             threshold: threshold, contextSize: contextSize,
-            reservedTokens: reservedTokens, tokenizer: tokenizer
+            reservedTokens: reservedTokens, tokenizer: tokenizer,
+            isPinned: isPinned, onOutcome: onOutcome
         )
     }
 
@@ -166,13 +228,21 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     ///     `parseSummaryResponse`: a custom template should emit
     ///     `UPPERCASE-FIELD: value` lines (≥2) or the parser degrades to a
     ///     raw-truncated brief. `{old_text}` is the substitution placeholder.
+    ///   - isPinned: Predicate marking a message load-bearing regardless of
+    ///     role/kind (#2204), e.g.
+    ///     `{ message in session.pinnedMessageIDs.contains(message.id) }`.
+    ///   - onOutcome: Fires with the ``CompressionOutcome`` classification on
+    ///     every `compress` call — distinguishes summarized / fallback /
+    ///     cancelled / nothing-to-summarize (#2203).
     public static func anchored(
         threshold: Double = 0.85,
         contextSize: Int,
         reservedTokens: Int = defaultReservedTokens,
         summarizerInputWindow: Int? = nil,
         summaryTemplate: String? = nil,
-        tokenizer: (any TokenizerProvider)? = nil
+        tokenizer: (any TokenizerProvider)? = nil,
+        isPinned: (@Sendable (ChatMessage) -> Bool)? = nil,
+        onOutcome: (@Sendable (CompressionOutcome) -> Void)? = nil
     ) -> DefaultCompressionPolicy {
         DefaultCompressionPolicy(
             strategy: AnchoredCompressionStrategy(
@@ -181,7 +251,8 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
                 summaryTemplate: summaryTemplate
             ),
             threshold: threshold, contextSize: contextSize,
-            reservedTokens: reservedTokens, tokenizer: tokenizer
+            reservedTokens: reservedTokens, tokenizer: tokenizer,
+            isPinned: isPinned, onOutcome: onOutcome
         )
     }
 
@@ -204,12 +275,16 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
             Log.inference.warning(
                 "[Compression] contextSize \(contextSize) <= reservedTokens \(reservedTokens); skipping compression (no usable history budget)"
             )
+            onOutcome?(.skippedInsufficientBudget)
             return history
         }
-        return try await strategy.compress(
+        let result = try await strategy.compress(
             history: history, contextSize: contextSize,
-            reservedTokens: reservedTokens, tokenizer: tokenizer, generate: generate
+            reservedTokens: reservedTokens, tokenizer: tokenizer,
+            isPinned: isPinned ?? { _ in false }, generate: generate
         )
+        onOutcome?(result.outcome)
+        return result.messages
     }
 
     // MARK: - PreTurnCompressionPolicy (pre-turn)

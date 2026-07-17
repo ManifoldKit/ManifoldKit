@@ -10,6 +10,16 @@ A ``SkillToolSource`` exposes a single `invoke_skill` dispatch tool to the model
 
 **macOS-only in v1.** iOS skill discovery requires an entitlement/app-group design that hasn't shipped yet — on iOS ``SkillLoader/discover()`` returns `[]` and logs a one-time warning.
 
+## Experimental tier
+
+`ManifoldSkills` is in ManifoldKit's **experimental tier** (declared
+2026-07-13) — it may break in any minor release, always migration-noted,
+until it graduates. Graduation requires a real adopter: a shipping app or
+companion that pins ManifoldKit and imports this module from non-test code.
+Documentation and examples don't count as adoption. See
+[docs/API-DESIGN.md § 7b](https://github.com/ManifoldKit/ManifoldKit/blob/main/docs/API-DESIGN.md)
+for the full policy.
+
 ## Topics
 
 ### Essentials

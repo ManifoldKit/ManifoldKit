@@ -292,24 +292,16 @@ public struct Replayer: Sendable {
     }
 
     /// Shell out to `git rev-parse --short HEAD` — same invocation shape
-    /// `HarnessMetadata` uses on capture. Returns "unknown" on failure so
-    /// comparison still works (recorded rev != "unknown" → drift).
+    /// `HarnessMetadata` uses on capture. Returns "unknown" on failure (or
+    /// timeout — see `BoundedSubprocess`) so comparison still works (recorded
+    /// rev != "unknown" → drift).
     static func resolveCurrentGitRev() -> String {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        proc.arguments = ["rev-parse", "--short", "HEAD"]
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = Pipe()
-        do {
-            try proc.run()
-            proc.waitUntilExit()
-            let data = out.fileHandleForReading.readDataToEndOfFile()
-            let raw = String(data: data, encoding: .utf8) ?? "unknown"
-            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            return "unknown"
-        }
+        let result = BoundedSubprocess.run(
+            executableURL: URL(fileURLWithPath: "/usr/bin/git"),
+            arguments: ["rev-parse", "--short", "HEAD"]
+        )
+        guard let raw = result.output else { return "unknown" }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Execution
@@ -427,7 +419,8 @@ public struct Replayer: Sendable {
             ),
             phase: capture.phase,
             error: capture.error,
-            stopReason: capture.stopReason
+            stopReason: capture.stopReason,
+            truncated: capture.truncated
         )
     }
 

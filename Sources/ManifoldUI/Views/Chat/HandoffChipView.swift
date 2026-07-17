@@ -15,17 +15,17 @@ import ManifoldInference
 ///
 /// The chip is suppressed when `from == nil` (first message in a sequence)
 /// or when `to == nil` (cannot resolve target agent — fail soft, no chip).
-public struct HandoffChipView: View {
+package struct HandoffChipView: View {
 
-    public let from: AgentDefinition?
-    public let to: AgentDefinition?
+    package let from: AgentDefinition?
+    package let to: AgentDefinition?
 
-    public init(from: AgentDefinition?, to: AgentDefinition?) {
+    package init(from: AgentDefinition?, to: AgentDefinition?) {
         self.from = from
         self.to = to
     }
 
-    public var body: some View {
+    package var body: some View {
         // Suppress the chip when we cannot identify both sides of the transition.
         // First-message-of-sequence (`from == nil`) is a common case; do not
         // render a half-formed chip.

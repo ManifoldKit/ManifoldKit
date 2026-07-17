@@ -1,5 +1,8 @@
 # Migration: deprecated `@_exported` shims retired (P7)
 
+**Audience:** consumer
+**Status:** historical
+
 **This is a breaking change.** The `ManifoldBackends` umbrella and the
 `ManifoldCloud` re-export shim — both introduced as one-release deprecation
 bridges during the v0.48 packaging split — have been removed. `import

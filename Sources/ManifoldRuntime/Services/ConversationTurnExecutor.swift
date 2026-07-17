@@ -254,7 +254,7 @@ package struct ConversationTurnExecutor: Sendable {
         // `.messageUpdated` / `.messageRemoved` events unless the whole batch
         // completes successfully.
         var updatedMessage = history[index]
-        updatedMessage.content = text
+        updatedMessage.replaceTextContent(text)
         let trailing = Array(history[(index + 1)...])
 
         var mutations: [MessageStoreMutation] = [.update(updatedMessage)]
@@ -388,7 +388,13 @@ package struct ConversationTurnExecutor: Sendable {
             streamingBatchCharacterLimit: 128,
             thinkingStreamingUpdateInterval: .milliseconds(33),
             thinkingStreamingBatchCharacterLimit: 128,
-            loopDetectionEnabled: true
+            loopDetectionEnabled: true,
+            // Carry the caller's stall-timeout and repetition tuning through
+            // the branch flow — only the streaming cadence knobs are pinned to
+            // legacy BranchInput defaults above; these two are turn-behaviour
+            // policy the caller owns.
+            progressStallTimeout: config.progressStallTimeout,
+            repetitionGuard: config.repetitionGuard
         )
         // Branch historically does NOT fire `willBeginTurn` pre-turn hooks —
         // the legacy BranchInput path never did. Preserved as-is.
@@ -770,7 +776,10 @@ package struct ConversationTurnExecutor: Sendable {
         var accumulator = GenerationStreamAccumulator()
         var streamFailed: ConversationError?
 
-        var consumer = GenerationStreamConsumer(loopDetectionEnabled: config.loopDetectionEnabled)
+        var consumer = GenerationStreamConsumer(
+            loopDetectionEnabled: config.loopDetectionEnabled,
+            repetitionGuard: config.repetitionGuard
+        )
         var batcher = StreamingTokenBatcher(
             interval: config.streamingUpdateInterval,
             maxBufferedCharacters: config.streamingBatchCharacterLimit
@@ -781,8 +790,26 @@ package struct ConversationTurnExecutor: Sendable {
         )
         var thinkingDisplayed = ""
 
+        // Whether the turn's progress/stall timeout fired. When set, the
+        // terminal path below reports `.timedOut` instead of the generic
+        // `.stop` failure reason so a consumer can tell an unresponsive
+        // backend apart from a real inference error.
+        var timedOut = false
+
+        // Progress/stall timeout (opt-in via `config.progressStallTimeout`).
+        // Reuse `GenerationStream`'s existing idle-stream primitive — the same
+        // one the structured-output reliability envelope uses — rather than a
+        // bespoke monitor: wrapping the queue's event stream makes iteration
+        // throw `InferenceError.idleTimeout` when no event arrives within the
+        // window. When the timeout is nil we iterate the queue's stream
+        // directly, keeping the default path byte-identical.
+        let timeoutWrapper: GenerationStream? = config.progressStallTimeout.map {
+            GenerationStream(stream.events, idleTimeout: $0)
+        }
+        let drainEvents = timeoutWrapper?.events ?? stream.events
+
         do {
-            eventLoop: for try await event in stream.events {
+            eventLoop: for try await event in drainEvents {
                 let cancelled = await isCancelled(handle: handle)
                 if cancelled { break }
 
@@ -822,6 +849,7 @@ package struct ConversationTurnExecutor: Sendable {
                     }
                     thinkingDisplayed = ""
                     if let block = accumulator.finalizeThinking() {
+                        assistantMessage.contentParts.append(.thinking(block.text, signature: block.signature))
                         emit(.thinkingFinalized(messageID: assistantID, text: block.text, signature: block.signature))
                     }
 
@@ -893,6 +921,29 @@ package struct ConversationTurnExecutor: Sendable {
                     break
                 }
             }
+        } catch let InferenceError.idleTimeout(timeout) where config.progressStallTimeout != nil {
+            // Progress/stall timeout fired: the backend went unresponsive for
+            // longer than `config.progressStallTimeout`. Cancel the in-flight
+            // backend work so it doesn't keep running after we stop consuming,
+            // then classify this as a distinct timed-out outcome (not a generic
+            // inference failure). A user cancel that raced ahead still wins —
+            // the `isCancelled` check below re-derives the terminal reason.
+            //
+            // The `where` clause scopes the `.timedOut` reclassification to
+            // turns that actually armed this executor's stall wrapper. An
+            // `InferenceError.idleTimeout` surfacing from a deeper layer (a
+            // cloud backend's own stream-idle policy) on a turn with no
+            // `progressStallTimeout` falls through to the generic catch below
+            // and stays a plain `.inference` failure — the turn-level
+            // timed-out outcome means "the turn's own stall knob fired",
+            // nothing broader.
+            await inferenceService.cancelAsync(token)
+            if await isCancelled(handle: handle) {
+                streamFailed = .cancelled
+            } else {
+                timedOut = true
+                streamFailed = .inference(InferenceError.idleTimeout(timeout))
+            }
         } catch {
             // Map CancellationError to `.cancelled` even when the registry has
             // not yet observed `markCancelled` for this handle. `stopGeneration`
@@ -927,6 +978,7 @@ package struct ConversationTurnExecutor: Sendable {
         if accumulator.hasOpenThinkingBlock {
             _ = thinkingBatcher.flush(now: ContinuousClock.now)
             if let block = accumulator.finalizeThinking() {
+                assistantMessage.contentParts.append(.thinking(block.text, signature: block.signature))
                 emit(.thinkingFinalized(messageID: assistantID, text: block.text, signature: block.signature))
             }
         }
@@ -993,6 +1045,11 @@ package struct ConversationTurnExecutor: Sendable {
             // behaviour) and emit error. We do not collapse this into
             // `.streamFinished(reason: .empty)` because consumers need to
             // know the run failed.
+            //
+            // A progress/stall timeout takes this same partial-save path but
+            // reports `.timedOut` so the terminal event and outcome stay
+            // distinguishable from a generic inference failure.
+            let failureReason: FinishReason = timedOut ? .timedOut : .stop
             writeFinalContent(accumulator.visibleText, into: &assistantMessage)
             if !accumulator.visibleText.isEmpty || hasToolContent {
                 do {
@@ -1002,13 +1059,13 @@ package struct ConversationTurnExecutor: Sendable {
                     let persistenceError = ConversationError.persistence(error)
                     emit(.errorRaised(persistenceError))
                     emit(.errorRaised(streamFailed))
-                    emit(.streamFinished(messageID: assistantID, reason: .stop))
+                    emit(.streamFinished(messageID: assistantID, reason: failureReason))
                     await completeOutcome(
                         outcomeCompletion,
                         sessionID: sessionID,
                         handle: handle,
                         assistantMessageID: assistantID,
-                        reason: .stop,
+                        reason: failureReason,
                         error: persistenceError,
                         finalText: accumulator.visibleText,
                         promptTokens: usage?.promptTokens,
@@ -1018,14 +1075,14 @@ package struct ConversationTurnExecutor: Sendable {
                 }
             }
             emit(.errorRaised(streamFailed))
-            emit(.streamFinished(messageID: assistantID, reason: .stop))
+            emit(.streamFinished(messageID: assistantID, reason: failureReason))
             await completeOutcome(
                 outcomeCompletion,
                 sessionID: sessionID,
                 handle: handle,
                 assistantMessageID: assistantID,
                 assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent) ? assistantMessage : nil,
-                reason: .stop,
+                reason: failureReason,
                 error: streamFailed,
                 finalText: accumulator.visibleText,
                 promptTokens: usage?.promptTokens,
@@ -1175,7 +1232,7 @@ package struct ConversationTurnExecutor: Sendable {
         // Post-generation hooks: fire and await with a per-hook timeout.
         // Not called on cancel, error, or empty-response paths (those all
         // return before reaching this point).
-        if !generationHooks.isEmpty {
+        if !generationHooks.isEmpty || turnHookRegistry != nil {
             let completedTurn = CompletedTurn(
                 sessionID: sessionID,
                 assistantMessage: assistantMessage,
@@ -1188,6 +1245,27 @@ package struct ConversationTurnExecutor: Sendable {
                 let timeout = hookTimeout
                 await withHookTimeout(timeout, label: hookLabel) {
                     await hook.postGeneration(completedTurn)
+                }
+            }
+
+            // B.2 unified hook seam: the same completed-turn payload also
+            // flows through the HookRegistry so hosts standardised on the
+            // registry (preToolUse/preCompact) get postGeneration without
+            // adopting the separate `GenerationHook` protocol. Observational
+            // like `.preCompact` — `block` is not honoured, there is no
+            // mutation channel once the turn has committed.
+            if let turnHookRegistry {
+                let input = HookInput(
+                    event: .postGeneration,
+                    sessionID: sessionID,
+                    completedTurn: completedTurn
+                )
+                let output = await turnHookRegistry.run(input)
+                emit(.hookFired(event: "postGeneration", sessionID: sessionID))
+                if output.block {
+                    Log.inference.warning(
+                        "postGeneration hook returned block:true — block is not honoured for postGeneration; the turn has already completed."
+                    )
                 }
             }
         }

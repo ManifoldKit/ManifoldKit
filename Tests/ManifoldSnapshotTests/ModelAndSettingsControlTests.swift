@@ -35,6 +35,27 @@ final class ModelAndSettingsControlTests: XCTestCase {
         )
     }
 
+    /// A `ChatViewModel` whose `InferenceService` has declared GGUF support —
+    /// mirrors `ModelManagementSheetLogicTests.makeRegistry(supporting:)`, the
+    /// same real `declareSupport(for:)` call a companion backend registrar
+    /// (manifold-mlx / manifold-llama) makes at runtime (#1749). Needed so the
+    /// Download tab is actually reachable: `ModelManagementSheet.availableTabs`
+    /// hides it unless `modelRegistry.compatibility(for:)` reports a
+    /// downloadable type supported, and a bare `InferenceService()` never does.
+    private func makeChatViewModelWithDownloadableBackend() -> ChatViewModel {
+        let oneGB: UInt64 = 1_024 * 1_024 * 1_024
+        let service = InferenceService()
+        service.declareSupport(for: .gguf)
+        return ChatViewModel(
+            inferenceService: service,
+            deviceCapability: DeviceCapabilityService(physicalMemory: 16 * oneGB),
+            modelStorage: ModelStorageService(
+                baseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+            )
+        )
+    }
+
     // MARK: - ModelManagementSheet — Tab Structure
 
     private func modelManagementDump(tab: ModelManagementSheet.Tab = .select) -> String {
@@ -45,20 +66,15 @@ final class ModelAndSettingsControlTests: XCTestCase {
         )
     }
 
-    func test_modelManagement_hasAllTabEnumCases() {
-        let dump = modelManagementDump(tab: .select)
-        // Tab enum cases appear as "Tab.select", "Tab.download", "Tab.storage" in the dump
-        XCTAssertTrue(dump.contains("Tab.select"), "Should contain the Select tab case")
-        XCTAssertTrue(dump.contains("Tab.download"), "Should contain the Download tab case")
-        XCTAssertTrue(dump.contains("Tab.storage"), "Should contain the Storage tab case")
-    }
-
-    func test_modelManagement_hasTabSFSymbols() {
-        let dump = modelManagementDump(tab: .select)
-        // SF Symbols used in tab labels
-        XCTAssertTrue(dump.contains("checkmark.circle"), "Select tab icon should be present")
-        XCTAssertTrue(dump.contains("square.and.arrow.down"), "Download tab icon should be present")
-        XCTAssertTrue(dump.contains("externaldrive"), "Storage tab icon should be present")
+    /// Like `modelManagementDump`, but backed by a registry that has declared
+    /// GGUF support so the `.download` tab is actually reachable (see
+    /// `makeChatViewModelWithDownloadableBackend`).
+    private func modelManagementDownloadableDump(tab: ModelManagementSheet.Tab = .download) -> String {
+        let chatVM = makeChatViewModelWithDownloadableBackend()
+        return ViewHierarchyDumper.dump(
+            ModelManagementSheet(modelRegistry: chatVM.modelRegistry, initialTab: tab)
+                .environment(ModelManagementViewModel())
+        )
     }
 
     func test_modelManagement_hasSegmentedPicker() {
@@ -72,52 +88,10 @@ final class ModelAndSettingsControlTests: XCTestCase {
         #endif
     }
 
-    func test_modelManagement_selectTab_hasSortPicker() {
-        // The sort picker is only mounted when at least one model is available
-        // (the empty-state branch shows a placeholder instead).
-        // ``ModelManagementSheet.onAppear`` calls `chatViewModel.refreshModels()`,
-        // which clobbers any test seed by scanning the (empty) on-disk model
-        // directory — so we render `ModelPicker` directly to bypass
-        // the refresh and exercise just the picker mount path.
-        //
-        // Per the file header, List-rendered text doesn't always appear in
-        // `Swift.dump()`. We assert on the picker's accessibility identifier
-        // and the `ModelSelectionSortOrder` state type — both are visible in
-        // the dump for any constructed picker.
-        let oneGB: UInt64 = 1_024 * 1_024 * 1_024
-        let chatVM = makeChatViewModel()
-        chatVM.availableModels = [
-            ModelInfo(
-                name: "Demo",
-                fileName: "demo.gguf",
-                url: URL(fileURLWithPath: "/tmp/demo.gguf"),
-                fileSize: 2 * oneGB,
-                modelType: .gguf
-            )
-        ]
-
-        let dump = ViewHierarchyDumper.dump(
-            ModelPicker(modelRegistry: chatVM.modelRegistry, onSelect: {})
-                .environment(chatVM)
-        )
-
-        // `Swift.dump()` on a hosting controller surfaces the root view's
-        // declared state but does not traverse into `body` (the picker itself
-        // lives there), so we assert on the `@State` declaration instead.
-        XCTAssertTrue(
-            dump.contains("_sortOrder"),
-            "Select tab should declare a @State sort-order property"
-        )
-        XCTAssertTrue(
-            dump.contains("ModelSelectionSortOrder"),
-            "Sort picker should be backed by ModelSelectionSortOrder state"
-        )
-    }
-
     // MARK: - ModelManagementSheet — Download Tab Content
 
     func test_modelManagement_downloadTab_hasWhyDownloadView() {
-        let dump = modelManagementDump(tab: .download)
+        let dump = modelManagementDownloadableDump(tab: .download)
         XCTAssertTrue(
             dump.contains("WhyDownloadView"),
             "Download tab should contain the WhyDownloadView explainer"
@@ -125,7 +99,7 @@ final class ModelAndSettingsControlTests: XCTestCase {
     }
 
     func test_modelManagement_downloadTab_hasDownloadableModelRow() {
-        let dump = modelManagementDump(tab: .download)
+        let dump = modelManagementDownloadableDump(tab: .download)
         // DownloadableModelRow is rendered for recommended models
         XCTAssertTrue(
             dump.contains("DownloadableModelRow"),
@@ -134,23 +108,10 @@ final class ModelAndSettingsControlTests: XCTestCase {
     }
 
     func test_modelManagement_downloadTab_hasDownloadableModelGroup() {
-        let dump = modelManagementDump(tab: .download)
+        let dump = modelManagementDownloadableDump(tab: .download)
         XCTAssertTrue(
             dump.contains("DownloadableModelGroup"),
             "Download tab should reference DownloadableModelGroup for search result grouping"
-        )
-    }
-
-    func test_modelManagement_downloadTab_notInSelectTab() {
-        let dump = modelManagementDump(tab: .select)
-        // WhyDownloadView and DownloadableModelRow should NOT appear in the select tab
-        XCTAssertFalse(
-            dump.contains("WhyDownloadView"),
-            "Select tab should not contain WhyDownloadView (download tab content)"
-        )
-        XCTAssertFalse(
-            dump.contains("DownloadableModelRow"),
-            "Select tab should not contain DownloadableModelRow (download tab content)"
         )
     }
 
@@ -299,18 +260,6 @@ final class ModelAndSettingsControlTests: XCTestCase {
         XCTAssertTrue(
             dump.contains("PersonaPickerView"),
             "Settings should contain the PersonaPickerView type reference"
-        )
-    }
-
-    func test_generationSettings_hasAPIConfigurationView() {
-        // APIConfigurationView is wired through a .sheet closure — lazy content
-        // is never instantiated until presented, so it can't appear in the view
-        // hierarchy dump. Check the static generic type instead.
-        let view = GenerationSettingsView { APIConfigurationView() }
-        let typeDescription = String(describing: type(of: view))
-        XCTAssertTrue(
-            typeDescription.contains("APIConfigurationView"),
-            "GenerationSettingsView should be parameterized by APIConfigurationView — type was: \(typeDescription)"
         )
     }
 

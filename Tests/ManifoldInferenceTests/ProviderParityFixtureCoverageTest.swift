@@ -25,6 +25,9 @@ import XCTest
 ///    `Tests/Fixtures/backends/<directory>/streaming/simple-prompt/`.
 /// 3. Remove the entry from `missingFixtureAllowlist` (or leave it absent —
 ///    the allowlist is only for genuinely-missing fixtures in the nightly tier).
+///
+/// The existence loop lives in ``missingBackends(backendsRoot:manifest:allowlist:)``
+/// so the in-file sabotage test exercises the exact function the audit runs.
 final class ProviderParityFixtureCoverageTest: XCTestCase {
 
     // MARK: - Manifest
@@ -84,28 +87,11 @@ final class ProviderParityFixtureCoverageTest: XCTestCase {
         let fixturesRoot = try Self.locateFixturesRoot()
         let backendsRoot = fixturesRoot.appendingPathComponent("backends")
 
-        var missing: [String] = []
-
-        for entry in Self.manifest {
-            let dirURL = backendsRoot
-                .appendingPathComponent(entry.fixtureDirectory)
-                .appendingPathComponent("streaming")
-                .appendingPathComponent("simple-prompt")
-
-            var isDir: ObjCBool = false
-            let exists = FileManager.default.fileExists(
-                atPath: dirURL.path,
-                isDirectory: &isDir
-            )
-
-            if !exists || !isDir.boolValue {
-                // Allow entries that are in the explicit allowlist.
-                if Self.missingFixtureAllowlist.contains(entry.backendName) { continue }
-                missing.append(
-                    "  \(entry.backendName) → Tests/Fixtures/backends/\(entry.fixtureDirectory)/streaming/simple-prompt/"
-                )
-            }
-        }
+        let missing = Self.missingBackends(
+            backendsRoot: backendsRoot,
+            manifest: Self.manifest,
+            allowlist: Self.missingFixtureAllowlist
+        )
 
         XCTAssertTrue(missing.isEmpty, """
             The following registered backends are missing a \
@@ -128,6 +114,68 @@ final class ProviderParityFixtureCoverageTest: XCTestCase {
             2,
             "missingFixtureAllowlist exceeds cap of 2. Create stub directories instead of growing the list."
         )
+    }
+
+    // MARK: - Sabotage (exercises the same `missingBackends(backendsRoot:manifest:allowlist:)` the audit runs)
+
+    /// Plants a temp backends root with only the "openai" fixture directory
+    /// present and asserts the REAL existence loop flags the missing
+    /// "claude" entry but not the present "openai" one — and that adding
+    /// the missing backend's name to the allowlist exempts it.
+    func test_sabotage_missingBackendsFlagsPlantedGap() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("provider-parity-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let openaiFixture = tmp
+            .appendingPathComponent("openai/streaming/simple-prompt", isDirectory: true)
+        try FileManager.default.createDirectory(at: openaiFixture, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: openaiFixture.appendingPathComponent(".gitkeep").path, contents: nil)
+
+        let manifest: [(backendName: String, fixtureDirectory: String)] = [
+            (backendName: "openai.chat_completions", fixtureDirectory: "openai"),
+            (backendName: "anthropic.messages",      fixtureDirectory: "claude"),
+        ]
+
+        let missing = Self.missingBackends(backendsRoot: tmp, manifest: manifest, allowlist: [])
+        XCTAssertTrue(missing.contains { $0.contains("anthropic.messages") })
+        XCTAssertFalse(missing.contains { $0.contains("openai.chat_completions") })
+
+        let exempted = Self.missingBackends(backendsRoot: tmp, manifest: manifest, allowlist: ["anthropic.messages"])
+        XCTAssertTrue(exempted.isEmpty)
+    }
+
+    // MARK: - Detection
+
+    static func missingBackends(
+        backendsRoot: URL,
+        manifest: [(backendName: String, fixtureDirectory: String)],
+        allowlist: Set<String>
+    ) -> [String] {
+        var missing: [String] = []
+
+        for entry in manifest {
+            let dirURL = backendsRoot
+                .appendingPathComponent(entry.fixtureDirectory)
+                .appendingPathComponent("streaming")
+                .appendingPathComponent("simple-prompt")
+
+            var isDir: ObjCBool = false
+            let exists = FileManager.default.fileExists(
+                atPath: dirURL.path,
+                isDirectory: &isDir
+            )
+
+            if !exists || !isDir.boolValue {
+                // Allow entries that are in the explicit allowlist.
+                if allowlist.contains(entry.backendName) { continue }
+                missing.append(
+                    "  \(entry.backendName) → Tests/Fixtures/backends/\(entry.fixtureDirectory)/streaming/simple-prompt/"
+                )
+            }
+        }
+
+        return missing
     }
 
     // MARK: - Fixture root discovery

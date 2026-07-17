@@ -89,6 +89,20 @@ final class SummarisationHookTests: XCTestCase {
         }
     }
 
+    // MARK: - Throwing SessionStore (#A2)
+
+    /// A `SessionStore` whose `fetchSessions()` always throws, simulating a
+    /// transient persistence failure while resolving pinned-message IDs.
+    final class ThrowingFetchSessionsStore: SessionStore {
+        struct Failure: Error {}
+
+        func insertSession(_ session: ChatSession) async throws {}
+        func updateSession(_ session: ChatSession) async throws {}
+        func deleteSession(_ sessionID: UUID) async throws {}
+        func deleteAll() async throws {}
+        func fetchSessions() async throws -> [ChatSession] { throw Failure() }
+    }
+
     // MARK: - MockDialogueSummariser
 
     /// A summariser that returns a fixed string and records what it was given.
@@ -469,6 +483,79 @@ final class SummarisationHookTests: XCTestCase {
         //  so we confirm the pinned IDs are all still present — the positive case.)
         XCTAssertEqual(pinnedIDs.subtracting(remainingIDs).count, 0,
             "sabotage: all pinned IDs must be in remaining; missing: \(pinnedIDs.subtracting(remainingIDs))")
+    }
+
+    // MARK: - Test: sessionStore.fetchSessions() failure aborts the cycle (#A2)
+
+    func test_summarisationAborts_whenFetchSessionsFails() async throws {
+        // Sabotage check (verified manually): reverting the catch branch in
+        // `performSummarisation` to `pinnedIDs = []` (proceeding with folding
+        // and deletion despite unknown pin status) causes this test to fail —
+        // messages get folded into a summary and deleted even though the
+        // session store never confirmed nothing is pinned.
+        let store = RuntimeMessageStore()
+        let sessionStore = ThrowingFetchSessionsStore()
+        let summariser = RecordingDialogueSummariser()
+        let mockInner = MockInferenceBackend()
+        mockInner.isModelLoaded = true
+        mockInner.tokensToYield = ["Reply"]
+        let backend = UsageReportingBackend(inner: mockInner, reportedPromptTokens: 900)
+        let sessionID = UUID()
+
+        let hook = SummarisationHook(
+            messageStore: store,
+            backend: backend,
+            sessionStore: sessionStore,
+            summariser: summariser,
+            policy: ThresholdSummarisationPolicy(utilizationThreshold: 0.8),
+            recentTurnsToPreserve: 2,
+            contextSizeProvider: { 1000 }
+        )
+
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            generationHooks: [hook]
+        )
+
+        for i in 1...8 {
+            let role: MessageRole = i.isMultiple(of: 2) ? .assistant : .user
+            let msg = ChatMessage(
+                role: role,
+                content: "Message \(i)",
+                timestamp: Date(timeIntervalSince1970: Double(i)),
+                sessionID: sessionID
+            )
+            try await store.insertMessage(msg)
+        }
+        let preTurnCount = try await store.fetchMessages(for: sessionID).count
+
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Trigger turn", attachments: []),
+            config: TurnConfig()
+        ))
+
+        try await waitForAfterGeneration(on: runtime)
+        // Negative assertion — give the hook time to (not) fold/delete, then assert.
+        try await Task.sleep(for: .milliseconds(200))
+
+        let remaining = try await store.fetchMessages(for: sessionID)
+        // +2 for the new user message and assistant reply from this turn;
+        // nothing from the pre-existing history was folded or deleted.
+        XCTAssertEqual(remaining.count, preTurnCount + 2,
+            "no messages should be folded/deleted when pin status is unknown")
+
+        let memoryMessages = remaining.filter {
+            if case .memory = $0.kind { return true }; return false
+        }
+        XCTAssertEqual(memoryMessages.count, 0,
+            "no .memory summary record should be inserted when the cycle aborts")
+
+        let capturedCount = await summariser.capturedTurns.count
+        XCTAssertEqual(capturedCount, 0,
+            "summariser should never be invoked when pin status could not be resolved")
     }
 
     // MARK: - Test 4: summarisation does not fire below threshold

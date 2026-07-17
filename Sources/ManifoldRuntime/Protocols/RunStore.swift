@@ -17,11 +17,11 @@ import ManifoldInference
 // continue through SingleTurnDriver unchanged.
 
 /// Errors produced by ``RunStore`` implementations.
-public enum RunStoreError: Error, LocalizedError, Sendable, Equatable {
+package enum RunStoreError: Error, LocalizedError, Sendable, Equatable {
     case runNotFound(UUID)
     case stepNotFound(UUID)
 
-    public var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case let .runNotFound(id):
             return "ConversationRun not found: \(id.uuidString)"
@@ -41,7 +41,7 @@ public enum RunStoreError: Error, LocalizedError, Sendable, Equatable {
 /// need resumable runs omit it from their bootstrap; all existing turn paths
 /// route through ``SingleTurnDriver`` and never touch the store.
 @MainActor
-public protocol RunStore: AnyObject, Sendable {
+package protocol RunStore: AnyObject, Sendable {
 
     // MARK: Runs
 
