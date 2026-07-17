@@ -1,0 +1,129 @@
+# HardcodedColorAuditTest allowlist (issue #2307, docs/UI-REFRESH-2026-PLAN.md §1.4)
+#
+# Format: one fingerprint (relative/path.swift:trimmed line) per module
+# section, mirroring silent_catch_allowlist.txt. `#`-prefixed lines and blank
+# lines are ignored.
+#
+# All entries below are taxonomy category (a) — migrate-later: themeable
+# colors not yet routed through ManifoldTheme (docs/UI-REFRESH-2026.md §7).
+# Category (b) functional/data and (c) diagnostic-only exemptions are NOT
+# listed here — they're permanent and live as code (categoryBSymbols /
+# categoryCFiles) in HardcodedColorAuditTest.swift, not as allowlist entries.
+#
+# Removal contract: T1-migrate-ui removes the ManifoldUI section's entries as
+# it lands ManifoldTheme token reads (PR 1a); T1-migrate-mmgmt and
+# T1-migrate-voice remove their sections' entries (PR 1b, after 1a merges).
+# A stale entry (literal already migrated) fails the audit's staleness check —
+# that's the intended signal to delete the line.
+#
+# "No matching Unit-1 token" sub-case (still category a, but don't try to
+# force these): some sites have no ManifoldTheme value that reproduces the
+# literal without widening the token set past spec §7 — e.g. a semantic
+# mismatch (`.orange` used where the nearest tier is `statusWarn = yellow`,
+# not `statusError`), a composite ShapeStyle a token can't represent
+# (`.quaternary.opacity(0.5)`), white-opacity metadata styling, or a
+# categorical (non-status) badge palette in ManifoldUIModelManagement. Leave
+# these allowlisted with a comment naming which case applies; do not add new
+# ManifoldTheme fields to chase them — that's a Unit 2 §L2 (style-protocol)
+# concern, not a Unit 1 token-plumbing one.
+#
+# `ManifoldTheme.statusOKColor`/`statusWarnColor`/`statusErrorColor` are
+# Color-typed siblings of `statusOK`/`statusWarn`/`statusError` added
+# specifically so status-tier sites CAN migrate without hitting ViewInspector's
+# AnyShapeStyle-extraction ceiling (see `ManifoldTheme.swift`'s doc comment on
+# `statusOKColor` and `DefaultAppearanceCharacterizationTests`'s class doc
+# comment) — migrating `ToolInvocationView.swift:183`,
+# `MemoryIndicatorView.swift:32-34`, and `ContextIndicatorView.swift:26-28`
+# onto those Color-typed accessors (not the AnyShapeStyle ones) should now
+# pass characterization.
+
+# --- ManifoldUI (T1-migrate-ui, PR 1a) ---
+Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))
+Views/Chat/AudioMessageView.swift:.foregroundStyle(.red)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.red)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.white, .black.opacity(0.7))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.white, .black.opacity(0.7))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(canSend ? Color.accentColor : Color.gray)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(isRecordingAudio ? .red : .secondary)
+Views/Chat/ChatShellViews.swift:.background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+Views/Chat/ChatShellViews.swift:.background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+Views/Chat/ChatShellViews.swift:.foregroundStyle(.blue)
+Views/Chat/ChatShellViews.swift:.foregroundStyle(.blue)
+Views/Chat/ChatShellViews.swift:.foregroundStyle(.blue)
+Views/Chat/ChatShellViews.swift:.foregroundStyle(.yellow)
+Views/Chat/ChatShellViews.swift:.foregroundStyle(viewModel.isModelLoaded ? .green : .secondary)
+Views/Chat/ContextIndicatorView.swift:if ratio >= 0.80 { return .yellow }
+Views/Chat/ContextIndicatorView.swift:if ratio >= 0.95 { return .red }
+Views/Chat/ContextIndicatorView.swift:return .green
+Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/MemoryIndicatorView.swift:case .critical: return .red
+Views/Chat/MemoryIndicatorView.swift:case .nominal:  return .green
+Views/Chat/MemoryIndicatorView.swift:case .warning:  return .yellow
+Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.7))
+Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.75))
+Views/Chat/MessageBubbleView.swift:.tint(.red)
+Views/Chat/MessagePartsView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/MessagePartsView.swift:.foregroundStyle(role == .user ? .white : .primary)
+Views/Chat/ToolInvocationView.swift:.background(.orange.opacity(0.15), in: Capsule())
+Views/Chat/ToolInvocationView.swift:.foregroundStyle(.green)
+Views/Chat/ToolInvocationView.swift:.foregroundStyle(.orange)
+Views/Chat/ToolInvocationView.swift:.foregroundStyle(.orange)
+Views/Settings/BackendCapabilityView.swift:.foregroundStyle(.green)
+Views/Settings/BackendCapabilityView.swift:.foregroundStyle(value ? .green : .secondary)
+Views/Sidebar/SessionExportSheet.swift:.foregroundStyle(.red)
+Views/Sidebar/SessionListView.swift:.tint(.blue)
+Views/Sidebar/SessionListView.swift:.tint(.blue)
+Views/Sidebar/SessionListView.swift:.tint(.orange)
+Views/Sidebar/SessionListView.swift:.tint(.yellow)
+
+# --- ManifoldUIModelManagement (T1-migrate-mmgmt, PR 1b) ---
+Views/Documents/DocumentLibraryView.swift:.foregroundStyle(.orange)
+Views/Documents/DocumentLibraryView.swift:.foregroundStyle(.red)
+Views/Image/ImageModelInstallView.swift:.foregroundStyle(.green)
+Views/Image/ImageModelInstallView.swift:.foregroundStyle(.red)
+Views/Models/DownloadProgressView.swift:.foregroundStyle(.blue)
+Views/Models/DownloadProgressView.swift:.foregroundStyle(.green)
+Views/Models/DownloadProgressView.swift:.foregroundStyle(.red)
+Views/Models/DownloadableModelRow.swift:.background(.blue.opacity(0.15), in: Capsule())
+Views/Models/DownloadableModelRow.swift:.foregroundStyle(.blue)
+Views/Models/DownloadableModelRow.swift:.foregroundStyle(.blue)
+Views/Models/DownloadableModelRow.swift:.foregroundStyle(.green)
+Views/Models/DownloadableModelRow.swift:.foregroundStyle(.orange)
+Views/Models/DownloadableModelRow.swift:.foregroundStyle(insufficient ? Color.secondary : Color.blue)
+Views/Models/DownloadableModelRow.swift:case .excellent, .good:  return .green
+Views/Models/DownloadableModelRow.swift:case .fast:     return .green
+Views/Models/DownloadableModelRow.swift:case .marginal:          return .yellow
+Views/Models/DownloadableModelRow.swift:case .notRecommended:    return .red
+Views/Models/DownloadableModelRow.swift:case .sluggish: return .orange
+Views/Models/DownloadableModelRow.swift:case .tooSlow:  return .red
+Views/Models/DownloadableModelRow.swift:case .usable:   return .blue
+Views/Models/DownloadableModelRow.swift:if canRun { return .green }
+Views/Models/DownloadableModelRow.swift:if isBorderline { return .yellow }
+Views/Models/DownloadableModelRow.swift:return .red
+Views/Models/HuggingFaceBrowserView.swift:.background(.green.opacity(0.15), in: Capsule())
+Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.green)
+Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.green)
+Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.orange)
+Views/Models/LocalModelStorageView.swift:.foregroundStyle(.blue)
+Views/Models/LocalModelStorageView.swift:.foregroundStyle(.red)
+Views/Models/ModelPicker.swift:case .foundation: return ("Foundation", .blue)
+Views/Models/ModelPicker.swift:case .gguf: return ("GGUF", .orange)
+Views/Models/ModelPicker.swift:case .mlx: return ("MLX", .purple)
+Views/Models/ModelPicker.swift:default: return (modelType.rawValue.uppercased(), .gray)
+Views/Models/StorageManagementView.swift:.foregroundStyle(.blue)
+Views/Models/StorageManagementView.swift:.foregroundStyle(.red)
+Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)
+Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)
+Views/Settings/APIConfigurationView.swift:.foregroundStyle(.yellow)
+Views/Settings/APIEndpointEditorView.swift:.foregroundStyle(.green)
+Views/Settings/APIEndpointEditorView.swift:.foregroundStyle(.red)
+Views/Settings/APIEndpointRow.swift:.foregroundStyle(.green)
+Views/Settings/APIEndpointRow.swift:.foregroundStyle(.orange)
+Views/Settings/APIEndpointRow.swift:.foregroundStyle(.orange)
+Views/Settings/RemoteServerConfigSheet.swift:.foregroundStyle(.red)
+
+# --- ManifoldVoice (T1-migrate-voice, PR 1b) ---
+Views/VoiceComposerAccessory.swift:.foregroundStyle(isFailure(controller.captureState) ? Color.red : .secondary)
+Views/VoiceInputButton.swift:.tint(isRecording ? .red : .accentColor)
+
