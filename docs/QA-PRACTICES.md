@@ -94,7 +94,13 @@ Each sabotage test:
 
 `AuditSabotageCoverageAuditTest` (in `ManifoldCoreTests`) enforces the pairing:
 any `Tests/**/*Audit*.swift` file without a `func test_sabotage...` method
-fails per-PR CI.
+fails the audit. Note *where* it fails: the audit lives in `ManifoldCoreTests`,
+and the Tier 2 selective resolver schedules suites from the static SwiftPM
+import graph — so a new audit added to a *different* test target usually does
+not schedule `ManifoldCoreTests` on the PR's own run. The `merge_group` full
+run catches it instead (`affected-suites.sh`: any event other than
+`pull_request` emits FULL). Nothing merges uncovered, but expect the red at
+the queue rather than on the PR head.
 
 **Why.** Audit tests are line-grep heuristics with allowlists. Over time, an
 allowlist entry can drift, a regex can be loosened to land an unrelated fix,
@@ -106,13 +112,15 @@ still fired, not the shipped audit, and several replicas had measurably
 drifted from their audits by mid-2026. The in-file pattern (established by
 `TrafficBoundaryAuditTest`'s `test_sabotage_rule1..7`) makes replica drift
 structurally impossible — one file, one detection function, two callers — and
-runs per-PR instead of nightly, so a broken audit is caught before merge
-rather than up to 24 h after. Originated in PR #1290; converted to in-file in
-the 2026-07 audit-hardening pass.
+runs in the ordinary suite instead of nightly, so a broken audit is caught
+before merge rather than up to 24 h after. Originated in PR #1290; converted
+to in-file in the 2026-07 audit-hardening pass.
 
 **Run them.** Nothing special — they are ordinary tests in the audit's home
-target, so `scripts/test.sh --profile local` and per-PR CI run them
-automatically.
+target, so `scripts/test.sh --profile local` runs them automatically. On CI,
+they run whenever their home target is scheduled: always on the `merge_group`
+full run, and on a PR run only when the resolver maps the diff to that target
+(see above).
 
 **Extend.** When you add a new audit (practice 2), pair it in the same file:
 
