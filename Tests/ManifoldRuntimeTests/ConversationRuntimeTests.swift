@@ -1120,7 +1120,7 @@ final class ConversationRuntimeTests: XCTestCase {
         }
     }
 
-    func test_finishState_thinkingOnlySuccess_finalizesThinkingThenDropsEmptyAssistant() async throws {
+    func test_finishState_thinkingOnlySuccess_finalizesThinkingThenPersistsAssistant() async throws {
         let mock = MockInferenceBackend()
         mock.thinkingBlocksToYield = [["plan"]]
         mock.signaturesPerThinkingBlock = ["sig-thinking"]
@@ -1133,10 +1133,14 @@ final class ConversationRuntimeTests: XCTestCase {
             return false
         }
 
-        XCTAssertEqual(streamFinishedReasons(in: events), [.empty],
-                       "Thinking-only success currently has no visible assistant text and finishes as empty")
-        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
-                       "Thinking-only output must not leave an empty assistant in the transcript")
+        // #2282: thinking content now counts toward the empty-response gate,
+        // so a thinking-only turn (reasoning tokens, no visible text, no tool
+        // calls) is no longer treated as empty — it finishes as .stop and its
+        // assistant message (carrying the finalized thinking part) persists.
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Thinking-only success now finishes as .stop — thinking content counts as real output")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 1,
+                       "Thinking-only output must persist its assistant message with the finalized thinking part")
         let finalized = events.compactMap { event -> (String, String?)? in
             if case let .thinkingFinalized(_, text, signature) = event { return (text, signature) }
             return nil
@@ -1146,7 +1150,7 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(finalized.first?.1, "sig-thinking")
     }
 
-    func test_finishState_thinkingOnlyError_finalizesThinkingThenErrorsWithoutAssistantInsert() async throws {
+    func test_finishState_thinkingOnlyError_finalizesThinkingThenPersistsAssistantBeforeError() async throws {
         let mock = MockInferenceBackend()
         mock.thinkingBlocksToYield = [["reason"]]
         mock.tokensToYield = []
@@ -1158,8 +1162,12 @@ final class ConversationRuntimeTests: XCTestCase {
 
         XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
                        "Thinking-only stream error emits exactly one terminal event")
-        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
-                       "Thinking-only error without visible text does not persist an assistant")
+        // #2282: the same hasThinkingContent gate applies on the stream-error
+        // path — a thinking-only turn that then errors still persists the
+        // assistant message carrying the finalized thinking part, rather
+        // than being dropped as if the turn produced nothing.
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 1,
+                       "Thinking-only error still persists the assistant carrying the finalized thinking part")
         let finalizedIndex = events.firstIndex {
             if case .thinkingFinalized = $0 { return true }
             return false
