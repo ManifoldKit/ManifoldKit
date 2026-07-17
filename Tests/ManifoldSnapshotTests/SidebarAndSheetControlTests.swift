@@ -139,24 +139,6 @@ final class SidebarAndSheetControlTests: XCTestCase {
         )
     }
 
-    func test_sessionListView_withSessions_rowContextMenuContainsExportOption() async throws {
-        let container = try makeInMemoryContainer()
-        let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
-        let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence, autoLoad: false)
-        try await sessionManager.createSession(title: "Exportable Session")
-
-        let dump = ViewHierarchyDumper.dump(
-            SessionListView()
-                .environment(sessionManager)
-        )
-
-        XCTAssertTrue(
-            dump.contains("Export"),
-            "SessionListView row context menu must offer an Export action"
-        )
-    }
-
     // `.contextMenu` content closures are evaluated lazily by SwiftUI
     // (on long-press/right-click) — they never materialize in
     // ViewHierarchyDumper's static NSHostingController snapshot of the full

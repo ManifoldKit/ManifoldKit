@@ -216,6 +216,15 @@ PROFILE_CI_XCTEST_FILTERS=(
     # digester-backed check stays behind RUN_API_SURFACE_BASELINE_CHECK=1
     # and the nightly api-surface-baseline job (wave-2 item 0.A).
     APIFreezeTests
+    # View-control + .dump-strategy snapshot coverage (ViewSnapshotTests
+    # dumps the SwiftUI view hierarchy to text, not a rendered bitmap — no
+    # retina/font/OS-version pixel dependency). This target has never been
+    # in any gate since it was created (git log -S confirms it), and the
+    # Download-tab control tests rotted unnoticed for a month as a result.
+    ManifoldSnapshotTests
+    # Hermetic: MockURLProtocol with UUID-per-suite endpoints, no live OTLP
+    # collector needed.
+    ManifoldTelemetryOTLPTests
 )
 # Local-profile filters extend the CI list with the umbrella + HuggingFace
 # suites.

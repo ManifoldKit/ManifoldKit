@@ -34,7 +34,17 @@ public struct ModelManagementSheet: View {
         }
     }
 
-    private func availableTabs(for modelRegistry: ModelRegistry) -> [Tab] {
+    /// Pure tab-availability rule, extracted from the instance method below so
+    /// it can be exercised directly against constructed `Features` /
+    /// `CompiledBackends` / `ModelRegistry` values instead of the ambient
+    /// `ManifoldConfiguration.shared` / `CompiledBackends.current` globals.
+    /// `internal` (not `public`) — this is a testing seam, not public API;
+    /// `@testable import` reaches it from the gated suite.
+    static func availableTabs(
+        features: ManifoldConfiguration.Features,
+        compiledBackends: CompiledBackends,
+        modelRegistry: ModelRegistry
+    ) -> [Tab] {
         var tabs: [Tab] = [.select]
         // Show the Download tab when the build can download AND a downloadable
         // backend is available. `compiledBackends.shouldPresentModelDownloads`
@@ -52,6 +62,10 @@ public struct ModelManagementSheet: View {
         }
         if features.showStorageTab { tabs.append(.storage) }
         return tabs
+    }
+
+    private func availableTabs(for modelRegistry: ModelRegistry) -> [Tab] {
+        Self.availableTabs(features: features, compiledBackends: compiledBackends, modelRegistry: modelRegistry)
     }
 
     @State private var selectedTab: Tab
