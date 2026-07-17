@@ -8,8 +8,8 @@
 > **orchestrator** session: it names not only each unit's entry points, touched
 > files, new API, tests, and review criteria, but *who executes each tranche,
 > in which worktree, and in what order* — see **Orchestration model** below.
-> **Release gate: OPEN.** v0.72.0 shipped 2026-07-17 (#2307); implementation
-> may start now. File:line anchors reflect `main` at the time of writing
+> **Release gate: OPEN.** v0.72.0 shipped 2026-07-17 (release PR #2260);
+> implementation may start now. File:line anchors reflect `main` at the time of writing
 > (2026-07-17); re-verify before relying on them.
 
 ## Ground rules (from the spec + review)
@@ -175,14 +175,18 @@ Group per file; each change is mechanical (literal → token read):
   :149-160);
   `MemoryIndicatorView`/`ContextIndicatorView` (status tiers);
   `AudioMessageView` (role-conditional fills); `MessageBubbleView`
-  hardcoded white-opacity metadata styles (:171,176).
+  hardcoded white-opacity metadata styles (:171,176);
+  `SessionExportSheet` (`Views/Sidebar/`, `.red`:80) and
+  `BackendCapabilityView` (`Views/Settings/`, `.green`:110,158) — both live
+  under `Sources/ManifoldUI/`, not ManifoldUIModelManagement, so their
+  literals belong to `T1-migrate-ui` / PR 1a (a mmgmt worker must never cross
+  into ManifoldUI paths).
 - **ManifoldUIModelManagement:** `ModelPicker.typeBadge()` (:256-259),
   `DownloadableModelRow.fitTint()/speedTint()/badgeColor()` (:165-229),
   `HuggingFaceBrowserView` curated/best badges (:308, tint :317),
   `DocumentLibraryView` (:186 drop target, `.orange` info),
   `APIConfigurationView` (`.yellow` warning), plus the literal-bearing
-  secondary views the first sweep missed: `SessionExportSheet`,
-  `BackendCapabilityView`, `RemoteServerConfigSheet`,
+  secondary views the first sweep missed: `RemoteServerConfigSheet`,
   `APIEndpointEditorView`, `APIEndpointRow`, `LocalModelStorageView`,
   `WhyDownloadView`, `StorageManagementView`, `DownloadProgressView`,
   `ImageModelInstallView`.
@@ -320,7 +324,16 @@ integration branch does, once.
 - Connected Services (experimental, `ManifoldUIModelManagement`): promote the
   demo's `ConnectedServicesView` pattern — services list (status tier),
   consent-before-exposure card, reauth via `ToolErrorPresentation`
-  "mcp.reauthenticate", `MCPToolCountView` for counts/cap.
+  "mcp.reauthenticate", `MCPToolCountView` for counts/cap. **New package edge
+  (L4 owns it):** `MCPToolCountView` lives in `Sources/ManifoldMCP/`, and
+  `ManifoldUIModelManagement`'s target has no `ManifoldMCP` dependency today —
+  L4 adds that stanza to `Package.swift` and **flags the new edge as an
+  explicit review item**. It is legal (no cycle: `ManifoldMCP` depends only on
+  `ManifoldInference`, never on UI) and does *not* violate the "UI never
+  imports a backend" rule, which targets the backend *families*
+  (Foundation/Ollama/CloudSaaS) — MCP is not one. If the reviewer nonetheless
+  rules the edge undesirable, the fallback is to re-home a minimal count view
+  in `ManifoldUIModelManagement` rather than reuse `MCPToolCountView`.
 - Branch origin chip (reuses `HandoffChipView` pattern) + pin glyph in bubble
   metadata.
 - Tests: state-screen rendering per state; progress-card lifecycle
@@ -414,7 +427,7 @@ resets to.
 | **T1-tokens** *(sync gate)* | sonnet | `origin/main` | `Sources/ManifoldUI/Theming/ManifoldTheme.swift` (new, `.chatTheme` write-through) + the new `DefaultAppearanceCharacterizationTests` and `HardcodedColorAuditTest` files | §1.1 characterization precedes the refactor commit | **PR 1a** |
 | **T1-migrate-ui** | sonnet | T1-tokens | `Sources/ManifoldUI/Views/**`, `Sources/ManifoldUI/Extensions/**` literal→token migration | T1-tokens (`ManifoldTheme` must exist) | **PR 1a** |
 | **T1-migrate-mmgmt** | sonnet | T1-tokens | `Sources/ManifoldUIModelManagement/**` migration + allowlist removal | T1-tokens | **PR 1b** |
-| **T1-migrate-voice** | haiku | T1-tokens | `Sources/ManifoldVoice/**` (`VoiceComposerAccessory`, `VoiceInputButton`) | T1-tokens | **PR 1b** |
+| **T1-migrate-voice** | haiku | T1-tokens | `Sources/ManifoldVoice/**` — owns the whole module directory for audit scope, though only `VoiceComposerAccessory` + `VoiceInputButton` carry migrations today | T1-tokens | **PR 1b** |
 
 ### Unit 2 (one merged feature; stacked drafts)
 
@@ -422,13 +435,17 @@ resets to.
 |---|---|---|---|---|
 | **L1-glass** *(stack sync gate)* | sonnet | `main` (post-U1) | `Views/Chat/ChatView.swift`, `Views/Chat/ChatHistoryView.swift`, macOS toolbar contribution, per-OS `glass` resolution in `Theming/ManifoldTheme.swift`, scroll-to-bottom control | Unit 1 merged |
 | **L2-protocols** | sonnet | L1 | new `Theming/{ComposerStyle,ThinkingBlockStyle,ToolInvocationStyle,SessionRowStyle}.swift`, `Theming/ChatMessageRenderer.swift` (part-renderer seam), publicize `ManifoldTheme` + DocC | L1 |
-| **L4-screens** | sonnet | L1 | `Views/Chat/MessagePartsView.swift` (video/media), new state-screen views under `Views/Chat/`, `Views/Chat/HandoffChipView.swift` (branch chip), `ManifoldUIModelManagement/Views/Settings/**` (Connected Services) + `Views/Image/**` — consumes **tokens only**, not L2's new protocols, which is what keeps it parallel to L2 | L1 (∥ L2) |
+| **L4-screens** | sonnet | L1 | `Views/Chat/MessagePartsView.swift` (video/media), new state-screen views under `Views/Chat/`, `Views/Chat/HandoffChipView.swift` (branch chip), `ManifoldUIModelManagement/Views/Settings/**` (Connected Services) + `Views/Image/**`, **and the `ManifoldUIModelManagement` target stanza in `Package.swift`** (the new `ManifoldMCP` edge — flagged as a review item, see L4 above) — consumes **tokens only**, not L2's new protocols, which is what keeps it parallel to L2 | L1 (∥ L2) |
 | **L3-composer** | sonnet | L2 | `Views/Composer/**`, `Views/Chat/ChatInputBar.swift`, `ManifoldUIModelManagement/Views/Models/ModelPicker.swift` + the `package` switcher-union type, thinking-budget control | L2 (`ComposerStyle`) |
 | **L5-flip** *(last, always)* | sonnet | integrated L1–L4 | defaults flip across `Theming/**` (ChatTheme + built-in style defaults), `.classic` presets, characterization re-anchor, migration note + CHANGELOG lead + AGENTS.md Part 1 | L1–L4 all integrated |
 
 Within `ManifoldUIModelManagement`, L3 owns `Views/Models/**` and L4 owns
-`Views/Settings/**` + `Views/Image/**` — disjoint, so the two run without
-collision even though both touch that module.
+`Views/Settings/**` + `Views/Image/**` (plus the module's `Package.swift`
+stanza) — disjoint, so the two run without collision even though both touch
+that module. This is a **partial** partition: `Views/Documents/`, `ViewModels/`,
+and `Catalogs/` belong to neither tranche and are expected to stay untouched by
+Unit 2; if a layer discovers it must edit one, the orchestrator arbitrates the
+ownership before that worker starts (never two workers into the same path).
 
 ### Dependency graph
 
