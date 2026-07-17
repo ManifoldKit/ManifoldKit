@@ -1,5 +1,8 @@
 # UI Refresh 2026 — implementation plan
 
+**Audience:** contributor
+**Status:** living
+
 > Companion to [`UI-REFRESH-2026.md`](UI-REFRESH-2026.md) (the design spec —
 > read it first) and tracking issue #2307. This plan is written for a cold
 > **orchestrator** session: it names not only each unit's entry points, touched

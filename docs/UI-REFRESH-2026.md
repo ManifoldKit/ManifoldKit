@@ -1,5 +1,8 @@
 # UI Refresh 2026 — design reference
 
+**Audience:** contributor
+**Status:** living
+
 > **Status: living design doc.** Direction decided 2026-07-17: the new look ships
 > as the **default** — a deliberate pre-1.0 visual break under Principle 9 —
 > with the pre-refresh appearance preserved as shipped *classic presets*.
