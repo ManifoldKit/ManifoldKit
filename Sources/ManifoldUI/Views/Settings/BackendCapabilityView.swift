@@ -11,6 +11,8 @@ import ManifoldInference
 /// host wires to an in-memory persistence rebuild.
 struct BackendCapabilityView: View {
 
+    @Environment(\.manifoldTheme) private var theme
+
     let capabilities: BackendCapabilities?
     /// Optional closure called when the user enables Incognito mode.
     /// When `nil`, the Incognito toggle is hidden.
@@ -107,7 +109,7 @@ struct BackendCapabilityView: View {
                 } else {
                     ForEach(cap.visibleParameters, id: \.rawValue) { param in
                         Label(param.rawValue, systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(theme.statusOK)
                             .font(.callout)
                             .accessibilityLabel("\(param.rawValue) supported")
                     }
@@ -155,7 +157,7 @@ struct BackendCapabilityView: View {
                 .font(.callout)
             Spacer()
             Image(systemName: value ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(value ? .green : .secondary)
+                .foregroundStyle(value ? theme.statusOK : theme.ink2)
                 .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
