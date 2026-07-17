@@ -23,8 +23,20 @@ import Foundation
 /// a doc-comment *mention* of an audit no longer counts as coverage, only a
 /// real `func test_sabotage...` declaration does.
 ///
-/// Coverage runs per-PR (this file lives in `ManifoldCoreTests`), so a new
-/// audit without a sabotage test fails CI in the PR that adds it.
+/// This audit enumerates `Tests/**` from disk at runtime — a filesystem
+/// dependency the Tier 2 selective-CI resolver (`scripts/affected-suites.sh`,
+/// issue #1590) cannot see from the static SwiftPM import graph, since
+/// `ManifoldCoreTests` (this file's target) does not depend on whatever
+/// target a new audit file lands in. Left unhandled, that blindness means
+/// `ManifoldCoreTests` — and this audit — would not run on the only PRs it
+/// exists to catch (issue #2290, proven live on PR #2212). The resolver
+/// now force-schedules `ManifoldCoreTests` whenever a diff touches
+/// `Tests/**/*Audit*.swift`, independent of the import graph, so coverage
+/// is guaranteed for exactly the PR shape this audit governs: a new or
+/// edited `*Audit*.swift` file anywhere under `Tests/`. That guarantee is
+/// enforced in the resolver, not by this file living in `ManifoldCoreTests`
+/// — verify it there (`scripts/affected-suites.sh`) rather than assuming it
+/// from this comment.
 ///
 /// Deliberately not itself sabotage-covered by a *file-planting* test:
 /// testing "does this coverage-checker detect an uncovered audit" only needs

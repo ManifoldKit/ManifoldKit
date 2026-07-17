@@ -153,6 +153,7 @@ FORCE_FULL_EXACT=(
   "Package.resolved"
   "scripts/affected-suites.sh"
   "scripts/affected-suites-graph.json"
+  "scripts/affected-suites-test.sh"
   "scripts/test.sh"
   "scripts/ci-test-with-watchdog.sh"
   "scripts/ci-selective-test.sh"
@@ -167,6 +168,67 @@ for p in "${CHANGED[@]}"; do
   for hub in "${HUB_PREFIXES[@]}"; do
     [[ "$p" == "$hub"* ]] && { log "force-full: $p (hub module)"; emit FULL; }
   done
+done
+
+# ---------------------------------------------------------------------------
+# Runtime-filesystem-scan edges (issue #2290).
+#
+# Several audits enumerate a tree from disk AT TEST-RUN TIME instead of
+# importing files, so their real input surface is invisible to the static
+# SwiftPM dependency graph this resolver otherwise trusts completely. A diff
+# that lands inside a tree one of these audits scans must schedule that
+# audit's owning suite even when nothing in the import graph connects the
+# changed target to that suite. Evidence (verified against the file contents,
+# not assumed):
+#
+#   - `AuditSabotageCoverageAuditTest` (ManifoldCoreTests) walks
+#     `Tests/**/*Audit*.swift`. This is the exact PR #2212 defect: a new
+#     audit file lands in a target ManifoldCoreTests doesn't depend on, so
+#     the resolver never scheduled ManifoldCoreTests and the audit that
+#     enforces sabotage coverage never ran.
+#   - `TestSuiteSilentSkipAuditTest` (ManifoldInferenceTests),
+#     `SwiftTestingAuditTest` and `UserDefaultsStandardAuditTest`
+#     (ManifoldCoreTests) each walk the ENTIRE `Tests/` tree for every
+#     `.swift` file, not just `*Audit*.swift` ones — so any `Tests/**` change
+#     is their real input, not just audit files.
+#   - `SilentCatchAuditTest`, `TrafficBoundaryAuditTest`, and
+#     `UnlockedNonisolatedUnsafeTestSeamAuditTest` (ManifoldInferenceTests),
+#     plus `DirectURLSessionConstructionAuditTest` (ManifoldBackendsTests),
+#     each walk the ENTIRE `Sources/` tree via the same
+#     `locateSourcesDirectory()`/`enumerateSwiftFiles(under:)` shape — so any
+#     `Sources/**` change is their real input.
+#
+# Suites already scoped to a narrower tree (e.g. the cloud-backend audits in
+# ManifoldBackendsTests that only walk Sources/ManifoldCloudCore,
+# Sources/ManifoldCloudSaaS, Sources/ManifoldOllama) are NOT listed here:
+# those targets already sit in ManifoldBackendsTests's own import closure, so
+# the static graph already schedules it correctly — no filesystem edge
+# needed. `Tests/Fixtures/**` audits (FixtureRedactionAuditTest,
+# WireNoveltyAuditTest) are also not listed: that path doesn't match any
+# known target's `path` in the graph, so the "maps to no known target" rule
+# above already forces FULL on any change there — already conservative.
+RUNTIME_SCAN_SUITES=""
+runtime_scan_add() {
+  case " $RUNTIME_SCAN_SUITES " in
+    *" $1 "*) ;;
+    *) RUNTIME_SCAN_SUITES="$RUNTIME_SCAN_SUITES $1" ;;
+  esac
+}
+for p in "${CHANGED[@]}"; do
+  case "$p" in
+    Tests/*)
+      runtime_scan_add "ManifoldCoreTests"
+      runtime_scan_add "ManifoldInferenceTests"
+      log "runtime-scan: $p → force ManifoldCoreTests + ManifoldInferenceTests (Tests/-tree audits)"
+      ;;
+  esac
+  case "$p" in
+    Sources/*)
+      runtime_scan_add "ManifoldInferenceTests"
+      runtime_scan_add "ManifoldBackendsTests"
+      log "runtime-scan: $p → force ManifoldInferenceTests + ManifoldBackendsTests (Sources/-tree audits)"
+      ;;
+  esac
 done
 
 # ---- Load the committed graph into bash-3.2-compatible parallel arrays ------
@@ -281,6 +343,11 @@ for p in "${CHANGED[@]}"; do
 done
 
 if [[ -z "$CHANGED_TARGETS" ]]; then
+  # Unreachable with RUNTIME_SCAN_SUITES non-empty: every path that sets
+  # RUNTIME_SCAN_SUITES matches Sources/*|Tests/*, which the mapping loop
+  # above always resolves to either a known target (populates
+  # CHANGED_TARGETS) or an unmapped-path FULL emit — never silently drops.
+  # The merge at the bottom of this script is the real safety net regardless.
   log "no changed path maps to a target → NONE"
   emit NONE
 fi
@@ -355,6 +422,12 @@ for suite in "${TEST_JOB_SUITES[@]}"; do
       break
     fi
   done
+done
+
+# Merge in the runtime-filesystem-scan forced suites (issue #2290) — these
+# are real affected suites the import graph can't see, not an optional extra.
+for s in $RUNTIME_SCAN_SUITES; do
+  affected_add "$s"
 done
 
 if [[ -z "$AFFECTED" ]]; then

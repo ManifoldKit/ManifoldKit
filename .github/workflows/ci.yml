@@ -21,10 +21,11 @@ on:
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
-      # resolver or its committed graph snapshot re-trigger CI and the dry-run
-      # logging — otherwise a change to the gate would bypass the gate.
+      # resolver or its committed graph snapshot re-trigger CI and the suite
+      # selection it drives — otherwise a change to the gate would bypass the gate.
       - "scripts/affected-suites.sh"
       - "scripts/affected-suites-graph.json"
+      - "scripts/affected-suites-test.sh"
       # Tier 2 selective CI (issue #1590). Listed so edits to the selective
       # runner or the xcscheme files re-trigger CI — otherwise a change to
       # the gate would bypass it (per CI path-filter self-validation rule).
@@ -62,10 +63,11 @@ on:
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
-      # resolver or its committed graph snapshot re-trigger CI and the dry-run
-      # logging — otherwise a change to the gate would bypass the gate.
+      # resolver or its committed graph snapshot re-trigger CI and the suite
+      # selection it drives — otherwise a change to the gate would bypass the gate.
       - "scripts/affected-suites.sh"
       - "scripts/affected-suites-graph.json"
+      - "scripts/affected-suites-test.sh"
       # Tier 2 selective CI (issue #1590). See push section above.
       - "scripts/ci-selective-test.sh"
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
@@ -136,8 +138,9 @@ jobs:
       persistence: ${{ steps.filter.outputs.persistence }}
       mcp-fixtures: ${{ steps.filter.outputs.mcp-fixtures }}
       # Tier 0 (issue #1588): the affected per-PR test-job suite list, or the
-      # sentinel FULL / NONE. DRY-RUN — published for a later PR to wire into the
-      # test --filter; nothing consumes it to change execution yet.
+      # sentinel FULL / NONE. Consumed by the "Compute test mode" step below
+      # (Tier 2, issue #1590) to select which suites `ci-selective-test.sh`
+      # actually runs — this is live execution routing, not a dry run.
       affected: ${{ steps.affected.outputs.affected }}
       # Single any-Sources flag — consumed by the per-PR API-break gate to
       # decide whether to run at all. Per-module scoping was retired
@@ -595,6 +598,15 @@ jobs:
             echo "Do NOT commit the lockfile produced by a '--traits Server' build/test."
             exit 1
           }
+
+      - name: Tier 0 resolver selection-rule self-test
+        # Regression coverage for the runtime-filesystem-scan force rules
+        # added for issue #2290 (scripts/affected-suites-test.sh). Runs
+        # unconditionally (cheap bash+jq, no Swift needed) rather than only
+        # on deps-changed — the rules it checks aren't gated on
+        # Package.swift, they're gated on Tests/**/Sources/** path shapes,
+        # so this must run whenever the resolver itself could have regressed.
+        run: scripts/affected-suites-test.sh
 
       - name: Verify Tier 0 affected-suites graph snapshot is up to date
         # The Tier 0 resolver (scripts/affected-suites.sh, issue #1588) reads a
