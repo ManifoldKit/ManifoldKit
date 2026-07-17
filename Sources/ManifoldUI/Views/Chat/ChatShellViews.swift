@@ -18,12 +18,13 @@ struct ChatComposerSection: View {
 }
 
 struct ChatUpgradeHintBanner: View {
+    @Environment(\.manifoldTheme) private var theme
     @Binding var showModelManagement: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.down.circle")
-                .foregroundStyle(.blue)
+                .foregroundStyle(theme.accent)
                 .accessibilityHidden(true)
 
             Text("Want longer responses? Download a model for extended context.")
@@ -37,12 +38,12 @@ struct ChatUpgradeHintBanner: View {
                     .font(.callout.bold())
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.blue)
+            .foregroundStyle(theme.accent)
             .accessibilityLabel("Browse models for extended context")
             .accessibilityIdentifier("chat-model-management-button")
         }
         .padding(12)
-        .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal)
         .padding(.top, 4)
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -226,6 +227,7 @@ struct ChatErrorRecoveryBanner<APIConfig: View>: View {
 /// ("Error: <message>" header label) can be inspected directly in unit tests
 /// without mounting a full `ChatViewModel` environment.
 struct ErrorBannerView<Recovery: View>: View {
+    @Environment(\.manifoldTheme) private var theme
 
     /// Builds the VoiceOver label for an error banner. Kept as a static helper
     /// so tests can assert on the exact contract.
@@ -250,7 +252,7 @@ struct ErrorBannerView<Recovery: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
+                .foregroundStyle(theme.statusWarn)
                 .accessibilityHidden(true)
 
             Text(error.message)
@@ -267,7 +269,7 @@ struct ErrorBannerView<Recovery: View>: View {
             .accessibilityLabel("Dismiss error")
         }
         .padding(12)
-        .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        .background(theme.statusError.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal)
         .padding(.top, 8)
         // Use .combine so that the container itself becomes the VoiceOver element.
@@ -282,6 +284,7 @@ struct ErrorBannerView<Recovery: View>: View {
 // MARK: - Toolbar
 
 struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
+    @Environment(\.manifoldTheme) private var theme
     let viewModel: ChatViewModel
     let features: ManifoldConfiguration.Features
     @Binding var isDeviceInfoExpanded: Bool
@@ -314,7 +317,7 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
                let backend = viewModel.activeBackendName {
                 Label("Cloud", systemImage: "cloud.fill")
                     .font(.caption2)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(theme.accent)
                     .accessibilityLabel("Using cloud backend: \(backend)")
             }
             if features.showContextIndicator {
@@ -412,6 +415,7 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
 }
 
 struct ChatDeviceInfoPopover: View {
+    @Environment(\.manifoldTheme) private var theme
     let viewModel: ChatViewModel
 
     var body: some View {
@@ -429,7 +433,7 @@ struct ChatDeviceInfoPopover: View {
 
             LabeledContent("Model Loaded") {
                 Text(viewModel.isModelLoaded ? "Yes" : "No")
-                    .foregroundStyle(viewModel.isModelLoaded ? .green : .secondary)
+                    .foregroundStyle(viewModel.isModelLoaded ? theme.statusOK : theme.ink2)
             }
             .accessibilityValue(viewModel.isModelLoaded ? "Yes" : "No")
 
