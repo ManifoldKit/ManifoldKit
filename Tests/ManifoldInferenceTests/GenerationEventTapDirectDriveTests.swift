@@ -358,4 +358,43 @@ final class GenerationEventTapDirectDriveTests: XCTestCase {
         }
         XCTAssertEqual(tapVisible, "Hi there", "the tap must independently observe the same tokens")
     }
+
+    // MARK: - Recorder lifecycle: the drain task must terminate on dealloc
+
+    /// Regression test: `start(on:)`'s drain loop used to do
+    /// `await self?.append(event)` under `[weak self]`, so once the recorder
+    /// deallocated the loop kept iterating forever on a nil `self?`, silently
+    /// discarding every subsequent event and never breaking — the returned
+    /// `Task` never finished and the tap registration on `InferenceService`
+    /// was never deregistered. The loop now breaks as soon as `self` is nil,
+    /// so the task always terminates once another event is delivered.
+    func test_drainTask_terminates_afterRecorderDeallocates() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["after", " dealloc"]
+
+        let service = InferenceService(backend: backend, name: "Mock")
+
+        var recorder: GenerationEventRecorder? = GenerationEventRecorder()
+        let drainTask = await recorder!.start(on: service)
+
+        // Drop the only strong reference before the generation runs. The
+        // drain loop is suspended in `for await event in tap`; the next
+        // delivered event is what lets `guard let self else { break }`
+        // observe the nil and exit.
+        recorder = nil
+
+        let (_, stream) = try service.enqueue(
+            messages: [.user("go")],
+            config: GenerationConfig()
+        )
+        for try await _ in stream.events {}
+
+        // Before the fix this would hang until the harness's own timeout:
+        // the loop looped forever on `await self?.append(event)` with `self`
+        // nil, never returning from the `Task`.
+        try await withTimeout(.seconds(10)) {
+            await drainTask.value
+        }
+    }
 }

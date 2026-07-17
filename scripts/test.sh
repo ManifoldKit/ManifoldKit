@@ -338,7 +338,7 @@ if [[ -n "$PROFILE" ]]; then
         # parsing surface single-pass and the summary printer authoritative
         # per call (each invocation prints its own summary).
         SCRIPT_PATH="$0"
-        EXTRA_ARGS=("${SWIFT_ARGS[@]}")
+        EXTRA_ARGS=(${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"})
         # Build the per-profile flag sets.
         if [[ "$PROFILE" == "ci" ]]; then
             TRAIT_FLAGS=()
@@ -420,7 +420,7 @@ echo ""
 cd "$PACKAGE_DIR"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 set +e
-swift test "${SWIFT_ARGS[@]}" 2>&1 | tee "$OUTPUT_FILE"
+swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee "$OUTPUT_FILE"
 SWIFT_EXIT=${PIPESTATUS[0]}
 set -e
 
