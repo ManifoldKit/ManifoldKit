@@ -405,7 +405,7 @@ final class ConversationRuntimeTests: XCTestCase {
     private func collectEvents(
         from runtime: ConversationRuntime,
         until predicate: @escaping @Sendable (ConversationEvent) -> Bool,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         var collected: [ConversationEvent] = []
         let task = Task {
@@ -431,7 +431,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForEvents(
         from task: Task<[ConversationEvent], Never>,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         try await withThrowingTaskGroup(of: [ConversationEvent].self) { group in
             group.addTask { await task.value }
@@ -448,7 +448,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForOutcome(
         from handle: ConversationTurnHandle,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> ConversationTurnOutcome {
         try await withThrowingTaskGroup(of: ConversationTurnOutcome.self) { group in
             group.addTask { await handle.outcome }
@@ -465,7 +465,7 @@ final class ConversationRuntimeTests: XCTestCase {
     private func waitForActiveTurnTaskCount(
         _ expectedCount: Int,
         in runtime: ConversationRuntime,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         let clock = ContinuousClock()
         let deadlineInstant = clock.now + deadline
@@ -479,7 +479,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForBackendStart(
         _ backend: HangingRuntimeBackend,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await backend.waitUntilStarted() }
@@ -494,7 +494,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForBackendTermination(
         _ backend: HangingRuntimeBackend,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await backend.waitUntilTerminated() }
@@ -509,7 +509,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func collectUntilStreamFinished(
         from runtime: ConversationRuntime,
-        deadline: Duration = Self.defaultDeadline
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         try await collectEvents(from: runtime, until: { event in
             if case .streamFinished = event { return true }
@@ -1433,11 +1433,11 @@ final class ConversationRuntimeTests: XCTestCase {
         // Same landmine class as the `collectEvents`-family helpers above
         // (#2282/#2304/#2212): a wall-clock bound racing a real completion
         // signal, blown by CI's `--parallel` full-suite scheduling pressure
-        // at 5s. Raised to `Self.defaultDeadline` for the same reason.
+        // at 5s. Raised to `ConversationRuntimeTests.defaultDeadline` for the same reason.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await waitTask.value }
             group.addTask {
-                try await Task.sleep(for: Self.defaultDeadline)
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 waitTask.cancel()
             }
             try await group.next()
@@ -2974,13 +2974,13 @@ final class ConversationRuntimeTests: XCTestCase {
 
         // Bound the wait so a regression cannot hang CI for the full XCTest
         // default timeout. Happy-path is sub-50ms; the bound itself is
-        // `Self.defaultDeadline` (see rationale above) so CI's `--parallel`
+        // `ConversationRuntimeTests.defaultDeadline` (see rationale above) so CI's `--parallel`
         // scheduling pressure doesn't false-fail this the way it did
         // #2282/#2304/#2212.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await drain.value }
             group.addTask {
-                try await Task.sleep(for: Self.defaultDeadline)
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 drain.cancel()
             }
             try await group.next()
@@ -3052,13 +3052,13 @@ final class ConversationRuntimeTests: XCTestCase {
                 if case .streamFinished = event { break }
             }
         }
-        // Allow up to `Self.defaultDeadline` for the drain to complete (see
+        // Allow up to `ConversationRuntimeTests.defaultDeadline` for the drain to complete (see
         // rationale above the helpers block — bounded wait racing a real
         // completion signal, not a settle-point sleep).
         let waitResult = try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await drainTask.value }
             group.addTask {
-                try await Task.sleep(for: Self.defaultDeadline)
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 drainTask.cancel()
             }
             try await group.next()
