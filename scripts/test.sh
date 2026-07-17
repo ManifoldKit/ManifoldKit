@@ -36,22 +36,27 @@
 
 set -euo pipefail
 
-OUTPUT_FILE="${MANIFOLD_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Default to a package-relative path, not $TMPDIR — on macOS, TMPDIR is
+# per-USER (not per-invocation), so two concurrent local runs (e.g. two
+# worktrees) clobber each other's output file and each parses the other's
+# results (#2298). Mirrors scripts/ci-test-with-watchdog.sh's
+# test-diagnostics/ convention.
+OUTPUT_FILE="${MANIFOLD_TEST_OUTPUT_FILE:-$PACKAGE_DIR/test-diagnostics/test_output.txt}"
 
 # ── Arguments ────────────────────────────────────────────────────────────────
 # Profile precedence
 # ------------------
 # `--profile <name>` selects a canned invocation shape. Two profiles ship today:
 #
-#   ci      — mirrors CI's no-traits two-invocation shape. This is the
+#   ci      — mirrors CI's no-traits three-invocation shape. This is the
 #             default when --profile is omitted (back-compat). Since v0.48
 #             (PR C2) there are no default traits, so this is simply the
 #             plain `swift test` shape.
 #   local   — Apple-Silicon pre-push: the surviving opt-in traits (Macros;
 #             Server runs in its own CI job and stays out of the batch, as
-#             before), plus the extended suite list (ManifoldKitTests /
-#             ManifoldHuggingFaceTests).
+#             before). The XCTest filter list is identical to `ci`'s — see
+#             PROFILE_LOCAL_XCTEST_FILTERS below.
 #
 # Profile defaults are applied AFTER caller flags are parsed, but only fill
 # slots the caller did not set:
@@ -178,13 +183,18 @@ done
 # Profiles are sugar over swift test flags. We resolve them here, *after* arg
 # parsing, so explicit caller flags always win (see precedence comment above).
 #
-# Two-invocation shape: the CI and local profiles both run the XCTest filter
-# set in one swift-test call and ManifoldInferenceSwiftTestingTests in a second
-# separate process — mixing Swift Testing with XCTest in a single process
-# triggers libmalloc SIGABRT (#681). When the caller has not narrowed with
-# their own --filter, we re-exec this script twice with the resolved flags.
+# Three-invocation shape: the CI and local profiles run the XCTest filter set
+# in one swift-test call, ManifoldBackendsTests alone in a second (serial —
+# mirrors ci.yml's dedicated "ManifoldBackendsTests (serial, claims-registry
+# safe)" step, which is deliberately kept out of the --parallel XCTest batch),
+# and ManifoldInferenceSwiftTestingTests in a third, separate process — mixing
+# Swift Testing with XCTest in a single process triggers libmalloc SIGABRT
+# (#681). When the caller has not narrowed with their own --filter, we re-exec
+# this script three times with the resolved flags.
 
-# Two-invocation XCTest suite list. Source of truth for the pre-push gate.
+# XCTest suite list for the main batch. Source of truth for the pre-push gate.
+# ManifoldBackendsTests is deliberately excluded — it gets its own invocation
+# below (PROFILE_BACKENDS_FILTER), matching ci.yml.
 PROFILE_CI_XCTEST_FILTERS=(
     ManifoldCoreTests
     ManifoldRuntimeTests
@@ -192,7 +202,6 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldUITests
     ManifoldUIModelManagementTests
     ManifoldMCPTests
-    ManifoldBackendsTests
     ManifoldInferenceTests
     ManifoldNetworkingTests
     ManifoldSecretsTests
@@ -216,14 +225,39 @@ PROFILE_CI_XCTEST_FILTERS=(
     # digester-backed check stays behind RUN_API_SURFACE_BASELINE_CHECK=1
     # and the nightly api-surface-baseline job (wave-2 item 0.A).
     APIFreezeTests
-)
-# Local-profile filters extend the CI list with the umbrella + HuggingFace
-# suites.
-PROFILE_LOCAL_XCTEST_FILTERS=(
-    "${PROFILE_CI_XCTEST_FILTERS[@]}"
+    # View-control + .dump-strategy snapshot coverage (ViewSnapshotTests
+    # dumps the SwiftUI view hierarchy to text, not a rendered bitmap — no
+    # retina/font/OS-version pixel dependency). This target has never been
+    # in any gate since it was created (git log -S confirms it), and the
+    # Download-tab control tests rotted unnoticed for a month as a result.
+    ManifoldSnapshotTests
+    # Hermetic: MockURLProtocol with UUID-per-suite endpoints, no live OTLP
+    # collector needed.
+    ManifoldTelemetryOTLPTests
+    # Umbrella quickStart()/_quickStart() coverage (ManifoldKitTests) and
+    # HuggingFace download/persistence coverage (ManifoldHuggingFaceTests):
+    # both fully hermetic (in-memory SwiftData, MockURLProtocol-stubbed
+    # huggingface.co calls) and fast (<1s combined). `swift test --filter`
+    # already compiles the whole test tree regardless of filter, so both
+    # were already paid for at build time in every CI run — they were just
+    # never scheduled to execute. Moved out of local-only in the same audit
+    # sweep that caught ManifoldSnapshotTests/ManifoldTelemetryOTLPTests
+    # above.
     ManifoldKitTests
     ManifoldHuggingFaceTests
 )
+# Local profile currently has no suites of its own — it is a pure inherit of
+# the CI list. Kept as a separate array (rather than aliased directly to
+# PROFILE_CI_XCTEST_FILTERS) because other call sites reference it by name;
+# if a genuinely local-only suite (e.g. one needing a resource CI can't
+# provide) shows up later, add it here.
+PROFILE_LOCAL_XCTEST_FILTERS=(
+    "${PROFILE_CI_XCTEST_FILTERS[@]}"
+)
+# Own invocation, serial (no --parallel) — see the "Three-invocation shape"
+# comment above and ci.yml's dedicated "ManifoldBackendsTests (serial,
+# claims-registry safe)" step.
+PROFILE_BACKENDS_FILTER="ManifoldBackendsTests"
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 
 # Local profile trait set: the surviving opt-in traits exercised by the batch
@@ -242,7 +276,7 @@ if [[ -n "$PROFILE" ]]; then
     esac
 
     # If the caller passed their own --filter, we run a single invocation
-    # under the profile's traits/workers (not the two-invocation default
+    # under the profile's traits/workers (not the three-invocation default
     # suite list). This is the "narrow override" path.
     HAS_USER_FILTER=0
     if [[ ${#FILTERS_SEEN[@]} -gt 0 ]]; then
@@ -312,12 +346,12 @@ if [[ -n "$PROFILE" ]]; then
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         # Fall through to the single swift-test invocation at the bottom.
     else
-        # No caller filter — run the canonical two-invocation pre-push gate.
-        # Re-exec self twice with the resolved flag sets. This keeps the
+        # No caller filter — run the canonical three-invocation pre-push gate.
+        # Re-exec self three times with the resolved flag sets. This keeps the
         # parsing surface single-pass and the summary printer authoritative
         # per call (each invocation prints its own summary).
         SCRIPT_PATH="$0"
-        EXTRA_ARGS=("${SWIFT_ARGS[@]}")
+        EXTRA_ARGS=(${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"})
         # Build the per-profile flag sets.
         if [[ "$PROFILE" == "ci" ]]; then
             TRAIT_FLAGS=()
@@ -329,9 +363,10 @@ if [[ -n "$PROFILE" ]]; then
             BANNER_TRAITS="$PROFILE_LOCAL_TRAITS"
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  PROFILE: $PROFILE (two-invocation pre-push gate)"
+        echo "  PROFILE: $PROFILE (three-invocation pre-push gate)"
         echo "  Traits:  $BANNER_TRAITS"
         printf "  XCTest filters (%d): %s\n" "${#FILTERS[@]}" "${FILTERS[*]}"
+        echo "  Backends filter: $PROFILE_BACKENDS_FILTER (own serial process — claims-registry safety, mirrors ci.yml)"
         echo "  Swift Testing filter: $PROFILE_SWIFT_TESTING_FILTER (separate process — #681)"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -364,20 +399,43 @@ if [[ -n "$PROFILE" ]]; then
         RC1=$?
         set -e
         if [[ $RC1 -ne 0 ]]; then
-            echo "[--profile $PROFILE] XCTest invocation failed (exit $RC1) — skipping Swift Testing run." >&2
+            echo "[--profile $PROFILE] XCTest invocation failed (exit $RC1) — skipping ManifoldBackendsTests and Swift Testing runs." >&2
             exit $RC1
         fi
 
-        # Invocation 2: Swift Testing in a separate process (#681).
+        # Invocation 2: ManifoldBackendsTests, own serial process.
+        #
+        # Mirrors ci.yml's dedicated "ManifoldBackendsTests (serial,
+        # claims-registry safe)" step, kept deliberately out of the
+        # --parallel XCTest batch above. Locally this also matters for a
+        # different reason: ManifoldBackendsTests contains ~9 Swift Testing
+        # files (see SwiftTestingAuditTest's allowlist) coexisting with
+        # XCTestCase suites in the same target — folding it into invocation 1
+        # would mix both harnesses in one process, the #681 libmalloc SIGABRT
+        # hazard.
+        set +e
+        "$SCRIPT_PATH" \
+            --filter "$PROFILE_BACKENDS_FILTER" \
+            ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
+            --skip-update \
+            ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+        RC2=$?
+        set -e
+        if [[ $RC2 -ne 0 ]]; then
+            echo "[--profile $PROFILE] ManifoldBackendsTests invocation failed (exit $RC2) — skipping Swift Testing run." >&2
+            exit $RC2
+        fi
+
+        # Invocation 3: Swift Testing in a separate process (#681).
         set +e
         "$SCRIPT_PATH" \
             --filter "$PROFILE_SWIFT_TESTING_FILTER" \
             ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
             ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
-        RC2=$?
+        RC3=$?
         set -e
-        exit $RC2
+        exit $RC3
     fi
 fi
 
@@ -399,7 +457,7 @@ echo ""
 cd "$PACKAGE_DIR"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 set +e
-swift test "${SWIFT_ARGS[@]}" 2>&1 | tee "$OUTPUT_FILE"
+swift test ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tee "$OUTPUT_FILE"
 SWIFT_EXIT=${PIPESTATUS[0]}
 set -e
 

@@ -147,6 +147,33 @@ public struct ChatMessage: Identifiable, Hashable, Sendable {
         set { contentParts = [.text(newValue)] }
     }
 
+    /// Replaces the text portion of `contentParts` with a single `.text(newValue)`
+    /// part, preserving every non-text part (images, audio, thinking, tool calls/
+    /// results, generated media) and their relative order.
+    ///
+    /// Unlike the `content` setter — which unconditionally collapses
+    /// `contentParts` to `[.text(newValue)]` and silently discards any
+    /// non-text parts — this replaces text in place: the new text part lands
+    /// at the position of the first existing `.text` part (subsequent text
+    /// parts are dropped, matching `content`'s "concatenated text" reading),
+    /// or is appended at the end when the message carried no text part at all.
+    /// Use this for edit-style flows that must not destroy attachments.
+    package mutating func replaceTextContent(_ newValue: String) {
+        guard contentParts.contains(where: { $0.textContent != nil }) else {
+            contentParts.append(.text(newValue))
+            return
+        }
+        var replaced = false
+        contentParts = contentParts.compactMap { part in
+            guard part.textContent != nil else { return part }
+            if !replaced {
+                replaced = true
+                return .text(newValue)
+            }
+            return nil
+        }
+    }
+
     /// True if the message contains non-empty visible text.
     /// Use instead of `content.isEmpty` to correctly handle thinking-only responses
     /// — a message with only `.thinking` parts (or only empty `.text("")` parts) returns false.

@@ -68,6 +68,10 @@ TEST_JOB_SUITES=(
   ManifoldInferenceSwiftTestingTests
   ManifoldAppEvalTests
   APIFreezeTests
+  ManifoldSnapshotTests
+  ManifoldTelemetryOTLPTests
+  ManifoldKitTests
+  ManifoldHuggingFaceTests
 )
 
 # ---------------------------------------------------------------------------
