@@ -153,6 +153,34 @@ final class ChatViewModelSendMessageErrorTests: XCTestCase {
         }
     }
 
+    // MARK: - .emptyInput (#A4)
+
+    func test_sendMessage_whitespaceOnlyAfterCompletedTurn_throwsEmptyInputNotPriorReply() async throws {
+        // Sabotage check (verified manually): removing the emptyInput
+        // precondition guard from the throwing sendMessage(_:) overload
+        // causes this test to fail — the call falls through to the no-arg
+        // sendMessage() (which silently no-ops on blank input), then reads
+        // the still-`.completed` lastTurnState from the FIRST turn and
+        // returns that stale record as if it were the reply to "   ".
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["Hi", " there"]
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        let firstReply = try await vm.sendMessage("hello")
+        XCTAssertEqual(firstReply.content, "Hi there", "Precondition: first turn completed normally")
+
+        do {
+            _ = try await vm.sendMessage("   ")
+            XCTFail("Expected SendMessageError.emptyInput to be thrown")
+        } catch SendMessageError.emptyInput {
+            // Pass.
+        } catch {
+            XCTFail("Expected .emptyInput, got \(error)")
+        }
+    }
+
     // MARK: - Happy path returns the assistant record (no throw)
 
     func test_sendMessage_happyPath_returnsAssistantRecord() async throws {

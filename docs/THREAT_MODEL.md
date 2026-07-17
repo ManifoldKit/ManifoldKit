@@ -1,5 +1,8 @@
 # ManifoldKit Threat Model
 
+**Audience:** consumer
+**Status:** living
+
 This document is the engineering companion to [SECURITY.md](../SECURITY.md). Where
 SECURITY.md is the customer-facing summary ("what ManifoldKit guarantees, who it's for, what to
 do with a vulnerability"), this document is the line-by-line procurement checklist:

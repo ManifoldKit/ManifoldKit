@@ -53,10 +53,18 @@ public struct RunRecord: Codable, Sendable, Equatable {
     /// Snapshot of the tool definitions made available to the model for this run.
     /// Empty when the run did not configure tools. Schema validation in
     /// `ToolCallValidityDetector.schema-violation` matches `ToolCall.toolName` against
-    /// this array; calls naming an unknown tool currently skip the schema
-    /// check silently — adding a dedicated `unknown-tool-name` sub-check is
-    /// tracked as a follow-up to #627.
+    /// this array; calls naming an unknown tool trip the dedicated
+    /// `unknown-tool-name` sub-check instead (the #627 follow-up).
     public var toolDefinitions: [ToolDefinition]
+    /// `true` when `EventRecorder` dropped some of `raw`/`thinkingRaw`/`events`
+    /// to stay under its buffering cap (a runaway/looping generation that
+    /// never naturally stopped). When set, `raw`/`thinkingRaw` keep only their
+    /// most recent characters (oldest content is dropped from the front, not
+    /// the tail, so `LoopingDetector`'s suffix-based checks still see the
+    /// actual repeating content) and `events` keeps only its most recent
+    /// entries. Additive field — see `init(from:)` for why this doesn't need
+    /// a `schemaVersion` bump.
+    public var truncated: Bool
 
     public init(
         schemaVersion: Int = RunRecord.currentSchema,
@@ -80,7 +88,8 @@ public struct RunRecord: Codable, Sendable, Equatable {
         stopReason: String? = nil,
         toolCalls: [ToolCall] = [],
         toolResults: [ToolResult] = [],
-        toolDefinitions: [ToolDefinition] = []
+        toolDefinitions: [ToolDefinition] = [],
+        truncated: Bool = false
     ) {
         self.schemaVersion = schemaVersion
         self.runId = runId
@@ -104,6 +113,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
         self.toolCalls = toolCalls
         self.toolResults = toolResults
         self.toolDefinitions = toolDefinitions
+        self.truncated = truncated
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -111,7 +121,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
         case runId, ts, harness, model, config, prompt, events, raw, rendered
         case thinkingRaw, thinkingParts, thinkingCompleteCount, templateMarkers
         case memory, timing, phase, error, stopReason
-        case toolCalls, toolResults, toolDefinitions
+        case toolCalls, toolResults, toolDefinitions, truncated
     }
 
     /// Decodes a record, defaulting `schemaVersion` to `1` when the field is
@@ -142,6 +152,9 @@ public struct RunRecord: Codable, Sendable, Equatable {
         self.toolCalls = try c.decodeIfPresent([ToolCall].self, forKey: .toolCalls) ?? []
         self.toolResults = try c.decodeIfPresent([ToolResult].self, forKey: .toolResults) ?? []
         self.toolDefinitions = try c.decodeIfPresent([ToolDefinition].self, forKey: .toolDefinitions) ?? []
+        // Default `false` for legacy records written before the EventRecorder
+        // buffering cap landed — none of them could have been truncated.
+        self.truncated = try c.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
     }
 
     /// Errors surfaced by `validate(schemaVersion:)`.

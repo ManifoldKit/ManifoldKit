@@ -19,6 +19,13 @@ final class ServerConfigurationTests: XCTestCase {
         XCTAssertFalse(configuration.unsafeCORS)
         XCTAssertNil(configuration.corsOrigin)
         XCTAssertFalse(configuration.metricsEnabled)
+
+        // #2265: request/idle timeouts and the output-token ceiling are all
+        // on by default with generous-but-bounded values — nil would mean
+        // "no cap", silently reintroducing the unbounded hang/output hazard.
+        XCTAssertEqual(configuration.generationTimeout, .seconds(600))
+        XCTAssertEqual(configuration.streamingIdleTimeout, .seconds(60))
+        XCTAssertEqual(configuration.maxGenerationOutputTokens, 4096)
     }
 
     func testCustomValuesArePreserved() {
@@ -29,7 +36,10 @@ final class ServerConfigurationTests: XCTestCase {
             parallelSlots: 4,
             unsafeCORS: true,
             corsOrigin: "https://example.test",
-            metricsEnabled: true
+            metricsEnabled: true,
+            generationTimeout: .seconds(5),
+            streamingIdleTimeout: .seconds(10),
+            maxGenerationOutputTokens: 256
         )
 
         XCTAssertEqual(configuration.host, "0.0.0.0")
@@ -39,6 +49,20 @@ final class ServerConfigurationTests: XCTestCase {
         XCTAssertTrue(configuration.unsafeCORS)
         XCTAssertEqual(configuration.corsOrigin, "https://example.test")
         XCTAssertTrue(configuration.metricsEnabled)
+        XCTAssertEqual(configuration.generationTimeout, .seconds(5))
+        XCTAssertEqual(configuration.streamingIdleTimeout, .seconds(10))
+        XCTAssertEqual(configuration.maxGenerationOutputTokens, 256)
+    }
+
+    func testTimeoutsAndOutputCapCanBeDisabled() {
+        let configuration = ServerConfiguration(
+            generationTimeout: nil,
+            streamingIdleTimeout: nil,
+            maxGenerationOutputTokens: nil
+        )
+        XCTAssertNil(configuration.generationTimeout)
+        XCTAssertNil(configuration.streamingIdleTimeout)
+        XCTAssertNil(configuration.maxGenerationOutputTokens)
     }
 
     // MARK: - Per-instance body-size limit (inert-config finding: enforcement

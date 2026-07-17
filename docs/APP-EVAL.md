@@ -1,5 +1,8 @@
 # ManifoldAppEval Adoption Walkthrough
 
+**Audience:** consumer
+**Status:** living
+
 A one-page guide to adding golden-scenario regression coverage to an app
 built on ManifoldKit, via `ManifoldAppEval`. Two entry points are covered:
 **(a)** an app that already has a test target and CI, and **(b)** a true

@@ -1,5 +1,8 @@
 # Local GGUF storage and discovery
 
+**Audience:** consumer
+**Status:** living
+
 How ManifoldKit finds local `.gguf` files on disk, where to put them, and what
 goes wrong when discovery or load fails. Closes [#1468](https://github.com/ManifoldKit/ManifoldKit/issues/1468).
 

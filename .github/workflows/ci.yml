@@ -419,9 +419,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # paths-filter needs the parent commit to diff against on `push` events;
-          # `pull_request` works with the default shallow clone.
-          fetch-depth: 2
+          # Full history (not the usual fetch-depth: 2 — paths-filter would be
+          # happy with that alone). This job runs ManifoldInferenceTests,
+          # which includes AgentsMdPlansStatusAuditTest's stale-plan-expiry
+          # check (#2226): it reads `git log -1` per docs/plans/*.md file to
+          # decide staleness, and a shallow clone makes every file look
+          # freshly touched (the boundary commit "introduces" everything
+          # reachable from it) instead of failing loudly — the check
+          # degrades to a false-negative that's expensive to notice. The repo
+          # is small (~1800 commits, ~40MB) so the full fetch is cheap;
+          # re-shallow this if that ever stops being true, alongside the
+          # audit's `isShallowRepository` guard in
+          # AgentsMdPlansStatusAuditTest.swift.
+          fetch-depth: 0
 
       - name: Detect dependency-graph changes
         id: deps-changed
@@ -694,27 +704,17 @@ jobs:
           # nothing needs testing. Nightly is the backstop; we never skip here.
           [[ "$affected" == "FULL" || "$affected" == "NONE" || -z "$affected" ]] \
             && emit_full "affected=${affected:-unset} (NONE falls back to full as conservative measure)"
-          # Count suites that require a full swift-test bundle compile (can't use xcodebuild):
-          # ManifoldBackendsTests (umbrella suite — full bundle compile).
-          # Running 2+ such suites separately compiles the full bundle twice, which is always
-          # slower than one full run. Also fall back if total suite count is large (≥8)
-          # to avoid excessive sequential xcodebuild overhead outweighing the compile savings.
-          swift_test_count=0
-          for s in $affected; do
-            # NOTE: must use the assignment form, not `((swift_test_count++))` —
-            # a C-style post-increment FROM ZERO evaluates to 0, which bash
-            # treats as a failing exit status, and under `set -euo pipefail`
-            # the very first increment then kills the script before any mode
-            # is emitted. Whether that kill actually fires is BASH-VERSION-
-            # DEPENDENT (reproduced: bash 5.x crashes, macOS system bash 3.2
-            # does not propagate it through this case/for shape) — the
-            # assignment form is correct under every version, so we don't
-            # gamble on which bash a runner resolves.
-            case "$s" in ManifoldBackendsTests) swift_test_count=$((swift_test_count + 1)) ;; esac
-          done
+          # Fall back to full if total suite count is large (≥8), to avoid
+          # excessive sequential xcodebuild overhead outweighing the compile savings.
+          #
+          # There used to also be a "2+ suites requiring a full swift-test bundle
+          # compile" counter here (ManifoldBackendsTests was the only suite that
+          # qualified). It was removed (#2297): only one case arm ever incremented
+          # it, and `$affected` is deduplicated upstream (affected-suites.sh's
+          # `sort -u`), so the counter could only ever be 0 or 1 — the `>= 2` guard
+          # was structurally unreachable. If a second full-bundle suite is ever
+          # added, reintroduce a real count check rather than resurrecting this one.
           total_count=$(printf '%s\n' $affected | wc -w | tr -d ' ')
-          [[ $swift_test_count -ge 2 ]] \
-            && emit_full "2+ swift-test suites (${affected}) would compile full bundle twice"
           [[ $total_count -ge 8 ]] \
             && emit_full "${total_count} suites — xcodebuild overhead exceeds full-run savings"
           echo "mode=selective" >> "$GITHUB_OUTPUT"
@@ -768,7 +768,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --filter ManifoldAppEvalTests --filter APIFreezeTests --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --filter ManifoldAppEvalTests --filter APIFreezeTests --filter ManifoldSnapshotTests --filter ManifoldTelemetryOTLPTests --filter ManifoldKitTests --filter ManifoldHuggingFaceTests --skip-update --parallel
 
       # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
       # above. Historically, under --parallel, swift-test scheduled XCTest classes
@@ -994,11 +994,38 @@ jobs:
           )
           echo "Checking API surface for: ${TARGETS[*]}"
           # diagnose-api-breaking-changes checks out the baseline tree object
-          # from origin/main. A shallow clone (actions/checkout default) omits
-          # those objects and causes "unable to read tree" (#1723). --unshallow
+          # by ref. A shallow clone (actions/checkout default) omits those
+          # objects and causes "unable to read tree" (#1723). --unshallow
           # converts the shallow clone to a full one; fall back to a plain fetch
-          # if the repo is already full-depth (e.g. local runs).
+          # if the repo is already full-depth (e.g. local runs). The unshallow
+          # is also what makes the merge-base below computable.
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # Baseline is the MERGE BASE, not the live tip of origin/main.
+          #
+          # This is the same failure nightly-slow-tests.yml already fixed: a
+          # live-resolved moving ref ends up newer than the tree being
+          # analysed, and the digester reports "inverted (spurious) breakages"
+          # (#2113, run 28574236073). Nightly closed it by resolving an
+          # immutable baseline once; this job kept the moving `origin/main`
+          # and kept the bug.
+          #
+          # Here the tree analysed is the PR's merge ref, computed against main
+          # as it stood at the time, while `origin/main` is re-fetched live
+          # above. Diffing those two vintages makes every public symbol main
+          # GAINED since the branch point look like this PR REMOVED it: the
+          # digester flags symbols the diff never touches, and the allowlist
+          # can't suppress them because it is read from the analysed (older)
+          # tree, not from main. The failure grows the further behind a branch
+          # falls, so it lands on whoever rebases last rather than on whoever
+          # actually broke something.
+          #
+          # The merge base puts both sides on the same vintage and asks what
+          # this gate is for: did THIS PR remove public API relative to where
+          # it branched? Main's absolute surface is covered elsewhere —
+          # nightly diffs main against the last release tag, and the merge
+          # queue validates the real merged tree.
+          BASELINE="$(git merge-base origin/main HEAD)"
+          echo "Baseline (merge-base of origin/main and HEAD): $BASELINE"
           # The allowlist (.github/api-breakage-allowlist.txt) carries the
           # false-positive "X has been removed" entries produced when public
           # types are relocated DOWNWARD into a leaf module that ManifoldInference
@@ -1007,12 +1034,15 @@ jobs:
           # does NOT follow `@_exported` re-exports, so a relocated-but-still-
           # source-reachable symbol reads as "removed" against the pre-merge
           # baseline. The build gates prove source-compat is intact. Each
-          # entry self-expires: once the relocation lands on main the baseline
-          # no longer sees the symbol in ManifoldInference, the digester stops
-          # emitting that message, and the unmatched allowlist line becomes an
-          # inert no-op (a genuine future removal of a DIFFERENT symbol still
-          # trips the gate). See #1723.
-          swift package diagnose-api-breaking-changes origin/main "${TARGETS[@]}" \
+          # entry self-expires: once the relocation lands on main AND a branch
+          # rebases past it, that branch's merge base no longer sees the symbol
+          # in ManifoldInference, the digester stops emitting the message, and
+          # the unmatched allowlist line becomes an inert no-op (a genuine
+          # future removal of a DIFFERENT symbol still trips the gate). Under
+          # the merge-base baseline this expiry follows each branch's own base
+          # rather than main's tip, so an entry stays live slightly longer —
+          # inert lines are harmless, an unmatched one is not an error. See #1723.
+          swift package diagnose-api-breaking-changes "$BASELINE" "${TARGETS[@]}" \
             --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
   # Server tests are split out of the per-PR mega-batch because the

@@ -559,6 +559,122 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         return controller.view.fittingSize
     }
     #endif
+
+    // MARK: - availableTabs(features:compiledBackends:modelRegistry:) — #1801
+
+    /// A `ModelRegistry` backed by an `InferenceService` that has declared
+    /// support for the given model types — simulates a companion backend
+    /// (manifold-mlx / manifold-llama) registering itself at *runtime*, the
+    /// v0.48 path `availableTabs` has to see via `modelRegistry.compatibility(for:)`
+    /// rather than the compile-time `CompiledBackends` reflection. Recipe from
+    /// `Tests/ManifoldInferenceTests/ModelCompatibilityTests.swift`
+    /// (`InferenceService.declareSupport(for:)`).
+    private func makeRegistry(supporting modelTypes: [ModelType] = []) -> ModelRegistry {
+        let service = InferenceService()
+        for modelType in modelTypes {
+            service.declareSupport(for: modelType)
+        }
+        return ModelRegistry(
+            inferenceService: service,
+            modelStorage: ModelStorageService(
+                baseDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            )
+        )
+    }
+
+    /// A build with HuggingFace download machinery compiled in (unconditional
+    /// since v0.48) but with NO local model type compiled in — the exact shape
+    /// of a core build before a companion backend package registers anything.
+    /// `shouldPresentModelDownloads` is false on this value by construction
+    /// (`downloadableModelTypes` is empty), so any Download-tab visibility in
+    /// these tests must come from `modelRegistry.compatibility(for:)`, not from
+    /// `compiledBackends`.
+    private var compiledBackendsWithNoLocalModelTypes: CompiledBackends {
+        CompiledBackends(
+            buildProfile: .offline,
+            traits: [.huggingFace],
+            localModelTypes: [],
+            cloudProviders: []
+        )
+    }
+
+    func test_availableTabs_downloadTab_presentWhenRuntimeBackendRegistersGGUFSupport() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry(supporting: [.gguf])
+        )
+        XCTAssertTrue(
+            tabs.contains(.download),
+            "Download tab should appear once a runtime-registered backend reports GGUF as supported, " +
+            "even though no local model type is compiled in (#1801 companion-package path)"
+        )
+    }
+
+    func test_availableTabs_downloadTab_presentWhenRuntimeBackendRegistersMLXSupport() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry(supporting: [.mlx])
+        )
+        XCTAssertTrue(
+            tabs.contains(.download),
+            "Download tab should appear once a runtime-registered backend reports MLX as supported"
+        )
+    }
+
+    func test_availableTabs_downloadTab_absentWhenNoDownloadableBackendRegistered() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry()
+        )
+        XCTAssertFalse(
+            tabs.contains(.download),
+            "Download tab should stay hidden when nothing downloadable is compiled in or registered " +
+            "— today's default in this repo, since MLX/llama.cpp moved to companion packages"
+        )
+    }
+
+    func test_availableTabs_downloadTab_absentWhenFeatureFlagDisabledEvenWithBackendRegistered() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(showModelDownload: false),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry(supporting: [.gguf])
+        )
+        XCTAssertFalse(
+            tabs.contains(.download),
+            "Download tab should stay hidden when features.showModelDownload is false, " +
+            "even though a downloadable backend is registered"
+        )
+    }
+
+    func test_availableTabs_storageTab_presentWhenFeatureFlagEnabled() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(showStorageTab: true),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry()
+        )
+        XCTAssertTrue(tabs.contains(.storage), "Storage tab should appear when features.showStorageTab is true")
+    }
+
+    func test_availableTabs_storageTab_absentWhenFeatureFlagDisabled() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(showStorageTab: false),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry()
+        )
+        XCTAssertFalse(tabs.contains(.storage), "Storage tab should stay hidden when features.showStorageTab is false")
+    }
+
+    func test_availableTabs_selectTab_alwaysPresent() {
+        let tabs = ModelManagementSheet.availableTabs(
+            features: ManifoldConfiguration.Features(showModelDownload: false, showStorageTab: false),
+            compiledBackends: compiledBackendsWithNoLocalModelTypes,
+            modelRegistry: makeRegistry()
+        )
+        XCTAssertEqual(tabs, [.select], "Select tab is unconditional; with both other flags off it should be the only tab")
+    }
 }
 
 // MARK: - Scan-counting FileManager

@@ -23,8 +23,10 @@
 #   - Pulls out every fenced block tagged ```swift (case-insensitive).
 #   - Numbers them per-file (readme-001.swift, quickstart-001.swift,
 #     docc-manifoldui-buildingachatui-001.swift, ...).
-#   - Writes each to --out <dir> (default /tmp/manifoldkit-snippets) with a
-#     `// Source: <relative-path>:<line>` header so failures point back to docs.
+#   - Writes each to --out <dir> (default a fresh, process-unique dir under
+#     $TMPDIR/manifoldkit-snippets-<pid>; pass --out explicitly for a stable
+#     path) with a `// Source: <relative-path>:<line>` header so failures
+#     point back to docs.
 #
 # Skip / include policy:
 #   - Blocks fenced as ```swift,no-build (or any ```swift* containing the
@@ -53,7 +55,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="/tmp/manifoldkit-snippets"
+# Process-unique default so two concurrent manual runs don't clobber each
+# other's output (they used to share a fixed /tmp/manifoldkit-snippets path,
+# and the cleanup rm at the top of extraction would glob-delete the other
+# run's files out from under it). CI always passes --out explicitly
+# (extract-snippets-test.sh), so this default only affects manual runs.
+OUT_DIR="${TMPDIR:-/tmp}/manifoldkit-snippets-$$"
 VERBOSE=0
 
 usage() {
@@ -61,7 +68,8 @@ usage() {
 Usage: $0 [--out <dir>] [--verbose]
 
 Options:
-  --out <dir>     Output directory (default: /tmp/manifoldkit-snippets).
+  --out <dir>     Output directory (default: a fresh, process-unique dir
+                   under \$TMPDIR/manifoldkit-snippets-<pid>).
   --verbose       Log each extracted block to stderr.
   -h, --help      Show this help.
 EOF

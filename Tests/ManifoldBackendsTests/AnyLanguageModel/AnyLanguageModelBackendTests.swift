@@ -49,6 +49,88 @@ final class AnyLanguageModelBackendTests: XCTestCase {
         XCTAssertTrue(descriptor.capabilities.isRemote)
     }
 
+    // MARK: - baseURL resolution (regression for the silent-fallback footgun)
+    //
+    // `AnyLanguageModelURLResolver.resolve` used to do
+    // `URL(string: queryItems["baseURL"] ?? "") ?? vendorDefault` for every
+    // provider: an absent `baseURL` correctly fell back to the vendor
+    // default, but a *present-but-unparseable* one silently fell back too —
+    // sending the caller's `apiKey` to the real vendor endpoint instead of
+    // the (mistyped) host they configured. It must now throw instead.
+
+    func test_urlResolver_absentBaseURL_usesVendorDefault() throws {
+        let descriptor = try AnyLanguageModelURLResolver.resolve(URL(string: "openai://gpt-4o?apiKey=test")!)
+        let model = try XCTUnwrap(descriptor.model as? OpenAILanguageModel)
+        XCTAssertEqual(model.baseURL, OpenAILanguageModel.defaultBaseURL)
+    }
+
+    func test_urlResolver_validCustomBaseURL_isUsed() throws {
+        let descriptor = try AnyLanguageModelURLResolver.resolve(
+            URL(string: "openai://gpt-4o?apiKey=test&baseURL=https://my-proxy.example.com/v1/")!
+        )
+        let model = try XCTUnwrap(descriptor.model as? OpenAILanguageModel)
+        XCTAssertEqual(model.baseURL, URL(string: "https://my-proxy.example.com/v1/"))
+    }
+
+    func test_urlResolver_malformedBaseURL_throwsRatherThanFallingBackToVendorDefault() throws {
+        // A space in the host is not a valid URL under `URL(string:)`.
+        var components = URLComponents(string: "openai://gpt-4o")!
+        components.queryItems = [
+            URLQueryItem(name: "apiKey", value: "super-secret-key"),
+            URLQueryItem(name: "baseURL", value: "http://exa mple.com"),
+        ]
+        let url = try XCTUnwrap(components.url)
+
+        XCTAssertThrowsError(try AnyLanguageModelURLResolver.resolve(url)) { error in
+            guard case .invalidBaseURL(let raw, let provider) = error as? AnyLanguageModelBridgeError else {
+                XCTFail("Expected .invalidBaseURL, got \(error)")
+                return
+            }
+            XCTAssertEqual(raw, "http://exa mple.com")
+            XCTAssertEqual(provider, "openai")
+            // The error must never leak the caller's apiKey.
+            XCTAssertFalse((error as? AnyLanguageModelBridgeError)?.errorDescription?.contains("super-secret-key") ?? true)
+        }
+    }
+
+    func test_urlResolver_malformedBaseURL_throwsForAnthropicGeminiOllamaOpenResponses() throws {
+        let schemesRequiringAPIKey: [(scheme: String, host: String)] = [
+            ("anthropic", "claude-3"),
+            ("gemini", "gemini-pro"),
+            ("openresponses", "some-model"),
+        ]
+        for (scheme, host) in schemesRequiringAPIKey {
+            var components = URLComponents(string: "\(scheme)://\(host)")!
+            components.queryItems = [
+                URLQueryItem(name: "apiKey", value: "test"),
+                URLQueryItem(name: "baseURL", value: "http://exa mple.com"),
+            ]
+            let url = try XCTUnwrap(components.url)
+            XCTAssertThrowsError(try AnyLanguageModelURLResolver.resolve(url), "scheme \(scheme) should throw") { error in
+                XCTAssertTrue(error is AnyLanguageModelBridgeError)
+                if case .invalidBaseURL = error as? AnyLanguageModelBridgeError {
+                    // expected
+                } else {
+                    XCTFail("Expected .invalidBaseURL for scheme \(scheme), got \(error)")
+                }
+            }
+        }
+
+        // Ollama takes no apiKey.
+        var ollamaComponents = URLComponents(string: "ollama://llama3")!
+        ollamaComponents.queryItems = [
+            URLQueryItem(name: "baseURL", value: "http://exa mple.com"),
+        ]
+        let ollamaURL = try XCTUnwrap(ollamaComponents.url)
+        XCTAssertThrowsError(try AnyLanguageModelURLResolver.resolve(ollamaURL)) { error in
+            if case .invalidBaseURL = error as? AnyLanguageModelBridgeError {
+                // expected
+            } else {
+                XCTFail("Expected .invalidBaseURL for scheme ollama, got \(error)")
+            }
+        }
+    }
+
     /// Regression test for arch-plan 1.3 / api-review-wave2 0.D:
     /// `loadModel` used to rebuild `BackendCapabilities` from a fresh
     /// literal, silently zeroing `supportsVision`, `supportsGuidedStructuredOutput`,

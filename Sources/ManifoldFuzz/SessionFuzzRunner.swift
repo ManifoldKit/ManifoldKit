@@ -176,7 +176,8 @@ public actor SessionFuzzRunner {
             maxOutputTokens: 256,
             toolDefinitions: config.tools ? SyntheticToolset.definitions : [],
             contextLimit: handle.backend.capabilities.contextWindowSize,
-            memoryBudgetBytes: handle.memoryBudgetBytes
+            memoryBudgetBytes: handle.memoryBudgetBytes,
+            requestTimeout: config.requestTimeout
         )
         let runner = SessionScriptRunner(
             service: service,

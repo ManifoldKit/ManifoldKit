@@ -1,5 +1,8 @@
 # WWDC 2026 Pre-emptive Trait Stubs
 
+**Audience:** contributor
+**Status:** living
+
 Added 2026-05-31, 8 days before WWDC 2026 (June 8). **Updated 2026-06-16**
 against the shipped Xcode 27 / macOS 27 beta SDK — the pre-WWDC guesses below
 each section have been resolved against ground truth. Works toward issue #1577.

@@ -113,6 +113,30 @@ final class ToolCallValidityDetectorTests: XCTestCase {
         XCTAssertTrue(findings.contains { $0.subCheck == "schema-violation" })
     }
 
+    // MARK: - unknown-tool-name
+
+    func test_unknownToolName_fires_whenToolNameNotDeclared() {
+        let r = makeRecord(
+            toolCalls: [
+                ToolCall(id: "c1", toolName: "definitely_not_a_real_tool", arguments: #"{"foo":"bar"}"#)
+            ]
+        )
+        let findings = ToolCallValidityDetector().inspect(r)
+        XCTAssertEqual(findings.filter { $0.subCheck == "unknown-tool-name" }.count, 1,
+                        "expected exactly one unknown-tool-name finding; got: \(findings.map(\.subCheck))")
+    }
+
+    func test_unknownToolName_doesNotFire_forDeclaredToolWithValidArgs() {
+        let r = makeRecord(
+            toolCalls: [
+                ToolCall(id: "c1", toolName: "get_weather", arguments: #"{"city":"London","units":"metric"}"#)
+            ]
+        )
+        let findings = ToolCallValidityDetector().inspect(r)
+        XCTAssertFalse(findings.contains { $0.subCheck == "unknown-tool-name" },
+                        "known tool with valid args must not trip unknown-tool-name")
+    }
+
     // MARK: - id-reuse
 
     func test_idReuse_fires_whenSameCallIdAppearsTwice() {
@@ -185,8 +209,8 @@ final class ToolCallValidityDetectorTests: XCTestCase {
         // Pins the day-one severity policy:
         //   confirmed — id-reuse, orphan-result (zero-FP-by-construction)
         //   flaky    — malformed-json-args, schema-violation,
-        //              toolchoice-violation (decode/prompt-drift; calibration
-        //              tracked under #488)
+        //              unknown-tool-name, toolchoice-violation
+        //              (decode/prompt-drift; calibration tracked under #488)
         // Bumping or downgrading either bucket without updating the policy is
         // a real product change and should land deliberately, not silently.
         let r = makeRecord(
@@ -206,6 +230,7 @@ final class ToolCallValidityDetectorTests: XCTestCase {
         let flakySubChecks: Set<String> = [
             "malformed-json-args",
             "schema-violation",
+            "unknown-tool-name",
             "toolchoice-violation",
         ]
         for f in findings {

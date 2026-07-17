@@ -34,6 +34,14 @@ public enum SendMessageError: Error, Sendable {
     /// Wait for it — poll or observe ``ChatViewModel/modelLoadState`` — then
     /// retry, rather than treating this as a configuration failure.
     case modelLoading
+    /// The `text` argument was empty (or whitespace-only) and no attachments
+    /// were staged, so there is nothing to send. Distinct from ``empty`` —
+    /// that case means a turn ran and produced no output; this case means no
+    /// turn ran at all. Without this check, the no-arg ``ChatViewModel/sendMessage()``
+    /// silently no-ops on empty input and this throwing overload would fall
+    /// through to `lastTurnState`, returning the *previous* turn's completed
+    /// record as if it were this call's reply (#A4).
+    case emptyInput
     /// The turn ended without producing tokens and without an error.
     /// Maps to a runtime ``FinishReason/empty`` or a precondition that
     /// was satisfied at call time but produced no output downstream.
@@ -52,6 +60,8 @@ extension SendMessageError: LocalizedError {
             return "No model loaded. Select a model from the sidebar first."
         case .modelLoading:
             return "A model is still loading. Wait for it to finish before sending."
+        case .emptyInput:
+            return "Message text is empty and no attachments are staged. Nothing to send."
         case .empty:
             return "Turn ended without producing a response."
         case let .runtime(error):
@@ -91,7 +101,7 @@ extension SendMessageError: BackendError {
     ///   underlying type (e.g. ``ChatErrorBridge``) rather than guessing.
     public var isRetryable: Bool {
         switch self {
-        case .noActiveSession, .noModelLoaded:
+        case .noActiveSession, .noModelLoaded, .emptyInput:
             return false
         case .modelLoading, .empty:
             return true
@@ -124,9 +134,10 @@ extension ChatViewModel {
     /// one turn without setting `inputText` and polling observation surfaces.
     ///
     /// - Throws: ``SendMessageError`` — `.noActiveSession` / `.noModelLoaded` /
-    ///   `.modelLoading` for precondition failures, `.empty` when the turn
-    ///   produces no assistant record, or `.runtime(error)` when the
-    ///   underlying runtime surfaces an error.
+    ///   `.modelLoading` for precondition failures, `.emptyInput` when `text`
+    ///   is empty (or whitespace-only) with no staged attachments, `.empty`
+    ///   when the turn produces no assistant record, or `.runtime(error)`
+    ///   when the underlying runtime surfaces an error.
     @discardableResult
     public func sendMessage(_ text: String) async throws -> ChatMessage {
         // Check preconditions BEFORE invoking the runtime so callers that
@@ -146,6 +157,14 @@ extension ChatViewModel {
                 throw SendMessageError.modelLoading
             }
             throw SendMessageError.noModelLoaded
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draftAttachments.isEmpty else {
+            // The no-arg sendMessage() silently no-ops on empty-after-trim
+            // input with no attachments. Without this guard, falling through
+            // to it here would leave lastTurnState untouched and this method
+            // would return the PREVIOUS turn's completed record as if it were
+            // this call's reply (#A4).
+            throw SendMessageError.emptyInput
         }
 
         inputText = text

@@ -266,7 +266,7 @@ package struct ConversationTurnExecutor: Sendable {
         // `.messageUpdated` / `.messageRemoved` events unless the whole batch
         // completes successfully.
         var updatedMessage = history[index]
-        updatedMessage.content = text
+        updatedMessage.replaceTextContent(text)
         let trailing = Array(history[(index + 1)...])
 
         var mutations: [MessageStoreMutation] = [.update(updatedMessage)]
@@ -811,6 +811,7 @@ package struct ConversationTurnExecutor: Sendable {
                     }
                     thinkingDisplayed = ""
                     if let block = accumulator.finalizeThinking() {
+                        assistantMessage.contentParts.append(.thinking(block.text, signature: block.signature))
                         emit(.thinkingFinalized(messageID: assistantID, text: block.text, signature: block.signature))
                     }
 
@@ -939,6 +940,7 @@ package struct ConversationTurnExecutor: Sendable {
         if accumulator.hasOpenThinkingBlock {
             _ = thinkingBatcher.flush(now: ContinuousClock.now)
             if let block = accumulator.finalizeThinking() {
+                assistantMessage.contentParts.append(.thinking(block.text, signature: block.signature))
                 emit(.thinkingFinalized(messageID: assistantID, text: block.text, signature: block.signature))
             }
         }

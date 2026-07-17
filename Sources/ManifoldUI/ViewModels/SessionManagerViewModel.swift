@@ -134,7 +134,12 @@ public final class SessionManagerViewModel {
         autoLoad: Bool,
         diagnostics: DiagnosticsService? = nil
     ) {
-        guard self.service == nil else { return }
+        guard self.service == nil else {
+            Log.persistence.warning(
+                "SessionManagerViewModel.configure(persistence:) called again after the store was already set; keeping the original store"
+            )
+            return
+        }
         self._persistence = persistence
         self.diagnostics = diagnostics
         let service = SessionListService(persistence: persistence, diagnostics: diagnostics)

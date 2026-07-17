@@ -1,5 +1,8 @@
 # Scope Decision — ManifoldKit 0.6.0
 
+**Audience:** contributor
+**Status:** historical
+
 > **Historical (0.6.0-era) decision record.** Some scoping calls below were later reversed:
 > tool calling (`ManifoldTools` / `ToolRegistry`) and the `@ToolSchema` macro engine are **live,
 > first-class public surfaces** at v0.64, and the `ManifoldInference` extraction (deferred "to 0.7.0"

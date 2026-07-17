@@ -1,5 +1,8 @@
 # Bring Your Own UI
 
+**Audience:** consumer
+**Status:** living
+
 Use ManifoldKit's inference layer with a fully custom SwiftUI interface — no `ChatView`, no `ManifoldBootstrap`, no SwiftData. This path suits evaluation, embedding inference into an existing app, or building a bespoke chat surface where the framework's transcript, scroll-anchoring, and composer are not wanted.
 
 > Only restyling bubbles or overriding how *some* messages render? You do not need this. Keep `ChatView` and use the in-framework theming seams — `.chatTheme(_:)`, `.messageBubbleStyle(_:)`, and `.chatMessageRenderer(_:)`. See the [Theming the Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/Theming.md) DocC article. Drop to full BYO-UI only when you need to replace the transcript, scroll-anchoring, and composer wholesale.

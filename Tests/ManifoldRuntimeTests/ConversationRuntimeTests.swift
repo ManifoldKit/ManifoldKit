@@ -385,6 +385,19 @@ final class ConversationRuntimeTests: XCTestCase {
         return (runtime, store, backend, sessionStore)
     }
 
+    /// The default bound for the wait helpers below. Each helper already
+    /// races a real completion signal (an event predicate, a turn outcome, a
+    /// backend lifecycle callback) against this wall-clock timer — it is not
+    /// a fixed sleep standing in for a settle point, so there is no faster
+    /// deterministic signal to switch to. The bound itself was raised from
+    /// 5s after CI's `--parallel` full-suite run (`ci.yml` batches ~19
+    /// XCTest targets into one `swift test --parallel` invocation) starved
+    /// this suite's scheduling long enough to blow the old bound on three
+    /// unrelated PRs in one night (#2282, #2304, #2212's queue validation).
+    /// 20s is still a small fraction of the job's 30-minute watchdog ceiling
+    /// even if every call site in this file hit it at once.
+    private static let defaultDeadline: Duration = .seconds(20)
+
     /// Drains events from the runtime until `predicate` returns `true` for
     /// the most recent event, or the deadline elapses. Returns the captured
     /// transcript — tests assert on the order of events without relying on
@@ -392,7 +405,7 @@ final class ConversationRuntimeTests: XCTestCase {
     private func collectEvents(
         from runtime: ConversationRuntime,
         until predicate: @escaping @Sendable (ConversationEvent) -> Bool,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         var collected: [ConversationEvent] = []
         let task = Task {
@@ -418,7 +431,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForEvents(
         from task: Task<[ConversationEvent], Never>,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         try await withThrowingTaskGroup(of: [ConversationEvent].self) { group in
             group.addTask { await task.value }
@@ -435,7 +448,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForOutcome(
         from handle: ConversationTurnHandle,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> ConversationTurnOutcome {
         try await withThrowingTaskGroup(of: ConversationTurnOutcome.self) { group in
             group.addTask { await handle.outcome }
@@ -452,7 +465,7 @@ final class ConversationRuntimeTests: XCTestCase {
     private func waitForActiveTurnTaskCount(
         _ expectedCount: Int,
         in runtime: ConversationRuntime,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         let clock = ContinuousClock()
         let deadlineInstant = clock.now + deadline
@@ -466,7 +479,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForBackendStart(
         _ backend: HangingRuntimeBackend,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await backend.waitUntilStarted() }
@@ -481,7 +494,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func waitForBackendTermination(
         _ backend: HangingRuntimeBackend,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await backend.waitUntilTerminated() }
@@ -496,7 +509,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     private func collectUntilStreamFinished(
         from runtime: ConversationRuntime,
-        deadline: Duration = .seconds(5)
+        deadline: Duration = ConversationRuntimeTests.defaultDeadline
     ) async throws -> [ConversationEvent] {
         try await collectEvents(from: runtime, until: { event in
             if case .streamFinished = event { return true }
@@ -934,7 +947,7 @@ final class ConversationRuntimeTests: XCTestCase {
             config: TurnConfig(progressStallTimeout: .milliseconds(200))
         ))
         let turn = try XCTUnwrap(maybeTurn)
-        let outcome = try await waitForOutcome(from: turn, deadline: .seconds(5))
+        let outcome = try await waitForOutcome(from: turn)
 
         XCTAssertEqual(outcome.reason, .timedOut,
                        "a stalled generation must report the distinct timed-out reason")
@@ -945,7 +958,7 @@ final class ConversationRuntimeTests: XCTestCase {
         // XCTAssertEqual(outcome.reason, .stop)
 
         // The backend work is cancelled, not left running.
-        try await waitForBackendTermination(backend, deadline: .seconds(2))
+        try await waitForBackendTermination(backend)
         XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
                        "no visible content streamed, so no assistant message persists")
     }
@@ -976,7 +989,7 @@ final class ConversationRuntimeTests: XCTestCase {
             config: TurnConfig(progressStallTimeout: .seconds(30))
         ))
         let turn = try XCTUnwrap(maybeTurn)
-        let outcome = try await waitForOutcome(from: turn, deadline: .seconds(5))
+        let outcome = try await waitForOutcome(from: turn)
 
         XCTAssertNotEqual(outcome.reason, .timedOut,
                           "the stall timeout must not fire for an immediate backend error")
@@ -1417,10 +1430,14 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
         // Bound the wait so a hung test fails fast rather than spinning.
+        // Same landmine class as the `collectEvents`-family helpers above
+        // (#2282/#2304/#2212): a wall-clock bound racing a real completion
+        // signal, blown by CI's `--parallel` full-suite scheduling pressure
+        // at 5s. Raised to `ConversationRuntimeTests.defaultDeadline` for the same reason.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await waitTask.value }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 waitTask.cancel()
             }
             try await group.next()
@@ -1892,6 +1909,67 @@ final class ConversationRuntimeTests: XCTestCase {
         }), "beforeContextAssembly fires with nil prompt for edit")
     }
 
+    // MARK: - Edit: preserves non-text content parts (#A1)
+
+    func test_edit_userMessage_preservesNonTextContentParts() async throws {
+        // Sabotage check (verified manually): reverting runEditFlow to
+        // `updatedMessage.content = text` (the ChatMessage.content setter,
+        // which collapses contentParts to a single .text part) causes the
+        // `.image` part assertion below to fail — the image is silently
+        // dropped even though only the text was edited.
+        //
+        // The mock MUST be vision-capable: this test attaches an `.image`
+        // part and then edits, which re-triggers regeneration. A plain
+        // `MockInferenceBackend()` has `supportsVision == false`, so the
+        // runtime rejects the image attachment up front and the turn ends
+        // via the *error* path (`.streamFinished(.stop)`) without ever
+        // emitting `.afterGeneration` — the event this test waits on. That
+        // made the wait below unwinnable: it burned the full deadline on
+        // every run (proven: 20.017s observed pre-fix, vs sub-second after)
+        // and passed only because the assertions read `store.messages`,
+        // mutated synchronously before generation was even attempted. Pass
+        // vs. `deadlineElapsed`-throw was then a scheduling coin flip — the
+        // real cause of the flake CI hit on #2282/#2304/#2212, not the 5s
+        // bound itself. Fixed here at the root; the raised 20s
+        // `defaultDeadline` above remains defence-in-depth for the other
+        // (genuinely event-racing) call sites in this file.
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
+        mock.tokensToYield = ["Edited", " response"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        var userMsg = ChatMessage(role: .user, content: "original question", sessionID: sessionID)
+        userMsg.contentParts = [.text("original question"), .image(data: imageData, mimeType: "image/png")]
+        try await store.insertMessage(userMsg)
+
+        let input = TurnInput(sessionID: sessionID, kind: .edit(messageID: userMsg.id, text: "edited question"))
+        _ = try await runtime.processTurn(input)
+
+        _ = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        guard let updatedUser = store.messages[userMsg.id] else {
+            XCTFail("User message missing from store")
+            return
+        }
+        XCTAssertEqual(updatedUser.content, "edited question", "Text content updated")
+        XCTAssertEqual(updatedUser.contentParts.count, 2, "Image part preserved alongside updated text part")
+        let imageParts = updatedUser.contentParts.filter {
+            if case .image = $0 { return true }
+            return false
+        }
+        XCTAssertEqual(imageParts.count, 1, "Exactly one image part survives the edit")
+        if case .image(let data, let mimeType, _) = imageParts.first {
+            XCTAssertEqual(data, imageData, "Image bytes unchanged")
+            XCTAssertEqual(mimeType, "image/png")
+        } else {
+            XCTFail("Expected an image part")
+        }
+    }
+
     // MARK: - Edit: assistant message (no generation)
 
     func test_edit_assistantMessage_updatesAndReturnsNilHandle() async throws {
@@ -2311,7 +2389,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.thinkingBlocksToYield = [["think", "ing"]]
         mock.signaturesPerThinkingBlock = ["sig-abc"]
         mock.tokensToYield = ["done"]
-        let (runtime, _, _, _) = makeRuntime(mock: mock)
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
         _ = try await runtime.processTurn(TurnInput(
@@ -2357,6 +2435,109 @@ final class ConversationRuntimeTests: XCTestCase {
                        "thinkingFinalized carries the complete thinking text")
         XCTAssertEqual(signature, "sig-abc",
                        "thinkingFinalized round-trips the provider signature")
+
+        // The PERSISTED assistant message must carry a `.thinking` content
+        // part with the same text and signature — not just the event stream.
+        // This is the gap from the original bug: `.thinkingFinalized` fired
+        // but the executor never appended `.thinking(...)` to
+        // `assistantMessage.contentParts`, so a session reload (or any
+        // consumer reading persistence directly, e.g. ManifoldMCPHost) lost
+        // the reasoning text AND the Anthropic replay `signature` needed for
+        // extended-thinking + tool use on a later turn.
+        //
+        // Sabotage check (verified manually): reverting the
+        // `assistantMessage.contentParts.append(.thinking(...))` line added
+        // alongside `.finalizeThinking`'s `emit(...)` call in
+        // ConversationTurnExecutor causes this assertion to fail — no
+        // `.thinking` part is found in the persisted message.
+        let persisted = try XCTUnwrap(
+            store.messages.values.first { $0.role == .assistant },
+            "Expected a persisted assistant message"
+        )
+        let persistedThinking = persisted.contentParts.compactMap { part -> (String, String?)? in
+            if case let .thinking(text, signature) = part { return (text, signature) }
+            return nil
+        }
+        XCTAssertEqual(persistedThinking.count, 1,
+                       "Persisted assistant message carries exactly one .thinking content part")
+        XCTAssertEqual(persistedThinking.first?.0, "thinking",
+                       "Persisted .thinking part carries the complete thinking text")
+        XCTAssertEqual(persistedThinking.first?.1, "sig-abc",
+                       "Persisted .thinking part round-trips the Anthropic replay signature")
+
+        // The .thinking part must precede the final .text part — required so
+        // a later turn's structuredHistory rebuild (from persistence) presents
+        // thinking before text/tool content, matching Anthropic's
+        // extended-thinking + tool-use ordering contract.
+        let thinkingIdx = persisted.contentParts.firstIndex {
+            if case .thinking = $0 { return true } else { return false }
+        }
+        let textIdx = persisted.contentParts.firstIndex {
+            if case .text = $0 { return true } else { return false }
+        }
+        if let thinkingIdx, let textIdx {
+            XCTAssertLessThan(thinkingIdx, textIdx,
+                              "Persisted .thinking part precedes the final .text part")
+        } else {
+            XCTFail("Expected both a .thinking part and a .text part in the persisted message")
+        }
+    }
+
+    func test_runGenerationTurn_unclosedThinkingBlock_persistsThinkingPart() async throws {
+        // Sabotage check (verified manually): reverting the
+        // `assistantMessage.contentParts.append(.thinking(...))` line in the
+        // "unclosed thinking block" finalize branch (the
+        // `accumulator.hasOpenThinkingBlock` check after the drain loop)
+        // causes this test's persisted-content assertions to fail — no
+        // `.thinking` part is found in the persisted message.
+        let mock = MockInferenceBackend()
+        // The backend yields thinking tokens + a signature but never emits
+        // `.thinkingCompleted` — simulating a backend that is cut short or
+        // simply never signals the end of its reasoning block. This exercises
+        // the executor's end-of-stream `accumulator.hasOpenThinkingBlock`
+        // finalize path rather than the in-loop `.finalizeThinking` case.
+        mock.thinkingBlocksToYield = [["reason", "ing"]]
+        mock.signaturesPerThinkingBlock = ["sig-open"]
+        mock.omitThinkingCompletedEvent = true
+        mock.tokensToYield = ["done"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "think"),
+            config: TurnConfig(
+                thinkingStreamingUpdateInterval: .seconds(3600),
+                thinkingStreamingBatchCharacterLimit: 128
+            )
+        ))
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        // The finalize still fires exactly once even though the backend never
+        // sent `.thinkingCompleted` — the executor's post-loop "unclosed
+        // thinking block" branch is what synthesizes it.
+        let thinkingFinalizedCount = events.map(eventKind).filter { $0 == "thinkingFinalized" }.count
+        XCTAssertEqual(thinkingFinalizedCount, 1,
+                       "thinkingFinalized fires exactly once even for an unclosed block")
+
+        let persisted = try XCTUnwrap(
+            store.messages.values.first { $0.role == .assistant },
+            "Expected a persisted assistant message"
+        )
+        let persistedThinking = persisted.contentParts.compactMap { part -> (String, String?)? in
+            if case let .thinking(text, signature) = part { return (text, signature) }
+            return nil
+        }
+        XCTAssertEqual(persistedThinking.count, 1,
+                       "Persisted assistant message carries exactly one .thinking content part for an unclosed block")
+        XCTAssertEqual(persistedThinking.first?.0, "reasoning",
+                       "Persisted .thinking part carries the accumulated (unclosed) thinking text")
+        XCTAssertEqual(persistedThinking.first?.1, "sig-open",
+                       "Persisted .thinking part round-trips the signature recorded before the block was cut short")
     }
 
     // MARK: - Loop detection
@@ -2808,11 +2989,14 @@ final class ConversationRuntimeTests: XCTestCase {
         await gate.advance()
 
         // Bound the wait so a regression cannot hang CI for the full XCTest
-        // default timeout. 5 s is generous; happy-path is sub-50ms.
+        // default timeout. Happy-path is sub-50ms; the bound itself is
+        // `ConversationRuntimeTests.defaultDeadline` (see rationale above) so CI's `--parallel`
+        // scheduling pressure doesn't false-fail this the way it did
+        // #2282/#2304/#2212.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await drain.value }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 drain.cancel()
             }
             try await group.next()
@@ -2884,11 +3068,13 @@ final class ConversationRuntimeTests: XCTestCase {
                 if case .streamFinished = event { break }
             }
         }
-        // Allow up to 5 s for the drain to complete.
+        // Allow up to `ConversationRuntimeTests.defaultDeadline` for the drain to complete (see
+        // rationale above the helpers block — bounded wait racing a real
+        // completion signal, not a settle-point sleep).
         let waitResult = try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await drainTask.value }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: ConversationRuntimeTests.defaultDeadline)
                 drainTask.cancel()
             }
             try await group.next()
@@ -2979,5 +3165,45 @@ final class ConversationRuntimeTests: XCTestCase {
         let persisted = store.messages.values.filter { $0.sessionID == sessionID && $0.role == .user }
         XCTAssertEqual(persisted.count, 1,
                        "user message at the exact limit must be persisted once")
+    }
+
+    /// `pauseActiveRun`/`cancelActiveRun` guard on `turnDriver as? ResumableRunDriver`
+    /// and no-op when the runtime falls back to the default `SingleTurnDriver`
+    /// (`makeRuntime` supplies neither `turnDriver:` nor `runStore:`, so the
+    /// runtime's driver-selection fallback in `ConversationRuntime.init` picks
+    /// `SingleTurnDriver` — see ConversationRuntime.swift's driver-selection
+    /// comment above the `if let turnDriver … else if let runStore … else`
+    /// chain). This pins the FALLBACK BEHAVIOR the ManifoldRuntime logging PR
+    /// touches (both calls return cleanly without invoking a driver that
+    /// doesn't exist) — it does NOT assert that the new `Log.inference.warning`
+    /// call fires. `Log` (Sources/ManifoldModelCatalog/Logging.swift) wraps
+    /// plain `os.Logger` with no injection seam anywhere in this repo, so log
+    /// emission itself is not practically assertable here; see the PR body for
+    /// the fuller rationale. Sabotage-checked: swapping the `guard let
+    /// resumableDriver = turnDriver as? ResumableRunDriver else { return }` for
+    /// a force cast (`as!`) at each call site made this test crash/fail; both
+    /// were confirmed and reverted before landing.
+    func test_pauseAndCancelActiveRun_withoutResumableDriver_returnCleanly() async throws {
+        let (runtime, _, _, _) = makeRuntime()
+
+        // Must return promptly (no driver to call into) rather than hang.
+        try await withTimeout(seconds: 5) {
+            await runtime.pauseActiveRun()
+        }
+        try await withTimeout(seconds: 5) {
+            await runtime.cancelActiveRun()
+        }
+    }
+
+    private func withTimeout(seconds: Double, _ operation: @escaping @Sendable () async -> Void) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw TestError.deadlineElapsed
+            }
+            try await group.next()
+            group.cancelAll()
+        }
     }
 }

@@ -648,7 +648,12 @@ public final class ConversationRuntime: Sendable {
     /// transitions to ``RunStatus/paused`` so a later ``resumeRun(_:using:)``
     /// can pick it up — even across a process restart.
     package func pauseActiveRun() async {
-        guard let resumableDriver = turnDriver as? ResumableRunDriver else { return }
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else {
+            Log.inference.warning(
+                "ConversationRuntime.pauseActiveRun: runtime was not configured with a ResumableRunDriver; ignoring."
+            )
+            return
+        }
         await resumableDriver.pauseRun()
     }
 
@@ -658,7 +663,12 @@ public final class ConversationRuntime: Sendable {
     /// emits ``RunEvent/runCancelled`` and its persisted status becomes
     /// ``RunStatus/cancelled`` (terminal).
     package func cancelActiveRun() async {
-        guard let resumableDriver = turnDriver as? ResumableRunDriver else { return }
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else {
+            Log.inference.warning(
+                "ConversationRuntime.cancelActiveRun: runtime was not configured with a ResumableRunDriver; ignoring."
+            )
+            return
+        }
         await resumableDriver.cancelRun()
     }
 

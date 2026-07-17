@@ -38,6 +38,18 @@ public struct FuzzConfig: Sendable {
     /// `FuzzRunner` itself remains single-worker; orchestration lives at the CLI
     /// boundary so backend instances, RNG state, reporters, and sinks stay isolated.
     public let workers: Int
+    /// Per-iteration wall-clock bound on generation, in seconds. For the
+    /// OpenAI cloud backend this is additionally enforced at the HTTP
+    /// transport layer (`OpenAIFuzzFactory.requestTimeout`, a finer-grained
+    /// idle timeout that resets per byte received); for every backend it is
+    /// also enforced here as a coarser whole-generation cap via
+    /// `GenerationTimeout`, which is what actually bounds local backends
+    /// (Ollama, Foundation, mock, chaos) that previously had no per-request
+    /// timeout at all. Default 90s matches the CLI's `--request-timeout`
+    /// default and stays above `TimeoutDetector`'s 60s flag threshold, so a
+    /// slow-but-completing run is still flagged as an anomaly rather than
+    /// hard-cut at the same boundary.
+    public let requestTimeout: TimeInterval
 
     public init(
         backend: BackendChoice = .ollama,
@@ -51,7 +63,8 @@ public struct FuzzConfig: Sendable {
         sessionScripts: Bool = false,
         corpusSubset: Corpus.Subset = .full,
         tools: Bool = false,
-        workers: Int = 1
+        workers: Int = 1,
+        requestTimeout: TimeInterval = 90
     ) {
         self.backend = backend
         self.minutes = minutes
@@ -65,5 +78,6 @@ public struct FuzzConfig: Sendable {
         self.corpusSubset = corpusSubset
         self.tools = tools
         self.workers = workers
+        self.requestTimeout = requestTimeout
     }
 }

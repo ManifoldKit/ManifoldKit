@@ -1,5 +1,8 @@
 # Building a Multi-Session SwiftUI Chat App
 
+**Audience:** consumer
+**Status:** living
+
 The canonical guide for SwiftUI hosts that want a sidebar of chats, a chat
 detail view, persisted history, and turnkey relaunch restore. For **multi-session
 SwiftUI use** this is the single source of truth: it consolidates the

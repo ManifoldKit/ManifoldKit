@@ -1,5 +1,8 @@
 # Reliability contract
 
+**Audience:** consumer
+**Status:** living
+
 This document describes the operational behavior ManifoldKit implements today. It is intentionally narrower than product copy: if a behavior is not backed by the current source, it is not promised here.
 
 ## Model handoff

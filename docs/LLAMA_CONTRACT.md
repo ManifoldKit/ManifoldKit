@@ -1,5 +1,8 @@
 # LlamaSwift xcframework — llama.cpp C API Contract (moved)
 
+**Audience:** contributor
+**Status:** historical
+
 The `ManifoldLlama` backend — and with it the full llama.cpp C-API contract
 this document used to describe (per-symbol threading constraints, ordering
 invariants, capacity limits, ownership semantics, sampling-chain coverage,

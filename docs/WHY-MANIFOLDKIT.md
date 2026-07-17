@@ -1,5 +1,8 @@
 # Why ManifoldKit — and how it's built to last
 
+**Audience:** consumer
+**Status:** living
+
 > AI made writing the code easy. It made *keeping the project alive* hard.
 > This doc is the honest version of what ManifoldKit is, what it solves, and —
 > because the hard part is everything that happens after the demo — how it's

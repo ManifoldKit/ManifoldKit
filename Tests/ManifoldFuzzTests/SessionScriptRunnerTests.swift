@@ -53,6 +53,40 @@ final class SessionScriptRunnerTests: XCTestCase {
         XCTAssertEqual(mock.stopCallCount, 1)
     }
 
+    /// A `.send` step whose generation never completes (a `TokenEmissionGate`
+    /// that's never advanced, mirroring a truly hung local-backend
+    /// generation) is bounded by `options.requestTimeout`, AND the timeout's
+    /// `onTimeout` actually calls `InferenceService.cancel(_:)` — not just
+    /// abandons the operation task. Regression test for the review finding
+    /// that `GenerationTimeout` alone doesn't stop an in-flight generation;
+    /// `SessionScriptRunner.cancelInFlight(token:)` is the real stop path.
+    func test_sendStep_hungGeneration_isBoundedAndActuallyCancelled() async throws {
+        let (service, mock) = makeService()
+        mock.tokenEmissionGate = TokenEmissionGate() // never advanced — first token blocks forever
+        let runner = SessionScriptRunner(
+            service: service,
+            options: .init(requestTimeout: 0.3),
+            seed: 1
+        )
+        let script = SessionScript(
+            id: "hung-send",
+            steps: [.send(text: "hi")]
+        )
+
+        let start = ContinuousClock.now
+        let capture = await runner.execute(script)
+        let elapsed = start.duration(to: ContinuousClock.now)
+
+        XCTAssertLessThan(elapsed, .seconds(5), "a permanently-gated stream must still be bounded by requestTimeout")
+        XCTAssertEqual(capture.steps.count, 1)
+        let record = try XCTUnwrap(capture.steps[0].record)
+        XCTAssertEqual(record.phase, "timeout")
+        XCTAssertGreaterThanOrEqual(
+            mock.stopCallCount, 1,
+            "onTimeout must route through InferenceService.cancel(_:) to InferenceBackend.stopGeneration(), not just abandon the operation task"
+        )
+    }
+
     func test_editStep_mutatesMessageArray_withoutGeneration() async {
         let (service, mock) = makeService(replying: ["r1"])
         let runner = SessionScriptRunner(service: service)

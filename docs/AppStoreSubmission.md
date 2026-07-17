@@ -1,5 +1,8 @@
 # App Store submission checklist
 
+**Audience:** consumer
+**Status:** living
+
 This is the indie-developer checklist for shipping a ManifoldKit-backed app
 to the App Store. It assumes you have already chosen a build profile (see
 README §2 "Build modes"). Every item here is something Apple's review

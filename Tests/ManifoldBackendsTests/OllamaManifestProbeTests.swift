@@ -133,6 +133,136 @@ final class OllamaManifestProbeTests: XCTestCase {
         XCTAssertFalse(backend.capabilities.supportsVision)
     }
 
+    // MARK: - Tool capability from /api/show
+
+    /// A model whose `/api/show` capabilities list includes `"tools"` keeps
+    /// `supportsToolCalling == true` after the probe.
+    func test_capabilities_detectsToolsFromCapabilitiesList() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "llama3.1:8b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(capabilities: ["completion", "tools"]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertTrue(backend.capabilities.supportsToolCalling,
+                      "capabilities ['tools'] must keep supportsToolCalling on the live capabilities")
+    }
+
+    /// A model whose successful probe omits `"tools"` (e.g. gemma3:4b) must
+    /// withdraw the tool-calling claim so callers get a truthful pre-flight
+    /// instead of a generation-time HTTP 400 ("does not support tools").
+    func test_capabilities_probedModelWithoutToolsWithdrawsToolCalling() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "gemma3:4b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(capabilities: ["completion", "vision"]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        XCTAssertTrue(backend.capabilities.supportsToolCalling,
+                      "supportsToolCalling must default to true before any load/probe")
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertFalse(backend.capabilities.supportsToolCalling,
+                       "a successful probe whose capabilities omit 'tools' must withdraw supportsToolCalling")
+        XCTAssertEqual(backend.manifest?.supportsTools, false,
+                       "the ModelManifest must carry the same probed value — not a stale hardcoded true")
+    }
+
+    /// A pre-April-2025 Ollama server omits the `capabilities` key entirely
+    /// (`json:"capabilities,omitempty"` upstream) — that shape must keep the
+    /// historical `true` default, since such servers never advertise tools
+    /// either way.
+    func test_capabilities_absentCapabilitiesKeyKeepsToolCallingDefault() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "llama3.1:8b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: try! JSONSerialization.data(withJSONObject: ["model_info": ["context_length": 8_192]]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertTrue(backend.capabilities.supportsToolCalling,
+                      "a /api/show response with no capabilities key (pre-2025 server) must keep the true default")
+    }
+
+    /// A failed probe (HTTP 500) must NOT withdraw tool calling — only a
+    /// successful probe may flip the historical `true` default, so a dead
+    /// probe can't disable tools for models that support them.
+    func test_capabilities_probeFailureKeepsToolCallingDefault() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "llama3.1:8b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(data: Data(), statusCode: 500)
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        XCTAssertTrue(backend.capabilities.supportsToolCalling,
+                      "a failed /api/show probe must leave supportsToolCalling at the true default")
+    }
+
+    /// `unloadModel()` must reset the probed tools flag so a subsequent load
+    /// on the same instance starts from the `true` default again.
+    func test_unload_resetsToolsFlagToDefault() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "gemma3:4b")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(capabilities: ["completion"]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+        XCTAssertFalse(backend.capabilities.supportsToolCalling)
+
+        backend.unloadModel()
+        XCTAssertTrue(backend.capabilities.supportsToolCalling,
+                      "unloadModel must restore the pre-probe supportsToolCalling default")
+    }
+
     // MARK: - Context window from /api/show
 
     func test_manifest_picksUpContextLengthFromCanonicalKey() async throws {

@@ -1,6 +1,12 @@
 .build/
 .swiftpm/
 
+# scripts/test.sh and scripts/ci-test-with-watchdog.sh write captured swift-test
+# output + watchdog diagnostics here by default (package-relative, not $TMPDIR —
+# #2298: TMPDIR is per-user on macOS, so two concurrent local runs would clobber
+# each other's output).
+test-diagnostics/
+
 # Swift compiler intermediates. SwiftPM normally writes these under .build/,
 # but the macro-plugin build invoked by `swift package diagnose-api-breaking-changes`
 # has emitted them to the working-tree root, where `.build/` did not catch them

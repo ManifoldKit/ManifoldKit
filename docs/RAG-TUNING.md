@@ -1,5 +1,8 @@
 # ManifoldKit RAG Tuning
 
+**Audience:** consumer
+**Status:** living
+
 A reference for the *knobs* on ManifoldKit's on-device RAG pipeline — once you
 have retrieval working end-to-end via [`QUICKSTART-RAG.md`](QUICKSTART-RAG.md),
 this page explains how to trade recall against latency, size your chunks, decide

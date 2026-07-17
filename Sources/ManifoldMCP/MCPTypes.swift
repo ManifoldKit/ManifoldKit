@@ -30,6 +30,15 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     /// networks. See `SECURITY.md §MCP Threat Model`.
     public var isUnauthenticatedUnsafe: Bool
 
+    /// Opt-in for this server to issue `sampling/createMessage` requests back through
+    /// the local engine. Default `false` — a server can spend inference budget on
+    /// demand once this is `true`, so treat it like `allowsSTDIOTransport`: opt in per
+    /// server, not globally. Sampling is only served when this is `true` AND
+    /// `MCPClientConfiguration.samplingHandler` is set; otherwise every
+    /// `sampling/createMessage` request gets a JSON-RPC "method not found" error and
+    /// is never executed.
+    public var allowsSampling: Bool
+
     public init(
         id: UUID = UUID(),
         displayName: String,
@@ -43,7 +52,8 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         toolFilter: MCPToolFilter = .allowAll,
         approvalPolicy: MCPApprovalPolicy = .perCall,
         allowsSTDIOTransport: Bool = false,
-        isUnauthenticatedUnsafe: Bool = false
+        isUnauthenticatedUnsafe: Bool = false,
+        allowsSampling: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -58,6 +68,7 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         self.approvalPolicy = approvalPolicy
         self.allowsSTDIOTransport = allowsSTDIOTransport
         self.isUnauthenticatedUnsafe = isUnauthenticatedUnsafe
+        self.allowsSampling = allowsSampling
     }
 }
 
@@ -174,6 +185,22 @@ public struct MCPClientConfiguration: Sendable {
     public var networkPathObserver: (any MCPNetworkPathObserver)?
     public var lifecycleObserver: (any MCPLifecycleEventObserver)?
 
+    /// Injected seam for server-initiated `sampling/createMessage` requests.
+    /// `ManifoldMCP` never talks to `InferenceService` itself — this closure is the
+    /// only bridge, and the host app owns everything that happens inside it.
+    ///
+    /// **Security requirement**: the host is responsible for user approval/consent
+    /// and for rate-limiting or budgeting the inference spend this closure triggers.
+    /// `ManifoldMCP` does not gate calls into this closure beyond the per-server
+    /// `MCPServerDescriptor.allowsSampling` opt-in — an app that sets this without its
+    /// own approval and budget logic lets any connected, sampling-enabled MCP server
+    /// spend inference budget on demand, with no consent prompt and no cap.
+    ///
+    /// `nil` (the default) means no server can use sampling regardless of
+    /// `allowsSampling`; every `sampling/createMessage` request gets a JSON-RPC
+    /// "method not found" error.
+    public var samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)?
+
     public init(
         sseStreamLimits: SSEStreamLimits = ManifoldConfiguration.shared.sseStreamLimits,
         requestTimeout: Duration = .seconds(30),
@@ -183,7 +210,8 @@ public struct MCPClientConfiguration: Sendable {
         keychain: MCPKeychainConfiguration = .init(),
         lifecyclePolicy: MCPSessionLifecyclePolicy = .cancelOnBackground,
         networkPathObserver: (any MCPNetworkPathObserver)? = nil,
-        lifecycleObserver: (any MCPLifecycleEventObserver)? = MCPNotificationLifecycleEventObserver.platformMemoryWarnings()
+        lifecycleObserver: (any MCPLifecycleEventObserver)? = MCPNotificationLifecycleEventObserver.platformMemoryWarnings(),
+        samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)? = nil
     ) {
         self.sseStreamLimits = sseStreamLimits
         self.requestTimeout = requestTimeout
@@ -194,6 +222,7 @@ public struct MCPClientConfiguration: Sendable {
         self.lifecyclePolicy = lifecyclePolicy
         self.networkPathObserver = networkPathObserver
         self.lifecycleObserver = lifecycleObserver
+        self.samplingHandler = samplingHandler
     }
 }
 

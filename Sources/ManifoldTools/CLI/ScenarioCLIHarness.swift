@@ -172,6 +172,11 @@ public enum ScenarioCLIHarness {
                 } catch {
                     allPassed = false
                     let message = "  ERROR \(displayName)/\(model) — backend did not produce a run: \(error)\n"
+                    // Drain buffered stdout before the unbuffered stderr write:
+                    // when both fds are merged into one file (`> log 2>&1`) the
+                    // stderr bytes otherwise jump ahead of print() output still
+                    // sitting in the stdio buffer, tearing lines mid-word.
+                    fflush(stdout)
                     FileHandle.standardError.write(Data(message.utf8))
                 }
             }

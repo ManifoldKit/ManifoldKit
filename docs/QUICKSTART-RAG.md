@@ -1,5 +1,8 @@
 # ManifoldKit RAG Quickstart
 
+**Audience:** consumer
+**Status:** living
+
 A one-page tutorial for adding on-device **retrieval-augmented generation** —
 ingest your own documents, have ManifoldKit retrieve the most relevant passages
 before each turn, and surface inline source **citations** beneath every

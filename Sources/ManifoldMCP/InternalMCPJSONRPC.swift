@@ -13,7 +13,7 @@ package enum MCPRequestID: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-package struct MCPJSONRPCErrorObject: Sendable, Equatable {
+package struct MCPJSONRPCErrorObject: Error, Sendable, Equatable {
     package let code: Int
     package let message: String
     package let data: JSONSchemaValue?

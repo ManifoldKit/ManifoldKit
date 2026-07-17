@@ -116,6 +116,7 @@ public final class MCPToolSource: @unchecked Sendable {
             do {
                 try await refreshTools()
             } catch {
+                Log.inference.warning("MCPToolSource: failed to refresh tools for '\(self.displayName, privacy: .public)' during registration: \(error.localizedDescription, privacy: .public)")
                 return
             }
         }

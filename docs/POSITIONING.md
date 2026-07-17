@@ -1,5 +1,8 @@
 # ManifoldKit — Positioning
 
+**Audience:** consumer
+**Status:** living
+
 > Canonical messaging source of truth. The README, launch imagery, and any
 > future launch gist derive their language from this document. If a claim here
 > conflicts with shipped source, the source wins and this doc gets corrected —

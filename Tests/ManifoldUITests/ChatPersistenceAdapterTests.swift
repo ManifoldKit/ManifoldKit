@@ -117,4 +117,34 @@ final class ChatPersistenceAdapterTests: XCTestCase {
         XCTAssertNotNil(observedStore, "onPersistenceConfigured should fire from configure(persistence:)")
         XCTAssertTrue(observedStore === p, "closure should receive the same store identity")
     }
+
+    // MARK: - 6: second configure(persistence:) is a consistent no-op (#A3)
+
+    func test_secondConfigure_doesNotFireOnPersistenceConfigured() {
+        // Sabotage check (verified manually): reverting
+        // `ChatPersistenceAdapter.configure` to unconditionally call
+        // `onPersistenceConfigured?(persistence)` (ignoring whether
+        // `sessionController.configure` actually installed the new store)
+        // causes `fireCount` to be 2, failing the assertion below — that is
+        // exactly the split-state bug: the adapter keeps store A but the
+        // downstream runtime gets rebuilt against store B.
+        let adapter = ChatPersistenceAdapter()
+        var fireCount = 0
+        var lastFiredStore: (any SessionStore & MessageStore)?
+        adapter.onPersistenceConfigured = { store in
+            fireCount += 1
+            lastFiredStore = store
+        }
+
+        let storeA = provider()
+        adapter.configure(persistence: storeA)
+        XCTAssertEqual(fireCount, 1, "first configure fires the closure once")
+
+        let storeB = provider()
+        adapter.configure(persistence: storeB)
+
+        XCTAssertEqual(fireCount, 1, "second configure with a different store must not fire the closure again")
+        XCTAssertTrue(lastFiredStore === storeA, "closure was never re-fired for store B")
+        XCTAssertTrue(adapter.sessionController.persistence === storeA, "session controller keeps the original store")
+    }
 }

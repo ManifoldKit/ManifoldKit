@@ -1,5 +1,8 @@
 # Anatomy of one turn
 
+**Audience:** contributor
+**Status:** living
+
 This document traces one message turn end to end: a user calls
 `ChatViewModel.sendMessage(_:)`, and some milliseconds-to-seconds later a
 persisted assistant `ChatMessage` exists and the UI has observed it. Every

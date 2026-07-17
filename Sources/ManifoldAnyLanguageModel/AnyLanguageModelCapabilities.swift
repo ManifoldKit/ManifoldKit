@@ -54,7 +54,7 @@ public enum AnyLanguageModelURLResolver {
         case "openai", "openai-responses":
             let model = try requireModelIdentifier(url, provider: scheme)
             let apiKey = try requireQueryItem("apiKey", in: queryItems, provider: scheme)
-            let baseURL = URL(string: queryItems["baseURL"] ?? "") ?? OpenAILanguageModel.defaultBaseURL
+            let baseURL = try resolveBaseURL(queryItems["baseURL"], default: OpenAILanguageModel.defaultBaseURL, provider: scheme)
             let variant: OpenAILanguageModel.APIVariant = scheme == "openai-responses" || queryItems["variant"] == "responses"
                 ? .responses
                 : .chatCompletions
@@ -65,7 +65,7 @@ public enum AnyLanguageModelURLResolver {
         case "anthropic":
             let model = try requireModelIdentifier(url, provider: scheme)
             let apiKey = try requireQueryItem("apiKey", in: queryItems, provider: scheme)
-            let baseURL = URL(string: queryItems["baseURL"] ?? "") ?? AnthropicLanguageModel.defaultBaseURL
+            let baseURL = try resolveBaseURL(queryItems["baseURL"], default: AnthropicLanguageModel.defaultBaseURL, provider: scheme)
             let apiVersion = queryItems["apiVersion"] ?? AnthropicLanguageModel.defaultAPIVersion
             let betas = queryItems["betas"]?.split(separator: ",").map { String($0) }
             return AnyLanguageModelDescriptor(
@@ -75,7 +75,7 @@ public enum AnyLanguageModelURLResolver {
         case "gemini":
             let model = try requireModelIdentifier(url, provider: scheme)
             let apiKey = try requireQueryItem("apiKey", in: queryItems, provider: scheme)
-            let baseURL = URL(string: queryItems["baseURL"] ?? "") ?? GeminiLanguageModel.defaultBaseURL
+            let baseURL = try resolveBaseURL(queryItems["baseURL"], default: GeminiLanguageModel.defaultBaseURL, provider: scheme)
             let apiVersion = queryItems["apiVersion"] ?? GeminiLanguageModel.defaultAPIVersion
             return AnyLanguageModelDescriptor(
                 model: GeminiLanguageModel(baseURL: baseURL, apiKey: apiKey, apiVersion: apiVersion, model: model),
@@ -83,7 +83,7 @@ public enum AnyLanguageModelURLResolver {
             )
         case "ollama":
             let model = try requireModelIdentifier(url, provider: scheme)
-            let baseURL = URL(string: queryItems["baseURL"] ?? "") ?? OllamaLanguageModel.defaultBaseURL
+            let baseURL = try resolveBaseURL(queryItems["baseURL"], default: OllamaLanguageModel.defaultBaseURL, provider: scheme)
             return AnyLanguageModelDescriptor(
                 model: OllamaLanguageModel(baseURL: baseURL, model: model),
                 capabilities: AnyLanguageModelBridgeCapabilities.remote()
@@ -91,8 +91,7 @@ public enum AnyLanguageModelURLResolver {
         case "openresponses":
             let model = try requireModelIdentifier(url, provider: scheme)
             let apiKey = try requireQueryItem("apiKey", in: queryItems, provider: scheme)
-            let baseURL = URL(string: queryItems["baseURL"] ?? "")
-                ?? URL(string: "https://openrouter.ai/api/v1/")!
+            let baseURL = try resolveBaseURL(queryItems["baseURL"], default: URL(string: "https://openrouter.ai/api/v1/")!, provider: scheme)
             return AnyLanguageModelDescriptor(
                 model: OpenResponsesLanguageModel(baseURL: baseURL, apiKey: apiKey, model: model),
                 capabilities: AnyLanguageModelBridgeCapabilities.remote()
@@ -100,6 +99,21 @@ public enum AnyLanguageModelURLResolver {
         default:
             throw AnyLanguageModelBridgeError.unsupportedURLScheme(url)
         }
+    }
+
+    /// Resolves the `baseURL` query item against a vendor default.
+    ///
+    /// The vendor default applies only when the query item is **absent**. When
+    /// it is present but fails to parse as a URL, this throws rather than
+    /// silently falling back — a malformed custom `baseURL` must never cause
+    /// the configured `apiKey` to be sent to the vendor's real endpoint
+    /// instead of the (mistyped) one the caller asked for.
+    private static func resolveBaseURL(_ raw: String?, default vendorDefault: URL, provider: String) throws -> URL {
+        guard let raw else { return vendorDefault }
+        guard let url = URL(string: raw) else {
+            throw AnyLanguageModelBridgeError.invalidBaseURL(raw, provider: provider)
+        }
+        return url
     }
 
     private static func requireQueryItem(_ name: String, in queryItems: [String: String], provider: String) throws -> String {
@@ -132,6 +146,7 @@ public enum AnyLanguageModelBridgeError: LocalizedError, Sendable {
     case unsupportedURLScheme(URL)
     case missingModelIdentifier(provider: String)
     case missingQueryItem(name: String, provider: String)
+    case invalidBaseURL(String, provider: String)
     case modelNotLoaded
     case unsupportedToolCalling
     case unsupportedStructuredOutput
@@ -144,6 +159,8 @@ public enum AnyLanguageModelBridgeError: LocalizedError, Sendable {
             return "Missing model identifier for AnyLanguageModel provider '\(provider)'."
         case .missingQueryItem(let name, let provider):
             return "Missing required query item '\(name)' for AnyLanguageModel provider '\(provider)'."
+        case .invalidBaseURL(let raw, let provider):
+            return "Invalid 'baseURL' query item for AnyLanguageModel provider '\(provider)': '\(raw)' is not a valid URL."
         case .modelNotLoaded:
             return "No AnyLanguageModel descriptor is loaded."
         case .unsupportedToolCalling:
