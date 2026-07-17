@@ -1,0 +1,1374 @@
+<title>ManifoldKit UI Design Reference — 2026 Refresh</title>
+<style>
+  :root {
+    --ground: #F5F5F7;
+    --surface: #FFFFFF;
+    --surface-2: #ECECEE;
+    --ink: #1D1D1F;
+    --ink-2: #6E6E73;
+    --ink-3: #AEAEB2;
+    --hairline: rgba(29,29,31,0.12);
+    --accent: #5E5CE6;
+    --accent-soft: rgba(94,92,230,0.12);
+    --on-accent: #FFFFFF;
+    --ok: #248A3D;
+    --warn: #C93400;
+    --err: #D70015;
+    --ok-soft: rgba(48,209,88,0.14);
+    --warn-soft: rgba(255,159,10,0.16);
+    --err-soft: rgba(255,69,58,0.13);
+    --glass-bg: rgba(255,255,255,0.55);
+    --glass-border: rgba(255,255,255,0.75);
+    --glass-shadow: 0 8px 32px rgba(29,29,31,0.16);
+    --bubble-user: linear-gradient(135deg, #6663EE, #5451DE);
+    --bubble-assistant: rgba(29,29,31,0.055);
+    --code-bg: rgba(29,29,31,0.05);
+    --ambient: radial-gradient(120% 90% at 15% 0%, rgba(94,92,230,0.14), transparent 55%),
+               radial-gradient(110% 80% at 90% 100%, rgba(48,176,199,0.13), transparent 50%);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0B0B0F;
+      --surface: #1C1C1E;
+      --surface-2: #26262A;
+      --ink: #F5F5F7;
+      --ink-2: #98989F;
+      --ink-3: #636369;
+      --hairline: rgba(245,245,247,0.14);
+      --accent: #7674F2;
+      --accent-soft: rgba(118,116,242,0.18);
+      --on-accent: #FFFFFF;
+      --ok: #30D158;
+      --warn: #FF9F0A;
+      --err: #FF453A;
+      --ok-soft: rgba(48,209,88,0.16);
+      --warn-soft: rgba(255,159,10,0.18);
+      --err-soft: rgba(255,69,58,0.16);
+      --glass-bg: rgba(28,28,30,0.55);
+      --glass-border: rgba(245,245,247,0.16);
+      --glass-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      --bubble-user: linear-gradient(135deg, #6D6BEF, #5A57E4);
+      --bubble-assistant: rgba(245,245,247,0.08);
+      --code-bg: rgba(245,245,247,0.07);
+      --ambient: radial-gradient(120% 90% at 15% 0%, rgba(118,116,242,0.2), transparent 55%),
+                 radial-gradient(110% 80% at 90% 100%, rgba(48,176,199,0.14), transparent 50%);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0B0B0F; --surface: #1C1C1E; --surface-2: #26262A;
+    --ink: #F5F5F7; --ink-2: #98989F; --ink-3: #636369;
+    --hairline: rgba(245,245,247,0.14);
+    --accent: #7674F2; --accent-soft: rgba(118,116,242,0.18); --on-accent: #FFFFFF;
+    --ok: #30D158; --warn: #FF9F0A; --err: #FF453A;
+    --ok-soft: rgba(48,209,88,0.16); --warn-soft: rgba(255,159,10,0.18); --err-soft: rgba(255,69,58,0.16);
+    --glass-bg: rgba(28,28,30,0.55); --glass-border: rgba(245,245,247,0.16);
+    --glass-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    --bubble-user: linear-gradient(135deg, #6D6BEF, #5A57E4);
+    --bubble-assistant: rgba(245,245,247,0.08);
+    --code-bg: rgba(245,245,247,0.07);
+    --ambient: radial-gradient(120% 90% at 15% 0%, rgba(118,116,242,0.2), transparent 55%),
+               radial-gradient(110% 80% at 90% 100%, rgba(48,176,199,0.14), transparent 50%);
+  }
+  :root[data-theme="light"] {
+    --ground: #F5F5F7; --surface: #FFFFFF; --surface-2: #ECECEE;
+    --ink: #1D1D1F; --ink-2: #6E6E73; --ink-3: #AEAEB2;
+    --hairline: rgba(29,29,31,0.12);
+    --accent: #5E5CE6; --accent-soft: rgba(94,92,230,0.12); --on-accent: #FFFFFF;
+    --ok: #248A3D; --warn: #C93400; --err: #D70015;
+    --ok-soft: rgba(48,209,88,0.14); --warn-soft: rgba(255,159,10,0.16); --err-soft: rgba(255,69,58,0.13);
+    --glass-bg: rgba(255,255,255,0.55); --glass-border: rgba(255,255,255,0.75);
+    --glass-shadow: 0 8px 32px rgba(29,29,31,0.16);
+    --bubble-user: linear-gradient(135deg, #6663EE, #5451DE);
+    --bubble-assistant: rgba(29,29,31,0.055);
+    --code-bg: rgba(29,29,31,0.05);
+    --ambient: radial-gradient(120% 90% at 15% 0%, rgba(94,92,230,0.14), transparent 55%),
+               radial-gradient(110% 80% at 90% 100%, rgba(48,176,199,0.13), transparent 50%);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 28px 120px; }
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- header ---------- */
+  header { padding: 72px 0 36px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 14px;
+  }
+  h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    font-size: clamp(34px, 5.4vw, 54px);
+    font-weight: 800; letter-spacing: -0.025em; line-height: 1.06;
+    margin: 0 0 18px; text-wrap: balance;
+  }
+  .lede { font-size: 19px; color: var(--ink-2); max-width: 46em; margin: 0; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 26px; font-size: 13px; color: var(--ink-2); }
+  .meta-row b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- TOC ---------- */
+  nav.toc {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 24px;
+    border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline);
+    padding: 20px 0; margin: 12px 0 0; font-size: 14px;
+  }
+  nav.toc a { color: var(--ink-2); }
+  nav.toc a b { color: var(--ink); font-weight: 600; }
+  nav.toc a:hover b { color: var(--accent); }
+
+  /* ---------- sections ---------- */
+  section { margin-top: 84px; }
+  .sec-label {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 10px;
+  }
+  h2 {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+    font-size: 30px; font-weight: 750; letter-spacing: -0.02em; margin: 0 0 12px; text-wrap: balance;
+  }
+  h3 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; margin: 34px 0 10px; }
+  section > p, section li { max-width: 46em; }
+  p { color: var(--ink); }
+  .muted { color: var(--ink-2); }
+
+  /* ---------- principles ---------- */
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 26px; }
+  .principle {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 20px 22px;
+  }
+  .principle h4 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+  .principle p { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+  /* ---------- mockup stage ---------- */
+  .stage {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 24px;
+    padding: 48px 24px;
+    margin: 28px 0 20px;
+    display: flex; flex-wrap: wrap; gap: 40px; justify-content: center; align-items: flex-start;
+  }
+  .stage-note { font-size: 13px; color: var(--ink-2); text-align: center; width: 100%; margin: -18px 0 0; }
+
+  /* device frame */
+  .device {
+    width: 384px; max-width: 100%;
+    border-radius: 44px;
+    border: 1px solid var(--hairline);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.18);
+    overflow: hidden;
+    position: relative;
+    background: var(--ground);
+    flex-shrink: 0;
+  }
+  .device .screen {
+    position: relative;
+    height: 720px;
+    background: var(--ground);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .screen::before {
+    content: ""; position: absolute; inset: 0;
+    background: var(--ambient);
+    pointer-events: none;
+  }
+
+  /* glass */
+  .glass {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(22px) saturate(1.7);
+    backdrop-filter: blur(22px) saturate(1.7);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.35);
+  }
+  :root[data-theme="dark"] .glass, .dark-demo .glass { box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.09); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .glass { box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.09); }
+  }
+
+  /* toolbar */
+  .mock-toolbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+    padding: 22px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border-left: none; border-right: none; border-top: none;
+    border-radius: 0;
+  }
+  .mock-toolbar .title { font-weight: 650; font-size: 16px; letter-spacing: -0.01em; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600;
+    padding: 5px 11px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; color: var(--ink-2); font-size: 16px; cursor: default;
+  }
+
+  /* transcript */
+  .transcript {
+    position: relative; z-index: 1;
+    flex: 1;
+    overflow: hidden;
+    padding: 92px 16px 128px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .bubble-user {
+    align-self: flex-end;
+    max-width: 78%;
+    background: var(--bubble-user);
+    color: var(--on-accent);
+    padding: 10px 15px;
+    border-radius: 20px 20px 6px 20px;
+    font-size: 15px; line-height: 1.4;
+    box-shadow: 0 2px 10px rgba(94,92,230,0.25);
+  }
+  .msg-assistant {
+    align-self: stretch; max-width: 94%;
+    font-size: 15px; line-height: 1.5;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg-assistant .prose { padding: 2px 2px 0; }
+  .cite {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 6px; background: var(--accent-soft); color: var(--accent);
+    font-size: 10.5px; font-weight: 700; vertical-align: 2px;
+  }
+
+  /* thinking */
+  .thinking {
+    border-radius: 14px;
+    background: var(--bubble-assistant);
+    padding: 9px 13px;
+    display: flex; align-items: center; gap: 9px;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .thinking .chev { font-size: 10px; color: var(--ink-3); }
+  .shimmer {
+    background: linear-gradient(90deg, var(--ink-2) 0%, var(--ink-2) 35%, var(--accent) 50%, var(--ink-2) 65%, var(--ink-2) 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    animation: shimmer 2.1s linear infinite;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 210px;
+  }
+  @keyframes shimmer { from { background-position: 210% 0; } to { background-position: -10% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer { animation: none; -webkit-text-fill-color: currentColor; color: var(--ink-2); background: none; }
+    .tool-spin { animation: none; }
+  }
+
+  /* tool cards */
+  .tool-card {
+    border-radius: 14px;
+    background: var(--bubble-assistant);
+    padding: 11px 13px;
+    font-size: 13px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .tool-head { display: flex; align-items: center; gap: 9px; }
+  .tool-head .name { font-weight: 600; }
+  .tool-head .args { color: var(--ink-3); font-size: 12px; }
+  .tool-state { margin-left: auto; font-size: 11px; font-weight: 650; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .st-running { background: var(--accent-soft); color: var(--accent); }
+  .st-done { background: var(--ok-soft); color: var(--ok); }
+  .st-fail { background: var(--err-soft); color: var(--err); }
+  .st-wait { background: var(--warn-soft); color: var(--warn); }
+  .tool-spin {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--accent-soft); border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tool-actions { display: flex; gap: 8px; }
+  .btn-sm {
+    font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 999px; border: none; cursor: default;
+  }
+  .btn-approve { background: var(--accent); color: var(--on-accent); }
+  .btn-deny { background: var(--bubble-assistant); color: var(--ink); }
+  .tool-result {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--ink-2);
+    background: var(--code-bg); border-radius: 9px; padding: 8px 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tool-err { color: var(--err); font-size: 12px; }
+
+  /* composer */
+  .mock-composer {
+    position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 4;
+    border-radius: 26px;
+    padding: 8px 8px 8px 6px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .comp-plus {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bubble-assistant); color: var(--ink-2); font-size: 19px; font-weight: 300;
+    border: none; cursor: default;
+  }
+  .comp-field { flex: 1; font-size: 15px; color: var(--ink-3); padding: 0 4px; white-space: nowrap; overflow: hidden; }
+  .comp-field.filled { color: var(--ink); }
+  .comp-mic { color: var(--ink-2); font-size: 17px; padding: 0 4px; }
+  .comp-send {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent); color: var(--on-accent); font-size: 15px; border: none; cursor: default;
+    box-shadow: 0 2px 10px rgba(94,92,230,0.35);
+  }
+  .comp-send.idle { background: var(--bubble-assistant); color: var(--ink-3); box-shadow: none; }
+
+  /* callout markers */
+  .mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 12px; font-weight: 700;
+    position: absolute; z-index: 6;
+    box-shadow: 0 0 0 3px var(--ground), 0 2px 8px rgba(0,0,0,0.25);
+  }
+  .annotations { list-style: none; padding: 0; margin: 20px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px 28px; }
+  .annotations li { display: flex; gap: 12px; font-size: 14.5px; }
+  .annotations .n {
+    flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: var(--on-accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; margin-top: 2px;
+  }
+  .annotations b { font-weight: 650; }
+  .annotations .api { color: var(--ink-2); }
+
+  /* small panels (composer states, picker) */
+  .panel-row { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; align-items: flex-start; }
+  .panel {
+    width: 350px; max-width: 100%;
+    border-radius: 20px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    padding: 22px 16px;
+    position: relative; overflow: hidden;
+  }
+  .panel::before { content: ""; position: absolute; inset: 0; background: var(--ambient); pointer-events: none; }
+  .panel > * { position: relative; }
+  .panel-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px; text-align: center; }
+  .panel .mock-composer { position: static; margin: 0; }
+
+  /* model picker mock */
+  .picker {
+    width: 330px; max-width: 100%;
+    border-radius: 20px;
+    padding: 10px;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 14px;
+    position: relative;
+  }
+  .picker .search {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bubble-assistant); border-radius: 11px;
+    padding: 8px 12px; color: var(--ink-3); font-size: 14px; margin-bottom: 6px;
+  }
+  .picker .group { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 8px 10px 3px; }
+  .picker .row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 11px;
+  }
+  .picker .row.sel { background: var(--accent-soft); }
+  .picker .row .rname { font-weight: 600; font-size: 14px; }
+  .picker .row .rsub { font-size: 12px; color: var(--ink-2); }
+  .picker .row .check { margin-left: auto; color: var(--accent); font-weight: 700; }
+  .picker .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .effort {
+    margin-top: 8px; border-top: 1px solid var(--hairline); padding-top: 10px;
+  }
+  .effort .lbl { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 0 10px 7px; }
+  .seg { display: flex; gap: 4px; background: var(--bubble-assistant); border-radius: 11px; padding: 3px; margin: 0 6px; }
+  .seg span { flex: 1; text-align: center; font-size: 12.5px; font-weight: 600; padding: 6px 0; border-radius: 8px; color: var(--ink-2); }
+  .seg .on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+
+  /* sidebar mock */
+  .sidebar-mock { width: 300px; max-width: 100%; border-radius: 20px; padding: 14px 10px; font-size: 14px; position: relative; }
+  .sidebar-mock .srow { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 12px; }
+  .sidebar-mock .srow.sel { background: var(--accent-soft); }
+  .sidebar-mock .st { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 7px; }
+  .sidebar-mock .ss { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pin { font-size: 10px; color: var(--warn); }
+
+  /* macOS window mock */
+  .wide-scroll { overflow-x: auto; width: 100%; }
+  .macwin {
+    min-width: 780px; width: 900px; max-width: none;
+    border-radius: 12px; border: 1px solid var(--hairline);
+    box-shadow: 0 30px 70px rgba(0,0,0,0.22);
+    overflow: hidden; background: var(--ground); position: relative;
+    margin: 0 auto;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; position: relative; z-index: 5;
+    border-left: none; border-right: none; border-top: none; border-radius: 0;
+    font-size: 13.5px;
+  }
+  .lights { display: flex; gap: 7px; margin-right: 4px; flex-shrink: 0; }
+  .light { width: 12px; height: 12px; border-radius: 50%; }
+  .tb-btn {
+    width: 27px; height: 24px; border-radius: 7px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-2); font-size: 13px; flex-shrink: 0;
+  }
+  .tb-btn.hovered { background: var(--bubble-assistant); color: var(--ink); }
+  .macsplit { display: flex; height: 480px; position: relative; }
+  .mac-sidebar {
+    width: 226px; flex-shrink: 0; padding: 10px 8px;
+    border-right: 1px solid var(--hairline);
+    position: relative; z-index: 2;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(22px) saturate(1.7);
+    backdrop-filter: blur(22px) saturate(1.7);
+  }
+  .mac-sidebar .srow { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 8px; font-size: 13px; position: relative; }
+  .mac-sidebar .srow.sel { background: var(--accent-soft); }
+  .mac-sidebar .srow.hovered { background: var(--bubble-assistant); }
+  .mac-sidebar .st { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .mac-sidebar .ss { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mac-sidebar .row-ellipsis { position: absolute; right: 8px; top: 8px; color: var(--ink-2); font-size: 13px; }
+  .mac-content { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+  .mac-content::before { content: ""; position: absolute; inset: 0; background: var(--ambient); pointer-events: none; }
+  .mac-transcript { flex: 1; padding: 20px 26px 10px; display: flex; flex-direction: column; gap: 13px; position: relative; z-index: 1; overflow: hidden; }
+  .hover-actions {
+    position: absolute; top: -14px; right: 0;
+    display: inline-flex; gap: 2px; padding: 3px 6px; border-radius: 9px;
+    font-size: 12px; color: var(--ink-2);
+  }
+  .mac-composer {
+    margin: 0 20px 16px; border-radius: 15px; padding: 7px 9px;
+    display: flex; align-items: center; gap: 8px;
+    position: relative; z-index: 2;
+  }
+  .mac-popover {
+    position: absolute; top: 42px; right: 118px; width: 262px; z-index: 12;
+    border-radius: 16px; padding: 8px;
+    display: flex; flex-direction: column; gap: 2px; font-size: 13px;
+  }
+  .mac-popover .group { font-size: 10.5px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 6px 9px 2px; }
+  .mac-popover .row { display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 9px; }
+  .mac-popover .row.sel { background: var(--accent-soft); }
+  .mac-popover .rname { font-weight: 600; font-size: 13px; }
+  .mac-popover .rsub { font-size: 11px; color: var(--ink-2); }
+  .mac-popover .check { margin-left: auto; color: var(--accent); font-weight: 700; }
+  .mac-popover .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  /* tables */
+  .tbl-wrap { overflow-x: auto; margin: 22px 0; border: 1px solid var(--hairline); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; background: var(--surface); }
+  th {
+    text-align: left; font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--ink-2); padding: 12px 16px; border-bottom: 1px solid var(--hairline);
+    background: var(--surface); white-space: nowrap;
+  }
+  td { padding: 10px 16px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td .mono { font-size: 12.5px; }
+  .swatch {
+    display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px;
+    margin-right: 8px; border: 1px solid var(--hairline);
+  }
+  .tier {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .tier-sem { background: var(--accent-soft); color: var(--accent); }
+  .tier-comp { background: var(--ok-soft); color: var(--ok); }
+
+  /* checklists */
+  ul.check { list-style: none; padding: 0; }
+  ul.check li { padding: 7px 0 7px 30px; position: relative; border-bottom: 1px solid var(--hairline); max-width: 52em; }
+  ul.check li::before {
+    content: ""; position: absolute; left: 2px; top: 13px;
+    width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--ink-3);
+  }
+  ul.check li b { font-weight: 650; }
+  ul.check li .why { display: block; font-size: 13px; color: var(--ink-2); margin-top: 1px; }
+
+  .callout {
+    background: var(--accent-soft); border-radius: 14px; padding: 16px 20px; margin: 24px 0;
+    font-size: 14.5px; max-width: 52em;
+  }
+  .callout b { font-weight: 650; }
+
+  footer { margin-top: 100px; padding-top: 24px; border-top: 1px solid var(--hairline); font-size: 13px; color: var(--ink-2); }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">ManifoldKit · Design Reference</div>
+  <h1>The 2026 UI refresh, drawn before it's built</h1>
+  <p class="lede">A visual specification for modernizing ManifoldUI: Liquid Glass surfaces, a whole-surface token system, and the interaction patterns that flagship AI apps converged on by mid-2026. This page is the reference for implementation, for characterization tests, and for scoping the consumer-facing documentation.</p>
+  <div class="meta-row">
+    <span><b>Status</b> Rev 2 — direction set: <b>new look ships as the default</b> (deliberate pre-1.0 visual break) · revised after adversarial review</span>
+    <span><b>Date</b> July 17, 2026</span>
+    <span><b>Platform floor</b> iOS 18 / macOS 15, progressive iOS 26 / macOS 26</span>
+    <span><b>Basis</b> Codebase survey + mid-2026 UX &amp; theming research</span>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <a href="#principles"><b>1 · Principles</b><br>Five rules the refresh follows</a>
+  <a href="#chat"><b>2 · The chat surface</b><br>iOS and macOS, annotated</a>
+  <a href="#composer"><b>3 · Composer states</b><br>Idle, composing, voice</a>
+  <a href="#toolcards"><b>4 · Tool invocation lifecycle</b><br>Four states, one card</a>
+  <a href="#media"><b>4A · Reasoning &amp; media parts</b><br>Thinking trace, image/video gen</a>
+  <a href="#picker"><b>5 · Model picker</b><br>Two levels, full option space</a>
+  <a href="#sidebar"><b>6 · Sessions &amp; management</b><br>Sidebar and sheets</a>
+  <a href="#states"><b>6A · Shell &amp; state screens</b><br>Loading, empty, errors</a>
+  <a href="#mcp"><b>6B · Connected services</b><br>MCP servers, consent, health</a>
+  <a href="#tokens"><b>7 · Token system</b><br>ManifoldTheme, three tiers</a>
+  <a href="#protocols"><b>8 · Style-protocol map</b><br>What each protocol owns</a>
+  <a href="#fallback"><b>9 · OS fallback matrix</b><br>Glass vs. material</a>
+  <a href="#docs"><b>10 · Documentation scope</b><br>What consumers need written</a>
+  <a href="#tests"><b>11 · Test pinning</b><br>What the suite should hold</a>
+  <a href="#coverage"><b>12 · Coverage inventory</b><br>Every element, one disposition</a>
+</nav>
+
+<!-- ================= 1 PRINCIPLES ================= -->
+<section id="principles">
+  <div class="sec-label">Section 1</div>
+  <h2>Principles</h2>
+  <p class="muted">Every mockup below follows these five rules. They come from the research synthesis: what Apple mandates by September 2026, what ChatGPT/Claude/Gemini converged on, and what the strongest theming architectures (Material&nbsp;3, Stream Chat, shadcn) share.</p>
+  <div class="principles">
+    <div class="principle"><h4>Content scrolls under glass</h4><p>The transcript bleeds edge-to-edge beneath translucent bars. The composer is glass — a floating capsule on iOS, a docked bar on macOS. On pre-26 OSes the same treatment renders in system materials.</p></div>
+    <div class="principle"><h4>Shared components, native chrome</h4><p>Bubbles, tool cards, reasoning, tokens, and shimmer are identical across platforms. Chrome is not: toolbars, composer placement, picker presentation, and selection follow each platform's own conventions, and pointer/hover feedback is first-class on macOS.</p></div>
+    <div class="principle"><h4>Tokens all the way down</h4><p>No component references a raw <code>Color</code>. Everything routes through semantic tokens in one <code>ManifoldTheme</code> — swap the semantic layer, re-skin the whole surface. This page is styled from that exact token set.</p></div>
+    <div class="principle"><h4>State is data, styling decides</h4><p>Streaming, failed, awaiting-approval are typed states on style-protocol <code>Configuration</code> structs. The default styles render them; a consumer's styles may render them any other way.</p></div>
+    <div class="principle"><h4>Quiet until it matters</h4><p>Live work shimmers (the Apple Intelligence / shadcn convergence); finished work settles into a static badge. Reasoning is collapsed by default with a one-line live preview. No persistent chrome competes with the conversation.</p></div>
+    <div class="principle"><h4>Concentric geometry</h4><p>Corner radii are derived, not fixed: a nested element's radius = parent radius − padding. One shape scale in the theme replaces today's scattered 4/6/8/12 pt constants.</p></div>
+  </div>
+</section>
+
+<!-- ================= 2 CHAT SURFACE ================= -->
+<section id="chat">
+  <div class="sec-label">Section 2</div>
+  <h2>The chat surface</h2>
+  <p class="muted">One turn, end to end: user message, collapsed reasoning, a running tool call, streamed prose with citations — under a glass toolbar and above a floating glass composer. Numbered markers reference the specification list below. Toggle this page's theme to see the dark treatment; the mockups are built from the same tokens.</p>
+
+  <div class="stage">
+    <div class="device" role="img" aria-label="Mockup of the redesigned ManifoldKit chat screen">
+      <div class="screen">
+        <div class="mock-toolbar glass">
+          <span class="mark" style="top:30px; left:-11px;">1</span>
+          <span class="title">Trip planning</span>
+          <span style="display:flex; align-items:center; gap:8px;">
+            <span class="chip">◈ Qwen3-8B <span style="opacity:.55">▾</span></span>
+            <span class="icon-btn" aria-hidden="true">⋯</span>
+          </span>
+        </div>
+
+        <div class="transcript">
+          <div class="bubble-user" style="position:relative;">
+            <span class="mark" style="top:-9px; right:-9px;">2</span>
+            What's the weather looking like in Kyoto next week? I'm deciding between temples or the coast.
+          </div>
+
+          <div class="msg-assistant">
+            <div class="thinking" style="position:relative;">
+              <span class="mark" style="top:-9px; left:-9px;">3</span>
+              <span aria-hidden="true">✦</span>
+              <span class="shimmer">Comparing forecast sources for the Kansai region…</span>
+              <span class="chev">▸</span>
+            </div>
+
+            <div class="tool-card" style="position:relative;">
+              <span class="mark" style="top:-9px; right:-9px;">4</span>
+              <div class="tool-head">
+                <span class="tool-spin" aria-hidden="true"></span>
+                <span class="name mono">get_weather</span>
+                <span class="args mono">city: "Kyoto"</span>
+                <span class="tool-state st-running">Running</span>
+              </div>
+            </div>
+
+            <div class="prose">
+              Next week looks dry and warm — highs around 31&nbsp;°C with low rain chance through Thursday <span class="cite">1</span>. Humidity climbs toward the weekend, so temple walks early in the week and the coast after Friday would split it well <span class="cite">2</span>.
+              <span style="display:inline-block; width:2px; height:16px; background:var(--accent); vertical-align:-3px; margin-left:2px; border-radius:1px; position:relative;"><span class="mark" style="top:-8px; left:8px;">5</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mock-composer glass">
+          <span class="mark" style="top:-11px; left:14px;">6</span>
+          <button class="comp-plus" aria-label="Attachments and tools">+</button>
+          <span class="comp-field">Message</span>
+          <span class="comp-mic" aria-hidden="true">🎙︎</span>
+          <button class="comp-send idle" aria-label="Send" style="position:relative;">↑<span class="mark" style="top:-11px; right:-11px;">7</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="stage-note">The refracting gradient behind the transcript exists to demonstrate glass blur — in the shipped UI the blur reveals scrolled message content.</p>
+
+  <ol class="annotations">
+    <li><span class="n">1</span><div><b>Glass toolbar.</b> Transcript scrolls beneath it; title + model chip only, actions collapse to an overflow menu. <span class="api mono">glassEffect / .regularMaterial fallback</span></div></li>
+    <li><span class="n">2</span><div><b>User bubble.</b> Gradient derived from the <em>host app's</em> resolved accent (never a fixed hue); concentric radius (20&nbsp;pt outer, 6&nbsp;pt on the trailing tail). <span class="api mono">ChatTheme.userBubbleBackground</span></div></li>
+    <li><span class="n">3</span><div><b>Reasoning, collapsed.</b> One shimmering preview line while live; settles to a static "Thought for 4s" row. Tap to expand the trace. <span class="api mono">ThinkingBlockStyle</span></div></li>
+    <li><span class="n">4</span><div><b>Tool card, running.</b> Typed lifecycle state drives the badge; see Section&nbsp;4 for all four states. <span class="api mono">ToolInvocationStyle</span></div></li>
+    <li><span class="n">5</span><div><b>Streaming cursor + inline citations.</b> Accent cursor; footnote markers deep-link to the sources disclosure. <span class="api mono">ChatTheme.accent</span></div></li>
+    <li><span class="n">6</span><div><b>Floating glass composer.</b> Capsule, detached from the bottom edge; one "+" menu absorbs attach/vision/tools (replaces today's button row). <span class="api mono">ComposerStyle</span></div></li>
+    <li><span class="n">7</span><div><b>Send/stop button.</b> Idle = quiet fill; ready = accent circle; generating = stop square in the same circle. <span class="api mono">ComposerStyle.Configuration.phase</span></div></li>
+  </ol>
+
+  <h3>The macOS window</h3>
+  <p class="muted">Same components, native chrome. The window toolbar is <em>system-owned</em> — macOS 26 renders it in glass itself; ManifoldKit only contributes toolbar items, spread out rather than collapsed into "⋯". The model picker opens as a popover anchored to its toolbar chip (shown open). The sidebar is a real <code>NavigationSplitView</code> column deferring to system selection. The composer docks as a width-constrained glass bar. Every control gets pointer hover feedback — two are shown frozen in their hover state.</p>
+
+  <div class="stage">
+    <div class="wide-scroll">
+      <div class="macwin" role="img" aria-label="Mockup of the redesigned ManifoldKit macOS window with the model picker popover open">
+        <div class="titlebar glass">
+          <span class="mark" style="top:8px; left:-11px;">A</span>
+          <span class="lights"><span class="light" style="background:#FF5F57;"></span><span class="light" style="background:#FEBC2E;"></span><span class="light" style="background:#28C840;"></span></span>
+          <span class="tb-btn" aria-hidden="true">▤</span>
+          <span style="font-weight:650;">Trip planning</span>
+          <span style="flex:1;"></span>
+          <span class="chip" style="position:relative;">◈ Qwen3-8B ▾<span class="mark" style="top:-11px; right:-11px;">B</span></span>
+          <span class="tb-btn" aria-hidden="true">⤴</span>
+          <span class="tb-btn hovered" aria-hidden="true">𝒾</span>
+          <span class="tb-btn" aria-hidden="true">⚙</span>
+        </div>
+        <div class="macsplit">
+          <div class="mac-sidebar">
+            <span class="mark" style="top:12px; right:-11px;">C</span>
+            <div class="srow sel">
+              <span class="st"><span class="pin" aria-label="Pinned">★</span> Trip planning</span>
+              <span class="ss">Next week looks dry and warm…</span>
+            </div>
+            <div class="srow hovered">
+              <span class="st">Swift concurrency notes</span>
+              <span class="ss">The isolation boundary belongs…</span>
+              <span class="row-ellipsis" aria-hidden="true">⋯</span>
+            </div>
+            <div class="srow">
+              <span class="st">Recipe scaling</span>
+              <span class="ss">For 12 people, triple the dashi…</span>
+            </div>
+          </div>
+          <div class="mac-content">
+            <div class="mac-transcript">
+              <div class="bubble-user" style="max-width:56%;">
+                What's the weather looking like in Kyoto next week? I'm deciding between temples or the coast.
+              </div>
+              <div class="msg-assistant" style="max-width:78%; position:relative; margin-top:10px;">
+                <div class="hover-actions glass"><span class="mark" style="top:-11px; left:-11px;">D</span><span>⧉</span><span>↻</span><span>⋯</span></div>
+                <div class="tool-card" style="border-radius:12px;">
+                  <div class="tool-head">
+                    <span style="color:var(--ok);" aria-hidden="true">✓</span>
+                    <span class="name mono">get_weather</span>
+                    <span class="args">0.4s</span>
+                    <span class="tool-state st-done">Done</span>
+                  </div>
+                </div>
+                <div class="prose">
+                  Next week looks dry and warm — highs around 31&nbsp;°C with low rain chance through Thursday <span class="cite">1</span>. Temple walks early in the week, the coast after Friday <span class="cite">2</span>.
+                </div>
+              </div>
+            </div>
+            <div class="mac-composer glass">
+              <span class="mark" style="top:-11px; left:14px;">E</span>
+              <button class="comp-plus" aria-label="Attachments and tools">+</button>
+              <span class="comp-field">Message&nbsp; <span style="font-size:11px; color:var(--ink-3);">⌘↩ to send</span></span>
+              <button class="comp-send idle" aria-label="Send">↑</button>
+            </div>
+          </div>
+          <div class="mac-popover glass" aria-label="Model picker popover">
+            <div class="group">On device</div>
+            <div class="row sel">
+              <span class="dot" style="background:var(--ok);"></span>
+              <span><span class="rname">Qwen3-8B</span><br><span class="rsub">MLX · fits comfortably</span></span>
+              <span class="check">✓</span>
+            </div>
+            <div class="row">
+              <span class="dot" style="background:var(--warn);"></span>
+              <span><span class="rname">Llama 4 Scout</span><br><span class="rsub">llama.cpp · tight on memory</span></span>
+            </div>
+            <div class="group">Cloud</div>
+            <div class="row">
+              <span class="dot" style="background:var(--accent);"></span>
+              <span><span class="rname">Claude Sonnet 5</span><br><span class="rsub">Anthropic API</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ol class="annotations">
+    <li><span class="n">A</span><div><b>System titlebar/toolbar.</b> Not drawn by ManifoldKit — the OS owns it (glass on 26, standard before). MK contributes items via <span class="api mono">.toolbar { }</span>: sidebar toggle, title, model chip, export, inspector, settings — visible, not collapsed.</div></li>
+    <li><span class="n">B</span><div><b>Model chip → anchored popover.</b> Opens attached to the chip, not a centered card. Arrow keys move selection; single tab stop. <span class="api mono">.popover(attachmentAnchor:)</span></div></li>
+    <li><span class="n">C</span><div><b>Split-view sidebar.</b> Real <span class="api mono">NavigationSplitView</span> column; selection and vibrancy defer to the system. Hover reveals the row's "⋯" actions. <span class="api mono">SessionRowStyle</span> styles row <em>content</em>, never the selection itself.</div></li>
+    <li><span class="n">D</span><div><b>Hover-revealed message actions.</b> Copy / regenerate / more appear on pointer hover — no long-press context menus as the primary path on Mac.</div></li>
+    <li><span class="n">E</span><div><b>Docked glass composer.</b> Width-constrained bar at the pane bottom — not a floating capsule — with ⌘↩ affordance. Same <span class="api mono">ComposerStyle</span> protocol; the built-in default style is platform-adaptive.</div></li>
+  </ol>
+</section>
+
+<!-- ================= 3 COMPOSER ================= -->
+<section id="composer">
+  <div class="sec-label">Section 3</div>
+  <h2>Composer states</h2>
+  <p class="muted">The composer is a single field plus at most three affordances: the "+" menu, voice, and send. Every other action (photos, vision, files, tools) lives inside "+". The capsule grows with content; the accessory slot (voice transcription, quick actions) renders <em>above</em> the capsule as its own glass element.</p>
+  <div class="callout"><b>Gating is unchanged — the redesign moves geometry, not seams.</b> Each "+" menu item maps 1:1 to the existing <code>ManifoldConfiguration.Features</code> flag that gates today's button row, and items honor the same capability checks (e.g. <code>supportsImageAttachments</code>). The mic appears only when <code>ComposerPermissionGate</code> passes — a missing <code>NSMicrophoneUsageDescription</code> removes it entirely, exactly as it removes the button today. Voice itself remains an optional <code>ManifoldVoice</code> integration surfaced through the <code>chatComposerAccessory</code> slot, not built-in chrome; the mic glyph in these mockups renders only when that integration (or dictation) is installed and permitted.</div>
+
+  <div class="stage">
+    <div class="panel-row">
+      <div class="panel">
+        <p class="panel-label">Idle</p>
+        <div class="mock-composer glass">
+          <button class="comp-plus">+</button>
+          <span class="comp-field">Message</span>
+          <span class="comp-mic" aria-hidden="true">🎙︎</span>
+          <button class="comp-send idle">↑</button>
+        </div>
+      </div>
+      <div class="panel">
+        <p class="panel-label">Composing</p>
+        <div class="mock-composer glass">
+          <button class="comp-plus">+</button>
+          <span class="comp-field filled">Plan three days in Kyoto…</span>
+          <button class="comp-send">↑</button>
+        </div>
+      </div>
+      <div class="panel">
+        <p class="panel-label">Generating</p>
+        <div class="mock-composer glass">
+          <button class="comp-plus">+</button>
+          <span class="comp-field"><span class="shimmer">Responding…</span></span>
+          <button class="comp-send" aria-label="Stop">■</button>
+        </div>
+      </div>
+      <div class="panel">
+        <p class="panel-label">Voice (accessory slot above capsule)</p>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="glass" style="border-radius:16px; padding:10px 14px; font-size:13px; color:var(--ink-2);">
+            <span style="color:var(--err); font-weight:650;">● Listening</span> &nbsp;"…and check ferry times to—"
+          </div>
+          <div class="mock-composer glass">
+            <button class="comp-plus">+</button>
+            <span class="comp-field">Message</span>
+            <span class="comp-mic" style="color:var(--err);" aria-hidden="true">🎙︎</span>
+            <button class="comp-send idle">↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4 TOOL LIFECYCLE ================= -->
+<section id="toolcards">
+  <div class="sec-label">Section 4</div>
+  <h2>Tool invocation lifecycle</h2>
+  <p class="muted">One card, four typed states — <code>awaitingApproval → running → completed | failed</code> — delivered to <code>ToolInvocationStyle</code> as configuration data. Live states shimmer or spin; terminal states are static and collapsed, expanding on tap to show the payload. Status colors come from the theme's semantic tier, not literals (today's hardcoded <code>.orange.opacity(0.15)</code> retires).</p>
+
+  <div class="stage">
+    <div class="panel-row">
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Awaiting approval</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span aria-hidden="true">⚙︎</span>
+            <span class="name mono">write_file</span>
+            <span class="tool-state st-wait">Needs approval</span>
+          </div>
+          <div class="tool-result">path: ~/notes/kyoto.md · 1.2 KB</div>
+          <div class="tool-actions">
+            <button class="btn-sm btn-approve">Allow</button>
+            <button class="btn-sm btn-deny">Deny</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Running</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span class="tool-spin" aria-hidden="true"></span>
+            <span class="name mono">web_search</span>
+            <span class="tool-state st-running">Running</span>
+          </div>
+          <div class="tool-result"><span class="shimmer" style="max-width:100%;">query: "Kyoto ferry timetable July"</span></div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Completed (collapsed)</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span style="color:var(--ok);" aria-hidden="true">✓</span>
+            <span class="name mono">get_weather</span>
+            <span class="args">0.4s</span>
+            <span class="tool-state st-done">Done</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Failed</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span style="color:var(--err);" aria-hidden="true">✕</span>
+            <span class="name mono">get_weather</span>
+            <span class="tool-state st-fail">Failed</span>
+          </div>
+          <div class="tool-err">Network timed out after 30s. <b style="color:var(--accent);">Retry</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4A MEDIA & REASONING ================= -->
+<section id="media">
+  <div class="sec-label">Section 4A</div>
+  <h2>Reasoning &amp; generated media in the transcript</h2>
+  <p class="muted">The message-part kinds beyond text and tool calls, drawn through their full lifecycle. Reasoning has three states (streaming preview → settled → <em>expanded</em> — the expanded trace was previously undrawn). Generated media has four (progress → preview → settled → missing). All render through <code>MessagePartsView</code> and are overridable per-kind via the new <code>chatMessagePartRenderer</code> seam.</p>
+
+  <div class="stage">
+    <div class="panel-row">
+      <div class="panel" style="width:350px;">
+        <p class="panel-label">Reasoning — expanded trace</p>
+        <div class="thinking" style="flex-direction:column; align-items:stretch; gap:7px;">
+          <div style="display:flex; align-items:center; gap:9px;">
+            <span aria-hidden="true">✦</span>
+            <span style="font-weight:600; color:var(--ink);">Thought for 4s</span>
+            <span class="chev" style="margin-left:auto;">▾</span>
+          </div>
+          <div style="font-size:12px; color:var(--ink-2); line-height:1.5; border-left:2px solid var(--hairline); padding-left:10px;">
+            The user is choosing between temples and coast. Rain risk matters more for temple walks — checking the Kansai forecast first, then humidity trend for the weekend…
+          </div>
+          <div style="font-size:11px; color:var(--ink-3);">Text is selectable · caption size · quieter than the answer, never styled as content</div>
+        </div>
+      </div>
+      <div class="panel" style="width:350px;">
+        <p class="panel-label">Image generation — in progress</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span class="tool-spin" aria-hidden="true"></span>
+            <span class="name"><span class="shimmer" style="max-width:170px;">Generating image…</span></span>
+            <span class="args mono">12/28</span>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div style="width:64px; height:64px; border-radius:9px; background:linear-gradient(135deg, var(--accent-soft), var(--bubble-assistant)); filter:blur(1px);" aria-label="Blurred live preview"></div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:7px;">
+              <div style="height:4px; border-radius:2px; background:var(--bubble-assistant); overflow:hidden;"><div style="width:43%; height:100%; background:var(--accent); border-radius:2px;"></div></div>
+              <button class="btn-sm btn-deny" style="align-self:flex-start;">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--ink-3); text-align:center; margin:10px 0 0;">Live preview from <code>ImageGenerationProgress.previewImage</code> — data that exists today with no UI</p>
+      </div>
+      <div class="panel" style="width:350px;">
+        <p class="panel-label">Generated image — settled</p>
+        <div style="border-radius:14px; overflow:hidden; position:relative; height:150px; background:linear-gradient(120deg, #7674F2 0%, #48B0C7 60%, #30D158 100%);" role="img" aria-label="Generated image result">
+          <div class="glass" style="position:absolute; left:8px; bottom:8px; right:8px; border-radius:10px; padding:6px 10px; font-size:11.5px; display:flex; align-items:center; gap:8px;">
+            <span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--ink-2);">"Kyoto coastline at dusk"</span>
+            <span aria-hidden="true">⤓</span><span aria-hidden="true">⤢</span>
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--ink-3); text-align:center; margin:10px 0 0;">shape-md clipping · prompt + save/expand on a glass footer · tap opens the system viewer (QuickLook / fullscreen cover)</p>
+      </div>
+      <div class="panel" style="width:350px;">
+        <p class="panel-label">Generated video &amp; missing media</p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="border-radius:14px; overflow:hidden; position:relative; height:92px; background:linear-gradient(120deg, #26262A, #3A3A44);" role="img" aria-label="Generated video with player controls">
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+              <span class="glass" style="width:38px; height:38px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:15px;">▶</span>
+            </div>
+            <div style="position:absolute; left:10px; bottom:8px; font-size:10.5px; color:rgba(255,255,255,0.8);" class="mono">0:00 / 0:06</div>
+          </div>
+          <div style="border-radius:14px; background:var(--bubble-assistant); padding:14px; display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--ink-2);">
+            <span style="color:var(--warn);" aria-hidden="true">⚠︎</span> Image unavailable — the file was removed from storage
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--ink-3); text-align:center; margin:10px 0 0;">Video = system AVKit player in shape-md clipping (today it renders prompt text only) · missing media states its cause, statusWarn voice</p>
+      </div>
+    </div>
+  </div>
+
+  <ol class="annotations">
+    <li><span class="n">1</span><div><b>Reasoning stays quieter than the answer in every state.</b> Streaming = one shimmer line (§2 ③); settled = "Thought for Ns"; expanded = caption-size selectable text behind a hairline rule — never styled like content, so a consumer can't mistake the trace for the reply. All three states are <span class="api mono">ThinkingBlockStyle.Configuration</span> data.</div></li>
+    <li><span class="n">2</span><div><b>Generation progress is a first-class card, shared across image / video / audio kinds.</b> Step count, determinate bar, blurred live preview, cancel — then it settles <em>in place</em> into the media. Same lifecycle grammar as tool cards (§4), because generation is long-running work the user may abandon.</div></li>
+    <li><span class="n">3</span><div><b>Settled media is content, chrome is glass and minimal.</b> Prompt caption + save/expand ride a glass footer; tap-to-expand uses the system viewer rather than custom lightbox chrome. Attached (user-sent) images share the same clipping and viewer; the draft strip (§12) covers pre-send.</div></li>
+    <li><span class="n">4</span><div><b>Missing media never renders as a broken frame.</b> It states what happened in the statusWarn voice — same honesty rule as §6A errors. Placeholder hash-grids (when available) keep the original's aspect and palette.</div></li>
+  </ol>
+</section>
+
+<!-- ================= 5 MODEL PICKER ================= -->
+<section id="picker">
+  <div class="sec-label">Section 5</div>
+  <h2>Model picker — a two-level design</h2>
+  <p class="muted">The selection experience is the most option-dense component in the framework: a model row can carry identity, type, quantization, size, a five-tier capability rating, three computed capability flags, a tool-call claim, a vision projector, two <em>distinct</em> kinds of compatibility (backend registered vs. device-RAM fit), five download states, and benchmark results. No single surface should show all of that. The design splits it: a <b>quick switcher</b> (the toolbar-chip popover/palette — answer one question: <em>what do I talk to right now?</em>) and the <b>management sheet</b> (the existing Select / Download / Storage surface — where the full depth lives). The switcher shows identity + one fitness signal + capability glyphs; everything else is progressive disclosure in management.</p>
+
+  <div class="callout"><b>The one structural change: a unified switcher list.</b> Today local models (<code>ModelRegistry.availableModels</code>) and cloud endpoints (<code>APIEndpointRecord</code> via <code>EndpointStore</code>) are separate, mutually-exclusive flows that are never co-presented — <code>ModelManagementSheet</code>'s three tabs never show endpoints. The switcher unifies them into one "everything you can talk to" list. The mutual exclusion already exists in the selection model (selecting a model clears the endpoint and vice versa), so this is a presentation-layer merge plus one registry-level union — but it is new plumbing, and it's the picker redesign's real feature.</div>
+
+  <div class="stage">
+    <div class="picker glass">
+      <div class="search"><span aria-hidden="true">⌕</span> Search models &amp; endpoints</div>
+      <div class="group">On device</div>
+      <div class="row sel">
+        <span class="dot" style="background:var(--ok);"></span>
+        <span><span class="rname">Qwen3-8B <span style="font-weight:400; color:var(--ink-3); font-size:11px;">✦ ⚙</span></span><br><span class="rsub">MLX · Q4_K_M · 4.8 GB · Balanced</span></span>
+        <span class="tool-state st-done" style="margin-left:auto;">In use</span>
+      </div>
+      <div class="row">
+        <span class="dot" style="background:var(--accent);"></span>
+        <span><span class="rname">Llama 4 Scout <span style="font-weight:400; color:var(--ink-3); font-size:11px;">⚙ ◎</span></span><br><span class="rsub">GGUF · downloading · 43%</span></span>
+        <span class="tool-spin" style="margin-left:auto;" aria-hidden="true"></span>
+      </div>
+      <div class="row" style="opacity:.5;">
+        <span class="dot" style="background:var(--ink-3);"></span>
+        <span><span class="rname">Gemma 3n</span><br><span class="rsub">Requires manifold-mlx — not compiled in</span></span>
+      </div>
+      <div class="row">
+        <span class="dot" style="background:var(--ok);"></span>
+        <span><span class="rname">Foundation <span style="font-weight:400; color:var(--ink-3); font-size:11px;">⚙</span></span><br><span class="rsub">Apple Intelligence · on device</span></span>
+      </div>
+      <div class="group">Cloud endpoints</div>
+      <div class="row">
+        <span class="dot" style="background:var(--accent);"></span>
+        <span><span class="rname">Claude Sonnet 5 <span style="font-weight:400; color:var(--ink-3); font-size:11px;">✦ ⚙ ◎</span></span><br><span class="rsub">Anthropic · api.anthropic.com</span></span>
+      </div>
+      <div class="row">
+        <span class="dot" style="background:var(--warn);"></span>
+        <span><span class="rname">My OpenAI</span><br><span class="rsub">Key rejected — tap to fix</span></span>
+      </div>
+      <div class="effort">
+        <div class="lbl">Thinking budget</div>
+        <div class="seg" role="radiogroup" aria-label="Thinking budget">
+          <span>Off</span><span class="on">Auto</span><span>Extended</span>
+        </div>
+      </div>
+      <div class="row" style="margin-top:6px; border-top:1px solid var(--hairline); border-radius:0; padding-top:10px;">
+        <span style="color:var(--accent); font-weight:600; font-size:13px;">Manage models…</span>
+      </div>
+    </div>
+  </div>
+  <p class="stage-note">Row glyphs surface the capability flags the data model already computes but today's UI discards: ✦ reasoning · ⚙ tools · ◎ vision (via the model's projector). Status dot = device-RAM fit for local (green / amber / red / gray-unknown), accent for cloud, dimmed for backend-unavailable with the reason inline.</p>
+
+  <h3>The switcher's rules</h3>
+  <ol class="annotations">
+    <li><span class="n">1</span><div><b>One fitness signal per row, qualitative.</b> The dot is device-RAM fit (<span class="api mono">ModelLoadPlan.canRunModel</span>); backend-registration compatibility renders as a dimmed row with its reason string — the two are different failures and never share an indicator. Raw tok/s and score decimals stay out of the switcher, per the fit-score design rationale.</div></li>
+    <li><span class="n">2</span><div><b>Capability glyphs come from data, not marketing.</b> ✦ ⚙ ◎ map to <span class="api mono">supportsReasoning / toolCallClaim / mmprojURL</span> — already computed on <span class="api mono">ModelInfo</span>, currently unrendered. A claim is shown as a claim (⚙ is the chat template's word, not a verified capability).</div></li>
+    <li><span class="n">3</span><div><b>Live states are visible in place.</b> A downloading model shows progress in its row; a failed endpoint shows its fault and is one tap from the fix (§6A's recoverable-fault pattern). "In use" marks the loaded model; selection ≠ loaded, and the switcher reflects <span class="api mono">ModelLoadStatus</span> during the load.</div></li>
+    <li><span class="n">4</span><div><b>"Thinking budget", not "reasoning effort".</b> There is no effort enum in the framework — the lever is <span class="api mono">GenerationConfig.maxThinkingTokens</span> (nil = backend default, 0 = off, N = cap). The segmented control maps Off → 0, Auto → nil, Extended → a named budget, and renders only when the loaded model's <span class="api mono">ModelManifest.supportsThinking</span> is true. Sampler knobs elsewhere gate on <span class="api mono">supportedSamplingParameters</span> the same way — never show a control the backend won't honor.</div></li>
+    <li><span class="n">5</span><div><b>Depth lives in management.</b> "Manage models…" opens the existing sheet: quant variants grouped with "best for your device", fit/speed/curated badges, benchmark runs, import, storage, endpoint editing. The switcher never grows tabs.</div></li>
+  </ol>
+
+  <h3>Option-space map — where each dimension surfaces</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Dimension (source)</th><th>Switcher row</th><th>Management</th></tr></thead>
+      <tbody>
+        <tr><td>Name, backend/type, quant, size (<span class="mono">ModelInfo</span>)</td><td>Subtitle line</td><td>Full detail</td></tr>
+        <tr><td>Capability tier — minimal→frontier (<span class="mono">effectiveCapabilityTier</span>, benchmark-upgraded)</td><td>One word in subtitle ("Balanced")</td><td>Badge + benchmark result ("measured 38 tok/s"), run/re-run benchmark</td></tr>
+        <tr><td>Capability flags + tool claim + vision projector</td><td>✦ ⚙ ◎ glyphs</td><td>Spelled out with provenance (curated / detected / claimed)</td></tr>
+        <tr><td>Device-RAM fit (<span class="mono">ModelFitScore</span>) / speed class</td><td>Status dot only</td><td>Fit + speed capsules + one-line rationale on the recommended variant</td></tr>
+        <tr><td>Backend availability (<span class="mono">FrameworkCapabilityService</span>)</td><td>Dimmed row + reason</td><td>Same, plus companion-package guidance; download-anyway allowed</td></tr>
+        <tr><td>Download states (queued / % / failed / cancelled)</td><td>Inline progress or fault</td><td>Full <span class="mono">DownloadProgressView</span> + cancel / retry / resume</td></tr>
+        <tr><td>Cloud endpoint health (key valid, reachable)</td><td>Fault inline, tap to fix</td><td>Endpoint editor (add / edit / delete / key management)</td></tr>
+        <tr><td>Multi-quant repo grouping, curation, HF downloads, sort/use-case</td><td>— (top variant only)</td><td>Disclosure groups, "best for your device" badge, search / sort / use-case</td></tr>
+        <tr><td>Thinking budget (<span class="mono">maxThinkingTokens</span>)</td><td>Segmented row, manifest-gated</td><td>—</td></tr>
+        <tr><td>Sampler presets (global, not per-model) + per-knob gating (<span class="mono">SamplingParameterSet</span>)</td><td>—</td><td>Generation settings; knobs hidden unless the manifest honors them</td></tr>
+        <tr><td>Import local file, delete, storage</td><td>—</td><td>Existing flows, themed</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="font-size:14px;"><b>Deliberately out of the picker:</b> embedding-model selection (no UI exists today; bootstrap resolves it implicitly — out of the refresh's scope), image-gen model install (stays a separate curated sheet by its own documented design), and video-gen management (earlier-stage than image; no sheet exists). Each is listed in §12 so the exclusion is a decision, not an omission.</p>
+</section>
+
+<!-- ================= 6 SIDEBAR ================= -->
+<section id="sidebar">
+  <div class="sec-label">Section 6</div>
+  <h2>Sessions &amp; model management</h2>
+  <p class="muted">The sidebar keeps its List bones and inherits the theme for row <em>content</em> — on macOS, selection and vibrancy defer to the system split view (see §2's macOS mockup); the accent-soft selection drawn here is the iOS/iPadOS treatment. Pinned rows are marked quietly. Model management sheets keep their Form structure — the win there is theme inheritance (fit/speed badge colors from the semantic tier) and platform-appropriate sheet presentation, not a rebuild.</p>
+
+  <div class="stage">
+    <div class="sidebar-mock glass">
+      <div class="srow sel">
+        <span class="st"><span class="pin" aria-label="Pinned">★</span> Trip planning</span>
+        <span class="ss">Next week looks dry and warm — highs…</span>
+      </div>
+      <div class="srow">
+        <span class="st">Swift concurrency notes</span>
+        <span class="ss">The isolation boundary belongs on the…</span>
+      </div>
+      <div class="srow">
+        <span class="st">Recipe scaling</span>
+        <span class="ss">For 12 people, triple the dashi but…</span>
+      </div>
+      <div class="srow" style="opacity:.65;">
+        <span class="st">New session</span>
+        <span class="ss" style="color:var(--accent);">⌘N</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 6A STATE SCREENS ================= -->
+<section id="states">
+  <div class="sec-label">Section 6A</div>
+  <h2>Shell &amp; state screens</h2>
+  <p class="muted">The states every consumer app passes through — first run, loading, failure — drawn deliberately, because improvised state screens are where SDK-built apps look cheapest. The rule: <b>errors state what happened and what to do next, in the theme's status voice, without stealing the screen</b> — a failed turn never blanks the transcript, a recoverable fault is a banner, and the composer stays live whenever sending could succeed. Structural Form screens (settings, storage, endpoint editor) are deliberately not drawn — their disposition rows in §12 fully specify them.</p>
+
+  <div class="stage">
+    <div class="panel-row">
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">First run — no model loaded</p>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:10px; padding:26px 8px; text-align:center;">
+          <div style="font-size:30px; color:var(--accent);" aria-hidden="true">✦</div>
+          <div style="font-weight:650; font-size:16px;">No model loaded</div>
+          <div style="font-size:13px; color:var(--ink-2); max-width:24em;">Download a local model or connect a cloud endpoint to start chatting.</div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button class="btn-sm btn-approve">Choose a model</button>
+            <button class="btn-sm btn-deny">Add endpoint</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Bootstrap loading</p>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:12px; padding:34px 8px; text-align:center;">
+          <span class="tool-spin" style="width:22px; height:22px; border-width:2.5px;" aria-hidden="true"></span>
+          <div style="font-weight:600; font-size:14px;">Starting…</div>
+          <div style="font-size:12.5px; color:var(--ink-2);"><span class="shimmer">Restoring sessions</span></div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Model loading</p>
+        <div style="display:flex; flex-direction:column; gap:10px; padding:22px 10px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px;">
+            <span style="font-weight:600;">Loading Qwen3-8B</span>
+            <span class="mono" style="color:var(--ink-2);">62%</span>
+          </div>
+          <div style="height:5px; border-radius:3px; background:var(--bubble-assistant); overflow:hidden;">
+            <div style="width:62%; height:100%; border-radius:3px; background:var(--accent);"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:12px; color:var(--ink-2);">Mapping weights…</span>
+            <button class="btn-sm btn-deny">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Empty session</p>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:12px; padding:22px 8px; text-align:center;">
+          <div style="font-weight:650; font-size:15px;">What's on your mind?</div>
+          <div style="display:flex; flex-direction:column; gap:7px; width:100%;">
+            <span class="chip" style="justify-content:center; padding:8px 12px; font-weight:500;">Summarize a document</span>
+            <span class="chip" style="justify-content:center; padding:8px 12px; font-weight:500;">Help me plan a trip</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--ink-3);">Suggestions populate via the existing <code>chatEmptyState</code> slot</div>
+        </div>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Turn failure (in-transcript)</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span style="color:var(--err);" aria-hidden="true">✕</span>
+            <span style="font-weight:600;">Generation failed</span>
+          </div>
+          <div style="font-size:12.5px; color:var(--ink-2);">The connection to Ollama timed out after 30s. Your message is kept in the transcript.</div>
+          <div class="tool-actions">
+            <button class="btn-sm btn-approve">Retry</button>
+            <button class="btn-sm btn-deny">Details</button>
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--ink-3); text-align:center; margin:10px 0 0;">Card sits at the failed turn — transcript and composer stay live</p>
+      </div>
+      <div class="panel" style="width:330px;">
+        <p class="panel-label">Recoverable fault (banner above composer)</p>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="glass" style="border-radius:13px; padding:10px 13px; display:flex; align-items:center; gap:9px; font-size:12.5px;">
+            <span style="color:var(--warn);" aria-hidden="true">⚠︎</span>
+            <span style="flex:1;">API key for "My OpenAI" was rejected.</span>
+            <b style="color:var(--accent); white-space:nowrap;">Fix key</b>
+          </div>
+          <div class="mock-composer glass">
+            <button class="comp-plus">+</button>
+            <span class="comp-field">Message</span>
+            <button class="comp-send idle">↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ol class="annotations">
+    <li><span class="n">1</span><div><b>First run is a funnel, not a dead end.</b> The primary action opens model management; the secondary opens endpoint setup. Renders via <span class="api mono">ChatNoModelLoadedContent</span>, themed.</div></li>
+    <li><span class="n">2</span><div><b>Loading states name their milestone.</b> Bootstrap drains the existing progress stream into the shimmer line; model loading shows determinate progress with cancel, as today's <span class="api mono">ModelLoadingIndicatorView</span> contract requires.</div></li>
+    <li><span class="n">3</span><div><b>Failures are placed at their scope.</b> A failed turn renders in-transcript at the turn (statusError soft fill, retry inline); a session-level recoverable fault is a banner above the composer; only bootstrap failure owns the whole screen. Errors always carry a next action — per the no-silent-errors principle, whatever was logged is one tap away under "Details."</div></li>
+  </ol>
+</section>
+
+<!-- ================= 6B CONNECTED SERVICES ================= -->
+<section id="mcp">
+  <div class="sec-label">Section 6B</div>
+  <h2>Connected services (MCP) — promoted into the package</h2>
+  <p class="muted"><b>Decision: in scope for Unit 2.</b> The connect / OAuth / consent flow currently exists only in the demo app; the package ships just a tool-count row. That means every MCP consumer rebuilds the same surface — so a themed Connected Services view moves into the package (shipping in <code>ManifoldUIModelManagement</code>'s settings family, marked <b>experimental</b> like <code>ManifoldMCP</code> itself: may break in any minor, always migration-noted). The design rules: connection state is a status-tier dot, consent is explicit and shown <em>before</em> first tool exposure, a faulted server carries its fix inline (§6A's pattern, reusing the existing reauthenticate hook), and tool counts surface the Foundation 16-tool cap honestly.</p>
+
+  <div class="stage">
+    <div class="panel-row">
+      <div class="panel" style="width:350px;">
+        <p class="panel-label">Services list</p>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div class="tool-card glass" style="border-radius:14px;">
+            <div class="tool-head">
+              <span class="dot" style="background:var(--ok); width:8px; height:8px; border-radius:50%;"></span>
+              <span class="name">GitHub</span>
+              <span class="args">12 tools</span>
+              <span class="tool-state st-done">Connected</span>
+            </div>
+          </div>
+          <div class="tool-card glass" style="border-radius:14px;">
+            <div class="tool-head">
+              <span class="dot" style="background:var(--warn); width:8px; height:8px; border-radius:50%;"></span>
+              <span class="name">Linear</span>
+              <span class="args">8 tools</span>
+              <span class="tool-state st-wait">Sign in again</span>
+            </div>
+            <div style="font-size:12px; color:var(--ink-2);">Session expired. <b style="color:var(--accent);">Reconnect</b></div>
+          </div>
+          <div class="tool-card glass" style="border-radius:14px; opacity:.7;">
+            <div class="tool-head">
+              <span class="dot" style="background:var(--ink-3); width:8px; height:8px; border-radius:50%;"></span>
+              <span class="name">Filesystem</span>
+              <span class="args">6 tools</span>
+              <span class="tool-state" style="background:var(--bubble-assistant); color:var(--ink-2);">Off</span>
+            </div>
+          </div>
+          <div style="font-size:11.5px; color:var(--ink-3); text-align:center; padding-top:2px;">18 of 26 tools active · Foundation models use at most 16</div>
+        </div>
+      </div>
+      <div class="panel" style="width:350px;">
+        <p class="panel-label">Consent — before first tool exposure</p>
+        <div class="tool-card glass" style="border-radius:16px;">
+          <div class="tool-head">
+            <span aria-hidden="true">⚙︎</span>
+            <span class="name">Connect GitHub?</span>
+          </div>
+          <div style="font-size:12.5px; color:var(--ink-2);">This server will see the parts of your conversation sent to its tools, and adds 12 tools the model can call. You approve each tool run separately.</div>
+          <div class="tool-actions">
+            <button class="btn-sm btn-approve">Connect</button>
+            <button class="btn-sm btn-deny">Not now</button>
+          </div>
+        </div>
+        <p style="font-size:11.5px; color:var(--ink-3); text-align:center; margin:10px 0 0;">OAuth continues in the browser; per-call approval stays in the §4 tool card</p>
+      </div>
+    </div>
+  </div>
+
+  <ol class="annotations">
+    <li><span class="n">1</span><div><b>State is the status tier.</b> Connected / needs-reauth / off map to statusOK / statusWarn / neutral — same vocabulary as tool cards and download rows, no new colors. Reauth reuses the existing <span class="api mono">ToolErrorPresentation</span> "mcp.reauthenticate" hook.</div></li>
+    <li><span class="n">2</span><div><b>Consent explains data flow in plain words</b> — what the server sees, what it adds — and connecting a server never implies approving its tool calls: per-call approval remains the §4 card. Tool counts and the Foundation 16-tool cap render via the existing <span class="api mono">MCPToolCountView</span> contract.</div></li>
+    <li><span class="n">3</span><div><b>Reachable from where tools live:</b> a "Connected services" row in generation settings, and from any MCP tool card's failure state. Experimental status is stated in the DocC page, not hidden.</div></li>
+  </ol>
+</section>
+
+<!-- ================= 7 TOKENS ================= -->
+<section id="tokens">
+  <div class="sec-label">Section 7</div>
+  <h2>Token system — <span class="mono" style="font-weight:650;">ManifoldTheme</span></h2>
+  <p class="muted">Material 3's strongest idea, applied: <b>primitive → semantic → component</b>, where component code may only reference the semantic tier. <code>ChatTheme</code> grows into (or is wrapped by) one root <code>ManifoldTheme</code> injected via environment at bootstrap — Stream Chat's <code>Appearance</code> shape, without the singleton. The values below are this page's own stylesheet.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Token</th><th>Tier</th><th>Light</th><th>Dark</th><th>Consumed by</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">accent</td><td><span class="tier tier-sem">semantic</span></td><td colspan="2"><b>Resolves to the host app's <span class="mono">Color.accentColor</span></b> — never a literal. Consumers keep their brand tint for free, as they do today. (The indigo on this page — #5E5CE6 / #7674F2 — is this document's own tint standing in for a host's, not a shipped default.)</td><td>Send button, citations, selection, links, running-state badges</td></tr>
+        <tr><td class="mono">ground / surface / surface2</td><td><span class="tier tier-sem">semantic</span></td><td>#F5F5F7 · #FFF · #ECECEE</td><td>#0B0B0F · #1C1C1E · #26262A</td><td>Window, cards, grouped forms</td></tr>
+        <tr><td class="mono">ink / ink2 / ink3</td><td><span class="tier tier-sem">semantic</span></td><td>#1D1D1F · #6E6E73 · #AEAEB2</td><td>#F5F5F7 · #98989F · #636369</td><td>Text hierarchy everywhere (replaces scattered <code>.secondary</code>/<code>.tertiary</code>)</td></tr>
+        <tr><td class="mono">statusOK / statusWarn / statusError</td><td><span class="tier tier-sem">semantic</span></td><td><span class="swatch" style="background:#248A3D;"></span><span class="swatch" style="background:#C93400;"></span><span class="swatch" style="background:#D70015;"></span>+ soft fills</td><td><span class="swatch" style="background:#30D158;"></span><span class="swatch" style="background:#FF9F0A;"></span><span class="swatch" style="background:#FF453A;"></span>+ soft fills</td><td>Tool states, model-fit badges, memory/context indicators, download states</td></tr>
+        <tr><td class="mono">glass</td><td><span class="tier tier-sem">semantic</span></td><td colspan="2">Material reference — <span class="mono">glassEffect</span> on 26+, <span class="mono">.regularMaterial</span> below</td><td>Toolbar, composer, pickers, sheets, sidebar</td></tr>
+        <tr><td class="mono">shape (radius scale)</td><td><span class="tier tier-sem">semantic</span></td><td colspan="2">xs&nbsp;6 · sm&nbsp;11 · md&nbsp;14 · lg&nbsp;20 · capsule — nested radii derived concentrically</td><td>Bubbles, cards, fields, sheets (replaces literal 4/6/8/12 pt)</td></tr>
+        <tr><td class="mono">type scale</td><td><span class="tier tier-sem">semantic</span></td><td colspan="2">HIG text styles (body 15/1.5, caption 13, mono for tool payloads) — Dynamic Type via <span class="mono">@ScaledMetric</span>, as today</td><td>All text</td></tr>
+        <tr><td class="mono">userBubbleBackground, composerField, toolCardSurface, …</td><td><span class="tier tier-comp">component</span></td><td colspan="2">Point at semantic tokens only — e.g. <span class="mono">userBubbleBackground</span> = a gradient <em>derived from the resolved accent</em> (host tint → slightly darkened), never a fixed hue</td><td><span class="mono">MessageBubbleStyle</span>, <span class="mono">ComposerStyle</span>, <span class="mono">ToolInvocationStyle</span>, …</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout"><b>The enforcement rule (this repo's culture):</b> an audit test — <span class="mono">HardcodedColorAuditTest</span> with an in-file <span class="mono">test_sabotage_</span> — fails CI when view code references a raw status/theme color outside the theme definition files. It ships with an explicit <b>three-way taxonomy</b> so the allowlist can't swallow the rule: <b>(a)</b> themeable colors (status, accents, surfaces, text) — must route through <code>ManifoldTheme</code>; ~57 literals migrate. <b>(b)</b> functional/data colors — agent-avatar UUID hashing, image-placeholder hash grids — these encode data, not theme, and stay in view code by design. <b>(c)</b> diagnostic-only views (inspectors, event timeline) — allowlisted per-file. The rule ships with its tripwire in the same PR, per AGENTS.md Part&nbsp;0.</div>
+</section>
+
+<!-- ================= 8 PROTOCOLS ================= -->
+<section id="protocols">
+  <div class="sec-label">Section 8</div>
+  <h2>Style-protocol map</h2>
+  <p class="muted"><code>MessageBubbleStyle</code> proved the pattern (Apple's ButtonStyle idiom: a protocol with a data-only <code>Configuration</code>, resolved via environment). The refresh extends it to every surface a consumer will want to re-skin, and adds one new seam: a <b>part-level renderer</b>, so a host can replace just tool cards without rebuilding whole messages.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Protocol / seam</th><th>Owns</th><th>Configuration carries</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">ChatTheme → ManifoldTheme</td><td>All tokens (§7)</td><td>—</td><td>Extend existing</td></tr>
+        <tr><td class="mono">MessageBubbleStyle</td><td>Bubble chrome: shape, fill, padding</td><td>role, content, isStreaming</td><td>Ships today (.plain / .iMessage / .card)</td></tr>
+        <tr><td class="mono">ComposerStyle</td><td>Capsule, field, "+" menu, send/stop</td><td>phase (.idle / .composing / .generating / .voice), attachments</td><td><b>New</b></td></tr>
+        <tr><td class="mono">ThinkingBlockStyle</td><td>Reasoning disclosure + live preview</td><td>state (.streaming / .settled(duration)), text</td><td><b>New</b></td></tr>
+        <tr><td class="mono">ToolInvocationStyle</td><td>Tool cards (§4)</td><td>lifecycle state, name, args, result, error, approval closures</td><td><b>New</b></td></tr>
+        <tr><td class="mono">SessionRowStyle</td><td>Sidebar rows</td><td>title, snippet, isPinned, isSelected</td><td><b>New</b></td></tr>
+        <tr><td class="mono">chatMessageRenderer</td><td>Whole-message override, default fallthrough</td><td>message + defaultMessageView()</td><td>Ships today</td></tr>
+        <tr><td class="mono">chatMessagePartRenderer</td><td>Per-part override (text / thinking / tool / image / citation)</td><td>part + defaultPartView()</td><td><b>New</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="font-size:14px;">All new protocols follow the existing precedent: <code>@Entry</code> environment storage, a cascading view modifier (<code>.composerStyle(_:)</code>…), built-in styles as static accessors. Access level: <code>public</code> — these are consumer-facing by definition. <b>The new built-in styles become the default look</b> — this is a deliberate pre-1.0 visual break under Principle&nbsp;9, not an additive opt-in. The pre-refresh appearance survives as shipped <b>classic presets</b>: <code>.chatTheme(.classic)</code> plus <code>.plain</code>/legacy composer styles restore today's look in one modifier group, so no consumer is stranded.</p>
+</section>
+
+<!-- ================= 9 FALLBACK ================= -->
+<section id="fallback">
+  <div class="sec-label">Section 9</div>
+  <h2>OS fallback matrix</h2>
+  <p class="muted">The package floor stays iOS 18 / macOS 15. Glass is progressive enhancement behind <code>#available(iOS 26, macOS 26, *)</code>. On <b>iOS</b> the fallback is a system material with identical geometry. On <b>macOS</b> the chrome is system-owned, so the fallback is graceful rather than identical — the window toolbar and sidebar render in whatever the OS provides, and there is no pre-26 equivalent of <code>backgroundExtensionEffect</code>. Standard glass APIs inherit the OS-level glass-intensity setting WWDC26 introduced, for free.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Surface</th><th>iOS 26 / macOS 26</th><th>iOS 18–25 / macOS 15–25 fallback</th></tr></thead>
+      <tbody>
+        <tr><td>Toolbar / titlebar</td><td>iOS: glass bar, transcript scrolls beneath. macOS: system window toolbar (glass, system-rendered) — MK contributes items only</td><td>iOS: <span class="mono">.regularMaterial</span> bar, same edge-to-edge scroll. macOS: standard system titlebar/toolbar — MK never draws the bar on any version</td></tr>
+        <tr><td>Composer</td><td>iOS: floating capsule, <span class="mono">glassEffect</span> in <span class="mono">GlassEffectContainer</span>. macOS: docked width-constrained glass bar</td><td>Same platform geometry, <span class="mono">.regularMaterial</span> + hairline border</td></tr>
+        <tr><td>Model picker</td><td>iOS: glass palette. macOS: glass popover anchored to the toolbar chip</td><td>Same presentation per platform, <span class="mono">.thickMaterial</span></td></tr>
+        <tr><td>Sheets (settings, model management)</td><td>iOS: glass sheet, detents. macOS: window-style sheet (detents are iOS-only)</td><td>Standard sheet per platform, themed surfaces</td></tr>
+        <tr><td>Sidebar (macOS / iPad)</td><td>System sidebar vibrancy; content extends beneath via <span class="mono">backgroundExtensionEffect</span></td><td>Standard sidebar material — geometry gracefully differs; no pre-26 extension equivalent</td></tr>
+        <tr><td>Shimmer / live states / hover feedback</td><td colspan="2">Identical on all OS versions (gradient animation, static under Reduce Motion; pointer hover on macOS everywhere)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 10 DOCS ================= -->
+<section id="docs">
+  <div class="sec-label">Section 10</div>
+  <h2>Documentation scope for MK consumers</h2>
+  <p class="muted">What this design obligates us to write, per AGENTS.md's docs-ship-with-the-PR rule. The existing <span class="mono">Theming.md</span> DocC article covers Layer 1–3 for bubbles only; the refresh roughly triples the customization surface, so the docs grow accordingly.</p>
+  <ul class="check">
+    <li><b>Theming.md rewrite</b> — the three-tier token model, <code>ManifoldTheme</code> root struct, per-surface coverage table (mirror of §7), light/dark/Increase-Contrast checklist.<span class="why">Replaces the bubble-only article; keep the Layer 1–3 mental model, widen its scope.</span></li>
+    <li><b>Per-protocol DocC pages</b> — <code>ComposerStyle</code>, <code>ThinkingBlockStyle</code>, <code>ToolInvocationStyle</code>, <code>SessionRowStyle</code>, <code>chatMessagePartRenderer</code>: one runnable custom-style example each, in the compile-gated snippet set.<span class="why">Doc-snippet compile gate already exists — new snippets join it.</span></li>
+    <li><b>"White-label your chat" recipe</b> — a worked brand-swap: one <code>ManifoldTheme</code> + two custom styles turning the default UI into a visibly different product. The strongest marketing artifact of the whole effort.<span class="why">This is the templatability story consumers evaluate MK on.</span></li>
+    <li><b>Connected Services (MCP) DocC page</b> — the new experimental surface (§6B): wiring it to an <code>MCPClient</code>, the consent/reauth contract, the Foundation tool-cap behavior, and its experimental status per API-DESIGN §7b.<span class="why">New public surface = new compile-gated snippet; graduates the demo-app pattern into a documented one.</span></li>
+    <li><b>Liquid Glass adoption note</b> — what MK does automatically on iOS 26+, what the fallback looks like, how a consumer opts out (<code>ManifoldTheme.glass</code> token override).<span class="why">Consumers shipping before their own 26 floor need the exact behavior spelled out.</span></li>
+    <li><b>Migration note — the 0.x visual break</b> — full inventory of default-appearance changes (glass chrome, accent-derived gradient bubbles, composer button row → "+" menu, themed status colors, platform-adaptive composer), the one-modifier restore path via the classic presets (<code>.chatTheme(.classic)</code> + legacy styles), and any retired public API per pre-1.0 delete-don't-deprecate.<span class="why">Principle 9: this ships as a deliberate, migration-noted breaking change — the CHANGELOG entry leads with it.</span></li>
+    <li><b>AGENTS.md Part 1 update</b> — new theming surface in the consumer section; add "hallucinated theming APIs" entries if assistants invent e.g. <code>vm.setTheme(_:)</code>.<span class="why">AI assistants are first-class readers; <span class="mono">AgentsMdAuditTest</span> keeps it honest.</span></li>
+  </ul>
+</section>
+
+<!-- ================= 11 TESTS ================= -->
+<section id="tests">
+  <div class="sec-label">Section 11</div>
+  <h2>What the test suite should pin</h2>
+  <ul class="check">
+    <li><b>Default-appearance characterization</b> — two anchors: during the token refactor (phase 1), resolved values equal today's shipped appearance byte-for-byte; after the defaults flip, the suite pins the <em>new</em> defaults and separately pins that <code>.classic</code> reproduces the pre-refresh appearance.</li>
+    <li><b>Token plumbing</b> — a custom <code>ManifoldTheme</code> injected at the root resolves through every consuming surface: composer, tool cards, thinking, citations, sidebar, model-management badges. One assertion per surface.</li>
+    <li><b>Style-protocol dispatch</b> — a custom style installed via each new modifier receives correct <code>Configuration</code> data for every typed state (tool lifecycle ×4, composer phase ×4, thinking ×2).</li>
+    <li><b>Part-renderer fallthrough</b> — overriding one part kind leaves all other kinds rendering via <code>defaultPartView()</code>.</li>
+    <li><b><span class="mono">HardcodedColorAuditTest</span></b> — plus its in-file sabotage test, registered with <span class="mono">AuditSabotageCoverageAuditTest</span>.</li>
+    <li><b>Availability seams</b> — glass paths compile under the 26 SDK and fall back below it; snapshot or build-matrix coverage for both branches (macOS 15 CI runner exercises the fallback naturally).</li>
+    <li><b>Accessibility invariants</b> — Reduce Motion disables shimmer/spin; Dynamic Type scaling of the shape/type scale; VoiceOver labels on tool-state badges and the send/stop toggle.</li>
+  </ul>
+
+  <div class="callout"><b>Shipping shape</b> (revised after review, reconciled with the no-phased-splits rule): <b>Unit 1 — token refactor.</b> Its own PR: pure internal rewiring, zero visual change, characterization tests lock today's appearance. Independently valuable regardless of the redesign. <b>Unit 2 — the visual overhaul.</b> Glass chrome, new default styles, style protocols + part renderer, composer/picker redesign, and the classic presets are <em>one feature</em> — built as a stacked draft series and merged as a single unit so no intermediate CI-triggering PR ships a half-flipped default. Classic presets land in the same unit so the migration path exists the moment defaults change. Docs and tests ship inside each unit, not as follow-ups.</div>
+</section>
+
+<!-- ================= 12 COVERAGE ================= -->
+<section id="coverage">
+  <div class="sec-label">Section 12</div>
+  <h2>Coverage inventory — every UI element, one disposition</h2>
+  <p class="muted">The complete element inventory from the codebase survey, so nothing falls through during implementation. Three dispositions: <b>Redesigned</b> (specified above with mockups), <b>Token restyle</b> (no mockup needed — the element keeps its structure and inherits <code>ManifoldTheme</code>: semantic colors, shape scale, glass/material surfaces; treatment noted where it isn't obvious), and <b>Diagnostic-exempt</b> (developer-facing; function over form, allowlisted in the color audit).</p>
+
+  <h3>Chat surface (ManifoldUI)</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Element</th><th>Disposition</th><th>Treatment</th></tr></thead>
+      <tbody>
+        <tr><td>Message bubbles (user / assistant / system)</td><td><span class="tier tier-comp">Redesigned</span></td><td>§2 — accent-derived gradient user bubble, concentric radii</td></tr>
+        <tr><td>Thinking / reasoning block</td><td><span class="tier tier-comp">Redesigned</span></td><td>§2 ③ — collapsed shimmer preview → settled "Thought for Ns"</td></tr>
+        <tr><td>Tool invocation card (4 states)</td><td><span class="tier tier-comp">Redesigned</span></td><td>§4 — typed lifecycle, themed status badges</td></tr>
+        <tr><td>Composer + send/stop, "+" menu</td><td><span class="tier tier-comp">Redesigned</span></td><td>§3 — platform-adaptive (capsule / docked bar), gating preserved</td></tr>
+        <tr><td>Inline citations + streaming cursor</td><td><span class="tier tier-comp">Redesigned</span></td><td>§2 ⑤ — accent markers, accent cursor</td></tr>
+        <tr><td>Toolbar / titlebar, model chip</td><td><span class="tier tier-comp">Redesigned</span></td><td>§2 ① / §2-macOS Ⓐ — glass on iOS, system-owned on macOS</td></tr>
+        <tr><td>Model picker</td><td><span class="tier tier-comp">Redesigned</span></td><td>§5 — palette (iOS) / anchored popover (macOS), effort row</td></tr>
+        <tr><td>Session sidebar + rows</td><td><span class="tier tier-comp">Redesigned</span></td><td>§6, §2-macOS Ⓒ — SessionRowStyle; system selection on macOS</td></tr>
+        <tr><td>Markdown code blocks</td><td><span class="tier tier-sem">Token restyle</span></td><td><b>Specified here:</b> surface2 fill on shape-sm radius, mono at HIG caption size, hover-revealed copy button (persistent on iOS), horizontal scroll — visible in nearly every reply, so it ships in Unit 2 with the bubbles</td></tr>
+        <tr><td>Sources / citations disclosure</td><td><span class="tier tier-sem">Token restyle</span></td><td>Same disclosure pattern as thinking; accent-soft highlight flash from theme</td></tr>
+        <tr><td>Typing indicator, model-loading indicator</td><td><span class="tier tier-sem">Token restyle</span></td><td>Dots/progress adopt ink2 + accent; Reduce Motion static, as today</td></tr>
+        <tr><td>Link preview card</td><td><span class="tier tier-sem">Token restyle</span></td><td>surface fill, shape-md, hairline border from theme</td></tr>
+        <tr><td>Image attachments + placeholder grids</td><td><span class="tier tier-sem">Token restyle</span></td><td>shape-md clipping; hash-grid colors are functional (audit category b)</td></tr>
+        <tr><td>Audio message view</td><td><span class="tier tier-sem">Token restyle</span></td><td>Waveform tint from accent; role-conditional fills from bubble tokens</td></tr>
+        <tr><td>Agent badges + handoff chip (multi-agent)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Capsule on surface tokens; deterministic per-agent colors stay functional (audit category b)</td></tr>
+        <tr><td>Empty state (first run / empty session)</td><td><span class="tier tier-comp">Redesigned</span></td><td>§6A — first-run funnel + suggestion chips; <code>chatEmptyState</code> slot unchanged</td></tr>
+        <tr><td>Loading / no-model-loaded shell states</td><td><span class="tier tier-comp">Redesigned</span></td><td>§6A — milestone-named loading, determinate model load with cancel</td></tr>
+        <tr><td>Error recovery / upgrade banners + turn failure</td><td><span class="tier tier-comp">Redesigned</span></td><td>§6A — failures placed at their scope (turn card / composer banner / full screen); status tokens replace hardcoded <code>.red.opacity(0.1)</code> / <code>.blue.opacity(0.08)</code></td></tr>
+        <tr><td>Message action menu</td><td><span class="tier tier-sem">Token restyle</span></td><td>Context menu on iOS; hover pill on macOS (§2-macOS Ⓓ); extraItems slot unchanged</td></tr>
+        <tr><td>Memory + context-window indicators</td><td><span class="tier tier-sem">Token restyle</span></td><td>Status tier colors; toolbar-item placement per platform</td></tr>
+        <tr><td>Generation settings + persona picker + export sheet</td><td><span class="tier tier-sem">Token restyle</span></td><td>Keep Form structure; themed surfaces, platform sheet presentation (§9)</td></tr>
+        <tr><td>Architect inspector, Diagnostics, event timeline, prompt/context-slot inspectors</td><td><span class="tier tier-sem" style="background:var(--warn-soft); color:var(--warn);">Diagnostic-exempt</span></td><td>Developer tools — audit category c; inherit surfaces passively, no design pass</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Model management (ManifoldUIModelManagement) &amp; voice (ManifoldVoice)</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Element</th><th>Disposition</th><th>Treatment</th></tr></thead>
+      <tbody>
+        <tr><td>ModelManagementSheet (tabs), ModelPicker (in-sheet)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Platform sheet per §9; type/fit badges move to semantic status tokens (retiring the 14 hardcoded color helpers)</td></tr>
+        <tr><td>Downloadable model rows + download progress</td><td><span class="tier tier-sem">Token restyle</span></td><td>fit/speed/curated capsules from statusOK/Warn/Error soft fills; progress ring tint = accent</td></tr>
+        <tr><td>HuggingFace browser, storage management, image-model sheet, document library (RAG)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Keep List/Form structure; themed badges, shape-md drop targets, platform guards unchanged</td></tr>
+        <tr><td>API configuration + endpoint editor</td><td><span class="tier tier-sem">Token restyle</span></td><td>Form structure unchanged; statusWarn for privacy notice, themed validation states</td></tr>
+        <tr><td>Voice composer accessory + live transcription + voice input button</td><td><span class="tier tier-comp">Redesigned</span></td><td>§3 voice panel — glass accessory above the composer; statusError recording tint; a11y announcements unchanged</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Functionality-sweep additions (Rev 5)</h3>
+  <p class="muted">From the deep functionality sweep — turn-loop actions, experimental modules, generation media, and composer details the earlier inventory under-specified.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Element / capability</th><th>Disposition</th><th>Treatment</th></tr></thead>
+      <tbody>
+        <tr><td>Edit-message sheet (TextEditor via context menu)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Keep sheet structure; themed surfaces, platform presentation per §9</td></tr>
+        <tr><td>Regenerate (input-bar button + context menu)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Moves into the "+"-adjacent overflow on iOS / hover pill on macOS (§2-macOS Ⓓ); same <code>Features</code> gating</td></tr>
+        <tr><td>Branching</td><td><span class="tier tier-comp">Redesigned</span></td><td><b>New:</b> a branched session opens with a "Branched from ‹session› at ‹turn›" handoff-style chip linking back to the parent (reuses the chip pattern). In-transcript sibling navigation is explicitly <b>future work</b>, not in Unit 2 — the sidebar remains the branch container</td></tr>
+        <tr><td>Pinned-message indicator</td><td><span class="tier tier-comp">Redesigned</span></td><td><b>New:</b> small pin glyph in the bubble's metadata row (pin state currently has no visual on the bubble); pin/unpin stays in the action menu</td></tr>
+        <tr><td>Incognito toggle (Architect → Backend tab)</td><td><span class="tier tier-sem" style="background:var(--warn-soft); color:var(--warn);">Diagnostic-exempt</span></td><td>Stays in the developer inspector; not consumer chrome</td></tr>
+        <tr><td>Image/video generation progress</td><td><span class="tier tier-comp">Redesigned</span></td><td>§4A — generation card (step N/M, blurred live preview, cancel), settles in place; progress data exists today with no UI</td></tr>
+        <tr><td>Generated video playback + settled media + missing media</td><td><span class="tier tier-comp">Redesigned</span></td><td>§4A — AVKit player in shape-md clipping (today: prompt text only); glass caption footer with save/expand; system viewer on tap; missing media states its cause</td></tr>
+        <tr><td>Reasoning expanded trace</td><td><span class="tier tier-comp">Redesigned</span></td><td>§4A — caption-size selectable text behind a hairline rule; all three states typed on <code>ThinkingBlockStyle.Configuration</code></td></tr>
+        <tr><td>Scroll-to-bottom control</td><td><span class="tier tier-comp">Redesigned</span></td><td><b>New:</b> no such control exists today — a glass circle (↓) floating above the composer, appearing when the user scrolls up during streaming; tapping resumes follow. Owned by the transcript scroll container alongside its anchoring logic</td></tr>
+        <tr><td>Session search field (sidebar)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Existing <code>.searchable</code> stays; themed field per platform convention</td></tr>
+        <tr><td>Device-info popover (toolbar)</td><td><span class="tier tier-sem" style="background:var(--warn-soft); color:var(--warn);">Diagnostic-exempt</span></td><td>Developer-facing; inherits surfaces passively</td></tr>
+        <tr><td>Draft attachment strip (thumbnails above composer)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Glass strip above the capsule/bar (same slot as voice accessory, §3); shape-sm thumbnails, themed dismiss</td></tr>
+        <tr><td>Composer quick-action pills ("Continue", "Summarize"…)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Capsules on surface tokens; compact-size-class only, as today; ViewBuilder slot unchanged</td></tr>
+        <tr><td>Audio message player (waveform, scrub)</td><td><span class="tier tier-sem">Token restyle</span></td><td>Waveform bars: accent for played / ink3 for remaining; role-conditional container from bubble tokens</td></tr>
+        <tr><td>MCP connected-services management</td><td><span class="tier tier-comp">Redesigned</span></td><td>§6B — <b>decided in scope</b>: themed Connected Services surface promoted into the package (experimental), services list + consent flow + reauth via the existing hook</td></tr>
+        <tr><td>Skills, AppIntents, AppEval, AnyLanguageModel, TelemetryOTLP</td><td><span class="tier tier-sem">Token restyle</span></td><td>No UI surface by design — skills/intents render through the standard tool card; nothing to draw</td></tr>
+        <tr><td>Embedding-model selection</td><td><span class="tier tier-sem" style="background:var(--warn-soft); color:var(--warn);">Out of scope</span></td><td>No UI exists (bootstrap resolves implicitly); building one is a feature decision, not a restyle — excluded deliberately (§5)</td></tr>
+        <tr><td>Video-gen model management</td><td><span class="tier tier-sem" style="background:var(--warn-soft); color:var(--warn);">Out of scope</span></td><td>No sheet exists; earlier-stage than image gen — excluded deliberately (§5)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="muted" style="font-size:14px;">Inventory sources: the four-scout codebase survey (21 ManifoldUI view files, 10 ManifoldUIModelManagement views, 3 ManifoldVoice views) plus the Rev 5 functionality sweep (turn-loop actions, experimental modules, generation media, model-selection option space). Anything discovered during implementation that isn't in these tables gets a disposition added here before it's styled — this section is the completeness check for Unit 2's review.</p>
+</section>
+
+<footer>
+  ManifoldKit UI design reference · Rev 2, July 17, 2026 · Synthesized from the ManifoldUI codebase survey, mid-2026 AI-chat UX research (flagship apps, native clients, Liquid Glass adoption), and theming-architecture research (Material 3, Stream Chat, shadcn, assistant-ui, ExyteChat). Rev 2 incorporates the adversarial design review: macOS-native chrome divergence (§2), host-tint accent resolution (§7), composer gating preserved (§3), audit taxonomy (§7), corrected fallback claims (§9), and the decision that the new look ships as the default with classic presets as the restore path. Mockups are HTML/CSS approximations of SwiftUI treatments; geometry and tokens are normative, pixel rendering is not.
+</footer>
+</div>
