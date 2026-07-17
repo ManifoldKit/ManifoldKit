@@ -1,5 +1,6 @@
 #if os(macOS) && !targetEnvironment(macCatalyst)
 import Foundation
+import ManifoldInference
 import os
 
 /// Stdio transport for ``ManifoldMCPHost``.
@@ -29,29 +30,69 @@ public actor MCPHostStdioTransport: MCPHostTransport {
 
     // MARK: Private
 
+    private let input: FileHandle
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
     private let maxMessageBytes: Int
-    private let readTask: Task<Void, Never>
+    private var readTask: Task<Void, Never>?
+    private var didShutdown = false
 
     // MARK: Init
 
     public init(maxMessageBytes: Int = 4 * 1024 * 1024) {
+        self.init(input: .standardInput, maxMessageBytes: maxMessageBytes)
+    }
+
+    /// Test seam: lets tests substitute a `Pipe`'s read end for real stdin so
+    /// shutdown behavior can be exercised without touching the process's
+    /// actual standard input.
+    init(input: FileHandle, maxMessageBytes: Int = 4 * 1024 * 1024) {
+        self.input = input
         self.maxMessageBytes = maxMessageBytes
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: Data.self, throwing: Error.self)
         self.incomingMessages = stream
         self.continuation = continuation
 
         // Capture for the detached read task — captures are strong, which is
-        // correct: the read loop must run for the lifetime of the transport.
+        // correct: the read loop must run until EOF, an error, or `shutdown()`.
         let cap = continuation
         let maxBytes = maxMessageBytes
         self.readTask = Task.detached(priority: .utility) {
-            MCPHostStdioTransport.readLoop(
-                input: FileHandle.standardInput,
+            await MCPHostStdioTransport.readLoop(
+                input: input,
                 continuation: cap,
                 maxMessageBytes: maxBytes
             )
         }
+    }
+
+    // MARK: Lifecycle
+
+    /// Unblocks the read loop and finishes ``incomingMessages``.
+    ///
+    /// The read loop blocks in `input.read(upToCount:)`, which cooperative
+    /// `Task` cancellation alone cannot interrupt — there is no suspension
+    /// point inside a blocking syscall. Closing the input handle out from
+    /// under the blocked read makes it return/throw promptly (mirrors
+    /// `ManifoldMCP`'s `InternalMCPTransport.close()`), after which the read
+    /// loop observes the closed handle and exits. Awaiting the read task here
+    /// makes shutdown deterministic rather than merely requested.
+    ///
+    /// Idempotent — a second call is a no-op.
+    public func shutdown() async {
+        guard didShutdown == false else { return }
+        didShutdown = true
+
+        do {
+            try input.close()
+        } catch {
+            Log.inference.error(
+                "MCPHostStdioTransport: failed to close input handle during shutdown: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+        readTask?.cancel()
+        await readTask?.value
+        readTask = nil
+        continuation.finish()
     }
 
     // MARK: Send
@@ -83,15 +124,19 @@ public actor MCPHostStdioTransport: MCPHostTransport {
         input: FileHandle,
         continuation: AsyncThrowingStream<Data, Error>.Continuation,
         maxMessageBytes: Int
-    ) {
+    ) async {
         var parser = FrameParser()
         do {
-            while true {
-                // FileHandle.availableData blocks until data arrives.
-                // On EOF it returns empty Data.
-                let chunk: Data
-                chunk = input.availableData
-                guard !chunk.isEmpty else { break }
+            while Task.isCancelled == false {
+                // `read(upToCount:)` blocks until data arrives, EOF (returns
+                // nil/empty), or the handle is closed out from under it (throws)
+                // — unlike `.availableData`, a closed-handle read surfaces as a
+                // catchable Swift error rather than an uncatchable ObjC
+                // exception, which is what makes `shutdown()`'s close-to-unblock
+                // safe here.
+                guard let chunk = try input.read(upToCount: 4096), chunk.isEmpty == false else {
+                    break
+                }
 
                 try parser.append(chunk)
                 while let payload = try parser.nextFrame(maxMessageBytes: maxMessageBytes) {
@@ -100,7 +145,11 @@ public actor MCPHostStdioTransport: MCPHostTransport {
             }
             continuation.finish()
         } catch {
-            continuation.finish(throwing: error)
+            if Task.isCancelled {
+                continuation.finish()
+            } else {
+                continuation.finish(throwing: error)
+            }
         }
     }
 
