@@ -92,7 +92,13 @@ final class ChatPersistenceAdapter {
     // MARK: - Configure
 
     func configure(persistence: any SessionStore & MessageStore) {
-        sessionController.configure(persistence: persistence)
+        // Only fire onPersistenceConfigured (which rebuilds the conversation
+        // runtime) when the store was actually installed. A second call with
+        // a different store must be a consistent no-op end-to-end — firing
+        // the rebuild here while `sessionController` keeps the original store
+        // would split state: session reads from store A, new messages write
+        // to store B. See #A3.
+        guard sessionController.configure(persistence: persistence) else { return }
         onPersistenceConfigured?(persistence)
     }
 

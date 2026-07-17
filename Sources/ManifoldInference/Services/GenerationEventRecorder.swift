@@ -37,10 +37,14 @@ public actor GenerationEventRecorder {
 
     /// Installs a tap on `service` and begins recording events into ``trace``.
     ///
-    /// Returns a `Task` that drains the tap until `service` is deallocated
-    /// or the task is cancelled. Cancel and await the returned task after a
-    /// generation completes to ensure the final `.generationCompleted` event
-    /// is captured before reading ``trace``.
+    /// Returns a `Task` that drains the tap until this recorder deallocates
+    /// or the task is cancelled. Dropping the last strong reference to the
+    /// recorder breaks the drain loop, which ends iteration on `tap` and, via
+    /// its `onTermination`, deregisters the underlying event-tap
+    /// registration — so the returned task always terminates rather than
+    /// draining (and discarding) events forever. Cancel and await the
+    /// returned task after a generation completes to ensure the final
+    /// `.generationCompleted` event is captured before reading ``trace``.
     ///
     /// `async` because ``InferenceService/addGenerationEventTap(bufferingPolicy:)``
     /// is `@MainActor`-isolated and this recorder is a plain actor.
@@ -49,7 +53,8 @@ public actor GenerationEventRecorder {
         let tap = await service.addGenerationEventTap()
         return Task { [weak self] in
             for await event in tap {
-                await self?.append(event)
+                guard let self else { break }
+                await self.append(event)
             }
         }
     }

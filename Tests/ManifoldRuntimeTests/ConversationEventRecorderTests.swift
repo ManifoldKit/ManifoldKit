@@ -184,4 +184,46 @@ final class ConversationEventRecorderTests: XCTestCase {
         XCTAssertTrue(finish1, "recorder1 must observe streamFinished")
         XCTAssertTrue(finish2, "recorder2 must observe streamFinished")
     }
+
+    /// Regression test: `start(on:)`'s drain loop used to do
+    /// `await self?.append(event)` under `[weak self]`, so once the recorder
+    /// deallocated the loop kept iterating forever on a nil `self?`, silently
+    /// discarding every subsequent event and never breaking — the returned
+    /// `Task` never finished and the tap was never deregistered. The loop now
+    /// breaks as soon as `self` is nil, so the task always terminates.
+    func test_drainTask_terminates_afterRecorderDeallocates() async throws {
+        let (runtime, _) = makeRuntime(tokens: ["after", "dealloc"])
+
+        let primaryTask = Task { [weak runtime] in
+            guard let runtime else { return }
+            for await _ in runtime.events {}
+        }
+        defer { primaryTask.cancel() }
+
+        var recorder: ConversationEventRecorder? = ConversationEventRecorder()
+        let drainTask = await recorder!.start(on: runtime)
+
+        // Drop the only strong reference to the recorder before any event
+        // fires. The drain loop is already suspended in `for await event in
+        // tap`, so the deallocation itself does not unblock it — the next
+        // delivered event is what lets the `guard let self else { break }`
+        // observe the nil and exit.
+        recorder = nil
+
+        let turn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "go"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
+        ))
+        _ = try await withTimeout(.seconds(10)) {
+            await turn?.outcome
+        }
+
+        // Before the fix this would hang until the test's own harness
+        // timeout: the loop looped forever on `await self?.append(event)`
+        // with `self` nil, never returning from the `Task`.
+        try await withTimeout(.seconds(10)) {
+            await drainTask.value
+        }
+    }
 }
