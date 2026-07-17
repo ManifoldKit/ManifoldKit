@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.72.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.71.0...v0.72.0) (2026-07-17)
+
+The turn loop stops losing content: an edited message keeps its attachments, and a model's
+reasoning now persists with the turn it belongs to. Alongside that, the pre-1.0 API
+rationalisation continues — four more unadopted seams leave the public surface and post-turn
+observability folds onto the unified hook registry — plus MCP hosts can now answer
+server-initiated sampling requests, and the Ollama backend stops claiming tool support it
+never verified.
+
+### Highlights
+
+#### Editing a message no longer drops its non-text parts (breaking)
+
+Editing, summarising, or reconfiguring a session rebuilt each message from its text alone, so
+image attachments, pinned state, and store identity were silently discarded on the way through.
+Those paths now preserve the whole message.
+
+`SendMessageError` gains an `.emptyInput` case as part of the fix, so an exhaustive `switch`
+over it stops compiling until you handle it:
+
+```swift
+switch error {
+case .emptyInput:   // new in 0.72.0
+    showEmptyInputHint()
+default:
+    surface(error)
+}
+```
+
+See [#2296](https://github.com/ManifoldKit/ManifoldKit/issues/2296).
+
+#### A model's reasoning persists with its turn
+
+Finalized thinking blocks are now written into the assistant message's `contentParts` rather
+than being dropped when streaming ends, so reasoning survives a reload instead of living only
+in the live event stream. See [#2281](https://github.com/ManifoldKit/ManifoldKit/issues/2281).
+
+#### Ollama reports the tool support it actually has
+
+`OllamaBackend` hardcoded `supportsToolCalling: true` for every model. It now probes
+`/api/show` and reports what the model genuinely advertises, so an unsupported model is refused
+up front instead of failing mid-turn. If you gate UI on `capabilities.supportsToolCalling`,
+expect `false` for models that never supported it. See [#2285](https://github.com/ManifoldKit/ManifoldKit/issues/2285).
+
+#### MCP servers can ask the host to sample
+
+A server can now issue `sampling/createMessage` and have the host answer it — gated per server
+by `descriptor.allowsSampling` and a handler you supply. There is no implicit default: absent a
+handler, the request is refused.
+
+```swift
+import ManifoldMCP
+
+var configuration = MCPClientConfiguration()
+configuration.samplingHandler = { request in
+    MCPSamplingResult(
+        role: .assistant,
+        content: .text("…your model's reply…"),
+        model: "my-model",
+        stopReason: "endTurn"
+    )
+}
+```
+
+See [#1925](https://github.com/ManifoldKit/ManifoldKit/issues/1925), [#2274](https://github.com/ManifoldKit/ManifoldKit/issues/2274).
+
+#### One hook seam — `postGeneration` joins `HookRegistry`
+
+Post-turn observability previously required adopting the separate `GenerationHook` protocol
+even if you had already standardised on the registry. `HookEvent.postGeneration` now carries
+the same completed-turn payload:
+
+```swift
+await registry.register(.postGeneration) { input in
+    guard let turn = input.completedTurn else { return .passthrough }
+    print("Turn finished for session \(turn.sessionID)")
+    return .passthrough
+}
+```
+
+`SummarisationHook` exposes `makeHookHandler()` so rolling summarisation registers on the same
+seam. Both seams can be registered simultaneously without double-firing. See [#2257](https://github.com/ManifoldKit/ManifoldKit/issues/2257).
+
+#### Four more seams leave the public surface (breaking)
+
+- The **Run subsystem and its background-task bridge** are removed outright:
+  `BackgroundTaskScheduler`, `DefaultBackgroundTaskScheduler`, `MemoryBudget`, and
+  `MockBackgroundTaskScheduler`. See
+  [docs/MIGRATION-background-task-scheduler-removed.md](docs/MIGRATION-background-task-scheduler-removed.md)
+  and [#2270](https://github.com/ManifoldKit/ManifoldKit/issues/2270).
+- **`HostTurnContextProvider`** is now `package` ([#2264](https://github.com/ManifoldKit/ManifoldKit/issues/2264)).
+- **RAG internals** are now `package`, and the API-demotion screen is hardened
+  ([#2262](https://github.com/ManifoldKit/ManifoldKit/issues/2262)).
+- **`AccessibilityAnnouncer`** is now `package` — and unlike the others it is now actually
+  wired into the chat streaming path rather than sitting unadopted ([#2263](https://github.com/ManifoldKit/ManifoldKit/issues/2263)).
+
+#### Bounded turns, bounded transports
+
+`manifold-server` bounds generation and idle timeouts and enforces an output-token ceiling
+([#2279](https://github.com/ManifoldKit/ManifoldKit/issues/2279)), and reuses its SSE `ByteBuffer` instead of copying `Data`→`String` per
+token ([#2269](https://github.com/ManifoldKit/ManifoldKit/issues/2269)). The MCP stdio transport bounds its read path and honours
+`initializationTimeout` ([#2267](https://github.com/ManifoldKit/ManifoldKit/issues/2267)), and a hostile server can no longer trap the host
+with an out-of-range sampling `maxTokens` ([#2276](https://github.com/ManifoldKit/ManifoldKit/issues/2276)).
+
+### Features
+
+- **Turn-loop parity** — stall timeout, outcome taxonomy, thinking-marker filter, and repetition tuning ([#2259](https://github.com/ManifoldKit/ManifoldKit/issues/2259)).
+- **Docs carry an audience and a status** — every `docs/*.md` declares `Audience:`/`Status:`, enforced by an audit, and stale plans expire ([#2278](https://github.com/ManifoldKit/ManifoldKit/issues/2278)).
+
+### Fixes
+
+- **Lifecycle and visibility footguns** — a malformed custom `baseURL` no longer silently falls back to the real vendor endpoint; stdio shutdown and a recorder leak are closed ([#2295](https://github.com/ManifoldKit/ManifoldKit/issues/2295)).
+- **Silent fallbacks are visible** — `ConversationRuntime`'s pause/cancel no-ops and `RAGService`'s keyword fallback now log instead of returning quietly ([#2301](https://github.com/ManifoldKit/ManifoldKit/issues/2301)).
+- **Fuzz harness** — bounded shell-outs, local-backend requests, and event accumulation ([#2268](https://github.com/ManifoldKit/ManifoldKit/issues/2268)); unknown tool names are flagged ([#2275](https://github.com/ManifoldKit/ManifoldKit/issues/2275)).
+- **Test gate** — the local gate mirrors CI's process shape and no longer collides on a machine-global output file ([#2302](https://github.com/ManifoldKit/ManifoldKit/issues/2302)); the api-digester baseline is anchored to the merge base, ending phantom "removed" reports on branches behind main ([#2304](https://github.com/ManifoldKit/ManifoldKit/issues/2304)).
+
 ## [0.71.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.70.0...v0.71.0) (2026-07-13)
 
 Phase A of the [v1 rationalisation plan](docs/plans/api-v1-rationalisation-2026-07.md):
