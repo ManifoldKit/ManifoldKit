@@ -153,6 +153,9 @@ selection instead.
 `ChatView` cannot import `ModelSwitcherView` directly — `ManifoldUI` must not
 depend on `ManifoldUIModelManagement` (Principle 2). The seam mirrors
 `chatAPIConfiguration(_:)`'s closure-injection shape for exactly this reason.
+Apply it **directly on `ChatView`, alongside the other chat seams** — once a
+generic `View` modifier (`.chatTheme(_:)`, `.toolbar { }`, …) erases the chain
+to `some View`, `.chatModelSwitcher(_:)` no longer resolves.
 Omitting `.chatModelSwitcher(_:)` renders no chip at all — this is fully
 opt-in, no upgrade action required. `Example/Advanced/DemoContentView.swift`
 wires this exact call site (with `.onChange(of: chatViewModel.selectedModel)`

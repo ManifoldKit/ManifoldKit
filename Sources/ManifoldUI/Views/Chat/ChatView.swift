@@ -258,6 +258,13 @@ public struct ChatView<APIConfig: View>: View {
     ///
     /// **LAST-WINS:** calling this modifier more than once replaces the
     /// previous builder entirely; there is no merging.
+    ///
+    /// **Ordering:** like the other chat seams, this method chains on the
+    /// concrete `ChatView` type — apply it together with
+    /// `chatEmptyState`/`chatComposerAccessory`/`chatAPIConfiguration`,
+    /// *before* any generic `View` modifier (`.chatTheme(_:)`,
+    /// `.chatMessageRenderer(_:)`, `.toolbar { }`, …) erases the chain to
+    /// `some View`, after which this method no longer resolves.
     public func chatModelSwitcher<Content: View>(
         @ViewBuilder _ builder: @escaping () -> Content
     ) -> ChatView<APIConfig> {

@@ -83,80 +83,7 @@ struct DemoContentView: View {
         ) {
             sidebar
         } detail: {
-            ChatView(showModelManagement: $isModelManagementPresented)
-                .chatEmptyState { ChatEmptyStateView(runScenario: runScenario) }
-                .chatComposerAccessory {
-                    #if !targetEnvironment(simulator)
-                    VoiceComposerAccessory(controller: voiceController)
-                    #else
-                    EmptyView()
-                    #endif
-                }
-                .chatAPIConfiguration { APIConfigurationView() }
-                // Theming, all three layers composed: Layer 1 tokens via
-                // `.chatTheme(_:)`, Layer 2 bubble chrome via
-                // `.messageBubbleStyle(_:)`, Layer 3 per-message override via
-                // `.chatMessageRenderer(_:)`. Each is read from the single
-                // `demoTheme` selection so flipping the Appearance menu restyles
-                // the live transcript without rebuilding the view.
-                .chatTheme(demoTheme.theme)
-                .modifier(DemoBubbleStyleModifier(theme: demoTheme))
-                .chatMessageRenderer { params in
-                    // Override only system notices with a compact pill; defer
-                    // every other message to the built-in, fully-themed bubble.
-                    if params.message.role == .system {
-                        AnyView(DemoSystemNotice(text: params.message.content))
-                    } else {
-                        params.defaultMessageView()
-                    }
-                }
-                // Worked example of the quick model-switcher chip (Unit 2
-                // §L5, issue #2307) — `ChatView` owns only the chrome
-                // (toolbar chip, popover/sheet chrome); the content is
-                // supplied here because building the unified row list needs
-                // `ManifoldUIModelManagement` types `ManifoldUI` cannot
-                // import. `onSelect` mirrors the existing model/endpoint
-                // selection dispatch (`.onChange(of: viewModel.selectedModel)` /
-                // `.onChange(of: viewModel.selectedEndpoint)` below);
-                // `onFixEndpoint` routes to the same model management sheet
-                // the empty-state "Browse Models" button opens.
-                .chatModelSwitcher {
-                    // Extracted to a computed property: inlining the closure
-                    // here pushed the body expression past the type-checker's
-                    // budget (xcodebuild-only failure; swift build never
-                    // compiles this target).
-                    modelSwitcherContent
-                }
-                .toolbar {
-                    // .topBarLeading is iOS-only; macOS NavigationSplitView manages
-                    // sidebar visibility via its own controls so this button is not
-                    // needed on macOS. (#375)
-                    #if os(iOS)
-                    if horizontalSizeClass == .compact {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button {
-                                preferredCompactColumn = .sidebar
-                            } label: {
-                                Label("Show Sidebar", systemImage: "sidebar.leading")
-                            }
-                            .accessibilityLabel("Show Sidebar")
-                            .accessibilityIdentifier("show-sidebar-button")
-                        }
-                    }
-                    #endif
-                    ToolbarItem(placement: .automatic) {
-                        Menu {
-                            Picker("Appearance", selection: $demoTheme) {
-                                ForEach(DemoChatTheme.allCases) { option in
-                                    Text(option.title).tag(option)
-                                }
-                            }
-                        } label: {
-                            Label("Appearance", systemImage: "paintpalette")
-                        }
-                        .accessibilityIdentifier("demo-appearance-menu")
-                    }
-                }
+            detailColumn
         }
         .sheet(isPresented: $isModelManagementPresented) {
             ModelManagementSheet(modelRegistry: viewModel.modelRegistry)
@@ -312,6 +239,79 @@ struct DemoContentView: View {
         .onChange(of: managementViewModel.completedDownloadCount) { _, _ in
             viewModel.refreshModels()
         }
+    }
+
+    /// The detail-column view chain, extracted from `body` because the
+    /// combined NavigationSplitView expression exceeded the type-checker
+    /// budget under xcodebuild (swift build never compiles this target).
+    private var detailColumn: some View {
+        ChatView(showModelManagement: $isModelManagementPresented)
+            .chatEmptyState { ChatEmptyStateView(runScenario: runScenario) }
+            // Worked example of the quick model-switcher chip (Unit 2 §L5,
+            // issue #2307) — `ChatView` owns only the chrome (toolbar chip,
+            // popover/sheet); the content is supplied here because the
+            // unified row list needs `ManifoldUIModelManagement` types
+            // `ManifoldUI` cannot import. Must be applied while the receiver
+            // is still `ChatView` — the seam methods chain on the concrete
+            // type, so this sits with its sibling seams, before `.chatTheme`
+            // decays the chain to `some View`. `onSelect` only sets the
+            // selection; the `.onChange` handlers below own dispatch.
+            .chatModelSwitcher { modelSwitcherContent }
+                .chatComposerAccessory {
+                    #if !targetEnvironment(simulator)
+                    VoiceComposerAccessory(controller: voiceController)
+                    #else
+                    EmptyView()
+                    #endif
+                }
+                .chatAPIConfiguration { APIConfigurationView() }
+                // Theming, all three layers composed: Layer 1 tokens via
+                // `.chatTheme(_:)`, Layer 2 bubble chrome via
+                // `.messageBubbleStyle(_:)`, Layer 3 per-message override via
+                // `.chatMessageRenderer(_:)`. Each is read from the single
+                // `demoTheme` selection so flipping the Appearance menu restyles
+                // the live transcript without rebuilding the view.
+                .chatTheme(demoTheme.theme)
+                .modifier(DemoBubbleStyleModifier(theme: demoTheme))
+                .chatMessageRenderer { params in
+                    // Override only system notices with a compact pill; defer
+                    // every other message to the built-in, fully-themed bubble.
+                    if params.message.role == .system {
+                        AnyView(DemoSystemNotice(text: params.message.content))
+                    } else {
+                        params.defaultMessageView()
+                    }
+                }
+                .toolbar {
+                    // .topBarLeading is iOS-only; macOS NavigationSplitView manages
+                    // sidebar visibility via its own controls so this button is not
+                    // needed on macOS. (#375)
+                    #if os(iOS)
+                    if horizontalSizeClass == .compact {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                preferredCompactColumn = .sidebar
+                            } label: {
+                                Label("Show Sidebar", systemImage: "sidebar.leading")
+                            }
+                            .accessibilityLabel("Show Sidebar")
+                            .accessibilityIdentifier("show-sidebar-button")
+                        }
+                    }
+                    #endif
+                    ToolbarItem(placement: .automatic) {
+                        Menu {
+                            Picker("Appearance", selection: $demoTheme) {
+                                ForEach(DemoChatTheme.allCases) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+                        } label: {
+                            Label("Appearance", systemImage: "paintpalette")
+                        }
+                        .accessibilityIdentifier("demo-appearance-menu")
+                    }
+                }
     }
 
     private var sidebar: some View {
