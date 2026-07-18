@@ -36,6 +36,30 @@
 # `MemoryIndicatorView.swift:32-34`, and `ContextIndicatorView.swift:26-28`
 # onto those Color-typed accessors (not the AnyShapeStyle ones) should now
 # pass characterization.
+
+# Unit 2 §L2 (issue #2307) moved `ToolInvocationView`'s failed-state chrome
+# into `Theming/ToolInvocationStyle.swift`'s `PlainToolInvocationStyle` (the
+# style protocol's built-in "current look" — see MessageBubbleStyle's
+# precedent). The three `.orange` literals below relocated with it,
+# byte-for-byte; they are still category (a)/"no matching Unit-1 token" per
+# the note above, now living in the style-protocol layer this note already
+# anticipated ("that's a Unit 2 §L2 concern").
+
+# --- ManifoldUI (T1-migrate-ui, PR 1a) ---
+Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.red)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.white, .black.opacity(0.7))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.white, .black.opacity(0.7))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(canSend ? Color.accentColor : Color.gray)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(isRecordingAudio ? .red : .secondary)
+Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.7))
+Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.75))
+Views/Chat/MessagePartsView.swift:.foregroundStyle(role == .user ? .white : .primary)
+Theming/ToolInvocationStyle.swift:.background(.orange.opacity(0.15), in: Capsule())
+Theming/ToolInvocationStyle.swift:.foregroundStyle(.orange)
+Theming/ToolInvocationStyle.swift:.foregroundStyle(.orange)
 #
 # --- ManifoldUI (T1-migrate-ui, PR 1a) ---
 Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))
