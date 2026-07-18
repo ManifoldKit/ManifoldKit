@@ -8,22 +8,24 @@ import ManifoldInference
 /// thresholds each protocol needs.
 ///
 /// Unlike the ``CompressionPolicy``/``PreTurnCompressionPolicy`` `compress`
-/// methods — which receive only `history` + `sessionID` — a strategy also
-/// takes the `contextSize` and `tokenizer` it sizes against. The policy holds
-/// those as configuration and forwards them, because the protocol `compress`
-/// signatures intentionally do not.
+/// methods — which receive `history` + `sessionID` + wire `systemPrompt` — a
+/// strategy also takes the `contextSize` and `tokenizer` it sizes against.
+/// The policy holds those as configuration and forwards them, because the
+/// protocol `compress` signatures intentionally do not carry construction-time
+/// knobs.
 ///
 /// ## System-prompt budgeting (#1957)
 ///
-/// A strategy sees only the `history` array — the session system prompt
-/// lives on `ChatSession.systemPrompt` and is *not* part of `history`. Since
-/// #1957, `CompressionPolicy` / `PreTurnCompressionPolicy` thread the real
-/// `systemPrompt` string down to `DefaultCompressionPolicy`, which forwards
-/// it here alongside `reservedTokens` (now response headroom only) and the
-/// construction-injected `tokenizer`. The budget is
-/// `contextSize − reservedTokens − systemPromptTokens`, where
-/// `systemPromptTokens` is measured with the same tokenizer (or the chars/4
-/// heuristic when `tokenizer` is `nil`) via ``CompressionStrategy/historyBudget(contextSize:reservedTokens:systemPromptTokens:)``.
+/// A strategy sees the `history` array plus the turn's **wire** `systemPrompt`
+/// (not part of `history` — composed agent / ``TurnConfig`` / slot prompt,
+/// threaded by the runtime). `reservedTokens` is **response headroom only**;
+/// the real system-prompt cost is measured separately and subtracted. The
+/// budget is `contextSize − reservedTokens − systemPromptTokens`, where
+/// `systemPromptTokens` uses the same tokenizer (or the chars/4 heuristic when
+/// `tokenizer` is `nil`) via
+/// ``CompressionStrategy/historyBudget(contextSize:reservedTokens:systemPromptTokens:)``.
+/// Callers that previously folded system tokens into `reservedTokens` must
+/// shrink that reservation when adopting `systemPrompt`, or they double-count.
 /// Any `.system`-role or `.memory`-kind records that *are* in `history` are
 /// treated as load-bearing and preserved verbatim by every strategy.
 ///
@@ -43,7 +45,7 @@ protocol CompressionStrategy: Sendable {
     ///     reservation across all strategies. Does NOT need to cover the
     ///     system prompt any more — pass `systemPrompt` and its real cost is
     ///     subtracted separately (#1957).
-    ///   - systemPrompt: The session's resolved system prompt, or `nil`.
+    ///   - systemPrompt: The turn's wire system prompt, or `nil`.
     ///     Its real token cost is measured with `tokenizer` and subtracted
     ///     from the history budget alongside `reservedTokens` (#1957).
     ///   - tokenizer: Optional tokenizer for cost estimation; heuristic

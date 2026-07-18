@@ -564,58 +564,66 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         XCTAssertEqual(count, 2, "messageCount should reflect the 2 seeded messages (user + assistant)")
     }
 
-    // MARK: - Coordinator threads session systemPrompt (#1957)
+    // MARK: - Coordinator threads WIRE systemPrompt (#1957)
 
-    /// Live wiring for #1957 on the pre-turn path: the coordinator must fetch
-    /// the session's `systemPrompt` and pass it into `compressBeforeTurn`.
-    func test_preTurn_coordinatorThreadsSessionSystemPrompt() async throws {
-        actor PromptCapture {
-            private(set) var received: String??
-            func capture(_ value: String?) { received = .some(value) }
+    actor PromptCapture {
+        private(set) var received: String??
+        func capture(_ value: String?) { received = .some(value) }
+    }
+
+    final class RuntimeSessionStore: SessionStore {
+        var sessions: [UUID: ChatSession] = [:]
+        func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+        func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+        func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
+        func deleteAll() async throws { sessions.removeAll() }
+        func fetchSessions() async throws -> [ChatSession] {
+            sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
+        func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+    }
 
-        final class RuntimeSessionStore: SessionStore {
-            var sessions: [UUID: ChatSession] = [:]
-            func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
-            func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
-            func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
-            func deleteAll() async throws { sessions.removeAll() }
-            func fetchSessions() async throws -> [ChatSession] {
-                sessions.values.sorted { $0.updatedAt > $1.updatedAt }
-            }
-            func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+    struct CapturingSystemPromptPreTurnPolicy: PreTurnCompressionPolicy {
+        let capture: PromptCapture
+        func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool { true }
+        func compressBeforeTurn(
+            history: [ChatMessage],
+            sessionID: UUID,
+            systemPrompt: String?,
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            await capture.capture(systemPrompt)
+            return [ChatMessage(
+                role: .assistant,
+                content: "pre-turn summary",
+                sessionID: sessionID,
+                kind: .memory("summary")
+            )]
         }
+    }
 
+    /// Pre-turn compression must receive ``TurnConfig/systemPrompt``, not a
+    /// differing `ChatSession.systemPrompt`. Sabotage: session-only fetch fails.
+    func test_preTurn_coordinatorThreadsTurnConfigSystemPromptOverSession() async throws {
         let capture = PromptCapture()
-        let expectedPrompt = "You are a story engine with a long system preamble."
-
-        struct CapturingSystemPromptPreTurnPolicy: PreTurnCompressionPolicy {
-            let capture: PromptCapture
-            func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool { true }
-            func compressBeforeTurn(
-                history: [ChatMessage],
-                sessionID: UUID,
-                systemPrompt: String?,
-                generate: @Sendable ([ChatMessage]) async throws -> String
-            ) async throws -> [ChatMessage] {
-                await capture.capture(systemPrompt)
-                return [ChatMessage(
-                    role: .assistant,
-                    content: "pre-turn summary",
-                    sessionID: sessionID,
-                    kind: .memory("summary")
-                )]
-            }
-        }
+        let sessionOnlyPrompt = "SESSION_STORE_PROMPT_MUST_NOT_WIN"
+        let turnConfigPrompt = "PRE_TURN_WIRE_PROMPT"
 
         let backend = makeMock(tokensToYield: ["reply"])
         let messageStore = InMemoryMessageStore()
         let sessionStore = RuntimeSessionStore()
         let sessionID = UUID()
+        // Seed one prior turn so pre-turn has history to compress against.
+        try await messageStore.insertMessage(ChatMessage(
+            role: .user, content: "prior", sessionID: sessionID
+        ))
+        try await messageStore.insertMessage(ChatMessage(
+            role: .assistant, content: "prior reply", sessionID: sessionID, promptTokens: 100
+        ))
         try await sessionStore.insertSession(ChatSession(
             id: sessionID,
-            title: "pre-turn systemPrompt wiring",
-            systemPrompt: expectedPrompt
+            title: "pre-turn wire systemPrompt",
+            systemPrompt: sessionOnlyPrompt
         ))
 
         let runtime = ConversationRuntime(
@@ -628,7 +636,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
             kind: .send(text: "Hi"),
-            config: TurnConfig()
+            config: TurnConfig(systemPrompt: turnConfigPrompt)
         ))
         _ = try await drainUntilStreamFinished(from: runtime)
 
@@ -636,8 +644,63 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         XCTAssertNotNil(received, "compressBeforeTurn must be invoked so the systemPrompt argument is observable")
         XCTAssertEqual(
             received!,
-            expectedPrompt,
-            "TurnCompressionCoordinator must pass the session's systemPrompt into compressBeforeTurn (sabotage: drop fetchSession or hardcode nil)"
+            turnConfigPrompt,
+            "Pre-turn compress must receive TurnConfig.systemPrompt, not ChatSession.systemPrompt (sabotage: session-only fetch)"
         )
+        XCTAssertNotEqual(received!, sessionOnlyPrompt)
+    }
+
+    /// Pre-turn multi-agent path: active agent's system prompt (not TurnConfig,
+    /// not the session field) is what the generation path will put on the wire.
+    func test_preTurn_coordinatorThreadsActiveAgentSystemPrompt() async throws {
+        let capture = PromptCapture()
+        let agentPrompt = "ACTIVE_AGENT_WIRE_PROMPT"
+        let turnConfigPrompt = "TURN_CONFIG_MUST_NOT_WIN_WHEN_AGENT_ACTIVE"
+        let sessionFieldPrompt = "SESSION_FIELD_MUST_NOT_WIN"
+
+        let backend = makeMock(tokensToYield: ["reply"])
+        let messageStore = InMemoryMessageStore()
+        let sessionStore = RuntimeSessionStore()
+        let sessionID = UUID()
+        try await messageStore.insertMessage(ChatMessage(
+            role: .user, content: "prior", sessionID: sessionID
+        ))
+        try await messageStore.insertMessage(ChatMessage(
+            role: .assistant, content: "prior reply", sessionID: sessionID, promptTokens: 100
+        ))
+
+        let agent = AgentDefinition(name: "Researcher", systemPrompt: agentPrompt, description: "research")
+        let session = ChatSession(
+            id: sessionID,
+            title: "pre-turn agent wire prompt",
+            systemPrompt: sessionFieldPrompt,
+            agents: [agent],
+            activeAgentID: agent.id
+        )
+        try await sessionStore.insertSession(session)
+
+        let runtime = ConversationRuntime(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: InferenceService(backend: backend, name: "Mock"),
+            preTurnCompressionPolicy: CapturingSystemPromptPreTurnPolicy(capture: capture)
+        )
+
+        try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi"),
+            config: TurnConfig(systemPrompt: turnConfigPrompt)
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+
+        let received = await capture.received
+        XCTAssertNotNil(received, "compressBeforeTurn must be invoked")
+        let prompt = try XCTUnwrap(received!)
+        XCTAssertTrue(
+            prompt.contains(agentPrompt),
+            "Pre-turn must budget against active agent system prompt; got: \(prompt)"
+        )
+        XCTAssertFalse(prompt.contains(turnConfigPrompt), "Active agent must win over TurnConfig")
+        XCTAssertFalse(prompt.contains(sessionFieldPrompt), "Active agent must win over session field")
     }
 }

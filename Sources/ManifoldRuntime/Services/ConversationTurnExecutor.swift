@@ -148,9 +148,22 @@ package struct ConversationTurnExecutor: Sendable {
         // segment. Only runs for `.send` turns (not regenerate / edit / branch).
         // Failures throw to the caller — see ``TurnCompressionCoordinator``.
         //
+        // Budget against the base wire prompt the turn will use (TurnConfig /
+        // active agent + handoff instructions). Prompt slots / RAG are not
+        // assembled yet at this seam — post-turn compression gets the full
+        // composed prompt. See ``TurnCompressionCoordinator`` + #1957.
+        //
         // userMessage is created AFTER this call so its timestamp naturally
         // follows the compression summary records in store sort order.
-        try await compression.compressBeforeTurnIfNeeded(sessionID: sessionID)
+        let sessionRecordForPreTurn = await turnPersistence.fetchSession(sessionID: sessionID)
+        let preTurnWirePrompt = TurnPreparation.resolveBaseSystemPrompt(
+            sessionRecord: sessionRecordForPreTurn,
+            config: config
+        )
+        try await compression.compressBeforeTurnIfNeeded(
+            sessionID: sessionID,
+            wireSystemPrompt: .wire(preTurnWirePrompt)
+        )
 
         let userMessage = ChatMessage(
             role: .user,

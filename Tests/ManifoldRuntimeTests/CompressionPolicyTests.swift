@@ -703,49 +703,49 @@ final class CompressionPolicyTests: XCTestCase {
         XCTAssertEqual(remaining[0].content, summaryContent)
     }
 
-    // MARK: - Test 11: coordinator threads session systemPrompt (#1957)
+    // MARK: - Test 11: coordinator threads WIRE systemPrompt (#1957)
 
-    /// Live wiring for #1957: `TurnCompressionCoordinator` must fetch the
-    /// session's `systemPrompt` and pass it into `CompressionPolicy.compress`.
-    /// Without a session store the fetch returns nil and the parameter is
-    /// cosmetic; this test seeds a real session so a sabotage that drops the
-    /// fetch (or hardcodes `nil`) fails.
-    func test_policy_coordinatorThreadsSessionSystemPrompt() async throws {
-        actor PromptCapture {
-            private(set) var received: String??
-            func capture(_ value: String?) { received = .some(value) }
+    actor PromptCapture {
+        private(set) var received: String??
+        func capture(_ value: String?) { received = .some(value) }
+    }
+
+    final class RuntimeSessionStore: SessionStore {
+        var sessions: [UUID: ChatSession] = [:]
+        func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+        func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+        func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
+        func deleteAll() async throws { sessions.removeAll() }
+        func fetchSessions() async throws -> [ChatSession] {
+            sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
+        func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+    }
 
-        final class RuntimeSessionStore: SessionStore {
-            var sessions: [UUID: ChatSession] = [:]
-            func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
-            func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
-            func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
-            func deleteAll() async throws { sessions.removeAll() }
-            func fetchSessions() async throws -> [ChatSession] {
-                sessions.values.sorted { $0.updatedAt > $1.updatedAt }
-            }
-            func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+    struct CapturingSystemPromptPolicy: CompressionPolicy {
+        let capture: PromptCapture
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+            contextSize > 0
         }
+        func compress(
+            history: [ChatMessage],
+            sessionID: UUID,
+            systemPrompt: String?,
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            await capture.capture(systemPrompt)
+            return [ChatMessage(role: .assistant, content: "summary", sessionID: sessionID)]
+        }
+    }
 
+    /// Live wiring for #1957: post-turn compression must receive
+    /// ``TurnConfig/systemPrompt`` (the wire base), NOT a differing
+    /// `ChatSession.systemPrompt`. Sabotage: coordinator that only
+    /// `fetchSession?.systemPrompt` fails this test.
+    func test_policy_coordinatorThreadsTurnConfigSystemPromptOverSession() async throws {
         let capture = PromptCapture()
-        let expectedPrompt = "You are a multi-agent research coordinator with a long preamble."
-
-        struct CapturingSystemPromptPolicy: CompressionPolicy {
-            let capture: PromptCapture
-            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
-                contextSize > 0
-            }
-            func compress(
-                history: [ChatMessage],
-                sessionID: UUID,
-                systemPrompt: String?,
-                generate: @Sendable ([ChatMessage]) async throws -> String
-            ) async throws -> [ChatMessage] {
-                await capture.capture(systemPrompt)
-                return [ChatMessage(role: .assistant, content: "summary", sessionID: sessionID)]
-            }
-        }
+        let sessionOnlyPrompt = "SESSION_STORE_PROMPT_MUST_NOT_WIN"
+        let turnConfigPrompt = "TURN_CONFIG_WIRE_PROMPT"
 
         let backend = makeMockWithUsage(tokensToYield: ["ok"])
         backend.inner.tokensToYieldPerTurn = [["ok"], ["summary"]]
@@ -754,8 +754,8 @@ final class CompressionPolicyTests: XCTestCase {
         let sessionID = UUID()
         try await sessionStore.insertSession(ChatSession(
             id: sessionID,
-            title: "systemPrompt wiring",
-            systemPrompt: expectedPrompt
+            title: "wire systemPrompt wiring",
+            systemPrompt: sessionOnlyPrompt
         ))
 
         let runtime = ConversationRuntime(
@@ -768,7 +768,7 @@ final class CompressionPolicyTests: XCTestCase {
         _ = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
             kind: .send(text: "Hi", attachments: []),
-            config: TurnConfig()
+            config: TurnConfig(systemPrompt: turnConfigPrompt)
         ))
         _ = try await drainUntilHistoryCompressed(from: runtime)
 
@@ -776,8 +776,67 @@ final class CompressionPolicyTests: XCTestCase {
         XCTAssertNotNil(received, "compress must be invoked so the systemPrompt argument is observable")
         XCTAssertEqual(
             received!,
-            expectedPrompt,
-            "TurnCompressionCoordinator must pass the session's systemPrompt into compress (sabotage: drop fetchSession or hardcode nil)"
+            turnConfigPrompt,
+            "Post-turn compress must receive TurnConfig.systemPrompt, not ChatSession.systemPrompt (sabotage: session-only fetch)"
+        )
+        XCTAssertNotEqual(received!, sessionOnlyPrompt)
+    }
+
+    /// Post-turn path must pass the **composed** wire prompt (base + slots),
+    /// not just TurnConfig / session alone.
+    func test_policy_coordinatorThreadsComposedSystemPromptWithSlots() async throws {
+        let capture = PromptCapture()
+        let basePrompt = "BASE_WIRE_PROMPT"
+        let slotContent = "SLOT_CONTEXT_BLOCK_UNIQUE"
+
+        struct StaticProvider: PromptContextProvider {
+            let slot: PromptSlot
+            func contributeSlots(messageCount: Int) async throws -> [PromptSlot] { [slot] }
+        }
+        let slot = PromptSlot(
+            id: "wire-test-slot",
+            content: slotContent,
+            position: .systemPreamble,
+            label: "Wire test"
+        )
+        let pipeline = PromptContextPipeline(providers: [StaticProvider(slot: slot)])
+
+        let backend = makeMockWithUsage(tokensToYield: ["ok"])
+        backend.inner.tokensToYieldPerTurn = [["ok"], ["summary"]]
+        let messageStore = RuntimeMessageStore()
+        let sessionStore = RuntimeSessionStore()
+        let sessionID = UUID()
+        try await sessionStore.insertSession(ChatSession(
+            id: sessionID,
+            title: "composed wire prompt",
+            systemPrompt: "SESSION_MUST_NOT_APPEAR"
+        ))
+
+        let runtime = ConversationRuntime(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: InferenceService(backend: backend, name: "Mock"),
+            pipeline: pipeline,
+            compressionPolicy: CapturingSystemPromptPolicy(capture: capture)
+        )
+
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi", attachments: []),
+            config: TurnConfig(systemPrompt: basePrompt)
+        ))
+        _ = try await drainUntilHistoryCompressed(from: runtime)
+
+        let received = await capture.received
+        XCTAssertNotNil(received, "compress must be invoked")
+        let prompt = try XCTUnwrap(received!)
+        XCTAssertTrue(
+            prompt.contains(basePrompt) && prompt.contains(slotContent),
+            "Post-turn compress must receive composed wire prompt (base + slots); got: \(prompt)"
+        )
+        XCTAssertFalse(
+            prompt.contains("SESSION_MUST_NOT_APPEAR"),
+            "Composed wire prompt must not fall back to ChatSession.systemPrompt"
         )
     }
 }

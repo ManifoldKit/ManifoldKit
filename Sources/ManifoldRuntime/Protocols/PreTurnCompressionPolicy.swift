@@ -15,12 +15,13 @@ import ManifoldInference
 /// appends the new user message. The just-submitted user action is therefore
 /// always outside the compressed segment.
 ///
-/// ## v0.72.0 Migration — `systemPrompt` parameter (#1957)
+/// ## Migration — `systemPrompt` parameter (#1957, next release after 0.72.0)
 ///
-/// `compressBeforeTurn` gained a `systemPrompt: String?` parameter in
-/// v0.72.0, mirroring ``CompressionPolicy``'s post-turn seam — see that
-/// protocol's migration note for the full rationale (real budget sizing
-/// instead of a static allowance; the tokenizer stays construction-injected).
+/// `compressBeforeTurn` gained a `systemPrompt: String?` parameter, mirroring
+/// ``CompressionPolicy``'s post-turn seam — see that protocol's migration note
+/// for the full rationale (real wire-prompt budget sizing; `reservedTokens` is
+/// response headroom only — shrink it if you previously folded system tokens
+/// in, or you double-count; the tokenizer stays construction-injected).
 ///
 /// Pre-turn compression adds inference latency before the user's message
 /// appears in the UI — the `generate:` closure is called as part of turn
@@ -97,9 +98,11 @@ public protocol PreTurnCompressionPolicy: Sendable {
     ///   - history: Current full message history, oldest-first, *without* the
     ///     user message being submitted this turn.
     ///   - sessionID: The session being compressed.
-    ///   - systemPrompt: The session's resolved system prompt, or `nil` when
-    ///     none is configured. Not part of `history` — size the budget
-    ///     against its real token cost rather than a static allowance (#1957).
+    ///   - systemPrompt: The turn's base wire system prompt
+    ///     (``TurnConfig`` / active-agent + handoff instructions; slots are
+    ///     not yet assembled on the pre-turn seam), or `nil` when none is on
+    ///     the wire. Not part of `history` — size the budget against its real
+    ///     token cost rather than a static allowance (#1957).
     ///   - generate: Calls the inference backend; receives messages as a
     ///     mini-conversation and returns the model's accumulated text output.
     func compressBeforeTurn(

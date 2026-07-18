@@ -25,11 +25,11 @@ import ManifoldInference
 /// not `DefaultCompressionPolicy` must still capture whatever pin source it
 /// needs itself.
 ///
-/// ## v0.72.0 Migration — `systemPrompt` parameter (#1957)
+/// ## Migration — `systemPrompt` parameter (#1957, next release after 0.72.0)
 ///
-/// `compress` gained a `systemPrompt: String?` parameter in v0.72.0 so a
-/// conformance can size its budget against what is actually sent on the wire,
-/// instead of guessing an allowance for the session's system prompt. Update:
+/// `compress` gained a `systemPrompt: String?` parameter so a conformance can
+/// size its budget against what is actually sent on the wire, instead of
+/// guessing an allowance for the system prompt. Update:
 /// ```swift
 /// func compress(history: [ChatMessage], sessionID: UUID,
 ///               generate: @Sendable ([ChatMessage]) async throws -> String) async throws -> [ChatMessage]
@@ -39,11 +39,21 @@ import ManifoldInference
 /// func compress(history: [ChatMessage], sessionID: UUID, systemPrompt: String?,
 ///               generate: @Sendable ([ChatMessage]) async throws -> String) async throws -> [ChatMessage]
 /// ```
+/// The runtime passes the turn's **wire** system prompt (composed agent /
+/// ``TurnConfig`` / slot prompt), not merely `ChatSession.systemPrompt`.
+///
+/// **`reservedTokens` is response headroom only.** If a caller previously
+/// folded an estimated system-prompt cost into `reservedTokens` (the Fireside
+/// pattern), they must now pass the real `systemPrompt` **and shrink**
+/// `reservedTokens` back to response-only headroom — keeping the old inflated
+/// `reservedTokens` while also subtracting `systemPrompt` **double-counts**
+/// and over-compresses.
+///
 /// The tokenizer used to size that budget stays **construction-injected**
 /// (unchanged) — pass a real `tokenizer:` to ``DefaultCompressionPolicy``'s
 /// factories; there is no call-time tokenizer override. `systemPrompt` is
-/// `nil` when the session has no system prompt configured or it could not be
-/// resolved; treat `nil` the same as an empty string.
+/// `nil` when the turn has no system prompt on the wire; treat `nil` the same
+/// as an empty string.
 ///
 /// ## v0.26.0 Migration
 ///
@@ -105,9 +115,10 @@ public protocol CompressionPolicy: Sendable {
     /// - Parameters:
     ///   - history: Current full message history, oldest-first.
     ///   - sessionID: The session being compressed.
-    ///   - systemPrompt: The session's resolved system prompt, or `nil` when
-    ///     none is configured. Not part of `history` — size the budget
-    ///     against its real token cost rather than a static allowance (#1957).
+    ///   - systemPrompt: The turn's wire system prompt (composed agent /
+    ///     ``TurnConfig`` / slot prompt), or `nil` when none is on the wire.
+    ///     Not part of `history` — size the budget against its real token cost
+    ///     rather than a static allowance (#1957).
     ///   - generate: Calls the inference backend; receives messages as a
     ///     mini-conversation and returns the model's accumulated text output.
     func compress(

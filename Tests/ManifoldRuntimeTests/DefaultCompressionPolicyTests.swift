@@ -811,6 +811,54 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         XCTAssertGreaterThan(historyTokens + systemPromptTokens, budget())
     }
 
+    /// Same wire-budget guarantee for the extractive strategy (#1957 review).
+    func testExtractiveBudgetsAgainstRealSystemPromptAndTokenizer() async throws {
+        let tokenizer = WordTokenizer()
+        let systemPrompt = Array(repeating: "instruction", count: 600).joined(separator: " ")
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt, tokenizer: tokenizer)
+        XCTAssertEqual(systemPromptTokens, 600)
+
+        let policy = DefaultCompressionPolicy.extractive(
+            contextSize: contextSize, reservedTokens: reservedTokens, tokenizer: tokenizer
+        )
+        let history = overflowingHistory(turns: 30, words: 150)
+        let compressed = try await policy.compress(
+            history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: { _ in "" }
+        )
+        let compressedHistoryTokens = compressed.reduce(0) {
+            $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer)
+        }
+        XCTAssertLessThanOrEqual(
+            systemPromptTokens + compressedHistoryTokens, contextSize - reservedTokens,
+            "extractive: post-compression wire payload must fit real budget"
+        )
+    }
+
+    /// Same wire-budget guarantee for the anchored strategy (#1957 review).
+    /// Uses a generate that yields a short structured brief so the path
+    /// summarises rather than only falling back.
+    func testAnchoredBudgetsAgainstRealSystemPromptAndTokenizer() async throws {
+        let tokenizer = WordTokenizer()
+        let systemPrompt = Array(repeating: "instruction", count: 600).joined(separator: " ")
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt, tokenizer: tokenizer)
+        XCTAssertEqual(systemPromptTokens, 600)
+
+        let policy = DefaultCompressionPolicy.anchored(
+            contextSize: contextSize, reservedTokens: reservedTokens, tokenizer: tokenizer
+        )
+        let history = overflowingHistory(turns: 30, words: 150)
+        let compressed = try await policy.compress(
+            history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: Self.echoGenerate
+        )
+        let compressedHistoryTokens = compressed.reduce(0) {
+            $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer)
+        }
+        XCTAssertLessThanOrEqual(
+            systemPromptTokens + compressedHistoryTokens, contextSize - reservedTokens,
+            "anchored: post-compression wire payload must fit real budget"
+        )
+    }
+
     // MARK: - Pinning (#2204)
 
     /// A pinned message that is neither `.system`-role nor `.memory`-kind

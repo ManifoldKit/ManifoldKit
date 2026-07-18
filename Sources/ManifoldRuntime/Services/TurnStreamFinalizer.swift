@@ -125,6 +125,12 @@ package struct TurnStreamFinalizer: Sendable {
         package var turnContext: TurnContext
         package var turnHookRegistry: HookRegistry?
         package var outcomeCompletion: ConversationTurnOutcomeCompletion?
+        /// The turn's fully composed wire system prompt (base + prompt
+        /// slots / RAG) — threaded to post-turn compression so it budgets
+        /// against what was actually sent, not `ChatSession.systemPrompt`
+        /// (#1957). `nil` defaults to `.unresolved` at the compression call
+        /// site, i.e. legacy session-store fallback.
+        package var composedSystemPrompt: String?
 
         package init(
             sessionID: UUID,
@@ -137,7 +143,8 @@ package struct TurnStreamFinalizer: Sendable {
             kind: TerminalKind,
             turnContext: TurnContext,
             turnHookRegistry: HookRegistry? = nil,
-            outcomeCompletion: ConversationTurnOutcomeCompletion? = nil
+            outcomeCompletion: ConversationTurnOutcomeCompletion? = nil,
+            composedSystemPrompt: String? = nil
         ) {
             self.sessionID = sessionID
             self.handle = handle
@@ -150,6 +157,7 @@ package struct TurnStreamFinalizer: Sendable {
             self.turnContext = turnContext
             self.turnHookRegistry = turnHookRegistry
             self.outcomeCompletion = outcomeCompletion
+            self.composedSystemPrompt = composedSystemPrompt
         }
 
         /// True when the assistant turn carries anything worth persisting
@@ -291,7 +299,8 @@ package struct TurnStreamFinalizer: Sendable {
             kind: kind,
             turnContext: prepared.turnContext,
             turnHookRegistry: prepared.turnHookRegistry,
-            outcomeCompletion: outcomeCompletion
+            outcomeCompletion: outcomeCompletion,
+            composedSystemPrompt: prepared.composedSystemPrompt
         ))
     }
 
@@ -453,7 +462,8 @@ package struct TurnStreamFinalizer: Sendable {
                 assistantMessage: assistantMessage,
                 usage: input.usage,
                 turnContext: input.turnContext,
-                turnHookRegistry: input.turnHookRegistry
+                turnHookRegistry: input.turnHookRegistry,
+                composedSystemPrompt: input.composedSystemPrompt
             )
         }
 
@@ -716,7 +726,8 @@ package struct TurnStreamFinalizer: Sendable {
         assistantMessage: ChatMessage,
         usage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)?,
         turnContext: TurnContext,
-        turnHookRegistry: HookRegistry?
+        turnHookRegistry: HookRegistry?,
+        composedSystemPrompt: String?
     ) async {
         // Touch session timestamp so the sidebar reflects the assistant
         // turn's recency (parity with ChatViewModel's behaviour).
@@ -798,10 +809,13 @@ package struct TurnStreamFinalizer: Sendable {
         // Post-turn compression: runs after the terminal `streamFinished` /
         // `afterGeneration`, including the preCompact hook (observational in
         // v1 — block:true is ignored). Failures log and continue; the
-        // generation has already succeeded. See ``TurnCompressionCoordinator``.
+        // generation has already succeeded. Thread the turn's actual
+        // composed wire prompt so the budget matches what was sent (#1957).
+        // See ``TurnCompressionCoordinator``.
         await compression.compressAfterTurnIfNeeded(
             sessionID: sessionID,
             promptTokens: usage?.promptTokens,
+            wireSystemPrompt: .wire(composedSystemPrompt),
             hookRegistry: turnHookRegistry
         )
     }

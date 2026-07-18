@@ -39,16 +39,29 @@ import ManifoldInference
 ///
 /// ## Budget realism (#1957)
 ///
-/// The protocol `compress` signatures now pass the session's real
+/// The protocol `compress` signatures now pass the turn's real wire
 /// `systemPrompt`, so this policy's history budget is
 /// `contextSize − reservedTokens − systemPromptTokens` — `reservedTokens` is
-/// response headroom only (no more blind system-prompt allowance folded in),
-/// and `systemPromptTokens` is the ACTUAL system prompt measured with
-/// `tokenizer`. The tokenizer itself stays **construction-injected** (pass a
-/// real `tokenizer:` to the factories for a guaranteed budget); there is no
-/// call-time tokenizer override — with `tokenizer: nil` the whole budget,
-/// system prompt included, is **advisory** (a chars/4 heuristic that can
-/// diverge from the backend's real token count that drives the trigger).
+/// **response headroom only** (no more blind system-prompt allowance folded
+/// in), and `systemPromptTokens` is the ACTUAL wire system prompt measured
+/// with `tokenizer`.
+///
+/// **Migration:** if you previously inflated `reservedTokens` to cover an
+/// estimated system prompt (the Fireside pattern), pass `systemPrompt` **and
+/// shrink `reservedTokens`** to response-only headroom. Keeping the inflated
+/// reservation while also subtracting `systemPrompt` double-counts.
+///
+/// ### Residual: construction-time tokenizer / model swap
+///
+/// The tokenizer stays **construction-injected** (pass a real `tokenizer:` to
+/// the factories for a guaranteed budget); there is no call-time tokenizer
+/// override. With `tokenizer: nil` the whole budget, system prompt included,
+/// is **advisory** (a chars/4 heuristic that can diverge from the backend's
+/// real token count that drives the trigger). The same hole applies on
+/// **model swap**: a `DefaultCompressionPolicy` built against backend A's
+/// tokenizer keeps that tokenizer after the host switches to backend B —
+/// rebuild the policy (or accept advisory chars/4) when the active model's
+/// tokenizer changes.
 ///
 /// ## Trigger asymmetry
 ///
@@ -169,8 +182,12 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     /// messages that fit, drop the oldest.
     ///
     /// - Parameters:
-    ///   - reservedTokens: Tokens carved from `contextSize` for response +
-    ///     system-prompt headroom (default ``defaultReservedTokens``).
+    ///   - reservedTokens: Response headroom only — tokens carved from
+    ///     `contextSize` before history is sized (default
+    ///     ``defaultReservedTokens``). System-prompt cost is subtracted
+    ///     separately from the `systemPrompt` passed to `compress` (#1957);
+    ///     do not fold an estimated system allowance in here or you
+    ///     double-count.
     ///   - tokenizer: Inject the backend's tokenizer for a guaranteed budget;
     ///     `nil` (default) makes the budget advisory (chars/4 heuristic).
     ///   - isPinned: Predicate marking a message load-bearing regardless of
@@ -199,6 +216,8 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     /// "lost in the middle" effect.
     ///
     /// - Parameters:
+    ///   - reservedTokens: Response headroom only (#1957) — see
+    ///     ``truncating(threshold:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:)``.
     ///   - isPinned: Predicate marking a message load-bearing regardless of
     ///     role/kind (#2204), e.g.
     ///     `{ message in session.pinnedMessageIDs.contains(message.id) }`.
@@ -229,6 +248,9 @@ public struct DefaultCompressionPolicy: CompressionPolicy, PreTurnCompressionPol
     /// user's just-typed message renders.
     ///
     /// - Parameters:
+    ///   - reservedTokens: Response headroom only (#1957) — see
+    ///     ``truncating(threshold:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:)``.
+    ///     Also threaded to the summariser as its response buffer.
     ///   - summarizerInputWindow: the summariser's REAL window, used to size how
     ///     much old text it reads — set this to the backend's true context size
     ///     when `contextSize` is a small overflow trigger.
