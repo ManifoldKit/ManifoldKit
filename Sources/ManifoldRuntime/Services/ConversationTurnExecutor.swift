@@ -3,6 +3,12 @@ import ManifoldInference
 
 package struct ConversationTurnExecutor: Sendable {
     private let persistence: ConversationPersistencePort
+    /// Narrow view of `persistence` used by the shared generation inner loop
+    /// (`runGenerationTurn`, `fetchAndPrepareTurnHistory`). See
+    /// ``TurnPersistencePort`` — flow-specific setup (send/regenerate/edit/
+    /// branch) keeps reading `persistence` directly since it needs the
+    /// broader surface (message-batch mutations, session create/copy).
+    private var turnPersistence: any TurnPersistencePort { persistence }
     private let inferenceService: InferenceService
     private let pipeline: PromptContextPipeline?
     private let budgetPlanner: ContextBudgetPlanner?
@@ -41,6 +47,11 @@ package struct ConversationTurnExecutor: Sendable {
     /// Per-turn session-tool advertise/register/unregister seam. See
     /// ``SessionToolDispatchBinder`` and #1606 (register-before-enqueue).
     private let toolDispatch: SessionToolDispatchBinder
+    /// Session-branching persistence mechanics (new-session creation,
+    /// transactional message copy, orphaned-session rollback). See
+    /// ``SessionBranchCoordinator`` — ``runBranchFlow`` keeps event emission
+    /// and the generate-after decision, the turn-loop-shared concerns.
+    private let sessionBranching: SessionBranchCoordinator
 
     init(
         persistence: ConversationPersistencePort,
@@ -87,6 +98,7 @@ package struct ConversationTurnExecutor: Sendable {
         self.legacyTurnContextProvider = turnContextProvider
         self.bindings = bindings
         self.toolDispatch = SessionToolDispatchBinder(inferenceService: inferenceService)
+        self.sessionBranching = SessionBranchCoordinator(persistence: persistence)
     }
 
     // MARK: Send flow
@@ -302,72 +314,22 @@ package struct ConversationTurnExecutor: Sendable {
         taskRegistry: ConversationTurnTaskRegistry,
         outcomeCompletion: ConversationTurnOutcomeCompletion? = nil
     ) async throws -> ConversationStreamHandle? {
-        // Fetch source history synchronously so callers observe ordering:
-        // `.sessionBranched` fires before `processTurn` returns.
-        let sourceHistory: [ChatMessage]
-        do {
-            sourceHistory = try await persistence.fetchMessages(sessionID: sourceSessionID)
-        } catch {
-            throw ConversationError.persistence(error)
-        }
+        // Delegate the branch-specific persistence mechanics (locate branch
+        // point, create new session, transactional message copy with
+        // orphan-session rollback on failure) to the dedicated coordinator —
+        // see ``SessionBranchCoordinator``. `.sessionBranched` fires here,
+        // before `processTurn` returns, matching the ordering callers observe.
+        let result = try await sessionBranching.branch(
+            sourceSessionID: sourceSessionID,
+            branchMessageID: branchMessageID,
+            newSessionID: newSessionID,
+            newSessionTitle: newSessionTitle
+        )
 
-        // Find the branch point and slice history up to and including it.
-        guard let branchIndex = sourceHistory.firstIndex(where: { $0.id == branchMessageID }) else {
-            throw ConversationError.messageNotFound(branchMessageID)
-        }
-        let slice = Array(sourceHistory[...branchIndex])
-
-        // Derive the new session's title from the source session when the
-        // caller didn't supply one. A title-fetch failure must not abort
-        // the branch — the session insert below still runs with the
-        // fallback — but the failure is logged so it isn't silently lost.
-        let resolvedTitle: String
-        if let supplied = newSessionTitle {
-            resolvedTitle = supplied
-        } else {
-            resolvedTitle = await persistence.sessionTitle(sessionID: sourceSessionID, fallback: "New Chat")
-        }
-
-        let newSession = ChatSession(id: newSessionID, title: resolvedTitle)
-        do {
-            try await persistence.insertSession(newSession)
-        } catch {
-            throw ConversationError.persistence(error)
-        }
-
-        // Copy messages into the new session with fresh IDs and updated
-        // sessionID. Drive the copy through the transactional batch API (same
-        // as the edit flow) so a transactional store commits the whole slice
-        // atomically and never exposes a half-copied branch.
-        //
-        // The session insert above commits separately from the message batch
-        // (the adapter's transaction spans messages only), so if the copy
-        // throws we must manually unwind the orphaned session — otherwise a
-        // failed branch strands a ghost/empty session that surfaces as a
-        // phantom in the sidebar. `transaction(block:)` does NOT roll back on
-        // throw in this codebase, so the rollback is an explicit delete.
-        let copyMutations: [MessageStoreMutation] = slice.map { original in
-            .insert(ChatMessage(
-                role: original.role,
-                contentParts: original.contentParts,
-                timestamp: original.timestamp,
-                sessionID: newSessionID
-            ))
-        }
-        do {
-            try await persistence.performMessageMutations(copyMutations)
-        } catch {
-            // Roll back the session we just inserted before surfacing the copy
-            // failure. `deleteSession` is best-effort and logs on its own
-            // failure so the original copy error stays the caller-visible one.
-            await persistence.deleteSession(newSessionID)
-            throw ConversationError.persistence(error)
-        }
-
-        emit(.sessionBranched(newSessionID: newSessionID, copiedCount: slice.count))
+        emit(.sessionBranched(newSessionID: newSessionID, copiedCount: result.copiedCount))
 
         // Optionally trigger generation on the new session.
-        guard generateAfter, slice.last?.role == .user else {
+        guard generateAfter, result.lastMessageIsFromUser else {
             return nil
         }
 
@@ -565,7 +527,7 @@ package struct ConversationTurnExecutor: Sendable {
         // partially update us. `sessionRecord` is `nil` for sessionless
         // flows or hosts without a SessionStore wired in; both paths are
         // identical to the legacy single-agent surface.
-        var sessionRecord: ChatSession? = await persistence.fetchSession(sessionID: sessionID)
+        var sessionRecord: ChatSession? = await turnPersistence.fetchSession(sessionID: sessionID)
 
         // Snapshot the host-mutable bindings once per turn. A
         // `ConversationRuntime.updateSessionToolSources(_:)` /
@@ -895,7 +857,7 @@ package struct ConversationTurnExecutor: Sendable {
                         // rewriting the whole record: a concurrent edit to
                         // another session field (title, agents, updatedAt) must
                         // not be clobbered by this stale snapshot mid-stream.
-                        _ = await persistence.setActiveAgent(
+                        _ = await turnPersistence.setActiveAgent(
                             sessionID: current.id,
                             agentID: handoff.targetAgentID
                         )
@@ -1060,7 +1022,7 @@ package struct ConversationTurnExecutor: Sendable {
             writeFinalContent(accumulator.visibleText, into: &assistantMessage)
             if !accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent {
                 do {
-                    try await persistence.insertMessage(assistantMessage)
+                    try await turnPersistence.insertMessage(assistantMessage)
                     emit(.messageInserted(assistantMessage))
                 } catch {
                     let persistenceError = ConversationError.persistence(error)
@@ -1108,7 +1070,7 @@ package struct ConversationTurnExecutor: Sendable {
             if !accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent {
                 writeFinalContent(accumulator.visibleText, into: &assistantMessage)
                 do {
-                    try await persistence.insertMessage(assistantMessage)
+                    try await turnPersistence.insertMessage(assistantMessage)
                     emit(.messageInserted(assistantMessage))
                 } catch {
                     emit(.errorRaised(.persistence(error)))
@@ -1166,7 +1128,7 @@ package struct ConversationTurnExecutor: Sendable {
         // Happy path: persist the assistant message.
         writeFinalContent(accumulator.visibleText, into: &assistantMessage)
         do {
-            try await persistence.insertMessage(assistantMessage)
+            try await turnPersistence.insertMessage(assistantMessage)
             emit(.messageInserted(assistantMessage))
         } catch {
             let conversationError = ConversationError.persistence(error)
@@ -1202,7 +1164,7 @@ package struct ConversationTurnExecutor: Sendable {
 
         // Touch session timestamp so the sidebar reflects the assistant
         // turn's recency (parity with ChatViewModel's behaviour).
-        if await persistence.touchSession(sessionID: sessionID) == false {
+        if await turnPersistence.touchSession(sessionID: sessionID) == false {
             emit(.sessionTouchFailed(sessionID: sessionID))
         }
 
@@ -1355,7 +1317,7 @@ package struct ConversationTurnExecutor: Sendable {
             // optional HistoryShaper, and context-window assembly run —
             // otherwise the unanswered tool_use reproduces the #629 cloud-API
             // rejection. See HealedHistoryFetch.swift for the seam contract.
-            canonicalHistory = try await persistence.fetchHealedMessages(sessionID: sessionID)
+            canonicalHistory = try await turnPersistence.fetchHealedMessages(sessionID: sessionID)
         } catch {
             throw TurnPreparationFailure.persistence(error)
         }
