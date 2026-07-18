@@ -73,20 +73,21 @@ package struct HandoffChipView: View {
 /// (rendered once, at the top of a branched session's transcript), the
 /// other is about *agent* provenance (rendered per adjacent-message pair).
 ///
-/// ## Data gap (reported to the orchestrator)
+/// ## Live wiring (#2307 / #2322)
 ///
-/// `ChatSession` carries no "branched from" field today —
-/// `SessionBranchCoordinator.branch(sourceSessionID:branchMessageID:newSessionID:newSessionTitle:)`
-/// (`Sources/ManifoldRuntime/Services/SessionBranchCoordinator.swift`)
-/// creates the new session and copies history into it but never persists a
-/// pointer back to `sourceSessionID` — there is no `ChatSession.branchOrigin`
-/// (or equivalent) column, and no tranche in `docs/UI-REFRESH-2026-PLAN.md`
-/// §L1–L5 owns adding one (it would be a `ManifoldInference`/persistence
-/// schema change, well outside this tranche's owned UI paths). This view
-/// therefore takes the origin session's title as a plain `String?` so a host
-/// that *does* have provenance data (e.g. one that stores it out-of-band)
-/// can render the chip today; wiring it to a real, persisted source requires
-/// a schema addition that belongs to a future tranche/PR.
+/// `ChatSession.branchOriginSessionID` / `.branchOriginTitleSnapshot`
+/// (`Sources/ManifoldInference/Models/ConversationRecords.swift`) are
+/// persisted by `SessionBranchCoordinator.branch(sourceSessionID:branchMessageID:newSessionID:newSessionTitle:)`
+/// (`Sources/ManifoldRuntime/Services/SessionBranchCoordinator.swift`) at
+/// branch time. `SessionListService.branchOriginTitle(for:)` resolves the
+/// display title from those fields — preferring the source session's live
+/// title, falling back to the snapshot once the source is deleted (tombstone
+/// semantics). This view stays storage-agnostic (a plain `String?`) so it
+/// doesn't depend on `ManifoldRuntime` directly; `ChatHistoryView` calls
+/// through to that resolution via `ChatViewModel.resolveBranchOriginTitle`,
+/// a closure forwarded to `SessionManagerViewModel.branchOriginTitle(for:)`
+/// — `quickStart()` wires it automatically, and manual bootstraps wire the
+/// same one-liner themselves (mirrors the `onFirstMessage` pattern).
 package struct BranchOriginChipView: View {
 
     /// Title of the session this one was branched from. `nil` suppresses the

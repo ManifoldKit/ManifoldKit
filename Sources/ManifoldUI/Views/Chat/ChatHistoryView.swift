@@ -193,7 +193,15 @@ struct ChatHistoryView: View {
                 branchOriginTitle = nil
                 return
             }
-            branchOriginTitle = await viewModel.resolveBranchOriginTitle?(session)
+            let resolved = await viewModel.resolveBranchOriginTitle?(session)
+            // A rapid session switch (A → B) can let this `.task` for A
+            // complete its await after B has already become active — SwiftUI
+            // cancels the *view's* previous task when `id` changes, but does
+            // not retroactively unwind an in-flight `await` that was already
+            // past its suspension point. Without this guard, B would
+            // transiently render A's resolved title until the next switch.
+            guard !Task.isCancelled, viewModel.activeSessionID == session.id else { return }
+            branchOriginTitle = resolved
         }
     }
 
