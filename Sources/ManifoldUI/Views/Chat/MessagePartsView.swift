@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 import ManifoldRuntime
 import ManifoldInference
 
@@ -25,6 +26,7 @@ struct MessagePartsView: View {
     var citations: [Citation] = []
 
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme
 
     /// True while the parent message's reasoning block is still streaming —
     /// computed from the view-model's transient streaming-thinking set keyed
@@ -53,7 +55,68 @@ struct MessagePartsView: View {
         return Set(gate.pending.map { $0.id })
     }
 
+    /// In-flight image-generation progress for the hosting message, keyed by
+    /// ``messageID``. `nil` once the placeholder message's `contentParts`
+    /// gain the terminal `.generatedMedia` part — at that point the part
+    /// itself is the source of truth and the progress card stops rendering
+    /// (see ``ChatViewModel/handle(imageRuntimeEvent:)``, which only ever
+    /// writes the completed part, never clears the progress dict entry).
+    private var activeImageGenerationProgress: ImageGenerationProgress? {
+        Self.activeProgress(in: viewModel.imageGenerationProgress, messageID: messageID)
+    }
+
+    /// See ``activeImageGenerationProgress``; video sibling.
+    private var activeVideoGenerationProgress: VideoGenerationProgress? {
+        Self.activeProgress(in: viewModel.videoGenerationProgress, messageID: messageID)
+    }
+
+    /// Pure lookup extracted from ``activeImageGenerationProgress``/
+    /// ``activeVideoGenerationProgress`` so the progress-card lifecycle
+    /// (progress → settled → missing) is unit-testable without a live
+    /// `ChatViewModel`/`@Environment` — see `MessagePartsGenerationProgressTests`.
+    ///
+    /// `nil` when there is no `messageID` to key on, no entry for that id, or
+    /// the entry is already terminal (`isComplete == true` — completed,
+    /// failed, and cancelled all settle through this same flag, per
+    /// ``ChatViewModel/handle(imageRuntimeEvent:)``/`handle(videoRuntimeEvent:)`).
+    static func activeProgress<Progress: GenerationProgressLifecycle>(
+        in dict: [UUID: Progress],
+        messageID: UUID?
+    ) -> Progress? {
+        guard let messageID else { return nil }
+        guard let progress = dict[messageID], !progress.isComplete else { return nil }
+        return progress
+    }
+
     var body: some View {
+        // A generation in flight for this message has no `.generatedMedia`
+        // part yet (the placeholder starts with empty `contentParts` — see
+        // `ChatViewModel+ImageGeneration.swift`'s `.started` handler), so the
+        // progress card renders ahead of (in practice, instead of) the empty
+        // `ForEach` below. It disappears on its own once the terminal event
+        // populates `parts` and this view re-renders.
+        if let progress = activeImageGenerationProgress {
+            let vm = viewModel
+            GeneratedMediaProgressCardView(
+                prompt: progress.prompt,
+                progress: .image(step: progress.step, totalSteps: progress.totalSteps, previewImage: progress.previewImage),
+                onCancel: {
+                    guard let messageID else { return }
+                    Task { [weak vm] in await vm?.cancelImageGeneration(messageID: messageID) }
+                }
+            )
+        } else if let progress = activeVideoGenerationProgress {
+            let vm = viewModel
+            GeneratedMediaProgressCardView(
+                prompt: progress.prompt,
+                progress: .video(fractionComplete: progress.fractionComplete),
+                onCancel: {
+                    guard let messageID else { return }
+                    Task { [weak vm] in await vm?.cancelVideoGeneration(messageID: messageID) }
+                }
+            )
+        }
+
         // Identity must survive non-terminal insertions. The streaming
         // coordinator inserts `.thinking` *before* the first text part
         // (ChatGenerationCoordinator's `.thinkingStarted` handler), so an
@@ -207,12 +270,10 @@ struct MessagePartsView: View {
         // `media.url` directly; the runtime ships no first-party player view.
         if FileManager.default.fileExists(atPath: media.url.path) {
             Text(media.prompt)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(theme.type.caption)
+                .foregroundStyle(theme.ink2)
         } else {
-            Text("Media file not found")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            missingMediaPlaceholder(caption: "Media file not found")
         }
     }
 
@@ -222,17 +283,39 @@ struct MessagePartsView: View {
         // so the UI degrades gracefully when the binary is missing (deleted,
         // container migration, restored backup without binary).
         if FileManager.default.fileExists(atPath: payload.videoURL.path) {
-            // Hosts that want a richer player should use the payload's
-            // `videoURL` directly. The runtime/service layer does not ship
-            // a first-party video player view — that's a host concern.
-            Text(payload.prompt)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // AVKit player replaces the historical prompt-text rendering
+            // (docs/UI-REFRESH-2026.md §4A — "Video gets the AVKit player in
+            // the same clipping"). Tap opens the *system* viewer via the
+            // platform's own full-screen playback controls; no custom
+            // lightbox is built here.
+            VideoPlayer(player: AVPlayer(url: payload.videoURL))
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: theme.shape.md))
+                .accessibilityLabel(Text(payload.prompt))
         } else {
-            Text("Video file not found")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            missingMediaPlaceholder(caption: "Video file not found")
         }
+    }
+
+    /// Shared missing-media treatment (§4A — "never shows a broken frame: it
+    /// states its cause in the statusWarn voice"). Used by every
+    /// generated-media modality (image/video/audio-fallback) once the
+    /// referenced binary is gone from disk.
+    private func missingMediaPlaceholder(caption: String) -> some View {
+        RoundedRectangle(cornerRadius: theme.shape.sm)
+            .fill(theme.statusWarnSoft)
+            .overlay {
+                VStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(theme.statusWarnColor)
+                    Text(caption)
+                        .font(theme.type.caption)
+                        .foregroundStyle(theme.statusWarnColor)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 160)
     }
 
     @ViewBuilder
@@ -277,18 +360,7 @@ struct MessagePartsView: View {
                 "Generated image binary missing on disk: \(payload.imageURL.path, privacy: .public)"
             )
         }()
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color.gray.opacity(0.15))
-            .overlay {
-                VStack(spacing: 6) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                    Text("Image unavailable")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 160)
+        missingMediaPlaceholder(caption: "Image unavailable")
     }
 
     @ViewBuilder
@@ -350,3 +422,20 @@ struct MessagePartsView: View {
     MessagePartsView(parts: [.text("Hello world")], role: .assistant)
         .environment(ChatViewModel())
 }
+
+// MARK: - GenerationProgressLifecycle
+
+/// Common shape ``ImageGenerationProgress``/``VideoGenerationProgress``
+/// already carry — retroactively surfaced as a protocol (rather than editing
+/// either type, which live in `ChatViewModel+ImageGeneration.swift`/
+/// `ChatViewModel+VideoGeneration.swift`) purely so
+/// ``MessagePartsView/activeProgress(in:messageID:)`` can be written once and
+/// shared by both modalities.
+protocol GenerationProgressLifecycle {
+    /// `true` once a terminal event (completed / failed / cancelled) has been
+    /// observed for this generation.
+    var isComplete: Bool { get }
+}
+
+extension ImageGenerationProgress: GenerationProgressLifecycle {}
+extension VideoGenerationProgress: GenerationProgressLifecycle {}
