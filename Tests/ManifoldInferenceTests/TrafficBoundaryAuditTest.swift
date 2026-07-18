@@ -522,22 +522,18 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         var offenders: [Offender] = []
 
         // (file-path-prefix, forbidden-imports, why)
-        // I7 split: every backend-family module must also be on each
-        // forbidden list — `import ManifoldMLX` from ManifoldUI is just as
-        // bad as `import ManifoldBackends` was pre-split.
-        let backendFamilyModules = [
-            "ManifoldCloudCore",
-            "ManifoldMLX",
-            "ManifoldLlama",
-            "ManifoldFoundation",
-        ]
+        // Every backend-family module must be on each forbidden list —
+        // `import ManifoldOllama` from ManifoldUI is just as bad as
+        // `import ManifoldFoundation`. Companion packages (MLX/Llama) stay
+        // listed so a future re-vendoring cannot slip past the audit.
+        let backendFamilyModules = Self.backendFamilyModules
         let rules: [(prefix: String, forbidden: [String], why: String)] = [
             ("ManifoldUI/",
-             backendFamilyModules + ["ManifoldPersistenceSwiftData"],
-             "ManifoldUI must not depend on any backend-family module or ManifoldPersistenceSwiftData. UI is consumer-facing; backend code carries cloud-SDK weight and persistence adapters belong behind ManifoldRuntime ports."),
+             backendFamilyModules + ["ManifoldPersistenceSwiftData", "ManifoldUIModelManagement"],
+             "ManifoldUI must not depend on any backend-family module, ManifoldPersistenceSwiftData, or ManifoldUIModelManagement. UI is chat-only; backends carry cloud-SDK weight, persistence adapters belong behind ManifoldRuntime ports, and model-management UI is a sibling module injected by closure."),
             ("ManifoldRuntime/",
-             backendFamilyModules + ["ManifoldPersistenceSwiftData"],
-             "ManifoldRuntime carries persistence-agnostic ports and use cases. Concrete backends and SwiftData adapters live above it."),
+             backendFamilyModules + ["ManifoldPersistenceSwiftData", "SwiftData", "SwiftUI", "Observation"],
+             "ManifoldRuntime carries persistence-agnostic ports and use cases. Concrete backends, SwiftData adapters, and UI frameworks live above it."),
             ("ManifoldPersistenceSwiftData/",
              backendFamilyModules,
              "ManifoldPersistenceSwiftData is the SwiftData persistence layer; backend code belongs above it."),
@@ -558,7 +554,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 guard Self.shouldScan(line: trimmed), trimmed.hasPrefix("import ") else { continue }
                 for forbidden in rule.forbidden {
-                    if trimmed == "import \(forbidden)" || trimmed.hasPrefix("import \(forbidden) ") {
+                    if Self.importLine(trimmed, namesModule: forbidden) {
                         offenders.append(.init(
                             rule: 6, ruleName: "Import-graph boundary",
                             file: relativePath, line: idx + 1, text: trimmed,
@@ -573,19 +569,62 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
     }
 
+    /// ManifoldRuntime must not perform networking or touch the system
+    /// keychain directly — those concerns belong in ManifoldInference /
+    /// backend families. Complements the import-graph rules above (which
+    /// catch `import SwiftUI` etc.) by scanning for bare API usage that
+    /// does not need an import to appear (e.g. `URLSession` via Foundation).
+    /// Formerly an inline grep in ci.yml; lives here so
+    /// `scripts/test.sh --profile local` sees it.
+    func test_rule6_runtimeNoNetworkOrKeychainAPIs() throws {
+        let sourcesURL = try Self.locateSourcesDirectory()
+        let runtimeRoot = sourcesURL.appendingPathComponent("ManifoldRuntime")
+        var offenders: [Offender] = []
+
+        for fileURL in try Self.enumerateSwiftFiles(under: runtimeRoot) {
+            let relativePath = fileURL.path.replacingOccurrences(
+                of: sourcesURL.path + "/", with: ""
+            )
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            for (idx, line) in content.components(separatedBy: "\n").enumerated() {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard Self.shouldScan(line: trimmed) else { continue }
+                if Self.matches(Self.runtimeForbiddenAPIPattern, in: trimmed) {
+                    offenders.append(.init(
+                        rule: 6,
+                        ruleName: "Runtime network/keychain isolation",
+                        file: relativePath,
+                        line: idx + 1,
+                        text: trimmed,
+                        why: "ManifoldRuntime must not use URLSession or Keychain APIs. Networking belongs in ManifoldInference/backend families; secrets belong in ManifoldSecrets.",
+                        fix: "Route through a port (e.g. WebSearchRuntime) or move the call into ManifoldInference / a backend family / ManifoldSecrets."
+                    ))
+                }
+            }
+        }
+
+        Self.assertNoOffenders(offenders)
+    }
+
     func test_rule6_packageManifestTargetBoundaries() throws {
         let packageURL = try Self.locatePackageManifest()
         let manifest = try String(contentsOf: packageURL, encoding: .utf8)
         var offenders: [Offender] = []
 
+        let backendFamilyModules = Self.backendFamilyModules
         let rules: [(target: String, forbidden: [String], why: String)] = [
             ("ManifoldUI",
-             [
-                "ManifoldBackends", "ManifoldCloudCore", "ManifoldMLX",
-                "ManifoldLlama", "ManifoldFoundation", "ManifoldCloud",
+             backendFamilyModules + [
+                "ManifoldBackends", "ManifoldCloud",
                 "ManifoldPersistenceSwiftData", "ManifoldUIModelManagement",
              ],
              "ManifoldUI must stay a chat-only consumer surface. Backends (any family), SwiftData adapters, and model-management UI belong behind lower-layer ports or sibling modules."),
+            ("ManifoldRuntime",
+             backendFamilyModules + [
+                "ManifoldBackends", "ManifoldCloud",
+                "ManifoldPersistenceSwiftData",
+             ],
+             "ManifoldRuntime carries persistence-agnostic ports. Concrete backends and SwiftData adapters live above it."),
             ("ManifoldUIModelManagement",
              ["ManifoldPersistenceSwiftData"],
              "ManifoldUIModelManagement must use ManifoldRuntime endpoint-store ports instead of depending on concrete SwiftData adapters.")
@@ -853,6 +892,31 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         if line.hasPrefix("///") { return false }
         if line.hasPrefix("*") { return false }
         return true
+    }
+
+    // MARK: - Rule 6 helpers
+
+    /// Backend-family modules that UI/Runtime/Inference/Persistence must never
+    /// import. Includes retired shims (`ManifoldCloud`) and companion-package
+    /// names (`ManifoldMLX`/`ManifoldLlama`) so a re-vendoring cannot slip past.
+    static let backendFamilyModules: [String] = [
+        "ManifoldCloudCore",
+        "ManifoldOllama",
+        "ManifoldCloudSaaS",
+        "ManifoldFoundation",
+        "ManifoldAnyLanguageModel",
+        "ManifoldMLX",
+        "ManifoldLlama",
+    ]
+
+    /// `URLSession` / Keychain symbols forbidden inside ManifoldRuntime source
+    /// (comment-stripped). Word-boundary style so `MockURLSession` is not a hit.
+    static let runtimeForbiddenAPIPattern =
+        #"(?<![A-Za-z0-9_])(URLSession|SecItemCopyMatching|kSecClass)(?![A-Za-z0-9_])"#
+
+    /// True when `trimmed` is exactly `import <module>` or `import <module> …`.
+    static func importLine(_ trimmed: String, namesModule module: String) -> Bool {
+        trimmed == "import \(module)" || trimmed.hasPrefix("import \(module) ")
     }
 
     // MARK: - Rule 6 helpers (Package.swift target boundaries)
@@ -1189,20 +1253,36 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     }
 
     func test_sabotage_rule6_detectsForbiddenImportsAndManifestDependencies() {
-        // Rule 6 is implemented inline in test_rule6_importGraphBoundary
-        // (it's a per-line `import X` check rather than a single regex), so
-        // the sabotage check verifies the prefix-matching logic works.
-        let line = "import ManifoldBackends"
-        XCTAssertEqual(line, "import ManifoldBackends")
-        XCTAssertTrue(line.hasPrefix("import ManifoldBackends"))
+        // Import matcher: exact module name, not a shared-prefix sibling.
+        XCTAssertTrue(Self.importLine("import ManifoldOllama", namesModule: "ManifoldOllama"))
+        XCTAssertTrue(Self.importLine("import ManifoldUIModelManagement", namesModule: "ManifoldUIModelManagement"))
+        XCTAssertTrue(Self.importLine("import SwiftUI", namesModule: "SwiftUI"))
+        XCTAssertFalse(
+            Self.importLine("import ManifoldOllamaExtras", namesModule: "ManifoldOllama"),
+            "Rule 6 must not flag unrelated module names that share a prefix"
+        )
+        XCTAssertFalse(
+            Self.importLine("import ManifoldUIModelManagementExtras", namesModule: "ManifoldUIModelManagement"),
+            "Rule 6 must not flag unrelated module names that share a prefix"
+        )
 
-        // Module prefixes must not match a partial identifier.
-        let unrelated = "import ManifoldBackendsExtras"
-        // The rule requires exact match OR `import X ` (with trailing space).
-        // A module named ManifoldBackendsExtras would not be flagged as
-        // ManifoldBackends — the trailing space distinguishes them.
-        XCTAssertFalse(unrelated == "import ManifoldBackends" || unrelated.hasPrefix("import ManifoldBackends "),
-                       "Rule 6 must not flag unrelated module names that share a prefix")
+        // Runtime network/keychain API pattern (mirrors former ci.yml grep).
+        XCTAssertTrue(Self.matches(Self.runtimeForbiddenAPIPattern, in: "let s = URLSession.shared"))
+        XCTAssertTrue(Self.matches(Self.runtimeForbiddenAPIPattern, in: "_ = SecItemCopyMatching(q as CFDictionary, &r)"))
+        XCTAssertTrue(Self.matches(Self.runtimeForbiddenAPIPattern, in: "let k = kSecClassGenericPassword"))
+        XCTAssertFalse(
+            Self.matches(Self.runtimeForbiddenAPIPattern, in: "struct MockURLSession {}"),
+            "Rule 6 runtime API scan must not flag MockURLSession-style names"
+        )
+
+        // Backend-family roster must include the in-repo families the YAML
+        // greps used to miss (Ollama / CloudSaaS) so UI↛backend is live.
+        for required in ["ManifoldOllama", "ManifoldCloudSaaS", "ManifoldFoundation", "ManifoldCloudCore"] {
+            XCTAssertTrue(
+                Self.backendFamilyModules.contains(required),
+                "backendFamilyModules must include \(required)"
+            )
+        }
 
         let manifest = """
             .target(

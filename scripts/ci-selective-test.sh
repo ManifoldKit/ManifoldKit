@@ -8,9 +8,10 @@
 #   - Suite has a .xcscheme AND is not trait-gated
 #       → xcodebuild test -scheme (compiles only the subgraph, not the full bundle)
 #   - ManifoldBackendsTests
-#       → swift test (must run serial — no --parallel — because the
-#         claims-registry meta-contract check requires all backend classes to
-#         register before it fires)
+#       → swift test --parallel (own process: target mixes XCTest + Swift
+#         Testing, so it cannot join a multi-target XCTest batch — #681.
+#         --parallel is safe within the target now that the claims registry
+#         is instance-scoped per test case.)
 #   - ManifoldInferenceSwiftTestingTests
 #       → xcodebuild test -scheme (separate scheme = separate process; avoids the
 #         libmalloc SIGABRT that fires when XCTest + Swift Testing share one process)
@@ -73,7 +74,7 @@ run_swift_test() {
 for suite in "$@"; do
   case "$suite" in
     ManifoldBackendsTests)
-      run_swift_test "$suite"
+      run_swift_test "$suite" --parallel
       ;;
     ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldAppIntentsTests|ManifoldAppEvalTests|APIFreezeTests|ManifoldSnapshotTests|ManifoldTelemetryOTLPTests|ManifoldKitTests|ManifoldHuggingFaceTests)
       # No .xcscheme for these suites; their traits were retired in v0.48

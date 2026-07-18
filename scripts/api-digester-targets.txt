@@ -1,0 +1,33 @@
+# Library-product targets for `swift package diagnose-api-breaking-changes`.
+# One product name per line. Consumed by scripts/api-digester-targets.sh —
+# keep in sync with Package.swift's `.library(...)` products when a product
+# is added/removed/renamed. Executables and ManifoldMacrosPlugin are not
+# analyzable this way and must stay off this list.
+ManifoldKit
+ManifoldInference
+ManifoldContract
+ManifoldNetworking
+ManifoldSecrets
+ManifoldHardware
+ManifoldModelCatalog
+ManifoldMCP
+ManifoldMCPHost
+ManifoldRuntime
+ManifoldPersistenceSwiftData
+ManifoldCloudCore
+ManifoldFoundation
+ManifoldOllama
+ManifoldCloudSaaS
+ManifoldAnyLanguageModel
+ManifoldUI
+ManifoldUIModelManagement
+ManifoldHuggingFace
+ManifoldVoice
+ManifoldTestSupport
+ManifoldPersistenceTestSupport
+ManifoldBackendTestKit
+ManifoldTools
+ManifoldAppIntents
+ManifoldSkills
+ManifoldTelemetryOTLP
+ManifoldAppEval

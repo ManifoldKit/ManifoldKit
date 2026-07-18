@@ -128,18 +128,15 @@ gate instead of after a CI round-trip). One or two PRs.
 
 ### 2.1 Port the prose/YAML boundary rules to audit tests  (fix size S)
 
-Four architecture rules exist only as inline greps in `ci.yml:438-503` (UI ↛ UIModelManagement;
+~~Four architecture rules existed only as inline greps in `ci.yml` (UI ↛ UIModelManagement;
 Runtime ↛ SwiftData/SwiftUI; Runtime ↛ URLSession/Keychain; UI ↛ PersistenceSwiftData) —
-invisible to `scripts/test.sh --profile local`. Two more exist **nowhere**:
+invisible to `scripts/test.sh --profile local`.~~ **Done** — extended
+`TrafficBoundaryAuditTest` rule 6 (source + package + Runtime API scan; backend-family
+roster now includes Ollama/CloudSaaS/AnyLanguageModel) and deleted the YAML greps. Remaining
+from this item:
 
-- "UI never imports a backend family" — the most-stated rule in CLAUDE.md, zero enforcement
-  (holds today by luck/discipline).
 - "`ManifoldCloudCore`'s only `ManifoldRuntime` import is `DefaultWebSearchRuntime`" — a
   `Package.swift` comment (moot once 2.2 lands, but a one-line guard until then).
-
-Port all of them into XCTest audits following the `TrafficBoundaryAuditTest` pattern (comment
--stripped source scan + paired sabotage-suite allowlist entries), and delete the YAML steps in
-the same PR so there's one source of truth.
 
 ### 2.2 Move `WebSearchRuntime` down; drop the CloudCore→Runtime edge  (fix size S/M)
 
