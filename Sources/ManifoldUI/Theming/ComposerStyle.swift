@@ -25,10 +25,14 @@ public enum ComposerPhase: Sendable, Equatable {
 /// of it: a bubble style's `content` is the message's *entire* rich inner
 /// content (parts, agent badge, timestamp, streaming cursor) with only the
 /// container chrome pulled out, whereas ``content`` here is the text-entry
-/// field alone — the "+" menu, send/stop button, and draft-attachment strip
-/// are siblings the composer redesign (Unit 2 §L3) assembles around the
-/// styled field, not folded into this seam's type-erased content the way a
-/// bubble's badge/timestamp are folded into `MessageBubbleConfiguration.content`.
+/// field alone. ``affordances`` — the "+" menu, regenerate, and send/stop
+/// controls — is a distinct type-erased slot (Unit 2 §L3, issue #2307) so a
+/// style can choose whether to enclose it with ``content`` in one container
+/// (the glass capsule, spec §3) or leave it a visual sibling outside the
+/// styled field (the classic look, spec §8's `.plain` preset). The
+/// draft-attachment strip and quick-action pills stay outside this
+/// configuration entirely — they render in `ChatInputBar`'s accessory band
+/// above the styled composer, never inside it.
 public struct ComposerConfiguration {
 
     /// The text-entry field, type-erased so a style does not need to know
@@ -36,6 +40,14 @@ public struct ComposerConfiguration {
     /// `ChatInputBar` computes. Does **not** include the "+" menu, send/stop
     /// button, or attachment strip — see this type's doc comment.
     public let content: AnyView
+
+    /// The "+" menu / regenerate / send-stop affordances, type-erased. A
+    /// style decides whether these sit inside the same container as
+    /// ``content`` (``GlassComposerStyle``'s one capsule) or beside it as an
+    /// independent sibling (``PlainComposerStyle``'s classic layout).
+    /// Defaults to an empty view so existing direct-construction call sites
+    /// (dispatch-matrix tests predating this field) keep compiling.
+    public let affordances: AnyView
 
     /// The current lifecycle phase. Styles typically use this to switch
     /// container geometry (e.g. a taller accessory band while `.voice`).
@@ -46,8 +58,14 @@ public struct ComposerConfiguration {
     /// field without the strip's content leaking into the style layer.
     public let hasAttachments: Bool
 
-    public init(content: AnyView, phase: ComposerPhase, hasAttachments: Bool) {
+    public init(
+        content: AnyView,
+        affordances: AnyView = AnyView(EmptyView()),
+        phase: ComposerPhase,
+        hasAttachments: Bool
+    ) {
         self.content = content
+        self.affordances = affordances
         self.phase = phase
         self.hasAttachments = hasAttachments
     }
@@ -56,19 +74,15 @@ public struct ComposerConfiguration {
 /// A type that draws the chrome around the chat composer.
 ///
 /// Follows the same recipe as ``MessageBubbleStyle``: implement
-/// ``makeBody(configuration:)`` to wrap `configuration.content` in your own
-/// background/shape/padding, install it with `.composerStyle(_:)`, and read
-/// `@Environment` (color scheme, the active ``ManifoldTheme``) from inside the
-/// returned `Body` view.
+/// ``makeBody(configuration:)`` to wrap `configuration.content` (and, since
+/// Unit 2 §L3, `configuration.affordances`) in your own background/shape/
+/// padding, install it with `.composerStyle(_:)`, and read `@Environment`
+/// (color scheme, the active ``ManifoldTheme``) from inside the returned
+/// `Body` view.
 ///
-/// - Important: **Not yet wired.** `ChatInputBar` does not read
-///   `\.composerStyle` in this tranche — it still draws its field chrome
-///   directly (Unit 2 §L2, issue #2307). Applying `.composerStyle(_:)` today
-///   compiles and installs the environment value, but nothing consumes it
-///   until the composer redesign (Unit 2 §L3) restructures `ChatInputBar` to
-///   hand its field through ``ResolvedComposer``. The protocol, built-in
-///   styles, and their chrome are correct and tested in isolation now so L3
-///   can adopt them without redesigning this seam.
+/// **Live** (issue #2307, Unit 2 §L3): `ChatInputBar` reads `\.composerStyle`
+/// and dispatches through ``ResolvedComposer`` — see
+/// `StyleWiringAuditTest`'s composer wiring assertion.
 ///
 /// `Sendable` because the resolved style is carried through the SwiftUI
 /// environment.
@@ -87,14 +101,18 @@ public protocol ComposerStyle: Sendable {
 
 // MARK: - Built-in styles
 
-/// The default style: reproduces the framework's historical composer field
-/// chrome — `ChatInputBar.swift:60-61`'s `.padding(10).background(.fill.tertiary,
-/// in: RoundedRectangle(cornerRadius: 12))` — by reading `ManifoldTheme.surface`
-/// (default `AnyShapeStyle(.fill.tertiary)`, the same literal) instead of the
-/// hardcoded material. The corner radius stays the literal `12`, not a
-/// ``ManifoldThemeShapeScale`` token (`sm` is 11, `md` is 14 — neither equals
-/// 12), so this reproduces the historical chrome byte-for-byte rather than
-/// silently drifting it onto the nearest scale step.
+/// The default style: reproduces the framework's historical composer layout
+/// — `ChatInputBar`'s `HStack(alignment: .bottom, spacing: 8) { field;
+/// actionButtons }`, with the field alone wrapped in `.padding(10).background(
+/// .fill.tertiary, in: RoundedRectangle(cornerRadius: 12))` — by reading
+/// `ManifoldTheme.surface` (default `AnyShapeStyle(.fill.tertiary)`, the same
+/// literal) instead of the hardcoded material. The corner radius stays the
+/// literal `12`, not a ``ManifoldThemeShapeScale`` token (`sm` is 11, `md` is
+/// 14 — neither equals 12), so this reproduces the historical chrome
+/// byte-for-byte rather than silently drifting it onto the nearest scale
+/// step. ``ComposerConfiguration/affordances`` renders as an unstyled sibling
+/// beside the field — never enclosed in the field's own background — exactly
+/// matching the classic layout.
 ///
 /// This is the style that becomes the `.classic` preset in Unit 2 §L5 — the
 /// new-look glass capsule/bar (spec §3) is a distinct, not-yet-default style.
@@ -112,18 +130,20 @@ private struct PlainComposerBody: View {
     @Environment(\.manifoldTheme) private var theme
 
     var body: some View {
-        configuration.content
-            .padding(10)
-            .background(theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        HStack(alignment: .bottom, spacing: 8) {
+            configuration.content
+                .padding(10)
+                .background(theme.surface, in: RoundedRectangle(cornerRadius: 12))
+            configuration.affordances
+        }
     }
 }
 
 /// A **new-look** style implementing the spec's floating glass capsule (iOS)
-/// / docked glass bar (macOS) geometry (spec §3). Not the default in this
-/// tranche — Unit 2 §L5 flips the built-in default once the composer
-/// redesign (§L3) has wired real "+" menu / send-stop geometry into
-/// `configuration.content`. Until then this style only restyles the
-/// container; the inner content is whatever `ChatInputBar` currently builds.
+/// / docked glass bar (macOS) geometry (spec §3): field and ``ComposerConfiguration/affordances``
+/// share one enclosing glass container, so the "+" menu / send-stop controls
+/// read as part of the same capsule rather than free-floating siblings. Not
+/// the default in this tranche — Unit 2 §L5 flips the built-in default.
 public struct GlassComposerStyle: ComposerStyle {
     public init() {}
 
@@ -138,8 +158,12 @@ private struct GlassComposerBody: View {
     @Environment(\.manifoldTheme) private var theme
 
     var body: some View {
-        configuration.content
-            .manifoldGlass(theme, in: Capsule(style: .continuous))
+        HStack(alignment: .bottom, spacing: 8) {
+            configuration.content
+            configuration.affordances
+        }
+        .padding(10)
+        .manifoldGlass(theme, in: Capsule(style: .continuous))
     }
 }
 

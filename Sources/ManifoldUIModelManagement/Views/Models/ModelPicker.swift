@@ -179,6 +179,8 @@ private struct ModelSelectionRow: View {
     let compatibilityResult: ModelCompatibilityResult
     let onTap: () -> Void
 
+    @Environment(\.manifoldTheme) private var theme
+
     private var isCompatible: Bool { compatibilityResult.isSupported }
 
     var body: some View {
@@ -253,10 +255,10 @@ private struct ModelSelectionRow: View {
     private func typeBadge(for modelType: ModelType, isCompatible: Bool) -> some View {
         let (label, color): (String, Color) = {
             switch modelType {
-            case .gguf: return ("GGUF", .orange)
-            case .mlx: return ("MLX", .purple)
-            case .foundation: return ("Foundation", .blue)
-            default: return (modelType.rawValue.uppercased(), .gray)
+            case .gguf: return ("GGUF", theme.categorical.orangeColor)
+            case .mlx: return ("MLX", theme.categorical.purpleColor)
+            case .foundation: return ("Foundation", theme.categorical.blueColor)
+            default: return (modelType.rawValue.uppercased(), theme.categorical.grayColor)
             }
         }()
 

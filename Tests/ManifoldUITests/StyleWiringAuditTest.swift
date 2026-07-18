@@ -66,6 +66,17 @@ final class StyleWiringAuditTest: XCTestCase {
         )
     }
 
+    /// Unit 2 §L3 (issue #2307): `ComposerStyle` moved from "fully inert" (the
+    /// U2-L2 PR body's inert-surfaces table) to live — `ChatInputBar` now
+    /// reads `\.composerStyle` and dispatches through `ResolvedComposer`.
+    func test_chatInputBar_readsComposerStyleEnvironmentAndFeedsResolvedWrapper() throws {
+        let source = try Self.sourceText(relativeToManifoldUI: "Views/Chat/ChatInputBar.swift")
+        XCTAssertTrue(
+            Self.isWired(source: source, environmentKeyPath: "composerStyle", resolvedWrapperCall: "ResolvedComposer"),
+            "ChatInputBar must read its style from the environment and feed it into ResolvedComposer, not hardcode one"
+        )
+    }
+
     // MARK: - Sabotage (exercises the real `isWired` detection function)
 
     /// Plants a synthetic, unwired source string — a hardcoded style with no

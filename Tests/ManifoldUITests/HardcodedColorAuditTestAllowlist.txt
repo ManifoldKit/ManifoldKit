@@ -71,32 +71,12 @@ Views/Image/ImageModelInstallView.swift:.foregroundStyle(.red)
 Views/Models/DownloadProgressView.swift:.foregroundStyle(.blue)
 Views/Models/DownloadProgressView.swift:.foregroundStyle(.green)
 Views/Models/DownloadProgressView.swift:.foregroundStyle(.red)
-Views/Models/DownloadableModelRow.swift:.background(.blue.opacity(0.15), in: Capsule())
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.blue)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.blue)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.green)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.orange)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(insufficient ? Color.secondary : Color.blue)
-Views/Models/DownloadableModelRow.swift:case .excellent, .good:  return .green
-Views/Models/DownloadableModelRow.swift:case .fast:     return .green
-Views/Models/DownloadableModelRow.swift:case .marginal:          return .yellow
-Views/Models/DownloadableModelRow.swift:case .notRecommended:    return .red
-Views/Models/DownloadableModelRow.swift:case .sluggish: return .orange
-Views/Models/DownloadableModelRow.swift:case .tooSlow:  return .red
-Views/Models/DownloadableModelRow.swift:case .usable:   return .blue
-Views/Models/DownloadableModelRow.swift:if canRun { return .green }
-Views/Models/DownloadableModelRow.swift:if isBorderline { return .yellow }
-Views/Models/DownloadableModelRow.swift:return .red
 Views/Models/HuggingFaceBrowserView.swift:.background(.green.opacity(0.15), in: Capsule())
 Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.green)
 Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.green)
 Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.orange)
 Views/Models/LocalModelStorageView.swift:.foregroundStyle(.blue)
 Views/Models/LocalModelStorageView.swift:.foregroundStyle(.red)
-Views/Models/ModelPicker.swift:case .foundation: return ("Foundation", .blue)
-Views/Models/ModelPicker.swift:case .gguf: return ("GGUF", .orange)
-Views/Models/ModelPicker.swift:case .mlx: return ("MLX", .purple)
-Views/Models/ModelPicker.swift:default: return (modelType.rawValue.uppercased(), .gray)
 Views/Models/StorageManagementView.swift:.foregroundStyle(.blue)
 Views/Models/StorageManagementView.swift:.foregroundStyle(.red)
 Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)

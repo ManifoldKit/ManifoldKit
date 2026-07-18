@@ -4,15 +4,11 @@ Restyle the chat composer's container chrome without rebuilding its "+" menu, at
 
 ## Overview
 
-> Important: **Not yet wired.** `ChatInputBar` does not read `\.composerStyle`
-> in this tranche (Unit 2 §L2, issue #2307) — it still draws its field chrome
-> directly. Applying `.composerStyle(_:)` today compiles and installs the
-> environment value, but it is a no-op until the composer redesign
-> (Unit 2 §L3) restructures `ChatInputBar` to consume it. The protocol and
-> built-in styles below are correct and tested in isolation now so that
-> tranche can adopt them without redesigning this seam.
+**Live** (Unit 2 §L3, issue #2307): `ChatInputBar` reads `\.composerStyle` and
+dispatches through it, so applying `.composerStyle(_:)` changes what actually
+renders at the bottom of the chat.
 
-``ComposerStyle`` owns only the composer's *container* — background, shape, padding — the same split ``MessageBubbleStyle`` uses for bubbles. ``ComposerConfiguration/content`` is the text-entry field only (not the "+" menu, attachments, or send/stop button — those stay siblings the composer redesign assembles around the styled field).
+``ComposerStyle`` owns the composer's *container* — background, shape, padding, and whether the "+" menu / send-stop affordances share that container with the field. ``ComposerConfiguration/content`` is the text-entry field alone; ``ComposerConfiguration/affordances`` is the "+" menu / regenerate / send-stop row, kept as a separate type-erased slot so a style can choose to enclose it (one glass capsule) or leave it a sibling (the classic layout). The draft-attachment strip and quick-action pills render in `ChatInputBar`'s accessory band above the styled composer and never pass through this seam.
 
 A style receives the current ``ComposerPhase`` (`idle` / `composing` / `generating` / `voice`) and whether the draft-attachment strip has content, so it can adapt container geometry — e.g. a taller accessory band while `.voice` — without knowing anything about attachments or voice wiring itself.
 
@@ -22,9 +18,12 @@ import ManifoldUI
 
 struct RoundedComposerStyle: ComposerStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.content
-            .padding(configuration.phase == .voice ? 16 : 8)
-            .background(.thinMaterial, in: Capsule())
+        HStack(spacing: 8) {
+            configuration.content
+            configuration.affordances
+        }
+        .padding(configuration.phase == .voice ? 16 : 8)
+        .background(.thinMaterial, in: Capsule())
     }
 }
 ```
@@ -36,7 +35,7 @@ ChatView(showModelManagement: $showModels)
     .composerStyle(RoundedComposerStyle())
 ```
 
-Two built-ins ship: ``PlainComposerStyle`` (`.plain`, the default — reproduces `ChatInputBar`'s historical field chrome, `.padding(10)` over a `ManifoldTheme.surface`-filled `RoundedRectangle(cornerRadius: 12)`, byte-for-byte) and ``GlassComposerStyle`` (`.glass`, the 2026 refresh's floating glass capsule/docked bar).
+Two built-ins ship: ``PlainComposerStyle`` (`.plain`, the default — reproduces `ChatInputBar`'s historical layout, field wrapped in `.padding(10)` over a `ManifoldTheme.surface`-filled `RoundedRectangle(cornerRadius: 12)` with the affordances beside it, byte-for-byte) and ``GlassComposerStyle`` (`.glass`, the 2026 refresh's floating glass capsule/docked bar enclosing field + affordances in one container).
 
 ## Topics
 
