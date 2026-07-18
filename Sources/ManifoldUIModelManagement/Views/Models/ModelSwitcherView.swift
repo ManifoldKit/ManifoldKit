@@ -38,6 +38,7 @@ public struct ModelSwitcherView: View {
                 }
         }
         .accessibilityLabel("Model switcher")
+        .accessibilityIdentifier("model-switcher-list")
     }
 }
 

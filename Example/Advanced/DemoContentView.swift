@@ -299,7 +299,12 @@ struct DemoContentView: View {
                         }
                     }
                     #endif
-                    ToolbarItem(placement: .automatic) {
+                    // `.secondaryAction` sends the appearance picker into the
+                    // overflow menu, keeping the compact-width bar lean enough
+                    // that the model-switcher chip renders directly in the bar
+                    // (#2307 — a chip collapsed into the overflow menu renders
+                    // but its row does not activate; keep host bars lean).
+                    ToolbarItem(placement: .secondaryAction) {
                         Menu {
                             Picker("Appearance", selection: $demoTheme) {
                                 ForEach(DemoChatTheme.allCases) { option in

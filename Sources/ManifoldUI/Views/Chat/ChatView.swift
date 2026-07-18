@@ -290,9 +290,22 @@ public struct ChatView<APIConfig: View>: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        // Compact width mounts the model chip in content chrome instead of
+        // the toolbar (see `showsModelChipInToolbar`): iOS 26's compact bar
+        // collapses items into the "More" overflow via undocumented
+        // heuristics — `.principal` gets dropped outright, bar-button
+        // placements collapse into overflow, and an overflow-collapsed row
+        // of this chip renders but does not activate (#2307). A
+        // `safeAreaInset` band is deterministic: always visible, always
+        // tappable, owned by us.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if modelSwitcherBuilder != nil && !Self.showsModelChipInToolbar(horizontalSizeClass: horizontalSizeClass) {
+                modelChipInsetBar
+            }
+        }
         .toolbar {
-            if modelSwitcherBuilder != nil {
-                ToolbarItem(placement: Self.modelChipPlacement(horizontalSizeClass: horizontalSizeClass)) {
+            if modelSwitcherBuilder != nil && Self.showsModelChipInToolbar(horizontalSizeClass: horizontalSizeClass) {
+                ToolbarItem(placement: .principal) {
                     modelChipButton
                 }
             }
@@ -335,6 +348,21 @@ public struct ChatView<APIConfig: View>: View {
             isPresented: $showAPIConfiguration,
             apiConfiguration: apiConfigurationBuilder
         )
+        // Model-switcher presentation lives on the stable content hierarchy,
+        // NOT on the toolbar chip button — a chip collapsed into the "More"
+        // overflow menu cannot anchor a presentation (its hosted view dies
+        // with the menu's dismissal, silently dropping the sheet — #2307).
+        #if os(iOS)
+        .sheet(isPresented: $showModelSwitcher) {
+            modelSwitcherContent
+                .presentationDetents([.medium, .large])
+        }
+        #else
+        .popover(isPresented: $showModelSwitcher) {
+            modelSwitcherContent
+                .frame(minWidth: 320, minHeight: 360)
+        }
+        #endif
         #if DEBUG
         .sheet(isPresented: $showArchitectView) {
             ArchitectView(
@@ -462,12 +490,34 @@ public struct ChatView<APIConfig: View>: View {
     /// `.topBarTrailing` are iOS/iPadOS/Mac Catalyst-only placements, so
     /// macOS keeps `.principal` unconditionally (macOS has no compact size
     /// class to trigger the failure mode anyway).
-    static func modelChipPlacement(horizontalSizeClass: UserInterfaceSizeClass?) -> ToolbarItemPlacement {
+    /// Whether the model chip renders as a `.principal` toolbar item
+    /// (regular width, macOS) or in the content-chrome inset band (compact
+    /// width). Compact toolbars collapse items via undocumented heuristics
+    /// that either drop the chip outright (`.principal`) or park it in an
+    /// overflow-menu row that renders but does not activate — verified on
+    /// iOS 26 across `.principal`/`.topBarTrailing`/`.automatic` (#2307).
+    static func showsModelChipInToolbar(horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
         #if os(iOS)
-        horizontalSizeClass == .compact ? .topBarTrailing : .principal
+        horizontalSizeClass != .compact
         #else
-        .principal
+        true
         #endif
+    }
+
+    /// The compact-width content-chrome band hosting the model chip —
+    /// deterministic replacement for the toolbar placement (#2307). Sits as
+    /// a `safeAreaInset` under the navigation bar, styled on theme tokens.
+    private var modelChipInsetBar: some View {
+        HStack {
+            modelChipButton
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.bar)
     }
 
     /// The toolbar chip that opens the host-supplied model switcher content
@@ -484,17 +534,13 @@ public struct ChatView<APIConfig: View>: View {
         }
         .accessibilityLabel("Switch model")
         .accessibilityIdentifier("chat-model-switcher-chip")
-        #if os(iOS)
-        .sheet(isPresented: $showModelSwitcher) {
-            modelSwitcherContent
-                .presentationDetents([.medium, .large])
-        }
-        #else
-        .popover(isPresented: $showModelSwitcher) {
-            modelSwitcherContent
-                .frame(minWidth: 320, minHeight: 360)
-        }
-        #endif
+        // The presentation is deliberately NOT attached here: when this
+        // toolbar item collapses into the "More" overflow menu (compact
+        // width, crowded bar — the #2307 fallback path), the button's
+        // hosted view lives inside the transient menu, and a sheet anchored
+        // to it is torn down with the menu before it can present. The
+        // sheet/popover hangs off the stable content hierarchy in `body`
+        // instead (see the `showModelSwitcher` presentation there).
     }
 
     @ViewBuilder
