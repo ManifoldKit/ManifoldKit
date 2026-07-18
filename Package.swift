@@ -95,12 +95,18 @@ let package = Package(
         .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
         .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
         .library(name: "ManifoldVoice", targets: ["ManifoldVoice"]),
-        // ManifoldFuzz is deliberately NOT a published product: it has zero
-        // external consumers (no companion repo imports it), its only runtime
-        // consumer is this repo's own fuzz-weekly.yml (`swift run fuzz-chat`),
-        // and unpublishing shrinks the api-digester gate's product surface.
-        // The target (and fuzz-chat / ManifoldFuzzBackends / ManifoldFuzzTests,
-        // which depend on the target, not the product) are unaffected.
+        // ManifoldFuzz IS a published product: the companion backend packages
+        // (manifold-mlx / manifold-llama, #1749) now run their own fuzz drivers
+        // against real MLX/llama backends — the exact "external consumer" whose
+        // prior absence justified keeping this a bare target. A companion cannot
+        // `import ManifoldFuzz` cross-package without a product, and the local
+        // backends can't run via core's `swift run fuzz-chat` (MLX needs an
+        // Xcode-compiled metallib), so the driver has to live over there. This
+        // re-widens the api-digester gate's product surface deliberately.
+        // ManifoldFuzzBackends stays an internal target — a companion supplies
+        // its own FuzzBackendFactory rather than pulling core's Ollama/OpenAI/
+        // Foundation family deps.
+        .library(name: "ManifoldFuzz", targets: ["ManifoldFuzz"]),
         // Test-support products: published so companion backend packages
         // (manifold-mlx / manifold-llama, #1749) can run the same mocks and
         // contract checks out-of-package. ManifoldBackendTestKit links XCTest
