@@ -702,4 +702,82 @@ final class CompressionPolicyTests: XCTestCase {
         XCTAssertEqual(remaining.count, 1)
         XCTAssertEqual(remaining[0].content, summaryContent)
     }
+
+    // MARK: - Test 11: coordinator threads session systemPrompt (#1957)
+
+    /// Live wiring for #1957: `TurnCompressionCoordinator` must fetch the
+    /// session's `systemPrompt` and pass it into `CompressionPolicy.compress`.
+    /// Without a session store the fetch returns nil and the parameter is
+    /// cosmetic; this test seeds a real session so a sabotage that drops the
+    /// fetch (or hardcodes `nil`) fails.
+    func test_policy_coordinatorThreadsSessionSystemPrompt() async throws {
+        actor PromptCapture {
+            private(set) var received: String??
+            func capture(_ value: String?) { received = .some(value) }
+        }
+
+        final class RuntimeSessionStore: SessionStore {
+            var sessions: [UUID: ChatSession] = [:]
+            func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+            func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+            func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
+            func deleteAll() async throws { sessions.removeAll() }
+            func fetchSessions() async throws -> [ChatSession] {
+                sessions.values.sorted { $0.updatedAt > $1.updatedAt }
+            }
+            func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+        }
+
+        let capture = PromptCapture()
+        let expectedPrompt = "You are a multi-agent research coordinator with a long preamble."
+
+        struct CapturingSystemPromptPolicy: CompressionPolicy {
+            let capture: PromptCapture
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+                contextSize > 0
+            }
+            func compress(
+                history: [ChatMessage],
+                sessionID: UUID,
+                systemPrompt: String?,
+                generate: @Sendable ([ChatMessage]) async throws -> String
+            ) async throws -> [ChatMessage] {
+                await capture.capture(systemPrompt)
+                return [ChatMessage(role: .assistant, content: "summary", sessionID: sessionID)]
+            }
+        }
+
+        let backend = makeMockWithUsage(tokensToYield: ["ok"])
+        backend.inner.tokensToYieldPerTurn = [["ok"], ["summary"]]
+        let messageStore = RuntimeMessageStore()
+        let sessionStore = RuntimeSessionStore()
+        let sessionID = UUID()
+        try await sessionStore.insertSession(ChatSession(
+            id: sessionID,
+            title: "systemPrompt wiring",
+            systemPrompt: expectedPrompt
+        ))
+
+        let runtime = ConversationRuntime(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: InferenceService(backend: backend, name: "Mock"),
+            compressionPolicy: CapturingSystemPromptPolicy(capture: capture)
+        )
+
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi", attachments: []),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilHistoryCompressed(from: runtime)
+
+        let received = await capture.received
+        XCTAssertNotNil(received, "compress must be invoked so the systemPrompt argument is observable")
+        XCTAssertEqual(
+            received!,
+            expectedPrompt,
+            "TurnCompressionCoordinator must pass the session's systemPrompt into compress (sabotage: drop fetchSession or hardcode nil)"
+        )
+    }
 }

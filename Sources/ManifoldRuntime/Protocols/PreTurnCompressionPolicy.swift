@@ -37,7 +37,7 @@ import ManifoldInference
 ///
 /// ## Error policy
 ///
-/// Failures from ``compressBeforeTurn(history:sessionID:generate:)`` — or an
+/// Failures from ``compressBeforeTurn(history:sessionID:systemPrompt:generate:)`` — or an
 /// empty return value — throw
 /// ``ConversationError/preTurnCompressionFailed(_:)`` to the caller of
 /// ``ConversationRuntime/processTurn(_:)``. Existing history is preserved when
