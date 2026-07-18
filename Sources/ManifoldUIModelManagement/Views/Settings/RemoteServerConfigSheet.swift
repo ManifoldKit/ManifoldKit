@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// Sheet for manually configuring a remote inference server connection.
 ///
@@ -22,6 +23,7 @@ public struct RemoteServerConfigSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.endpointStore) private var endpointStore
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     /// Called when the user saves the configuration, passing the created record.
     public var onSave: ((APIEndpointRecord) -> Void)?
@@ -67,7 +69,7 @@ public struct RemoteServerConfigSheet: View {
                 if let error = errorMessage {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.statusError)
                     }
                 }
             }

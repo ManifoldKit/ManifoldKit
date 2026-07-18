@@ -15,6 +15,7 @@ public struct StorageManagementView: View {
 
     @Environment(ModelManagementViewModel.self) private var managementViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     @State private var modelToDelete: ModelInfo?
     @State private var showDeleteConfirmation = false
@@ -194,7 +195,7 @@ public struct StorageManagementView: View {
                             showDeleteConfirmation = true
                         } label: {
                             Image(systemName: "trash")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(theme.statusError)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Delete \(model.name)")
