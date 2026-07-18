@@ -46,6 +46,7 @@ public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(\.manifoldTheme) private var theme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
 
@@ -291,7 +292,7 @@ public struct ChatView<APIConfig: View>: View {
         #endif
         .toolbar {
             if modelSwitcherBuilder != nil {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: Self.modelChipPlacement(horizontalSizeClass: horizontalSizeClass)) {
                     modelChipButton
                 }
             }
@@ -440,6 +441,34 @@ public struct ChatView<APIConfig: View>: View {
     }
 
     // MARK: - Model switcher chip (Unit 2 §L5)
+
+    /// Picks where the model chip lands in the toolbar (#2307).
+    ///
+    /// `.principal` (the navigation-title slot) is right for the identity
+    /// chip on regular width — it reads as chrome, not an action, matching
+    /// spec's drawn intent. But on compact width (iPhone) it silently
+    /// disappears under space pressure: a crowded compact bar can starve the
+    /// principal slot down to zero width, and unlike a bar-button placement
+    /// there is no "More" fallback for `.principal` — the chip vanishes from
+    /// both the visible bar *and* the overflow menu, with no way for the
+    /// user to reach it at all (the #2307 bug). `.topBarTrailing` is a
+    /// regular bar-button slot: under the same space pressure it *does*
+    /// still collapse into the "More" overflow menu alongside
+    /// `ChatToolbarContent`'s `.automatic` items (cloud/context/memory
+    /// indicators, export, settings, clear) — but critically it never
+    /// disappears outright, so the chip stays reachable (bar or overflow)
+    /// no matter how many items a host toolbar contributes, without
+    /// removing anything the host placed elsewhere. `.topBarLeading`/
+    /// `.topBarTrailing` are iOS/iPadOS/Mac Catalyst-only placements, so
+    /// macOS keeps `.principal` unconditionally (macOS has no compact size
+    /// class to trigger the failure mode anyway).
+    static func modelChipPlacement(horizontalSizeClass: UserInterfaceSizeClass?) -> ToolbarItemPlacement {
+        #if os(iOS)
+        horizontalSizeClass == .compact ? .topBarTrailing : .principal
+        #else
+        .principal
+        #endif
+    }
 
     /// The toolbar chip that opens the host-supplied model switcher content
     /// (``chatModelSwitcher(_:)``). macOS presents it as a popover anchored
