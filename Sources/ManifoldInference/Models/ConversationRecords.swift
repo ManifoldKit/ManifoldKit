@@ -50,6 +50,19 @@ public struct ChatSession: Identifiable, Hashable, Sendable {
     /// without a separate persistence fetch. `nil` outside skill scope.
     public var activeSkillName: String?
 
+    /// The source session's id when this session was created by
+    /// `SessionBranchCoordinator.branch(...)`. `nil` for sessions that were
+    /// not branched (SchemaV13, #2307 branch-origin chip).
+    public var branchOriginSessionID: UUID?
+
+    /// Snapshot of the source session's title, captured at branch time.
+    /// Read-path fallback only: prefer resolving the source's *current*
+    /// title live via `branchOriginSessionID` (so a rename of the source is
+    /// reflected), and fall back to this snapshot when the source no longer
+    /// exists (deleted) so "Branched from ‹title›" still renders. `nil` for
+    /// sessions that were not branched.
+    public var branchOriginTitleSnapshot: String?
+
     public init(
         id: UUID = UUID(),
         title: String = "New Chat",
@@ -68,7 +81,9 @@ public struct ChatSession: Identifiable, Hashable, Sendable {
         pinnedAt: Date? = nil,
         agents: [AgentDefinition] = [],
         activeAgentID: UUID? = nil,
-        activeSkillName: String? = nil
+        activeSkillName: String? = nil,
+        branchOriginSessionID: UUID? = nil,
+        branchOriginTitleSnapshot: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -88,6 +103,8 @@ public struct ChatSession: Identifiable, Hashable, Sendable {
         self.agents = agents
         self.activeAgentID = activeAgentID
         self.activeSkillName = activeSkillName
+        self.branchOriginSessionID = branchOriginSessionID
+        self.branchOriginTitleSnapshot = branchOriginTitleSnapshot
     }
 }
 

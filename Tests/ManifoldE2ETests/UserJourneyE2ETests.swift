@@ -307,7 +307,7 @@ final class UserJourneyE2ETests {
         // of modelB.id, confirming this assertion catches the real persistence
         // contract and is not accidentally vacuous.
         let storedSessionID = session.id
-        let sessionDescriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        let sessionDescriptor = FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == storedSessionID }
         )
         let storedSessions = try context.fetch(sessionDescriptor)

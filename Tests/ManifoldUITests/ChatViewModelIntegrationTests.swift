@@ -73,8 +73,8 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     }
 
     /// Fetches all ManifoldInference.ChatSessions from the database.
-    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
-        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+    private func fetchSessions() -> [PersistedChatSession] {
+        let descriptor = FetchDescriptor<PersistedChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return (try? context.fetch(descriptor)) ?? []

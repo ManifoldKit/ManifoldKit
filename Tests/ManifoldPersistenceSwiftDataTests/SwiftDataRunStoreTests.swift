@@ -357,8 +357,11 @@ final class SwiftDataRunStoreTests: XCTestCase {
         )
         let migratedContext = ModelContext(migratedContainer)
 
-        // Pre-existing V9 data survived the additive migration.
-        let sessions = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        // Pre-existing V9 data survived the additive migration. Fetch as
+        // `PersistedChatSession` (the *current* schema's ChatSession type,
+        // now V13) — not `ManifoldSchemaV9.ChatSession` — since the migrated
+        // container is opened at the current schema.
+        let sessions = try migratedContext.fetch(FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(sessions.count, 1)

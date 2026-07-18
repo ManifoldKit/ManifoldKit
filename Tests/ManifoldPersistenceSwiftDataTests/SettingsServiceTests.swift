@@ -48,7 +48,7 @@ final class SettingsServiceTests: XCTestCase {
     func test_effectiveTemperature_sessionOverrideWins() {
         service.globalTemperature = 0.7
 
-        let session = ManifoldSchemaV9.ChatSession()
+        let session = PersistedChatSession()
         session.temperature = 1.5
 
         XCTAssertEqual(service.effectiveTemperature(session: session), 1.5, accuracy: 0.01)
@@ -57,7 +57,7 @@ final class SettingsServiceTests: XCTestCase {
     func test_effectiveTemperature_fallsToGlobalWhenNil() {
         service.globalTemperature = 0.8
 
-        let session = ManifoldSchemaV9.ChatSession()
+        let session = PersistedChatSession()
         // temperature is nil by default
 
         XCTAssertEqual(service.effectiveTemperature(session: session), 0.8, accuracy: 0.01)
@@ -66,7 +66,7 @@ final class SettingsServiceTests: XCTestCase {
     func test_effectiveTopP_sessionOverrideWins() {
         service.globalTopP = 0.9
 
-        let session = ManifoldSchemaV9.ChatSession()
+        let session = PersistedChatSession()
         session.topP = 0.5
 
         XCTAssertEqual(service.effectiveTopP(session: session), 0.5, accuracy: 0.01)
@@ -75,7 +75,7 @@ final class SettingsServiceTests: XCTestCase {
     func test_effectiveRepeatPenalty_fallsToGlobalWhenNil() {
         service.globalRepeatPenalty = 1.2
 
-        let session = ManifoldSchemaV9.ChatSession()
+        let session = PersistedChatSession()
 
         XCTAssertEqual(service.effectiveRepeatPenalty(session: session), 1.2, accuracy: 0.01)
     }
@@ -83,7 +83,7 @@ final class SettingsServiceTests: XCTestCase {
     func test_effectiveValues_nilSession_usesGlobal() {
         service.globalTemperature = 0.5
 
-        XCTAssertEqual(service.effectiveTemperature(session: ManifoldSchemaV9.ChatSession?.none), 0.5, accuracy: 0.01)
+        XCTAssertEqual(service.effectiveTemperature(session: PersistedChatSession?.none), 0.5, accuracy: 0.01)
     }
 
     func test_chatSessionOverloads_matchRecordOverloads() {
@@ -91,7 +91,7 @@ final class SettingsServiceTests: XCTestCase {
         service.globalTopP = 0.85
         service.globalRepeatPenalty = 1.05
 
-        let session = ManifoldSchemaV9.ChatSession()
+        let session = PersistedChatSession()
         session.temperature = 0.8
         session.topP = nil
         session.repeatPenalty = 1.2
@@ -175,21 +175,21 @@ final class SettingsServiceTests: XCTestCase {
 
     func test_effectiveTemperature_nilGlobalFallsToHardcodedDefault() {
         // Neither session nor global is set
-        XCTAssertEqual(service.effectiveTemperature(session: ManifoldSchemaV9.ChatSession?.none), 0.7, accuracy: 0.01)
+        XCTAssertEqual(service.effectiveTemperature(session: PersistedChatSession?.none), 0.7, accuracy: 0.01)
     }
 
     func test_effectiveTopP_nilGlobalFallsToHardcodedDefault() {
-        XCTAssertEqual(service.effectiveTopP(session: ManifoldSchemaV9.ChatSession?.none), 0.9, accuracy: 0.01)
+        XCTAssertEqual(service.effectiveTopP(session: PersistedChatSession?.none), 0.9, accuracy: 0.01)
     }
 
     func test_effectiveRepeatPenalty_nilGlobalFallsToHardcodedDefault() {
-        XCTAssertEqual(service.effectiveRepeatPenalty(session: ManifoldSchemaV9.ChatSession?.none), 1.1, accuracy: 0.01)
+        XCTAssertEqual(service.effectiveRepeatPenalty(session: PersistedChatSession?.none), 1.1, accuracy: 0.01)
     }
 
     func test_effectiveTemperature_zeroGlobalDoesNotFallToDefault() {
         service.globalTemperature = 0.0
 
-        XCTAssertEqual(service.effectiveTemperature(session: ManifoldSchemaV9.ChatSession?.none), 0.0, accuracy: 0.01,
+        XCTAssertEqual(service.effectiveTemperature(session: PersistedChatSession?.none), 0.0, accuracy: 0.01,
                        "Global 0.0 should be used, not the hardcoded 0.7 default")
     }
 }
