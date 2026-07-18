@@ -3,25 +3,35 @@ import ManifoldRuntime
 import ManifoldInference
 
 /// A single row in the session list showing the chat title and relative timestamp.
+///
+/// Wraps the resolved ``SessionRowStyle`` (spec §8) for its content — the
+/// default style reproduces this exact chrome, so untouched hosts see no
+/// change. `isSelected` defaults to `false`: `SessionListView`'s `List(selection:)`
+/// drives the actual system selection highlight (spec §2); a host that wants
+/// the row content to react to selection can pass it explicitly.
 public struct SessionRowView: View {
 
     public let session: ChatSession
+    public let isSelected: Bool
 
-    public init(session: ChatSession) {
+    @Environment(\.sessionRowStyle) private var style
+
+    public init(session: ChatSession, isSelected: Bool = false) {
         self.session = session
+        self.isSelected = isSelected
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(session.title)
-                .font(.headline)
-                .lineLimit(1)
-
-            Text(session.updatedAt, style: .relative)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 2)
+        ResolvedSessionRow(
+            style: style,
+            configuration: SessionRowConfiguration(
+                title: session.title,
+                snippet: nil,
+                updatedAt: session.updatedAt,
+                isPinned: session.isPinned,
+                isSelected: isSelected
+            )
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(session.title), updated \(session.updatedAt, style: .relative) ago")
         .accessibilityIdentifier("session-row")

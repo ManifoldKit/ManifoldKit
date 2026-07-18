@@ -93,8 +93,10 @@ public extension View {
     /// ```
     ///
     /// - Note: A per-content-part hook (text / tool-call / thinking blocks) is
-    ///   not yet exposed; threading it through `MessagePartsView` is intentionally
-    ///   deferred to keep this change bounded (tracked by issue #1640).
+    ///   now exposed as ``ChatMessagePartRenderer`` / `.chatMessagePartRenderer(_:)`
+    ///   (Unit 2 §L2, issue #1640) — see that type's doc comment. Threading it
+    ///   into `MessagePartsView`'s per-kind dispatch is tracked alongside that
+    ///   view's own Unit 2 work.
     func chatMessageRenderer(_ renderer: @escaping ChatMessageRenderer) -> some View {
         environment(\.chatMessageRenderer, renderer)
     }
