@@ -12,11 +12,11 @@ import ManifoldInference
 /// endpoint-clear on model selection) but were never co-presented in one
 /// list — this type is the presentation-layer union spec §5 calls "the one
 /// structural change." It does not alter the selection model itself.
-package enum ModelSwitcherEntry: Identifiable, Sendable, Equatable {
+public enum ModelSwitcherEntry: Identifiable, Sendable, Equatable {
     case model(ModelInfo)
     case endpoint(APIEndpointRecord)
 
-    package var id: String {
+    public var id: String {
         switch self {
         case .model(let model): return "model-\(model.id.uuidString)"
         case .endpoint(let endpoint): return "endpoint-\(endpoint.id.uuidString)"
@@ -24,7 +24,7 @@ package enum ModelSwitcherEntry: Identifiable, Sendable, Equatable {
     }
 
     /// Display name — ``ModelInfo/name`` or ``APIEndpointRecord/name``.
-    package var displayName: String {
+    public var displayName: String {
         switch self {
         case .model(let model): return model.name
         case .endpoint(let endpoint): return endpoint.name
@@ -34,7 +34,7 @@ package enum ModelSwitcherEntry: Identifiable, Sendable, Equatable {
 
 /// Capability glyphs the switcher renders per spec §5 rule 2 — "capability
 /// glyphs come from data, not marketing... a claim renders as a claim."
-package enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
+public enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
     /// ✦ — sourced from ``ModelInfo/supportsReasoning``.
     case reasoning
     /// ⚙ — sourced from ``ModelInfo/toolCallClaim``'s `toolsExpressible`.
@@ -43,7 +43,7 @@ package enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
     case vision
 
     /// The glyph character rendered in the switcher row.
-    package var glyph: String {
+    public var glyph: String {
         switch self {
         case .reasoning: return "✦"
         case .tools: return "⚙"
@@ -51,7 +51,7 @@ package enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
         }
     }
 
-    package var accessibilityLabel: String {
+    public var accessibilityLabel: String {
         switch self {
         case .reasoning: return "Supports reasoning"
         case .tools: return "Supports tool calling"
@@ -65,7 +65,7 @@ package enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
 /// endpoint rows carry `fitVerdict == nil` on ``ModelSwitcherRow`` — the
 /// caller renders the accent tint instead of a fit dot for those, per the
 /// spec's "accent for cloud" rule.
-package enum ModelSwitcherFitVerdict: Sendable, Equatable {
+public enum ModelSwitcherFitVerdict: Sendable, Equatable {
     /// Comfortably fits (or is system-managed, e.g. Apple Foundation Models).
     case good
     /// Borderline — fits only at a reduced size estimate.
@@ -81,32 +81,32 @@ package enum ModelSwitcherFitVerdict: Sendable, Equatable {
 ///
 /// Carries only presentation-layer data — no view code — so it is testable
 /// without standing up SwiftUI.
-package struct ModelSwitcherRow: Identifiable, Sendable {
-    package let entry: ModelSwitcherEntry
-    package let isSelected: Bool
+public struct ModelSwitcherRow: Identifiable, Sendable {
+    public let entry: ModelSwitcherEntry
+    public let isSelected: Bool
 
     /// `nil` for cloud endpoint rows — see ``ModelSwitcherFitVerdict``'s doc
     /// comment.
-    package let fitVerdict: ModelSwitcherFitVerdict?
-    package let capabilityGlyphs: [ModelSwitcherCapabilityGlyph]
+    public let fitVerdict: ModelSwitcherFitVerdict?
+    public let capabilityGlyphs: [ModelSwitcherCapabilityGlyph]
 
     /// `false` when the backend/provider for this entry has no registered
     /// factory in this build (spec §5 rule 3: "dimmed row + reason string" —
     /// a distinct failure mode from device-fit).
-    package let isAvailable: Bool
-    package let unavailableReason: String?
+    public let isAvailable: Bool
+    public let unavailableReason: String?
 
     /// Inline download progress for a not-yet-downloaded local model. `nil`
     /// for endpoints and for models that are already on disk.
-    package let downloadStatus: DownloadStatus?
+    public let downloadStatus: DownloadStatus?
 
     /// A faulted cloud endpoint's error message, when the caller supplies
     /// one (e.g. from a prior connection attempt). `nil` for local models.
-    package let endpointFault: String?
+    public let endpointFault: String?
 
-    package var id: String { entry.id }
+    public var id: String { entry.id }
 
-    package init(
+    public init(
         entry: ModelSwitcherEntry,
         isSelected: Bool,
         fitVerdict: ModelSwitcherFitVerdict?,
@@ -133,7 +133,7 @@ package struct ModelSwitcherRow: Identifiable, Sendable {
 /// ``APIEndpointRecord`` — the mutual-exclusion selection model already lives
 /// on `ModelRegistry`/`ChatViewModel` (#1312) and is untouched here; this
 /// type only decides what one combined list looks like.
-package enum ModelSwitcher {
+public enum ModelSwitcher {
 
     /// - Parameters:
     ///   - models: ``ModelRegistry/availableModels``.
@@ -150,7 +150,7 @@ package enum ModelSwitcher {
     ///     disk. Defaults to "no download in flight."
     ///   - endpointFault: A faulted endpoint's error message, when known.
     ///     Defaults to "no fault."
-    package static func rows(
+    public static func rows(
         models: [ModelInfo],
         endpoints: [APIEndpointRecord],
         selectedModelID: UUID?,

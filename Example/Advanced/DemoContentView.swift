@@ -110,6 +110,30 @@ struct DemoContentView: View {
                         params.defaultMessageView()
                     }
                 }
+                // Worked example of the quick model-switcher chip (Unit 2
+                // §L5, issue #2307) — `ChatView` owns only the chrome
+                // (toolbar chip, popover/sheet chrome); the content is
+                // supplied here because building the unified row list needs
+                // `ManifoldUIModelManagement` types `ManifoldUI` cannot
+                // import. `onSelect` mirrors the existing model/endpoint
+                // selection dispatch (`.onChange(of: viewModel.selectedModel)` /
+                // `.onChange(of: viewModel.selectedEndpoint)` below);
+                // `onFixEndpoint` routes to the same model management sheet
+                // the empty-state "Browse Models" button opens.
+                .chatModelSwitcher {
+                    ModelSwitcherView(
+                        rows: modelSwitcherRows,
+                        onSelect: { entry in
+                            switch entry {
+                            case .model(let model):
+                                viewModel.selectedModel = model
+                            case .endpoint(let endpoint):
+                                Task { await viewModel.loadCloudEndpoint(endpoint) }
+                            }
+                        },
+                        onFixEndpoint: { _ in isModelManagementPresented = true }
+                    )
+                }
                 .toolbar {
                     // .topBarLeading is iOS-only; macOS NavigationSplitView manages
                     // sidebar visibility via its own controls so this button is not
@@ -502,6 +526,23 @@ struct DemoContentView: View {
 
     private var usesInlineApprovalForUITesting: Bool {
         ProcessInfo.processInfo.environment["MANIFOLD_DEMO_INLINE_APPROVAL"] == "1"
+    }
+
+    /// The unified local-model + cloud-endpoint row list fed to the
+    /// `.chatModelSwitcher(_:)` chip. `compatibility` reads
+    /// `ModelRegistry.compatibility(for:)` (public, reflects live backend
+    /// registration) rather than standing up a separate capability-service
+    /// instance — the same source `ModelPicker`/`ModelManagementSheet`
+    /// already read.
+    private var modelSwitcherRows: [ModelSwitcherRow] {
+        ModelSwitcher.rows(
+            models: viewModel.availableModels,
+            endpoints: viewModel.availableEndpoints,
+            selectedModelID: viewModel.selectedModel?.id,
+            selectedEndpointID: viewModel.selectedEndpoint?.id,
+            physicalMemoryBytes: viewModel.physicalMemoryBytes,
+            compatibility: viewModel.modelRegistry.compatibility(for:)
+        )
     }
 
     private func policyLabel(_ policy: UIToolApprovalGate.Policy) -> String {

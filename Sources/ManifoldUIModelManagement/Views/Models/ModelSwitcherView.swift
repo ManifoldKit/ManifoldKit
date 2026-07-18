@@ -13,12 +13,12 @@ import ManifoldUI
 /// host wiring lives at the call site (`ChatView`'s toolbar), out of this
 /// tranche's owned paths — this type is the reusable content those call
 /// sites present.
-package struct ModelSwitcherView: View {
-    package let rows: [ModelSwitcherRow]
-    package let onSelect: (ModelSwitcherEntry) -> Void
-    package let onFixEndpoint: ((APIEndpointRecord) -> Void)?
+public struct ModelSwitcherView: View {
+    public let rows: [ModelSwitcherRow]
+    public let onSelect: (ModelSwitcherEntry) -> Void
+    public let onFixEndpoint: ((APIEndpointRecord) -> Void)?
 
-    package init(
+    public init(
         rows: [ModelSwitcherRow],
         onSelect: @escaping (ModelSwitcherEntry) -> Void,
         onFixEndpoint: ((APIEndpointRecord) -> Void)? = nil
@@ -28,7 +28,7 @@ package struct ModelSwitcherView: View {
         self.onFixEndpoint = onFixEndpoint
     }
 
-    package var body: some View {
+    public var body: some View {
         List(rows) { row in
             ModelSwitcherRowView(row: row, onFixEndpoint: onFixEndpoint)
                 .contentShape(Rectangle())
@@ -43,18 +43,18 @@ package struct ModelSwitcherView: View {
 
 /// One row: identity + one qualitative fitness signal + capability glyphs +
 /// live state, per spec §5's switcher rules.
-package struct ModelSwitcherRowView: View {
-    package let row: ModelSwitcherRow
-    package let onFixEndpoint: ((APIEndpointRecord) -> Void)?
+public struct ModelSwitcherRowView: View {
+    public let row: ModelSwitcherRow
+    public let onFixEndpoint: ((APIEndpointRecord) -> Void)?
 
     @Environment(\.manifoldTheme) private var theme
 
-    package init(row: ModelSwitcherRow, onFixEndpoint: ((APIEndpointRecord) -> Void)? = nil) {
+    public init(row: ModelSwitcherRow, onFixEndpoint: ((APIEndpointRecord) -> Void)? = nil) {
         self.row = row
         self.onFixEndpoint = onFixEndpoint
     }
 
-    package var body: some View {
+    public var body: some View {
         HStack(spacing: 10) {
             fitDot
 

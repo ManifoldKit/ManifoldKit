@@ -524,7 +524,7 @@ These are mistakes assistants make against ManifoldKit. Don't write any of them:
    extensible struct (since #1742), not an enum — a `switch` over it needs a
    `default:` arm.
 4. **Local model loading goes through
-   `ModelManagementViewModel.dispatchSelectedLoad()`** — there is no shortcut
+   `ChatViewModel.dispatchSelectedLoad()`** — there is no shortcut
    like `vm.loadModel(url:)` or `vm.loadModel(from:)`. Foundation Models are
    the exception: call `vm.loadFoundationModelIfAvailable()` directly.
 5. **There is no `vm.setTheme(_:)` / `ChatViewModel.theme` property.** Theming

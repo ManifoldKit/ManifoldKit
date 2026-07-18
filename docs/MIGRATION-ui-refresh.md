@@ -39,12 +39,29 @@
 | Message-part rendering | `chatMessagePartRenderer(_:)` compiled but was never consulted by `MessagePartsView` | **Live**: `MessagePartsView` gives a host renderer first refusal per part before falling through to its own per-kind dispatch | No restore needed — a host that never calls `.chatMessagePartRenderer(_:)` sees no change |
 | Reasoning-disclosure interactivity **(behavior, not just appearance)** | A user could expand/collapse the disclosure even while reasoning was still streaming | The 3-state `ThinkingBlockState` model (`streaming`/`settled(duration:)`/`expanded(duration:)`) has no "streaming+expanded" case, so both built-in styles render the streaming branch as non-interactive (a fixed-closed `DisclosureGroup`) | Not restorable via a style — this is a data-model constraint, not a rendering choice. If your app depended on mid-stream manual expansion, that affordance no longer exists in either style |
 | Pinned-message pin glyph | Top-trailing overlay badge on the bubble (#2007) | Relocated into the bubble's metadata row, alongside timestamp/token-count/status labels (spec §12) — same `isPinned` signal and glyph, different position | No restore — this is a `MessageBubbleView` layout change, not a style-protocol default |
+| Generated video rendering | Prompt text only (`MessagePartsView.swift`, pre-#2320) | AVKit `VideoPlayer` in the same clipping (spec §4A: "Video gets the AVKit player in the same clipping") — tap opens the *system* playback controls, no custom lightbox | No restore — this is a functional fix (a read path that had no player), not a style choice |
+| Missing generated media (image/video, binary deleted from disk) | A bare gray placeholder rect + `.secondary` caption | One shared `statusWarn`-voice placeholder (`theme.statusWarnSoft` fill, `theme.statusWarnColor` icon/caption) stating the cause, per spec §4A "never shows a broken frame" | No restore — token-driven, not style-protocol-driven; a custom `ManifoldTheme.statusWarn`/`statusWarnSoft` still recolors it |
 
 Every semantic *color* token (`statusOK`/`statusWarn`/`statusError`, `ink`/
 `ink2`/`ink3`, `surface`/`surface2`, the categorical/info tiers) is
 **unchanged** by the flip — the refresh restyles chrome and geometry, it does
 not re-hue anything. `ManifoldTheme.standard` and `.classic` share every
 semantic token; they differ only in `chatTheme` (the bubble tokens above).
+
+**A note on "byte-for-byte" for the classic composer**: `PlainComposerStyle`
+(the `.composerStyle(.plain)` restore) reproduces `ChatInputBar`'s pre-refresh
+layout visually, but not at the modifier-chain level — the field's
+`.padding(10)`/`.background(_:in: RoundedRectangle(cornerRadius: 12))` now
+apply *inside* `PlainComposerStyle`'s body rather than inline in
+`ChatInputBar` (L3's own PR body flagged this: "'Byte-for-byte' ... is
+accurate for rendered pixels but not for the modifier chain ... visually
+equivalent, not source-identical"). No characterization test pins the
+composer's rendered chrome specifically (unlike the bubble/tool-card/status
+anchors `DefaultAppearanceCharacterizationTests`/
+`ClassicAppearanceCharacterizationTests` do cover) — if you depended on the
+exact SwiftUI modifier order around the composer field (e.g. a
+`.background(_:)` you expected to compose a particular way with a
+downstream modifier), verify visually rather than assuming source identity.
 
 ## Restoring the classic look
 
@@ -84,22 +101,14 @@ convenience modifier.
 ## New opt-in surface: the model switcher chip
 
 Unit 2 §L3 built a unified quick model switcher (`ModelSwitcherView`,
-`ManifoldUIModelManagement`) that lists local models and cloud endpoints in
-one list. Unit 2 §L5 mounts its *chrome* into `ChatView`'s toolbar — a chip
-that presents the switcher content as a popover on macOS (anchored to the
-chip) or a sheet with `.presentationDetents` on iOS. The chip only appears if
-you supply content:
-
-> **Known gap, flagged for integration:** `ModelSwitcherView`, `ModelSwitcher`,
-> and `ModelSwitcherRow` are currently `package`-scoped (an L3 access-policy
-> choice — see the L3 PR body), which means an actual external consumer
-> app cannot construct switcher content yet, even though the seam below is
-> real and tested inside this package. Either those types need promoting to
-> `public` (they are consumer-facing per spec §5 — "the picker redesign's
-> real feature" — so this reads like an oversight, not a deliberate choice)
-> or a `public` wrapper needs to be added. This needs an orchestrator
-> decision before `.chatModelSwitcher(_:)` is genuinely usable outside this
-> repo; the snippet below is correct for the day that promotion lands.
+`ModelSwitcher`, `ModelSwitcherRow` — all `public` in `ManifoldUIModelManagement`)
+that lists local models and cloud endpoints in one list. Unit 2 §L5 mounts
+its *chrome* into `ChatView`'s toolbar — a chip that presents the switcher
+content as a popover on macOS (anchored to the chip) or a sheet with
+`.presentationDetents` on iOS. The chip only appears if you supply content.
+`ModelRegistry.compatibility(for:)` (public, already used by
+`ModelPicker`/`ModelManagementSheet`) is the compatibility source — no
+separate capability service needed:
 
 ```swift
 import ManifoldKit
@@ -110,14 +119,21 @@ ChatView(showModelManagement: $show)
         ModelSwitcherView(
             rows: ModelSwitcher.rows(
                 models: chatViewModel.availableModels,
-                endpoints: endpoints, // from your EndpointStore
+                endpoints: chatViewModel.availableEndpoints,
                 selectedModelID: chatViewModel.selectedModel?.id,
                 selectedEndpointID: chatViewModel.selectedEndpoint?.id,
                 physicalMemoryBytes: chatViewModel.physicalMemoryBytes,
-                compatibility: capabilityService.compatibility(for:)
+                compatibility: chatViewModel.modelRegistry.compatibility(for:)
             ),
-            onSelect: { entry in /* dispatch selection through your VM */ },
-            onFixEndpoint: { endpoint in showAPIConfiguration = true }
+            onSelect: { entry in
+                switch entry {
+                case .model(let model):
+                    chatViewModel.selectedModel = model
+                case .endpoint(let endpoint):
+                    Task { await chatViewModel.loadCloudEndpoint(endpoint) }
+                }
+            },
+            onFixEndpoint: { _ in showModelManagement = true }
         )
     }
 ```
@@ -126,7 +142,11 @@ ChatView(showModelManagement: $show)
 depend on `ManifoldUIModelManagement` (Principle 2). The seam mirrors
 `chatAPIConfiguration(_:)`'s closure-injection shape for exactly this reason.
 Omitting `.chatModelSwitcher(_:)` renders no chip at all — this is fully
-opt-in, no upgrade action required.
+opt-in, no upgrade action required. `Example/Advanced/DemoContentView.swift`
+wires this exact call site (with `.onChange(of: chatViewModel.selectedModel)`
+already dispatching the load, so `onSelect` only needs to set the selection);
+`ModelSwitcherMigrationGuardTests` (`Tests/ManifoldUIModelManagementTests`)
+is the compile-time guard keeping this snippet honest.
 
 ## Retired API
 

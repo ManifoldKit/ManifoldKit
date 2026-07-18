@@ -40,6 +40,30 @@ final class StyleWiringAuditTest: XCTestCase {
         return readsEnvironment && feedsResolvedWrapper
     }
 
+    /// The `chatMessagePartRenderer` sibling of ``isWired(source:environmentKeyPath:resolvedWrapperCall:)``
+    /// — the part-renderer seam is a plain closure, not a `MessageBubbleStyle`-
+    /// family protocol dispatched through a `Resolved*` wrapper, so it needs
+    /// its own three-part shape check: the source must (1) read the renderer
+    /// from `\.chatMessagePartRenderer`, (2) invoke it with a
+    /// `defaultView:` closure that falls through to the view's own per-kind
+    /// dispatch, and (3) actually call that per-kind dispatch when no
+    /// renderer is installed. Any one of these missing is a live-wiring
+    /// regression back to "installs an environment value nothing reads."
+    static func isPartRendererWired(source: String) -> Bool {
+        let readsEnvironment = source.contains("@Environment(\\.chatMessagePartRenderer)")
+        let feedsDefaultViewFallthrough = source.contains("partRenderer(")
+            && source.contains("defaultView: { AnyView(defaultPartView(for: part)) }")
+        // `defaultPartView(for: part)` must appear at least twice: once
+        // inside the `defaultView:` closure handed to the host renderer, and
+        // once more as the view's own no-renderer-installed fallthrough call
+        // — a source that only ever mentions it inside the closure (the
+        // no-renderer branch calls something else instead, e.g. `EmptyView()`)
+        // has the closure but never actually falls through when unset, and a
+        // plain single-substring check can't tell the two shapes apart.
+        let fallsThroughWhenUnset = source.components(separatedBy: "defaultPartView(for: part)").count - 1 >= 2
+        return readsEnvironment && feedsDefaultViewFallthrough && fallsThroughWhenUnset
+    }
+
     // MARK: - Audits
 
     func test_toolInvocationView_readsStyleEnvironmentAndFeedsResolvedWrapper() throws {
@@ -87,16 +111,8 @@ final class StyleWiringAuditTest: XCTestCase {
     func test_messagePartsView_readsPartRendererEnvironmentAndFallsThroughToDefault() throws {
         let source = try Self.sourceText(relativeToManifoldUI: "Views/Chat/MessagePartsView.swift")
         XCTAssertTrue(
-            source.contains("@Environment(\\.chatMessagePartRenderer)"),
-            "MessagePartsView must read the part renderer from the environment"
-        )
-        XCTAssertTrue(
-            source.contains("partRenderer(") && source.contains("defaultView: { AnyView(defaultPartView(for: part)) }"),
-            "MessagePartsView must hand the host renderer a defaultPartView() fallthrough onto its own per-kind dispatch"
-        )
-        XCTAssertTrue(
-            source.contains("defaultPartView(for: part)"),
-            "MessagePartsView must fall through to its own per-kind switch when no renderer is installed"
+            Self.isPartRendererWired(source: source),
+            "MessagePartsView must read the part renderer from the environment, hand it a defaultPartView() fallthrough, and fall through to its own per-kind dispatch when no renderer is installed"
         )
     }
 
@@ -161,6 +177,92 @@ final class StyleWiringAuditTest: XCTestCase {
             """
         XCTAssertTrue(
             Self.isWired(source: wiredSource, environmentKeyPath: "toolInvocationStyle", resolvedWrapperCall: "ResolvedToolInvocation"),
+            "The real wired shape must NOT be flagged — confirms the predicate isn't trivially always-false"
+        )
+    }
+
+    /// Sabotage coverage for ``isPartRendererWired(source:)``, mirroring
+    /// ``test_sabotage_unwiredHardcodedStyle_isFlaggedByIsWired``'s three
+    /// shapes (no environment read; reads but never forwards the
+    /// fallthrough; the real wired shape) for the part-renderer's distinct
+    /// three-part check.
+    func test_sabotage_unwiredPartRenderer_isFlaggedByIsPartRendererWired() {
+        let noEnvironmentReadSource = """
+            struct MessagePartsView: View {
+                private func partView(for part: MessagePart) -> some View {
+                    defaultPartView(for: part)
+                }
+                private func defaultPartView(for part: MessagePart) -> some View {
+                    switch part { default: EmptyView() }
+                }
+            }
+            """
+        XCTAssertFalse(
+            Self.isPartRendererWired(source: noEnvironmentReadSource),
+            "A view with no @Environment(\\.chatMessagePartRenderer) read must be flagged as unwired"
+        )
+
+        let readsButNeverForwardsSource = """
+            struct MessagePartsView: View {
+                @Environment(\\.chatMessagePartRenderer) private var partRenderer
+                private func partView(for part: MessagePart) -> some View {
+                    defaultPartView(for: part)
+                }
+                private func defaultPartView(for part: MessagePart) -> some View {
+                    switch part { default: EmptyView() }
+                }
+            }
+            """
+        XCTAssertFalse(
+            Self.isPartRendererWired(source: readsButNeverForwardsSource),
+            "Reading the renderer but never calling it with a defaultView fallthrough must also be flagged"
+        )
+
+        let noFallthroughDispatchSource = """
+            struct MessagePartsView: View {
+                @Environment(\\.chatMessagePartRenderer) private var partRenderer
+                private func partView(for part: MessagePart) -> some View {
+                    if let partRenderer {
+                        partRenderer(
+                            ChatMessagePartRenderParameters(
+                                part: part,
+                                role: role,
+                                isStreaming: isStreaming,
+                                defaultView: { AnyView(defaultPartView(for: part)) }
+                            )
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                }
+            }
+            """
+        XCTAssertFalse(
+            Self.isPartRendererWired(source: noFallthroughDispatchSource),
+            "A view whose no-renderer-installed branch never calls its own per-kind dispatch must be flagged"
+        )
+
+        let wiredSource = """
+            struct MessagePartsView: View {
+                @Environment(\\.chatMessagePartRenderer) private var partRenderer
+                private func partView(for part: MessagePart) -> some View {
+                    if let partRenderer {
+                        partRenderer(
+                            ChatMessagePartRenderParameters(
+                                part: part,
+                                role: role,
+                                isStreaming: isStreaming,
+                                defaultView: { AnyView(defaultPartView(for: part)) }
+                            )
+                        )
+                    } else {
+                        defaultPartView(for: part)
+                    }
+                }
+            }
+            """
+        XCTAssertTrue(
+            Self.isPartRendererWired(source: wiredSource),
             "The real wired shape must NOT be flagged — confirms the predicate isn't trivially always-false"
         )
     }
