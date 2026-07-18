@@ -21,6 +21,7 @@ MCPHostStdioTransport.incomingMessages Var
 MCPHostStdioTransport.init(maxMessageBytes:) Constructor
 MCPHostStdioTransport.makeAsyncIterator() Func
 MCPHostStdioTransport.send(_:) Func
+MCPHostStdioTransport.shutdown() Func
 MCPHostStdioTransport.unownedExecutor Var
 MCPHostTransport Protocol
 MCPHostTransport.incomingMessages Var
