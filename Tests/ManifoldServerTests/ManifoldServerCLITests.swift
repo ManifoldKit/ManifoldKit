@@ -1,8 +1,39 @@
 #if Server
 @testable import ManifoldServer
 import ArgumentParser
+import Foundation
 import ManifoldInference
 import XCTest
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
+
+/// Redirects the process's `stderr` file descriptor to a pipe for the
+/// duration of `body`, returning everything written to it. Used to make the
+/// `--allow-anonymous` boot-warning duplication (fixed in this PR) provable:
+/// `ValidationError`/`fputs` write straight to the real `stderr`, so there is
+/// no in-process hook to intercept short of a fd swap.
+private func captureStandardError(_ body: () throws -> Void) rethrows -> String {
+    fflush(stderr)
+    let originalStderrFD = dup(STDERR_FILENO)
+    let pipe = Pipe()
+    dup2(pipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
+
+    defer {
+        fflush(stderr)
+        dup2(originalStderrFD, STDERR_FILENO)
+        close(originalStderrFD)
+    }
+
+    try body()
+
+    fflush(stderr)
+    try? pipe.fileHandleForWriting.close()
+    let data = (try? pipe.fileHandleForReading.readToEnd()) ?? nil
+    return data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+}
 
 final class ManifoldServerCLITests: XCTestCase {
     func testParsesServerOptionsAndBuildsConfiguration() throws {
@@ -132,6 +163,31 @@ final class ManifoldServerCLITests: XCTestCase {
                 "got \(error)"
             )
         }
+    }
+
+    /// #2312-adjacent: ArgumentParser invokes `ServerCommandOptions.validate()`
+    /// once automatically while decoding the parsed `@OptionGroup` (see
+    /// `OptionGroup.init(from:)`), before `run()` is ever reached. A prior
+    /// version of `ManifoldServerCommand.run()` called `options.validate()`
+    /// again explicitly, which duplicated the --allow-anonymous security
+    /// warning on every boot. This exercises the full boot sequence (parse +
+    /// `buildApp()`, the non-network prefix of `run()`) and asserts the
+    /// warning fires exactly once.
+    func testAllowAnonymousWarningPrintsExactlyOnceDuringBoot() throws {
+        let output = try captureStandardError {
+            let parsed = try ManifoldServerCommand.parseAsRoot(["--allow-anonymous"])
+            guard let command = parsed as? ManifoldServerCommand else {
+                XCTFail("expected ManifoldServerCommand, got \(type(of: parsed))")
+                return
+            }
+            _ = try command.buildApp()
+        }
+
+        let marker = "warning: ManifoldServer started with --allow-anonymous"
+        let warningCount = output.components(separatedBy: marker).count - 1
+        // SABOTAGE: change `1` to `2` to verify this test catches a
+        // reintroduced double-validate() call.
+        XCTAssertEqual(warningCount, 1, "expected the --allow-anonymous warning exactly once, got \(warningCount) in stderr: \(output)")
     }
 
     func testLoopbackBindHostClassifier() {

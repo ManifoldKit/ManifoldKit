@@ -433,6 +433,35 @@ final class ManifoldServerSmokeTests: XCTestCase {
         }
     }
 
+    func testEmptyMessagesArrayReturns400InsteadOfGenerating() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let request = ChatCompletionRequest(model: "tiny", messages: [])
+            let body = try requestBody(request)
+
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                // SABOTAGE: change status assertion to .ok to verify this test catches regressions
+                XCTAssertEqual(response.status, .badRequest)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Empty-messages errors must be JSON"
+                )
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
+                )
+                XCTAssertEqual(envelope.error.type, "invalid_request_error")
+                XCTAssertEqual(envelope.error.param, "messages")
+                XCTAssertTrue(envelope.error.message.contains("at least one item"))
+            }
+        }
+    }
+
     func testUnsupportedStreamingResponseFormatReturnsJSONErrorBeforeSSE() async throws {
         let server = ServerApp(
             backendProvider: FakeBackendProvider(models: ["tiny"]),
