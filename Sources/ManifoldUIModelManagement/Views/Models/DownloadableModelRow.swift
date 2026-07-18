@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// A row displaying a downloadable model with compatibility badge and download controls.
 ///
@@ -25,6 +26,7 @@ package struct DownloadableModelRow: View {
 
     @Environment(ModelManagementViewModel.self) private var viewModel
     @Environment(FrameworkCapabilityService.self) private var capabilityService: FrameworkCapabilityService?
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     package init(
         model: DownloadableModel,
@@ -222,10 +224,10 @@ package struct DownloadableModelRow: View {
         }
     }
 
-    private func badgeColor(canRun: Bool, isBorderline: Bool) -> Color {
-        if canRun { return .green }
-        if isBorderline { return .yellow }
-        return .red
+    private func badgeColor(canRun: Bool, isBorderline: Bool) -> AnyShapeStyle {
+        if canRun { return theme.statusOK }
+        if isBorderline { return theme.statusWarn }
+        return theme.statusError
     }
 
     private var compatibilityLabel: String {
@@ -262,7 +264,7 @@ package struct DownloadableModelRow: View {
     private var downloadedBadge: some View {
         Label("Downloaded", systemImage: "checkmark.circle.fill")
             .font(.caption)
-            .foregroundStyle(.green)
+            .foregroundStyle(theme.statusOK)
             .labelStyle(.titleAndIcon)
     }
 

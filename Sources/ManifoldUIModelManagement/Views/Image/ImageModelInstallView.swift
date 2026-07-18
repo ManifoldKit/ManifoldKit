@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldInference
 import ManifoldHuggingFace
+import ManifoldUI
 
 /// First-run install UI for image-generation models.
 ///
@@ -25,6 +26,8 @@ public struct ImageModelInstallView: View {
     @State private var downloadStartTime: [String: Date] = [:]
     @State private var rowError: [String: String] = [:]
     @State private var installedModels: [String: ImageModelInfo] = [:]
+
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     /// Creates the install view.
     ///
@@ -111,7 +114,7 @@ public struct ImageModelInstallView: View {
             if let message = rowError[entry.id] {
                 Text(message)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.statusError)
                     .accessibilityIdentifier("image-model-install-error-\(entry.id)")
             }
         }
@@ -123,7 +126,7 @@ public struct ImageModelInstallView: View {
         if installedModels[entry.id] != nil {
             Label("Installed", systemImage: "checkmark.circle.fill")
                 .labelStyle(.titleAndIcon)
-                .foregroundStyle(.green)
+                .foregroundStyle(theme.statusOK)
                 .accessibilityIdentifier("image-model-installed-\(entry.id)")
         } else if installingID == entry.id {
             ProgressView()

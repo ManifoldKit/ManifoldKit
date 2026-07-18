@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// Compact download progress indicator with cancel button.
 ///
@@ -11,6 +12,7 @@ package struct DownloadProgressView: View {
     package let state: DownloadState
 
     @Environment(ModelManagementViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     package init(state: DownloadState) {
         self.state = state
@@ -82,7 +84,7 @@ package struct DownloadProgressView: View {
     private var completedView: some View {
         Label("Done", systemImage: "checkmark.circle.fill")
             .font(.caption)
-            .foregroundStyle(.green)
+            .foregroundStyle(theme.statusOK)
     }
 
     private func failedView(error: String) -> some View {
@@ -92,7 +94,7 @@ package struct DownloadProgressView: View {
                     .font(.caption)
             } icon: {
                 Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.statusError)
             }
             .help(error)
             .accessibilityLabel("Download failed: \(error)")
