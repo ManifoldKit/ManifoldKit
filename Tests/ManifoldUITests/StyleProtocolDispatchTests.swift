@@ -25,17 +25,15 @@ import ManifoldRuntime
 /// **Live wiring** (does the production view — `ThinkingBlockView` /
 /// `ToolInvocationView` / `SessionRowView` — actually read its style from
 /// `@Environment` and feed it into the matching `Resolved*` wrapper, rather
-/// than a hardcoded style or the old pre-refresh rendering) is proven by the
-/// `test_*_sourceWiring_*` audit tests below, which grep the view's own
-/// source for the `@Environment(\.xStyle)` property **and** a
-/// `ResolvedX(style: style, ...)` construction. This is a source-shape check,
-/// not a runtime one — it cannot verify SwiftUI actually *propagates* the
-/// right value through the environment at render time, only that the view's
-/// code path is structurally wired to ask for it. Each audit was verified to
-/// catch a real regression (a sabotage run reverting the `style` read to a
-/// hardcoded `.plain`/`.default` style, or removing the `Resolved*` call,
-/// failed the corresponding audit; reverted before committing — no sabotage
-/// code ships here).
+/// than a hardcoded style or the old pre-refresh rendering) is proven by
+/// `StyleWiringAuditTest`'s audits (a separate file, so
+/// `AuditSabotageCoverageAuditTest` — which discovers audits by filename —
+/// actually sees them and enforces their `test_sabotage_...` coverage). Those
+/// grep the view's own source for the `@Environment(\.xStyle)` property
+/// **and** a `ResolvedX(style: style, ...)` construction. This is a
+/// source-shape check, not a runtime one — it cannot verify SwiftUI actually
+/// *propagates* the right value through the environment at render time, only
+/// that the view's code path is structurally wired to ask for it.
 ///
 /// **What is NOT proven**: that SwiftUI's environment propagation itself
 /// correctly delivers a `.toolInvocationStyle(_:)`-installed value down to
@@ -52,62 +50,10 @@ import ManifoldRuntime
 /// itself with a custom `ToolInvocationStyle` installed via `.environment()`
 /// — `.inspect()` after hosting still rendered the default `PlainToolInvocationStyle`
 /// output, not the custom style's. If a future `ViewInspector` upgrade fixes
-/// this, the source-audit tests below should be replaced with real
+/// this, `StyleWiringAuditTest`'s audits should be replaced with real
 /// environment-injected `ViewHosting` liveness tests.
 @MainActor
 final class StyleProtocolDispatchTests: XCTestCase {
-
-    // MARK: - Source-wiring audits (see class doc comment: "Live wiring")
-
-    private static func sourceText(relativeToManifoldUI relativePath: String, filePath: StaticString = #filePath) throws -> String {
-        var dir = URL(fileURLWithPath: "\(filePath)").deletingLastPathComponent()
-        while dir.path != "/" {
-            let candidate = dir.appendingPathComponent("Sources/ManifoldUI").appendingPathComponent(relativePath)
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return try String(contentsOf: candidate, encoding: .utf8)
-            }
-            dir.deleteLastPathComponent()
-        }
-        throw NSError(domain: "StyleProtocolDispatchTests", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "Could not locate Sources/ManifoldUI/\(relativePath) from #filePath"
-        ])
-    }
-
-    func test_toolInvocationView_sourceWiring_readsStyleEnvironmentAndFeedsResolvedWrapper() throws {
-        let source = try Self.sourceText(relativeToManifoldUI: "Views/Chat/ToolInvocationView.swift")
-        XCTAssertTrue(
-            source.contains("@Environment(\\.toolInvocationStyle)"),
-            "ToolInvocationView must read its style from the environment, not hardcode one"
-        )
-        XCTAssertTrue(
-            source.contains("ResolvedToolInvocation(") && source.contains("style: style,"),
-            "ToolInvocationView must feed the resolved environment style into ResolvedToolInvocation"
-        )
-    }
-
-    func test_thinkingBlockView_sourceWiring_readsStyleEnvironmentAndFeedsResolvedWrapper() throws {
-        let source = try Self.sourceText(relativeToManifoldUI: "Views/Chat/ThinkingBlockView.swift")
-        XCTAssertTrue(
-            source.contains("@Environment(\\.thinkingBlockStyle)"),
-            "ThinkingBlockView must read its style from the environment, not hardcode one"
-        )
-        XCTAssertTrue(
-            source.contains("ResolvedThinkingBlock(") && source.contains("style: style,"),
-            "ThinkingBlockView must feed the resolved environment style into ResolvedThinkingBlock"
-        )
-    }
-
-    func test_sessionRowView_sourceWiring_readsStyleEnvironmentAndFeedsResolvedWrapper() throws {
-        let source = try Self.sourceText(relativeToManifoldUI: "Views/Sidebar/SessionRowView.swift")
-        XCTAssertTrue(
-            source.contains("@Environment(\\.sessionRowStyle)"),
-            "SessionRowView must read its style from the environment, not hardcode one"
-        )
-        XCTAssertTrue(
-            source.contains("ResolvedSessionRow(") && source.contains("style: style,"),
-            "SessionRowView must feed the resolved environment style into ResolvedSessionRow"
-        )
-    }
 
     /// `ViewInspector`'s `.inspect().find(...)` evaluates a view's `body`
     /// more than once while resolving the search (confirmed empirically: a

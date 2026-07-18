@@ -21,13 +21,14 @@ public enum ComposerPhase: Sendable, Equatable {
 /// The inputs handed to a ``ComposerStyle`` when it draws the composer's
 /// chrome (capsule/bar background, shape, padding).
 ///
-/// Mirrors ``MessageBubbleConfiguration``'s split exactly: the style owns
-/// only the *container* around ``content``, the same way a bubble style owns
-/// the background/shape/padding around a bubble's inner content, not the
-/// bubble's badge/timestamp/streaming cursor. For the composer, ``content``
-/// is the text-entry field only — the "+" menu, send/stop button, and
-/// draft-attachment strip are siblings the composer redesign (Unit 2 §L3)
-/// assembles around the styled field, not something this seam type-erases.
+/// Narrower than ``MessageBubbleConfiguration``'s split, not an exact mirror
+/// of it: a bubble style's `content` is the message's *entire* rich inner
+/// content (parts, agent badge, timestamp, streaming cursor) with only the
+/// container chrome pulled out, whereas ``content`` here is the text-entry
+/// field alone — the "+" menu, send/stop button, and draft-attachment strip
+/// are siblings the composer redesign (Unit 2 §L3) assembles around the
+/// styled field, not folded into this seam's type-erased content the way a
+/// bubble's badge/timestamp are folded into `MessageBubbleConfiguration.content`.
 public struct ComposerConfiguration {
 
     /// The text-entry field, type-erased so a style does not need to know
