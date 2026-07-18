@@ -10,11 +10,12 @@ import SwiftUI
 /// yet" first-launch moment, which is recoverable and welcoming rather than
 /// an error state.
 ///
-/// Wiring note: this view is intentionally host-agnostic (two closures, no
-/// `@Environment` reads) so it composes into `ChatNoModelLoadedContent`
-/// (`ChatShellViews.swift`, owned by the L1/chrome tranche) without this
-/// tranche needing to touch that file directly.
-public struct FirstRunFunnelView: View {
+/// Wired into ``ChatView`` via `ChatNoModelLoadedContent`
+/// (`ChatShellViews.swift`): rendered instead of the plain welcome
+/// placeholder when `isFirstRun` is true and no models are configured yet.
+/// `package` — an internal chrome component, not a customization seam a
+/// consumer app constructs directly.
+package struct FirstRunFunnelView: View {
 
     @Environment(\.manifoldTheme) private var theme
 
@@ -22,7 +23,7 @@ public struct FirstRunFunnelView: View {
     let onBrowseModels: () -> Void
     let onConfigureEndpoint: () -> Void
 
-    public init(
+    package init(
         appName: String,
         onBrowseModels: @escaping () -> Void,
         onConfigureEndpoint: @escaping () -> Void
@@ -32,7 +33,7 @@ public struct FirstRunFunnelView: View {
         self.onConfigureEndpoint = onConfigureEndpoint
     }
 
-    public var body: some View {
+    package var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "sparkles")
                 .font(.system(size: 56))

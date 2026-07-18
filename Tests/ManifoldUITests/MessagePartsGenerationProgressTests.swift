@@ -1,5 +1,7 @@
 @preconcurrency import XCTest
-import Foundation
+import SwiftUI
+import ViewInspector
+import ManifoldInference
 @testable import ManifoldUI
 
 /// Unit tests for ``MessagePartsView/activeProgress(in:messageID:)`` — the
@@ -90,5 +92,30 @@ final class MessagePartsGenerationProgressTests: XCTestCase {
 
         XCTAssertNotNil(MessagePartsView.activeProgress(in: [id: inFlight], messageID: id))
         XCTAssertNil(MessagePartsView.activeProgress(in: [id: settled], messageID: id))
+    }
+
+    // MARK: - Regression: environment-less render of a non-empty message
+
+    /// Regression for a real crash this feature introduced and the review
+    /// loop caught: `MessagePartsView` used to check generation progress
+    /// unconditionally in `body`, which forced `@Environment(ChatViewModel.self)`
+    /// to resolve even for a plain text-only message. That broke every
+    /// environment-less caller — `MessageBubbleViewLogicTests` constructs
+    /// `MessageBubbleView` (and transitively this view) with no
+    /// `ChatViewModel` in scope, and a search that must exhaustively fail
+    /// (`XCTAssertThrowsError(try view.inspect().find(...))`) forces full
+    /// tree traversal, hitting the crash. Gating the progress check on
+    /// `parts.isEmpty` fixed it; this test pins the fix by mirroring the
+    /// exact failure shape: a non-empty message, no `ChatViewModel`
+    /// environment, and an exhaustive "must not find" search.
+    func test_nonEmptyMessage_rendersWithoutChatViewModelEnvironment() throws {
+        let view = MessagePartsView(parts: [.text("Hello")], role: .assistant)
+
+        // This must complete (throwing "not found" is fine and expected) —
+        // it must NOT crash the process by touching an environment value
+        // that was never injected.
+        XCTAssertThrowsError(
+            try view.inspect().find(viewWithAccessibilityIdentifier: "nonexistent-identifier")
+        )
     }
 }

@@ -39,6 +39,14 @@ import Observation
 /// (`ChatViewModel`/app code own presenting sheets) that sits outside this
 /// tranche's owned UI paths; this view is the destination that CTA should
 /// land on.
+///
+/// **`public`, not `package`** — this is a whole settings *screen* a host
+/// app presents itself (typically as a sheet from its own Settings surface),
+/// the same shape as the already-public ``APIConfigurationView``. Unlike
+/// this tranche's other new views (which became internal `ChatView` chrome
+/// once wired), there is no in-package call site that presents this sheet —
+/// a consumer app is the only possible caller, so `package` access would
+/// make the type unusable by definition.
 public struct ConnectedServicesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.manifoldTheme) private var theme

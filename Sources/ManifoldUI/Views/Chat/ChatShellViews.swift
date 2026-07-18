@@ -2,15 +2,70 @@ import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
 
+// MARK: - Error scope gating (§6A "failures render at their scope")
+
+extension ChatError {
+    /// `true` for `.generation`-kind errors — a turn's generation failed,
+    /// which renders as an in-transcript `TurnFailureCardView`
+    /// (`ChatHistoryView`) rather than the session-level
+    /// `ChatErrorRecoveryBanner`. Every other kind (persistence/
+    /// configuration/memoryPressure) stays session-level.
+    ///
+    /// Extracted as a pure property (rather than inlining `kind == .generation`
+    /// at both call sites) so the scope split is unit-testable without
+    /// rendering either view — rendering `ChatHistoryView`/
+    /// `ChatErrorRecoveryBanner` requires a live `@Environment(ChatViewModel.self)`,
+    /// which ViewInspector's `.environment(_:)` does not actually satisfy for
+    /// Observation-based `@Environment(Type.self)` reads in this setup (see
+    /// `MessagePartsView`'s `activeProgress` doc comment for the identical
+    /// constraint). Keeping the two call sites' `if` conditions written as
+    /// `error.rendersAsTurnLevelFailure` / `!error.rendersAsTurnLevelFailure`
+    /// also makes it structurally impossible for them to drift out of being
+    /// exact opposites.
+    var rendersAsTurnLevelFailure: Bool {
+        kind == .generation
+    }
+}
+
 // MARK: - Chat Shell Body Pieces
 
 struct ChatComposerSection: View {
     let accessoryBuilder: (() -> AnyView)?
 
+    /// `true` when the host enabled voice input
+    /// (`ManifoldConfiguration.Features.showAudioInput`) but the mic control
+    /// is silently withheld because `NSMicrophoneUsageDescription` is
+    /// missing from the host's `Info.plist` — the exact inverse of
+    /// `ComposerPermissionGate.shouldShowAudioInput`. Composer-scoped, not a
+    /// turn/session error, so it renders via `ComposerFaultBannerView`
+    /// (`docs/UI-REFRESH-2026.md` §6A) rather than `ChatErrorRecoveryBanner`.
+    /// There is no in-app fix for a missing `Info.plist` key, hence no
+    /// `onFix`/`fixLabel` — this is a host-configuration notice, surfaced so
+    /// a developer testing the app understands why voice input never
+    /// appears, not a user-actionable recovery.
+    ///
+    /// Pure/parameterized (rather than a computed property reading
+    /// `ManifoldConfiguration.shared` and `Bundle.main` directly) so the
+    /// gating logic is unit-testable without mutating global configuration
+    /// state — see `ChatComposerSectionTests`.
+    static func voiceInputSilentlyWithheld(
+        features: ManifoldConfiguration.Features,
+        bundle: Bundle = .main
+    ) -> Bool {
+        features.showAudioInput && !ComposerPermissionGate.shouldShowAudioInput(features: features, bundle: bundle)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let accessoryBuilder {
                 accessoryBuilder()
+            }
+            if Self.voiceInputSilentlyWithheld(features: ManifoldConfiguration.shared.features) {
+                ComposerFaultBannerView(
+                    message: "Voice input is enabled but unavailable — add NSMicrophoneUsageDescription to Info.plist."
+                )
+                .padding(.horizontal)
+                .padding(.top, 4)
             }
             ChatInputBar()
         }
@@ -69,11 +124,24 @@ struct ChatLoadingContent: View {
 struct ChatNoModelLoadedContent: View {
     let appName: String
     let hasAvailableModels: Bool
+    let isFirstRun: Bool
     @Binding var showModelManagement: Bool
+    @Binding var showAPIConfiguration: Bool
 
     var body: some View {
         if hasAvailableModels {
             modelSelectionPrompt
+        } else if isFirstRun {
+            // First run is a funnel: primary → model management, secondary →
+            // endpoint setup (`docs/UI-REFRESH-2026.md` §6A). A later visit
+            // with no models configured (models deleted, fresh install
+            // restored from backup, etc.) falls through to the plainer
+            // `welcomePrompt` below instead of re-running the funnel copy.
+            FirstRunFunnelView(
+                appName: appName,
+                onBrowseModels: { showModelManagement = true },
+                onConfigureEndpoint: { showAPIConfiguration = true }
+            )
         } else {
             welcomePrompt
         }
@@ -152,7 +220,13 @@ struct ChatErrorRecoveryBanner<APIConfig: View>: View {
     }
 
     var body: some View {
-        if let error = viewModel.activeError {
+        // `.generation`-kind errors (a turn's generation failed) render at
+        // their own scope instead — an in-transcript `TurnFailureCardView`
+        // owned by `ChatHistoryView`, not this session-level banner
+        // (`docs/UI-REFRESH-2026.md` §6A: "failures render at their scope").
+        // Every other kind (persistence/configuration/memoryPressure) is
+        // session-level and keeps the banner.
+        if let error = viewModel.activeError, !error.rendersAsTurnLevelFailure {
             ErrorBannerView(
                 error: error,
                 onDismiss: { viewModel.activeError = nil },

@@ -12,6 +12,15 @@ import ManifoldRuntime
 /// not the whole-app bootstrap sequence) and from a bootstrap *failure*,
 /// which owns the whole screen but is a host-supplied error view, not this
 /// type — this view only ever represents the in-progress path.
+///
+/// **`public`, not `package`** — deliberately, unlike this tranche's other
+/// new state screens. `ManifoldBootstrap.build(configuration:)` runs before
+/// `ChatView` (or anything else in `ManifoldUI`) exists, so this view has no
+/// internal call site to wire into; its only possible consumer is host-app
+/// launch-scene code (the bootstrap recipe's `ProgressView("Starting…")`
+/// placeholder in `AGENTS.md`), which sits outside the package boundary.
+/// `package` access would make this type unconstructible by the one caller
+/// it exists for.
 public struct BootstrapLoadingView: View {
 
     @Environment(\.manifoldTheme) private var theme

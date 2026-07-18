@@ -95,26 +95,43 @@ struct MessagePartsView: View {
         // progress card renders ahead of (in practice, instead of) the empty
         // `ForEach` below. It disappears on its own once the terminal event
         // populates `parts` and this view re-renders.
-        if let progress = activeImageGenerationProgress {
-            let vm = viewModel
-            GeneratedMediaProgressCardView(
-                prompt: progress.prompt,
-                progress: .image(step: progress.step, totalSteps: progress.totalSteps, previewImage: progress.previewImage),
-                onCancel: {
-                    guard let messageID else { return }
-                    Task { [weak vm] in await vm?.cancelImageGeneration(messageID: messageID) }
-                }
-            )
-        } else if let progress = activeVideoGenerationProgress {
-            let vm = viewModel
-            GeneratedMediaProgressCardView(
-                prompt: progress.prompt,
-                progress: .video(fractionComplete: progress.fractionComplete),
-                onCancel: {
-                    guard let messageID else { return }
-                    Task { [weak vm] in await vm?.cancelVideoGeneration(messageID: messageID) }
-                }
-            )
+        //
+        // Gated on `parts.isEmpty`: this is not just an optimization — it's
+        // load-bearing. `viewModel.imageGenerationProgress`/
+        // `videoGenerationProgress` reads force `@Environment(ChatViewModel.self)`
+        // to resolve. Every other `viewModel`-touching computed property on
+        // this view (`isThinkingStreaming`, `pendingApprovalIDs`,
+        // `resolvedResultIDs`) is reached only from the `.thinking`/`.toolCall`
+        // branches of `partView(for:)`, so a plain text-only message never
+        // touches the environment at all. Checking generation progress
+        // unconditionally broke that invariant and crashed every
+        // environment-less test that renders a non-empty, non-tool message
+        // (e.g. `MessageBubbleViewLogicTests` constructs `MessageBubbleView`
+        // — and transitively this view — with no `ChatViewModel` in scope).
+        // Gating on `parts.isEmpty` restores the invariant and matches the
+        // only case a progress entry can actually apply to.
+        if parts.isEmpty {
+            if let progress = activeImageGenerationProgress {
+                let vm = viewModel
+                GeneratedMediaProgressCardView(
+                    prompt: progress.prompt,
+                    progress: .image(step: progress.step, totalSteps: progress.totalSteps, previewImage: progress.previewImage),
+                    onCancel: {
+                        guard let messageID else { return }
+                        Task { [weak vm] in await vm?.cancelImageGeneration(messageID: messageID) }
+                    }
+                )
+            } else if let progress = activeVideoGenerationProgress {
+                let vm = viewModel
+                GeneratedMediaProgressCardView(
+                    prompt: progress.prompt,
+                    progress: .video(fractionComplete: progress.fractionComplete),
+                    onCancel: {
+                        guard let messageID else { return }
+                        Task { [weak vm] in await vm?.cancelVideoGeneration(messageID: messageID) }
+                    }
+                )
+            }
         }
 
         // Identity must survive non-terminal insertions. The streaming

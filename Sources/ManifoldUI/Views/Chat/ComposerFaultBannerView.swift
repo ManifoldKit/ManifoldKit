@@ -11,7 +11,13 @@ import SwiftUI
 /// attachment the composer could not stage. It renders directly above the
 /// input field, one tap from its own fix, and never blocks typing/sending
 /// text (only the affected affordance is unavailable).
-public struct ComposerFaultBannerView: View {
+/// Wired into ``ChatComposerSection`` (`ChatShellViews.swift`): rendered
+/// above `ChatInputBar` when voice input is enabled
+/// (`ManifoldConfiguration.Features.showAudioInput`) but silently withheld
+/// because `NSMicrophoneUsageDescription` is missing — the inverse of
+/// `ComposerPermissionGate.shouldShowAudioInput`. `package` — an internal
+/// chrome component, not a customization seam.
+package struct ComposerFaultBannerView: View {
 
     @Environment(\.manifoldTheme) private var theme
 
@@ -19,7 +25,7 @@ public struct ComposerFaultBannerView: View {
     let fixLabel: String?
     let onFix: (() -> Void)?
 
-    public init(
+    package init(
         message: String,
         fixLabel: String? = nil,
         onFix: (() -> Void)? = nil
@@ -29,7 +35,7 @@ public struct ComposerFaultBannerView: View {
         self.onFix = onFix
     }
 
-    public var body: some View {
+    package var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.circle")
                 .foregroundStyle(theme.statusWarnColor)

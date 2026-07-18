@@ -11,12 +11,11 @@ import SwiftUI
 /// message and the failure should read at the message's own position in the
 /// transcript rather than escalating to a page-level banner.
 ///
-/// Host wiring: render this in place of (or alongside) the failed assistant
-/// message row when ``ChatViewModel/lastTurnState`` is `.failed` for that
-/// row — the row-selection logic lives in `ChatHistoryView`
-/// (owned by the L1 tranche), so this tranche ships the card itself and
-/// leaves that wiring as an integration step.
-public struct TurnFailureCardView: View {
+/// Wired into ``ChatHistoryView``: rendered after the transcript when
+/// `viewModel.activeError?.kind == .generation` — `ChatErrorRecoveryBanner`
+/// explicitly excludes that kind so it never double-renders as a banner too.
+/// `package` — an internal chrome component, not a customization seam.
+package struct TurnFailureCardView: View {
 
     @Environment(\.manifoldTheme) private var theme
 
@@ -24,7 +23,7 @@ public struct TurnFailureCardView: View {
     let onRetry: (() -> Void)?
     let onDetails: (() -> Void)?
 
-    public init(
+    package init(
         message: String,
         onRetry: (() -> Void)? = nil,
         onDetails: (() -> Void)? = nil
@@ -34,7 +33,7 @@ public struct TurnFailureCardView: View {
         self.onDetails = onDetails
     }
 
-    public var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")

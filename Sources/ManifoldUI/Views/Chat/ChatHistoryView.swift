@@ -61,7 +61,7 @@ struct ChatHistoryView: View {
                         }
 
                         if viewModel.messages.isEmpty && !viewModel.isGenerating {
-                            ChatHistoryEmptyPlaceholder(customContentBuilder: emptyStateBuilder)
+                            ChatHistoryEmptyPlaceholder(customContentBuilder: emptyStateBuilder, viewModel: viewModel)
                         }
 
                         // why: iterate `messages` directly (ChatMessage is
@@ -78,6 +78,22 @@ struct ChatHistoryView: View {
                         )
                         ForEach(viewModel.messages) { message in
                             messageRow(message: message, handoffChip: handoffBoundaries[message.id])
+                        }
+
+                        // Turn-level failures render at their own scope, in
+                        // the transcript right after the failed turn — not
+                        // as the session-level banner (`ChatErrorRecoveryBanner`
+                        // explicitly excludes `.generation`-kind errors for
+                        // this reason; see `docs/UI-REFRESH-2026.md` §6A).
+                        if let error = viewModel.activeError, error.rendersAsTurnLevelFailure {
+                            TurnFailureCardView(
+                                message: error.message,
+                                onRetry: {
+                                    viewModel.activeError = nil
+                                    Task { await viewModel.regenerateLastResponse() }
+                                }
+                            )
+                            .padding(.horizontal)
                         }
 
                         Color.clear
@@ -191,14 +207,35 @@ struct ChatHistoryEmptyPlaceholder: View {
     /// that happen during body evaluation, wherever on the call stack they occur).
     let customContentBuilder: (() -> AnyView)?
 
+    /// View model used to drive the default (no host override) empty state's
+    /// suggestion chips — staging a tapped suggestion into `inputText` and
+    /// sending it immediately, the same contract a host's own
+    /// `.chatEmptyState(_:)` override would typically wire up itself.
+    let viewModel: ChatViewModel
+
+    /// Generic, backend-agnostic starter prompts for the default empty
+    /// state (`docs/UI-REFRESH-2026.md` §6A — "Empty session shows
+    /// suggestion chips via the existing `chatEmptyState` slot"). Hosts with
+    /// domain-specific suggestions should override via `.chatEmptyState(_:)`
+    /// rather than relying on this default set.
+    static let defaultSuggestions = [
+        "Summarize a document",
+        "Draft a reply",
+        "Explain a concept",
+    ]
+
     var body: some View {
         Group {
             if let customContentBuilder {
                 customContentBuilder()
             } else {
-                Text("Send a message to start chatting.")
-                    .foregroundStyle(.tertiary)
-                    .font(.body)
+                EmptySessionSuggestionsView(
+                    suggestions: Self.defaultSuggestions,
+                    onSelectSuggestion: { suggestion in
+                        viewModel.inputText = suggestion
+                        Task { await viewModel.sendMessage() }
+                    }
+                )
             }
         }
         .frame(maxWidth: .infinity)

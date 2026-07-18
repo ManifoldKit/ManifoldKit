@@ -4,23 +4,31 @@ import SwiftUI
 /// (`docs/UI-REFRESH-2026.md` §6A — "Empty session shows suggestion chips
 /// via the existing `chatEmptyState` slot").
 ///
-/// This is the content a host passes to ``ChatView/chatEmptyState(_:)`` —
-/// it does not replace or extend that seam itself (`ChatView.swift` is
-/// owned by the L1 tranche). Deliberately "dumb" (no `@Environment` reads
+/// `ChatHistoryView`'s default empty-state placeholder (no host
+/// `.chatEmptyState(_:)` override) now renders this view with a small
+/// generic suggestion set. Deliberately "dumb" (no `@Environment` reads
 /// beyond the theme, mirroring ``ToolInvocationView``/``HandoffChipView``):
 /// tapping a chip invokes ``onSelectSuggestion`` with the suggestion text,
-/// leaving the host to decide what "select a suggestion" means (stage into
-/// ``ChatViewModel/inputText`` and send immediately, or something else). A
-/// typical host wiring:
+/// leaving the caller to decide what "select a suggestion" means (stage into
+/// ``ChatViewModel/inputText`` and send immediately, or something else).
+///
+/// **`public`, not `package`** — a host with its own domain-specific
+/// suggestion copy is expected to override the default via
+/// `.chatEmptyState(_:)` while reusing this view's chip layout/styling
+/// rather than rebuilding it, e.g.:
 ///
 /// ```swift
 /// .chatEmptyState {
-///     EmptySessionSuggestionsView(suggestions: suggestions) { suggestion in
+///     EmptySessionSuggestionsView(suggestions: myDomainSuggestions) { suggestion in
 ///         viewModel.inputText = suggestion
 ///         Task { await viewModel.sendMessage() }
 ///     }
 /// }
 /// ```
+///
+/// That reuse only works across the package boundary if a consumer app can
+/// actually construct the type, so unlike this tranche's other new state
+/// screens it stays public by design, not by oversight.
 public struct EmptySessionSuggestionsView: View {
 
     @Environment(\.manifoldTheme) private var theme
