@@ -48,8 +48,8 @@ final class ContextEstimationIntegrationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func createSession(title: String = "Context Test") async -> ManifoldSchemaV9.ChatSession {
-        let session = ManifoldSchemaV9.ChatSession(title: title)
+    private func createSession(title: String = "Context Test") async -> PersistedChatSession {
+        let session = PersistedChatSession(title: title)
         context.insert(session)
         try? context.save()
         await vm.switchToSession(session.toRecord())
@@ -255,7 +255,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
         let service = InferenceService(backend: tokenizingMock, name: "VendorMock")
         let vendorVM = ChatViewModel(inferenceService: service)
         vendorVM.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        let session = ManifoldSchemaV9.ChatSession(title: "Vendor Test")
+        let session = PersistedChatSession(title: "Vendor Test")
         context.insert(session)
         try? context.save()
         await vendorVM.switchToSession(session.toRecord())

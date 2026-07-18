@@ -46,8 +46,9 @@ final class SchemaMigrationTests: XCTestCase {
     func test_publicTypealiases_matchCurrentSchemaModelTypes() {
         // ChatMessage is redefined at V9 to carry agentID.
         XCTAssertEqual(ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self), ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self))
-        // ChatSession is redefined at V9 to carry activeAgentID / activeSkillName / agents.
-        XCTAssertEqual(ObjectIdentifier(ManifoldSchemaV9.ChatSession.self), ObjectIdentifier(ManifoldSchemaV9.ChatSession.self))
+        // ChatSession is NOT redefined again at V13 — branch-origin provenance lives in
+        // the additive ManifoldSchemaV13.BranchOrigin side table instead (see its doc comment).
+        XCTAssertEqual(ObjectIdentifier(PersistedChatSession.self), ObjectIdentifier(ManifoldSchemaV9.ChatSession.self))
         // PersistedAgent (formerly the back-compat `Agent` alias) is introduced at V9.
         XCTAssertEqual(ObjectIdentifier(PersistedAgent.self), ObjectIdentifier(ManifoldSchemaV9.Agent.self))
         // Other model types remain at V4.
@@ -79,8 +80,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNotNil(container)
     }
 
-    func test_containerFactory_currentSchema_isV12() {
-        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV12.self))
+    func test_containerFactory_currentSchema_isV13() {
+        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV13.self))
     }
 
     func test_containerFactory_reopensPersistedStore() throws {
@@ -93,7 +94,7 @@ final class SchemaMigrationTests: XCTestCase {
             let container = try ModelContainerFactory.makeContainer(configurations: [config])
             let context = ModelContext(container)
 
-            let session = ManifoldSchemaV9.ChatSession(title: "Persisted session")
+            let session = PersistedChatSession(title: "Persisted session")
             context.insert(session)
             try context.save()
             originalSessionID = session.id
@@ -102,7 +103,7 @@ final class SchemaMigrationTests: XCTestCase {
         let reopenConfig = ModelConfiguration(url: storeURL)
         let reopenedContainer = try ModelContainerFactory.makeContainer(configurations: [reopenConfig])
         let reopenedContext = ModelContext(reopenedContainer)
-        let fetchedSessions = try reopenedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        let fetchedSessions = try reopenedContext.fetch(FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == originalSessionID }
         ))
 
@@ -188,7 +189,7 @@ final class SchemaMigrationTests: XCTestCase {
             configurations: [ModelConfiguration(url: storeURL)]
         )
         let migratedContext = ModelContext(migratedContainer)
-        let fetched = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        let fetched = try migratedContext.fetch(FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(fetched.count, 1)
@@ -257,7 +258,7 @@ final class SchemaMigrationTests: XCTestCase {
         )
         let migratedContext = ModelContext(migratedContainer)
 
-        let fetchedSessions = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        let fetchedSessions = try migratedContext.fetch(FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(fetchedSessions.count, 1)
@@ -281,6 +282,59 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(migratedMessage.content, "pre-V9 history")
         XCTAssertNil(migratedMessage.agentID,
                      "V9 lightweight migration must default ManifoldSchemaV9.ChatMessage.agentID to nil for rows written under V8")
+    }
+
+    // MARK: - V12 -> V13 migration (branch-origin pointer, #2307)
+
+    /// Boots a store at V12, writes a plain session (no branch-origin data —
+    /// V12 has no such concept), then re-opens it through the full migration
+    /// plan. The migrated session row must survive untouched, and the new
+    /// `BranchOrigin` table must be present (queryable) and empty — this is
+    /// the lightweight-migration proof for the branch-origin schema change:
+    /// an old store loads cleanly with the new additive table, no data
+    /// motion, no existing column changes.
+    ///
+    /// Sabotage-evidence: removing ``ManifoldSchemaV13/BranchOrigin`` from
+    /// `ManifoldSchemaV13.models` makes the `BranchOrigin` fetch below throw
+    /// (unknown entity). Replacing the V12→V13 stage with a no-op halts
+    /// `makeContainer` with a schema-mismatch error before the asserts run.
+    func test_migrationPlan_v12SessionMigratesToV13WithEmptyBranchOriginTable() throws {
+        let storeDirectory = try makeStoreDirectory(named: "ManifoldSchemaV12ToV13")
+        let storeURL = storeDirectory.appendingPathComponent("Manifold.sqlite")
+        let sessionID: UUID
+
+        do {
+            let config = ModelConfiguration(url: storeURL)
+            let container = try ModelContainer(
+                for: Schema(versionedSchema: ManifoldSchemaV12.self),
+                configurations: [config]
+            )
+            let context = ModelContext(container)
+
+            let session = ManifoldSchemaV9.ChatSession(title: "Pre-V13 session")
+            session.systemPrompt = "carry forward"
+            context.insert(session)
+
+            try context.save()
+            sessionID = session.id
+        }
+
+        let migratedContainer = try ModelContainerFactory.makeContainer(
+            configurations: [ModelConfiguration(url: storeURL)]
+        )
+        let migratedContext = ModelContext(migratedContainer)
+
+        let fetchedSessions = try migratedContext.fetch(FetchDescriptor<PersistedChatSession>(
+            predicate: #Predicate { $0.id == sessionID }
+        ))
+        XCTAssertEqual(fetchedSessions.count, 1)
+        let migratedSession = try XCTUnwrap(fetchedSessions.first)
+        XCTAssertEqual(migratedSession.title, "Pre-V13 session")
+        XCTAssertEqual(migratedSession.systemPrompt, "carry forward")
+
+        let branchOrigins = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>())
+        XCTAssertTrue(branchOrigins.isEmpty,
+                     "BranchOrigin table must be empty after migrating a V12 store (no branch-origin rows were seeded)")
     }
 
     func test_schemaOwnedModelAndPublicAlias_areInterchangeable() throws {
@@ -328,13 +382,13 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(fetched0.completionTokens, 42)
     }
 
-    // MARK: - Codable round-trip (ManifoldSchemaV9.ChatSession)
+    // MARK: - Codable round-trip (PersistedChatSession)
 
     func test_chatSession_codableRoundTrip() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        let session = ManifoldSchemaV9.ChatSession(title: "Migration test")
+        let session = PersistedChatSession(title: "Migration test")
         session.systemPrompt = "You are helpful."
         session.temperature = 0.8
 
@@ -342,7 +396,7 @@ final class SchemaMigrationTests: XCTestCase {
         try context.save()
 
         let sessionID = session.id
-        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        let descriptor = FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         )
         let fetched = try context.fetch(descriptor)

@@ -70,8 +70,8 @@ final class ConcurrencyTests: XCTestCase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
-        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+    private func fetchSessions() -> [PersistedChatSession] {
+        let descriptor = FetchDescriptor<PersistedChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return (try? context.fetch(descriptor)) ?? []

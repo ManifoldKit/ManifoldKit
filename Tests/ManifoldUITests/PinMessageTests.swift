@@ -30,7 +30,7 @@ final class PinMessageTests: XCTestCase {
 
     @discardableResult
     private func createSession(title: String = "Pin Test") async -> ManifoldInference.ChatSession {
-        let session = ManifoldSchemaV9.ChatSession(title: title)
+        let session = PersistedChatSession(title: title)
         context.insert(session)
         try? context.save()
         let record = session.toRecord()
@@ -114,7 +114,7 @@ final class PinMessageTests: XCTestCase {
         await vm.pinMessage(id: idA)
         XCTAssertTrue(vm.isMessagePinned(id: idA), "Precondition: msgA should be pinned in session A")
 
-        let sessionB = ManifoldSchemaV9.ChatSession(title: "Session B")
+        let sessionB = PersistedChatSession(title: "Session B")
         context.insert(sessionB)
         try? context.save()
         await vm.switchToSession(sessionB.toRecord())

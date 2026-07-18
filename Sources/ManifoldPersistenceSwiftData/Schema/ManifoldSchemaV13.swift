@@ -1,29 +1,43 @@
 import Foundation
-import ManifoldInference
 import ManifoldRuntime
 @preconcurrency import SwiftData
 
 /// ManifoldKit SwiftData schema version 13.
 ///
-/// Adds branch-origin provenance to `ChatSession` (#2307 branch-origin chip):
+/// Adds durable storage for session branch-origin provenance (#2307
+/// branch-origin chip): one new `@Model` type, keyed by plain `UUID` rather
+/// than a `@Relationship` onto `ChatSession`.
 ///
-/// - ``ChatSession/branchOriginSessionID`` — the source session's id when this
-///   session was created by ``SessionBranchCoordinator/branch(sourceSessionID:branchMessageID:newSessionID:newSessionTitle:)``;
-///   `nil` for sessions that were not branched.
-/// - ``ChatSession/branchOriginTitleSnapshot`` — the source session's title
-///   captured at branch time. The read path prefers resolving the source's
-///   *current* title live via `branchOriginSessionID` (so a rename of the
-///   source is reflected); this snapshot is the fallback used only when the
-///   source session no longer exists (deleted), so "Branched from ‹title›"
-///   can still render instead of silently disappearing.
+/// - ``BranchOrigin`` — one row per branched session, storing the branched
+///   session's own id (`sessionID`), the source session's id
+///   (`originSessionID`), and a snapshot of the source session's title at
+///   branch time (`originTitleSnapshot`).
 ///
-/// V13 redefines `ChatSession` in-namespace so SwiftData picks up the two new
-/// columns. The migration is lightweight: both fields default to `nil`, no
-/// existing column changes, no data motion.
+/// **Why a side table, not a redefined `ChatSession`:** an earlier version of
+/// this change redefined `ChatSession` in its own V13 namespace (the same
+/// in-namespace-redefinition pattern V9 used for `activeAgentID` /
+/// `activeSkillName` / `agents`). That approach hit a genuine SwiftData
+/// migration-graph bug: opening a store seeded at an old pinned schema
+/// (`ModelContainer(for: Schema(versionedSchema: ManifoldSchemaV3/V7/V8.self))`,
+/// the exact pattern `SchemaMigrationTests` uses to test every prior stage)
+/// through `ModelContainerFactory.makeContainer`'s full migration plan threw
+/// `NSInvalidArgumentException "Duplicate version checksums detected."` —
+/// reproducible even for the unrelated V3→V4 and V7→V8 stages, and absent on
+/// `main` (confirmed by running the identical test against an unmodified
+/// checkout). Redefining `ChatSession` a *second* time (V9 was the first)
+/// appears to be what SwiftData's schema-checksum disambiguation can't
+/// handle once a chain both re-declares the same-named entity more than once
+/// *and* is opened starting from several versions further back. A side
+/// table sidesteps the whole class of failure and matches the precedent V10
+/// (`ConversationRunModel`/`RunStepModel`), V11 (`ToolCallConformanceRecord`),
+/// and V12 (`Persona`) already set: every version after V9 only ever *adds*
+/// a model, never redefines `ChatSession` again.
 ///
-/// All other model types (ChatMessage, Agent, sampler preset, API endpoint,
-/// benchmark cache, RAG document, usage record, conversation run, run step,
-/// tool-call conformance, persona) are carried forward from V12 unchanged.
+/// The new type is purely additive — no existing column changes, no data
+/// motion. Every other model type (ChatSession, ChatMessage, Agent, sampler
+/// preset, API endpoint, benchmark cache, RAG document, usage record,
+/// conversation run, run step, tool-call conformance, persona) is carried
+/// forward from V12 unchanged.
 public enum ManifoldSchemaV13: VersionedSchema {
     public static let versionIdentifier = Schema.Version(13, 0, 0)
 
@@ -31,6 +45,7 @@ public enum ManifoldSchemaV13: VersionedSchema {
         [
             // Carried forward verbatim from V12 — V13 does not redefine these.
             ManifoldSchemaV9.ChatMessage.self,
+            ManifoldSchemaV9.ChatSession.self,
             ManifoldSchemaV9.Agent.self,
             ManifoldSchemaV4.SamplerPreset.self,
             ManifoldSchemaV4.APIEndpoint.self,
@@ -42,112 +57,40 @@ public enum ManifoldSchemaV13: VersionedSchema {
             ManifoldSchemaV11.ToolCallConformanceRecord.self,
             ManifoldSchemaV12.Persona.self,
             // New in V13.
-            ChatSession.self,
+            BranchOrigin.self,
         ]
     }
 
-    // MARK: - ChatSession (V13 — adds branchOriginSessionID, branchOriginTitleSnapshot)
+    // MARK: - BranchOrigin (V13 — new model)
 
+    /// SwiftData row recording a session's branch-origin provenance.
+    ///
+    /// Not a `@Relationship` onto `ChatSession` — the source session can be
+    /// deleted independently of any session branched from it, and a
+    /// `@Relationship` here would either cascade-delete branches on source
+    /// deletion (destroying history) or require `.nullify` bookkeeping this
+    /// plain-UUID side table already handles by simply going stale (the read
+    /// path falls back to ``originTitleSnapshot`` once ``originSessionID``
+    /// no longer resolves to a live session).
     @Model
-    public final class ChatSession {
-        public var id: UUID
-        public var title: String
-        public var createdAt: Date
-        public var updatedAt: Date
+    public final class BranchOrigin {
+        /// The branched (child) session's id. One row per branched session,
+        /// so this is the natural lookup key from the read path.
+        @Attribute(.unique) public var sessionID: UUID
 
-        /// Per-session system prompt.
-        public var systemPrompt: String
-
-        /// The UUID of the selected ModelInfo for this session.
-        public var selectedModelID: UUID?
-
-        /// The UUID of the selected APIEndpoint for this session.
-        public var selectedEndpointID: UUID?
-
-        // Per-session generation overrides (nil = use global default)
-        public var temperature: Float?
-        public var topP: Float?
-        public var repeatPenalty: Float?
-
-        /// Stored as PromptTemplate.rawValue; nil means auto-detect or global default.
-        public var promptTemplateRawValue: String?
-
-        /// User override for context window size; nil uses model default.
-        public var contextSizeOverride: Int?
-
-        /// Comma-separated UUID strings of pinned messages in this session.
-        public var pinnedMessageIDsRaw: String?
-
-        /// True if this session is pinned to the top of the session list.
-        public var isPinned: Bool = false
-
-        /// Timestamp recorded when ``isPinned`` flipped to `true`.
-        public var pinnedAt: Date?
-
-        /// Non-optional sort key used by the persistence adapter to express
-        /// pinned-first ordering in a single SortDescriptor. Maintained by
-        /// the adapter; callers should not write directly.
-        public var pinnedSortKey: Date = Date.distantPast
-
-        /// UUID of the agent currently authoring this session's next turn.
-        /// Nil when the session has no multi-agent registry. The executor
-        /// re-derives the active system prompt per turn from this ID.
-        public var activeAgentID: UUID?
-
-        /// Sticky scope name while a skill is mid-invocation. Cleared when
-        /// the skill returns. While non-nil the advertised tool list is
-        /// intersected with the skill's `allowed-tools`.
-        public var activeSkillName: String?
-
-        /// Per-session agent registry. Cascade delete is correct here:
-        /// agents only have meaning inside their owning session.
-        @Relationship(deleteRule: .cascade) public var agents: [ManifoldSchemaV9.Agent] = []
-
-        /// The source session's id when this session was created via
-        /// ``SessionBranchCoordinator``. `nil` for sessions that were not
-        /// branched. Intentionally NOT a `@Relationship` — the source session
-        /// can be deleted independently of any session branched from it, and
-        /// a `@Relationship` here would either cascade-delete branches on
-        /// source deletion (destroying history) or require `.nullify`
-        /// bookkeeping this column already handles by simply going stale.
-        public var branchOriginSessionID: UUID?
+        /// The source session's id at branch time.
+        public var originSessionID: UUID
 
         /// Snapshot of the source session's title, captured at branch time.
-        /// Read-path fallback only: callers should resolve the source's
-        /// current title live via `branchOriginSessionID` first, and fall
-        /// back to this snapshot when the source no longer exists. `nil` for
-        /// sessions that were not branched.
-        public var branchOriginTitleSnapshot: String?
+        /// Read-path fallback: prefer resolving the source's *current* title
+        /// live via `originSessionID`; fall back to this snapshot once the
+        /// source session has been deleted.
+        public var originTitleSnapshot: String?
 
-        public init(title: String = "New Chat") {
-            self.id = UUID()
-            self.title = title
-            self.createdAt = Date()
-            self.updatedAt = Date()
-            self.systemPrompt = ""
-            self.isPinned = false
-        }
-
-        /// The set of pinned message IDs for this session.
-        public var pinnedMessageIDs: Set<UUID> {
-            get {
-                guard let raw = pinnedMessageIDsRaw else { return [] }
-                return Set(raw.split(separator: ",").compactMap { UUID(uuidString: String($0)) })
-            }
-            set {
-                pinnedMessageIDsRaw = newValue.isEmpty ? nil : newValue.map(\.uuidString).joined(separator: ",")
-            }
-        }
-
-        /// Convenience to get/set the prompt template as a `PromptTemplate` enum.
-        public var promptTemplate: PromptTemplate? {
-            get {
-                guard let raw = promptTemplateRawValue else { return nil }
-                return PromptTemplate(rawValue: raw)
-            }
-            set {
-                promptTemplateRawValue = newValue?.rawValue
-            }
+        public init(sessionID: UUID, originSessionID: UUID, originTitleSnapshot: String?) {
+            self.sessionID = sessionID
+            self.originSessionID = originSessionID
+            self.originTitleSnapshot = originTitleSnapshot
         }
     }
 }

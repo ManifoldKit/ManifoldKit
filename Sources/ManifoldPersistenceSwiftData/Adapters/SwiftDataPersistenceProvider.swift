@@ -62,10 +62,9 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
-        session.branchOriginSessionID = record.branchOriginSessionID
-        session.branchOriginTitleSnapshot = record.branchOriginTitleSnapshot
         modelContext.insert(session)
         reconcileAgents(on: session, with: record.agents)
+        reconcileBranchOrigin(sessionID: record.id, with: record)
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -90,9 +89,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
-        session.branchOriginSessionID = record.branchOriginSessionID
-        session.branchOriginTitleSnapshot = record.branchOriginTitleSnapshot
         reconcileAgents(on: session, with: record.agents)
+        reconcileBranchOrigin(sessionID: record.id, with: record)
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -138,6 +136,36 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
                 allowedToolNames: agent.allowedToolNames
             )
             session.agents.append(row)
+        }
+    }
+
+    /// Reconciles the session's `BranchOrigin` side row (SchemaV13, #2307)
+    /// against `record.branchOriginSessionID` / `.branchOriginTitleSnapshot`
+    /// so a write→read round-trip is lossless. Upserts a row when the record
+    /// carries branch-origin data; deletes any existing row when it doesn't
+    /// (a session is branched at creation time and this never flips back to
+    /// nil in practice, but round-tripping a cleared value is still correct).
+    private func reconcileBranchOrigin(sessionID: UUID, with record: ManifoldInference.ChatSession) {
+        let existing = try? modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>(
+            predicate: #Predicate { $0.sessionID == sessionID }
+        )).first
+
+        guard let originSessionID = record.branchOriginSessionID else {
+            if let existing {
+                modelContext.delete(existing)
+            }
+            return
+        }
+
+        if let existing {
+            existing.originSessionID = originSessionID
+            existing.originTitleSnapshot = record.branchOriginTitleSnapshot
+        } else {
+            modelContext.insert(ManifoldSchemaV13.BranchOrigin(
+                sessionID: sessionID,
+                originSessionID: originSessionID,
+                originTitleSnapshot: record.branchOriginTitleSnapshot
+            ))
         }
     }
 
@@ -223,7 +251,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
                 SortDescriptor(\.updatedAt, order: .reverse),
             ]
         )
-        return try modelContext.fetch(descriptor).map { $0.toRecord() }
+        return try applyBranchOrigins(to: modelContext.fetch(descriptor).map { $0.toRecord() })
     }
 
     public func fetchSessions(offset: Int, limit: Int) async throws -> [ManifoldInference.ChatSession] {
@@ -238,7 +266,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // point on a 1000-session sidebar.
         descriptor.fetchOffset = max(0, offset)
         descriptor.fetchLimit = max(0, limit)
-        return try modelContext.fetch(descriptor).map { $0.toRecord() }
+        return try applyBranchOrigins(to: modelContext.fetch(descriptor).map { $0.toRecord() })
     }
 
     /// Predicate pushdown for the per-turn single-session read. Overrides the
@@ -249,7 +277,43 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// `@Attribute(.unique)`); adding a unique index is a future V10 migration,
     /// not required for this read's correctness.
     public func fetchSession(id: UUID) async throws -> ManifoldInference.ChatSession? {
-        try fetchSwiftDataSession(id: id)?.toRecord()
+        guard var record = try fetchSwiftDataSession(id: id)?.toRecord() else { return nil }
+        if let origin = try modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>(
+            predicate: #Predicate { $0.sessionID == id }
+        )).first {
+            record.branchOriginSessionID = origin.originSessionID
+            record.branchOriginTitleSnapshot = origin.originTitleSnapshot
+        }
+        return record
+    }
+
+    /// Merges ``ManifoldSchemaV13/BranchOrigin`` side-table rows onto the
+    /// storage-agnostic records returned by a session fetch. `PersistedChatSession`
+    /// carries no branch-origin columns itself (see `ChatSession.swift`'s doc
+    /// comment for why) — this is the read-path counterpart to
+    /// ``reconcileBranchOrigin(sessionID:with:)``.
+    ///
+    /// One extra fetch for the whole batch (not one per session): branch
+    /// origin is a niche per-session lookup, so amortising it across the page
+    /// keeps ``fetchSessions()``/``fetchSessions(offset:limit:)`` at two store
+    /// round-trips total rather than N+1.
+    private func applyBranchOrigins(
+        to records: [ManifoldInference.ChatSession]
+    ) throws -> [ManifoldInference.ChatSession] {
+        guard !records.isEmpty else { return records }
+        let ids = Set(records.map(\.id))
+        let origins = try modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>(
+            predicate: #Predicate { ids.contains($0.sessionID) }
+        ))
+        guard !origins.isEmpty else { return records }
+        let originsByID = Dictionary(uniqueKeysWithValues: origins.map { ($0.sessionID, $0) })
+        return records.map { record in
+            guard let origin = originsByID[record.id] else { return record }
+            var updated = record
+            updated.branchOriginSessionID = origin.originSessionID
+            updated.branchOriginTitleSnapshot = origin.originTitleSnapshot
+            return updated
+        }
     }
 
     // MARK: - Search

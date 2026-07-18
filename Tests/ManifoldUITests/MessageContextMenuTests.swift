@@ -70,8 +70,8 @@ final class MessageContextMenuTests: XCTestCase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
-        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>()
+    private func fetchSessions() -> [PersistedChatSession] {
+        let descriptor = FetchDescriptor<PersistedChatSession>()
         return (try? context.fetch(descriptor)) ?? []
     }
 
