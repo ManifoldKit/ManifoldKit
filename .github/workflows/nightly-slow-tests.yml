@@ -261,11 +261,10 @@ jobs:
         # ("missing required module 'llama'") — left with the C2 companion
         # split, so whole-package mode may work again; revisit in C4.
         #
-        # Every `.library(...)` product — loaded from
-        # scripts/api-digester-targets.txt (shared with ci.yml) so the two
-        # digester invocations cannot drift. Edit the .txt when a product is
-        # added/removed/renamed. Executables and ManifoldMacrosPlugin aren't
-        # `.library()` products and stay off the list.
+        # Shared list from scripts/api-digester-targets.txt (with ci.yml) so
+        # the two digester invocations cannot drift. Edit the .txt when a
+        # product is added/removed/renamed. ManifoldServerKit intentionally
+        # excluded (trait-gated; see the .txt header).
         id: api-check
         run: |
           set -euo pipefail

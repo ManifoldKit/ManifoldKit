@@ -897,8 +897,11 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     // MARK: - Rule 6 helpers
 
     /// Backend-family modules that UI/Runtime/Inference/Persistence must never
-    /// import. Includes retired shims (`ManifoldCloud`) and companion-package
-    /// names (`ManifoldMLX`/`ManifoldLlama`) so a re-vendoring cannot slip past.
+    /// import. Includes companion-package names (`ManifoldMLX`/`ManifoldLlama`)
+    /// so a re-vendoring cannot slip past. Retired shims (`ManifoldCloud` /
+    /// `ManifoldBackends`) are enforced on the Package.swift side of rule 6
+    /// (manifest target boundaries), not here — those modules no longer have
+    /// source trees to import from.
     static let backendFamilyModules: [String] = [
         "ManifoldCloudCore",
         "ManifoldOllama",
@@ -910,9 +913,11 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     ]
 
     /// `URLSession` / Keychain symbols forbidden inside ManifoldRuntime source
-    /// (comment-stripped). Word-boundary style so `MockURLSession` is not a hit.
+    /// (comment-stripped). `URLSession`/`SecItemCopyMatching` use word
+    /// boundaries so `MockURLSession` is not a hit; `kSecClass` is a prefix
+    /// match (real code uses `kSecClassGenericPassword` etc.).
     static let runtimeForbiddenAPIPattern =
-        #"(?<![A-Za-z0-9_])(URLSession|SecItemCopyMatching|kSecClass)(?![A-Za-z0-9_])"#
+        #"(?<![A-Za-z0-9_])(URLSession(?![A-Za-z0-9_])|SecItemCopyMatching(?![A-Za-z0-9_])|kSecClass)"#
 
     /// True when `trimmed` is exactly `import <module>` or `import <module> …`.
     static func importLine(_ trimmed: String, namesModule module: String) -> Bool {

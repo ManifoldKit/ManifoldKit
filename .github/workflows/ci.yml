@@ -263,8 +263,13 @@ jobs:
             # step below). Intentionally omit Package.swift / Package.resolved:
             # a dep-graph change can't introduce an API break in the Swift
             # source; the nightly full-run will catch it regardless.
+            # The digester target list / loader are included so an edit that
+            # drops products from the shared list re-runs the digester gate
+            # (path-filter self-validation) rather than only the `test` job.
             api-any:
               - 'Sources/**'
+              - 'scripts/api-digester-targets.sh'
+              - 'scripts/api-digester-targets.txt'
 
       # Tier 0 selective testing (issue #1588).
       #
@@ -883,10 +888,10 @@ jobs:
         timeout-minutes: 25
         run: |
           set -euo pipefail
-          # Fixed, always-complete list — every .library() product, loaded from
-          # scripts/api-digester-targets.txt so ci.yml and nightly-slow-tests.yml
-          # cannot drift. Edit the .txt (not this step) when a product is
-          # added/removed/renamed.
+          # Shared list from scripts/api-digester-targets.txt so ci.yml and
+          # nightly-slow-tests.yml cannot drift. Edit the .txt (not this step)
+          # when a product is added/removed/renamed. ManifoldServerKit is
+          # intentionally excluded (trait-gated; see the .txt header).
           TARGETS=()
           while IFS= read -r flag; do
             TARGETS+=("$flag")
