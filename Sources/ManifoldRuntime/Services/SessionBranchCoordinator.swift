@@ -61,18 +61,23 @@ package struct SessionBranchCoordinator: Sendable {
         }
         let slice = Array(sourceHistory[...branchIndex])
 
-        // Derive the new session's title from the source session when the
-        // caller didn't supply one. A title-fetch failure must not abort
-        // the branch — the session insert below still runs with the
-        // fallback — but the failure is logged so it isn't silently lost.
-        let resolvedTitle: String
-        if let supplied = newSessionTitle {
-            resolvedTitle = supplied
-        } else {
-            resolvedTitle = await persistence.sessionTitle(sessionID: sourceSessionID, fallback: "New Chat")
-        }
+        // Fetch the source session's current title once — used both as the
+        // new session's own title when the caller didn't supply one, and
+        // (regardless of what the new session ends up titled) as the
+        // branch-origin snapshot recorded below. A title-fetch failure must
+        // not abort the branch — `sessionTitle` already falls back and logs
+        // internally — so this never throws.
+        let sourceTitle = await persistence.sessionTitle(sessionID: sourceSessionID, fallback: "New Chat")
+        let resolvedTitle = newSessionTitle ?? sourceTitle
 
-        let newSession = ChatSession(id: newSessionID, title: resolvedTitle)
+        var newSession = ChatSession(id: newSessionID, title: resolvedTitle)
+        // Branch-origin provenance (#2307 branch-origin chip): the read path
+        // prefers resolving `branchOriginSessionID`'s *current* title live
+        // (a rename of the source is reflected); `branchOriginTitleSnapshot`
+        // is the fallback rendered only once the source session has been
+        // deleted, so "Branched from ‹title›" still has something to show.
+        newSession.branchOriginSessionID = sourceSessionID
+        newSession.branchOriginTitleSnapshot = sourceTitle
         do {
             try await persistence.insertSession(newSession)
         } catch {

@@ -25,7 +25,7 @@ import ManifoldInference
 public enum ModelContainerFactory {
     /// The current schema version.
     public static var currentSchema: any VersionedSchema.Type {
-        ManifoldSchemaV12.self
+        ManifoldSchemaV13.self
     }
 
     /// Returns an on-disk `ModelContainer` configured with the current schema.

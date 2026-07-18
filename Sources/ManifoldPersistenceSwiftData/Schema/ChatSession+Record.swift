@@ -45,7 +45,9 @@ extension PersistedChatSession {
             pinnedAt: pinnedAt,
             agents: agentRecords,
             activeAgentID: activeAgentID,
-            activeSkillName: activeSkillName
+            activeSkillName: activeSkillName,
+            branchOriginSessionID: branchOriginSessionID,
+            branchOriginTitleSnapshot: branchOriginTitleSnapshot
         )
     }
 }

@@ -62,6 +62,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
+        session.branchOriginSessionID = record.branchOriginSessionID
+        session.branchOriginTitleSnapshot = record.branchOriginTitleSnapshot
         modelContext.insert(session)
         reconcileAgents(on: session, with: record.agents)
         try modelContext.save()
@@ -88,6 +90,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
+        session.branchOriginSessionID = record.branchOriginSessionID
+        session.branchOriginTitleSnapshot = record.branchOriginTitleSnapshot
         reconcileAgents(on: session, with: record.agents)
         try modelContext.save()
         await fireSessionHooks(record)

@@ -464,6 +464,36 @@ package final class SessionListService: Sendable {
         await emitFirstPage()
     }
 
+    // MARK: - Branch origin
+
+    /// Resolves the display title for `session`'s branch-origin chip
+    /// ("Branched from ‹title›"), or `nil` when `session` was not branched.
+    ///
+    /// Prefers the source session's *current* title, fetched live via
+    /// `session.branchOriginSessionID` — so a rename of the source is
+    /// reflected in every branch's chip. Falls back to
+    /// `session.branchOriginTitleSnapshot` (captured at branch time) only
+    /// when the source session has since been deleted, so the chip still has
+    /// a title to render instead of silently disappearing.
+    ///
+    /// This is the seam `ManifoldUI`'s `BranchOriginChipView` — which takes a
+    /// plain `String?` title — resolves through; the view itself stays
+    /// storage-agnostic.
+    @MainActor
+    package func branchOriginTitle(for session: ChatSession) async -> String? {
+        guard let originID = session.branchOriginSessionID else { return nil }
+        do {
+            if let liveTitle = try await persistence.fetchSession(id: originID)?.title {
+                return liveTitle
+            }
+        } catch {
+            Log.persistence.warning(
+                "SessionListService.branchOriginTitle: live lookup failed for \(originID): \(error.localizedDescription); using snapshot"
+            )
+        }
+        return session.branchOriginTitleSnapshot
+    }
+
     // MARK: - Internal helpers
 
     /// Loads page one and emits `.sessionsLoaded` (or a failure event).
