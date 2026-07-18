@@ -2,15 +2,22 @@ import SwiftUI
 
 /// A collapsible disclosure group displaying model reasoning content.
 ///
-/// While `isThinkingStreaming` is true the view renders a collapsed disclosure
-/// group whose label is `"Thinking… <inline preview>"` — the latest few lines
-/// of partial reasoning text streamed in via the thinking batcher in
-/// ``GenerationQueue``. Expanding the group reveals the full
-/// accumulated text. Once `isThinkingStreaming` flips to false the disclosure
-/// group switches to its finalized "Reasoning" label, still collapsed by
-/// default. This is intentionally decoupled from the overall message
-/// streaming flag — completed reasoning should become expandable even while
-/// visible tokens are still arriving.
+/// While `isThinkingStreaming` is true the view renders a **non-interactive**
+/// disclosure group whose label is `"Thinking… <inline preview>"` — the
+/// latest few lines of partial reasoning text streamed in via the thinking
+/// batcher in ``GenerationQueue``. This is a deliberate behavior change from
+/// this view's pre-refresh form: previously the same disclosure group was
+/// user-expandable even while streaming (a single `@State isExpanded` drove
+/// both branches), letting completed reasoning become readable while visible
+/// tokens were still arriving. The three-state ``ThinkingBlockState`` model
+/// (spec `docs/UI-REFRESH-2026.md` §4A) has no "streaming+expanded" case, so
+/// the streaming branch is now fixed-closed until `isThinkingStreaming` flips
+/// to `false` — see ``PlainThinkingBlockStyle``'s streaming-branch comment.
+/// Once `isThinkingStreaming` flips to `false` the disclosure group switches
+/// to its finalized "Reasoning" label and becomes interactive again, still
+/// collapsed by default. `isThinkingStreaming` is intentionally decoupled
+/// from the overall message streaming flag — completed reasoning becomes
+/// expandable even while visible tokens are still arriving.
 struct ThinkingBlockView: View {
     let text: String
     /// True only while the reasoning block itself is still open (i.e. no
