@@ -920,6 +920,12 @@ let package = Package(
                 // TestChatViewModelFactory.swift uses makeInMemoryContainer(),
                 // moved here in the 4.4 TestSupport split.
                 "ManifoldPersistenceTestSupport",
+                // ConnectedServicesConsentTests (#2320) imports ViewInspector;
+                // plain `swift test` masked the missing declaration (the
+                // module already sits in the shared build tree via
+                // ManifoldUITests), but CI's compile-pruned selective mode
+                // resolves strictly and fails without it.
+                .product(name: "ViewInspector", package: "ViewInspector"),
             ]
         ),
         .testTarget(
