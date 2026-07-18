@@ -36,6 +36,12 @@ struct ChatHistoryView: View {
     /// live `ScrollView`.
     @State private var isScrolledAwayFromBottom = false
 
+    /// Resolved display title for the active session's branch-origin chip
+    /// (`docs/UI-REFRESH-2026.md` §12). Populated by ``resolveBranchOriginTitle``
+    /// below; stays `nil` — suppressing ``BranchOriginChipView`` — for a
+    /// non-branched session or while resolution is in flight.
+    @State private var branchOriginTitle: String?
+
     /// The control only offers to jump back to the live edge while a turn is
     /// actively streaming and the user has scrolled away from it — surfacing
     /// it while idle and already at the bottom would just be visual noise.
@@ -48,6 +54,10 @@ struct ChatHistoryView: View {
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
                     LazyVStack(spacing: 4) {
+                        if ChatHistoryBranchOriginResolver.isBranch(viewModel.activeSession) {
+                            BranchOriginChipView(originSessionTitle: branchOriginTitle)
+                        }
+
                         if viewModel.hasOlderMessages {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
@@ -176,6 +186,15 @@ struct ChatHistoryView: View {
             ScrollToBottomButton.appearanceAnimation(reduceMotion: reduceMotion),
             value: showsScrollToBottomControl
         )
+        .task(id: viewModel.activeSessionID) {
+            guard let session = viewModel.activeSession,
+                  ChatHistoryBranchOriginResolver.isBranch(session)
+            else {
+                branchOriginTitle = nil
+                return
+            }
+            branchOriginTitle = await viewModel.resolveBranchOriginTitle?(session)
+        }
     }
 
     @ViewBuilder
@@ -259,6 +278,26 @@ struct ChatHistoryEmptyPlaceholder: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
+    }
+}
+
+/// Pure gate for whether ``ChatHistoryView`` should render
+/// ``BranchOriginChipView`` for the active session (`docs/UI-REFRESH-2026.md`
+/// §12). Kept separate from the async title resolution
+/// (``ChatViewModel/resolveBranchOriginTitle``) so the render/suppress
+/// decision is unit-testable without needing a live SwiftData store or a
+/// rendered view — `ChatHistoryView` reads `@Environment(ChatViewModel.self)`
+/// unconditionally, which ViewInspector cannot satisfy here (see the
+/// `ChatShellStateScreenWiringTests` docstring on the turn-failure card for
+/// the confirmed repro of that limitation).
+enum ChatHistoryBranchOriginResolver {
+
+    /// `true` when `session` was created via `branch(from:)` (has a
+    /// non-nil `branchOriginSessionID`), i.e. the chip should render once
+    /// its title resolves. Non-branched sessions (including `nil`) render
+    /// nothing — zero footprint.
+    static func isBranch(_ session: ChatSession?) -> Bool {
+        session?.branchOriginSessionID != nil
     }
 }
 

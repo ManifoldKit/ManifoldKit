@@ -439,6 +439,13 @@ public enum ManifoldKit {
                 await sessionManager?.autoGenerateTitle(for: session, firstMessage: text)
             }
 
+            // Wire the branch-origin chip's title resolution (#2307) the
+            // same way — `ChatHistoryView` calls this closure to render
+            // `BranchOriginChipView` for sessions created via `branch(from:)`.
+            viewModel.resolveBranchOriginTitle = { [weak sessionManager] session in
+                await sessionManager?.branchOriginTitle(for: session)
+            }
+
             // A2-F4 + #1464: ensure the documented `quickStart()` → `ChatView()`
             // path produces a usable chat surface on first launch, and that
             // relaunch restores the previously active conversation rather than
