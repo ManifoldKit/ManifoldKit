@@ -14,9 +14,17 @@ import ManifoldInference
 /// visible history after host shaping + additive history providers plus the
 /// resolved turn context snapshot used by downstream prompt assembly and
 /// post-generation hooks.
-struct PreparedTurnHistory {
-    var history: [ChatMessage]
-    var turnContext: TurnContext
+///
+/// `package` so ``TurnPreparation/prepareHistory`` can surface it across the
+/// package boundary used by direct unit tests (#1957 Priority 3).
+package struct PreparedTurnHistory: Sendable {
+    package var history: [ChatMessage]
+    package var turnContext: TurnContext
+
+    package init(history: [ChatMessage], turnContext: TurnContext) {
+        self.history = history
+        self.turnContext = turnContext
+    }
 }
 
 /// Output of phase 1 (context assembly). Carries the assembled prompt slots,
