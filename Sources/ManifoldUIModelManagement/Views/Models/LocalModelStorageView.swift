@@ -8,6 +8,7 @@ struct LocalModelStorageView: View {
 
     private let modelRegistry: ModelRegistry
     @Environment(ModelManagementViewModel.self) private var managementViewModel
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     @State private var modelToDelete: ModelInfo?
     @State private var showDeleteConfirmation = false
@@ -137,7 +138,7 @@ struct LocalModelStorageView: View {
                             showDeleteConfirmation = true
                         } label: {
                             Image(systemName: "trash")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(theme.statusError)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Delete \(model.name)")
