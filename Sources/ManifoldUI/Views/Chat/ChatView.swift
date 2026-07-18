@@ -45,6 +45,7 @@ import ManifoldInference
 public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
 
@@ -218,38 +219,7 @@ public struct ChatView<APIConfig: View>: View {
     // MARK: - Body
 
     public var body: some View {
-        VStack(spacing: 0) {
-            ChatErrorRecoveryBanner(
-                viewModel: viewModel,
-                showAPIConfiguration: $showAPIConfiguration,
-                showModelManagement: $showModelManagement,
-                apiConfiguration: apiConfigurationBuilder
-            )
-
-            if viewModel.isLoading {
-                ChatLoadingContent(
-                    activityPhase: viewModel.activityPhase,
-                    unloadModel: { viewModel.unloadModel() }
-                )
-            } else if !viewModel.isModelLoaded {
-                ChatNoModelLoadedContent(
-                    appName: ManifoldConfiguration.shared.appName,
-                    hasAvailableModels: !viewModel.availableModels.isEmpty,
-                    showModelManagement: $showModelManagement
-                )
-            } else {
-                messageList
-            }
-
-            if features.showUpgradeHint && viewModel.showUpgradeHint {
-                ChatUpgradeHintBanner(showModelManagement: $showModelManagement)
-            }
-
-            Divider()
-                .accessibilityHidden(true)
-
-            ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
-        }
+        chromeBody
         // Cmd+Shift+M opens Model Management from anywhere in the chat view.
         // The button must be in the view hierarchy (not toolbar) to be always active.
         .background {
@@ -323,6 +293,86 @@ public struct ChatView<APIConfig: View>: View {
             contextMenuItemsBuilder: contextMenuItemsBuilder,
             customKindRenderer: customKindRenderer
         )
+    }
+
+    // MARK: - Chrome (Unit 2 §L1)
+
+    /// The banner/loading/message-list/upgrade-hint stack shared by both
+    /// chrome shapes below — everything above the composer seam.
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            ChatErrorRecoveryBanner(
+                viewModel: viewModel,
+                showAPIConfiguration: $showAPIConfiguration,
+                showModelManagement: $showModelManagement,
+                apiConfiguration: apiConfigurationBuilder
+            )
+
+            if viewModel.isLoading {
+                ChatLoadingContent(
+                    activityPhase: viewModel.activityPhase,
+                    unloadModel: { viewModel.unloadModel() }
+                )
+            } else if !viewModel.isModelLoaded {
+                ChatNoModelLoadedContent(
+                    appName: ManifoldConfiguration.shared.appName,
+                    hasAvailableModels: !viewModel.availableModels.isEmpty,
+                    showModelManagement: $showModelManagement
+                )
+            } else {
+                messageList
+            }
+
+            if features.showUpgradeHint && viewModel.showUpgradeHint {
+                ChatUpgradeHintBanner(showModelManagement: $showModelManagement)
+            }
+        }
+    }
+
+    /// Picks the composer-seam treatment: iOS gets the glass edge-to-edge
+    /// shape at every supported OS version (spec §9 — "iOS fallback:
+    /// identical geometry in `.regularMaterial`", i.e. the *geometry* isn't
+    /// gated to 26+, only which material renders it, and
+    /// ``View/manifoldGlass(_:in:)`` already resolves that per-OS). macOS
+    /// keeps the divider-seam shape unchanged here — the docked,
+    /// width-constrained glass composer bar is Unit 2 §L3's job
+    /// (`ChatComposerSection` itself lives outside this tranche's owned
+    /// files), and macOS chrome must stay system-toolbar-owned regardless.
+    @ViewBuilder
+    private var chromeBody: some View {
+        #if os(iOS)
+        edgeToEdgeGlassChromeBody
+        #else
+        classicChromeBody
+        #endif
+    }
+
+    /// Pre-refresh shape: an opaque `Divider()` seam between the transcript
+    /// and the composer, stacked in a plain `VStack`. Still used on macOS.
+    private var classicChromeBody: some View {
+        VStack(spacing: 0) {
+            mainContent
+            Divider()
+                .accessibilityHidden(true)
+            ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
+        }
+    }
+
+    /// iOS shape: the composer rides in the scroll view's bottom safe-area
+    /// inset instead of a stacked sibling, so the transcript scrolls
+    /// edge-to-edge beneath it — replacing the `Divider()` seam
+    /// (`docs/UI-REFRESH-2026.md` §1 "Content scrolls under glass",
+    /// §2 composer row). `safeAreaInset` still reserves layout space for the
+    /// composer (messages never render fully hidden behind it at rest); the
+    /// translucent ``manifoldGlass(_:in:)`` background is what lets content
+    /// visibly slide beneath it while scrolling, same contract as a
+    /// `List`/`ScrollView` floating toolbar.
+    private var edgeToEdgeGlassChromeBody: some View {
+        mainContent
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
+                    .manifoldGlass(theme, in: Rectangle())
+            }
     }
 
     // MARK: - Helpers

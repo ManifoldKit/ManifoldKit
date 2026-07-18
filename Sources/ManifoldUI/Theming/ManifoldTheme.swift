@@ -246,3 +246,73 @@ package extension View {
             .environment(\.chatTheme, theme.chatTheme)
     }
 }
+
+// MARK: - Per-OS glass resolution (Unit 2 §L1, spec §9)
+
+/// Which glass rendering path a surface should use — resolved once per call
+/// site so the two branches are independently testable without depending on
+/// the CI host's actual OS version.
+///
+/// Native Liquid Glass (`glassEffect`/`GlassEffectContainer`) requires iOS 26
+/// / macOS 26; below that floor every surface falls back to
+/// ``ManifoldTheme/glass`` (`.regularMaterial` by default). The floor itself
+/// stays iOS 18 / macOS 15 (`docs/UI-REFRESH-2026.md` §9) — this resolution is
+/// purely which *rendering path* a supported OS gets, never a gate on
+/// whether the surface renders at all.
+package enum ManifoldGlassResolution: Sendable, Equatable {
+    /// Native Liquid Glass is available and should be used.
+    case liquidGlass
+    /// Fall back to ``ManifoldTheme/glass``.
+    case material
+
+    /// Pure, `#available`-free resolution so both branches are directly
+    /// unit-testable regardless of the CI host's actual OS version — mirrors
+    /// the Reduce-Motion static-helper pattern used for
+    /// `TypingIndicatorView`/`StreamingCursorView`
+    /// (`StreamingIndicatorReduceMotionTests`).
+    package static func resolve(supportsLiquidGlass: Bool) -> ManifoldGlassResolution {
+        supportsLiquidGlass ? .liquidGlass : .material
+    }
+
+    /// The live resolution for the OS this code is actually running on.
+    package static var current: ManifoldGlassResolution {
+        if #available(iOS 26, macOS 26, *) {
+            resolve(supportsLiquidGlass: true)
+        } else {
+            resolve(supportsLiquidGlass: false)
+        }
+    }
+}
+
+package extension View {
+    /// Applies the theme's glass surface to this view: native `glassEffect`
+    /// on iOS 26 / macOS 26+, ``ManifoldTheme/glass`` (`.regularMaterial` by
+    /// default) below (`docs/UI-REFRESH-2026.md` §9, "OS fallback matrix").
+    ///
+    /// `shape` is a concrete `Shape` generic (not an existential), so this
+    /// stays `@ViewBuilder`-safe across both branches — callers pass
+    /// `Capsule()`, `Circle()`, `RoundedRectangle(cornerRadius:)`, etc.
+    @ViewBuilder
+    func manifoldGlass<S: Shape>(_ theme: ManifoldTheme, in shape: S) -> some View {
+        if #available(iOS 26, macOS 26, *) {
+            self.glassEffect(.regular, in: shape)
+        } else {
+            self.background(theme.glass, in: shape)
+        }
+    }
+
+    /// Groups multiple ``manifoldGlass(_:in:)`` surfaces so 26+ can morph
+    /// between them as one `GlassEffectContainer` (e.g. the composer +
+    /// scroll-to-bottom control sharing one glass surface as it appears).
+    /// Below 26 this is a transparent passthrough — there is no equivalent
+    /// grouping primitive pre-26, and each surface already renders its own
+    /// independent material background via ``manifoldGlass(_:in:)``.
+    @ViewBuilder
+    func manifoldGlassEffectContainer() -> some View {
+        if #available(iOS 26, macOS 26, *) {
+            GlassEffectContainer { self }
+        } else {
+            self
+        }
+    }
+}
