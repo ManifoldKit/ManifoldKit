@@ -397,12 +397,27 @@ final class AgentsMdPlansStatusAuditTest: XCTestCase {
             try? fm.removeItem(at: shallowRepo)
         }
 
+        // The fixture repo must not inherit the developer's git configuration.
+        // A contributor with `commit.gpgsign = true` (with an SSH/GPG signing
+        // agent that is locked, absent, or simply slow) would otherwise see
+        // this fixture's commits fail — reddening the documented pre-push gate
+        // for a diff that never touched this code. CI has no global config and
+        // so never saw it. Neutralising both config scopes keeps the fixture
+        // hermetic against every global setting, not just signing.
+        var hermeticGitEnvironment: [String: String] {
+            var environment = ProcessInfo.processInfo.environment
+            environment["GIT_CONFIG_GLOBAL"] = "/dev/null"
+            environment["GIT_CONFIG_SYSTEM"] = "/dev/null"
+            return environment
+        }
+
         @discardableResult
         func run(_ arguments: [String], in dir: URL) throws -> String {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = dir
             process.arguments = ["git"] + arguments
+            process.environment = hermeticGitEnvironment
             let stdout = Pipe()
             process.standardOutput = stdout
             process.standardError = Pipe()
