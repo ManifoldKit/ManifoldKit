@@ -21,16 +21,19 @@ public enum ComposerPhase: Sendable, Equatable {
 /// The inputs handed to a ``ComposerStyle`` when it draws the composer's
 /// chrome (capsule/bar background, shape, padding).
 ///
-/// Mirrors ``MessageBubbleConfiguration``'s split: the style owns only the
-/// *container* — the assembled field, "+" menu, and send/stop button are
-/// built by `ChatInputBar` and passed in type-erased, so a custom style can
-/// restyle the capsule/bar without re-implementing attachment gating, the
-/// permission-gated mic, or the quick-action pill strip.
+/// Mirrors ``MessageBubbleConfiguration``'s split exactly: the style owns
+/// only the *container* around ``content``, the same way a bubble style owns
+/// the background/shape/padding around a bubble's inner content, not the
+/// bubble's badge/timestamp/streaming cursor. For the composer, ``content``
+/// is the text-entry field only — the "+" menu, send/stop button, and
+/// draft-attachment strip are siblings the composer redesign (Unit 2 §L3)
+/// assembles around the styled field, not something this seam type-erases.
 public struct ComposerConfiguration {
 
-    /// The fully-assembled inner composer content (field + affordances),
-    /// type-erased so a style does not need to know about attachment gating
-    /// or voice wiring.
+    /// The text-entry field, type-erased so a style does not need to know
+    /// about focus state, disabled-state gating, or the placeholder text
+    /// `ChatInputBar` computes. Does **not** include the "+" menu, send/stop
+    /// button, or attachment strip — see this type's doc comment.
     public let content: AnyView
 
     /// The current lifecycle phase. Styles typically use this to switch
@@ -57,6 +60,15 @@ public struct ComposerConfiguration {
 /// `@Environment` (color scheme, the active ``ManifoldTheme``) from inside the
 /// returned `Body` view.
 ///
+/// - Important: **Not yet wired.** `ChatInputBar` does not read
+///   `\.composerStyle` in this tranche — it still draws its field chrome
+///   directly (Unit 2 §L2, issue #2307). Applying `.composerStyle(_:)` today
+///   compiles and installs the environment value, but nothing consumes it
+///   until the composer redesign (Unit 2 §L3) restructures `ChatInputBar` to
+///   hand its field through ``ResolvedComposer``. The protocol, built-in
+///   styles, and their chrome are correct and tested in isolation now so L3
+///   can adopt them without redesigning this seam.
+///
 /// `Sendable` because the resolved style is carried through the SwiftUI
 /// environment.
 public protocol ComposerStyle: Sendable {
@@ -74,11 +86,14 @@ public protocol ComposerStyle: Sendable {
 
 // MARK: - Built-in styles
 
-/// The default style: reproduces the framework's historical composer chrome
-/// — a rounded-rectangle field background reading `ManifoldTheme.surface` —
-/// by reading the active ``ManifoldTheme``. This is what `ChatInputBar`'s
-/// existing `.background(.fill.tertiary, in: RoundedRectangle(cornerRadius:
-/// 12))` migrates onto; the built-in look does not change.
+/// The default style: reproduces the framework's historical composer field
+/// chrome — `ChatInputBar.swift:60-61`'s `.padding(10).background(.fill.tertiary,
+/// in: RoundedRectangle(cornerRadius: 12))` — by reading `ManifoldTheme.surface`
+/// (default `AnyShapeStyle(.fill.tertiary)`, the same literal) instead of the
+/// hardcoded material. The corner radius stays the literal `12`, not a
+/// ``ManifoldThemeShapeScale`` token (`sm` is 11, `md` is 14 — neither equals
+/// 12), so this reproduces the historical chrome byte-for-byte rather than
+/// silently drifting it onto the nearest scale step.
 ///
 /// This is the style that becomes the `.classic` preset in Unit 2 §L5 — the
 /// new-look glass capsule/bar (spec §3) is a distinct, not-yet-default style.
@@ -86,7 +101,19 @@ public struct PlainComposerStyle: ComposerStyle {
     public init() {}
 
     public func makeBody(configuration: Configuration) -> some View {
+        PlainComposerBody(configuration: configuration)
+    }
+}
+
+private struct PlainComposerBody: View {
+    let configuration: ComposerConfiguration
+
+    @Environment(\.manifoldTheme) private var theme
+
+    var body: some View {
         configuration.content
+            .padding(10)
+            .background(theme.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

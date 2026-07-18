@@ -4,6 +4,16 @@ Take over one content part — a specific tool call, a generated-media kind — 
 
 ## Overview
 
+> Important: **Not yet wired.** `MessagePartsView` does not read
+> `\.chatMessagePartRenderer` in this tranche (Unit 2 §L2, issue #1640) — it
+> still dispatches every part straight to its built-in per-kind view.
+> Applying `.chatMessagePartRenderer(_:)` today compiles and installs the
+> environment value, but nothing consumes it until a later Unit 2 tranche
+> threads it into `MessagePartsView`'s per-kind dispatch. The seam type,
+> environment key, modifier, and fallthrough contract below are correct and
+> tested in isolation now so that tranche can adopt them without redesigning
+> this seam.
+
 `.chatMessageRenderer(_:)` gives a host first refusal on an entire message. ``ChatMessagePartRenderer`` (issue #1640) is its finer-grained sibling: first refusal on one *content part* within a message's ``ManifoldRuntime/MessagePart`` array — a `.toolCall` for a specific tool, a `.generatedMedia` of a specific kind — while every other part in the same message still renders through the framework's built-in per-kind views.
 
 ```swift

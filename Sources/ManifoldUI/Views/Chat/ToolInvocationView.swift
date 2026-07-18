@@ -90,14 +90,14 @@ public struct ToolInvocationView: View {
         case (.toolCall(let call), .pendingApproval):
             resolvedView(
                 lifecycleState: .awaitingApproval,
-                toolName: call.toolName,
+                callToolName: call.toolName,
                 arguments: call.arguments,
                 result: nil
             )
         case (.toolCall(let call), .running):
             resolvedView(
                 lifecycleState: .running,
-                toolName: call.toolName,
+                callToolName: call.toolName,
                 arguments: call.arguments,
                 result: nil
             )
@@ -106,21 +106,24 @@ public struct ToolInvocationView: View {
             // disclosure labeled with the call's tool name.
             resolvedView(
                 lifecycleState: .completed,
-                toolName: call.toolName,
+                callToolName: call.toolName,
                 arguments: call.arguments,
                 result: pairedResult
             )
         case (.toolCall(let call), .failed):
             resolvedView(
                 lifecycleState: .failed,
-                toolName: call.toolName,
+                callToolName: call.toolName,
                 arguments: call.arguments,
                 result: pairedResult
             )
         case (.toolResult(let result), .completed):
-            resolvedView(lifecycleState: .completed, toolName: "tool", arguments: nil, result: result)
+            // No paired `.toolCall` — the call part was trimmed out of
+            // history. `callToolName` is `nil` here (there is no call to name),
+            // distinct from a call literally named `"tool"`.
+            resolvedView(lifecycleState: .completed, callToolName: nil, arguments: nil, result: result)
         case (.toolResult(let result), .failed):
-            resolvedView(lifecycleState: .failed, toolName: "tool", arguments: nil, result: result)
+            resolvedView(lifecycleState: .failed, callToolName: nil, arguments: nil, result: result)
         default:
             // Mixed-content bubbles should not crash if a caller supplies a
             // text / image / thinking part by accident. Silently skip.
@@ -130,21 +133,28 @@ public struct ToolInvocationView: View {
 
     // MARK: - Style dispatch
 
+    /// - Parameter callToolName: The real `ToolCall.toolName`, or `nil` when
+    ///   there is no paired call (a `.toolResult`-only render). Kept as a true
+    ///   optional — rather than a `"tool"` placeholder string — so a tool
+    ///   genuinely named `"tool"` still gets its re-authentication CTA (see
+    ///   ``ToolErrorPresentation/init(errorKind:toolName:)``, which treats a
+    ///   non-nil, non-empty `toolName` as a real call to derive a service name
+    ///   from). A string sentinel would have collapsed that case into "no CTA".
     private func resolvedView(
         lifecycleState: ToolInvocationLifecycleState,
-        toolName: String,
+        callToolName: String?,
         arguments: String?,
         result: ToolResult?
     ) -> some View {
         let errorPresentation: ToolErrorPresentation? = {
             guard lifecycleState == .failed else { return nil }
-            return ToolErrorPresentation(errorKind: result?.errorKind, toolName: toolName == "tool" ? nil : toolName)
+            return ToolErrorPresentation(errorKind: result?.errorKind, toolName: callToolName)
         }()
         return ResolvedToolInvocation(
             style: style,
             configuration: ToolInvocationConfiguration(
                 state: lifecycleState,
-                toolName: toolName,
+                toolName: callToolName ?? "tool",
                 arguments: arguments,
                 resultContent: result?.content,
                 errorPresentation: errorPresentation,

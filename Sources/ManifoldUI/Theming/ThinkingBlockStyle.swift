@@ -108,8 +108,14 @@ private struct PlainThinkingBlockBody: View {
         switch configuration.state {
         case .streaming:
             // Not user-interactive (see `toggleExpanded`'s doc comment) — a
-            // fixed-open disclosure group whose label carries the live preview,
-            // matching the historical streaming branch exactly.
+            // fixed-closed disclosure group whose label carries the live
+            // preview. This is a deliberate, documented behavior change from
+            // the pre-refresh view, which let a user expand/collapse even
+            // while streaming: the spec's 3-state `ThinkingBlockState` model
+            // has no "streaming+expanded" case (see that type's doc comment),
+            // so this style can no longer honor a manual expand during
+            // streaming. Accepted for this tranche; flagged in the PR body
+            // for Unit 2 §L5's migration note.
             DisclosureGroup(isExpanded: .constant(false)) {
                 Text(configuration.text.isEmpty ? " " : configuration.text)
                     .font(.caption)
