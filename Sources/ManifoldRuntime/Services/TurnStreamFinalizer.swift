@@ -421,12 +421,26 @@ package struct TurnStreamFinalizer: Sendable {
             }
         }()
 
+        // Outcome assistant message: successful persist uses the stored row.
+        // Cancel + persistable content always passes the in-memory message
+        // even when insert failed — pre-split parity for classification
+        // (tool/thinking-only cancel must not flip to cancelledEmpty),
+        // ChatGenerationCoordinator fallback merge, and ResumableRunDriver
+        // step.messageID. didPersist stays false when insert failed.
+        let outcomeAssistantMessage: ChatMessage? = {
+            if didPersist { return persistedMessage }
+            if case .cancelled = input.kind, input.hasPersistableContent {
+                return assistantMessage
+            }
+            return nil
+        }()
+
         await completeOutcome(
             input.outcomeCompletion,
             sessionID: input.sessionID,
             handle: input.handle,
             assistantMessageID: assistantID,
-            assistantMessage: didPersist ? persistedMessage : nil,
+            assistantMessage: outcomeAssistantMessage,
             reason: reason,
             error: outcomeError,
             finalText: visibleText,
@@ -448,7 +462,7 @@ package struct TurnStreamFinalizer: Sendable {
             reason: reason,
             didPersist: didPersist,
             persistenceError: persistenceError,
-            assistantMessage: didPersist ? persistedMessage : nil
+            assistantMessage: outcomeAssistantMessage
         )
     }
 

@@ -86,10 +86,14 @@ package struct TurnPreparation: Sendable {
         /// mid-stream handoff; held as a `var` only inside the drain path.
         package let sessionRecord: ChatSession?
         package let turnHookRegistry: HookRegistry?
-        /// Per-request handoff detector for this turn (closes the
-        /// service-global race; see ``GenerationPlan/handoffDetector``).
+        /// Per-request handoff detector for this turn. Passed into
+        /// `enqueueAsync` rather than mutated onto the shared
+        /// `InferenceService` — closes the race where two concurrent turns
+        /// clobbered the service-global detector (#1494). `nil` for
+        /// sessionless / single-agent turns.
         package let handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
-        /// Per-request pre-tool-use hook for this turn.
+        /// Per-request pre-tool-use hook for this turn. See ``handoffDetector``
+        /// for the rationale. `nil` when no host hook registry is wired.
         package let preToolUseHook: PreToolUseHook?
     }
 

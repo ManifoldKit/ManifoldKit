@@ -141,7 +141,8 @@ final class TurnStreamFinalizerTests: XCTestCase {
         visibleText: String = "hello",
         hasToolContent: Bool = false,
         hasThinkingContent: Bool = false,
-        contentParts: [MessagePart] = []
+        contentParts: [MessagePart] = [],
+        outcomeCompletion: ConversationTurnOutcomeCompletion? = nil
     ) -> TurnStreamFinalizer.FinalizeInput {
         let sessionID = UUID()
         var message = ChatMessage(role: .assistant, content: "", sessionID: sessionID)
@@ -157,8 +158,20 @@ final class TurnStreamFinalizerTests: XCTestCase {
             hasThinkingContent: hasThinkingContent,
             usage: (10, 5, nil, nil),
             kind: kind,
-            turnContext: TurnContext(sessionID: sessionID, messageCount: 1)
+            turnContext: TurnContext(sessionID: sessionID, messageCount: 1),
+            outcomeCompletion: outcomeCompletion
         )
+    }
+
+    private func finalizeAndCaptureOutcome(
+        _ input: TurnStreamFinalizer.FinalizeInput
+    ) async -> (TurnStreamFinalizer.FinalizeResult, ConversationTurnOutcome) {
+        let completion = input.outcomeCompletion ?? ConversationTurnOutcomeCompletion()
+        var pinned = input
+        pinned.outcomeCompletion = completion
+        let result = await finalizer.finalize(pinned)
+        let outcome = await completion.value()
+        return (result, outcome)
     }
 
     private func finishReasons() -> [FinishReason] {
@@ -266,6 +279,180 @@ final class TurnStreamFinalizerTests: XCTestCase {
             // expected
         } else {
             XCTFail("expected persistence error, got \(raisedErrors()[0])")
+        }
+    }
+
+    /// Cancel + content + insert failure must still surface the in-memory
+    /// assistant message on the outcome (pre-split parity). `didPersist`
+    /// stays false; classification stays `.cancelled`, not `.cancelledEmpty`.
+    func test_finalize_cancelled_persistFailure_stillPassesAssistantMessageOnOutcome() async {
+        await persistence.setInsertError(FakePersistError.boom)
+        let input = makeInput(kind: .cancelled, visibleText: "partial")
+        let (result, outcome) = await finalizeAndCaptureOutcome(input)
+
+        XCTAssertEqual(result.reason, .cancelled)
+        XCTAssertFalse(result.didPersist, "insert failed — didPersist must stay false")
+        XCTAssertNotNil(result.persistenceError)
+        XCTAssertNotNil(result.assistantMessage, "in-memory message must still be returned")
+        XCTAssertEqual(
+            result.assistantMessage?.contentParts.compactMap(\.textContent).joined(),
+            "partial"
+        )
+
+        XCTAssertEqual(outcome.reason, .cancelled)
+        XCTAssertNil(outcome.error, "cancel outcome error stays nil even when partial save failed")
+        XCTAssertEqual(outcome.finalText, "partial")
+        XCTAssertNotNil(outcome.assistantMessage, "outcome must carry in-memory message for coordinator/driver fallbacks")
+        XCTAssertEqual(outcome.assistantMessage?.id, input.assistantMessage.id)
+        XCTAssertEqual(outcome.classification, .cancelled)
+    }
+
+    /// Tool-only cancel with empty visible text + persist failure: without the
+    /// in-memory assistantMessage, classification would flip to cancelledEmpty
+    /// because finalText is empty.
+    func test_finalize_cancelled_toolOnly_persistFailure_notCancelledEmpty() async {
+        await persistence.setInsertError(FakePersistError.boom)
+        let call = ToolCall(id: "c1", toolName: "search", arguments: "{}")
+        let input = makeInput(
+            kind: .cancelled,
+            visibleText: "",
+            hasToolContent: true,
+            contentParts: [.toolCall(call)]
+        )
+        let (result, outcome) = await finalizeAndCaptureOutcome(input)
+
+        XCTAssertFalse(result.didPersist)
+        XCTAssertNotNil(result.assistantMessage)
+        XCTAssertEqual(outcome.finalText, "")
+        XCTAssertNotNil(outcome.assistantMessage)
+        XCTAssertEqual(
+            outcome.classification,
+            .cancelled,
+            "tool-only cancel + persist fail must not classify as cancelledEmpty"
+        )
+        XCTAssertTrue(outcome.assistantMessage?.contentParts.contains {
+            if case .toolCall = $0 { return true }
+            return false
+        } ?? false)
+    }
+
+    /// Thinking-only cancel + persist fail: same cancelledEmpty trap via
+    /// empty finalText when assistantMessage is dropped.
+    func test_finalize_cancelled_thinkingOnly_persistFailure_notCancelledEmpty() async {
+        await persistence.setInsertError(FakePersistError.boom)
+        let input = makeInput(
+            kind: .cancelled,
+            visibleText: "",
+            hasThinkingContent: true,
+            contentParts: [.thinking("hmm", signature: nil)]
+        )
+        let (result, outcome) = await finalizeAndCaptureOutcome(input)
+
+        XCTAssertFalse(result.didPersist)
+        XCTAssertNotNil(outcome.assistantMessage)
+        XCTAssertEqual(outcome.classification, .cancelled)
+    }
+
+    // MARK: Outcome completion matrix
+
+    /// Pins reason / error / assistantMessage presence for each terminal kind
+    /// through ``outcomeCompletion`` — the surface consumers actually read.
+    func test_finalize_outcomeCompletion_matrix() async {
+        let streamError = ConversationError.inference(FakePersistError.boom)
+
+        // completed → stop, no error, message present
+        do {
+            let (_, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(kind: .completed, visibleText: "done")
+            )
+            XCTAssertEqual(outcome.reason, .stop)
+            XCTAssertNil(outcome.error)
+            XCTAssertNotNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.finalText, "done")
+            XCTAssertEqual(outcome.classification, .completed)
+        }
+
+        // empty → empty, no error, no message
+        do {
+            eventsBox = EventBox()
+            emptyBox = DiagnosticBox()
+            // Rebuild finalizer so empty observer still works after box swap
+            // is unnecessary — empty path only needs outcome. Fresh boxes
+            // avoid cross-case pollution of event assertions elsewhere.
+            let (_, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(kind: .empty, visibleText: "")
+            )
+            XCTAssertEqual(outcome.reason, .empty)
+            XCTAssertNil(outcome.error)
+            XCTAssertNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.finalText, "")
+            XCTAssertEqual(outcome.classification, .completed)
+        }
+
+        // failed (content) → stop + stream error + message
+        do {
+            let (_, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(
+                    kind: .failed(error: streamError, timedOut: false),
+                    visibleText: "partial"
+                )
+            )
+            XCTAssertEqual(outcome.reason, .stop)
+            XCTAssertNotNil(outcome.error)
+            XCTAssertNotNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.classification, .failed)
+        }
+
+        // timedOut → timedOut + error + message
+        do {
+            let timedOut = ConversationError.inference(InferenceError.idleTimeout(.seconds(5)))
+            let (_, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(
+                    kind: .failed(error: timedOut, timedOut: true),
+                    visibleText: "stalled"
+                )
+            )
+            XCTAssertEqual(outcome.reason, .timedOut)
+            XCTAssertNotNil(outcome.error)
+            XCTAssertNotNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.classification, .timedOut)
+        }
+
+        // cancel + content → cancelled, no error, message present
+        do {
+            let (_, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(kind: .cancelled, visibleText: "partial")
+            )
+            XCTAssertEqual(outcome.reason, .cancelled)
+            XCTAssertNil(outcome.error)
+            XCTAssertNotNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.classification, .cancelled)
+        }
+
+        // cancel + no content → cancelled, no error, no message → cancelledEmpty
+        do {
+            let (_, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(kind: .cancelled, visibleText: "")
+            )
+            XCTAssertEqual(outcome.reason, .cancelled)
+            XCTAssertNil(outcome.error)
+            XCTAssertNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.finalText, "")
+            XCTAssertEqual(outcome.classification, .cancelledEmpty)
+        }
+
+        // cancel + content + persist fail → cancelled, no error, in-memory message
+        do {
+            await persistence.setInsertError(FakePersistError.boom)
+            let (result, outcome) = await finalizeAndCaptureOutcome(
+                makeInput(kind: .cancelled, visibleText: "partial")
+            )
+            await persistence.setInsertError(nil)
+            XCTAssertFalse(result.didPersist)
+            XCTAssertEqual(outcome.reason, .cancelled)
+            XCTAssertNil(outcome.error)
+            XCTAssertNotNil(outcome.assistantMessage)
+            XCTAssertEqual(outcome.classification, .cancelled)
         }
     }
 
