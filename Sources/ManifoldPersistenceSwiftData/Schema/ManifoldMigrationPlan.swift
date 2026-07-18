@@ -13,6 +13,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV10.self,
             ManifoldSchemaV11.self,
             ManifoldSchemaV12.self,
+            ManifoldSchemaV13.self,
         ]
     }
 
@@ -42,6 +43,12 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             // system prompts). One new @Model type, purely additive — no
             // existing column changes, no data motion.
             .lightweight(fromVersion: ManifoldSchemaV11.self, toVersion: ManifoldSchemaV12.self),
+            // V13 adds BranchOrigin, a side table recording session
+            // branch-origin provenance (#2307 branch-origin chip). One new
+            // @Model type, purely additive — no existing column changes, no
+            // data motion. Deliberately does NOT redefine ChatSession again
+            // (see ManifoldSchemaV13.swift's doc comment for why).
+            .lightweight(fromVersion: ManifoldSchemaV12.self, toVersion: ManifoldSchemaV13.self),
         ]
     }
 }

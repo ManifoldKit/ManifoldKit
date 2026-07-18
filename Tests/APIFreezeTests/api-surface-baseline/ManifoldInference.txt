@@ -124,12 +124,14 @@ ChatSession.__derived_struct_equals(_:_:) Func
 ChatSession.activeAgentID Var
 ChatSession.activeSkillName Var
 ChatSession.agents Var
+ChatSession.branchOriginSessionID Var
+ChatSession.branchOriginTitleSnapshot Var
 ChatSession.contextSizeOverride Var
 ChatSession.createdAt Var
 ChatSession.hash(into:) Func
 ChatSession.hashValue Var
 ChatSession.id Var
-ChatSession.init(id:title:createdAt:updatedAt:systemPrompt:selectedModelID:selectedEndpointID:temperature:topP:repeatPenalty:promptTemplate:contextSizeOverride:pinnedMessageIDs:isPinned:pinnedAt:agents:activeAgentID:activeSkillName:) Constructor
+ChatSession.init(id:title:createdAt:updatedAt:systemPrompt:selectedModelID:selectedEndpointID:temperature:topP:repeatPenalty:promptTemplate:contextSizeOverride:pinnedMessageIDs:isPinned:pinnedAt:agents:activeAgentID:activeSkillName:branchOriginSessionID:branchOriginTitleSnapshot:) Constructor
 ChatSession.isPinned Var
 ChatSession.pinnedAt Var
 ChatSession.pinnedMessageIDs Var

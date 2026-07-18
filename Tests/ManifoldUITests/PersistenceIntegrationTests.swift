@@ -46,8 +46,8 @@ final class PersistenceIntegrationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createSession(title: String = "Persistence Test") async -> ManifoldSchemaV9.ChatSession {
-        let session = ManifoldSchemaV9.ChatSession(title: title)
+    private func createSession(title: String = "Persistence Test") async -> PersistedChatSession {
+        let session = PersistedChatSession(title: title)
         context.insert(session)
         try? context.save()
         await vm.switchToSession(session.toRecord())
@@ -69,8 +69,8 @@ final class PersistenceIntegrationTests: XCTestCase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
-        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>()
+    private func fetchSessions() -> [PersistedChatSession] {
+        let descriptor = FetchDescriptor<PersistedChatSession>()
         return (try? context.fetch(descriptor)) ?? []
     }
 
@@ -83,7 +83,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         // Do NOT call configure(persistence:)
 
         // Create a session and set it directly so loadMessages has a sessionID.
-        let session = ManifoldSchemaV9.ChatSession(title: "Test")
+        let session = PersistedChatSession(title: "Test")
         unconfiguredVM.activeSession = session.toRecord()
 
         await unconfiguredVM.loadMessages()

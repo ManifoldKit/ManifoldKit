@@ -140,7 +140,7 @@ final class ConversationExporterTests: XCTestCase {
     // MARK: - SwiftData convenience overload
 
     func test_export_viaPersistenceProvider_fetchesMessagesInOrder() async throws {
-        let session = ManifoldSchemaV9.ChatSession(title: "Provider Path")
+        let session = PersistedChatSession(title: "Provider Path")
         stack.context.insert(session)
         try stack.context.save()
 

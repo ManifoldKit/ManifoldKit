@@ -46,6 +46,12 @@ extension PersistedChatSession {
             agents: agentRecords,
             activeAgentID: activeAgentID,
             activeSkillName: activeSkillName
+            // branchOriginSessionID / branchOriginTitleSnapshot are NOT
+            // columns on this type (see ManifoldSchemaV13.BranchOrigin) —
+            // SwiftDataPersistenceProvider merges them in from the side
+            // table after calling toRecord(), so callers of `.record`
+            // directly (bypassing the adapter) see nil here, matching a
+            // non-branched session.
         )
     }
 }

@@ -110,7 +110,7 @@ final class ManifoldBootstrapTests: XCTestCase {
         // proof that both surfaces are wired to a single coherent store.
         let session = ManifoldInference.ChatSession(title: "Wiring Identity Probe")
         try await runtime.persistence.insertSession(session)
-        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>()
+        let descriptor = FetchDescriptor<PersistedChatSession>()
         let entitiesViaContainer = try runtime.modelContainer.mainContext.fetch(descriptor)
         XCTAssertTrue(entitiesViaContainer.contains(where: { $0.id == session.id }),
             "Session inserted via runtime.persistence must be visible through runtime.modelContainer.mainContext")

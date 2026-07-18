@@ -100,15 +100,17 @@ final class SchemaMigrationReadBackTests: XCTestCase {
         )
         let ctx = ModelContext(migratedContainer)
 
-        // --- ManifoldSchemaV9.ChatSession ---
-        let sessions = try ctx.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
+        // --- ChatSession (fetched as PersistedChatSession — the *current*
+        // schema's ChatSession type, now V13 — since ModelContainerFactory
+        // always migrates all the way to the current schema, not just V5) ---
+        let sessions = try ctx.fetch(FetchDescriptor<PersistedChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(sessions.count, 1,
-            "ManifoldSchemaV9.ChatSession must survive V3→V5 migration (id: \(sessionID))")
+            "ChatSession must survive the full V3→current migration chain (id: \(sessionID))")
         let migratedSession = try XCTUnwrap(sessions.first)
         XCTAssertEqual(migratedSession.title, sessionNonce,
-            "ManifoldSchemaV9.ChatSession.title must be preserved verbatim through migration")
+            "ChatSession.title must be preserved verbatim through migration")
 
         // --- ManifoldSchemaV9.ChatMessage ---
         let messages = try ctx.fetch(FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
