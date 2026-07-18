@@ -121,18 +121,11 @@ struct DemoContentView: View {
                 // `onFixEndpoint` routes to the same model management sheet
                 // the empty-state "Browse Models" button opens.
                 .chatModelSwitcher {
-                    ModelSwitcherView(
-                        rows: modelSwitcherRows,
-                        onSelect: { entry in
-                            switch entry {
-                            case .model(let model):
-                                viewModel.selectedModel = model
-                            case .endpoint(let endpoint):
-                                viewModel.selectedEndpoint = endpoint
-                            }
-                        },
-                        onFixEndpoint: { _ in isModelManagementPresented = true }
-                    )
+                    // Extracted to a computed property: inlining the closure
+                    // here pushed the body expression past the type-checker's
+                    // budget (xcodebuild-only failure; swift build never
+                    // compiles this target).
+                    modelSwitcherContent
                 }
                 .toolbar {
                     // .topBarLeading is iOS-only; macOS NavigationSplitView manages
@@ -534,6 +527,25 @@ struct DemoContentView: View {
     /// registration) rather than standing up a separate capability-service
     /// instance — the same source `ModelPicker`/`ModelManagementSheet`
     /// already read.
+    /// The `.chatModelSwitcher(_:)` content, extracted so the main body
+    /// expression stays within the type-checker's budget. `onSelect` only
+    /// sets the selection property — the `.onChange` handlers own dispatch
+    /// (see docs/MIGRATION-ui-refresh.md's onSelect contract).
+    private var modelSwitcherContent: some View {
+        ModelSwitcherView(
+            rows: modelSwitcherRows,
+            onSelect: { (entry: ModelSwitcherEntry) in
+                switch entry {
+                case .model(let model):
+                    viewModel.selectedModel = model
+                case .endpoint(let endpoint):
+                    viewModel.selectedEndpoint = endpoint
+                }
+            },
+            onFixEndpoint: { _ in isModelManagementPresented = true }
+        )
+    }
+
     private var modelSwitcherRows: [ModelSwitcherRow] {
         ModelSwitcher.rows(
             models: viewModel.availableModels,
