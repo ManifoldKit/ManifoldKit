@@ -36,29 +36,32 @@ on:
   push:
     branches: [main]
     paths:
-      # On push to main, only five steps actually run (the rest are gated to
-      # pull_request): actionlint, action-pin-audit, known-issue-lint,
-      # readme-lint, secret-scan. This filter covers the union of what each
-      # step checks so a push that can't affect any of them (e.g. a
-      # Package.resolved Dependabot bump) doesn't spin up a runner.
+      # On push to main, PR-only steps self-skip; the content checks that still
+      # run are: actionlint, action-pin-audit, known-issue-lint, docs-header-lint,
+      # availability-audit, readme-lint, secret-scan. This filter covers the
+      # union of what each step checks so a push that can't affect any of them
+      # (e.g. a Package.resolved Dependabot bump) doesn't spin up a runner.
       #
       #   actionlint          → .github/workflows/**
       #   action-pin-audit    → .github/workflows/**, .github/actions/**
       #   known-issue-lint    → Sources/**, Tests/**
+      #   docs-header-lint    → docs/*.md, scripts/lint-docs-headers.sh
       #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
       #   availability-audit  → Sources/**, scripts/audit-availability.sh
       #   secret-scan         → Sources/**, Tests/**, .github/workflows/**
       #
-      # Package.resolved, Package.swift, docs/**, and unrelated scripts/ changes
-      # are excluded: Dependabot PRs already run the full lint on the PR event.
+      # Package.resolved, Package.swift, and unrelated scripts/ changes are
+      # excluded: Dependabot PRs already run the full lint on the PR event.
       - "Sources/**"
       - "Tests/**"
+      - "docs/*.md"
       - ".github/workflows/**"
       - ".github/actions/**"
       - "README.md"
       - "version.txt"
       - "scripts/check-readme.sh"
       - "scripts/audit-availability.sh"
+      - "scripts/lint-docs-headers.sh"
   # Merge queue: `lint` is a required check, so it MUST report on the queue's
   # `merge_group` branch or the queue stalls. The content-check steps (actionlint,
   # pin-audit, known-issue, availability, readme) run; PR-only steps (commitlint,
@@ -428,10 +431,11 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
-          # Full (non-shallow) fetch: checkout already used fetch-depth: 0 for
-          # the PR head, but a pull_request checkout has no origin/<base> ref.
-          # `--depth=1` here would replace that tip with an orphan shallow
-          # commit and break `git diff A...B` / merge-base on long-lived PRs.
+          # Full (non-shallow) fetch of the base. Under fetch-depth: 0,
+          # origin/<base> is usually already present from checkout's all-history
+          # refspec — this refreshes the tip. Never pass `--depth=1`: a shallow
+          # re-fetch replaces that tip with an orphan commit and breaks
+          # `git diff A...B` / merge-base on long-lived PRs (#2325).
           git fetch --no-tags origin "${{ github.base_ref }}"
           new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
           echo "PR adds $new new package pin(s)."
@@ -461,6 +465,5 @@ jobs:
         run: |
           set -euo pipefail
           # Full (non-shallow) fetch of the base — see dep-budget comment.
-          # A pull_request checkout has no refs/remotes/origin/<base>.
           git fetch --no-tags origin "${{ github.base_ref }}"
           bash scripts/large-file-guard.sh "origin/${{ github.base_ref }}" "HEAD"
