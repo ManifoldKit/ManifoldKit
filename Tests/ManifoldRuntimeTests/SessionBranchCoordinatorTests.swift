@@ -1,6 +1,8 @@
 import XCTest
+import SwiftData
 @testable import ManifoldRuntime
 import ManifoldInference
+import ManifoldPersistenceSwiftData
 import ManifoldPersistenceTestSupport
 
 /// Integration coverage for the branch-origin pointer (#2307 branch-origin
@@ -194,5 +196,52 @@ final class SessionBranchCoordinatorTests: XCTestCase {
             "Live resolution must reflect a rename of the still-existing source session")
         XCTAssertEqual(branched.branchOriginTitleSnapshot, "Original title",
             "The snapshot itself stays fixed at branch time — only the live-resolved value changes")
+    }
+
+    // MARK: - BranchOrigin side-table cleanup on delete
+
+    /// Returns every `BranchOrigin` side-table row currently in the store —
+    /// reaches past the `SessionStore`/`SessionListService` seam directly
+    /// into the SwiftData context so a leaked row (one whose owning session
+    /// was deleted but whose provenance row was left orphaned) is visible
+    /// even though nothing in the public read path would surface it.
+    private func fetchAllBranchOriginRows() throws -> [ManifoldSchemaV13.BranchOrigin] {
+        try stack.context.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>())
+    }
+
+    func test_deleteSession_removesTheBranchedSessionsOwnBranchOriginRow() async throws {
+        let (sourceID, messageIDs) = try await seedSourceSession(title: "Source", messageCount: 3)
+        let branchedID = UUID()
+
+        _ = try await coordinator.branch(
+            sourceSessionID: sourceID,
+            branchMessageID: messageIDs[1],
+            newSessionID: branchedID,
+            newSessionTitle: nil
+        )
+        XCTAssertEqual(try fetchAllBranchOriginRows().count, 1,
+            "Precondition: branching must have written exactly one BranchOrigin row")
+
+        try await stack.provider.deleteSession(branchedID)
+
+        XCTAssertTrue(try fetchAllBranchOriginRows().isEmpty,
+            "Deleting a branched session must also delete its own BranchOrigin row — otherwise it leaks forever (BranchOrigin is a plain-UUID side table, not a SwiftData relationship, so nothing cascades it automatically)")
+    }
+
+    func test_deleteAllSessions_clearsTheBranchOriginTable() async throws {
+        let (sourceID, messageIDs) = try await seedSourceSession(title: "Source", messageCount: 3)
+        _ = try await coordinator.branch(
+            sourceSessionID: sourceID,
+            branchMessageID: messageIDs[1],
+            newSessionID: UUID(),
+            newSessionTitle: nil
+        )
+        XCTAssertEqual(try fetchAllBranchOriginRows().count, 1,
+            "Precondition: branching must have written exactly one BranchOrigin row")
+
+        try await stack.provider.deleteAll()
+
+        XCTAssertTrue(try fetchAllBranchOriginRows().isEmpty,
+            "deleteAll() must clear the BranchOrigin table along with every session and message")
     }
 }

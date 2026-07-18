@@ -64,7 +64,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.activeSkillName = record.activeSkillName
         modelContext.insert(session)
         reconcileAgents(on: session, with: record.agents)
-        reconcileBranchOrigin(sessionID: record.id, with: record)
+        try reconcileBranchOrigin(sessionID: record.id, with: record)
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -90,7 +90,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
         reconcileAgents(on: session, with: record.agents)
-        reconcileBranchOrigin(sessionID: record.id, with: record)
+        try reconcileBranchOrigin(sessionID: record.id, with: record)
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -145,8 +145,16 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// carries branch-origin data; deletes any existing row when it doesn't
     /// (a session is branched at creation time and this never flips back to
     /// nil in practice, but round-tripping a cleared value is still correct).
-    private func reconcileBranchOrigin(sessionID: UUID, with record: ManifoldInference.ChatSession) {
-        let existing = try? modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>(
+    ///
+    /// Throws rather than swallowing the lookup fetch: both callers
+    /// (`insertSession`/`updateSession`) are themselves `throws`, so a
+    /// genuine fetch failure propagates instead of being silently treated as
+    /// "no existing row" — which would insert a duplicate and trip the
+    /// `@Attribute(.unique) sessionID` constraint at `save()` when a row
+    /// already exists, turning a transient fetch error into a confusing
+    /// unique-constraint crash on an unrelated line.
+    private func reconcileBranchOrigin(sessionID: UUID, with record: ManifoldInference.ChatSession) throws {
+        let existing = try modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>(
             predicate: #Predicate { $0.sessionID == sessionID }
         )).first
 
@@ -209,6 +217,19 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         for message in messages {
             modelContext.delete(message)
         }
+        // BranchOrigin (SchemaV13, #2307) is a side table keyed by plain
+        // UUID, not a SwiftData relationship, so it is never cascade-deleted
+        // — an orphaned row here would leak forever. Only the deleted
+        // session's own row (it was a branch) is purged; other sessions'
+        // BranchOrigin rows that point *at* this session as their source are
+        // deliberately left alone — that's the tombstone case the read path
+        // (`SessionListService.branchOriginTitle(for:)`) already falls back
+        // to `originTitleSnapshot` for.
+        if let ownBranchOrigin = try modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>(
+            predicate: #Predicate { $0.sessionID == sessionID }
+        )).first {
+            modelContext.delete(ownBranchOrigin)
+        }
         modelContext.delete(session)
         try modelContext.save()
     }
@@ -229,6 +250,13 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         let messages = try modelContext.fetch(FetchDescriptor<PersistedChatMessage>())
         for message in messages {
             modelContext.delete(message)
+        }
+        // BranchOrigin (SchemaV13, #2307) is a side table, not cascaded by
+        // any relationship — purge it explicitly so a full erase leaves no
+        // orphaned provenance rows behind.
+        let branchOrigins = try modelContext.fetch(FetchDescriptor<ManifoldSchemaV13.BranchOrigin>())
+        for branchOrigin in branchOrigins {
+            modelContext.delete(branchOrigin)
         }
         let sessions = try modelContext.fetch(FetchDescriptor<PersistedChatSession>())
         for session in sessions {
