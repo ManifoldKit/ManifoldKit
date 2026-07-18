@@ -200,6 +200,10 @@ struct MessagePartsView: View {
 
     @ViewBuilder
     private func partView(for part: MessagePart) -> some View {
+        // INTEGRATION(u2-l2): chatMessagePartRenderer override dispatches here —
+        // wired at stack integration (L2's Theming/ChatMessagePartRenderer.swift,
+        // on origin/feat/2307-u2-l2, gives a host renderer first refusal per
+        // part with `defaultPartView()` falling through to the switch below).
         switch part {
         case .text(let text):
             textView(text)
