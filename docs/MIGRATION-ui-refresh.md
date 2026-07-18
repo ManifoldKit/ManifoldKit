@@ -130,7 +130,7 @@ ChatView(showModelManagement: $show)
                 case .model(let model):
                     chatViewModel.selectedModel = model
                 case .endpoint(let endpoint):
-                    Task { await chatViewModel.loadCloudEndpoint(endpoint) }
+                    chatViewModel.selectedEndpoint = endpoint
                 }
             },
             onFixEndpoint: { _ in showModelManagement = true }
@@ -138,14 +138,27 @@ ChatView(showModelManagement: $show)
     }
 ```
 
+**`onSelect`'s contract: set the selection property; never call `load*`
+directly from `onSelect`.** Setting `selectedModel`/`selectedEndpoint` is the
+whole job — your app's existing `.onChange(of: chatViewModel.selectedModel)`
+/ `.onChange(of: chatViewModel.selectedEndpoint)` handlers (the ones the
+canonical bootstrap recipe and `Example/Advanced/DemoContentView.swift`
+already have, calling `chatViewModel.dispatchSelectedLoad()`) own
+dispatching the actual load. Calling `loadCloudEndpoint(_:)` (or any other
+load) directly from `onSelect` sets up the backend without updating
+`selectedEndpoint`, so the switcher's highlight and the chip's title go
+stale, and a later `dispatchSelectedLoad()` can silently reload the wrong
+selection instead.
+
 `ChatView` cannot import `ModelSwitcherView` directly — `ManifoldUI` must not
 depend on `ManifoldUIModelManagement` (Principle 2). The seam mirrors
 `chatAPIConfiguration(_:)`'s closure-injection shape for exactly this reason.
 Omitting `.chatModelSwitcher(_:)` renders no chip at all — this is fully
 opt-in, no upgrade action required. `Example/Advanced/DemoContentView.swift`
 wires this exact call site (with `.onChange(of: chatViewModel.selectedModel)`
-already dispatching the load, so `onSelect` only needs to set the selection);
-`ModelSwitcherMigrationGuardTests` (`Tests/ManifoldUIModelManagementTests`)
+/ `.onChange(of: chatViewModel.selectedEndpoint)` already dispatching the
+load, so `onSelect` only needs to set the selection — see the contract note
+above); `ModelSwitcherMigrationGuardTests` (`Tests/ManifoldUIModelManagementTests`)
 is the compile-time guard keeping this snippet honest.
 
 ## Retired API

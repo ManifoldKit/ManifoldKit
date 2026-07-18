@@ -128,7 +128,7 @@ struct DemoContentView: View {
                             case .model(let model):
                                 viewModel.selectedModel = model
                             case .endpoint(let endpoint):
-                                Task { await viewModel.loadCloudEndpoint(endpoint) }
+                                viewModel.selectedEndpoint = endpoint
                             }
                         },
                         onFixEndpoint: { _ in isModelManagementPresented = true }
