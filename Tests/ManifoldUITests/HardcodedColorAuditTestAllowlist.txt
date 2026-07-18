@@ -37,14 +37,6 @@
 # onto those Color-typed accessors (not the AnyShapeStyle ones) should now
 # pass characterization.
 #
-# Unit 2 §L2 (issue #2307) moved `ToolInvocationView`'s failed-state chrome
-# into `Theming/ToolInvocationStyle.swift`'s `PlainToolInvocationStyle` (the
-# style protocol's built-in "current look" — see MessageBubbleStyle's
-# precedent). The three `.orange` literals below relocated with it,
-# byte-for-byte; they are still category (a)/"no matching Unit-1 token" per
-# the note above, now living in the style-protocol layer this note already
-# anticipated ("that's a Unit 2 §L2 concern").
-
 # --- ManifoldUI (T1-migrate-ui, PR 1a) ---
 Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))
 Views/Chat/ChatInputBar.swift:.foregroundStyle(.red)
@@ -56,40 +48,16 @@ Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
 Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
 Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.7))
 Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.75))
-Views/Chat/MessagePartsView.swift:.fill(Color.gray.opacity(0.15))
 Views/Chat/MessagePartsView.swift:.foregroundStyle(role == .user ? .white : .primary)
-Theming/ToolInvocationStyle.swift:.background(.orange.opacity(0.15), in: Capsule())
-Theming/ToolInvocationStyle.swift:.foregroundStyle(.orange)
-Theming/ToolInvocationStyle.swift:.foregroundStyle(.orange)
 Views/Sidebar/SessionListView.swift:.tint(.orange)
-
 # --- ManifoldUIModelManagement (T1-migrate-mmgmt, PR 1b) ---
 Views/Documents/DocumentLibraryView.swift:.foregroundStyle(.orange)
-Views/Documents/DocumentLibraryView.swift:.foregroundStyle(.red)
-Views/Image/ImageModelInstallView.swift:.foregroundStyle(.green)
-Views/Image/ImageModelInstallView.swift:.foregroundStyle(.red)
 Views/Models/DownloadProgressView.swift:.foregroundStyle(.blue)
-Views/Models/DownloadProgressView.swift:.foregroundStyle(.green)
-Views/Models/DownloadProgressView.swift:.foregroundStyle(.red)
-Views/Models/HuggingFaceBrowserView.swift:.background(.green.opacity(0.15), in: Capsule())
-Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.green)
-Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.green)
 Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.orange)
 Views/Models/LocalModelStorageView.swift:.foregroundStyle(.blue)
-Views/Models/LocalModelStorageView.swift:.foregroundStyle(.red)
 Views/Models/StorageManagementView.swift:.foregroundStyle(.blue)
-Views/Models/StorageManagementView.swift:.foregroundStyle(.red)
 Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)
 Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)
-Views/Settings/APIConfigurationView.swift:.foregroundStyle(.yellow)
-Views/Settings/APIEndpointEditorView.swift:.foregroundStyle(.green)
-Views/Settings/APIEndpointEditorView.swift:.foregroundStyle(.red)
-Views/Settings/APIEndpointRow.swift:.foregroundStyle(.green)
 Views/Settings/APIEndpointRow.swift:.foregroundStyle(.orange)
 Views/Settings/APIEndpointRow.swift:.foregroundStyle(.orange)
-Views/Settings/RemoteServerConfigSheet.swift:.foregroundStyle(.red)
-
 # --- ManifoldVoice (T1-migrate-voice, PR 1b) ---
-Views/VoiceComposerAccessory.swift:.foregroundStyle(isFailure(controller.captureState) ? Color.red : .secondary)
-Views/VoiceInputButton.swift:.tint(isRecording ? .red : .accentColor)
-

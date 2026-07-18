@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// Main settings view for managing cloud API endpoints.
 ///
@@ -20,6 +21,7 @@ public struct APIConfigurationView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.endpointStore) private var endpointStore
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     @State private var endpoints: [APIEndpointRecord] = []
     @State private var showAddSheet = false
@@ -67,7 +69,7 @@ public struct APIConfigurationView: View {
                             .font(.caption)
                     } icon: {
                         Image(systemName: "exclamationmark.shield")
-                            .foregroundStyle(.yellow)
+                            .foregroundStyle(theme.statusWarn)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Privacy warning: When using cloud APIs, your messages are sent to external servers. Your conversations are no longer on-device only.")

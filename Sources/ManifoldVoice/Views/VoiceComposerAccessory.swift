@@ -24,6 +24,7 @@ enum VoiceDraftComposer {
 
 public struct VoiceComposerAccessory: View {
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme
 
     private let controller: VoiceConversationController
     private let mergeStrategy: VoiceDraftMergeStrategy
@@ -77,7 +78,7 @@ public struct VoiceComposerAccessory: View {
                 if let status = controller.statusText {
                     Text(status)
                         .font(.caption)
-                        .foregroundStyle(isFailure(controller.captureState) ? Color.red : .secondary)
+                        .foregroundStyle(isFailure(controller.captureState) ? theme.statusError : AnyShapeStyle(.secondary))
                         .lineLimit(2)
                 }
 

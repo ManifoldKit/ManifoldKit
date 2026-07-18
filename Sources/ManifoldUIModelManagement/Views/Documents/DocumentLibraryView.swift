@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 import os
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// Lists ingested RAG documents and lets the user add or remove them.
 ///
@@ -21,6 +22,8 @@ public struct DocumentLibraryView: View {
     @State private var showImporter: Bool = false
     @State private var pendingDelete: DocumentRecord?
     @State private var isDropTargeted: Bool = false
+
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     /// Document file types accepted by the importer. Mirrors the `parsers:`
     /// list passed to ``RAGService`` in ``ManifoldBootstrap`` — keep in sync
@@ -184,7 +187,7 @@ public struct DocumentLibraryView: View {
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .strokeBorder(theme.accent, lineWidth: 3)
                     .padding(8)
                     .allowsHitTesting(false)
             }
@@ -267,6 +270,8 @@ private struct DocumentRow: View {
     let document: DocumentRecord
     let onDelete: () -> Void
 
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
+
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: iconName)
@@ -297,7 +302,7 @@ private struct DocumentRow: View {
 
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.statusError)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Delete \(document.title)")

@@ -112,6 +112,7 @@ For a sidebar-based layout with multiple sessions, combine ``ChatView`` with ``S
 - <doc:ToolInvocationStyling>
 - <doc:SessionRowStyling>
 - <doc:PartRendering>
+- <doc:BootstrapLoadingScreen>
 
 ### View Models
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 import ManifoldRuntime
 import ManifoldInference
 
@@ -25,6 +26,7 @@ struct MessagePartsView: View {
     var citations: [Citation] = []
 
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme
 
     /// True while the parent message's reasoning block is still streaming —
     /// computed from the view-model's transient streaming-thinking set keyed
@@ -53,7 +55,151 @@ struct MessagePartsView: View {
         return Set(gate.pending.map { $0.id })
     }
 
+    /// In-flight image-generation progress for the hosting message, keyed by
+    /// ``messageID``. `nil` once the placeholder message's `contentParts`
+    /// gain the terminal `.generatedMedia` part — at that point the part
+    /// itself is the source of truth and the progress card stops rendering
+    /// (see ``ChatViewModel/handle(imageRuntimeEvent:)``, which only ever
+    /// writes the completed part, never clears the progress dict entry).
+    private var activeImageGenerationProgress: ImageGenerationProgress? {
+        Self.activeProgress(in: viewModel.imageGenerationProgress, messageID: messageID)
+    }
+
+    /// See ``activeImageGenerationProgress``; video sibling.
+    private var activeVideoGenerationProgress: VideoGenerationProgress? {
+        Self.activeProgress(in: viewModel.videoGenerationProgress, messageID: messageID)
+    }
+
+    /// Terminal (`isComplete == true`) image-generation entry for the hosting
+    /// message, when its placeholder never received a `.generatedMedia` part
+    /// (`parts.isEmpty` — gated in `body`, same as ``activeImageGenerationProgress``).
+    /// That combination only occurs for a **failed or cancelled** generation:
+    /// a *successful* completion always writes the `.generatedMedia` part in
+    /// the same handler call that flips `isComplete` (see
+    /// `ChatViewModel.handle(imageRuntimeEvent:)`'s `.completed` case), so
+    /// `parts` is never still empty once this entry exists. Before this
+    /// tranche's failure-treatment addition, a failed/cancelled generation
+    /// left this permanently blank — `ImageGenerationProgress.error` was
+    /// written but never read.
+    private var terminalImageFailure: ImageGenerationProgress? {
+        Self.terminalFailure(in: viewModel.imageGenerationProgress, messageID: messageID)
+    }
+
+    /// See ``terminalImageFailure``; video sibling.
+    private var terminalVideoFailure: VideoGenerationProgress? {
+        Self.terminalFailure(in: viewModel.videoGenerationProgress, messageID: messageID)
+    }
+
+    /// Pure lookup extracted from ``activeImageGenerationProgress``/
+    /// ``activeVideoGenerationProgress`` so the progress-card lifecycle
+    /// (progress → settled → missing) is unit-testable without a live
+    /// `ChatViewModel`/`@Environment` — see `MessagePartsGenerationProgressTests`.
+    ///
+    /// `nil` when there is no `messageID` to key on, no entry for that id, or
+    /// the entry is already terminal (`isComplete == true` — completed,
+    /// failed, and cancelled all settle through this same flag, per
+    /// ``ChatViewModel/handle(imageRuntimeEvent:)``/`handle(videoRuntimeEvent:)`).
+    static func activeProgress<Progress: GenerationProgressLifecycle>(
+        in dict: [UUID: Progress],
+        messageID: UUID?
+    ) -> Progress? {
+        guard let messageID else { return nil }
+        guard let progress = dict[messageID], !progress.isComplete else { return nil }
+        return progress
+    }
+
+    /// The inverse of ``activeProgress(in:messageID:)``: the terminal entry,
+    /// once one exists. Callers must additionally gate on `parts.isEmpty`
+    /// (as `body` does) — that's what distinguishes "the generation failed
+    /// or was cancelled, so no `.generatedMedia` part ever arrived" from "the
+    /// generation succeeded", since a successful completion's handler writes
+    /// the part in the same step that sets `isComplete = true`.
+    static func terminalFailure<Progress: GenerationProgressLifecycle>(
+        in dict: [UUID: Progress],
+        messageID: UUID?
+    ) -> Progress? {
+        guard let messageID else { return nil }
+        guard let progress = dict[messageID], progress.isComplete else { return nil }
+        return progress
+    }
+
     var body: some View {
+        // A generation in flight for this message has no `.generatedMedia`
+        // part yet (the placeholder starts with empty `contentParts` — see
+        // `ChatViewModel+ImageGeneration.swift`'s `.started` handler), so the
+        // progress card renders ahead of (in practice, instead of) the empty
+        // `ForEach` below. It disappears on its own once the terminal event
+        // populates `parts` and this view re-renders.
+        //
+        // Gated on `parts.isEmpty`: this is not just an optimization — it's
+        // load-bearing. `viewModel.imageGenerationProgress`/
+        // `videoGenerationProgress` reads force `@Environment(ChatViewModel.self)`
+        // to resolve. Every other `viewModel`-touching computed property on
+        // this view (`isThinkingStreaming`, `pendingApprovalIDs`,
+        // `resolvedResultIDs`) is reached only from the `.thinking`/`.toolCall`
+        // branches of `partView(for:)`, so a plain text-only message never
+        // touches the environment at all. Checking generation progress
+        // unconditionally broke that invariant and crashed every
+        // environment-less test that renders a non-empty, non-tool message
+        // (e.g. `MessageBubbleViewLogicTests` constructs `MessageBubbleView`
+        // — and transitively this view — with no `ChatViewModel` in scope).
+        // Gating on `parts.isEmpty` restores the invariant and matches the
+        // only case a progress entry can actually apply to.
+        if parts.isEmpty {
+            if let progress = activeImageGenerationProgress {
+                let vm = viewModel
+                GeneratedMediaProgressCardView(
+                    prompt: progress.prompt,
+                    progress: .image(step: progress.step, totalSteps: progress.totalSteps, previewImage: progress.previewImage),
+                    onCancel: {
+                        guard let messageID else { return }
+                        Task { [weak vm] in await vm?.cancelImageGeneration(messageID: messageID) }
+                    }
+                )
+            } else if let progress = activeVideoGenerationProgress {
+                let vm = viewModel
+                GeneratedMediaProgressCardView(
+                    prompt: progress.prompt,
+                    progress: .video(fractionComplete: progress.fractionComplete),
+                    onCancel: {
+                        guard let messageID else { return }
+                        Task { [weak vm] in await vm?.cancelVideoGeneration(messageID: messageID) }
+                    }
+                )
+            } else if let failure = terminalImageFailure {
+                // §4A: "missing media never shows a broken frame: it states
+                // its cause in the statusWarn voice" — this is the failed/
+                // cancelled-generation case of that rule (as opposed to a
+                // completed generation whose binary later went missing from
+                // disk, handled by `missingImagePlaceholder`/`generatedVideoView`
+                // below). Before this fix, a failed/cancelled generation left
+                // this bubble permanently blank: `.failed`/`.cancelled` both
+                // set `isComplete = true` on an empty-`contentParts` message
+                // and never wrote a `.generatedMedia` part, so nothing here
+                // ever rendered — `ImageGenerationProgress.error` was written
+                // but never read.
+                //
+                // Test-coverage honesty: `terminalFailure(in:messageID:)` and
+                // `failureCaption(kind:error:)` are both unit-tested directly
+                // (`MessagePartsGenerationProgressTests`). This `else if`
+                // branch itself is NOT render-tested — reaching it requires
+                // `parts.isEmpty`, which forces this view's
+                // `@Environment(ChatViewModel.self)` to resolve (same as
+                // `activeImageGenerationProgress` above), and ViewInspector's
+                // `.environment(_:)` does not satisfy that read during
+                // inspection in this setup (confirmed: rendering
+                // `MessagePartsView(parts: [], ...)` with `.environment(vm)`
+                // reproduces the same crash `ChatHistoryView`'s equivalent
+                // attempt did). Manually verified instead: temporarily
+                // deleting this `else if`/`missingMediaPlaceholder` pairing
+                // (for both image and video) leaves the full `ManifoldUITests`
+                // suite green — confirming the gap is real.
+                missingMediaPlaceholder(caption: Self.failureCaption(kind: "Image", error: failure.error))
+            } else if let failure = terminalVideoFailure {
+                missingMediaPlaceholder(caption: Self.failureCaption(kind: "Video", error: failure.error))
+            }
+        }
+
         // Identity must survive non-terminal insertions. The streaming
         // coordinator inserts `.thinking` *before* the first text part
         // (ChatGenerationCoordinator's `.thinkingStarted` handler), so an
@@ -120,6 +266,10 @@ struct MessagePartsView: View {
 
     @ViewBuilder
     private func partView(for part: MessagePart) -> some View {
+        // INTEGRATION(u2-l2): chatMessagePartRenderer override dispatches here —
+        // wired at stack integration (L2's Theming/ChatMessagePartRenderer.swift,
+        // on origin/feat/2307-u2-l2, gives a host renderer first refusal per
+        // part with `defaultPartView()` falling through to the switch below).
         switch part {
         case .text(let text):
             textView(text)
@@ -207,12 +357,10 @@ struct MessagePartsView: View {
         // `media.url` directly; the runtime ships no first-party player view.
         if FileManager.default.fileExists(atPath: media.url.path) {
             Text(media.prompt)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(theme.type.caption)
+                .foregroundStyle(theme.ink2)
         } else {
-            Text("Media file not found")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            missingMediaPlaceholder(caption: "Media file not found")
         }
     }
 
@@ -222,17 +370,51 @@ struct MessagePartsView: View {
         // so the UI degrades gracefully when the binary is missing (deleted,
         // container migration, restored backup without binary).
         if FileManager.default.fileExists(atPath: payload.videoURL.path) {
-            // Hosts that want a richer player should use the payload's
-            // `videoURL` directly. The runtime/service layer does not ship
-            // a first-party video player view — that's a host concern.
-            Text(payload.prompt)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // AVKit player replaces the historical prompt-text rendering
+            // (docs/UI-REFRESH-2026.md §4A — "Video gets the AVKit player in
+            // the same clipping"). Tap opens the *system* viewer via the
+            // platform's own full-screen playback controls; no custom
+            // lightbox is built here.
+            VideoPlayer(player: AVPlayer(url: payload.videoURL))
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: theme.shape.md))
+                .accessibilityLabel(Text(payload.prompt))
         } else {
-            Text("Video file not found")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            missingMediaPlaceholder(caption: "Video file not found")
         }
+    }
+
+    /// Caption for a failed/cancelled generation, reusing the same
+    /// missing-media/statusWarn language as the "binary went missing from
+    /// disk" captions below (`"Image unavailable"` / `"Video file not
+    /// found"`) rather than inventing a new voice for this case. Pure/static
+    /// so the copy is unit-testable without a view.
+    static func failureCaption(kind: String, error: String?) -> String {
+        if let error {
+            return "\(kind) generation failed: \(error)"
+        }
+        return "\(kind) generation cancelled"
+    }
+
+    /// Shared missing-media treatment (§4A — "never shows a broken frame: it
+    /// states its cause in the statusWarn voice"). Used by every
+    /// generated-media modality (image/video/audio-fallback) once the
+    /// referenced binary is gone from disk.
+    private func missingMediaPlaceholder(caption: String) -> some View {
+        RoundedRectangle(cornerRadius: theme.shape.sm)
+            .fill(theme.statusWarnSoft)
+            .overlay {
+                VStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(theme.statusWarnColor)
+                    Text(caption)
+                        .font(theme.type.caption)
+                        .foregroundStyle(theme.statusWarnColor)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 160)
     }
 
     @ViewBuilder
@@ -277,18 +459,7 @@ struct MessagePartsView: View {
                 "Generated image binary missing on disk: \(payload.imageURL.path, privacy: .public)"
             )
         }()
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color.gray.opacity(0.15))
-            .overlay {
-                VStack(spacing: 6) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                    Text("Image unavailable")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 160)
+        missingMediaPlaceholder(caption: "Image unavailable")
     }
 
     @ViewBuilder
@@ -350,3 +521,24 @@ struct MessagePartsView: View {
     MessagePartsView(parts: [.text("Hello world")], role: .assistant)
         .environment(ChatViewModel())
 }
+
+// MARK: - GenerationProgressLifecycle
+
+/// Common shape ``ImageGenerationProgress``/``VideoGenerationProgress``
+/// already carry — retroactively surfaced as a protocol (rather than editing
+/// either type, which live in `ChatViewModel+ImageGeneration.swift`/
+/// `ChatViewModel+VideoGeneration.swift`) purely so
+/// ``MessagePartsView/activeProgress(in:messageID:)`` can be written once and
+/// shared by both modalities.
+protocol GenerationProgressLifecycle {
+    /// `true` once a terminal event (completed / failed / cancelled) has been
+    /// observed for this generation.
+    var isComplete: Bool { get }
+    /// Localized failure description, or `nil` for a successful completion
+    /// or a user-initiated cancellation — see ``MessagePartsView/terminalFailure(in:messageID:)``
+    /// for how a `nil` error is distinguished from "no terminal event yet".
+    var error: String? { get }
+}
+
+extension ImageGenerationProgress: GenerationProgressLifecycle {}
+extension VideoGenerationProgress: GenerationProgressLifecycle {}

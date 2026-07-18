@@ -1,6 +1,7 @@
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldUI
 
 /// A row displaying a summary of an ``APIEndpointRecord`` configuration.
 ///
@@ -12,6 +13,8 @@ import ManifoldInference
 package struct APIEndpointRow: View {
 
     package let endpoint: APIEndpointRecord
+
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
 
     package init(endpoint: APIEndpointRecord) {
         self.endpoint = endpoint
@@ -41,7 +44,7 @@ package struct APIEndpointRow: View {
                 case .success:
                     Label("Ready", systemImage: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(theme.statusOK)
                 case .failure:
                     Label("Incomplete", systemImage: "exclamationmark.circle.fill")
                         .font(.caption)

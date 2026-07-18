@@ -317,7 +317,9 @@ public struct ChatView<APIConfig: View>: View {
                 ChatNoModelLoadedContent(
                     appName: ManifoldConfiguration.shared.appName,
                     hasAvailableModels: !viewModel.availableModels.isEmpty,
-                    showModelManagement: $showModelManagement
+                    isFirstRun: viewModel.isFirstRun,
+                    showModelManagement: $showModelManagement,
+                    showAPIConfiguration: $showAPIConfiguration
                 )
             } else {
                 messageList

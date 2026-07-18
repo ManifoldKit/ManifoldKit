@@ -8,6 +8,7 @@ import ManifoldUI
 struct HuggingFaceBrowserView: View {
 
     @Environment(ModelManagementViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
     @Bindable private var modelRegistry: ModelRegistry
 
     let recommendedModelIDs: Set<String>?
@@ -166,7 +167,7 @@ struct HuggingFaceBrowserView: View {
         if let message = importSuccessMessage {
             Section {
                 Label(message, systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(theme.statusOK)
                     .accessibilityLabel(message)
             }
         }
@@ -314,8 +315,8 @@ struct HuggingFaceBrowserView: View {
             .font(.caption2)
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
-            .background(.green.opacity(0.15), in: Capsule())
-            .foregroundStyle(.green)
+            .background(theme.statusOKSoft, in: Capsule())
+            .foregroundStyle(theme.statusOK)
             .padding(.leading, 22)
             .padding(.bottom, 2)
     }
