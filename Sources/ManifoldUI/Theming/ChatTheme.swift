@@ -13,22 +13,34 @@ import ManifoldInference
 /// and ``PlainMessageBubbleStyle``). That keeps the litmus test honest: toggling
 /// Dark Mode, max Dynamic Type, or Increase Contrast still moves every value.
 ///
-/// ``ChatTheme/standard`` reproduces the framework's historical appearance
-/// byte-for-byte, which is what makes adopting the theming system a zero-breaking
-/// change: views that never call `.chatTheme(_:)` render exactly as before.
+/// ``ChatTheme/standard`` was the framework's *only* appearance through Unit 1
+/// (byte-for-byte reproduction of the pre-theming look, which is what made
+/// adopting the theming system a zero-breaking change). **Unit 2 §L5 (issue
+/// #2307) flips it**: ``ChatTheme/standard`` now carries the 2026 refresh's
+/// bubble look (gradient-from-accent user fill, `shape.lg`-aligned corner
+/// radius); the historical values move to ``ChatTheme/classic``, which
+/// reproduces them exactly. Apply `.chatTheme(.classic)` (or, for the full
+/// restore across every style protocol, `View.classicManifoldTheme()` in
+/// `ManifoldTheme.swift`) to keep the pre-refresh bubble appearance.
 public struct ChatTheme: Sendable {
 
-    /// Fill behind a user (right-aligned) bubble. Default: `Color.accentColor`.
+    /// Fill behind a user (right-aligned) bubble. Default (post-flip, spec §7):
+    /// a linear gradient derived from the resolved `Color.accentColor` — "never
+    /// a fixed hue." ``classic`` keeps the pre-refresh solid `Color.accentColor`.
     public var userBubbleBackground: AnyShapeStyle
 
-    /// Fill behind an assistant (left-aligned) bubble. Default: `.fill.tertiary`.
+    /// Fill behind an assistant (left-aligned) bubble. Default: `.fill.tertiary`
+    /// — unchanged by the flip (only the user-bubble fill and corner radius move).
     public var assistantBubbleBackground: AnyShapeStyle
 
     /// Fill behind a system notice. Default: clear — system messages render as
     /// centered italic text with no bubble chrome.
     public var systemBubbleBackground: AnyShapeStyle
 
-    /// Corner radius of user/assistant bubbles. Default: `16`.
+    /// Corner radius of user/assistant bubbles. Default (post-flip): `20`,
+    /// aligned to ``ManifoldThemeShapeScale/lg`` per spec §1 "concentric
+    /// geometry... one shape scale... replacing scattered 4/6/8/12pt
+    /// constants." ``classic`` keeps the pre-refresh `16`.
     public var cornerRadius: CGFloat
 
     /// Internal padding applied inside every bubble. Default: `12`.
@@ -50,15 +62,21 @@ public struct ChatTheme: Sendable {
     /// Default: `.caption`.
     public var metadataFont: Font
 
-    /// Creates a theme. Every parameter defaults to the framework's historical
-    /// value, so `ChatTheme()` (and ``standard``) match today's look exactly.
-    /// Callers override only the tokens they care about, e.g.
+    /// Creates a theme. Every parameter defaults to the framework's current
+    /// (post-flip) value, so `ChatTheme()` (and ``standard``) match the 2026
+    /// refresh's look. Callers override only the tokens they care about, e.g.
     /// `ChatTheme(userBubbleBackground: AnyShapeStyle(Color.pink))`.
     public init(
-        userBubbleBackground: AnyShapeStyle = AnyShapeStyle(Color.accentColor),
+        userBubbleBackground: AnyShapeStyle = AnyShapeStyle(
+            LinearGradient(
+                colors: [Color.accentColor, Color.accentColor.opacity(0.85)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        ),
         assistantBubbleBackground: AnyShapeStyle = AnyShapeStyle(.fill.tertiary),
         systemBubbleBackground: AnyShapeStyle = AnyShapeStyle(Color.clear),
-        cornerRadius: CGFloat = 16,
+        cornerRadius: CGFloat = 20,
         bubblePadding: CGFloat = 12,
         contentSpacing: CGFloat = 4,
         bubbleStackSpacing: CGFloat = 6,
@@ -76,8 +94,22 @@ public struct ChatTheme: Sendable {
         self.metadataFont = metadataFont
     }
 
-    /// The framework default — reproduces the pre-theming appearance exactly.
+    /// The framework default since Unit 2 §L5 (issue #2307) — the 2026
+    /// refresh's bubble look (gradient-from-accent user fill, `20`pt corner
+    /// radius). See ``classic`` to restore the pre-refresh appearance
+    /// byte-for-byte.
     public static let standard = ChatTheme()
+
+    /// Reproduces the pre-2026-refresh bubble appearance byte-for-byte: solid
+    /// `Color.accentColor` user fill, `16`pt corner radius. Every other token
+    /// (assistant fill, paddings, fonts) is unchanged by the flip, so this
+    /// only overrides the two tokens that moved. Apply via
+    /// `.chatTheme(.classic)` or, for the full cross-protocol restore,
+    /// `View.classicManifoldTheme()` (`ManifoldTheme.swift`).
+    public static let classic = ChatTheme(
+        userBubbleBackground: AnyShapeStyle(Color.accentColor),
+        cornerRadius: 16
+    )
 
     /// The per-role bubble fill.
     public func background(for role: MessageRole) -> AnyShapeStyle {

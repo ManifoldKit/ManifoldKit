@@ -536,4 +536,32 @@ final class MessageBubbleViewLogicTests: XCTestCase {
         XCTAssertLessThan(lastDeltaIdx!, handoffIdx!,
                           "All token deltas must precede the agent handoff event for a single turn.")
     }
+
+    // MARK: - ChatHistoryBranchOriginResolver (#2307 chip wiring)
+
+    /// Pure gate: `ChatHistoryView` should render `BranchOriginChipView` when
+    /// the active session carries a non-nil `branchOriginSessionID`.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: invert the nil check → passes for non-branched, fails for branched.
+    ///   M2: hardcode `true` → the "non-branched" assertion below fails.
+    func test_branchOriginResolver_isBranch_trueWhenOriginSessionIDSet() {
+        let branched = ManifoldInference.ChatSession(title: "New Chat", branchOriginSessionID: UUID())
+        XCTAssertTrue(ChatHistoryBranchOriginResolver.isBranch(branched))
+    }
+
+    /// Ordinary sessions (never branched) must render nothing — zero footprint.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: hardcode `true` → this assertion fails.
+    func test_branchOriginResolver_isBranch_falseForOrdinarySession() {
+        let ordinary = ManifoldInference.ChatSession(title: "Ordinary session")
+        XCTAssertFalse(ChatHistoryBranchOriginResolver.isBranch(ordinary))
+    }
+
+    /// A `nil` active session (no session selected yet) must not gate `true`
+    /// — guards against a force-unwrap or an inverted optional check.
+    func test_branchOriginResolver_isBranch_falseForNilSession() {
+        XCTAssertFalse(ChatHistoryBranchOriginResolver.isBranch(nil))
+    }
 }

@@ -7,9 +7,10 @@ import ManifoldInference
 /// User messages are right-aligned with accent coloring, assistant messages
 /// are left-aligned with a secondary background, and system messages are
 /// centered and italic. Supports streaming state with a pulsing indicator.
-/// When `isPinned` is `true`, a small pin icon is shown in the top-trailing
-/// corner of the bubble to indicate the message is preserved when the
-/// conversation history is trimmed to fit the context window.
+/// When `isPinned` is `true`, a small pin icon appears inline in the
+/// bubble's metadata row (alongside the timestamp/status/token-count
+/// labels) to indicate the message is preserved when the conversation
+/// history is trimmed to fit the context window.
 public struct MessageBubbleView: View {
 
     public let message: ChatMessage
@@ -177,22 +178,18 @@ public struct MessageBubbleView: View {
                             .accessibilityLabel(Self.statusAccessibilityLabel(for: message) ?? statusText)
                     }
 
+                    metadataPinGlyph
+
                     timestampLabel
                         .foregroundStyle(.white.opacity(0.7))
                 }
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            pinIndicator
         }
     }
 
     private var assistantBubble: some View {
         styledBubble(role: .assistant) {
             assistantBubbleContent
-        }
-        .overlay(alignment: .topTrailing) {
-            pinIndicator
         }
     }
 
@@ -241,6 +238,8 @@ public struct MessageBubbleView: View {
 
             if !isStreaming || message.hasVisibleContent {
                 HStack(spacing: 6) {
+                    metadataPinGlyph
+
                     timestampLabel
                         .foregroundStyle(.secondary)
 
@@ -344,14 +343,20 @@ public struct MessageBubbleView: View {
 
     // MARK: - Pin Indicator
 
+    /// Pin glyph rendered inline in the bubble's metadata row, alongside the
+    /// timestamp/token-count/status labels (`docs/UI-REFRESH-2026.md` §12 —
+    /// "pinned messages gain a metadata-row pin glyph"). Replaces the
+    /// earlier top-trailing overlay badge (#2007) — same underlying
+    /// `isPinned` signal and glyph, restyled to read as part of the
+    /// metadata line rather than a corner decoration.
     @ViewBuilder
-    private var pinIndicator: some View {
+    private var metadataPinGlyph: some View {
         if isPinned {
             Image(systemName: "pin.fill")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .padding(6)
                 .accessibilityLabel("Pinned message")
+                .accessibilityIdentifier("message-pin-glyph-\(message.id.uuidString)")
         }
     }
 

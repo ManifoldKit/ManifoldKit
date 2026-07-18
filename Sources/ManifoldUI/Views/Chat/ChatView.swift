@@ -45,6 +45,7 @@ import ManifoldInference
 public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
 
@@ -57,6 +58,7 @@ public struct ChatView<APIConfig: View>: View {
     @State private var isExportPresented: Bool = false
     @State private var showClearConfirmation: Bool = false
     @State private var showAPIConfiguration: Bool = false
+    @State private var showModelSwitcher: Bool = false
     #if DEBUG
     @State private var showArchitectView: Bool = false
     #endif
@@ -99,6 +101,14 @@ public struct ChatView<APIConfig: View>: View {
     /// supply this to render memory bubbles, annotation labels, or other
     /// internal records.
     private var customKindRenderer: ((ChatMessage) -> AnyView)?
+
+    /// Optional host-supplied quick model switcher content, set via
+    /// ``chatModelSwitcher(_:)``. `nil` (the default) renders no model chip
+    /// in the toolbar at all — the seam is opt-in because building the row
+    /// list (`ModelSwitcher.rows(...)`) needs `ManifoldUIModelManagement`
+    /// types this module must not import (dependency direction: mmgmt
+    /// depends on UI, never the reverse).
+    private var modelSwitcherBuilder: (() -> AnyView)?
 
     public init(
         showModelManagement: Binding<Bool>,
@@ -168,6 +178,7 @@ public struct ChatView<APIConfig: View>: View {
         copy.composerAccessoryBuilder = composerAccessoryBuilder
         copy.contextMenuItemsBuilder = contextMenuItemsBuilder
         copy.customKindRenderer = customKindRenderer
+        copy.modelSwitcherBuilder = modelSwitcherBuilder
         return copy
     }
 
@@ -215,41 +226,57 @@ public struct ChatView<APIConfig: View>: View {
         return copy
     }
 
+    /// Installs a quick model switcher, presented from a toolbar chip —
+    /// popover-anchored on macOS (spec §2: "Glass popover anchored to the
+    /// toolbar chip"), a sheet with `.presentationDetents` on iOS (spec §2:
+    /// "Glass sheet + detents"). `ChatView` owns only the chrome (chip,
+    /// presentation style); the content itself is host-supplied because
+    /// building the unified row list needs `ManifoldUIModelManagement` types
+    /// (`ModelSwitcher.rows(...)`, `EndpointStore`) this module cannot import.
+    ///
+    /// Typically:
+    /// ```swift
+    /// ChatView(showModelManagement: $show)
+    ///     .chatModelSwitcher {
+    ///         ModelSwitcherView(
+    ///             rows: ModelSwitcher.rows(
+    ///                 models: vm.availableModels,
+    ///                 endpoints: endpoints,
+    ///                 selectedModelID: vm.selectedModel?.id,
+    ///                 selectedEndpointID: vm.selectedEndpoint?.id,
+    ///                 physicalMemoryBytes: vm.physicalMemoryBytes,
+    ///                 compatibility: capabilityService.compatibility(for:)
+    ///             ),
+    ///             onSelect: { entry in /* dispatch selection */ },
+    ///             onFixEndpoint: { endpoint in /* open the endpoint editor */ }
+    ///         )
+    ///     }
+    /// ```
+    ///
+    /// `nil` (never calling this modifier) renders no model chip at all — the
+    /// seam is opt-in, matching `chatComposerAccessory(_:)`'s shape.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous builder entirely; there is no merging.
+    ///
+    /// **Ordering:** like the other chat seams, this method chains on the
+    /// concrete `ChatView` type — apply it together with
+    /// `chatEmptyState`/`chatComposerAccessory`/`chatAPIConfiguration`,
+    /// *before* any generic `View` modifier (`.chatTheme(_:)`,
+    /// `.chatMessageRenderer(_:)`, `.toolbar { }`, …) erases the chain to
+    /// `some View`, after which this method no longer resolves.
+    public func chatModelSwitcher<Content: View>(
+        @ViewBuilder _ builder: @escaping () -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.modelSwitcherBuilder = { AnyView(builder()) }
+        return copy
+    }
+
     // MARK: - Body
 
     public var body: some View {
-        VStack(spacing: 0) {
-            ChatErrorRecoveryBanner(
-                viewModel: viewModel,
-                showAPIConfiguration: $showAPIConfiguration,
-                showModelManagement: $showModelManagement,
-                apiConfiguration: apiConfigurationBuilder
-            )
-
-            if viewModel.isLoading {
-                ChatLoadingContent(
-                    activityPhase: viewModel.activityPhase,
-                    unloadModel: { viewModel.unloadModel() }
-                )
-            } else if !viewModel.isModelLoaded {
-                ChatNoModelLoadedContent(
-                    appName: ManifoldConfiguration.shared.appName,
-                    hasAvailableModels: !viewModel.availableModels.isEmpty,
-                    showModelManagement: $showModelManagement
-                )
-            } else {
-                messageList
-            }
-
-            if features.showUpgradeHint && viewModel.showUpgradeHint {
-                ChatUpgradeHintBanner(showModelManagement: $showModelManagement)
-            }
-
-            Divider()
-                .accessibilityHidden(true)
-
-            ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
-        }
+        chromeBody
         // Cmd+Shift+M opens Model Management from anywhere in the chat view.
         // The button must be in the view hierarchy (not toolbar) to be always active.
         .background {
@@ -263,6 +290,11 @@ public struct ChatView<APIConfig: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            if modelSwitcherBuilder != nil {
+                ToolbarItem(placement: .principal) {
+                    modelChipButton
+                }
+            }
             // Status indicators (cloud badge, context, memory) are informational
             // and can move to the overflow menu when space is tight. The action
             // buttons (export, device info, settings, clear) carry explicit
@@ -323,6 +355,137 @@ public struct ChatView<APIConfig: View>: View {
             contextMenuItemsBuilder: contextMenuItemsBuilder,
             customKindRenderer: customKindRenderer
         )
+    }
+
+    // MARK: - Chrome (Unit 2 §L1)
+
+    /// The banner/loading/message-list/upgrade-hint stack shared by both
+    /// chrome shapes below — everything above the composer seam.
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            ChatErrorRecoveryBanner(
+                viewModel: viewModel,
+                showAPIConfiguration: $showAPIConfiguration,
+                showModelManagement: $showModelManagement,
+                apiConfiguration: apiConfigurationBuilder
+            )
+
+            if viewModel.isLoading {
+                ChatLoadingContent(
+                    activityPhase: viewModel.activityPhase,
+                    unloadModel: { viewModel.unloadModel() }
+                )
+            } else if !viewModel.isModelLoaded {
+                ChatNoModelLoadedContent(
+                    appName: ManifoldConfiguration.shared.appName,
+                    hasAvailableModels: !viewModel.availableModels.isEmpty,
+                    isFirstRun: viewModel.isFirstRun,
+                    showModelManagement: $showModelManagement,
+                    showAPIConfiguration: $showAPIConfiguration
+                )
+            } else {
+                messageList
+            }
+
+            if features.showUpgradeHint && viewModel.showUpgradeHint {
+                ChatUpgradeHintBanner(showModelManagement: $showModelManagement)
+            }
+        }
+    }
+
+    /// Picks the composer-seam treatment: iOS gets the glass edge-to-edge
+    /// shape at every supported OS version (spec §9 — "iOS fallback:
+    /// identical geometry in `.regularMaterial`", i.e. the *geometry* isn't
+    /// gated to 26+, only which material renders it, and
+    /// ``View/manifoldGlass(_:in:)`` already resolves that per-OS). macOS
+    /// keeps the divider-seam shape unchanged here — the docked,
+    /// width-constrained glass composer bar is Unit 2 §L3's job
+    /// (`ChatComposerSection` itself lives outside this tranche's owned
+    /// files), and macOS chrome must stay system-toolbar-owned regardless.
+    @ViewBuilder
+    private var chromeBody: some View {
+        #if os(iOS)
+        edgeToEdgeGlassChromeBody
+        #else
+        classicChromeBody
+        #endif
+    }
+
+    /// Pre-refresh shape: an opaque `Divider()` seam between the transcript
+    /// and the composer, stacked in a plain `VStack`. Still used on macOS.
+    private var classicChromeBody: some View {
+        VStack(spacing: 0) {
+            mainContent
+            Divider()
+                .accessibilityHidden(true)
+            ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
+        }
+    }
+
+    /// iOS shape: the composer rides in the scroll view's bottom safe-area
+    /// inset instead of a stacked sibling, so the transcript scrolls
+    /// edge-to-edge beneath it — replacing the `Divider()` seam
+    /// (`docs/UI-REFRESH-2026.md` §1 "Content scrolls under glass",
+    /// §2 composer row). `safeAreaInset` still reserves layout space for the
+    /// composer (messages never render fully hidden behind it at rest); the
+    /// translucent ``manifoldGlass(_:in:)`` background is what lets content
+    /// visibly slide beneath it while scrolling, same contract as a
+    /// `List`/`ScrollView` floating toolbar.
+    private var edgeToEdgeGlassChromeBody: some View {
+        mainContent
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
+                    .manifoldGlass(theme, in: Rectangle())
+            }
+    }
+
+    // MARK: - Model switcher chip (Unit 2 §L5)
+
+    /// The toolbar chip that opens the host-supplied model switcher content
+    /// (``chatModelSwitcher(_:)``). macOS presents it as a popover anchored
+    /// to this chip (spec §2); iOS presents it as a sheet with
+    /// `.presentationDetents` (spec §2) — `presentationDetents` is an
+    /// iOS-only API, so it is guarded behind `#if os(iOS)`.
+    private var modelChipButton: some View {
+        Button {
+            showModelSwitcher = true
+        } label: {
+            Label(modelChipTitle, systemImage: "cpu")
+                .labelStyle(.titleAndIcon)
+        }
+        .accessibilityLabel("Switch model")
+        .accessibilityIdentifier("chat-model-switcher-chip")
+        #if os(iOS)
+        .sheet(isPresented: $showModelSwitcher) {
+            modelSwitcherContent
+                .presentationDetents([.medium, .large])
+        }
+        #else
+        .popover(isPresented: $showModelSwitcher) {
+            modelSwitcherContent
+                .frame(minWidth: 320, minHeight: 360)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private var modelSwitcherContent: some View {
+        if let modelSwitcherBuilder {
+            modelSwitcherBuilder()
+        } else {
+            EmptyView()
+        }
+    }
+
+    /// The chip's label: the active local model's name, else the active
+    /// cloud endpoint's name, else the backend-reported model identifier
+    /// (e.g. a Foundation Models session with no `ModelInfo`/endpoint
+    /// selection), else a neutral fallback so the chip is never blank.
+    private var modelChipTitle: String {
+        viewModel.selectedModel?.name
+            ?? viewModel.selectedEndpoint?.name
+            ?? viewModel.activeModelName
+            ?? "Model"
     }
 
     // MARK: - Helpers

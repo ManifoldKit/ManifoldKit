@@ -37,6 +37,14 @@
 # onto those Color-typed accessors (not the AnyShapeStyle ones) should now
 # pass characterization.
 
+# Unit 2 §L2 (issue #2307) moved `ToolInvocationView`'s failed-state chrome
+# into `Theming/ToolInvocationStyle.swift`'s `PlainToolInvocationStyle` (the
+# style protocol's built-in "current look" — see MessageBubbleStyle's
+# precedent). The three `.orange` literals below relocated with it,
+# byte-for-byte; they are still category (a)/"no matching Unit-1 token" per
+# the note above, now living in the style-protocol layer this note already
+# anticipated ("that's a Unit 2 §L2 concern").
+
 # --- ManifoldUI (T1-migrate-ui, PR 1a) ---
 Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))
 Views/Chat/ChatInputBar.swift:.foregroundStyle(.red)
@@ -48,39 +56,32 @@ Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
 Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
 Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.7))
 Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.75))
-Views/Chat/MessagePartsView.swift:.fill(Color.gray.opacity(0.15))
 Views/Chat/MessagePartsView.swift:.foregroundStyle(role == .user ? .white : .primary)
-Views/Chat/ToolInvocationView.swift:.background(.orange.opacity(0.15), in: Capsule())
-Views/Chat/ToolInvocationView.swift:.foregroundStyle(.orange)
-Views/Chat/ToolInvocationView.swift:.foregroundStyle(.orange)
+Theming/ToolInvocationStyle.swift:.background(.orange.opacity(0.15), in: Capsule())
+Theming/ToolInvocationStyle.swift:.foregroundStyle(.orange)
+Theming/ToolInvocationStyle.swift:.foregroundStyle(.orange)
+#
+# --- ManifoldUI (T1-migrate-ui, PR 1a) ---
+Views/Chat/AudioMessageView.swift:.background(role == .user ? Color.white.opacity(0.18) : Color.secondary.opacity(0.12))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.red)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.white, .black.opacity(0.7))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(.white, .black.opacity(0.7))
+Views/Chat/ChatInputBar.swift:.foregroundStyle(canSend ? Color.accentColor : Color.gray)
+Views/Chat/ChatInputBar.swift:.foregroundStyle(isRecordingAudio ? .red : .secondary)
+Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/ImagePlaceholderView.swift:.fill(Color.gray.opacity(0.15))
+Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.7))
+Views/Chat/MessageBubbleView.swift:.foregroundStyle(.white.opacity(0.75))
+Views/Chat/MessagePartsView.swift:.foregroundStyle(role == .user ? .white : .primary)
 Views/Sidebar/SessionListView.swift:.tint(.orange)
-
 # --- ManifoldUIModelManagement (T1-migrate-mmgmt, PR 1b) ---
 Views/Documents/DocumentLibraryView.swift:.foregroundStyle(.orange)
 Views/Models/DownloadProgressView.swift:.foregroundStyle(.blue)
-Views/Models/DownloadableModelRow.swift:.background(.blue.opacity(0.15), in: Capsule())
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.blue)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.blue)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(.orange)
-Views/Models/DownloadableModelRow.swift:.foregroundStyle(insufficient ? Color.secondary : Color.blue)
-Views/Models/DownloadableModelRow.swift:case .excellent, .good:  return .green
-Views/Models/DownloadableModelRow.swift:case .fast:     return .green
-Views/Models/DownloadableModelRow.swift:case .marginal:          return .yellow
-Views/Models/DownloadableModelRow.swift:case .notRecommended:    return .red
-Views/Models/DownloadableModelRow.swift:case .sluggish: return .orange
-Views/Models/DownloadableModelRow.swift:case .tooSlow:  return .red
-Views/Models/DownloadableModelRow.swift:case .usable:   return .blue
 Views/Models/HuggingFaceBrowserView.swift:.foregroundStyle(.orange)
 Views/Models/LocalModelStorageView.swift:.foregroundStyle(.blue)
-Views/Models/ModelPicker.swift:case .foundation: return ("Foundation", .blue)
-Views/Models/ModelPicker.swift:case .gguf: return ("GGUF", .orange)
-Views/Models/ModelPicker.swift:case .mlx: return ("MLX", .purple)
-Views/Models/ModelPicker.swift:default: return (modelType.rawValue.uppercased(), .gray)
 Views/Models/StorageManagementView.swift:.foregroundStyle(.blue)
 Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)
 Views/Models/WhyDownloadView.swift:.foregroundStyle(.blue)
 Views/Settings/APIEndpointRow.swift:.foregroundStyle(.orange)
 Views/Settings/APIEndpointRow.swift:.foregroundStyle(.orange)
-
 # --- ManifoldVoice (T1-migrate-voice, PR 1b) ---
-

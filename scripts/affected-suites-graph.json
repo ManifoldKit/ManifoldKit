@@ -142,6 +142,7 @@
       "deps": [
         "ManifoldHuggingFace",
         "ManifoldInference",
+        "ManifoldMCP",
         "ManifoldRuntime",
         "ManifoldUI"
       ]

@@ -31,3 +31,6 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
+        # Voice input is enabled in the demo config; without this key the
+        # composer fault banner (Unit 2 §6A) fires on first launch.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Voice input transcribes your speech into the message composer."

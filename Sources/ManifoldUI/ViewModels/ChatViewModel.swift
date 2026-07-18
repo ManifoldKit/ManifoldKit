@@ -161,6 +161,17 @@ public final class ChatViewModel {
     /// only signals "a new session exists, show it".
     public var onSessionBranched: (@MainActor (UUID) async -> Void)?
 
+    /// Resolves the display title for a branched session's origin chip
+    /// ("Branched from ‹title›"), or `nil` when the session was not branched.
+    /// Set by the view layer to connect to
+    /// `SessionManagerViewModel.branchOriginTitle(for:)` — mirrors
+    /// ``onFirstMessage``'s wiring pattern. `ManifoldUI` has no reference to
+    /// `ManifoldRuntime`'s `SessionListService` from this type, so the seam
+    /// is a closure the host wires (`quickStart()` wires it automatically;
+    /// manual bootstraps wire it the same way if they want the chip).
+    /// `ChatHistoryView` calls this to populate ``BranchOriginChipView``.
+    public var resolveBranchOriginTitle: (@MainActor (ChatSession) async -> String?)?
+
     // MARK: - First Run / Onboarding
 
     /// Called on the first launch instead of the default first-run behaviour.

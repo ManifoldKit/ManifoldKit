@@ -515,6 +515,21 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldInference",
                 "ManifoldHuggingFace",
+                // New edge (Unit 2 §L4, docs/UI-REFRESH-2026-PLAN.md): the
+                // promoted Connected Services settings surface
+                // (`Views/Settings/ConnectedServicesView.swift`) reuses
+                // `MCPToolCountView` rather than re-implement the Foundation
+                // Models 16-tool-cap footnote a second time. Legal — no
+                // cycle: `ManifoldMCP` depends only on `ManifoldInference`,
+                // never on any UI target — and does not violate the "UI
+                // never imports a backend family" rule, which targets
+                // Foundation/Ollama/CloudSaaS specifically; MCP is a tool
+                // bridge, not a backend family. FLAGGED AS AN EXPLICIT REVIEW
+                // ITEM in the PR body per the tranche brief. If the reviewer
+                // rules the edge undesirable, the fallback is re-homing a
+                // minimal count view in this target instead of importing
+                // `ManifoldMCP`.
+                "ManifoldMCP",
             ],
             path: "Sources/ManifoldUIModelManagement"
         ),

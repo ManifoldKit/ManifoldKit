@@ -25,7 +25,7 @@ import ManifoldInference
 /// - Deny button: `approval-deny-button`.
 public struct ToolInvocationView: View {
 
-    @Environment(\.manifoldTheme) private var theme
+    @Environment(\.toolInvocationStyle) private var style
 
     /// Visual state the view should render.
     ///
@@ -88,19 +88,42 @@ public struct ToolInvocationView: View {
     public var body: some View {
         switch (part, state) {
         case (.toolCall(let call), .pendingApproval):
-            pendingView(call: call)
+            resolvedView(
+                lifecycleState: .awaitingApproval,
+                callToolName: call.toolName,
+                arguments: call.arguments,
+                result: nil
+            )
         case (.toolCall(let call), .running):
-            runningView(call: call)
+            resolvedView(
+                lifecycleState: .running,
+                callToolName: call.toolName,
+                arguments: call.arguments,
+                result: nil
+            )
         case (.toolCall(let call), .completed):
             // Completed pair: fold the paired result (if any) into the same
             // disclosure labeled with the call's tool name.
-            completedCallView(call: call, result: pairedResult)
+            resolvedView(
+                lifecycleState: .completed,
+                callToolName: call.toolName,
+                arguments: call.arguments,
+                result: pairedResult
+            )
         case (.toolCall(let call), .failed):
-            failedView(call: call, result: pairedResult)
+            resolvedView(
+                lifecycleState: .failed,
+                callToolName: call.toolName,
+                arguments: call.arguments,
+                result: pairedResult
+            )
         case (.toolResult(let result), .completed):
-            completedCallView(call: nil, result: result)
+            // No paired `.toolCall` — the call part was trimmed out of
+            // history. `callToolName` is `nil` here (there is no call to name),
+            // distinct from a call literally named `"tool"`.
+            resolvedView(lifecycleState: .completed, callToolName: nil, arguments: nil, result: result)
         case (.toolResult(let result), .failed):
-            failedView(call: nil, result: result)
+            resolvedView(lifecycleState: .failed, callToolName: nil, arguments: nil, result: result)
         default:
             // Mixed-content bubbles should not crash if a caller supplies a
             // text / image / thinking part by accident. Silently skip.
@@ -108,147 +131,38 @@ public struct ToolInvocationView: View {
         }
     }
 
-    // MARK: - States
+    // MARK: - Style dispatch
 
-    private func pendingView(call: ToolCall) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "wrench.and.screwdriver")
-                    .foregroundStyle(.secondary)
-                Text(call.toolName)
-                    .font(.caption.monospaced())
-                    .fontWeight(.semibold)
-            }
-            Text(argumentPreview(call.arguments))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .textSelection(.enabled)
-            HStack(spacing: 8) {
-                Button("Deny") { onDeny?(nil) }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("approval-deny-button")
-                Button("Approve") { onApprove?() }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("approval-approve-button")
-            }
-        }
-        .padding(8)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("tool-invocation-pending-\(call.toolName)")
-    }
-
-    private func runningView(call: ToolCall) -> some View {
-        HStack(spacing: 6) {
-            ProgressView()
-                .controlSize(.mini)
-            Text("calling ")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            + Text(call.toolName)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-            + Text("…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(8)
-        .accessibilityIdentifier("tool-invocation-running-\(call.toolName)")
-    }
-
-    private func completedCallView(call: ToolCall?, result: ToolResult?) -> some View {
-        let toolName = call?.toolName ?? "tool"
-        return DisclosureGroup {
-            VStack(alignment: .leading, spacing: 6) {
-                if let call {
-                    Text("Arguments")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(call.arguments)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                }
-                if let result {
-                    Text("Result")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(result.content)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                }
-            }
-            .padding(.top, 4)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle")
-                    .foregroundStyle(theme.statusOKColor)
-                Text(toolName)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityIdentifier("tool-invocation-completed-\(toolName)")
-    }
-
-    private func failedView(call: ToolCall?, result: ToolResult?) -> some View {
-        let toolName = call?.toolName ?? "tool"
-        let presentation = ToolErrorPresentation(errorKind: result?.errorKind, toolName: call?.toolName)
-        return DisclosureGroup {
-            VStack(alignment: .leading, spacing: 6) {
-                if let call {
-                    Text("Arguments")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(call.arguments)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                }
-                if let result {
-                    Text("Error")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(presentation.summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    Text(result.content)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                }
-                if let cta = presentation.reauthenticationCTA {
-                    Button(cta.message) {
-                        onReauthenticate?(cta)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("tool-error-reauth-button")
-                }
-            }
-            .padding(.top, 4)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                Text(toolName)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                Text(presentation.summary)
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.orange.opacity(0.15), in: Capsule())
-                    .foregroundStyle(.orange)
-            }
-        }
-        .accessibilityIdentifier("tool-invocation-failed-\(toolName)")
-    }
-
-    // MARK: - Helpers
-
-    private func argumentPreview(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= 80 { return trimmed }
-        return String(trimmed.prefix(80)) + "…"
+    /// - Parameter callToolName: The real `ToolCall.toolName`, or `nil` when
+    ///   there is no paired call (a `.toolResult`-only render). Kept as a true
+    ///   optional — rather than a `"tool"` placeholder string — so a tool
+    ///   genuinely named `"tool"` still gets its re-authentication CTA (see
+    ///   ``ToolErrorPresentation/init(errorKind:toolName:)``, which treats a
+    ///   non-nil, non-empty `toolName` as a real call to derive a service name
+    ///   from). A string sentinel would have collapsed that case into "no CTA".
+    private func resolvedView(
+        lifecycleState: ToolInvocationLifecycleState,
+        callToolName: String?,
+        arguments: String?,
+        result: ToolResult?
+    ) -> some View {
+        let errorPresentation: ToolErrorPresentation? = {
+            guard lifecycleState == .failed else { return nil }
+            return ToolErrorPresentation(errorKind: result?.errorKind, toolName: callToolName)
+        }()
+        return ResolvedToolInvocation(
+            style: style,
+            configuration: ToolInvocationConfiguration(
+                state: lifecycleState,
+                toolName: callToolName ?? "tool",
+                arguments: arguments,
+                resultContent: result?.content,
+                errorPresentation: errorPresentation,
+                onApprove: onApprove,
+                onDeny: onDeny,
+                onReauthenticate: onReauthenticate
+            )
+        )
     }
 }
 

@@ -163,6 +163,59 @@ final class SessionManagerViewModelTests: XCTestCase {
                        "Should not set empty title")
     }
 
+    // MARK: - Branch origin (#2307 chip wiring)
+
+    /// `SessionManagerViewModel.branchOriginTitle(for:)` forwards to
+    /// `SessionListService.branchOriginTitle(for:)`, which prefers the
+    /// source session's *live* title. Covers the resolution seam
+    /// `ChatViewModel.resolveBranchOriginTitle` calls through (wired in
+    /// `QuickStart.swift`); the underlying live/snapshot logic itself is
+    /// covered by `SessionBranchCoordinatorTests` in `ManifoldRuntimeTests`.
+    @MainActor
+    func test_branchOriginTitle_prefersLiveSourceTitle() async throws {
+        let source = try await vm.createSession(title: "Planning the Q3 roadmap")
+        var branched = ChatSession(title: "New Chat")
+        branched.branchOriginSessionID = source.id
+        branched.branchOriginTitleSnapshot = "Planning the Q3 roadmap (snapshot)"
+        try await vm.persistence?.insertSession(branched)
+
+        let resolved = await vm.branchOriginTitle(for: branched)
+        XCTAssertEqual(resolved, "Planning the Q3 roadmap",
+            "Must prefer the source session's current title over the snapshot while the source still exists")
+    }
+
+    @MainActor
+    func test_branchOriginTitle_fallsBackToSnapshot_whenSourceDeleted() async throws {
+        let source = try await vm.createSession(title: "Source to be deleted")
+        var branched = ChatSession(title: "New Chat")
+        branched.branchOriginSessionID = source.id
+        branched.branchOriginTitleSnapshot = "Source to be deleted"
+        try await vm.persistence?.insertSession(branched)
+
+        try await vm.deleteSession(source)
+
+        let resolved = await vm.branchOriginTitle(for: branched)
+        XCTAssertEqual(resolved, "Source to be deleted",
+            "Must fall back to the snapshot once the source session is gone (tombstone semantics)")
+    }
+
+    @MainActor
+    func test_branchOriginTitle_nonBranchedSession_returnsNil() async throws {
+        let session = try await vm.createSession(title: "Ordinary session")
+
+        let resolved = await vm.branchOriginTitle(for: session)
+        XCTAssertNil(resolved, "A session that was not branched must report no origin title")
+    }
+
+    @MainActor
+    func test_branchOriginTitle_unconfiguredViewModel_returnsNil() async {
+        let unconfigured = SessionManagerViewModel()
+        let session = ChatSession(title: "x", branchOriginSessionID: UUID())
+
+        let resolved = await unconfigured.branchOriginTitle(for: session)
+        XCTAssertNil(resolved, "Must fail soft (no crash) when the view model was never configured")
+    }
+
     // MARK: - Sort Order
 
     @MainActor

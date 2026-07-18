@@ -383,6 +383,18 @@ public final class SessionManagerViewModel {
         await service.autoGenerateTitle(for: session, firstMessage: firstMessage)
     }
 
+    // MARK: - Branch origin
+
+    /// Forwards to ``SessionListService/branchOriginTitle(for:)`` — the seam
+    /// `ChatViewModel.resolveBranchOriginTitle` wires to (see
+    /// `ManifoldKit/QuickStart.swift`) so `ManifoldUI`'s `BranchOriginChipView`
+    /// gets a display title without `ChatViewModel` depending on
+    /// `ManifoldRuntime`'s `SessionListService` directly.
+    public func branchOriginTitle(for session: ChatSession) async -> String? {
+        guard let service else { return nil }
+        return await service.branchOriginTitle(for: session)
+    }
+
     // MARK: - Loading + pagination
 
     /// Reloads sessions from the persistence provider (page one).

@@ -16,6 +16,8 @@ public struct ChatInputBar: View {
 
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.manifoldTheme) private var theme
+    @Environment(\.composerStyle) private var style
 
     /// Composer feature flags, read from the app-level configuration. Mirrors
     /// how `ChatView` resolves its feature set so the composer respects the same
@@ -52,18 +54,15 @@ public struct ChatInputBar: View {
                 draftAttachmentStrip
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField(inputPlaceholder, text: $viewModel.inputText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...8)
-                    .focused($isInputFocused)
-                    .padding(10)
-                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12))
-                    .disabled(viewModel.activeSession == nil || !viewModel.isModelLoaded || viewModel.isLoading)
-                    .accessibilityLabel("Message input")
-
-                actionButtons
-            }
+            ResolvedComposer(
+                style: style,
+                configuration: ComposerConfiguration(
+                    content: AnyView(fieldContent),
+                    affordances: AnyView(actionButtons),
+                    phase: composerPhase,
+                    hasAttachments: !viewModel.draftAttachments.isEmpty
+                )
+            )
         }
         .fileImporter(
             isPresented: $isImageImporterPresented,
@@ -74,6 +73,31 @@ public struct ChatInputBar: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
+    }
+
+    /// The lifecycle phase handed to the active ``ComposerStyle`` (spec §3, §8).
+    /// `.generating` and (on iOS) `.voice` take priority over `.composing` so a
+    /// style never has to disambiguate "typing while a turn is in flight."
+    private var composerPhase: ComposerPhase {
+        if viewModel.isGenerating { return .generating }
+#if os(iOS)
+        if isRecordingAudio { return .voice }
+#endif
+        if viewModel.hasDraftContent { return .composing }
+        return .idle
+    }
+
+    /// The text-entry field alone — no padding/background, since the active
+    /// ``ComposerStyle`` owns that chrome (``ComposerConfiguration/content``'s
+    /// contract).
+    private var fieldContent: some View {
+        @Bindable var viewModel = viewModel
+        return TextField(inputPlaceholder, text: $viewModel.inputText, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(1...8)
+            .focused($isInputFocused)
+            .disabled(viewModel.activeSession == nil || !viewModel.isModelLoaded || viewModel.isLoading)
+            .accessibilityLabel("Message input")
     }
 
     // MARK: - Action Buttons
@@ -185,7 +209,7 @@ public struct ChatInputBar: View {
                 .font(.caption)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(.fill.tertiary, in: Capsule())
+                .background(theme.surface, in: Capsule())
         }
         .buttonStyle(.plain)
         .disabled(viewModel.activeSession == nil || !viewModel.isModelLoaded || viewModel.isGenerating || viewModel.isLoading)
@@ -412,7 +436,7 @@ public struct ChatInputBar: View {
                     .font(.caption)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(.fill.tertiary, in: Capsule())
+                    .background(theme.surface, in: Capsule())
 
                 Button {
                     viewModel.removeDraftAttachment(id: index)

@@ -26,7 +26,7 @@ package struct DownloadableModelRow: View {
 
     @Environment(ModelManagementViewModel.self) private var viewModel
     @Environment(FrameworkCapabilityService.self) private var capabilityService: FrameworkCapabilityService?
-    @Environment(\.manifoldTheme) private var theme: ManifoldTheme
+    @Environment(\.manifoldTheme) private var theme
 
     package init(
         model: DownloadableModel,
@@ -77,8 +77,8 @@ package struct DownloadableModelRow: View {
                             .font(.caption2)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(.blue.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.blue)
+                            .background(theme.infoSoft, in: Capsule())
+                            .foregroundStyle(theme.infoColor)
                             .accessibilityLabel("Curated model")
                     }
 
@@ -103,7 +103,7 @@ package struct DownloadableModelRow: View {
                 if let reason = backendCompatibility.unavailableReason {
                     Label(reason, systemImage: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(theme.statusWarnColor)
                         .lineLimit(2)
                         .padding(.top, 1)
                         .accessibilityLabel("Backend unavailable: \(reason)")
@@ -156,19 +156,23 @@ package struct DownloadableModelRow: View {
                 .font(.caption2)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(Self.fitTint(quality).opacity(0.15), in: Capsule())
-                .foregroundStyle(Self.fitTint(quality))
+                .background(Self.fitTint(quality, theme: theme).opacity(0.15), in: Capsule())
+                .foregroundStyle(Self.fitTint(quality, theme: theme))
                 .accessibilityLabel("Device fit: \(quality.label). Approximate guidance, not a guarantee.")
         }
     }
 
-    /// Maps a `FitQuality` verdict to its badge tint. Static + pure so the verdict→color
-    /// contract is unit-testable without standing up a SwiftUI hierarchy.
-    static func fitTint(_ quality: FitQuality) -> Color {
+    /// Maps a `FitQuality` verdict to its badge tint, from the status tier
+    /// (`ManifoldTheme.statusOKColor`/`statusWarnColor`/`statusErrorColor`).
+    /// Static + pure so the verdict→color contract is unit-testable without
+    /// standing up a SwiftUI hierarchy; `theme` defaults to ``ManifoldTheme/standard``
+    /// so existing call sites (this type's own `FitVerdictBadgeTests` pin) keep
+    /// compiling and keep asserting the historical green/yellow/red values.
+    static func fitTint(_ quality: FitQuality, theme: ManifoldTheme = .standard) -> Color {
         switch quality {
-        case .excellent, .good:  return .green
-        case .marginal:          return .yellow
-        case .notRecommended:    return .red
+        case .excellent, .good:  return theme.statusOKColor
+        case .marginal:          return theme.statusWarnColor
+        case .notRecommended:    return theme.statusErrorColor
         }
     }
 
@@ -193,12 +197,15 @@ package struct DownloadableModelRow: View {
         }
     }
 
+    /// `.usable`/`.sluggish` don't fit the OK/warn/error severity triad (see
+    /// `ManifoldTheme.categorical`'s doc comment), so they route through the
+    /// categorical tier; `.fast`/`.tooSlow` map naturally onto status tokens.
     private func speedTint(_ speed: SpeedClass) -> Color {
         switch speed {
-        case .fast:     return .green
-        case .usable:   return .blue
-        case .sluggish: return .orange
-        case .tooSlow:  return .red
+        case .fast:     return theme.statusOKColor
+        case .usable:   return theme.categorical.blueColor
+        case .sluggish: return theme.categorical.orangeColor
+        case .tooSlow:  return theme.statusErrorColor
         }
     }
 
@@ -224,10 +231,10 @@ package struct DownloadableModelRow: View {
         }
     }
 
-    private func badgeColor(canRun: Bool, isBorderline: Bool) -> AnyShapeStyle {
-        if canRun { return theme.statusOK }
-        if isBorderline { return theme.statusWarn }
-        return theme.statusError
+    private func badgeColor(canRun: Bool, isBorderline: Bool) -> Color {
+        if canRun { return theme.statusOKColor }
+        if isBorderline { return theme.statusWarnColor }
+        return theme.statusErrorColor
     }
 
     private var compatibilityLabel: String {
@@ -256,7 +263,7 @@ package struct DownloadableModelRow: View {
     private var activeModelBadge: some View {
         Label("In Use", systemImage: "checkmark.circle.fill")
             .font(.caption)
-            .foregroundStyle(.blue)
+            .foregroundStyle(theme.infoColor)
             .labelStyle(.titleAndIcon)
             .accessibilityLabel("Active model")
     }
@@ -264,7 +271,7 @@ package struct DownloadableModelRow: View {
     private var downloadedBadge: some View {
         Label("Downloaded", systemImage: "checkmark.circle.fill")
             .font(.caption)
-            .foregroundStyle(theme.statusOK)
+            .foregroundStyle(theme.statusOKColor)
             .labelStyle(.titleAndIcon)
     }
 
@@ -276,7 +283,7 @@ package struct DownloadableModelRow: View {
             } label: {
                 Image(systemName: "arrow.down.circle")
                     .font(.title2)
-                    .foregroundStyle(insufficient ? Color.secondary : Color.blue)
+                    .foregroundStyle(insufficient ? Color.secondary : theme.infoColor)
             }
             .buttonStyle(.plain)
             .disabled(insufficient)

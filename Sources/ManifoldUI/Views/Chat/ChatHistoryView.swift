@@ -1,5 +1,8 @@
 import SwiftUI
 import ManifoldInference
+#if os(macOS)
+import AppKit
+#endif
 
 /// Internal message-history surface for ``ChatView``.
 ///
@@ -9,6 +12,8 @@ import ManifoldInference
 struct ChatHistoryView: View {
 
     @Environment(ChatViewModel.self) private var viewModel
+    @Environment(\.manifoldTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Optional host-supplied per-message renderer. When set, it is given the
     /// chance to render each row; it falls through to the built-in bubble via
@@ -23,80 +28,181 @@ struct ChatHistoryView: View {
     let contextMenuItemsBuilder: ((ChatMessage) -> AnyView)?
     let customKindRenderer: ((ChatMessage) -> AnyView)?
 
+    /// Tracks whether the scroll position is far enough from the bottom
+    /// anchor that the scroll-to-bottom control should be offered. Updated
+    /// from `.onScrollGeometryChange` via the pure
+    /// `ChatHistoryScrollBehavior.isScrolledAwayFromBottom` helper (Unit 2
+    /// §L1) so the visibility decision itself stays unit-testable without a
+    /// live `ScrollView`.
+    @State private var isScrolledAwayFromBottom = false
+
+    /// Resolved display title for the active session's branch-origin chip
+    /// (`docs/UI-REFRESH-2026.md` §12). Populated by ``resolveBranchOriginTitle``
+    /// below; stays `nil` — suppressing ``BranchOriginChipView`` — for a
+    /// non-branched session or while resolution is in flight.
+    @State private var branchOriginTitle: String?
+
+    /// The control only offers to jump back to the live edge while a turn is
+    /// actively streaming and the user has scrolled away from it — surfacing
+    /// it while idle and already at the bottom would just be visual noise.
+    private var showsScrollToBottomControl: Bool {
+        isScrolledAwayFromBottom && viewModel.isGenerating
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    if viewModel.hasOlderMessages {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .onAppear {
-                                ChatHistoryScrollBehavior.loadOlderAndRestore(
-                                    viewModel: viewModel,
-                                    proxy: proxy
-                                )
-                            }
-                    }
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        if ChatHistoryBranchOriginResolver.isBranch(viewModel.activeSession) {
+                            BranchOriginChipView(originSessionTitle: branchOriginTitle)
+                        }
 
-                    if viewModel.messages.isEmpty && !viewModel.isGenerating {
-                        ChatHistoryEmptyPlaceholder(customContentBuilder: emptyStateBuilder)
-                    }
+                        if viewModel.hasOlderMessages {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .onAppear {
+                                    ChatHistoryScrollBehavior.loadOlderAndRestore(
+                                        viewModel: viewModel,
+                                        proxy: proxy
+                                    )
+                                }
+                        }
 
-                    // why: iterate `messages` directly (ChatMessage is
-                    // Identifiable) instead of materializing a fresh
-                    // `enumerated()` tuple array on every body eval — that array
-                    // was an O(N) allocation per streaming batch (~30/sec). The
-                    // only index consumer was the handoff chip, which needs the
-                    // PREVIOUS message; we precompute the handoff boundaries in
-                    // one O(N) pass keyed by message id so no per-row scan is
-                    // reintroduced.
-                    let handoffBoundaries = ChatHistoryHandoffResolver.boundaries(
-                        messages: viewModel.messages,
-                        session: viewModel.activeSession
-                    )
-                    ForEach(viewModel.messages) { message in
-                        messageRow(message: message, handoffChip: handoffBoundaries[message.id])
-                    }
+                        if viewModel.messages.isEmpty && !viewModel.isGenerating {
+                            ChatHistoryEmptyPlaceholder(customContentBuilder: emptyStateBuilder, viewModel: viewModel)
+                        }
 
-                    Color.clear
-                        .frame(height: 1)
-                        .id(ChatHistoryScrollBehavior.bottomAnchorID)
+                        // why: iterate `messages` directly (ChatMessage is
+                        // Identifiable) instead of materializing a fresh
+                        // `enumerated()` tuple array on every body eval — that array
+                        // was an O(N) allocation per streaming batch (~30/sec). The
+                        // only index consumer was the handoff chip, which needs the
+                        // PREVIOUS message; we precompute the handoff boundaries in
+                        // one O(N) pass keyed by message id so no per-row scan is
+                        // reintroduced.
+                        let handoffBoundaries = ChatHistoryHandoffResolver.boundaries(
+                            messages: viewModel.messages,
+                            session: viewModel.activeSession
+                        )
+                        ForEach(viewModel.messages) { message in
+                            messageRow(message: message, handoffChip: handoffBoundaries[message.id])
+                        }
+
+                        // Turn-level failures render at their own scope, in
+                        // the transcript right after the failed turn — not
+                        // as the session-level banner (`ChatErrorRecoveryBanner`
+                        // explicitly excludes `.generation`-kind errors for
+                        // this reason; see `docs/UI-REFRESH-2026.md` §6A).
+                        //
+                        // Test-coverage honesty: `ChatError.rendersAsTurnLevelFailure`
+                        // (the condition) and `TurnFailureCardView` (the card
+                        // itself) are both unit-tested in isolation
+                        // (`ChatShellStateScreenWiringTests`, `StateScreensTests`).
+                        // This exact `if` block is NOT render-tested — `ChatHistoryView`
+                        // reads `@Environment(ChatViewModel.self)` unconditionally
+                        // at the top of `body` (`viewModel.hasOlderMessages`, etc.),
+                        // and ViewInspector's `.environment(_:)` does not satisfy
+                        // that read during inspection in this setup (confirmed:
+                        // even a positive "must find" search on a `.environment(vm)`-
+                        // decorated `ChatHistoryView` reproduces the same
+                        // `Fatal error: No Observable object of type ChatViewModel found`
+                        // crash MessagePartsView hit before its `parts.isEmpty` fix).
+                        // Manually verified instead: deleting this whole block
+                        // leaves the full `ManifoldUITests` suite green (799/799) —
+                        // confirming the gap is real, not closing it. A future
+                        // change to this `if` condition or its card call has no
+                        // regression test at this exact line.
+                        if let error = viewModel.activeError, error.rendersAsTurnLevelFailure {
+                            TurnFailureCardView(
+                                message: error.message,
+                                onRetry: {
+                                    viewModel.activeError = nil
+                                    Task { await viewModel.regenerateLastResponse() }
+                                }
+                            )
+                            .padding(.horizontal)
+                        }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .id(ChatHistoryScrollBehavior.bottomAnchorID)
+                    }
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
-            }
-            .defaultScrollAnchor(.bottom)
-            .onAppear {
-                _ = ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
-                    viewModel: viewModel,
-                    proxy: proxy
-                )
-            }
-            .onChange(of: viewModel.scrollToMessageRequest?.requestID) {
-                _ = ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
-                    viewModel: viewModel,
-                    proxy: proxy
-                )
-            }
-            .onChange(of: viewModel.messages.count) {
-                if ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
-                    viewModel: viewModel,
-                    proxy: proxy
-                ) { return }
+                .defaultScrollAnchor(.bottom)
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    ChatHistoryScrollBehavior.isScrolledAwayFromBottom(
+                        offsetY: geometry.contentOffset.y,
+                        contentHeight: geometry.contentSize.height,
+                        containerHeight: geometry.containerSize.height
+                    )
+                } action: { _, newValue in
+                    isScrolledAwayFromBottom = newValue
+                }
+                .onAppear {
+                    _ = ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
+                        viewModel: viewModel,
+                        proxy: proxy
+                    )
+                }
+                .onChange(of: viewModel.scrollToMessageRequest?.requestID) {
+                    _ = ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
+                        viewModel: viewModel,
+                        proxy: proxy
+                    )
+                }
+                .onChange(of: viewModel.messages.count) {
+                    if ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
+                        viewModel: viewModel,
+                        proxy: proxy
+                    ) { return }
 
-                if !viewModel.isLoadingOlderMessages {
+                    if !viewModel.isLoadingOlderMessages {
+                        ChatHistoryScrollBehavior.scrollToBottom(proxy: proxy)
+                    }
+                }
+                .onChange(of: viewModel.messages.last?.content) {
+                    if ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
+                        viewModel: viewModel,
+                        proxy: proxy
+                    ) { return }
                     ChatHistoryScrollBehavior.scrollToBottom(proxy: proxy)
                 }
-            }
-            .onChange(of: viewModel.messages.last?.content) {
-                if ChatHistoryScrollBehavior.consumeScrollToMessageRequest(
-                    viewModel: viewModel,
-                    proxy: proxy
-                ) { return }
-                ChatHistoryScrollBehavior.scrollToBottom(proxy: proxy)
+
+                if showsScrollToBottomControl {
+                    ScrollToBottomButton(reduceMotion: reduceMotion) {
+                        ChatHistoryScrollBehavior.scrollToBottom(proxy: proxy)
+                    }
+                    .environment(\.manifoldTheme, theme)
+                    .padding(12)
+                    .transition(ScrollToBottomButton.appearanceTransition(reduceMotion: reduceMotion))
+                }
             }
         }
         .frame(maxHeight: .infinity)
+        .animation(
+            ScrollToBottomButton.appearanceAnimation(reduceMotion: reduceMotion),
+            value: showsScrollToBottomControl
+        )
+        .task(id: viewModel.activeSessionID) {
+            guard let session = viewModel.activeSession,
+                  ChatHistoryBranchOriginResolver.isBranch(session)
+            else {
+                branchOriginTitle = nil
+                return
+            }
+            let resolved = await viewModel.resolveBranchOriginTitle?(session)
+            // A rapid session switch (A → B) can let this `.task` for A
+            // complete its await after B has already become active — SwiftUI
+            // cancels the *view's* previous task when `id` changes, but does
+            // not retroactively unwind an in-flight `await` that was already
+            // past its suspension point. Without this guard, B would
+            // transiently render A's resolved title until the next switch.
+            guard !Task.isCancelled, viewModel.activeSessionID == session.id else { return }
+            branchOriginTitle = resolved
+        }
     }
 
     @ViewBuilder
@@ -147,18 +253,59 @@ struct ChatHistoryEmptyPlaceholder: View {
     /// that happen during body evaluation, wherever on the call stack they occur).
     let customContentBuilder: (() -> AnyView)?
 
+    /// View model used to drive the default (no host override) empty state's
+    /// suggestion chips — staging a tapped suggestion into `inputText` and
+    /// sending it immediately, the same contract a host's own
+    /// `.chatEmptyState(_:)` override would typically wire up itself.
+    let viewModel: ChatViewModel
+
+    /// Generic, backend-agnostic starter prompts for the default empty
+    /// state (`docs/UI-REFRESH-2026.md` §6A — "Empty session shows
+    /// suggestion chips via the existing `chatEmptyState` slot"). Hosts with
+    /// domain-specific suggestions should override via `.chatEmptyState(_:)`
+    /// rather than relying on this default set.
+    static let defaultSuggestions = [
+        "Summarize a document",
+        "Draft a reply",
+        "Explain a concept",
+    ]
+
     var body: some View {
         Group {
             if let customContentBuilder {
                 customContentBuilder()
             } else {
-                Text("Send a message to start chatting.")
-                    .foregroundStyle(.tertiary)
-                    .font(.body)
+                EmptySessionSuggestionsView(
+                    suggestions: Self.defaultSuggestions,
+                    onSelectSuggestion: { suggestion in
+                        viewModel.inputText = suggestion
+                        Task { await viewModel.sendMessage() }
+                    }
+                )
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
+    }
+}
+
+/// Pure gate for whether ``ChatHistoryView`` should render
+/// ``BranchOriginChipView`` for the active session (`docs/UI-REFRESH-2026.md`
+/// §12). Kept separate from the async title resolution
+/// (``ChatViewModel/resolveBranchOriginTitle``) so the render/suppress
+/// decision is unit-testable without needing a live SwiftData store or a
+/// rendered view — `ChatHistoryView` reads `@Environment(ChatViewModel.self)`
+/// unconditionally, which ViewInspector cannot satisfy here (see the
+/// `ChatShellStateScreenWiringTests` docstring on the turn-failure card for
+/// the confirmed repro of that limitation).
+enum ChatHistoryBranchOriginResolver {
+
+    /// `true` when `session` was created via `branch(from:)` (has a
+    /// non-nil `branchOriginSessionID`), i.e. the chip should render once
+    /// its title resolves. Non-branched sessions (including `nil`) render
+    /// nothing — zero footprint.
+    static func isBranch(_ session: ChatSession?) -> Bool {
+        session?.branchOriginSessionID != nil
     }
 }
 
@@ -216,9 +363,79 @@ enum ChatHistoryHandoffResolver {
     }
 }
 
+/// Floating control (Unit 2 §L1) that jumps the transcript back to the live
+/// edge. Only shown by ``ChatHistoryView`` while the user has scrolled away
+/// from the bottom during an active stream.
+struct ScrollToBottomButton: View {
+
+    @Environment(\.manifoldTheme) private var theme
+    let reduceMotion: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.down")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .frame(width: 32, height: 32)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Scroll to latest message")
+        .accessibilityAddTraits(.isButton)
+        .manifoldGlass(theme, in: Circle())
+        .clipShape(Circle())
+        #if os(macOS)
+        .onHover { isHovering in
+            if isHovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        #endif
+    }
+
+    /// The transition used when the control appears/disappears. Pure,
+    /// `View`-free so it can be asserted directly (mirrors
+    /// `StreamingIndicatorReduceMotionTests`'s static-helper pattern):
+    /// Reduce Motion drops the scale/opacity transition down to a plain
+    /// opacity crossfade so nothing visibly moves.
+    static func appearanceTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.85))
+    }
+
+    /// The animation driving ``appearanceTransition(reduceMotion:)``. `nil`
+    /// under Reduce Motion disables animation entirely (an instant swap),
+    /// matching the "static under Reduce Motion" contract spec §9 sets for
+    /// every shimmer/live-state surface in this refresh.
+    static func appearanceAnimation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.2)
+    }
+}
+
 enum ChatHistoryScrollBehavior {
 
     static let bottomAnchorID = "chatBottom"
+
+    /// How far (in points) the scroll offset must sit from the bottom edge
+    /// before the scroll-to-bottom control offers to jump back. Small enough
+    /// that a user resting at the very edge never sees it flicker in.
+    static let scrolledAwayThreshold: CGFloat = 80
+
+    /// `true` when the scroll offset is far enough from the bottom edge that
+    /// the scroll-to-bottom control should be offered. Pure function over
+    /// `ScrollGeometry`'s three scalar components (not the SwiftUI type
+    /// itself) so both branches are directly unit-testable without a live
+    /// `ScrollView`.
+    static func isScrolledAwayFromBottom(
+        offsetY: CGFloat,
+        contentHeight: CGFloat,
+        containerHeight: CGFloat,
+        threshold: CGFloat = scrolledAwayThreshold
+    ) -> Bool {
+        let distanceFromBottom = contentHeight - containerHeight - offsetY
+        return distanceFromBottom > threshold
+    }
 
     @MainActor
     static func loadOlderAndRestore(viewModel: ChatViewModel, proxy: ScrollViewProxy) {

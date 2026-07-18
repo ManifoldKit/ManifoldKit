@@ -19,6 +19,23 @@ final class ChatViewControlTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Per-suite isolated `UserDefaults` (never `.standard` — see AGENTS.md's
+    /// injected-`UserDefaults` gotcha, #734/#761) with the first-run key
+    /// pre-marked complete, so `ChatViewModel.isFirstRun` is deterministically
+    /// `false` here. Without this, `isFirstRun` reads whatever `.standard`
+    /// happens to hold for this bundle identifier — on a machine/CI runner
+    /// that has never completed a "real" first launch, that's `true`, which
+    /// (since `FirstRunFunnelView` was wired live into `ChatNoModelLoadedContent`)
+    /// routes to the funnel copy instead of `welcomePrompt`'s literal string
+    /// this suite's "no model" tests assert on.
+    private func makeIsolatedUserDefaults() -> UserDefaults {
+        let suiteName = "ChatViewControlTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let firstRunKey = "\(ManifoldConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
+        defaults.set(true, forKey: firstRunKey)
+        return defaults
+    }
+
     private func makeChatViewModel() -> ChatViewModel {
         let oneGB: UInt64 = 1_024 * 1_024 * 1_024
         return ChatViewModel(
@@ -27,7 +44,8 @@ final class ChatViewControlTests: XCTestCase {
             modelStorage: ModelStorageService(
                 baseDirectory: FileManager.default.temporaryDirectory
                     .appendingPathComponent(UUID().uuidString)
-            )
+            ),
+            userDefaults: makeIsolatedUserDefaults()
         )
     }
 

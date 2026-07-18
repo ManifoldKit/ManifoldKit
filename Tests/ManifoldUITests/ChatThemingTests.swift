@@ -17,33 +17,34 @@ final class ChatThemingTests: XCTestCase {
 
     // MARK: - Layer 1: ChatTheme.standard regression guard
 
-    /// `ChatTheme.standard` must reproduce the literals `MessageBubbleView` used
-    /// before theming: padding 12, corner radius 16, content spacing 4, bubble
-    /// stack spacing 6, body/caption fonts. (ShapeStyle backgrounds are pinned
-    /// by the `init` defaults, which use the same `Color.accentColor` /
-    /// `.fill.tertiary` literals as the old code — see `chrome(for:scale:)`.)
+    /// `ChatTheme.standard` carries the 2026 refresh's bubble look since Unit 2
+    /// §L5's defaults flip (issue #2307): padding 12 (unchanged), corner
+    /// radius 20 (was 16 — `ManifoldThemeShapeScale.lg` alignment), content
+    /// spacing 4, bubble stack spacing 6, body/caption fonts (all unchanged).
+    /// The pre-flip literals this test used to pin now live on
+    /// `ChatTheme.classic` — see `ClassicAppearanceCharacterizationTests`.
     func test_standardTheme_matchesHistoricalConstants() {
         let standard = ChatTheme.standard
-        XCTAssertEqual(standard.cornerRadius, 16, "Historical bubble corner radius was 16")
-        XCTAssertEqual(standard.bubblePadding, 12, "Historical bubble padding was 12")
-        XCTAssertEqual(standard.contentSpacing, 4, "Historical inner VStack spacing was 4")
-        XCTAssertEqual(standard.bubbleStackSpacing, 6, "Historical bubble/link-preview spacing was 6")
-        XCTAssertEqual(standard.bubbleFont, .body, "Historical system text used .body")
-        XCTAssertEqual(standard.metadataFont, .caption, "Historical timestamp font was .caption")
+        XCTAssertEqual(standard.cornerRadius, 20, "Post-flip bubble corner radius is 20 (classic keeps 16)")
+        XCTAssertEqual(standard.bubblePadding, 12, "Bubble padding is unchanged by the flip")
+        XCTAssertEqual(standard.contentSpacing, 4, "Inner VStack spacing is unchanged by the flip")
+        XCTAssertEqual(standard.bubbleStackSpacing, 6, "Bubble/link-preview spacing is unchanged by the flip")
+        XCTAssertEqual(standard.bubbleFont, .body, "Body text style is unchanged by the flip")
+        XCTAssertEqual(standard.metadataFont, .caption, "Timestamp font is unchanged by the flip")
     }
 
     /// At the default content size category the scale factor is 1, so resolved
-    /// chrome equals the raw tokens — the byte-for-byte guarantee.
+    /// chrome equals the raw (post-flip) tokens.
     func test_standardChrome_atUnitScale_equalsRawTokens() {
         let chrome = ChatTheme.standard.chrome(for: .user, scale: 1)
-        XCTAssertEqual(chrome.cornerRadius, 16)
+        XCTAssertEqual(chrome.cornerRadius, 20)
         XCTAssertEqual(chrome.padding, 12)
     }
 
     /// The Dynamic Type factor multiplies through to the consumed metrics.
     func test_chrome_scalesWithDynamicTypeFactor() {
         let chrome = ChatTheme.standard.chrome(for: .assistant, scale: 2)
-        XCTAssertEqual(chrome.cornerRadius, 32, "Corner radius must scale with Dynamic Type")
+        XCTAssertEqual(chrome.cornerRadius, 40, "Corner radius must scale with Dynamic Type")
         XCTAssertEqual(chrome.padding, 24, "Padding must scale with Dynamic Type")
     }
 

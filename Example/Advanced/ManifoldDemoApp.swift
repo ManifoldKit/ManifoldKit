@@ -407,6 +407,13 @@ struct ManifoldDemoApp: App {
             }
         }
 
+        // Branch-origin chip (#2307) — same wiring `quickStart()` does
+        // automatically; this app bootstraps manually so it wires the
+        // one-liner itself.
+        vm.resolveBranchOriginTitle = { [weak sessionManager] session in
+            await sessionManager?.branchOriginTitle(for: session)
+        }
+
         if !isUITesting {
             vm.refreshModels()
             vm.autoSelectFirstRunModel()

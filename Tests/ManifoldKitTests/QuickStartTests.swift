@@ -298,6 +298,30 @@ final class QuickStartTests: XCTestCase {
             "Session title must no longer be 'New Chat' after first message")
     }
 
+    /// Regression guard for #2307 — `quickStart()` must wire
+    /// `resolveBranchOriginTitle` so `ChatHistoryView` can populate
+    /// `BranchOriginChipView` for a branched session, mirroring the
+    /// `onFirstMessage` wiring above.
+    func test_quickStart_wiresResolveBranchOriginTitle() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        XCTAssertNotNil(result.viewModel.resolveBranchOriginTitle,
+            "quickStart() must wire resolveBranchOriginTitle for the branch-origin chip (#2307)")
+
+        let source = try await result.sessionManager.createSession(title: "Root conversation")
+        var branched = ChatSession(title: "New Chat")
+        branched.branchOriginSessionID = source.id
+        branched.branchOriginTitleSnapshot = "Root conversation"
+        try await result.bootstrap.persistence.insertSession(branched)
+
+        let resolved = await result.viewModel.resolveBranchOriginTitle?(branched)
+        XCTAssertEqual(resolved, "Root conversation",
+            "The wired closure must resolve the live source title through the real session store")
+    }
+
     /// Compile-time check that `QuickStartResult` is `Sendable`. The README's
     /// snippet stores the result in a `@State` property or passes it across
     /// task boundaries; losing Sendability would silently break that.
