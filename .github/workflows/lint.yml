@@ -7,6 +7,11 @@ name: Lint
 #   - changelog-lint                (was changelog-lint.yml)
 #   - commitlint                    (was commitlint.yml — Lint PR Title)
 #   - known-issue-lint              (was known-issue-lint.yml)
+#   - docs-header-lint              (scripts/lint-docs-headers.sh — cheap mirror
+#                                     of DocsAudienceStatusAuditTest so a docs-only
+#                                     PR, which skips ci.yml's paths-filtered macOS
+#                                     `test` job, still gets the check on the PR run
+#                                     instead of first failing in the merge queue)
 #   - availability-audit            (scripts/audit-availability.sh — n-1 floor)
 #   - secret-scan                   (was security-scans.yml: secret-scan)
 #   - dependency-review             (was security-scans.yml: dependency-review)
@@ -83,8 +88,11 @@ jobs:
       # Single checkout shared by every step. fetch-depth: 0 is required by:
       #   - trufflehog (diffs git history for secret leakage)
       #   - dep-budget (`git diff base...HEAD -- Package.resolved`)
+      #   - large-file-guard (`git merge-base` against the PR base)
       # The cost is small on Ubuntu so we pay it unconditionally rather than
-      # checking out twice.
+      # checking out twice. Do NOT re-fetch the base with `--depth=1` later —
+      # a shallow tip of origin/<base> has no merge-base with a long-lived PR
+      # branch and false-fails both dep-budget and large-file-guard.
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -331,6 +339,21 @@ jobs:
 
           echo "✓ All ${#hits[@]} withKnownIssue usage(s) have a tracking // FIXME link."
 
+      # ── docs-header-lint ──────────────────────────────────────────────────
+      # ci.yml's macOS `test` job (which runs the authoritative
+      # DocsAudienceStatusAuditTest) is paths-filtered and excludes docs/**, so
+      # a docs-only PR skips it — the CI Required Test Shim reports green in
+      # its place. The merge queue's `merge_group` trigger has no paths filter
+      # and forces a full run, so a docs-only PR missing headers only fails
+      # for the first time in the queue, where it also poisons up to 4 other
+      # batched PRs (2026-07: PR #2306 failed the queue twice and took #2212
+      # down with it 6 times). Lint runs on every PR unconditionally, so this
+      # step catches the same problem on the cheap ubuntu-latest PR run,
+      # before the queue.
+      - name: "docs-header-lint — verify Audience:/Status: headers"
+        if: always()
+        run: bash scripts/lint-docs-headers.sh
+
       # ── availability-audit ────────────────────────────────────────────────
       # Flags @available / #available annotations that exceed the Package.swift
       # platform floors (macOS 15 / iOS 18). Enforces the n-1 platform policy
@@ -405,7 +428,11 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
-          git fetch origin "${{ github.base_ref }}" --depth=1
+          # Full (non-shallow) fetch: checkout already used fetch-depth: 0 for
+          # the PR head, but a pull_request checkout has no origin/<base> ref.
+          # `--depth=1` here would replace that tip with an orphan shallow
+          # commit and break `git diff A...B` / merge-base on long-lived PRs.
+          git fetch --no-tags origin "${{ github.base_ref }}"
           new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
           echo "PR adds $new new package pin(s)."
           if [ "$new" -gt 2 ]; then
@@ -433,8 +460,7 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          # A pull_request checkout has no refs/remotes/origin/<base> —
-          # fetch it explicitly before merge-base, same pattern as the
-          # dep-budget step above.
-          git fetch origin "${{ github.base_ref }}" --depth=1
+          # Full (non-shallow) fetch of the base — see dep-budget comment.
+          # A pull_request checkout has no refs/remotes/origin/<base>.
+          git fetch --no-tags origin "${{ github.base_ref }}"
           bash scripts/large-file-guard.sh "origin/${{ github.base_ref }}" "HEAD"
