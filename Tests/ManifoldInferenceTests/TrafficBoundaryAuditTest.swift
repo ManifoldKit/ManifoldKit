@@ -589,7 +589,14 @@ final class TrafficBoundaryAuditTest: XCTestCase {
             for (idx, line) in content.components(separatedBy: "\n").enumerated() {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 guard Self.shouldScan(line: trimmed) else { continue }
-                if Self.matches(Self.runtimeForbiddenAPIPattern, in: trimmed) {
+                // Strip a trailing `// …` comment before matching (mirrors the
+                // former ci.yml `sed 's://.*$::'`) so prose that names a
+                // forbidden API when explaining the boundary — e.g.
+                // `let s = port.make() // injected, not URLSession` — does not
+                // false-positive. `shouldScan` above only drops whole-line
+                // comments; this covers the inline case.
+                let scanLine = Self.strippingInlineComment(trimmed)
+                if Self.matches(Self.runtimeForbiddenAPIPattern, in: scanLine) {
                     offenders.append(.init(
                         rule: 6,
                         ruleName: "Runtime network/keychain isolation",
@@ -922,6 +929,15 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// True when `trimmed` is exactly `import <module>` or `import <module> …`.
     static func importLine(_ trimmed: String, namesModule module: String) -> Bool {
         trimmed == "import \(module)" || trimmed.hasPrefix("import \(module) ")
+    }
+
+    /// Strips a trailing `// …` comment, mirroring the former ci.yml
+    /// `sed 's://.*$::'`. Naive first-`//` split: a `//` inside a string
+    /// literal (e.g. a URL) is also cut, which is harmless here — it only makes
+    /// the forbidden-token scan more lenient, never introduces a false positive.
+    static func strippingInlineComment(_ line: String) -> String {
+        guard let marker = line.range(of: "//") else { return line }
+        return String(line[..<marker.lowerBound])
     }
 
     // MARK: - Rule 6 helpers (Package.swift target boundaries)
@@ -1278,6 +1294,18 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         XCTAssertFalse(
             Self.matches(Self.runtimeForbiddenAPIPattern, in: "struct MockURLSession {}"),
             "Rule 6 runtime API scan must not flag MockURLSession-style names"
+        )
+
+        // Inline comments are stripped before matching (mirrors the former
+        // `sed 's://.*$::'`) so prose naming a forbidden API in a trailing
+        // comment is allowed, while a real use on the same line still fires.
+        XCTAssertFalse(
+            Self.matches(Self.runtimeForbiddenAPIPattern, in: Self.strippingInlineComment("let s = port.make() // injected, not URLSession")),
+            "Rule 6 runtime API scan must ignore a forbidden token that appears only in a trailing comment"
+        )
+        XCTAssertTrue(
+            Self.matches(Self.runtimeForbiddenAPIPattern, in: Self.strippingInlineComment("let s = URLSession.shared // real hit, keep flagging")),
+            "Rule 6 runtime API scan must still flag a real URLSession use even with a trailing comment"
         )
 
         // Backend-family roster must include the in-repo families the YAML
