@@ -61,7 +61,8 @@ public protocol SessionRowStyle: Sendable {
 /// `.secondary`) — byte-for-byte. Ignores ``SessionRowConfiguration/snippet``,
 /// ``SessionRowConfiguration/isPinned``, and ``SessionRowConfiguration/isSelected``
 /// entirely, matching today's view having no such affordances. This is the
-/// style that becomes the `.classic` preset in Unit 2 §L5.
+/// `.classic` preset since Unit 2 §L5's defaults flip (issue #2307) —
+/// ``QuietSessionRowStyle`` is the built-in default now.
 public struct PlainSessionRowStyle: SessionRowStyle {
     public init() {}
 
@@ -80,7 +81,9 @@ public struct PlainSessionRowStyle: SessionRowStyle {
 }
 
 /// A **new-look** style adding a quiet pin glyph and snippet line (spec §6).
-/// Not the default in this tranche — Unit 2 §L5 flips the built-in default.
+/// The built-in default since Unit 2 §L5's defaults flip (issue #2307) —
+/// apply `.sessionRowStyle(.plain)` (or `View.classicManifoldTheme()`) to
+/// restore the pre-refresh row.
 public struct QuietSessionRowStyle: SessionRowStyle {
     public init() {}
 
@@ -136,9 +139,11 @@ public extension SessionRowStyle where Self == QuietSessionRowStyle {
 // MARK: - Environment injection
 
 public extension EnvironmentValues {
-    /// The active session-row style. Defaults to ``PlainSessionRowStyle`` so
-    /// untouched views keep the historical look.
-    @Entry var sessionRowStyle: any SessionRowStyle = PlainSessionRowStyle()
+    /// The active session-row style. Defaults to ``QuietSessionRowStyle``
+    /// since Unit 2 §L5's defaults flip (issue #2307). Apply
+    /// `.sessionRowStyle(.plain)` (or `View.classicManifoldTheme()`) to
+    /// restore the pre-refresh row.
+    @Entry var sessionRowStyle: any SessionRowStyle = QuietSessionRowStyle()
 }
 
 public extension View {

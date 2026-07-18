@@ -77,6 +77,29 @@ final class StyleWiringAuditTest: XCTestCase {
         )
     }
 
+    /// Unit 2 §L5 (issue #2307, #1640): `chatMessagePartRenderer` moved from
+    /// "fully inert" (the U2-L2 PR body's inert-surfaces table) to live —
+    /// `MessagePartsView` now reads `\.chatMessagePartRenderer` and gives it
+    /// first refusal per part before falling through to `defaultPartView(for:)`.
+    /// This wiring doesn't fit `isWired(...)`'s `Resolved*`-wrapper shape (the
+    /// part renderer is a plain closure, not a `MessageBubbleStyle`-family
+    /// protocol dispatch), so it gets its own direct source check.
+    func test_messagePartsView_readsPartRendererEnvironmentAndFallsThroughToDefault() throws {
+        let source = try Self.sourceText(relativeToManifoldUI: "Views/Chat/MessagePartsView.swift")
+        XCTAssertTrue(
+            source.contains("@Environment(\\.chatMessagePartRenderer)"),
+            "MessagePartsView must read the part renderer from the environment"
+        )
+        XCTAssertTrue(
+            source.contains("partRenderer(") && source.contains("defaultView: { AnyView(defaultPartView(for: part)) }"),
+            "MessagePartsView must hand the host renderer a defaultPartView() fallthrough onto its own per-kind dispatch"
+        )
+        XCTAssertTrue(
+            source.contains("defaultPartView(for: part)"),
+            "MessagePartsView must fall through to its own per-kind switch when no renderer is installed"
+        )
+    }
+
     // MARK: - Sabotage (exercises the real `isWired` detection function)
 
     /// Plants a synthetic, unwired source string — a hardcoded style with no

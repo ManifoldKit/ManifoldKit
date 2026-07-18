@@ -133,8 +133,13 @@ final class StyleProtocolDispatchTests: XCTestCase {
         XCTAssertEqual(dedupAdjacent(recorder.seenPhases), phases, "All four ComposerPhase states must reach the style")
     }
 
-    func test_defaultEnvironmentComposerStyle_isPlain() {
-        XCTAssertTrue(EnvironmentValues().composerStyle is PlainComposerStyle)
+    /// Since Unit 2 §L5's defaults flip (issue #2307) the built-in default is
+    /// the new-look `GlassComposerStyle`, not `PlainComposerStyle` — see
+    /// `DefaultAppearanceCharacterizationTests.test_defaultEnvironmentStyles_areNewLook_notClassic`
+    /// for the guard test and `ClassicAppearanceCharacterizationTests` for the
+    /// restored-look pin.
+    func test_defaultEnvironmentComposerStyle_isGlass() {
+        XCTAssertTrue(EnvironmentValues().composerStyle is GlassComposerStyle)
     }
 
     // MARK: - Thinking block: 3 states reach the style
@@ -152,8 +157,10 @@ final class StyleProtocolDispatchTests: XCTestCase {
         XCTAssertEqual(dedupAdjacent(recorder.seenStates), states, "All three ThinkingBlockState cases must reach the style")
     }
 
-    func test_defaultEnvironmentThinkingBlockStyle_isPlain() {
-        XCTAssertTrue(EnvironmentValues().thinkingBlockStyle is PlainThinkingBlockStyle)
+    /// Since Unit 2 §L5's defaults flip (issue #2307) the built-in default is
+    /// the new-look `ShimmerThinkingBlockStyle`.
+    func test_defaultEnvironmentThinkingBlockStyle_isShimmer() {
+        XCTAssertTrue(EnvironmentValues().thinkingBlockStyle is ShimmerThinkingBlockStyle)
     }
 
     /// `duration == 0` is the documented "unknown" convention for a block
@@ -190,8 +197,10 @@ final class StyleProtocolDispatchTests: XCTestCase {
         XCTAssertEqual(dedupAdjacent(recorder.seenStates), states, "All four ToolInvocationLifecycleState cases must reach the style")
     }
 
-    func test_defaultEnvironmentToolInvocationStyle_isPlain() {
-        XCTAssertTrue(EnvironmentValues().toolInvocationStyle is PlainToolInvocationStyle)
+    /// Since Unit 2 §L5's defaults flip (issue #2307) the built-in default is
+    /// the new-look `CardToolInvocationStyle`.
+    func test_defaultEnvironmentToolInvocationStyle_isCard() {
+        XCTAssertTrue(EnvironmentValues().toolInvocationStyle is CardToolInvocationStyle)
     }
 
     /// `ToolInvocationView.body` must construct its `ResolvedToolInvocation`
@@ -233,8 +242,10 @@ final class StyleProtocolDispatchTests: XCTestCase {
         _ = try view.inspect().find(text: "Pinned chat")
     }
 
-    func test_defaultEnvironmentSessionRowStyle_isPlain() {
-        XCTAssertTrue(EnvironmentValues().sessionRowStyle is PlainSessionRowStyle)
+    /// Since Unit 2 §L5's defaults flip (issue #2307) the built-in default is
+    /// the new-look `QuietSessionRowStyle`.
+    func test_defaultEnvironmentSessionRowStyle_isQuiet() {
+        XCTAssertTrue(EnvironmentValues().sessionRowStyle is QuietSessionRowStyle)
     }
 
     /// The resolved wrapper reaches a custom style with the exact

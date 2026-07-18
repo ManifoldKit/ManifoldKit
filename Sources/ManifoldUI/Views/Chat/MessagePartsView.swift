@@ -27,6 +27,7 @@ struct MessagePartsView: View {
 
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(\.manifoldTheme) private var theme
+    @Environment(\.chatMessagePartRenderer) private var partRenderer
 
     /// True while the parent message's reasoning block is still streaming —
     /// computed from the view-model's transient streaming-thinking set keyed
@@ -266,10 +267,27 @@ struct MessagePartsView: View {
 
     @ViewBuilder
     private func partView(for part: MessagePart) -> some View {
-        // INTEGRATION(u2-l2): chatMessagePartRenderer override dispatches here —
-        // wired at stack integration (L2's Theming/ChatMessagePartRenderer.swift,
-        // on origin/feat/2307-u2-l2, gives a host renderer first refusal per
-        // part with `defaultPartView()` falling through to the switch below).
+        // A host-installed `.chatMessagePartRenderer(_:)` (Theming/
+        // ChatMessagePartRenderer.swift) gets first refusal on every part;
+        // its `defaultPartView()` escape hatch falls through to this view's
+        // own per-kind switch below, mirroring `chatMessageRenderer`'s
+        // whole-message LAST-WINS contract at the finer part granularity.
+        if let partRenderer {
+            partRenderer(
+                ChatMessagePartRenderParameters(
+                    part: part,
+                    role: role,
+                    isStreaming: isStreaming,
+                    defaultView: { AnyView(defaultPartView(for: part)) }
+                )
+            )
+        } else {
+            defaultPartView(for: part)
+        }
+    }
+
+    @ViewBuilder
+    private func defaultPartView(for part: MessagePart) -> some View {
         switch part {
         case .text(let text):
             textView(text)

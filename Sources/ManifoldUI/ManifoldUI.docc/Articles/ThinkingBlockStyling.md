@@ -32,7 +32,7 @@ struct CaptionThinkingBlockStyle: ThinkingBlockStyle {
 
 `toggleExpanded` flips between ``ThinkingBlockState/settled(duration:)`` and ``ThinkingBlockState/expanded(duration:)`` — the call site (`ThinkingBlockView`) owns the actual `@State`, so a style only ever reads a snapshot and calls the closure, mirroring how `DisclosureGroup` separates its binding from its label/content builders.
 
-Install with `.thinkingBlockStyle(_:)`. Two built-ins ship: ``PlainThinkingBlockStyle`` (`.plain`, the default — reproduces the framework's historical "Thinking…"/"Reasoning" disclosure) and ``ShimmerThinkingBlockStyle`` (`.shimmer`, the 2026 refresh's design).
+Install with `.thinkingBlockStyle(_:)`. Two built-ins ship: ``PlainThinkingBlockStyle`` (`.plain`, the `.classic` preset — reproduces the framework's historical "Thinking…"/"Reasoning" disclosure) and ``ShimmerThinkingBlockStyle`` (`.shimmer`, the built-in default since Unit 2 §L5's defaults flip — the 2026 refresh's design).
 
 ## Topics
 

@@ -88,9 +88,9 @@ public protocol ToolInvocationStyle: Sendable {
 
 // MARK: - Built-in styles
 
-/// The default style: reproduces ``ToolInvocationView``'s historical chrome
-/// for all four states, byte-for-byte. This is the style that becomes the
-/// `.classic` preset in Unit 2 §L5.
+/// Reproduces ``ToolInvocationView``'s historical chrome for all four states,
+/// byte-for-byte. This is the `.classic` preset since Unit 2 §L5's defaults
+/// flip (issue #2307) — ``CardToolInvocationStyle`` is the built-in default now.
 public struct PlainToolInvocationStyle: ToolInvocationStyle {
     public init() {}
 
@@ -260,8 +260,9 @@ private struct PlainToolInvocationBody: View {
 /// design (spec §4): live states spin/shimmer, terminal states are static and
 /// collapsed, status colors come from ``ManifoldTheme``'s semantic tier
 /// instead of the literal `.orange` this tranche's `HardcodedColorAuditTest`
-/// migration retires. Not the default in this tranche — Unit 2 §L5 flips the
-/// built-in default.
+/// migration retires. The built-in default since Unit 2 §L5's defaults flip
+/// (issue #2307) — apply `.toolInvocationStyle(.plain)` (or
+/// `View.classicManifoldTheme()`) to restore the pre-refresh card.
 public struct CardToolInvocationStyle: ToolInvocationStyle {
     public init() {}
 
@@ -276,17 +277,48 @@ private struct CardToolInvocationBody: View {
     @Environment(\.manifoldTheme) private var theme
 
     var body: some View {
-        HStack(spacing: 6) {
-            icon
-            Text(configuration.toolName)
-                .font(theme.type.caption.monospaced())
-                .foregroundStyle(theme.ink2)
-            if configuration.state == .running {
-                ProgressView().controlSize(.mini)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                icon
+                Text(configuration.toolName)
+                    .font(theme.type.caption.monospaced())
+                    .foregroundStyle(theme.ink2)
+                if configuration.state == .running {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+
+            // Live/actionable states carry real controls, not just chrome —
+            // a card that only ever showed an icon would leave tool approval
+            // and reauthentication with no affordance once this became the
+            // default (Unit 2 §L5, issue #2307). Identifiers/labels match
+            // ``PlainToolInvocationStyle``'s exactly so both styles satisfy
+            // the same behavioral contract (`ToolInvocationViewTests`).
+            if configuration.state == .awaitingApproval {
+                HStack(spacing: 8) {
+                    Button("Deny") { configuration.onDeny?(nil) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("approval-deny-button")
+                    Button("Approve") { configuration.onApprove?() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("approval-approve-button")
+                }
+            }
+
+            if configuration.state == .failed, let cta = configuration.errorPresentation?.reauthenticationCTA {
+                Button(cta.message) {
+                    configuration.onReauthenticate?(cta)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityIdentifier("tool-error-reauth-button")
             }
         }
         .padding(8)
         .background(theme.surface, in: RoundedRectangle(cornerRadius: theme.shape.sm, style: .continuous))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("tool-invocation-\(accessibilitySuffix)-\(configuration.toolName)")
     }
 
@@ -329,9 +361,11 @@ public extension ToolInvocationStyle where Self == CardToolInvocationStyle {
 // MARK: - Environment injection
 
 public extension EnvironmentValues {
-    /// The active tool-invocation style. Defaults to ``PlainToolInvocationStyle``
-    /// so untouched views keep the historical look.
-    @Entry var toolInvocationStyle: any ToolInvocationStyle = PlainToolInvocationStyle()
+    /// The active tool-invocation style. Defaults to ``CardToolInvocationStyle``
+    /// since Unit 2 §L5's defaults flip (issue #2307). Apply
+    /// `.toolInvocationStyle(.plain)` (or `View.classicManifoldTheme()`) to
+    /// restore the pre-refresh card.
+    @Entry var toolInvocationStyle: any ToolInvocationStyle = CardToolInvocationStyle()
 }
 
 public extension View {

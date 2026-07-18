@@ -75,7 +75,8 @@ public protocol ThinkingBlockStyle: Sendable {
 /// "Thinking… <preview>" while streaming, a collapsed "Reasoning" disclosure
 /// once settled, unchanged whether or not `duration` is known (this style
 /// never renders it, matching today's UI having no duration display at all).
-/// This is the style that becomes the `.classic` preset in Unit 2 §L5.
+/// This is the `.classic` preset since Unit 2 §L5's defaults flip (issue
+/// #2307) — ``ShimmerThinkingBlockStyle`` is the built-in default now.
 public struct PlainThinkingBlockStyle: ThinkingBlockStyle {
     public init() {}
 
@@ -158,8 +159,10 @@ private struct PlainThinkingBlockBody: View {
 }
 
 /// A **new-look** style implementing the spec's shimmer-preview →
-/// "Thought for Ns" → hairline-rule-trace lifecycle (spec §4A). Not the
-/// default in this tranche — Unit 2 §L5 flips the built-in default.
+/// "Thought for Ns" → hairline-rule-trace lifecycle (spec §4A). The built-in
+/// default since Unit 2 §L5's defaults flip (issue #2307) — apply
+/// `.thinkingBlockStyle(.plain)` (or `View.classicManifoldTheme()`) to
+/// restore the pre-refresh disclosure.
 public struct ShimmerThinkingBlockStyle: ThinkingBlockStyle {
     public init() {}
 
@@ -240,9 +243,11 @@ public extension ThinkingBlockStyle where Self == ShimmerThinkingBlockStyle {
 // MARK: - Environment injection
 
 public extension EnvironmentValues {
-    /// The active thinking-block style. Defaults to ``PlainThinkingBlockStyle``
-    /// so untouched views keep the historical look.
-    @Entry var thinkingBlockStyle: any ThinkingBlockStyle = PlainThinkingBlockStyle()
+    /// The active thinking-block style. Defaults to ``ShimmerThinkingBlockStyle``
+    /// since Unit 2 §L5's defaults flip (issue #2307). Apply
+    /// `.thinkingBlockStyle(.plain)` (or `View.classicManifoldTheme()`) to
+    /// restore the pre-refresh disclosure.
+    @Entry var thinkingBlockStyle: any ThinkingBlockStyle = ShimmerThinkingBlockStyle()
 }
 
 public extension View {

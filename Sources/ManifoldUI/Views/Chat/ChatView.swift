@@ -58,6 +58,7 @@ public struct ChatView<APIConfig: View>: View {
     @State private var isExportPresented: Bool = false
     @State private var showClearConfirmation: Bool = false
     @State private var showAPIConfiguration: Bool = false
+    @State private var showModelSwitcher: Bool = false
     #if DEBUG
     @State private var showArchitectView: Bool = false
     #endif
@@ -100,6 +101,14 @@ public struct ChatView<APIConfig: View>: View {
     /// supply this to render memory bubbles, annotation labels, or other
     /// internal records.
     private var customKindRenderer: ((ChatMessage) -> AnyView)?
+
+    /// Optional host-supplied quick model switcher content, set via
+    /// ``chatModelSwitcher(_:)``. `nil` (the default) renders no model chip
+    /// in the toolbar at all — the seam is opt-in because building the row
+    /// list (`ModelSwitcher.rows(...)`) needs `ManifoldUIModelManagement`
+    /// types this module must not import (dependency direction: mmgmt
+    /// depends on UI, never the reverse).
+    private var modelSwitcherBuilder: (() -> AnyView)?
 
     public init(
         showModelManagement: Binding<Bool>,
@@ -169,6 +178,7 @@ public struct ChatView<APIConfig: View>: View {
         copy.composerAccessoryBuilder = composerAccessoryBuilder
         copy.contextMenuItemsBuilder = contextMenuItemsBuilder
         copy.customKindRenderer = customKindRenderer
+        copy.modelSwitcherBuilder = modelSwitcherBuilder
         return copy
     }
 
@@ -216,6 +226,46 @@ public struct ChatView<APIConfig: View>: View {
         return copy
     }
 
+    /// Installs a quick model switcher, presented from a toolbar chip —
+    /// popover-anchored on macOS (spec §2: "Glass popover anchored to the
+    /// toolbar chip"), a sheet with `.presentationDetents` on iOS (spec §2:
+    /// "Glass sheet + detents"). `ChatView` owns only the chrome (chip,
+    /// presentation style); the content itself is host-supplied because
+    /// building the unified row list needs `ManifoldUIModelManagement` types
+    /// (`ModelSwitcher.rows(...)`, `EndpointStore`) this module cannot import.
+    ///
+    /// Typically:
+    /// ```swift
+    /// ChatView(showModelManagement: $show)
+    ///     .chatModelSwitcher {
+    ///         ModelSwitcherView(
+    ///             rows: ModelSwitcher.rows(
+    ///                 models: vm.availableModels,
+    ///                 endpoints: endpoints,
+    ///                 selectedModelID: vm.selectedModel?.id,
+    ///                 selectedEndpointID: vm.selectedEndpoint?.id,
+    ///                 physicalMemoryBytes: vm.physicalMemoryBytes,
+    ///                 compatibility: capabilityService.compatibility(for:)
+    ///             ),
+    ///             onSelect: { entry in /* dispatch selection */ },
+    ///             onFixEndpoint: { endpoint in /* open the endpoint editor */ }
+    ///         )
+    ///     }
+    /// ```
+    ///
+    /// `nil` (never calling this modifier) renders no model chip at all — the
+    /// seam is opt-in, matching `chatComposerAccessory(_:)`'s shape.
+    ///
+    /// **LAST-WINS:** calling this modifier more than once replaces the
+    /// previous builder entirely; there is no merging.
+    public func chatModelSwitcher<Content: View>(
+        @ViewBuilder _ builder: @escaping () -> Content
+    ) -> ChatView<APIConfig> {
+        var copy = self
+        copy.modelSwitcherBuilder = { AnyView(builder()) }
+        return copy
+    }
+
     // MARK: - Body
 
     public var body: some View {
@@ -233,6 +283,11 @@ public struct ChatView<APIConfig: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            if modelSwitcherBuilder != nil {
+                ToolbarItem(placement: .principal) {
+                    modelChipButton
+                }
+            }
             // Status indicators (cloud badge, context, memory) are informational
             // and can move to the overflow menu when space is tight. The action
             // buttons (export, device info, settings, clear) carry explicit
@@ -375,6 +430,55 @@ public struct ChatView<APIConfig: View>: View {
                 ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
                     .manifoldGlass(theme, in: Rectangle())
             }
+    }
+
+    // MARK: - Model switcher chip (Unit 2 §L5)
+
+    /// The toolbar chip that opens the host-supplied model switcher content
+    /// (``chatModelSwitcher(_:)``). macOS presents it as a popover anchored
+    /// to this chip (spec §2); iOS presents it as a sheet with
+    /// `.presentationDetents` (spec §2) — `presentationDetents` is an
+    /// iOS-only API, so it is guarded behind `#if os(iOS)`.
+    private var modelChipButton: some View {
+        Button {
+            showModelSwitcher = true
+        } label: {
+            Label(modelChipTitle, systemImage: "cpu")
+                .labelStyle(.titleAndIcon)
+        }
+        .accessibilityLabel("Switch model")
+        .accessibilityIdentifier("chat-model-switcher-chip")
+        #if os(iOS)
+        .sheet(isPresented: $showModelSwitcher) {
+            modelSwitcherContent
+                .presentationDetents([.medium, .large])
+        }
+        #else
+        .popover(isPresented: $showModelSwitcher) {
+            modelSwitcherContent
+                .frame(minWidth: 320, minHeight: 360)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private var modelSwitcherContent: some View {
+        if let modelSwitcherBuilder {
+            modelSwitcherBuilder()
+        } else {
+            EmptyView()
+        }
+    }
+
+    /// The chip's label: the active local model's name, else the active
+    /// cloud endpoint's name, else the backend-reported model identifier
+    /// (e.g. a Foundation Models session with no `ModelInfo`/endpoint
+    /// selection), else a neutral fallback so the chip is never blank.
+    private var modelChipTitle: String {
+        viewModel.selectedModel?.name
+            ?? viewModel.selectedEndpoint?.name
+            ?? viewModel.activeModelName
+            ?? "Model"
     }
 
     // MARK: - Helpers

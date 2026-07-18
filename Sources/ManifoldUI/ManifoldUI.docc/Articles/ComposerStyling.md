@@ -35,7 +35,7 @@ ChatView(showModelManagement: $showModels)
     .composerStyle(RoundedComposerStyle())
 ```
 
-Two built-ins ship: ``PlainComposerStyle`` (`.plain`, the default — reproduces `ChatInputBar`'s historical layout, field wrapped in `.padding(10)` over a `ManifoldTheme.surface`-filled `RoundedRectangle(cornerRadius: 12)` with the affordances beside it, byte-for-byte) and ``GlassComposerStyle`` (`.glass`, the 2026 refresh's floating glass capsule/docked bar enclosing field + affordances in one container).
+Two built-ins ship: ``PlainComposerStyle`` (`.plain`, the `.classic` preset — reproduces `ChatInputBar`'s historical layout, field wrapped in `.padding(10)` over a `ManifoldTheme.surface`-filled `RoundedRectangle(cornerRadius: 12)` with the affordances beside it, byte-for-byte) and ``GlassComposerStyle`` (`.glass`, the built-in default since Unit 2 §L5's defaults flip — the 2026 refresh's floating glass capsule/docked bar enclosing field + affordances in one container).
 
 ## Topics
 

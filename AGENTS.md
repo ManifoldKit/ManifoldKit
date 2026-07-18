@@ -145,6 +145,10 @@ struct MyChatApp: App {
     @State private var sessionManager: SessionManagerViewModel?
     @State private var modelManagement = ModelManagementViewModel.live()
     @State private var startupError: Error?
+    // Named-milestone loading (2026 UI refresh, `BootstrapLoadingScreen.md`) —
+    // replaces a bare `ProgressView("Starting…")` with text that tells the
+    // user what's actually happening on a slow first launch.
+    @State private var milestone: RuntimeBootstrapMilestone = .installingConfiguration
 
     var body: some Scene {
         WindowGroup {
@@ -164,7 +168,7 @@ struct MyChatApp: App {
                     description: Text(String(describing: startupError))
                 )
             } else {
-                ProgressView("Starting…")
+                BootstrapLoadingView(milestone: milestone)
                     .task { await start() }
             }
         }
@@ -179,7 +183,7 @@ struct MyChatApp: App {
                     bundleIdentifier: "com.example.mychat"
                 )
             )
-            for await _ in progress { /* drain milestones or drive a progress bar */ }
+            for await m in progress { milestone = m }
             let bootstrap = try await task.value
 
             // Register the compiled-in default families. The `ManifoldBackends`
@@ -348,6 +352,45 @@ There are three message-shaped types. Pick the right one:
 App code reads and writes `ChatMessage` (the struct). The persistence and wire types
 are managed by ManifoldKit.
 
+## Theming the chat UI
+
+The 2026 UI refresh (issue #2307) ships a new default look — a deliberate
+pre-1.0 visual break (Principle 9), not a silent drift. The token root is
+`ManifoldTheme` (`Sources/ManifoldUI/Theming/ManifoldTheme.swift`), injected
+via `.manifoldTheme(_:)`; it embeds the original `ChatTheme` (bubble tokens)
+and adds surfaces/inks/status/info/categorical tiers plus a corner-radius
+scale (`ManifoldThemeShapeScale`) and text-style roles
+(`ManifoldThemeTypeScale`). Five style-protocol seams — `MessageBubbleStyle`,
+`ComposerStyle`, `ThinkingBlockStyle`, `ToolInvocationStyle`,
+`SessionRowStyle` — each follow one recipe: protocol + `Configuration` data
+struct + `@Entry` environment key + cascading modifier + static accessors
+(`.plain`, `.glass`, `.card`, …). A `chatMessagePartRenderer(_:)` seam gives a
+host first refusal on one content part (a specific tool call, a
+generated-media kind) with `params.defaultPartView()` falling through to the
+built-in per-kind view — the finer-grained sibling of `.chatMessageRenderer(_:)`.
+
+**The built-in styles are the new look; `.classic` restores the pre-refresh
+appearance in one call:**
+
+```swift
+ChatView(showModelManagement: $show)
+    .classicManifoldTheme()
+```
+
+See [`docs/MIGRATION-ui-refresh.md`](docs/MIGRATION-ui-refresh.md) for the
+full default-appearance change inventory (bubble gradient, corner radius,
+composer capsule, reasoning shimmer, tool card, session-row pin glyph) and
+[`Sources/ManifoldUI/ManifoldUI.docc/Articles/Theming.md`](Sources/ManifoldUI/ManifoldUI.docc/Articles/Theming.md)
+/ `WhiteLabelTheming.md` for the full token-layer walkthrough and a worked
+brand-swap recipe.
+
+`ChatView` also exposes an opt-in `.chatModelSwitcher(_:)` seam — a toolbar
+chip that presents host-supplied quick-switcher content (popover on macOS,
+sheet + `.presentationDetents` on iOS). `ManifoldUI` cannot import the actual
+`ModelSwitcherView` (`ManifoldUIModelManagement` depends on `ManifoldUI`,
+never the reverse), so the seam is closure-injected exactly like
+`chatAPIConfiguration(_:)`; omitting the modifier renders no chip at all.
+
 ## Tool calling
 
 Register an executor with `ToolRegistry`, then thread the registry's
@@ -462,8 +505,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 
 ## Common LLM hallucinations to avoid
 
-These are the four mistakes most assistants make against ManifoldKit. Don't write any
-of them:
+These are mistakes assistants make against ManifoldKit. Don't write any of them:
 
 1. **The umbrella module is `ManifoldKit`** (added in 0.19). Reach for
    `import ManifoldKit` first — it covers Inference, Runtime,
@@ -485,6 +527,24 @@ of them:
    `ModelManagementViewModel.dispatchSelectedLoad()`** — there is no shortcut
    like `vm.loadModel(url:)` or `vm.loadModel(from:)`. Foundation Models are
    the exception: call `vm.loadFoundationModelIfAvailable()` directly.
+5. **There is no `vm.setTheme(_:)` / `ChatViewModel.theme` property.** Theming
+   is a SwiftUI environment cascade, not a view-model API — apply
+   `.manifoldTheme(_:)` (or the individual `.messageBubbleStyle(_:)` /
+   `.composerStyle(_:)` / `.thinkingBlockStyle(_:)` / `.toolInvocationStyle(_:)`
+   / `.sessionRowStyle(_:)` modifiers) to `ChatView` or an ancestor, the same
+   shape as SwiftUI's own `.tint(_:)`/`.font(_:)`.
+6. **There is no "reasoning effort" enum.** The thinking-budget lever is
+   `GenerationConfig.maxThinkingTokens` (Off → `0`, Auto → `nil`, Extended →
+   a named budget), gated on `ModelManifest.supportsThinking` — see
+   `ThinkingBudgetOption`/`ThinkingBudgetControl` (`ManifoldUIModelManagement`).
+   Sampler knobs elsewhere gate on `supportedSamplingParameters` the same way.
+7. **There are no per-model theme presets.** `ManifoldTheme`/style-protocol
+   choices are a UI-layer concern applied once at (or above) the chat root —
+   they do not vary per loaded model, and there is no
+   `ModelInfo.recommendedTheme` or similar. The built-in default is the 2026
+   refresh's new look; `.classic` (or the individual `.plain` style presets)
+   restores the pre-refresh appearance — see
+   [`docs/MIGRATION-ui-refresh.md`](docs/MIGRATION-ui-refresh.md).
 
 ## Trait gotchas
 

@@ -29,7 +29,7 @@ struct BadgeSessionRowStyle: SessionRowStyle {
 }
 ```
 
-Install with `.sessionRowStyle(_:)`. Two built-ins ship: ``PlainSessionRowStyle`` (`.plain`, the default — reproduces `SessionRowView`'s historical title-over-relative-timestamp layout) and ``QuietSessionRowStyle`` (`.quiet`, the 2026 refresh's design, adding the pin glyph and snippet line spec §6 calls for).
+Install with `.sessionRowStyle(_:)`. Two built-ins ship: ``PlainSessionRowStyle`` (`.plain`, the `.classic` preset — reproduces `SessionRowView`'s historical title-over-relative-timestamp layout) and ``QuietSessionRowStyle`` (`.quiet`, the built-in default since Unit 2 §L5's defaults flip — the 2026 refresh's design, adding the pin glyph and snippet line spec §6 calls for).
 
 ``SessionRowConfiguration/updatedAt`` is a `Date`, not a pre-formatted string, so a style can render it with `Text(_:style:.relative)` and keep the live-updating "5m ago" behavior the pre-refresh view already had.
 

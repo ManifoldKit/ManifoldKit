@@ -10,7 +10,7 @@ ManifoldUI ships an opinionated default look, but every styling decision is an o
 2. **Semantic** — ``ManifoldTheme``'s stored properties (`accent`, `surface`, `statusOK`, `info`, `categorical`, `shape`, `type`, …). Component code may only reference this tier.
 3. **Component** — the style-protocol layer (``MessageBubbleStyle``, ``ComposerStyle``, ``ThinkingBlockStyle``, ``ToolInvocationStyle``, ``SessionRowStyle``) plus the per-message/per-part renderer seams. Components read semantic tokens and decide layout/shape; they never hold a primitive.
 
-Every layer is additive. A consumer who adopts none keeps today's appearance byte-for-byte — ``ManifoldTheme/standard`` reproduces the historical look exactly (`DefaultAppearanceCharacterizationTests` locks this), so the theming system is a zero-breaking-change addition until Unit 2 §L5 flips the built-in defaults to the new look (with a `.classic` preset restoring today's appearance in one modifier group).
+Every layer is additive, and ``ManifoldTheme/standard`` carries the 2026 refresh's new look as the framework default since Unit 2 §L5 (issue #2307) — this is a deliberate pre-1.0 visual break, not a silent drift; see `docs/MIGRATION-ui-refresh.md` for the full change inventory. A consumer who wants the pre-refresh appearance back applies one modifier: `View.classicManifoldTheme()` (or ``ManifoldTheme/classic`` / the individual `.plain` style presets). `DefaultAppearanceCharacterizationTests` locks the new defaults; `ClassicAppearanceCharacterizationTests` locks the restored look to the exact pre-flip values, so the old appearance stays reproducible forever even though it is no longer the default.
 
 The litmus test for any theme you write: toggle Dark Mode, max Dynamic Type, and Increase Contrast — nothing should stay fixed. Colors flow through `ShapeStyle` (asset-catalog colors get Dark Mode/Increase Contrast for free), fonts are HIG text styles (Dynamic Type keeps scaling), and any metric that should grow with text size is multiplied by a `@ScaledMetric` factor at the point it is drawn.
 
@@ -50,7 +50,7 @@ func makeBrandTheme() -> ManifoldTheme {
 | Tool cards (checkmark / warning icons) | ``ManifoldTheme/statusOK``/``statusWarn`` via ``ToolInvocationStyle`` |
 | Reasoning disclosure | ``ManifoldTheme/ink2``/``ink3`` via ``ThinkingBlockStyle`` |
 | Sidebar rows | ``ManifoldTheme/ink2``/``ink3`` via ``SessionRowStyle`` (system owns row selection/vibrancy — see `docs/UI-REFRESH-2026.md` §2) |
-| Model-management badges (format, speed, fit) | ``ManifoldTheme/categorical``, ``ManifoldTheme/statusOK``/``statusWarn``/``statusError`` — token definitions ship here; migrating `ManifoldUIModelManagement` call sites is a separate tranche |
+| Model-management badges (format, speed, fit) | ``ManifoldTheme/categorical``, ``ManifoldTheme/statusOK``/``statusWarn``/``statusError`` — `ModelPicker`/`DownloadableModelRow` call sites migrated in Unit 2 §L3 |
 
 ## Component styles
 
@@ -62,7 +62,7 @@ Five style-protocol seams follow the same recipe — implement `makeBody(configu
 - <doc:SessionRowStyling> — sidebar row content
 - ``MessageBubbleStyle`` — bubble chrome (ships since the original theming layer)
 
-Each ships a `.plain`-style built-in that reproduces today's exact chrome (the future `.classic` preset) alongside a new-look style that is not yet the default.
+Each ships a `.plain`-style built-in that reproduces the pre-refresh chrome exactly (the `.classic` preset) alongside the new-look style, which is the built-in default since Unit 2 §L5. See <doc:WhiteLabelTheming> for a worked brand swap using this token + style layering.
 
 ## Per-message and per-part rendering
 

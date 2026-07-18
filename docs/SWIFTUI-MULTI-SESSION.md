@@ -354,6 +354,10 @@ struct MyChatApp: App {
     @State private var chatVM: ChatViewModel?
     @State private var sessionVM: SessionManagerViewModel?
     @State private var startupError: Error?
+    // Named-milestone loading (2026 UI refresh, `BootstrapLoadingScreen.md`)
+    // — tells the user what's actually happening on a slow first launch,
+    // instead of a bare "Starting…" spinner.
+    @State private var milestone: RuntimeBootstrapMilestone = .installingConfiguration
 
     var body: some Scene {
         WindowGroup {
@@ -372,7 +376,7 @@ struct MyChatApp: App {
                     description: Text(String(describing: startupError))
                 )
             } else {
-                ProgressView("Starting…")
+                BootstrapLoadingView(milestone: milestone)
                     .task { await start() }
             }
         }
@@ -387,7 +391,7 @@ struct MyChatApp: App {
                     bundleIdentifier: "com.example.mychat"
                 )
             )
-            for await _ in progress { /* drain or drive a progress bar */ }
+            for await m in progress { milestone = m }
             let bootstrap = try await task.value
 
             // The retired `DefaultBackends` fold is now an explicit per-family

@@ -29,7 +29,7 @@ struct PillToolInvocationStyle: ToolInvocationStyle {
 }
 ```
 
-Install with `.toolInvocationStyle(_:)`. Two built-ins ship: ``PlainToolInvocationStyle`` (`.plain`, the default — reproduces `ToolInvocationView`'s historical chrome for all four states) and ``CardToolInvocationStyle`` (`.card`, the 2026 refresh's design, reading status colors from ``ManifoldTheme`` instead of the literal `.orange` the pre-refresh failed-state chip used).
+Install with `.toolInvocationStyle(_:)`. Two built-ins ship: ``PlainToolInvocationStyle`` (`.plain`, the `.classic` preset — reproduces `ToolInvocationView`'s historical chrome for all four states) and ``CardToolInvocationStyle`` (`.card`, the built-in default since Unit 2 §L5's defaults flip — the 2026 refresh's design, reading status colors from ``ManifoldTheme`` instead of the literal `.orange` the pre-refresh failed-state chip used, and rendering the same approve/deny/reauthenticate controls ``PlainToolInvocationStyle`` does).
 
 The MCP reauthenticate hook (spec §4) surfaces through ``ToolInvocationConfiguration/onReauthenticate`` when a failed result's ``ToolErrorPresentation/reauthenticationCTA`` is non-nil — a style is responsible for rendering the CTA if it wants to surface it.
 

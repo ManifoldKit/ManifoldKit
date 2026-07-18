@@ -114,8 +114,9 @@ public protocol ComposerStyle: Sendable {
 /// beside the field — never enclosed in the field's own background — exactly
 /// matching the classic layout.
 ///
-/// This is the style that becomes the `.classic` preset in Unit 2 §L5 — the
-/// new-look glass capsule/bar (spec §3) is a distinct, not-yet-default style.
+/// This is the `.classic` preset since Unit 2 §L5's defaults flip (issue
+/// #2307) — the new-look glass capsule/bar (``GlassComposerStyle``, spec §3)
+/// is the built-in default now.
 public struct PlainComposerStyle: ComposerStyle {
     public init() {}
 
@@ -142,8 +143,10 @@ private struct PlainComposerBody: View {
 /// A **new-look** style implementing the spec's floating glass capsule (iOS)
 /// / docked glass bar (macOS) geometry (spec §3): field and ``ComposerConfiguration/affordances``
 /// share one enclosing glass container, so the "+" menu / send-stop controls
-/// read as part of the same capsule rather than free-floating siblings. Not
-/// the default in this tranche — Unit 2 §L5 flips the built-in default.
+/// read as part of the same capsule rather than free-floating siblings. The
+/// built-in default since Unit 2 §L5's defaults flip (issue #2307) — apply
+/// `.composerStyle(.plain)` (or `View.classicManifoldTheme()`) to restore the
+/// pre-refresh layout.
 public struct GlassComposerStyle: ComposerStyle {
     public init() {}
 
@@ -182,9 +185,11 @@ public extension ComposerStyle where Self == GlassComposerStyle {
 // MARK: - Environment injection
 
 public extension EnvironmentValues {
-    /// The active composer style. Defaults to ``PlainComposerStyle`` so
-    /// untouched views keep the historical look.
-    @Entry var composerStyle: any ComposerStyle = PlainComposerStyle()
+    /// The active composer style. Defaults to ``GlassComposerStyle`` since
+    /// Unit 2 §L5's defaults flip (issue #2307) — the framework's built-in
+    /// look is now the glass capsule/bar. Apply `.composerStyle(.plain)` (or
+    /// `View.classicManifoldTheme()`) to restore the pre-refresh layout.
+    @Entry var composerStyle: any ComposerStyle = GlassComposerStyle()
 }
 
 public extension View {

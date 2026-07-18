@@ -220,8 +220,46 @@ public struct ManifoldTheme: Sendable {
         self.type = type
     }
 
-    /// The framework default — reproduces the pre-theming appearance exactly.
+    /// The framework default since Unit 2 §L5 (issue #2307) — carries the
+    /// flipped ``ChatTheme/standard`` (gradient bubble) plus every other
+    /// semantic token at its historical (Unit 1) value: the flip is scoped to
+    /// bubble chrome and the four style-protocol defaults below, not a
+    /// re-hue of status/surface/ink tokens. See ``classic`` to restore the
+    /// pre-refresh appearance.
     public static let standard = ManifoldTheme()
+
+    /// Reproduces the pre-2026-refresh appearance: ``ChatTheme/classic``
+    /// (solid-accent bubble, `16`pt radius) with every other semantic token
+    /// unchanged (they never differed between standard and classic — only
+    /// the bubble tokens and the four style-protocol defaults moved). Combine
+    /// with `.composerStyle(.plain)`, `.thinkingBlockStyle(.plain)`,
+    /// `.toolInvocationStyle(.plain)`, and `.sessionRowStyle(.plain)` — or
+    /// just call `View.classicManifoldTheme()` below, which applies all five
+    /// in one call.
+    public static let classic = ManifoldTheme(chatTheme: .classic)
+}
+
+public extension View {
+    /// Restores the complete pre-2026-refresh appearance in one call: the
+    /// ``ManifoldTheme/classic`` token set plus every classic style preset
+    /// (composer/thinking-block/tool-invocation/session-row). Equivalent to
+    /// applying `.manifoldTheme(.classic)`, `.composerStyle(.plain)`,
+    /// `.thinkingBlockStyle(.plain)`, `.toolInvocationStyle(.plain)`, and
+    /// `.sessionRowStyle(.plain)` individually — spec §8's "classic presets
+    /// ... restore the pre-refresh appearance in one modifier group."
+    ///
+    /// ```swift
+    /// ChatView(showModelManagement: $show)
+    ///     .classicManifoldTheme()
+    /// ```
+    func classicManifoldTheme() -> some View {
+        self
+            .manifoldTheme(.classic)
+            .composerStyle(.plain)
+            .thinkingBlockStyle(.plain)
+            .toolInvocationStyle(.plain)
+            .sessionRowStyle(.plain)
+    }
 }
 
 /// The categorical tint set backing ``ManifoldTheme/categorical``. Each pair
