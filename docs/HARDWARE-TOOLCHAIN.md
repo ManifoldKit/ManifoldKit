@@ -64,7 +64,7 @@ Mixing Swift Testing (`@Test`/`@Suite`) and XCTest in the same test process
 triggers a libmalloc double-free `SIGABRT` — tracked as **#681**. This is not
 a "sometimes"; core's own `scripts/test.sh` runs a deliberate three-invocation
 shape specifically to avoid it: the XCTest filter batch first, then
-`ManifoldBackendsTests` serial in its own process (that target mixes XCTest
+`ManifoldBackendsTests` in its own process with `--parallel` (that target mixes XCTest
 with Swift Testing files), then `ManifoldInferenceSwiftTestingTests` in a
 fully separate `swift test` process (see the `PROFILE_*_FILTERS` arrays in
 `scripts/test.sh`; `Tests/README.md`). A companion package that adds Swift

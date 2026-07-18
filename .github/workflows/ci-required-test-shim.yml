@@ -1,38 +1,40 @@
-# Companion shim to ci.yml — keeps the required `test` status check reportable
-# on PRs that ci.yml's path filter excludes, so they stay mergeable AND can enter
-# the merge queue.
+# Companion shim to ci.yml — keeps the required `test` and `api-digester-check`
+# status checks reportable on PRs that ci.yml's path filter excludes, so they
+# stay mergeable AND can enter the merge queue.
 #
 # WHY THIS EXISTS
-# `test` (in ci.yml) is a REQUIRED status check. ci.yml's pull_request trigger
-# has a `paths:` filter, so a PR that touches none of those paths (docs-only,
-# most workflow-only / Dependabot PRs) never runs ci.yml and the `test` context
-# never reports. Branch protection then leaves the PR un-mergeable, and the
-# native merge queue refuses it: queue ENTRY requires the PR-head required
-# checks to be satisfied — the merge_group re-test (ci.yml's merge_group trigger)
-# only runs AFTER a PR enters the queue. Without this shim such PRs are stuck.
+# `test` and `api-digester-check` (in ci.yml) are REQUIRED status checks.
+# ci.yml's pull_request trigger has a `paths:` filter, so a PR that touches
+# none of those paths (docs-only, most workflow-only / Dependabot PRs) never
+# runs ci.yml and those contexts never report. Branch protection then leaves
+# the PR un-mergeable, and the native merge queue refuses it: queue ENTRY
+# requires the PR-head required checks to be satisfied — the merge_group
+# re-test (ci.yml's merge_group trigger) only runs AFTER a PR enters the
+# queue. Without this shim such PRs are stuck.
 #
 # HOW IT WORKS
-# This job reports a green `test` for exactly those excluded PRs via the INVERSE
-# path set: `paths-ignore` mirrors ci.yml's pull_request `paths:`. The real test
-# still runs unconditionally on the merge_group branch, so the queue always
-# re-validates the actual squashed merge before it lands. A PR that genuinely
-# changes code therefore gets the real macOS suite on the queue branch; this
-# shim never substitutes for it there.
+# These jobs report green `test` / `api-digester-check` for exactly those
+# excluded PRs via the INVERSE path set: `paths-ignore` mirrors ci.yml's
+# pull_request `paths:`. The real jobs still run on the merge_group branch
+# when ci.yml fires (unfiltered), so the queue always re-validates before
+# it lands. A PR that genuinely changes code gets the real macOS suite /
+# digester on the PR head (and `test` again on the queue branch); this shim
+# never substitutes for them there.
 #
 # WHY IT IS FAIL-SAFE
 # `paths` and `paths-ignore` are NOT strict complements: a PR touching BOTH a
 # filtered path (e.g. Sources/**) and an unfiltered one (e.g. README.md) trips
-# ci.yml's real `test` AND this shim, producing two check runs both named
-# `test`. That is safe because GitHub requires EVERY check run sharing a required
-# context name to pass — so when the real suite also ran, this echo cannot
-# satisfy `test` on its own; the real `test` must be green independently. (This
-# holds regardless of completion order; it is NOT a timing/last-writer-wins
-# property — that rule only applies to re-runs within a single check suite, and
-# the shim and ci.yml are separate suites.) Consequently a green echo can never
-# mask a real failure. If the lists below ever drift from ci.yml, the only
-# failure mode is a redundant echo or a false BLOCK (a missing `test`), never a
-# false PASS that lets untested code merge. Defense in depth: even a PR admitted
-# via the shim gets the FULL macOS suite re-run on the merge_group branch
+# ci.yml's real jobs AND this shim, producing two check runs sharing each
+# required context name. That is safe because GitHub requires EVERY check run
+# sharing a required context name to pass — so when the real suite also ran,
+# this echo cannot satisfy the context on its own. (This holds regardless of
+# completion order; it is NOT a timing/last-writer-wins property — that rule
+# only applies to re-runs within a single check suite, and the shim and ci.yml
+# are separate suites.) Consequently a green echo can never mask a real
+# failure. If the lists below ever drift from ci.yml, the only failure mode is
+# a redundant echo or a false BLOCK (a missing required check), never a false
+# PASS that lets untested code merge. Defense in depth: even a PR admitted via
+# the shim gets the FULL macOS suite re-run on the merge_group branch
 # (ci.yml's unfiltered merge_group trigger) before it lands.
 #
 # DRIFT: keep `paths-ignore` below identical to ci.yml's pull_request `paths:`.
@@ -65,6 +67,8 @@ on:
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
       - "scripts/regenerate-mcp-fixtures.sh"
       - ".github/actions/setup-swift-ci/**"
+      - "scripts/api-digester-targets.sh"
+      - "scripts/api-digester-targets.txt"
       # ↑↑↑ MUST stay identical to ci.yml's pull_request `paths:` ↑↑↑
 
 permissions:
@@ -93,3 +97,17 @@ jobs:
           echo "macOS test suite is not built on the PR head. The required"
           echo "'test' check is satisfied here without a build; the merge queue"
           echo "re-runs the real suite on the merge_group branch before merge."
+
+  # Same shape as `test` above for the required `api-digester-check` context.
+  # When ci.yml does run but the digester job is path-skipped (no Sources/**
+  # change), GitHub treats the skipped job as a successful required check; this
+  # shim only covers the case where ci.yml itself never starts.
+  api-digester-check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: No API-surface-relevant changes
+        run: |
+          echo "This PR touches none of ci.yml's test-relevant paths, so the"
+          echo "api-digester-check job is not built on the PR head. The required"
+          echo "'api-digester-check' context is satisfied here without a build."

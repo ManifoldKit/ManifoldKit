@@ -184,9 +184,9 @@ done
 # parsing, so explicit caller flags always win (see precedence comment above).
 #
 # Three-invocation shape: the CI and local profiles run the XCTest filter set
-# in one swift-test call, ManifoldBackendsTests alone in a second (serial —
-# mirrors ci.yml's dedicated "ManifoldBackendsTests (serial, claims-registry
-# safe)" step, which is deliberately kept out of the --parallel XCTest batch),
+# in one swift-test call, ManifoldBackendsTests alone in a second (own process
+# + --parallel — mirrors ci.yml; kept out of the multi-target XCTest batch
+# because the target mixes ~9 Swift Testing files with XCTestCase suites),
 # and ManifoldInferenceSwiftTestingTests in a third, separate process — mixing
 # Swift Testing with XCTest in a single process triggers libmalloc SIGABRT
 # (#681). When the caller has not narrowed with their own --filter, we re-exec
@@ -254,9 +254,8 @@ PROFILE_CI_XCTEST_FILTERS=(
 PROFILE_LOCAL_XCTEST_FILTERS=(
     "${PROFILE_CI_XCTEST_FILTERS[@]}"
 )
-# Own invocation, serial (no --parallel) — see the "Three-invocation shape"
-# comment above and ci.yml's dedicated "ManifoldBackendsTests (serial,
-# claims-registry safe)" step.
+# Own invocation + --parallel — see the "Three-invocation shape" comment
+# above and ci.yml's "ManifoldBackendsTests (own process, parallel)" step.
 PROFILE_BACKENDS_FILTER="ManifoldBackendsTests"
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 
@@ -366,7 +365,7 @@ if [[ -n "$PROFILE" ]]; then
         echo "  PROFILE: $PROFILE (three-invocation pre-push gate)"
         echo "  Traits:  $BANNER_TRAITS"
         printf "  XCTest filters (%d): %s\n" "${#FILTERS[@]}" "${FILTERS[*]}"
-        echo "  Backends filter: $PROFILE_BACKENDS_FILTER (own serial process — claims-registry safety, mirrors ci.yml)"
+        echo "  Backends filter: $PROFILE_BACKENDS_FILTER (own process + --parallel — #681 isolation, mirrors ci.yml)"
         echo "  Swift Testing filter: $PROFILE_SWIFT_TESTING_FILTER (separate process — #681)"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -403,21 +402,21 @@ if [[ -n "$PROFILE" ]]; then
             exit $RC1
         fi
 
-        # Invocation 2: ManifoldBackendsTests, own serial process.
+        # Invocation 2: ManifoldBackendsTests, own process + --parallel.
         #
-        # Mirrors ci.yml's dedicated "ManifoldBackendsTests (serial,
-        # claims-registry safe)" step, kept deliberately out of the
-        # --parallel XCTest batch above. Locally this also matters for a
-        # different reason: ManifoldBackendsTests contains ~9 Swift Testing
-        # files (see SwiftTestingAuditTest's allowlist) coexisting with
-        # XCTestCase suites in the same target — folding it into invocation 1
-        # would mix both harnesses in one process, the #681 libmalloc SIGABRT
-        # hazard.
+        # Kept out of the multi-target XCTest batch above: ManifoldBackendsTests
+        # contains ~9 Swift Testing files (see SwiftTestingAuditTest's allowlist)
+        # coexisting with XCTestCase suites in the same target — folding it into
+        # invocation 1 would mix both harnesses in one process (#681 libmalloc
+        # SIGABRT). --parallel is safe within this target now that the
+        # capability-claims registry is instance-scoped (arch-plan item 4.2);
+        # mirrors ci.yml's "ManifoldBackendsTests (own process, parallel)" step.
         set +e
         "$SCRIPT_PATH" \
             --filter "$PROFILE_BACKENDS_FILTER" \
             ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
+            --parallel \
             ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
         RC2=$?
         set -e

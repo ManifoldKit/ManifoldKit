@@ -38,6 +38,10 @@ on:
       # Per CI path-filter self-validation rule: edits to the composite action
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
+      # Shared digester target list (api-digester-check job). Listed so an edit
+      # to the list or loader re-triggers the digester gate.
+      - "scripts/api-digester-targets.sh"
+      - "scripts/api-digester-targets.txt"
   pull_request:
     # `ready_for_review` is REQUIRED here: the default pull_request activity
     # types omit it, so without it a draft→ready transition would fire no event
@@ -74,6 +78,10 @@ on:
       # Per CI path-filter self-validation rule: edits to the composite action
       # must re-trigger CI so the action change is validated under the gate.
       - ".github/actions/setup-swift-ci/**"
+      # Shared digester target list (api-digester-check job). Listed so an edit
+      # to the list or loader re-triggers the digester gate.
+      - "scripts/api-digester-targets.sh"
+      - "scripts/api-digester-targets.txt"
   # Merge queue: when a PR is queued, GitHub builds a temp branch
   # (main + earlier-queued PRs + this PR) and dispatches `merge_group`. The
   # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.
@@ -255,8 +263,13 @@ jobs:
             # step below). Intentionally omit Package.swift / Package.resolved:
             # a dep-graph change can't introduce an API break in the Swift
             # source; the nightly full-run will catch it regardless.
+            # The digester target list / loader are included so an edit that
+            # drops products from the shared list re-runs the digester gate
+            # (path-filter self-validation) rather than only the `test` job.
             api-any:
               - 'Sources/**'
+              - 'scripts/api-digester-targets.sh'
+              - 'scripts/api-digester-targets.txt'
 
       # Tier 0 selective testing (issue #1588).
       #
@@ -478,72 +491,10 @@ jobs:
       # the ~67 MB cache I/O. The real floor is local-module + test compile and test
       # execution, neither cacheable. Don't re-spike the deps cache.
 
-      - name: Lint — ManifoldUI does not import ManifoldUIModelManagement
-        # The two modules form a one-way edge: ManifoldUIModelManagement depends
-        # on ManifoldUI, never the other way around. A back-edge would close the
-        # cycle the v2.0 peel was designed to break. The cycle is currently
-        # dissolved by closure-injecting `APIConfigurationView` into ChatView and
-        # GenerationSettingsView; this lint guards against accidental regression.
-        run: |
-          set -euo pipefail
-          if grep -RIn --include='*.swift' '^[[:space:]]*import[[:space:]]\+ManifoldUIModelManagement' Sources/ManifoldUI/; then
-            echo "::error::ManifoldUI must not import ManifoldUIModelManagement (would close the dep cycle)."
-            exit 1
-          fi
-          echo "ManifoldUI -> ManifoldUIModelManagement edge is clean."
-
-      - name: Lint — ManifoldRuntime must not import SwiftData or SwiftUI
-        # ManifoldRuntime is a pure inference-orchestration module: no persistence
-        # framework, no UI framework, no Observation. This keeps it usable from
-        # any context that doesn't need a full app stack.
-        # `//` comments are stripped before matching so docs may name the
-        # forbidden frameworks when explaining the boundary.
-        run: |
-          set -euo pipefail
-          violations=$(
-            find Sources/ManifoldRuntime -name '*.swift' -print0 \
-            | while IFS= read -r -d '' f; do
-                sed 's://.*$::' "$f" | grep -nE 'import (SwiftData|SwiftUI|Observation)' | sed "s|^|$f:|" || true
-              done
-          )
-          if [ -n "$violations" ]; then
-            echo "$violations"
-            echo "::error::ManifoldRuntime must not import SwiftData, SwiftUI, or Observation."
-            exit 1
-          fi
-          echo "ManifoldRuntime framework-isolation posture OK."
-
-      - name: Lint — ManifoldRuntime must not use URLSession or Keychain
-        # ManifoldRuntime must not perform networking or access the system keychain
-        # directly — those concerns belong in ManifoldInference or ManifoldBackends.
-        # `//` comments are stripped before matching so docs may name the
-        # forbidden APIs when explaining the boundary (e.g. WebSearchRuntime).
-        run: |
-          set -euo pipefail
-          violations=$(
-            find Sources/ManifoldRuntime -name '*.swift' -print0 \
-            | while IFS= read -r -d '' f; do
-                sed 's://.*$::' "$f" | grep -nE 'URLSession|SecItemCopyMatching|kSecClass' | sed "s|^|$f:|" || true
-              done
-          )
-          if [ -n "$violations" ]; then
-            echo "$violations"
-            echo "::error::ManifoldRuntime must not use URLSession or Keychain."
-            exit 1
-          fi
-          echo "ManifoldRuntime networking/keychain posture OK."
-
-      - name: Lint — ManifoldUI must not import ManifoldPersistenceSwiftData
-        # ManifoldUI must not reach the SwiftData adapter layer directly.
-        # All persistence access goes through the port protocols in ManifoldRuntime.
-        #
-        run: |
-          set -euo pipefail
-          if grep -rn --include='*.swift' 'import ManifoldPersistenceSwiftData' Sources/ManifoldUI/; then
-            echo "::error::ManifoldUI must not import ManifoldPersistenceSwiftData directly."
-            exit 1
-          fi
-          echo "ManifoldUI -> ManifoldPersistenceSwiftData edge is clean."
+      # Boundary import/API greps (UI↛UIMM, UI↛Persistence, UI↛backends,
+      # Runtime↛SwiftUI/SwiftData/Observation, Runtime↛URLSession/Keychain)
+      # live in TrafficBoundaryAuditTest rule 6 and run under the XCTest batch
+      # below — visible to `scripts/test.sh --profile local`, not only CI.
 
       - name: Lint — no new force-unwraps in Sources
         run: bash scripts/lint-no-new-force-unwraps.sh Sources
@@ -770,34 +721,27 @@ jobs:
           STALL_SECONDS: "240"
         run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --filter ManifoldAppEvalTests --filter APIFreezeTests --filter ManifoldSnapshotTests --filter ManifoldTelemetryOTLPTests --filter ManifoldKitTests --filter ManifoldHuggingFaceTests --skip-update --parallel
 
-      # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
-      # above. Historically, under --parallel, swift-test scheduled XCTest classes
-      # across workers concurrently, so ClaudeBackendConformanceTests.test_z_contract_
-      # metaContract could fire before the OpenAI* backend classes had loaded and
-      # registered their claims — the shared, process-global claims registry then
-      # looked incomplete and the meta-contract check failed. The capability-claims
-      # registry is now instance-scoped per test case (arch-plan item 4.2; see
-      # ManifoldBackendTestKit's DocC catalog), so that specific hazard is gone —
-      # this suite could now join the --parallel batch above. Kept as its own serial
-      # step here as a conservative, unproven-in-CI-yet default rather than folding
-      # topology changes into the registry fix; a follow-up can merge it.
-      # In selective mode this suite runs via ci-selective-test.sh when it appears in
-      # the affected set; the full-mode step below is therefore scoped to full runs.
+      # ManifoldBackendsTests stays in its own process: the target mixes ~9
+      # Swift Testing files with XCTestCase suites, and folding it into the
+      # multi-target XCTest batch above would reintroduce the #681 libmalloc
+      # SIGABRT (see scripts/test.sh three-invocation shape). It used to also
+      # run without --parallel because a process-global claims registry raced
+      # under concurrent XCTest classes; that registry is now instance-scoped
+      # per test case (arch-plan item 4.2), so --parallel is safe within this
+      # target. In selective mode this suite runs via ci-selective-test.sh
+      # when it appears in the affected set.
       #
-      # KNOWN GAP (#2096): this step compiles and registers the ManifoldFoundation
-      # (`Foundation*`) test classes, but every one of them XCTSkips at runtime —
-      # this runner is macos-15, and FoundationBackend needs macOS 26 actually
-      # running, not just SDK-available. No macOS 26 GitHub-hosted runner exists,
-      # so ManifoldFoundation has never had a real pass/fail assertion in CI.
-      # Documented + deferred, not tracked as a TODO — see docs/QA-PRACTICES.md.
-      - name: Test — ManifoldBackendsTests (serial, claims-registry safe) [full]
+      # KNOWN GAP (#2096): Foundation* classes still XCTSkip on macos-15 —
+      # FoundationBackend needs macOS 26 actually running. See
+      # docs/QA-PRACTICES.md.
+      - name: Test — ManifoldBackendsTests (own process, parallel) [full]
         id: test-backends
         if: ${{ steps.test-mode.outputs.mode == 'full' && (success() || failure()) }}
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-backends.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --skip-update --parallel
 
       # `if: (success() || failure())` so a failing XCTest step still surfaces
       # Swift Testing failures in the same run — otherwise breakage in both
@@ -817,18 +761,6 @@ jobs:
       # macOS-min) per push.  scripts/check-coverage.sh thresholds sit 10pp
       # below the 2026-05-15 baseline, so a ≤24h detection delay is acceptable.
 
-      # PinnedSessionDelegateTests lives in Tests/ManifoldBackendsTests/ and is
-      # an XCTestCase subclass. The "ManifoldBackendsTests (serial)" step above
-      # already covers it in full mode (same target, same trait set). In selective
-      # mode, ManifoldBackendsTests is in the Tier 0 dependency graph under
-      # ManifoldCloudCore, so ci-selective-test.sh picks it up whenever
-      # ManifoldCloudCore (or any ancestor) changes. The two separate steps
-      # (pre-build warm-up + PinnedSessionDelegate test) were removed: the
-      # pre-build was a workaround for the watchdog firing on a cold .build
-      # directory that only arose when the three full-path steps were skipped
-      # in selective mode — a path that no longer exists now that ManifoldBackends-
-      # Tests is the canonical home for these tests. Measured cost of the removed
-      # steps: ~182s per run for <1s of actual test execution.
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
         # MANIFOLD_TEST_OUTPUT_FILE so `if: always()` follow-up steps cannot
@@ -839,8 +771,6 @@ jobs:
           XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
           BACKENDS_FAILED: ${{ steps.test-backends.outcome == 'failure' }}
           INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
-          # Note: PINNED_SESSION step removed — PinnedSessionDelegateTests is now
-          # covered by the ManifoldBackendsTests serial step (same target).
         run: |
           mkdir -p test-diagnostics
           {
@@ -958,40 +888,14 @@ jobs:
         timeout-minutes: 25
         run: |
           set -euo pipefail
-          # Fixed, always-complete list — every .library() product in
-          # Package.swift, derived by hand from the products: array. Keep in
-          # sync with Package.swift and with the nightly full-run step in
-          # nightly-slow-tests.yml when a product is added/removed/renamed.
-          TARGETS=(
-            --targets ManifoldKit
-            --targets ManifoldInference
-            --targets ManifoldContract
-            --targets ManifoldNetworking
-            --targets ManifoldSecrets
-            --targets ManifoldHardware
-            --targets ManifoldModelCatalog
-            --targets ManifoldMCP
-            --targets ManifoldMCPHost
-            --targets ManifoldRuntime
-            --targets ManifoldPersistenceSwiftData
-            --targets ManifoldCloudCore
-            --targets ManifoldFoundation
-            --targets ManifoldOllama
-            --targets ManifoldCloudSaaS
-            --targets ManifoldAnyLanguageModel
-            --targets ManifoldUI
-            --targets ManifoldUIModelManagement
-            --targets ManifoldHuggingFace
-            --targets ManifoldVoice
-            --targets ManifoldTestSupport
-            --targets ManifoldPersistenceTestSupport
-            --targets ManifoldBackendTestKit
-            --targets ManifoldTools
-            --targets ManifoldAppIntents
-            --targets ManifoldSkills
-            --targets ManifoldTelemetryOTLP
-            --targets ManifoldAppEval
-          )
+          # Shared list from scripts/api-digester-targets.txt so ci.yml and
+          # nightly-slow-tests.yml cannot drift. Edit the .txt (not this step)
+          # when a product is added/removed/renamed. ManifoldServerKit is
+          # intentionally excluded (trait-gated; see the .txt header).
+          TARGETS=()
+          while IFS= read -r flag; do
+            TARGETS+=("$flag")
+          done < <(scripts/api-digester-targets.sh)
           echo "Checking API surface for: ${TARGETS[*]}"
           # diagnose-api-breaking-changes checks out the baseline tree object
           # by ref. A shallow clone (actions/checkout default) omits those
