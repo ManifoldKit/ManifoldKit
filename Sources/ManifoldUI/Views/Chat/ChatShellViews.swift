@@ -47,7 +47,19 @@ struct ChatComposerSection: View {
     /// Pure/parameterized (rather than a computed property reading
     /// `ManifoldConfiguration.shared` and `Bundle.main` directly) so the
     /// gating logic is unit-testable without mutating global configuration
-    /// state — see `ChatComposerSectionTests`.
+    /// state — see `ChatShellStateScreenWiringTests`.
+    ///
+    /// Test-coverage honesty: this pure function and `ComposerFaultBannerView`
+    /// (the banner itself) are both unit-tested in isolation. The `body`
+    /// call site below that actually renders the banner is NOT render-tested
+    /// — `ChatComposerSection.body` always renders `ChatInputBar()`, which
+    /// (like `ChatHistoryView`) reads `@Environment(ChatViewModel.self)`
+    /// unconditionally, and ViewInspector's `.environment(_:)` does not
+    /// satisfy that read during inspection in this setup (same constraint
+    /// documented on `ChatHistoryView`'s `TurnFailureCardView` call site).
+    /// Manually verified instead: deleting the `if ... { ComposerFaultBannerView(...) }`
+    /// block below leaves the full `ManifoldUITests` suite green (799/799) —
+    /// confirming the gap is real, not closing it.
     static func voiceInputSilentlyWithheld(
         features: ManifoldConfiguration.Features,
         bundle: Bundle = .main

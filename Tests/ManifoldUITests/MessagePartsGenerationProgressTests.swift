@@ -94,6 +94,91 @@ final class MessagePartsGenerationProgressTests: XCTestCase {
         XCTAssertNil(MessagePartsView.activeProgress(in: [id: settled], messageID: id))
     }
 
+    // MARK: - Failure lifecycle: progress → failed/cancelled → failure caption
+
+    /// Lifecycle: progress → failed → failure card. Before this fix, a
+    /// failed generation left the bubble permanently blank —
+    /// `ImageGenerationProgress.error` was written by
+    /// `ChatViewModel.handle(imageRuntimeEvent:)`'s `.failed` case but never
+    /// read anywhere. `terminalFailure(in:messageID:)` is the read side.
+    func test_terminalFailure_image_progressThenFailed_returnsEntryWithError() {
+        let id = UUID()
+        let inFlight = imageProgress(messageID: id, step: 4, totalSteps: 10, isComplete: false)
+        XCTAssertNotNil(MessagePartsView.activeProgress(in: [id: inFlight], messageID: id), "precondition: progress is in flight")
+        XCTAssertNil(MessagePartsView.terminalFailure(in: [id: inFlight], messageID: id), "precondition: not yet terminal")
+
+        let failed = ImageGenerationProgress(
+            messageID: id, prompt: "a lighthouse", step: 4, totalSteps: 10, isComplete: true, error: "backend unavailable"
+        )
+        let result = MessagePartsView.terminalFailure(in: [id: failed], messageID: id)
+        XCTAssertEqual(result?.error, "backend unavailable")
+        XCTAssertNil(MessagePartsView.activeProgress(in: [id: failed], messageID: id), "the progress card must stop rendering once terminal")
+    }
+
+    /// Lifecycle: progress → cancelled → failure card (with cancellation
+    /// copy, not an error message — `error` is `nil` for a user-initiated
+    /// cancel).
+    func test_terminalFailure_image_progressThenCancelled_returnsEntryWithNilError() {
+        let id = UUID()
+        let cancelled = ImageGenerationProgress(
+            messageID: id, prompt: "a lighthouse", step: 4, totalSteps: 10, isComplete: true, error: nil
+        )
+        let result = MessagePartsView.terminalFailure(in: [id: cancelled], messageID: id)
+        XCTAssertNotNil(result)
+        XCTAssertNil(result?.error)
+    }
+
+    func test_terminalFailure_video_progressThenFailed_returnsEntryWithError() {
+        let id = UUID()
+        let failed = VideoGenerationProgress(
+            messageID: id, prompt: "a drone shot", fractionComplete: 0.6, isComplete: true, error: "quota exceeded"
+        )
+        let result = MessagePartsView.terminalFailure(in: [id: failed], messageID: id)
+        XCTAssertEqual(result?.error, "quota exceeded")
+    }
+
+    func test_terminalFailure_video_progressThenCancelled_returnsEntryWithNilError() {
+        let id = UUID()
+        let cancelled = VideoGenerationProgress(
+            messageID: id, prompt: "a drone shot", fractionComplete: 0.6, isComplete: true, error: nil
+        )
+        let result = MessagePartsView.terminalFailure(in: [id: cancelled], messageID: id)
+        XCTAssertNotNil(result)
+        XCTAssertNil(result?.error)
+    }
+
+    /// `terminalFailure` must never fire while a generation is still
+    /// in-flight (that's `activeProgress`'s job) — the two are mutually
+    /// exclusive across the same entry's lifecycle.
+    func test_terminalFailure_returnsNil_whileStillInFlight() {
+        let id = UUID()
+        let inFlight = imageProgress(messageID: id, isComplete: false)
+        XCTAssertNil(MessagePartsView.terminalFailure(in: [id: inFlight], messageID: id))
+    }
+
+    func test_terminalFailure_returnsNil_whenNoEntryOrNoMessageID() {
+        let id = UUID()
+        XCTAssertNil(MessagePartsView.terminalFailure(in: [UUID: ImageGenerationProgress](), messageID: id))
+        let dict = [id: imageProgress(messageID: id, isComplete: true)]
+        XCTAssertNil(MessagePartsView.terminalFailure(in: dict, messageID: nil))
+    }
+
+    // MARK: - Failure caption copy (statusWarn voice, §4A)
+
+    func test_failureCaption_includesErrorText_whenPresent() {
+        XCTAssertEqual(
+            MessagePartsView.failureCaption(kind: "Image", error: "backend unavailable"),
+            "Image generation failed: backend unavailable"
+        )
+    }
+
+    func test_failureCaption_readsAsCancellation_whenErrorNil() {
+        XCTAssertEqual(
+            MessagePartsView.failureCaption(kind: "Video", error: nil),
+            "Video generation cancelled"
+        )
+    }
+
     // MARK: - Regression: environment-less render of a non-empty message
 
     /// Regression for a real crash this feature introduced and the review

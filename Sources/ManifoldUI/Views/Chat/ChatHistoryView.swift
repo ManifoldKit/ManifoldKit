@@ -85,6 +85,25 @@ struct ChatHistoryView: View {
                         // as the session-level banner (`ChatErrorRecoveryBanner`
                         // explicitly excludes `.generation`-kind errors for
                         // this reason; see `docs/UI-REFRESH-2026.md` §6A).
+                        //
+                        // Test-coverage honesty: `ChatError.rendersAsTurnLevelFailure`
+                        // (the condition) and `TurnFailureCardView` (the card
+                        // itself) are both unit-tested in isolation
+                        // (`ChatShellStateScreenWiringTests`, `StateScreensTests`).
+                        // This exact `if` block is NOT render-tested — `ChatHistoryView`
+                        // reads `@Environment(ChatViewModel.self)` unconditionally
+                        // at the top of `body` (`viewModel.hasOlderMessages`, etc.),
+                        // and ViewInspector's `.environment(_:)` does not satisfy
+                        // that read during inspection in this setup (confirmed:
+                        // even a positive "must find" search on a `.environment(vm)`-
+                        // decorated `ChatHistoryView` reproduces the same
+                        // `Fatal error: No Observable object of type ChatViewModel found`
+                        // crash MessagePartsView hit before its `parts.isEmpty` fix).
+                        // Manually verified instead: deleting this whole block
+                        // leaves the full `ManifoldUITests` suite green (799/799) —
+                        // confirming the gap is real, not closing it. A future
+                        // change to this `if` condition or its card call has no
+                        // regression test at this exact line.
                         if let error = viewModel.activeError, error.rendersAsTurnLevelFailure {
                             TurnFailureCardView(
                                 message: error.message,

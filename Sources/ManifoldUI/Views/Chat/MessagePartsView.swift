@@ -70,6 +70,26 @@ struct MessagePartsView: View {
         Self.activeProgress(in: viewModel.videoGenerationProgress, messageID: messageID)
     }
 
+    /// Terminal (`isComplete == true`) image-generation entry for the hosting
+    /// message, when its placeholder never received a `.generatedMedia` part
+    /// (`parts.isEmpty` — gated in `body`, same as ``activeImageGenerationProgress``).
+    /// That combination only occurs for a **failed or cancelled** generation:
+    /// a *successful* completion always writes the `.generatedMedia` part in
+    /// the same handler call that flips `isComplete` (see
+    /// `ChatViewModel.handle(imageRuntimeEvent:)`'s `.completed` case), so
+    /// `parts` is never still empty once this entry exists. Before this
+    /// tranche's failure-treatment addition, a failed/cancelled generation
+    /// left this permanently blank — `ImageGenerationProgress.error` was
+    /// written but never read.
+    private var terminalImageFailure: ImageGenerationProgress? {
+        Self.terminalFailure(in: viewModel.imageGenerationProgress, messageID: messageID)
+    }
+
+    /// See ``terminalImageFailure``; video sibling.
+    private var terminalVideoFailure: VideoGenerationProgress? {
+        Self.terminalFailure(in: viewModel.videoGenerationProgress, messageID: messageID)
+    }
+
     /// Pure lookup extracted from ``activeImageGenerationProgress``/
     /// ``activeVideoGenerationProgress`` so the progress-card lifecycle
     /// (progress → settled → missing) is unit-testable without a live
@@ -85,6 +105,21 @@ struct MessagePartsView: View {
     ) -> Progress? {
         guard let messageID else { return nil }
         guard let progress = dict[messageID], !progress.isComplete else { return nil }
+        return progress
+    }
+
+    /// The inverse of ``activeProgress(in:messageID:)``: the terminal entry,
+    /// once one exists. Callers must additionally gate on `parts.isEmpty`
+    /// (as `body` does) — that's what distinguishes "the generation failed
+    /// or was cancelled, so no `.generatedMedia` part ever arrived" from "the
+    /// generation succeeded", since a successful completion's handler writes
+    /// the part in the same step that sets `isComplete = true`.
+    static func terminalFailure<Progress: GenerationProgressLifecycle>(
+        in dict: [UUID: Progress],
+        messageID: UUID?
+    ) -> Progress? {
+        guard let messageID else { return nil }
+        guard let progress = dict[messageID], progress.isComplete else { return nil }
         return progress
     }
 
@@ -131,6 +166,37 @@ struct MessagePartsView: View {
                         Task { [weak vm] in await vm?.cancelVideoGeneration(messageID: messageID) }
                     }
                 )
+            } else if let failure = terminalImageFailure {
+                // §4A: "missing media never shows a broken frame: it states
+                // its cause in the statusWarn voice" — this is the failed/
+                // cancelled-generation case of that rule (as opposed to a
+                // completed generation whose binary later went missing from
+                // disk, handled by `missingImagePlaceholder`/`generatedVideoView`
+                // below). Before this fix, a failed/cancelled generation left
+                // this bubble permanently blank: `.failed`/`.cancelled` both
+                // set `isComplete = true` on an empty-`contentParts` message
+                // and never wrote a `.generatedMedia` part, so nothing here
+                // ever rendered — `ImageGenerationProgress.error` was written
+                // but never read.
+                //
+                // Test-coverage honesty: `terminalFailure(in:messageID:)` and
+                // `failureCaption(kind:error:)` are both unit-tested directly
+                // (`MessagePartsGenerationProgressTests`). This `else if`
+                // branch itself is NOT render-tested — reaching it requires
+                // `parts.isEmpty`, which forces this view's
+                // `@Environment(ChatViewModel.self)` to resolve (same as
+                // `activeImageGenerationProgress` above), and ViewInspector's
+                // `.environment(_:)` does not satisfy that read during
+                // inspection in this setup (confirmed: rendering
+                // `MessagePartsView(parts: [], ...)` with `.environment(vm)`
+                // reproduces the same crash `ChatHistoryView`'s equivalent
+                // attempt did). Manually verified instead: temporarily
+                // deleting this `else if`/`missingMediaPlaceholder` pairing
+                // (for both image and video) leaves the full `ManifoldUITests`
+                // suite green — confirming the gap is real.
+                missingMediaPlaceholder(caption: Self.failureCaption(kind: "Image", error: failure.error))
+            } else if let failure = terminalVideoFailure {
+                missingMediaPlaceholder(caption: Self.failureCaption(kind: "Video", error: failure.error))
             }
         }
 
@@ -319,6 +385,18 @@ struct MessagePartsView: View {
         }
     }
 
+    /// Caption for a failed/cancelled generation, reusing the same
+    /// missing-media/statusWarn language as the "binary went missing from
+    /// disk" captions below (`"Image unavailable"` / `"Video file not
+    /// found"`) rather than inventing a new voice for this case. Pure/static
+    /// so the copy is unit-testable without a view.
+    static func failureCaption(kind: String, error: String?) -> String {
+        if let error {
+            return "\(kind) generation failed: \(error)"
+        }
+        return "\(kind) generation cancelled"
+    }
+
     /// Shared missing-media treatment (§4A — "never shows a broken frame: it
     /// states its cause in the statusWarn voice"). Used by every
     /// generated-media modality (image/video/audio-fallback) once the
@@ -456,6 +534,10 @@ protocol GenerationProgressLifecycle {
     /// `true` once a terminal event (completed / failed / cancelled) has been
     /// observed for this generation.
     var isComplete: Bool { get }
+    /// Localized failure description, or `nil` for a successful completion
+    /// or a user-initiated cancellation — see ``MessagePartsView/terminalFailure(in:messageID:)``
+    /// for how a `nil` error is distinguished from "no terminal event yet".
+    var error: String? { get }
 }
 
 extension ImageGenerationProgress: GenerationProgressLifecycle {}

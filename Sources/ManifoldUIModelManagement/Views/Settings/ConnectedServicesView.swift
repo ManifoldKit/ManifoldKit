@@ -1,8 +1,6 @@
 import SwiftUI
 import ManifoldInference
 import ManifoldUI
-
-#if canImport(ManifoldMCP)
 import ManifoldMCP
 import Observation
 
@@ -627,46 +625,3 @@ final class MCPConnectedServicesCoordinator {
         }
     }
 }
-
-#else
-
-/// Fallback rendered when `ManifoldMCP` is not linked (should not occur in
-/// practice — the target's `Package.swift` stanza links it unconditionally —
-/// kept for source parity with the demo app's original `#else` branch).
-public struct ConnectedServicesView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let toolRegistry: ToolRegistry
-
-    public init(
-        toolRegistry: ToolRegistry,
-        isFoundationModelsActive: @escaping () -> Bool = { false },
-        userDefaults: UserDefaults = .standard
-    ) {
-        self.toolRegistry = toolRegistry
-        _ = isFoundationModelsActive
-        _ = userDefaults
-    }
-
-    public var body: some View {
-        NavigationStack {
-            List {
-                Section("Connected Services") {
-                    Label("ManifoldMCP is not linked in this build.", systemImage: "link.slash")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .navigationTitle("Connected Services")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-#endif

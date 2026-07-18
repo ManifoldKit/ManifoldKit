@@ -107,6 +107,7 @@ For a sidebar-based layout with multiple sessions, combine ``ChatView`` with ``S
 - <doc:BuildingAChatUI>
 - <doc:GenerationComponents>
 - <doc:Theming>
+- <doc:BootstrapLoadingScreen>
 
 ### View Models
 
