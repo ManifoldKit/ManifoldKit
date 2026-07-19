@@ -470,32 +470,13 @@ public struct ChatView<APIConfig: View>: View {
 
     // MARK: - Model switcher chip (Unit 2 §L5)
 
-    /// Picks where the model chip lands in the toolbar (#2307).
-    ///
-    /// `.principal` (the navigation-title slot) is right for the identity
-    /// chip on regular width — it reads as chrome, not an action, matching
-    /// spec's drawn intent. But on compact width (iPhone) it silently
-    /// disappears under space pressure: a crowded compact bar can starve the
-    /// principal slot down to zero width, and unlike a bar-button placement
-    /// there is no "More" fallback for `.principal` — the chip vanishes from
-    /// both the visible bar *and* the overflow menu, with no way for the
-    /// user to reach it at all (the #2307 bug). `.topBarTrailing` is a
-    /// regular bar-button slot: under the same space pressure it *does*
-    /// still collapse into the "More" overflow menu alongside
-    /// `ChatToolbarContent`'s `.automatic` items (cloud/context/memory
-    /// indicators, export, settings, clear) — but critically it never
-    /// disappears outright, so the chip stays reachable (bar or overflow)
-    /// no matter how many items a host toolbar contributes, without
-    /// removing anything the host placed elsewhere. `.topBarLeading`/
-    /// `.topBarTrailing` are iOS/iPadOS/Mac Catalyst-only placements, so
-    /// macOS keeps `.principal` unconditionally (macOS has no compact size
-    /// class to trigger the failure mode anyway).
     /// Whether the model chip renders as a `.principal` toolbar item
-    /// (regular width, macOS) or in the content-chrome inset band (compact
-    /// width). Compact toolbars collapse items via undocumented heuristics
-    /// that either drop the chip outright (`.principal`) or park it in an
-    /// overflow-menu row that renders but does not activate — verified on
-    /// iOS 26 across `.principal`/`.topBarTrailing`/`.automatic` (#2307).
+    /// (regular width / macOS) or in the content-chrome `safeAreaInset` band
+    /// (compact width). Compact toolbars collapse items via undocumented
+    /// heuristics that either drop the chip outright (`.principal`) or park
+    /// it in an overflow-menu row that renders but does not activate —
+    /// verified on iOS 26 across `.principal`/`.topBarTrailing`/`.automatic`
+    /// (#2307). macOS always returns `true` (no compact size class there).
     static func showsModelChipInToolbar(horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
         #if os(iOS)
         horizontalSizeClass != .compact

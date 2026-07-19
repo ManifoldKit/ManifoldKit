@@ -33,8 +33,11 @@ jobs:
       - name: Build Example app UI tests
         run: scripts/example-ui-tests.sh build-for-testing
 
-      - name: Run Example UI smoke test
-        run: scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+      - name: Run Example UI smoke tests
+        run: |
+          scripts/example-ui-tests.sh test-without-building \
+            -only-testing:AdvancedUITests/ChatFlowUITests/testEmptyStateShowsWelcome \
+            -only-testing:AdvancedUITests/ModelSwitcherChipUITests/testSwitcherChipReachableAndOpensSwitcherOnCompactWidth
 
       - name: Open GitHub issue on failure
         # Creates a tracking issue so an advisory smoke failure is visible
