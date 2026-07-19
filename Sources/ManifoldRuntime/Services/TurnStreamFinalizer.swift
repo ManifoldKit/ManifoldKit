@@ -435,6 +435,28 @@ package struct TurnStreamFinalizer: Sendable {
             return nil
         }()
 
+        // Settle the turn *before* resolving the awaited outcome. Post-turn
+        // effects touch the SwiftData store (touchSession, usage recording);
+        // if the outcome resolved first, a caller that awaits `handle.outcome`
+        // and then releases its ModelContainer — exactly what the runtime's
+        // in-memory integration tests do at teardown — would leave these
+        // fetches racing the store's dealloc (SIGTRAP in fetchSwiftDataSession
+        // vs NSSQLCore dealloc). completeOutcome emits nothing to the event
+        // stream, so moving it after the effects leaves event ordering — the
+        // characterization oracle — unchanged; it only guarantees that
+        // `await outcome` means the turn is fully settled and the store is
+        // safe to release. compression/hooks are no-ops unless configured, so
+        // the common path adds no user-facing latency.
+        if input.kind.runsPostTurnEffects {
+            await runPostTurnEffects(
+                sessionID: input.sessionID,
+                assistantMessage: assistantMessage,
+                usage: input.usage,
+                turnContext: input.turnContext,
+                turnHookRegistry: input.turnHookRegistry
+            )
+        }
+
         await completeOutcome(
             input.outcomeCompletion,
             sessionID: input.sessionID,
@@ -447,16 +469,6 @@ package struct TurnStreamFinalizer: Sendable {
             promptTokens: input.usage?.promptTokens,
             completionTokens: input.usage?.completionTokens
         )
-
-        if input.kind.runsPostTurnEffects {
-            await runPostTurnEffects(
-                sessionID: input.sessionID,
-                assistantMessage: assistantMessage,
-                usage: input.usage,
-                turnContext: input.turnContext,
-                turnHookRegistry: input.turnHookRegistry
-            )
-        }
 
         return FinalizeResult(
             reason: reason,

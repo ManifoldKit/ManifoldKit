@@ -23,8 +23,36 @@ actor FakeTurnPersistence: TurnPersistencePort {
     func fetchSession(sessionID: UUID) async -> ChatSession? { nil }
     func setActiveAgent(sessionID: UUID, agentID: UUID?) async -> Bool { true }
 
+    // Optional gate so a test can suspend `touchSession` mid-flight and
+    // observe runtime state while a post-turn effect is still running (#2329
+    // ordering tripwire). Off by default — unrelated tests are unaffected.
+    private var gateArmed = false
+    private var entered = false
+    private var parkContinuation: CheckedContinuation<Void, Never>?
+    private var enteredContinuation: CheckedContinuation<Void, Never>?
+
+    func armTouchGate() { gateArmed = true }
+
+    /// Resumes once `touchSession` has been entered (and, when armed, parked).
+    func awaitTouchEntered() async {
+        if entered { return }
+        await withCheckedContinuation { enteredContinuation = $0 }
+    }
+
+    /// Releases a parked `touchSession` so `finalize` can proceed.
+    func releaseTouch() {
+        parkContinuation?.resume()
+        parkContinuation = nil
+    }
+
     func touchSession(sessionID: UUID) async -> Bool {
         touchCount += 1
+        entered = true
+        enteredContinuation?.resume()
+        enteredContinuation = nil
+        if gateArmed {
+            await withCheckedContinuation { parkContinuation = $0 }
+        }
         return true
     }
 
@@ -214,6 +242,43 @@ final class TurnStreamFinalizerTests: XCTestCase {
         XCTAssertEqual(finishReasons(), [.stop])
         XCTAssertTrue(hasAfterGeneration(), "happy path must emit afterGeneration")
         XCTAssertTrue(raisedErrors().isEmpty)
+    }
+
+    /// #2329 tripwire: `finalize` must run post-turn effects (touchSession,
+    /// which fetches the SwiftData store) to completion *before* it resolves
+    /// the awaited `handle.outcome`. Otherwise a caller that awaits the outcome
+    /// and then releases its `ModelContainer` — exactly what the runtime's
+    /// in-memory integration tests do at teardown — leaves touchSession racing
+    /// the store's dealloc (SIGTRAP in fetchSwiftDataSession vs NSSQLCore
+    /// dealloc, only under `swift test --parallel`).
+    ///
+    /// Falsifiability: with the pre-fix order (completeOutcome before
+    /// post-turn effects) the outcome is already resolved by the time
+    /// touchSession is even entered, so `isCompleted` below is `true` while
+    /// touch is parked and the assertion fails.
+    func test_finalize_completed_settlesPostTurnEffectsBeforeResolvingOutcome() async throws {
+        let completion = ConversationTurnOutcomeCompletion()
+        await persistence.armTouchGate()
+
+        let input = makeInput(kind: .completed, outcomeCompletion: completion)
+        let task = Task { await finalizer.finalize(input) }
+
+        // touchSession has been entered and is now parked inside runPostTurnEffects.
+        await persistence.awaitTouchEntered()
+
+        let resolvedWhilePostEffectsRunning = await completion.isCompleted
+        XCTAssertFalse(
+            resolvedWhilePostEffectsRunning,
+            "outcome resolved before post-turn effects finished — a caller releasing its store on `await outcome` would race touchSession (#2329)"
+        )
+
+        await persistence.releaseTouch()
+        _ = await task.value
+
+        let resolvedAfterSettle = await completion.isCompleted
+        XCTAssertTrue(resolvedAfterSettle, "outcome must resolve once the turn is settled")
+        let finalTouchCount = await persistence.snapshotTouchCount()
+        XCTAssertEqual(finalTouchCount, 1)
     }
 
     // MARK: Empty path
