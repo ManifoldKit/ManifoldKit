@@ -1,5 +1,109 @@
 # Changelog
 
+## [0.73.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.72.0...v0.73.0) (2026-07-19)
+
+ManifoldKit's built-in chat surface has a new default look — the 2026 UI refresh ships as the
+default, a deliberate pre-1.0 visual break, with the previous appearance preserved as classic
+presets one modifier away. Alongside it, conversation history moves onto the `generate(…)`
+call itself, closing a cross-client data leak that could surface one client's answer to
+another under a parallel `manifold-server`. The 1.0 release criteria are now written down as
+policy rather than folklore.
+
+### Highlights
+
+#### The 2026 UI refresh is the new default look (breaking)
+
+The refresh's styles — a gradient user bubble on a larger corner radius, a glass composer
+capsule, a shimmer reasoning disclosure, card-style tool invocations, and quiet session rows
+with pin glyphs — are now the built-in defaults. Any app rendering `ChatView` and friends
+without style overrides picks up the new look on upgrade. The pre-refresh appearance survives
+as classic presets, restorable in one call:
+
+```swift
+ChatView(showModelManagement: $show)
+    .classicManifoldTheme()
+```
+
+Per-surface escapes exist too (`.composerStyle(.plain)`, `.thinkingBlockStyle(.plain)`,
+`.toolInvocationStyle(.plain)`, `.sessionRowStyle(.plain)`). Note that classic restores the
+*styles*, not everything: the iOS shell's edge-to-edge scroll under the composer, the pin
+glyph's move into the bubble metadata row, and the fact that a reasoning disclosure can no
+longer be expanded mid-stream are structural changes with no classic equivalent. Two of the
+changes are functional rather than cosmetic — generated video now renders in an AVKit player
+instead of prompt text, and missing generated media shows a stated-cause placeholder instead
+of a broken frame. Semantic colour tokens are unchanged; the refresh restyles chrome and
+geometry without re-hueing anything.
+
+See [`docs/MIGRATION-ui-refresh.md`](docs/MIGRATION-ui-refresh.md) for the full
+default-appearance inventory, and [#2307](https://github.com/ManifoldKit/ManifoldKit/issues/2307).
+
+#### Conversation history travels per-call, closing a cross-client leak (breaking)
+
+History used to be installed on a backend *instance* before `generate(…)` was called. Under
+`manifold-server --parallel > 1` a single cached backend is shared across concurrent requests,
+so request B's install could overwrite request A's before A consumed it — and a client could
+receive another client's answer. No lock fixes a set-then-use protocol on shared state, so
+history now rides on the call itself and there is no shared mutable window to race on.
+
+The `ConversationHistoryReceiver`, `StructuredHistoryReceiver`, and `ToolCallingHistoryReceiver`
+opt-in protocols are removed. Custom backends read `hints.history` and derive the wire shape
+they need:
+
+```swift
+func generate(
+    prompt: String,
+    systemPrompt: String?,
+    config: GenerationConfig,
+    hints: GenerationRuntimeHints
+) throws -> GenerationStream {
+    let history = hints.history            // [StructuredMessage]
+    let flat = history.flattenedHistory    // [(role: String, content: String)]
+    let toolAware = history.toolAwareHistory
+    …
+}
+```
+
+`SSECloudBackend.buildRequest(prompt:systemPrompt:config:)` gains a `hints:` parameter and the
+`CloudAdapterRouting.buildRequest` closure gains a trailing `GenerationRuntimeHints`. The
+companion backends (manifold-mlx, manifold-llama) consumed rendered prompt strings and are
+unaffected beyond a rebuild.
+
+See [`docs/MIGRATION-history-through-hints.md`](docs/MIGRATION-history-through-hints.md) and
+[#2312](https://github.com/ManifoldKit/ManifoldKit/issues/2312).
+
+#### `manifold-server` closes an auth gap and routes per request
+
+`serve()` could be reached without the authentication its configuration implied, and model
+selection was resolved once for the process rather than per request. Both are fixed, so a
+server instance can now answer for different models across concurrent clients without
+leaking configuration between them. See
+[#2332](https://github.com/ManifoldKit/ManifoldKit/issues/2332).
+
+#### Branched sessions remember where they came from
+
+A session created by branching now persists a pointer to its origin, so the relationship
+survives a reload instead of living only in the branching session's memory. This is the
+plumbing behind the refresh's branch-origin chip. See
+[#2322](https://github.com/ManifoldKit/ManifoldKit/issues/2322).
+
+#### 1.0 has written-down criteria
+
+The definition of done for 1.0 — release criteria plus the post-1.0 policies that were
+previously unwritten (including that a platform-floor bump is a minor, not a major) — is now
+recorded as policy, with a tripwire keeping lightweight migrations honest. See
+[#2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211).
+
+### Features
+
+- **UI theming routes through one token root** — roughly sixty status and chrome literals across `ManifoldUI`, `ManifoldUIModelManagement`, and `ManifoldVoice` now read from an internal `ManifoldTheme` token root, with characterization tests pinning the rendered appearance and a `HardcodedColorAuditTest` keeping raw colour literals out of style positions ([#2309](https://github.com/ManifoldKit/ManifoldKit/issues/2309), [#2310](https://github.com/ManifoldKit/ManifoldKit/issues/2310)).
+
+### Fixes
+
+- **Thinking-only replies stop counting as empty** — the empty-response gate now counts thinking content, so a turn that produced only reasoning is no longer treated as a failure ([#2282](https://github.com/ManifoldKit/ManifoldKit/issues/2282)).
+- **The model-switcher chip is reachable on compact iPhone** — every iOS 26 compact toolbar placement dropped or collapsed the chip, so it now mounts in a content-chrome band on compact widths, with the sheet anchored to the body rather than a toolbar button that dies with the overflow menu ([#2325](https://github.com/ManifoldKit/ManifoldKit/issues/2325)).
+- **Turn-loop internals split into named collaborators** — `ConversationTurnExecutor` and `runGenerationTurn` shed persistence, branch-coordination, preparation, and stream-finalization responsibilities without changing turn behaviour ([#2287](https://github.com/ManifoldKit/ManifoldKit/issues/2287), [#2329](https://github.com/ManifoldKit/ManifoldKit/issues/2329)).
+- **Test and CI gates** — the plans-audit fixture is hermetic against global git config ([#2316](https://github.com/ManifoldKit/ManifoldKit/issues/2316)); the digester gate is hardened, backend suites parallelized, and docs-header lint landed alongside a fix for shallow-fetch false reds ([#2327](https://github.com/ManifoldKit/ManifoldKit/issues/2327), [#2328](https://github.com/ManifoldKit/ManifoldKit/issues/2328), [#2334](https://github.com/ManifoldKit/ManifoldKit/issues/2334)).
+
 ## [0.72.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.71.0...v0.72.0) (2026-07-17)
 
 The turn loop stops losing content: an edited message keeps its attachments, and a model's
