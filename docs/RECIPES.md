@@ -204,8 +204,10 @@ struct Sentiment: Decodable {
 
 // Constrain with a JSON Schema document — routed to grammar-constrained decoding
 // where available, falling back to .jsonPrompting on cloud backends.
+// structuredOutput lives on GenerationRuntimeHints (v0.69+), not GenerationConfig.
 var config = GenerationConfig()
-config.structuredOutput = .jsonSchema(#"""
+var hints = GenerationRuntimeHints()
+hints.structuredOutput = .jsonSchema(#"""
 {
   "type": "object",
   "properties": {
@@ -216,11 +218,16 @@ config.structuredOutput = .jsonSchema(#"""
 }
 """#)
 
-let messages: [ChatMessage] = [
+// enqueue takes [Message] (Message.system / .user / .assistant) — not ChatMessage.
+let messages: [Message] = [
     .system("Classify the sentiment of the user's message. Respond in JSON only."),
     .user("I love this library!")
 ]
-let (_, stream) = try inference.enqueue(messages: messages, config: config)
+let (_, stream) = try inference.enqueue(
+    messages: messages,
+    config: config,
+    hints: hints
+)
 
 var raw = ""
 for try await event in stream.events {
@@ -236,13 +243,13 @@ print(result.label, result.confidence)
 
 ```swift,no-build
 // GBNF grammar (llama.cpp-class backends):
-config.structuredOutput = .gbnf(#"root ::= "yes" | "no""#)
+hints.structuredOutput = .gbnf(#"root ::= "yes" | "no""#)
 
 // Foundation guided-generation target type (iOS/macOS 26+, Foundation backend):
-config.structuredOutput = .guided(MyGuidedType.self)
+hints.structuredOutput = .guided(MyGuidedType.self)
 
 // JSON-prompting fallback (any backend, no grammar support needed):
-config.structuredOutput = .jsonPrompting
+hints.structuredOutput = .jsonPrompting
 ```
 
 `StructuredOutputRouter` selects the best strategy automatically — you only need

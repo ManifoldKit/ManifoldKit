@@ -35,6 +35,22 @@
     {
       "type": "generic",
       "path": "docs/SWIFTUI-MULTI-SESSION.md"
+    },
+    {
+      "type": "generic",
+      "path": "docs/QUICKSTART-IMAGE-GEN.md"
+    },
+    {
+      "type": "generic",
+      "path": "docs/APP-EVAL.md"
+    },
+    {
+      "type": "generic",
+      "path": "Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPGettingStarted.md"
+    },
+    {
+      "type": "generic",
+      "path": "SECURITY.md"
     }
   ],
   "packages": {

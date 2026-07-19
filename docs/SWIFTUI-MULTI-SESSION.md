@@ -166,7 +166,7 @@ DocC article. Two rules are non-obvious enough to call out here:
 
 A minimal manual bootstrap that does both:
 
-```swift
+```swift,no-build
 let (progress, task) = ManifoldBootstrap.build(
     configuration: ManifoldConfiguration(
         appName: "My Chat",
@@ -176,8 +176,8 @@ let (progress, task) = ManifoldBootstrap.build(
 for await _ in progress { /* drain milestones or drive a progress bar */ }
 let bootstrap = try await task.value
 // Register the compiled-in default families. (The `ManifoldBackends`
-// umbrella and `DefaultBackends` were retired in 1.0 — see
-// docs/MIGRATION-shims-retired.md.) `quickStart()` folds these for you;
+// umbrella and `DefaultBackends` were retired in P7 (pre-1.0; see
+// docs/MIGRATION-shims-retired.md).) `quickStart()` folds these for you;
 // the manual path registers them explicitly.
 OllamaBackends.register(with: bootstrap.inferenceService)
 CloudSaaSBackends.register(with: bootstrap.inferenceService)
@@ -219,7 +219,7 @@ view model will treat it as an available model:
    which is gated on a first-launch `UserDefaults` flag) to trigger the
    actual load.
 
-```swift
+```swift,no-build
 #if canImport(ManifoldFoundation)
 if #available(macOS 26, iOS 26, *) {
     chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
@@ -269,7 +269,7 @@ from `ManifoldUI` alone.
 
 Mount it via closure injection on `ChatView`:
 
-```swift
+```swift,no-build
 import ManifoldUI
 import ManifoldUIModelManagement
 

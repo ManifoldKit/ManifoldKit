@@ -258,6 +258,16 @@ final class AgentsMdAuditTest: XCTestCase {
         )
     }
 
+    /// Hallucination-#4 host check: planted wrong type must fail the contains
+    /// guard the audit uses (ModelManagementViewModel.dispatchSelectedLoad).
+    func test_sabotage_hallucination4RejectsModelManagementHost() {
+        let wrong = "ModelManagementViewModel.dispatchSelectedLoad()"
+        let right = "ChatViewModel.dispatchSelectedLoad() / vm.dispatchSelectedLoad()"
+        XCTAssertTrue(wrong.contains("ModelManagementViewModel.dispatchSelectedLoad"))
+        XCTAssertFalse(right.contains("ModelManagementViewModel.dispatchSelectedLoad"))
+        XCTAssertTrue(right.contains("ChatViewModel.dispatchSelectedLoad") || right.contains("vm.dispatchSelectedLoad"))
+    }
+
     // MARK: - Hallucination-list completeness
 
     /// The "Common LLM hallucinations to avoid" section is the load-bearing
@@ -280,6 +290,41 @@ final class AgentsMdAuditTest: XCTestCase {
                 "AGENTS.md must reference `\(cue)` in the Common LLM hallucinations section."
             )
         }
+    }
+
+    /// Hallucination #4 must name `ChatViewModel.dispatchSelectedLoad` (or
+    /// `vm.dispatchSelectedLoad`), not the wrong
+    /// `ModelManagementViewModel.dispatchSelectedLoad` host.
+    func testHallucination4NamesChatViewModelDispatchSelectedLoad() throws {
+        let body = try Self.loadAgentsMd()
+        XCTAssertTrue(
+            body.contains("ChatViewModel.dispatchSelectedLoad")
+                || body.contains("vm.dispatchSelectedLoad"),
+            "AGENTS.md hallucination #4 must name ChatViewModel.dispatchSelectedLoad / vm.dispatchSelectedLoad."
+        )
+        XCTAssertFalse(
+            body.contains("ModelManagementViewModel.dispatchSelectedLoad"),
+            "AGENTS.md must not claim ModelManagementViewModel.dispatchSelectedLoad — that method lives on ChatViewModel."
+        )
+    }
+
+    /// Tool-calling recipe must put tools on GenerationConfig, not as an
+    /// `enqueue(..., tools:)` parameter (that overload does not exist).
+    func testToolEnqueueDoesNotPassToolsAsEnqueueParameter() throws {
+        let body = try Self.loadAgentsMd()
+        let banned = """
+            enqueue(
+                    messages: history,
+                    tools:
+            """
+        XCTAssertFalse(
+            body.contains(banned),
+            "AGENTS.md must not show enqueue(messages:tools:) — tools belong on GenerationConfig."
+        )
+        XCTAssertTrue(
+            body.contains("config.tools = registry.definitions"),
+            "AGENTS.md tool recipe must assign registry.definitions to GenerationConfig.tools."
+        )
     }
 
     // MARK: - check-readme.sh smoke test

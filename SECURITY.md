@@ -23,19 +23,19 @@ minors are end-of-life on the day a new minor ships.
 
 | Version       | Status                          |
 |---------------|---------------------------------|
-| `0.36.x`      | Supported (security + bug fix)  |
-| `0.35.x`      | Supported until `0.37.0`        |
-| `< 0.35`      | End-of-life                     |
+| `0.72.x`      | Supported (security + bug fix)  |
+| `< 0.72`      | End-of-life (earlier minors)    |
 
 When ManifoldKit reaches `1.0.0`, this table will switch to a longer support window.
 
 ## Supported Build Modes
 
-ManifoldKit ships four pre-blessed build modes. Each row of
-the table below names exactly what is guaranteed for that mode and what enforces the
-guarantee. Consumers in regulated verticals can build the `offline` or
-`ollama` product graph and have a mechanically-checked guarantee that no SaaS-cloud code is
-linked into the binary.
+ManifoldKit documents four **product-graph** build modes (not SwiftPM trait
+modes — traits for cloud/local backends retired in v0.48). Each row of the
+table below names exactly what is guaranteed for that mode and what enforces
+the guarantee. Consumers in regulated verticals can build the `offline` or
+`ollama` product graph and have a mechanically-checked guarantee that no
+SaaS-cloud code is linked into the binary.
 
 Since v0.48 the build-mode traits are retired (the `Ollama`/`CloudSaaS` traits
 in PR A4; the `MLX`/`Llama`/`HuggingFace`/`Fuzz`/`FoundationOnly` traits with
@@ -61,7 +61,7 @@ resolves them. The build modes map to product graphs (see
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.36.0"
+    from: "0.72.0" // x-release-please-version
 )
 // For local inference add the companion package(s) and registrars:
 // .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.1.0")
@@ -91,7 +91,7 @@ and the import-graph rule in the same audit):
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.36.0"
+    from: "0.72.0" // x-release-please-version
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldOllama
 // product (and not ManifoldCloudSaaS) for the ollama-mode link surface.
@@ -118,7 +118,7 @@ Same `offline` guarantees, plus:
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.36.0"
+    from: "0.72.0" // x-release-please-version
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldCloudSaaS
 // product for the SaaS link surface.
@@ -134,7 +134,7 @@ transport-security boundary.
 ```swift
 .package(
     url: "https://github.com/ManifoldKit/ManifoldKit.git",
-    from: "0.36.0"
+    from: "0.72.0" // x-release-please-version
 )
 // All cloud backends are compiled in. Add the manifold-mlx / manifold-llama
 // companion packages for the maximum-surface build.
@@ -182,7 +182,7 @@ Include:
 
 - A description of the vulnerability and impact.
 - Steps to reproduce.
-- Affected versions (the `0.36.x` baseline plus any earlier minor you've reproduced
+- Affected versions (the `0.72.x` baseline plus any earlier minor you've reproduced
   on).
 - Any potential mitigations or workarounds you've identified.
 

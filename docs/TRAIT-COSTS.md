@@ -32,7 +32,7 @@
 | `Server` | ManifoldServer + Hummingbird | `EventSource`, `swift-nio`, `swift-crypto`, `swift-collections`, `swift-atomics`, `swift-system` | ~74 | — | +12157 | — |
 | `Macros` | ManifoldMacrosPlugin + @ToolSchema | `swift-syntax` | ~11 | — | +0 | — |
 
-¹ Checkout weight: disk space in `.build/checkouts/<dep>`. Fetched on first `swift package resolve` **regardless of trait set** (SwiftPM traits gate compilation, not resolution).
+¹ Checkout weight: disk space in `.build/checkouts/<dep>` for the **remaining** opt-in traits (`Server` / `Macros`). Those trait deps still resolve when the trait is enabled. Heavy ML (mlx-swift / llama.cpp) is **not** in core anymore — it only appears if you add a companion package.
 
 ² Artifact MB: prebuilt binary artifacts in `.build/artifacts`. None remain in core since v0.48 — the ~617 MB llama.cpp xcframework moved to manifold-llama.
 
@@ -67,7 +67,7 @@ Local inference (MLX / GGUF) is an extra `.package` line, not a trait: see the c
 
 SwiftPM trait support ([SE-0450](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md), landed Swift 6.1) gates *compilation* and *linking* — whether a target is compiled and whether a library product is linked into your binary. It does **not** gate dependency *resolution*: every `.package(url:)` entry in `Package.swift` is cloned into `.build/checkouts` on first `swift package resolve`, regardless of the active trait set. SE-0450 explicitly calls out fetch-pruning as a descoped "Future direction".
 
-Through v0.47 that meant even a Foundation-only consumer cloned ~259 MB of source checkouts and downloaded the ~617 MB llama.cpp xcframework on first resolve. The only resolution-pruning mechanism SwiftPM has today is moving a dependency into a separate package that consumers opt into explicitly (the Vapor/onnxruntime-gpu pattern) — which is exactly what v0.48 did: the MLX and llama.cpp families live in the manifold-mlx / manifold-llama companion packages, and a core-only consumer never fetches their dependencies at all. (Traits also proved unreliable at the resolution boundary — see the #1737 diagnosis in `docs/MIGRATION-0.48.md`.)
+Through v0.47 that meant even a Foundation-only consumer cloned ~259 MB of source checkouts and downloaded the ~617 MB llama.cpp xcframework on first resolve. v0.48 fixed the heavy case by moving MLX and llama.cpp into companion packages: a core-only consumer never fetches those dependencies. The remaining traits (`Server`, `Macros`) still follow the SE-0450 rule for *their* deps (resolve when enabled / linked), but that cost is measured in tens of MB, not hundreds. (Traits also proved unreliable at the resolution boundary for the heavy families — see the #1737 diagnosis in `docs/MIGRATION-0.48.md`.)
 
 ### App Store reality
 

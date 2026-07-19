@@ -3,11 +3,13 @@
 **Audience:** consumer
 **Status:** historical
 
-> **Partially superseded.** The `ManifoldBackends` umbrella shim and `DefaultBackends` cross-family
-> glue that this guide still shows as importable were **removed in P7 (#1837)** — `import ManifoldBackends`
-> and `import ManifoldCloud` no longer compile. For the current import/registrar model see
-> [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). This document is retained as the canonical
-> v0.47 → v0.48 map; treat its shim examples as historical.
+> **Superseded for shims — read [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md) first.**
+> The `ManifoldBackends` umbrella and `DefaultBackends` cross-family glue that body sections below
+> still describe as "still compiles" were **removed in P7 (#1837)** — `import ManifoldBackends`,
+> `import ManifoldCloud`, and `DefaultBackends` **no longer compile**. Any step that says the
+> umbrella "still compiles in v0.48" is **historical only** (true at the 0.48 cut, false now).
+> For the current import/registrar model use the shims-retired guide. This document stays as the
+> canonical v0.47 → v0.48 trait/companion map; treat every shim example as historical.
 
 v0.48 retires the SwiftPM trait architecture in favour of **library products**, and moves
 the heavy local-inference backends (MLX, llama.cpp) into **companion packages**:
@@ -44,8 +46,8 @@ as an always-compiled module or as a product you import explicitly:
 | `Tools` | `ManifoldTools` / `manifold-tools` always available — drop the trait. |
 | `AppIntents` | `ManifoldAppIntents` product — link/import it, drop the trait. |
 | `Skills` | `ManifoldSkills` product — link/import it, drop the trait. |
-| `Ollama` | **`ManifoldOllama` product** — always compiled into `ManifoldKit`/`ManifoldBackends`; link just `ManifoldOllama` if you want only that family. |
-| `CloudSaaS` | **`ManifoldCloudSaaS` product** (OpenAI Chat + Responses, Anthropic, LM Studio / custom endpoints) — always compiled into `ManifoldKit`/`ManifoldBackends`; link just `ManifoldCloudSaaS` for the single family. |
+| `Ollama` | **`ManifoldOllama` product** — always compiled into core / the `ManifoldKit` umbrella; link just `ManifoldOllama` if you want only that family. (`ManifoldBackends` is gone — see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md).) |
+| `CloudSaaS` | **`ManifoldCloudSaaS` product** (OpenAI Chat + Responses, Anthropic, LM Studio / custom endpoints) — always compiled into core / the `ManifoldKit` umbrella; link just `ManifoldCloudSaaS` for the single family. |
 | `AnyLanguageModel` | **`ManifoldAnyLanguageModel` product** — opt in by importing it (see below). Not part of the `ManifoldKit` umbrella; consumers that never import it never link it. |
 
 ```swift,no-build
@@ -179,30 +181,33 @@ Or `LlamaBackends.register(with: service)` on a hand-assembled service.
 
 ## 'register(with:)' is deprecated — the ManifoldBackends umbrella shim
 
-`import ManifoldBackends` **still compiles in v0.48** — the umbrella survives one
-release as a deprecated shim so existing apps keep building. But it now carries only
-the always-compiled families (Apple Foundation Models + the cloud backends). It can
-no longer hand you MLX or llama.cpp, so a consumer that relied on
-`DefaultBackends.register(with:)` for local inference compiles clean and **silently
-loses local models** unless it adds a companion package.
+> **Historical (v0.48 only).** P7 (#1837) removed the shim entirely — see
+> [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). The paragraphs below
+> describe the short-lived deprecated state at the 0.48 cut; they are **not**
+> current guidance.
 
-That failure mode is deliberately loud:
+At v0.48, `import ManifoldBackends` still compiled as a deprecated shim carrying
+only the always-compiled families (Apple Foundation Models + the cloud backends).
+It could no longer hand you MLX or llama.cpp, so a consumer that relied on
+`DefaultBackends.register(with:)` for local inference compiled clean and
+**silently lost local models** unless it added a companion package. That failure
+mode was deliberately loud via deprecation warnings and the runtime no-backend
+diagnostic.
 
-- `DefaultBackends.register` / `DefaultBackends.registrars` emit deprecation warnings
-  pointing at this document.
-- The runtime no-backend diagnostic and model-compatibility flagging (below) catch
-  the "compiles but can't infer" state at launch, not on the first send.
+**Today:** `import ManifoldBackends` / `DefaultBackends` do not compile. Import
+the families (or the `ManifoldKit` umbrella) and pass companion registrars to
+`quickStart(backends:)`.
 
 ---
 
 ## product 'ManifoldBackends' not found
 
-**Forward notice:** the umbrella shim is scheduled for removal in a later release.
-When that happens this is the error you'll see. The fix is the same as the
-`no such module` sections above: depend on the companion package(s) you need
-(`manifold-mlx` / `manifold-llama`) and pass their registrars to
-`quickStart(backends:)`. Prefer migrating now; `import ManifoldKit` + explicit
-companion imports is the supported long-term shape.
+This is the error you see **now** (post-P7) if anything still depends on the
+retired umbrella product. The fix: drop `ManifoldBackends`, depend on the
+companion package(s) you need (`manifold-mlx` / `manifold-llama`) and/or the
+in-core family products, and pass registrars to `quickStart(backends:)`.
+`import ManifoldKit` + explicit companion imports is the supported shape — see
+[MIGRATION-shims-retired.md](MIGRATION-shims-retired.md).
 
 ---
 
@@ -224,11 +229,11 @@ this table, delete it.
 All of these are designed to surface at **assembly/launch time**, not on the first send:
 
 - **No backend at all** (core only, pre-iOS 26/macOS 26, no cloud endpoint, no
-  companions): `quickStart` throws `ManifoldKitError.noBackendsRegistered` —
-  *"No inference backends are registered. Call DefaultBackends.register(with:) or
-  quickStart() … pass a companion registrar to quickStart(backends:) — manifold-llama
-  (GGUF) or manifold-mlx (MLX) — or run on iOS 26 / macOS 26+ for the built-in
-  Foundation Models backend."*
+  companions): `quickStart` throws `ManifoldKitError.noBackendsRegistered`.
+  Pass a companion registrar to `quickStart(backends:)` — manifold-llama (GGUF)
+  or manifold-mlx (MLX) — register an in-core family, or run on iOS 26 /
+  macOS 26+ for the built-in Foundation Models backend. (Older diagnostic text
+  that named `DefaultBackends.register` is historical — that type is gone.)
 - **On-disk model, missing backend**: the model registry flags the file instead of
   auto-selecting it, and logs
   `quickStart: skipping <file> — no registered backend can load <type> models. Add the
@@ -236,8 +241,8 @@ All of these are designed to surface at **assembly/launch time**, not on the fir
   registrar to quickStart(backends:).`
 - **Starter seed with no GGUF backend**: the seed download is skipped (never an error)
   with `quickStart(seed:): no registered backend can load gguf models — seed skipped. …`
-- **Umbrella-shim reliance**: deprecation warnings on `DefaultBackends.register` /
-  `DefaultBackends.registrars` (see the shim section above).
+- **Umbrella-shim reliance**: compile errors on `ManifoldBackends` /
+  `DefaultBackends` (removed in P7 — see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md)).
 
 If you see any of these, you're one `.package(…)` line + one `quickStart(backends:)`
 argument away from working local inference.

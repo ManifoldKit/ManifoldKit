@@ -66,18 +66,28 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | **Tool calling on a local model** | [LOCAL-TOOL-CALLING.md](LOCAL-TOOL-CALLING.md) — the Llama/Qwen/Mistral recipe: rendering tools into the system prompt, the `<tool_call>{JSON}</tool_call>` envelope, GBNF constraint, and the silent-drop failure modes. |
 | **Expose an App Intent to the model** | [QUICKSTART-APPINTENTS.md](QUICKSTART-APPINTENTS.md) |
 | **RAG — answer from your documents** | [QUICKSTART-RAG.md](QUICKSTART-RAG.md) — ingestion, semantic + keyword retrieval, reranking, and inline citations. |
+| **RAG tuning** | [RAG-TUNING.md](RAG-TUNING.md) — chunk size, reranker tradeoffs, citation surface. |
 | **Voice (STT / TTS)** | [QUICKSTART-VOICE.md](QUICKSTART-VOICE.md) — usable standalone, not just in chat. |
 | **On-device image generation** | [QUICKSTART-IMAGE-GEN.md](QUICKSTART-IMAGE-GEN.md) — FLUX.1 Schnell / SDXL Turbo, download → load → generate. The diffusion backends ship in the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package. |
 | **Cloud video generation** | Moved to the [manifold-mlx](https://github.com/ManifoldKit/manifold-mlx) companion package docs (the `VideoGenerationBackend` protocol and persistence wiring stay in core). |
+| **Model management UI** | [MODEL-MANAGEMENT.md](MODEL-MANAGEMENT.md) — browser, download, storage sheet. |
+| **Model selection / load plans** | [QUICKSTART-MODEL-SELECTION.md](QUICKSTART-MODEL-SELECTION.md) — `ModelSelection` and `ModelLoadPlan`. |
+| **Recipes (short patterns)** | [RECIPES.md](RECIPES.md) — tool loop, RAG, on-device pick, structured output. |
+| **App eval goldens** | [APP-EVAL.md](APP-EVAL.md) — golden-scenario regression via `ManifoldAppEval`. |
 | **Share Extension handoff** | [share-action-extension-recipe.md](share-action-extension-recipe.md) — ingest text/URLs from the system share sheet. |
+| **Migrating from Foundation Models** | [MIGRATING-FROM-FOUNDATION-MODELS.md](MIGRATING-FROM-FOUNDATION-MODELS.md) — session / tools / structured-output map. |
 
 ## Reference
 
 | Doc | Covers |
 |-----|--------|
-| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits, the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. |
-| [FeatureMatrix.md](FeatureMatrix.md) | The full trait → backend → capability table (generated from source). |
-| [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact, build-time cost, and dependency weight (generated from measured data). Explains why the checkout is large regardless of trait set. |
+| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits, the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. **Shim sections are historical** — `ManifoldBackends` / `DefaultBackends` are gone; see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). |
+| [**MIGRATION-shims-retired.md**](MIGRATION-shims-retired.md) | **Current** import/registrar model after P7 removed `ManifoldBackends` / `DefaultBackends` / `ManifoldCloud`. Read this before trusting any 0.48 "still compiles" shim note. |
+| [MIGRATION-api-demotions-0.71.md](MIGRATION-api-demotions-0.71.md) | Public→package demotions in the 0.71 train. |
+| [FeatureMatrix.md](FeatureMatrix.md) | Remaining **SwiftPM traits only** (`Macros`, `Server`, WWDC stubs) — not the full product capability map. Most capabilities compile unconditionally or live in companion packages; see products in [AGENTS.md](../AGENTS.md) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md). |
+| [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact for the remaining opt-in traits (`Server`, `Macros`). Heavy ML checkouts are companion-optional since v0.48. |
+| [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md) | Building or consuming a companion backend package (manifold-mlx / manifold-llama). |
+| [ANATOMY-OF-ONE-TURN.md](ANATOMY-OF-ONE-TURN.md) | File:line walk of one message turn — send → runtime → engine → backend → UI. |
 | [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) | The AnyLanguageModel bridge — Gemini, xAI, Groq, Mistral, OpenRouter, and OpenAI/Anthropic-compatible endpoints. |
 | [CLOUD-OAUTH.md](CLOUD-OAUTH.md) | OAuth flows for cloud providers. |
 | [LOCAL-GGUF.md](LOCAL-GGUF.md) | Local model storage contract and discovery. |
