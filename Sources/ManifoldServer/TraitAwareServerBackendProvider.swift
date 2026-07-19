@@ -174,12 +174,16 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
             }
         }
 
-        // Release the model we switched away from only after the new one
-        // loaded successfully, so a failed reload leaves the working backend
-        // in place rather than tearing it down.
-        if let previous = cachedBackend {
-            previous.unloadModel()
-        }
+        // NB: do NOT unloadModel() the backend we're switching away from. The
+        // cached instance is shared across concurrent requests, and
+        // unloadModel() chains to stopGeneration() (backend-wide, not
+        // per-request) — so under parallelSlots > 1 a client switching models
+        // would cancel a *different* client's in-flight generation on the old
+        // instance. That is the exact hazard ServerApp's timeout-cancel path is
+        // gated behind (`canCancelInFlightGenerationOnTimeout`). We simply drop
+        // our cache reference (ARC frees the backend once its last in-flight
+        // generation releases it); reclaiming a switched-away model's resources
+        // safely needs the per-request-backend seam tracked in #2312.
         cachedBackend = backend
         loadedModelID = requestedModelID
         return backend
