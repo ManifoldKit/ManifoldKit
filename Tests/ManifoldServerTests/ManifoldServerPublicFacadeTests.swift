@@ -32,7 +32,9 @@ final class ManifoldServerPublicFacadeTests: XCTestCase {
         let provider = FacadeInjectedProvider(modelID: injectedModelID, backend: backend)
 
         let port = Int.random(in: 20_000..<40_000)
-        let configuration = ServerConfiguration(host: "127.0.0.1", port: port)
+        // allowAnonymous: true — #2314 makes serve() refuse a keyless loopback
+        // bind without an explicit anonymous opt-in (mirroring the CLI).
+        let configuration = ServerConfiguration(host: "127.0.0.1", port: port, allowAnonymous: true)
 
         let serverTask = Task {
             try await ManifoldServer.serve(configuration: configuration, backendProvider: provider)
@@ -98,6 +100,52 @@ final class ManifoldServerPublicFacadeTests: XCTestCase {
 
         serverTask.cancel()
         _ = try? await serverTask.value
+    }
+
+    /// #2314 (security): `serve()` must refuse a keyless non-loopback bind
+    /// rather than binding an unauthenticated, LAN-exposed inference server —
+    /// the exact hole a companion host (MLX/llama) fell into, since `serve()`
+    /// is its only entry point.
+    ///
+    /// Sabotage-evidence: delete the `.refused` throw in
+    /// `ManifoldServer.serve`, and serve() reaches `app.run()` and binds; the
+    /// watchdog then cancels it after the deadline, and the `.success` /
+    /// non-`ServerError` `.failure` arms both `XCTFail` — so a missing guard
+    /// fails this test instead of silently binding.
+    func testFacadeRefusesKeylessNonLoopbackBind() async {
+        let port = Int.random(in: 20_000..<40_000)
+        let configuration = ServerConfiguration(host: "0.0.0.0", port: port)
+        let provider = FacadeInjectedProvider(
+            modelID: "unused",
+            backend: ServerTestBackendFactory.loadedMock(tokens: ["unused"])
+        )
+
+        let serverTask = Task {
+            try await ManifoldServer.serve(configuration: configuration, backendProvider: provider)
+        }
+        // A correctly-guarded serve() throws before binding; a bound server
+        // would suspend forever, so bound the wait and cancel to keep sabotage
+        // from hanging the suite.
+        let watchdog = Task { try? await Task.sleep(for: .seconds(3)); serverTask.cancel() }
+        defer { watchdog.cancel(); serverTask.cancel() }
+
+        let result = await serverTask.result
+        watchdog.cancel()
+
+        switch result {
+        case .success:
+            XCTFail("serve() bound a keyless 0.0.0.0 server instead of refusing (#2314)")
+        case .failure(let error as ServerError):
+            guard case .invalidConfiguration(let message) = error else {
+                return XCTFail("expected .invalidConfiguration, got \(error)")
+            }
+            XCTAssertTrue(
+                message.contains("0.0.0.0"),
+                "refusal should name the rejected host; got: \(message)"
+            )
+        case .failure(let error):
+            XCTFail("serve() did not refuse the bind (guard missing → bound then cancelled?): \(error)")
+        }
     }
 }
 

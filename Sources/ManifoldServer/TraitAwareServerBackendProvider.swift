@@ -84,16 +84,30 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     internal let selection: ServerBackendSelection
     internal let compiledBackends: CompiledBackends
     private var cachedBackend: (any InferenceBackend)?
-    private var loadedModelID: String?
+    /// The resolved model ID the `cachedBackend` was loaded for. `private(set)`
+    /// (not `private`) so #2313's routing test can assert the provider reloaded
+    /// on a model change; the actor isolation keeps the read race-free.
+    internal private(set) var loadedModelID: String?
+
+    /// Test-only injection of the backend-load step, keeping #2313's cache-key
+    /// logic exercisable without a live Ollama server. Mirrors the existing
+    /// `compiledBackends` injection seam (see this type's doc comment) — an
+    /// actor-instance value, fully isolated, so it is not the unlocked-static
+    /// hazard `UnlockedNonisolatedUnsafeTestSeamAuditTest` forbids. `nil` in
+    /// production → the real `loadFoundationBackend` / `loadOllamaBackend`
+    /// switch runs.
+    private let backendLoaderForTesting: (@Sendable (ServerBackendRequest) async throws -> any InferenceBackend)?
 
     internal init(
         selection: ServerBackendSelection,
         compiledBackends: CompiledBackends = .current,
-        loadedModelID: String? = nil
+        loadedModelID: String? = nil,
+        backendLoaderForTesting: (@Sendable (ServerBackendRequest) async throws -> any InferenceBackend)? = nil
     ) {
         self.selection = selection
         self.compiledBackends = compiledBackends
         self.loadedModelID = loadedModelID
+        self.backendLoaderForTesting = backendLoaderForTesting
     }
 
     internal func listModels() async throws -> [String] {
@@ -127,27 +141,51 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     }
 
     internal func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend {
-        if let cached = cachedBackend {
+        let requestedModelID = modelID(for: request)
+
+        // #2313: key the cache by the RESOLVED model ID. The pre-fix code
+        // returned `cachedBackend` before `request.model` was ever consulted,
+        // so the first request after boot pinned the model and every later
+        // model selection was silently ignored — `/v1/chat/completions`
+        // returned one model's output under a *different* requested name, and
+        // a nonexistent model still got HTTP 200. Reload when the resolved ID
+        // changes. (For `.foundation`/`.llama`, `modelID(for:)` ignores
+        // `request.model`, so those never spuriously reload.)
+        if let cached = cachedBackend, loadedModelID == requestedModelID {
             return cached
         }
 
-        try selection.validate(compiledBackends: compiledBackends)
-
         let backend: any InferenceBackend
-        switch selection.backend {
-        case .mlx:
-            backend = try await loadMLXBackend(modelOverride: request.model)
-        case .llama:
-            backend = try await loadLlamaBackend()
-        case .foundation:
-            backend = try await loadFoundationBackend()
-        case .ollama:
-            backend = try await loadOllamaBackend(modelOverride: request.model)
-        case .cloud:
-            throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use --backend foundation or --backend ollama (the only two selections that currently load a backend in this build).")
+        if let backendLoaderForTesting {
+            backend = try await backendLoaderForTesting(request)
+        } else {
+            try selection.validate(compiledBackends: compiledBackends)
+            switch selection.backend {
+            case .mlx:
+                backend = try await loadMLXBackend(modelOverride: request.model)
+            case .llama:
+                backend = try await loadLlamaBackend()
+            case .foundation:
+                backend = try await loadFoundationBackend()
+            case .ollama:
+                backend = try await loadOllamaBackend(modelOverride: request.model)
+            case .cloud:
+                throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; use --backend foundation or --backend ollama (the only two selections that currently load a backend in this build).")
+            }
         }
+
+        // NB: do NOT unloadModel() the backend we're switching away from. The
+        // cached instance is shared across concurrent requests, and
+        // unloadModel() chains to stopGeneration() (backend-wide, not
+        // per-request) — so under parallelSlots > 1 a client switching models
+        // would cancel a *different* client's in-flight generation on the old
+        // instance. That is the exact hazard ServerApp's timeout-cancel path is
+        // gated behind (`canCancelInFlightGenerationOnTimeout`). We simply drop
+        // our cache reference (ARC frees the backend once its last in-flight
+        // generation releases it); reclaiming a switched-away model's resources
+        // safely needs the per-request-backend seam tracked in #2312.
         cachedBackend = backend
-        loadedModelID = modelID(for: request)
+        loadedModelID = requestedModelID
         return backend
     }
 

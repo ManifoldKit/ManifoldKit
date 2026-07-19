@@ -15,6 +15,7 @@ final class ServerConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.host, "127.0.0.1")
         XCTAssertEqual(configuration.port, 8080)
         XCTAssertNil(configuration.apiKey)
+        XCTAssertFalse(configuration.allowAnonymous)
         XCTAssertEqual(configuration.parallelSlots, 1)
         XCTAssertFalse(configuration.unsafeCORS)
         XCTAssertNil(configuration.corsOrigin)
@@ -33,6 +34,7 @@ final class ServerConfigurationTests: XCTestCase {
             host: "0.0.0.0",
             port: 9090,
             apiKey: "test-key",
+            allowAnonymous: true,
             parallelSlots: 4,
             unsafeCORS: true,
             corsOrigin: "https://example.test",
@@ -45,6 +47,7 @@ final class ServerConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.host, "0.0.0.0")
         XCTAssertEqual(configuration.port, 9090)
         XCTAssertEqual(configuration.apiKey, "test-key")
+        XCTAssertTrue(configuration.allowAnonymous)
         XCTAssertEqual(configuration.parallelSlots, 4)
         XCTAssertTrue(configuration.unsafeCORS)
         XCTAssertEqual(configuration.corsOrigin, "https://example.test")
@@ -101,6 +104,55 @@ final class ServerConfigurationTests: XCTestCase {
             try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
                 XCTAssertEqual(response.status, .ok, "the same body under the instance limit must be accepted")
             }
+        }
+    }
+
+    // MARK: - #2314 shared bind-authorization rule
+    //
+    // resolveBindAuthorization() is the single source of truth both the CLI
+    // (ServerCommandOptions.validate) and the library facade
+    // (ManifoldServer.serve) evaluate. Each branch is covered here so a
+    // regression in the rule fails at the unit level, not only through a live
+    // socket. Each guard is sabotage-proven: deleting its branch reroutes the
+    // input to .authenticated / .anonymousLoopback and flips the assertion.
+
+    func testBindAuthorization_authenticatedWhenKeyPresent() {
+        let config = ServerConfiguration(host: "0.0.0.0", apiKey: "secret")
+        XCTAssertEqual(config.resolveBindAuthorization(), .authenticated)
+    }
+
+    func testBindAuthorization_keylessNonLoopbackRefused() {
+        let config = ServerConfiguration(host: "0.0.0.0")
+        guard case .refused(.keylessNonLoopback(let host)) = config.resolveBindAuthorization() else {
+            return XCTFail("keyless 0.0.0.0 bind must be refused: \(config.resolveBindAuthorization())")
+        }
+        XCTAssertEqual(host, "0.0.0.0")
+    }
+
+    func testBindAuthorization_keylessLoopbackWithoutOptInRefused() {
+        let config = ServerConfiguration(host: "127.0.0.1")
+        guard case .refused(.keylessLoopbackWithoutOptIn(let host)) = config.resolveBindAuthorization() else {
+            return XCTFail("keyless loopback bind without opt-in must be refused: \(config.resolveBindAuthorization())")
+        }
+        XCTAssertEqual(host, "127.0.0.1")
+    }
+
+    func testBindAuthorization_keylessLoopbackWithOptInAllowedWithWarning() {
+        let config = ServerConfiguration(host: "127.0.0.1", allowAnonymous: true)
+        XCTAssertEqual(config.resolveBindAuthorization(), .anonymousLoopback)
+    }
+
+    func testBindAuthorization_anonymousOnNonLoopbackRefused() {
+        let config = ServerConfiguration(host: "0.0.0.0", allowAnonymous: true)
+        guard case .refused(.anonymousOnNonLoopback) = config.resolveBindAuthorization() else {
+            return XCTFail("allowAnonymous on a non-loopback host must be refused: \(config.resolveBindAuthorization())")
+        }
+    }
+
+    func testBindAuthorization_apiKeyCombinedWithAnonymousRefused() {
+        let config = ServerConfiguration(host: "127.0.0.1", apiKey: "secret", allowAnonymous: true)
+        guard case .refused(.apiKeyCombinedWithAnonymous) = config.resolveBindAuthorization() else {
+            return XCTFail("apiKey + allowAnonymous must be refused: \(config.resolveBindAuthorization())")
         }
     }
 }
