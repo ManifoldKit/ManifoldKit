@@ -37,6 +37,7 @@ The relaunch / restore guarantees in section 5 apply to both.
 
 ```swift
 import SwiftUI
+import SwiftData
 import ManifoldKit            // umbrella: ManifoldInference + ManifoldRuntime
                               // + ManifoldPersistenceSwiftData + the backend
                               // families (Foundation/Ollama/CloudSaaS) + ManifoldUI
