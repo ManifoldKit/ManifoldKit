@@ -94,14 +94,17 @@ final class ClaudeImageInputTests: XCTestCase {
         defer { MockURLProtocol.unstub(url: url) }
 
         let imageData = fixtureImage(0xAA)
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", parts: [
-                .image(data: imageData, mimeType: "image/png"),
-                .text("Describe this image."),
-            ]),
-        ])
-
-        let stream = try backend.generate(prompt: "Describe this image.", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "Describe this image.",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", parts: [
+                    .image(data: imageData, mimeType: "image/png"),
+                    .text("Describe this image."),
+                ]),
+            ])
+        )
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -132,16 +135,19 @@ final class ClaudeImageInputTests: XCTestCase {
         let img1 = fixtureImage(0x01)
         let img2 = fixtureImage(0x02)
         let img3 = fixtureImage(0x03)
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", parts: [
-                .image(data: img1, mimeType: "image/png"),
-                .image(data: img2, mimeType: "image/jpeg"),
-                .image(data: img3, mimeType: "image/webp"),
-                .text("Compare these."),
-            ]),
-        ])
-
-        let stream = try backend.generate(prompt: "Compare these.", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "Compare these.",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", parts: [
+                    .image(data: img1, mimeType: "image/png"),
+                    .image(data: img2, mimeType: "image/jpeg"),
+                    .image(data: img3, mimeType: "image/webp"),
+                    .text("Compare these."),
+                ]),
+            ])
+        )
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -175,16 +181,19 @@ final class ClaudeImageInputTests: XCTestCase {
         defer { MockURLProtocol.unstub(url: url) }
 
         let imageData = fixtureImage(0xBB)
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", parts: [
-                .image(data: imageData, mimeType: "image/png"),
-                .text("What is this?"),
-            ]),
-            StructuredMessage(role: "assistant", content: "It looks like a logo."),
-            StructuredMessage(role: "user", content: "Thanks."),
-        ])
-
-        let stream = try backend.generate(prompt: "Thanks.", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "Thanks.",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", parts: [
+                    .image(data: imageData, mimeType: "image/png"),
+                    .text("What is this?"),
+                ]),
+                StructuredMessage(role: "assistant", content: "It looks like a logo."),
+                StructuredMessage(role: "user", content: "Thanks."),
+            ])
+        )
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -219,10 +228,14 @@ final class ClaudeImageInputTests: XCTestCase {
             .image(data: fixtureImage(UInt8(i)), mimeType: "image/png")
         }
         parts.append(.text("too many"))
-        backend.setStructuredHistory([StructuredMessage(role: "user", parts: parts)])
 
         do {
-            let stream = try backend.generate(prompt: "too many", systemPrompt: nil, config: GenerationConfig())
+            let stream = try backend.generate(
+                prompt: "too many",
+                systemPrompt: nil,
+                config: GenerationConfig(),
+                hints: GenerationRuntimeHints(history: [StructuredMessage(role: "user", parts: parts)])
+            )
             for try await _ in stream.events { }
             XCTFail("Should have thrown before opening the stream")
         } catch let error as InferenceError {
@@ -243,15 +256,18 @@ final class ClaudeImageInputTests: XCTestCase {
         let (backend, url) = try await makeBackend(modelName: "claude-2.1")
         defer { MockURLProtocol.unstub(url: url) }
 
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", parts: [
-                .image(data: fixtureImage(0xCC), mimeType: "image/png"),
-                .text("hi"),
-            ]),
-        ])
-
         do {
-            let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+            let stream = try backend.generate(
+                prompt: "hi",
+                systemPrompt: nil,
+                config: GenerationConfig(),
+                hints: GenerationRuntimeHints(history: [
+                    StructuredMessage(role: "user", parts: [
+                        .image(data: fixtureImage(0xCC), mimeType: "image/png"),
+                        .text("hi"),
+                    ]),
+                ])
+            )
             for try await _ in stream.events { }
             XCTFail("Should have thrown for non-vision model")
         } catch let error as InferenceError {

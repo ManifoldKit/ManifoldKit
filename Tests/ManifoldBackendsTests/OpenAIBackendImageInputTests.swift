@@ -24,8 +24,9 @@ import ManifoldTestSupport
 /// 4. Advertise `supportsVision` based on the configured model name so
 ///    ``GenerationQueue``'s pre-flight matches the wire-level
 ///    behaviour.
-/// 5. Conform to ``StructuredHistoryReceiver`` so the coordinator routes
-///    `MessagePart.image` parts to it.
+/// 5. Read image-bearing turns from `hints.history`
+///    (``GenerationRuntimeHints/history``) — the per-call channel every
+///    caller threads structured history through since #2312.
 final class OpenAIBackendImageInputTests: XCTestCase {
 
     override func setUp() {
@@ -102,14 +103,14 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         defer { MockURLProtocol.unstub(url: url) }
 
         let imageData = fixtureImage(0xAA)
-        backend.setStructuredHistory([
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", parts: [
                 .text("Describe this image."),
                 .image(data: imageData, mimeType: "image/png"),
             ]),
         ])
 
-        let stream = try backend.generate(prompt: "Describe this image.", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(prompt: "Describe this image.", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -140,7 +141,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         let img1 = fixtureImage(0x01)
         let img2 = fixtureImage(0x02)
         let img3 = fixtureImage(0x03)
-        backend.setStructuredHistory([
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", parts: [
                 .text("Compare these."),
                 .image(data: img1, mimeType: "image/png"),
@@ -149,7 +150,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
             ]),
         ])
 
-        let stream = try backend.generate(prompt: "Compare these.", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(prompt: "Compare these.", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -184,7 +185,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         // Two text parts + image — `textContent` joins all `.text` parts in
         // order, so the resulting content[] gets one combined text part
         // followed by the image part.
-        backend.setStructuredHistory([
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", parts: [
                 .text("Before. "),
                 .image(data: imageData, mimeType: "image/png"),
@@ -192,7 +193,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
             ]),
         ])
 
-        let stream = try backend.generate(prompt: "ignored", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(prompt: "ignored", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -213,7 +214,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         defer { MockURLProtocol.unstub(url: url) }
 
         let imageData = fixtureImage(0xCC)
-        backend.setStructuredHistory([
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", parts: [
                 .text("What is this?"),
                 .image(data: imageData, mimeType: "image/png"),
@@ -222,7 +223,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
             StructuredMessage(role: "user", content: "Thanks."),
         ])
 
-        let stream = try backend.generate(prompt: "Thanks.", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(prompt: "Thanks.", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -254,7 +255,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         let (backend, url) = try await makeBackend(modelName: "gpt-3.5-turbo")
         defer { MockURLProtocol.unstub(url: url) }
 
-        backend.setStructuredHistory([
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", parts: [
                 .text("hi"),
                 .image(data: fixtureImage(0xDD), mimeType: "image/png"),
@@ -262,7 +263,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         ])
 
         do {
-            let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+            let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig(), hints: hints)
             for try await _ in stream.events { }
             XCTFail("Should have thrown for non-vision model")
         } catch let error as InferenceError {
@@ -324,20 +325,16 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         sseStub(url: url)
         defer { MockURLProtocol.unstub(url: url) }
 
-        // Coordinator typically sets BOTH structured + flattened histories.
-        // When the structured form has zero images, the encoder must stay on
-        // the flattened (legacy) path so existing OpenAI-compat servers see
-        // the same wire shape they did before this change.
-        backend.setStructuredHistory([
+        // `hints.history` is the single structured channel now (#2312). When
+        // it has zero images, the encoder must stay on the flattened (legacy)
+        // path so existing OpenAI-compat servers see the same wire shape they
+        // did before this change.
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", content: "hello"),
             StructuredMessage(role: "assistant", content: "hi"),
         ])
-        backend.setConversationHistory([
-            (role: "user", content: "hello"),
-            (role: "assistant", content: "hi"),
-        ])
 
-        let stream = try backend.generate(prompt: "next", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(prompt: "next", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -348,17 +345,8 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         XCTAssertEqual(messages[1]["content"] as? String, "hi")
     }
 
-    // MARK: - 9. StructuredHistoryReceiver conformance
-
-    func test_conformsToStructuredHistoryReceiver() {
-        // A protocol-typed binding fails to compile if the conformance is
-        // ever removed — the runtime cast is downcast through `Any` so the
-        // compiler doesn't warn that the test is tautological while still
-        // failing the build if the conformance regresses.
-        let backend: Any = OpenAIBackend()
-        XCTAssertNotNil(backend as? StructuredHistoryReceiver,
-            "OpenAIBackend must conform to StructuredHistoryReceiver so GenerationQueue routes MessagePart.image parts to it")
-    }
+    // removed: StructuredHistoryReceiver retired in #2312 — history now
+    // threads via hints.history, not a set-then-use receiver protocol.
 
     // MARK: - 10. Data URI shape — exact MIME + base64 round-trip
 
@@ -380,14 +368,14 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         // it. If OpenAI rejects the request the upstream 400 surfaces; we
         // don't mask that by guessing a default.
         let bytes = fixtureImage(0xEE)
-        backend.setStructuredHistory([
+        let hints = GenerationRuntimeHints(history: [
             StructuredMessage(role: "user", parts: [
                 .text("look"),
                 .image(data: bytes, mimeType: "image/heic"),
             ]),
         ])
 
-        let stream = try backend.generate(prompt: "look", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(prompt: "look", systemPrompt: nil, config: GenerationConfig(), hints: hints)
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)

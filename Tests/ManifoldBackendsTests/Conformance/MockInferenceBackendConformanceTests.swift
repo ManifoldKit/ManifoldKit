@@ -25,9 +25,7 @@ import ManifoldCloudCore
 @MainActor
 final class MockInferenceBackendConformanceTests: XCTestCase,
                                                  BackendContractMixin,
-                                                 GrammarFailClosedContractMixin,
-                                                 ConversationHistoryReceiverContractMixin,
-                                                 StructuredHistoryReceiverContractMixin {
+                                                 GrammarFailClosedContractMixin {
 
     private let backendName = "MockInferenceBackend"
     let contractBackendName = "MockInferenceBackend"
@@ -72,14 +70,28 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
         )
     }
 
-    // MARK: - Opt-in protocol contracts
+    // MARK: - History threads through per-call hints (#2312)
 
-    func test_conversationHistoryReceiverContract_replacesHistory() {
-        assertConversationHistoryReceiverContract(readHistory: \.lastReceivedHistory)
-    }
-
-    func test_structuredHistoryReceiverContract_replacesHistory() {
-        assertStructuredHistoryReceiverContract(readHistory: \.lastReceivedStructuredHistory)
+    /// History no longer installs on backend instance state via a
+    /// set-then-use receiver protocol — it arrives per-call on
+    /// `GenerationRuntimeHints.history` and is consumed inside `generate(...)`.
+    /// This proves the mock observes it there, and that a second call with
+    /// different history fully replaces the first (no stale carryover from
+    /// shared instance state, which was the #2312 cross-client leak hazard).
+    @MainActor
+    func test_threadsHistoryThroughHints() async throws {
+        let backend = MockInferenceBackend()
+        try await backend.loadModel(from: URL(fileURLWithPath: "/tmp/mock"), plan: ModelLoadPlan.testStub(effectiveContextSize: 4096))
+        let history = [
+            StructuredMessage(role: "user", parts: [.text("Question")]),
+            StructuredMessage(role: "assistant", parts: [.thinking("Reasoning", signature: "sig-1"), .text("Answer")]),
+        ]
+        _ = try backend.generate(prompt: "next", systemPrompt: nil, config: GenerationConfig(), hints: GenerationRuntimeHints(history: history))
+        XCTAssertEqual(backend.lastReceivedStructuredHistory, history)
+        // No stale carryover: a second call with different history replaces it.
+        let replacement = [StructuredMessage(role: "tool", parts: [.text("{\"ok\":true}")])]
+        _ = try backend.generate(prompt: "again", systemPrompt: nil, config: GenerationConfig(), hints: GenerationRuntimeHints(history: replacement))
+        XCTAssertEqual(backend.lastReceivedStructuredHistory, replacement)
     }
 
     // MARK: - Meta-contract self-tests

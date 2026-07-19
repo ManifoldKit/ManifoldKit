@@ -124,11 +124,14 @@ final class OllamaToolCallingE2ETests: XCTestCase {
 
         while iterations < config.maxToolIterations {
             iterations += 1
-            backend.setToolAwareHistory(history)
+            // History now travels per-call on `hints.history` rather than via
+            // a `setToolAwareHistory` install (#2312).
+            let structuredHistory = history.map(Self.structuredMessage(from:))
             let stream = try backend.generate(
                 prompt: "",
                 systemPrompt: nil,
-                config: config
+                config: config,
+                hints: GenerationRuntimeHints(history: structuredHistory)
             )
 
             var turnToolCalls: [ToolCall] = []
@@ -183,5 +186,23 @@ final class OllamaToolCallingE2ETests: XCTestCase {
             visibleAnswer.contains(nonce),
             "final response must quote the OOD nonce verbatim (got: \(visibleAnswer))"
         )
+    }
+
+    /// Projects a `ToolAwareHistoryEntry` into the `StructuredMessage` shape
+    /// `GenerationRuntimeHints.history` now carries (#2312).
+    private static func structuredMessage(from entry: ToolAwareHistoryEntry) -> StructuredMessage {
+        if let toolCalls = entry.toolCalls, !toolCalls.isEmpty {
+            return StructuredMessage(
+                role: entry.role,
+                parts: (entry.content.isEmpty ? [] : [.text(entry.content)]) + toolCalls.map { .toolCall($0) }
+            )
+        }
+        if let toolCallId = entry.toolCallId {
+            return StructuredMessage(
+                role: entry.role,
+                parts: [.toolResult(ToolResult(callId: toolCallId, content: entry.content))]
+            )
+        }
+        return StructuredMessage(role: entry.role, content: entry.content)
     }
 }

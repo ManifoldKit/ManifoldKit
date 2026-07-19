@@ -114,7 +114,7 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
         var config = GenerationConfig()
         config.tools = [weatherTool(), timeTool()]
 
-        let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: config)
+        let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: config, hints: GenerationRuntimeHints())
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
 
@@ -130,7 +130,7 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
 
     func test_requestBody_omitsTools_whenToolsEmpty() throws {
         let (backend, _) = makeBackend()
-        let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: GenerationConfig(), hints: GenerationRuntimeHints())
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertNil(json["tools"])
@@ -145,7 +145,7 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
             config.tools = [weatherTool()]
             config.toolChoice = choice
 
-            let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: config)
+            let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: config, hints: GenerationRuntimeHints())
             let body = try XCTUnwrap(request.httpBody)
             let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
 
@@ -390,24 +390,21 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
 
     func test_toolAwareHistory_shapesMessagesArray() throws {
         let (backend, _) = makeBackend()
-        backend.setToolAwareHistory([
-            ToolAwareHistoryEntry(role: "user", content: "what time?"),
-            ToolAwareHistoryEntry(
-                role: "assistant",
-                content: "",
-                toolCalls: [ToolCall(id: "t-1", toolName: "now", arguments: "{}")]
-            ),
-            ToolAwareHistoryEntry(
-                role: "tool",
-                content: "2099-01-01T00:00:00Z",
-                toolCallId: "t-1"
-            ),
+        let hints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "what time?"),
+            StructuredMessage(role: "assistant", parts: [
+                .toolCall(ToolCall(id: "t-1", toolName: "now", arguments: "{}")),
+            ]),
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: "t-1", content: "2099-01-01T00:00:00Z")),
+            ]),
         ])
 
         let request = try backend.buildRequest(
             prompt: "(ignored — tool-aware history takes precedence)",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: hints
         )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -435,33 +432,32 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
         XCTAssertEqual(toolEntry["content"] as? String, "2099-01-01T00:00:00Z")
     }
 
-    /// `setToolAwareHistory` is a one-shot payload. Consumed by `buildRequest`
-    /// and cleared so a follow-up non-tool generation falls back to the plain
-    /// string history. Without snapshot-and-clear, every later call would
-    /// silently replay the prior tool turn — a footgun observed on Ollama
-    /// before the fix and prevented here by the same pattern.
-    func test_toolAwareHistory_isClearedAfterBuildRequest() throws {
+    // removed: `setToolAwareHistory` snapshot-and-clear retired in #2312.
+    // History now threads per-call through `hints.history` — each
+    // `buildRequest` call gets exactly the history its caller passed, with no
+    // shared instance-state payload to consume-then-clear. The footgun this
+    // test guarded against (a stale tool turn silently replaying into a later
+    // non-tool call) is structurally impossible under the per-call model, so
+    // there is no equivalent hints-based assertion to preserve.
+
+    func test_history_perCallHints_doesNotLeakBetweenBuildRequestCalls() throws {
         let (backend, _) = makeBackend()
-        backend.setToolAwareHistory([
-            ToolAwareHistoryEntry(role: "user", content: "what time?"),
-            ToolAwareHistoryEntry(
-                role: "assistant",
-                content: "",
-                toolCalls: [ToolCall(id: "t-1", toolName: "now", arguments: "{}")]
-            ),
-            ToolAwareHistoryEntry(
-                role: "tool",
-                content: "2099-01-01T00:00:00Z",
-                toolCallId: "t-1"
-            ),
-        ])
-        backend.setConversationHistory([
-            (role: "user", content: "plain follow-up with no tools"),
-        ])
 
-        _ = try backend.buildRequest(prompt: "ignored", systemPrompt: nil, config: GenerationConfig())
+        let toolTurnHints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "what time?"),
+            StructuredMessage(role: "assistant", parts: [
+                .toolCall(ToolCall(id: "t-1", toolName: "now", arguments: "{}")),
+            ]),
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: "t-1", content: "2099-01-01T00:00:00Z")),
+            ]),
+        ])
+        _ = try backend.buildRequest(prompt: "ignored", systemPrompt: nil, config: GenerationConfig(), hints: toolTurnHints)
 
-        let second = try backend.buildRequest(prompt: "ignored", systemPrompt: nil, config: GenerationConfig())
+        let plainFollowUpHints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "plain follow-up with no tools"),
+        ])
+        let second = try backend.buildRequest(prompt: "ignored", systemPrompt: nil, config: GenerationConfig(), hints: plainFollowUpHints)
         let body = try XCTUnwrap(second.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])

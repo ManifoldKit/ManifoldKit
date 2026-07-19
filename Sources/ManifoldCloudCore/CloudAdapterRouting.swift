@@ -46,14 +46,19 @@ public struct CloudAdapterRouting: Sendable {
     public let errorBodyDecoder: any ErrorBodyDecoder
 
     /// Build the per-turn `URLRequest`. The host (concrete backend)
-    /// supplies the closure so it can capture per-call history, auth, and
-    /// base URL without leaking those onto the routing value. The envelope
-    /// invokes the closure once per generation; pinning + DNS guard wrap
-    /// the resulting request.
+    /// supplies the closure so it can capture auth and base URL without
+    /// leaking those onto the routing value. The per-call conversation
+    /// history and runtime hints arrive as the `hints` argument — threaded
+    /// on the call stack rather than read from shared backend instance state,
+    /// so concurrent requests against one shared backend instance never see
+    /// each other's history (#2312). The envelope invokes the closure once
+    /// per generation, synchronously within `generate(…)`; pinning + DNS
+    /// guard wrap the resulting request.
     public let buildRequest: @Sendable (
         _ prompt: String,
         _ systemPrompt: String?,
-        _ config: GenerationConfig
+        _ config: GenerationConfig,
+        _ hints: GenerationRuntimeHints
     ) throws -> URLRequest
 
     /// Optional factory for a stateful per-stream event consumer.
@@ -78,7 +83,7 @@ public struct CloudAdapterRouting: Sendable {
         framedTransport: any FramedTransport,
         streamFinalizer: any StreamFinalizer,
         errorBodyDecoder: any ErrorBodyDecoder,
-        buildRequest: @escaping @Sendable (String, String?, GenerationConfig) throws -> URLRequest,
+        buildRequest: @escaping @Sendable (String, String?, GenerationConfig, GenerationRuntimeHints) throws -> URLRequest,
         streamConsumerFactory: (@Sendable () -> any CloudStreamEventConsumer)? = nil
     ) {
         self.payloadHandler = payloadHandler

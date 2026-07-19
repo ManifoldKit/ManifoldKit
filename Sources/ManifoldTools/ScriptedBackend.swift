@@ -8,7 +8,7 @@ import ManifoldInference
 /// off the script and streams its events. When the script is exhausted an
 /// empty stream terminates — the runner treats "no tokens, no tool calls" as
 /// a final turn, so tests can rely on deterministic completion.
-public final class ScriptedBackend: InferenceBackend, ConversationHistoryReceiver, @unchecked Sendable {
+public final class ScriptedBackend: InferenceBackend, @unchecked Sendable {
 
     public enum Turn: Sendable {
         case toolCall(name: String, arguments: String)
@@ -49,6 +49,9 @@ public final class ScriptedBackend: InferenceBackend, ConversationHistoryReceive
 
     public func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         receivedConfigs.append(config)
+        // History arrives per-call on `hints.history` (#2312), not via a
+        // receiver setter. Record the flattened projection for observability.
+        receivedHistories.append(hints.history.flattenedHistory)
         let turn: Turn
         if cursor < turns.count {
             turn = turns[cursor]
@@ -91,11 +94,5 @@ public final class ScriptedBackend: InferenceBackend, ConversationHistoryReceive
 
     public func unloadModel() {
         isModelLoaded = false
-    }
-
-    // MARK: - ConversationHistoryReceiver
-
-    public func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        receivedHistories.append(messages)
     }
 }

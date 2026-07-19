@@ -141,7 +141,8 @@ final class OpenAIBackendTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: config
+            config: config,
+            hints: GenerationRuntimeHints()
         )
         guard let body = request.httpBody,
               let json = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
@@ -164,11 +165,11 @@ final class OpenAIBackendTests: XCTestCase {
             modelName: "gpt-4o-mini"
         )
 
-        backend.activeHints = GenerationRuntimeHints(jsonMode: true)
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(jsonMode: true)
         )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -189,7 +190,8 @@ final class OpenAIBackendTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints()
         )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -220,11 +222,8 @@ final class OpenAIBackendTests: XCTestCase {
 
     // MARK: - Protocol Conformance
 
-    func test_conformsToConversationHistoryReceiver() {
-        let backend = OpenAIBackend()
-        XCTAssertTrue(backend is ConversationHistoryReceiver,
-                      "OpenAIBackend should conform to ConversationHistoryReceiver")
-    }
+    // removed: ConversationHistoryReceiver retired in #2312 — history now
+    // threads via hints, not a set-then-use receiver protocol.
 
     func test_conformsToTokenUsageProvider() {
         let backend = OpenAIBackend()
@@ -232,21 +231,12 @@ final class OpenAIBackendTests: XCTestCase {
                       "OpenAIBackend should conform to TokenUsageProvider")
     }
 
-    func test_setConversationHistory_storesMessages() {
-        let backend = OpenAIBackend()
-        let history: [(role: String, content: String)] = [
-            (role: "user", content: "Hello"),
-            (role: "assistant", content: "Hi!")
-        ]
-        backend.setConversationHistory(history)
-        XCTAssertEqual(backend.conversationHistory?.count, 2)
-        XCTAssertEqual(backend.conversationHistory?[0].content, "Hello")
-    }
+    // removed: setConversationHistory/conversationHistory retired in #2312 —
+    // history is a per-call GenerationRuntimeHints.history value now, not
+    // instance state a setter can install and a getter can read back.
 
     func test_castAsProtocols_succeeds() {
         let backend: any InferenceBackend = OpenAIBackend()
-        XCTAssertNotNil(backend as? ConversationHistoryReceiver,
-                        "Casting InferenceBackend to ConversationHistoryReceiver should succeed")
         XCTAssertNotNil(backend as? TokenUsageProvider,
                         "Casting InferenceBackend to TokenUsageProvider should succeed")
     }
@@ -265,16 +255,19 @@ extension OpenAIBackendTests {
         backend.configure(baseURL: url, apiKey: "sk-test", modelName: "gpt-4o-mini")
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
 
-        backend.setConversationHistory([
-            (role: "user", content: "What is 2+2?"),
-            (role: "assistant", content: "4"),
-        ])
-
         let chunk = Data("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n".utf8)
         MockURLProtocol.stub(url: url, response: .sse(chunks: [chunk], statusCode: 200))
         defer { MockURLProtocol.unstub(url: url) }
 
-        let stream = try backend.generate(prompt: "And 3+3?", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "And 3+3?",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "What is 2+2?"),
+                StructuredMessage(role: "assistant", content: "4"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let captured = MockURLProtocol.capturedRequests.last(where: { $0.url?.host == url.host })
@@ -300,7 +293,7 @@ extension OpenAIBackendTests {
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
 
-        // When conversationHistory is set, its messages are used directly as the request body.
+        // When hints.history is set, its messages are used directly as the request body.
         XCTAssertGreaterThanOrEqual(messages.count, 2, "History messages must be included in request")
         XCTAssertEqual(messages[0]["content"] as? String, "What is 2+2?")
         XCTAssertEqual(messages[1]["content"] as? String, "4")

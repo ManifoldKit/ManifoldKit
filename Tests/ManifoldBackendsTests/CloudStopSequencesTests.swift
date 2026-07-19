@@ -41,7 +41,8 @@ final class CloudStopSequencesTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "Hi",
             systemPrompt: nil,
-            config: GenerationConfig(stopSequences: ["</s>", "User:"])
+            config: GenerationConfig(stopSequences: ["</s>", "User:"]),
+            hints: GenerationRuntimeHints()
         )
 
         let json = try jsonBody(from: request)
@@ -59,7 +60,8 @@ final class CloudStopSequencesTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "Hi",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints()
         )
 
         let json = try jsonBody(from: request)
@@ -83,7 +85,8 @@ final class CloudStopSequencesTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "Hi",
             systemPrompt: nil,
-            config: GenerationConfig(stopSequences: ["END"])
+            config: GenerationConfig(stopSequences: ["END"]),
+            hints: GenerationRuntimeHints()
         )
 
         let json = try jsonBody(from: request)
@@ -108,7 +111,8 @@ final class CloudStopSequencesTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "Hi",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints()
         )
 
         let json = try jsonBody(from: request)
@@ -128,7 +132,8 @@ final class CloudStopSequencesTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "Hi",
             systemPrompt: nil,
-            config: GenerationConfig(stopSequences: ["</s>", "\n\nHuman:"])
+            config: GenerationConfig(stopSequences: ["</s>", "\n\nHuman:"]),
+            hints: GenerationRuntimeHints()
         )
 
         let json = try jsonBody(from: request)
@@ -146,7 +151,8 @@ final class CloudStopSequencesTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "Hi",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints()
         )
 
         let json = try jsonBody(from: request)

@@ -209,14 +209,19 @@ internal struct ServerApp: Sendable {
     /// `stopGeneration()`'s contract is backend-wide, not per-request
     /// (`InferenceBackend.swift`), and `TraitAwareServerBackendProvider`
     /// hands out a single cached backend instance per model. Under
-    /// `parallelSlots > 1` two concurrent requests can share that instance,
-    /// so cancelling it for one timed-out request would also kill a
-    /// sibling's healthy in-flight generation. Real per-request cancellation
-    /// needs an `InferenceBackend` contract change (proposed as a follow-up
-    /// issue in this PR's body — out of scope here). Only cancel for real
-    /// when at most one generation can be in flight at a time; otherwise the
-    /// timeout still ends the *request* (task abandonment), just not the
-    /// backend call.
+    /// `parallelSlots > 1` two concurrent requests share that instance.
+    ///
+    /// Per-request **history** is no longer a hazard on that shared instance:
+    /// it travels on the `generate(…)` call stack via `hints.history`, consumed
+    /// synchronously while the request body is built, so no concurrent request
+    /// can clobber it (#2312, fixed). **Cancellation** is the remaining
+    /// shared-instance hazard: `stopGeneration()` cancels the whole backend, so
+    /// firing it for one timed-out request would also kill a sibling's healthy
+    /// in-flight generation. Real per-request cancellation needs an
+    /// `InferenceBackend` contract change (a separate follow-up — out of scope
+    /// here). Only cancel for real when at most one generation can be in flight
+    /// at a time; otherwise the timeout still ends the *request* (task
+    /// abandonment), just not the backend call.
     private var canCancelInFlightGenerationOnTimeout: Bool {
         configuration.parallelSlots == 1
     }

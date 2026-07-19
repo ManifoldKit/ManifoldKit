@@ -77,7 +77,8 @@ private final class TestExtractEventsBackend: SSECloudBackend, @unchecked Sendab
     override func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         guard let baseURL else {
             throw CloudBackendError.invalidURL("No base URL configured")

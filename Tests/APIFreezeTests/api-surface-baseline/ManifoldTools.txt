@@ -360,7 +360,6 @@ ScriptedBackend.isModelLoaded Var
 ScriptedBackend.loadModel(from:plan:) Func
 ScriptedBackend.receivedConfigs Var
 ScriptedBackend.receivedHistories Var
-ScriptedBackend.setConversationHistory(_:) Func
 ScriptedBackend.stopGeneration() Func
 ScriptedBackend.unloadModel() Func
 ToolFixtures Enum

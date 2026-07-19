@@ -217,8 +217,6 @@ MockInferenceBackend.resetConversationCallCount Var
 MockInferenceBackend.scriptedToolCallDeltasPerTurn Var
 MockInferenceBackend.scriptedToolCalls Var
 MockInferenceBackend.scriptedToolCallsPerTurn Var
-MockInferenceBackend.setConversationHistory(_:) Func
-MockInferenceBackend.setStructuredHistory(_:) Func
 MockInferenceBackend.shouldThrowInsideStream Var
 MockInferenceBackend.shouldThrowOnGenerate Var
 MockInferenceBackend.shouldThrowOnLoad Var

@@ -36,8 +36,7 @@ import ManifoldCloudCore
 @available(macOS 26, iOS 26, *)
 @MainActor
 final class FoundationBackendContractTests: XCTestCase,
-                                            BackendContractMixin,
-                                            StructuredHistoryReceiverContractMixin {
+                                            BackendContractMixin {
 
     let contractBackendName = "FoundationBackend"
 
@@ -69,22 +68,7 @@ final class FoundationBackendContractTests: XCTestCase,
         assertUniversalBackendContract()
     }
 
-    // MARK: - StructuredHistoryReceiver conformance
-
-    /// 0.50 multimodal prep (#1710): FoundationBackend opts into
-    /// ``StructuredHistoryReceiver`` so it captures the unflattened
-    /// ``MessagePart`` shape — including image parts — that the legacy
-    /// flattened history discards. This verifies round-trip retention via the
-    /// shared mixin; the image-attachment consumption is a documented NO-OP on
-    /// the current toolchain.
-    ///
-    /// Touches only in-memory state (no `LanguageModelSession`), so it is safe
-    /// once `setUp`'s macOS-26 guard has passed.
-    func test_contract_structuredHistoryReceiver() {
-        assertStructuredHistoryReceiverContract(
-            readHistory: { $0._installedStructuredHistory }
-        )
-    }
+    // removed: StructuredHistoryReceiver retired in #2312; Foundation replays via its SDK transcript, history threads via hints
 
     // MARK: - Per-capability claims + meta-contract
 

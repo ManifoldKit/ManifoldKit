@@ -20,6 +20,10 @@ AgentHandoff.payload Var
 AgentHandoff.targetAgentID Var
 Array Struct
 Array.asRoleContentTuples Var
+Array.containsImages Var
+Array.containsToolParts Var
+Array.flattenedHistory Var
+Array.toolAwareHistory Var
 AsyncSequence Protocol
 AsyncSequence.coalescedSentences() Func
 AudioGenerationBackend Protocol
@@ -81,8 +85,6 @@ ChatError.message Var
 ChatError.recovery Var
 ChatError.underlyingError Var
 CloudBackendError Enum
-ConversationHistoryReceiver Protocol
-ConversationHistoryReceiver.setConversationHistory(_:) Func
 DocumentChunk Struct
 DocumentChunk.ID TypeAlias
 DocumentChunk.__derived_struct_equals(_:_:) Func
@@ -194,7 +196,8 @@ GenerationRuntimeHints Struct
 GenerationRuntimeHints.__derived_struct_equals(_:_:) Func
 GenerationRuntimeHints.captureRenderedPrompt Var
 GenerationRuntimeHints.documents Var
-GenerationRuntimeHints.init(jsonMode:thinkingMarkers:structuredOutput:documents:maxRunTokens:captureRenderedPrompt:renderingMode:) Constructor
+GenerationRuntimeHints.history Var
+GenerationRuntimeHints.init(jsonMode:thinkingMarkers:structuredOutput:documents:maxRunTokens:captureRenderedPrompt:renderingMode:history:) Constructor
 GenerationRuntimeHints.jsonMode Var
 GenerationRuntimeHints.maxRunTokens Var
 GenerationRuntimeHints.renderingMode Var
@@ -369,8 +372,6 @@ Stage.tool EnumElement
 StreamTransform Protocol
 StreamTransform.finalize() Func
 StreamTransform.process(_:) Func
-StructuredHistoryReceiver Protocol
-StructuredHistoryReceiver.setStructuredHistory(_:) Func
 StructuredMessage Struct
 StructuredMessage.__derived_struct_equals(_:_:) Func
 StructuredMessage.hash(into:) Func
@@ -426,8 +427,6 @@ ToolCallTransform.init(markers:surfaceTruncatedToolBody:) Constructor
 ToolCallTransform.markers Var
 ToolCallTransform.process(_:) Func
 ToolCallTransform.surfaceTruncatedToolBody Var
-ToolCallingHistoryReceiver Protocol
-ToolCallingHistoryReceiver.setToolAwareHistory(_:) Func
 ToolExecutor Protocol
 ToolExecutor.definition Var
 ToolExecutor.execute(arguments:) Func

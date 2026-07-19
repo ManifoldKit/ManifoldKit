@@ -261,13 +261,15 @@ jobs:
             # step below). Intentionally omit Package.swift / Package.resolved:
             # a dep-graph change can't introduce an API break in the Swift
             # source; the nightly full-run will catch it regardless.
-            # The digester target list / loader are included so an edit that
-            # drops products from the shared list re-runs the digester gate
+            # The digester target list / loader and the breakage allowlist are
+            # included so an edit that drops products from the shared list, or
+            # acknowledges/expires a breakage, re-runs the digester gate
             # (path-filter self-validation) rather than only the `test` job.
             api-any:
               - 'Sources/**'
               - 'scripts/api-digester-targets.sh'
               - 'scripts/api-digester-targets.txt'
+              - '.github/api-breakage-allowlist.txt'
 
       # Tier 0 selective testing (issue #1588).
       #

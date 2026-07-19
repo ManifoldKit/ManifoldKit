@@ -214,9 +214,13 @@ final class CloudStrictSchemaTests: XCTestCase {
 
     func test_buildRequest_jsonSchemaStrategy_emitsJsonSchemaResponseFormat() throws {
         let backend = makeOpenAI()
-        backend.activeHints = GenerationRuntimeHints(structuredOutput: try jsonSchemaStrategy())
 
-        let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        let request = try backend.buildRequest(
+            prompt: "hi",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(structuredOutput: try jsonSchemaStrategy())
+        )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
 
@@ -233,9 +237,13 @@ final class CloudStrictSchemaTests: XCTestCase {
 
     func test_buildRequest_jsonMode_withoutStructuredOutput_keepsLegacyJsonObject() throws {
         let backend = makeOpenAI()
-        backend.activeHints = GenerationRuntimeHints(jsonMode: true)
 
-        let request = try backend.buildRequest(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        let request = try backend.buildRequest(
+            prompt: "hi",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(jsonMode: true)
+        )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
 

@@ -566,7 +566,6 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 /// Wraps `OpenAIBackend` to conform to both ``EndpointBackendURLModelConfigurable``
 /// and ``EndpointBackendKeychainConfigurable``, matching the real app's wiring.
 private final class ConfiguringOpenAICloudBackend: InferenceBackend,
-                                                   ConversationHistoryReceiver,
                                                    EndpointBackendURLModelConfigurable,
                                                    EndpointBackendKeychainConfigurable,
                                                    @unchecked Sendable {
@@ -581,10 +580,6 @@ private final class ConfiguringOpenAICloudBackend: InferenceBackend,
     var isModelLoaded: Bool { backend.isModelLoaded }
     var isGenerating: Bool { backend.isGenerating }
     var capabilities: BackendCapabilities { backend.capabilities }
-
-    func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        backend.setConversationHistory(messages)
-    }
 
     func configure(baseURL: URL, modelName: String) {
         backend.configure(baseURL: baseURL, apiKey: nil, modelName: modelName)
@@ -622,7 +617,6 @@ private final class ConfiguringOpenAICloudBackend: InferenceBackend,
 
 /// Wraps `ClaudeBackend` with ``EndpointBackendKeychainConfigurable`` conformance.
 private final class ConfiguringClaudeCloudBackend: InferenceBackend,
-                                                   ConversationHistoryReceiver,
                                                    EndpointBackendKeychainConfigurable,
                                                    @unchecked Sendable {
     private let backend: ClaudeBackend
@@ -634,10 +628,6 @@ private final class ConfiguringClaudeCloudBackend: InferenceBackend,
     var isModelLoaded: Bool { backend.isModelLoaded }
     var isGenerating: Bool { backend.isGenerating }
     var capabilities: BackendCapabilities { backend.capabilities }
-
-    func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        backend.setConversationHistory(messages)
-    }
 
     func configure(baseURL: URL, keychainAccount: String, modelName: String) {
         backend.configure(baseURL: baseURL, keychainAccount: keychainAccount, modelName: modelName)

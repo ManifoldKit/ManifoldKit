@@ -482,7 +482,10 @@ private struct ResponseOnlyUsageAdapter: ChatCompletionsAdapter {
     }
 }
 
-private final class CapturingBackend: InferenceBackend, ConversationHistoryReceiver, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
+/// Records the history threaded through `hints.history` (#2312) rather than
+/// via the retired `ConversationHistoryReceiver`/`StructuredHistoryReceiver`/
+/// `ToolCallingHistoryReceiver` install setters.
+private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
     var isModelLoaded = true
     var isGenerating = false
     var capabilities = BackendCapabilities(
@@ -506,21 +509,14 @@ private final class CapturingBackend: InferenceBackend, ConversationHistoryRecei
     func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
         capturedPrompt = prompt
         capturedSystemPrompt = systemPrompt
+        if !hints.history.isEmpty {
+            capturedStructuredHistory = hints.history
+            capturedHistory = hints.history.flattenedHistory
+            capturedToolAwareHistory = hints.history.toolAwareHistory
+        }
         return GenerationStream(AsyncThrowingStream { continuation in
             continuation.finish()
         })
-    }
-
-    func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        capturedHistory = messages
-    }
-
-    func setStructuredHistory(_ messages: [StructuredMessage]) {
-        capturedStructuredHistory = messages
-    }
-
-    func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
-        capturedToolAwareHistory = messages
     }
 
     func stopGeneration() {}

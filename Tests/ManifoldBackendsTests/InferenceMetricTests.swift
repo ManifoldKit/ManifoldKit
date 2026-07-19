@@ -114,7 +114,7 @@ private final class TestSSEBackend: SSECloudBackend {
         )
     }
 
-    override func buildRequest(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> URLRequest {
+    override func buildRequest(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> URLRequest {
         let url = baseURL!.appendingPathComponent("generate")
         return URLRequest(url: url)
     }

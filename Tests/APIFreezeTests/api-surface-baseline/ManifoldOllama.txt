@@ -14,7 +14,7 @@ OllamaBackend Class
 OllamaBackend.adapter Var
 OllamaBackend.applyAdvisoryKeepAlive(idleTimeout:) Func
 OllamaBackend.backendName Var
-OllamaBackend.buildRequest(prompt:systemPrompt:config:) Func
+OllamaBackend.buildRequest(prompt:systemPrompt:config:hints:) Func
 OllamaBackend.capabilities Var
 OllamaBackend.checkStatusCode(_:bytes:) Func
 OllamaBackend.defaultRequestIdleTimeout Var
@@ -27,8 +27,6 @@ OllamaBackend.loadModel(from:plan:) Func
 OllamaBackend.makeChecked(urlSession:) Func
 OllamaBackend.manifest Var
 OllamaBackend.parseResponseStream(bytes:config:continuation:) Func
-OllamaBackend.setStructuredHistory(_:) Func
-OllamaBackend.setToolAwareHistory(_:) Func
 OllamaBackend.signalsLoadingUntilFirstToken Var
 OllamaBackend.unloadModel() Func
 OllamaBackends Enum

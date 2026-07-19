@@ -113,11 +113,7 @@ final class ClaudeBackendTests: XCTestCase {
 
     // MARK: - Protocol Conformance
 
-    func test_conformsToConversationHistoryReceiver() {
-        let backend = ClaudeBackend()
-        XCTAssertTrue(backend is ConversationHistoryReceiver,
-                      "ClaudeBackend should conform to ConversationHistoryReceiver")
-    }
+    // removed: receiver protocol retired in #2312 — history now threads via hints
 
     func test_conformsToTokenUsageProvider() {
         let backend = ClaudeBackend()
@@ -125,17 +121,7 @@ final class ClaudeBackendTests: XCTestCase {
                       "ClaudeBackend should conform to TokenUsageProvider")
     }
 
-    func test_setConversationHistory_storesMessages() {
-        let backend = ClaudeBackend()
-        let history: [(role: String, content: String)] = [
-            (role: "user", content: "Hello"),
-            (role: "assistant", content: "Hi there!")
-        ]
-        backend.setConversationHistory(history)
-        XCTAssertEqual(backend.conversationHistory?.count, 2)
-        XCTAssertEqual(backend.conversationHistory?[0].role, "user")
-        XCTAssertEqual(backend.conversationHistory?[1].content, "Hi there!")
-    }
+    // removed: receiver protocol retired in #2312 — history now threads via hints
 
     func test_lastUsage_nilByDefault() {
         let backend = ClaudeBackend()
@@ -144,8 +130,6 @@ final class ClaudeBackendTests: XCTestCase {
 
     func test_castAsProtocols_succeeds() {
         let backend: any InferenceBackend = ClaudeBackend()
-        XCTAssertNotNil(backend as? ConversationHistoryReceiver,
-                        "Casting InferenceBackend to ConversationHistoryReceiver should succeed")
         XCTAssertNotNil(backend as? TokenUsageProvider,
                         "Casting InferenceBackend to TokenUsageProvider should succeed")
     }
@@ -164,18 +148,21 @@ extension ClaudeBackendTests {
         backend.configure(baseURL: url, apiKey: "sk-ant-test", modelName: "claude-sonnet-4-20250514")
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
 
-        backend.setConversationHistory([
-            (role: "user", content: "What is 2+2?"),
-            (role: "assistant", content: "4"),
-        ])
-
         let chunk = Data("""
             data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\ndata: {"type":"message_stop"}\n\n
             """.utf8)
         MockURLProtocol.stub(url: url, response: .sse(chunks: [chunk], statusCode: 200))
         defer { MockURLProtocol.unstub(url: url) }
 
-        let stream = try backend.generate(prompt: "And 3+3?", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "And 3+3?",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "What is 2+2?"),
+                StructuredMessage(role: "assistant", content: "4"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let captured = MockURLProtocol.capturedRequests.last(where: { $0.url?.host == url.host })
@@ -201,10 +188,16 @@ extension ClaudeBackendTests {
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
 
-        // When conversationHistory is set, its messages are used directly as the request body.
+        // When hints.history is set, its messages are used directly as the request body.
+        // Claude's structured encoder gives user turns plain string content and
+        // assistant turns a `content[]` block array (so thinking/tool blocks can
+        // ride along) — the shape production has always emitted, since the engine
+        // always drove Claude through the structured encoder.
         XCTAssertGreaterThanOrEqual(messages.count, 2, "History messages must be included in request")
         XCTAssertEqual(messages[0]["content"] as? String, "What is 2+2?")
-        XCTAssertEqual(messages[1]["content"] as? String, "4")
+        let assistantContent = try XCTUnwrap(messages[1]["content"] as? [[String: Any]])
+        XCTAssertEqual(assistantContent.first?["type"] as? String, "text")
+        XCTAssertEqual(assistantContent.first?["text"] as? String, "4")
     }
 }
 

@@ -569,7 +569,7 @@ final class InferenceServiceTests: XCTestCase {
 
         let _ = try service.generate(messages: messages)
 
-        XCTAssertNotNil(mock.receivedHistory, "setConversationHistory should have been called")
+        XCTAssertNotNil(mock.receivedHistory, "hints.history should have been threaded to the backend's generate() call")
         let received = mock.receivedHistory ?? []
         XCTAssertEqual(received.count, 3)
         XCTAssertEqual(received[0].role, "user")
@@ -880,9 +880,10 @@ final class InferenceServiceTests: XCTestCase {
 
 // MARK: - Local mock types for cloud interop tests
 
-/// A mock backend that also adopts ConversationHistoryReceiver.
+/// A mock backend that records the flattened history threaded through
+/// `GenerationRuntimeHints.history` (#2312) — the successor to the retired
+/// `ConversationHistoryReceiver`/`setConversationHistory` install path.
 private final class MockConversationHistoryBackend: InferenceBackend,
-                                                    ConversationHistoryReceiver,
                                                     @unchecked Sendable {
     var isModelLoaded: Bool = true
     var isGenerating: Bool = false
@@ -895,13 +896,12 @@ private final class MockConversationHistoryBackend: InferenceBackend,
 
     var receivedHistory: [(role: String, content: String)]?
 
-    func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        receivedHistory = messages
-    }
-
     func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
 
     func generate(prompt: String, systemPrompt: String?, config: GenerationConfig, hints: GenerationRuntimeHints) throws -> GenerationStream {
+        if !hints.history.isEmpty {
+            receivedHistory = hints.history.flattenedHistory
+        }
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in continuation.finish() }
         return GenerationStream(stream)
     }

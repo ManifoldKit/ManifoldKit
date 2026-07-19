@@ -111,6 +111,27 @@ public struct GenerationRuntimeHints: Sendable, Equatable {
     ///   declarations are never silently dropped.
     public var renderingMode: PromptRenderingMode
 
+    /// The conversation history for this generation request, in structured form.
+    ///
+    /// **This is the per-request channel that carries multi-turn context to the
+    /// backend.** It replaced the former set-then-use receiver protocols
+    /// (`StructuredHistoryReceiver` / `ConversationHistoryReceiver` /
+    /// `ToolCallingHistoryReceiver`), which installed history on shared backend
+    /// *instance state* in a step separate from `generate(…)`. Under a backend
+    /// instance shared across concurrent requests (`manifold-server
+    /// --parallel > 1`), request B's install could overwrite request A's between
+    /// A's install and A's consume — returning one client's answer to another
+    /// (#2312, a cross-client data leak). Threading history here makes it a
+    /// per-call value consumed within the single synchronous `generate(…)` body,
+    /// with no shared mutable window to race on.
+    ///
+    /// The structured form is the superset shape: backends that only need the
+    /// flattened `(role, content)` history or the tool-aware wire history derive
+    /// them per call via ``Swift/Array/flattenedHistory`` /
+    /// ``Swift/Array/toolAwareHistory`` on `[StructuredMessage]`. Empty (the
+    /// default) means a single-turn request with no prior context.
+    public var history: [StructuredMessage]
+
     public init(
         jsonMode: Bool = false,
         thinkingMarkers: ThinkingMarkers? = nil,
@@ -118,7 +139,8 @@ public struct GenerationRuntimeHints: Sendable, Equatable {
         documents: [RetrievedDocument] = [],
         maxRunTokens: Int? = nil,
         captureRenderedPrompt: Bool = false,
-        renderingMode: PromptRenderingMode = .chatTemplate
+        renderingMode: PromptRenderingMode = .chatTemplate,
+        history: [StructuredMessage] = []
     ) {
         self.jsonMode = jsonMode
         self.thinkingMarkers = thinkingMarkers
@@ -127,6 +149,7 @@ public struct GenerationRuntimeHints: Sendable, Equatable {
         self.maxRunTokens = maxRunTokens
         self.captureRenderedPrompt = captureRenderedPrompt
         self.renderingMode = renderingMode
+        self.history = history
     }
 }
 
