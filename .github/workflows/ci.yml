@@ -87,10 +87,11 @@ on:
   # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.
   # No `paths:` filter here — the queue branch is the real pre-merge state, so we
   # always validate it. The `changes` job's `if:` already runs on non-pull_request
-  # events; we skip the dorny/paths-filter step on merge_group to FORCE a full run
-  # (deliberately not narrowing the final pre-merge gate). With it skipped the Tier 0
-  # resolver gets no changed paths and emits NONE, which the `test` job's "Compute
-  # test mode" step maps to mode=full → `test` runs the whole bundle on the queue branch.
+  # events; we skip the dorny/paths-filter step on merge_group (conservatism) and
+  # the Tier 0 resolver's event-name gate emits FULL for any non-pull_request
+  # event → `test` runs the whole bundle on the queue branch. Defense in depth:
+  # even if the event gate regresses to NONE, test-none-ack is pull_request-only
+  # so the heavy macOS `test` job still runs (#2326 item 8).
   merge_group:
     types: [checks_requested]
 
@@ -144,8 +145,8 @@ jobs:
       persistence: ${{ steps.filter.outputs.persistence }}
       mcp-fixtures: ${{ steps.filter.outputs.mcp-fixtures }}
       # Tier 0 (issue #1588): the affected per-PR test-job suite list, or the
-      # sentinel FULL / NONE. DRY-RUN — published for a later PR to wire into the
-      # test --filter; nothing consumes it to change execution yet.
+      # sentinel FULL / NONE. Consumed by the `test` / `test-none-ack` job
+      # gates and by "Compute test mode" (Tier 2 selective routing, #1590).
       affected: ${{ steps.affected.outputs.affected }}
       # Single any-Sources flag — consumed by the per-PR API-break gate to
       # decide whether to run at all. Per-module scoping was retired
@@ -174,14 +175,11 @@ jobs:
         with:
           fetch-depth: 2
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
-        # Skipped on merge_group to FORCE a full run on the queue branch rather
-        # than narrowing the final pre-merge gate. (paths-filter v4 natively
-        # SUPPORTS merge_group — it diffs merge_group.base_sha..head_sha — so this
-        # is a deliberate conservatism choice, NOT an error workaround; the same
-        # action is left live in the `test` job's deps-changed step on merge_group
-        # for exactly that reason.) With it skipped the Tier 0 resolver below gets
-        # no changed paths and emits NONE, which the `test` job's "Compute test
-        # mode" maps to mode=full, so `test` runs the whole bundle on the queue branch.
+        # Skipped on merge_group (conservatism — paths-filter v4 natively SUPPORTS
+        # merge_group via base_sha..head_sha). The same action stays live in the
+        # `test` job's deps-changed step on merge_group. Full-suite execution on
+        # the queue branch comes from the Tier 0 event-name gate (FULL for any
+        # non-pull_request), not from NONE→full mapping.
         if: github.event_name != 'merge_group'
         id: filter
         with:
@@ -413,15 +411,20 @@ jobs:
         timeout-minutes: 15
         run: swift package resolve
 
-  # Required-check ack when Tier 0 returns NONE (#2326 item 8). Same check
-  # context name as the heavy job (`name: test`) so branch protection / the
-  # merge queue see a green `test` without spinning a macOS runner. Mutually
-  # exclusive with `test` below via the affected==NONE gate. merge_group never
-  # hits this path: the resolver's event-name gate emits FULL there.
+  # Required-check ack when Tier 0 returns NONE on a pull_request (#2326 item 8).
+  # Same check context name as the heavy job (`name: test`) so branch protection
+  # / the merge queue see a green `test` without spinning a macOS runner.
+  # Gated to pull_request ONLY — defense in depth: if the resolver ever
+  # mis-emits NONE on merge_group/push (event-name gate regression, empty
+  # paths-filter), the heavy `test` job still runs rather than green-acking
+  # with zero suites. Mutually exclusive with `test` below on PRs.
   test-none-ack:
     name: test
     needs: [changes]
-    if: needs.changes.outputs.already-validated != 'true' && needs.changes.outputs.affected == 'NONE'
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.already-validated != 'true' &&
+      needs.changes.outputs.affected == 'NONE'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -436,8 +439,11 @@ jobs:
     # Skip the post-merge re-test when the merge queue already validated this exact
     # SHA (see the changes job's "Skip post-merge re-test" step). On pull_request
     # and merge_group the flag is empty, so '' != 'true' keeps the job running.
-    # NONE is handled by test-none-ack above — do not burn a macOS slot for it.
-    if: needs.changes.outputs.already-validated != 'true' && needs.changes.outputs.affected != 'NONE'
+    # NONE on pull_request is handled by test-none-ack. On any other event,
+    # NONE still runs the heavy job (defense in depth — see test-none-ack).
+    if: |
+      needs.changes.outputs.already-validated != 'true' &&
+      (needs.changes.outputs.affected != 'NONE' || github.event_name != 'pull_request')
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
     # Backstop against an org-wide macOS-slot stall (see the `changes` job's
     # timeout-minutes comment). 150 is a backstop, not a budget: the worst

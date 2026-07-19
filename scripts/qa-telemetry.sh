@@ -113,31 +113,25 @@ else
 fi
 scope="${BRANCH:-all branches}"
 
-# Longitudinal sink: one compact JSON object per invocation.
-row="$(printf '%s' "$metrics" | jq -c \
-        --arg at "$generated_at" \
-        --arg wf "$WORKFLOW_FILE" \
-        --argjson days "$DAYS" \
-        --arg scope "$scope" \
-        '{generated_at:$at, workflow:$wf, window_days:$days, branch_scope:$scope} + .')"
-mkdir -p "$(dirname "$METRICS_FILE")"
-printf '%s\n' "$row" >> "$METRICS_FILE"
-
 # ── Selective-path hit rate (#2326 item 5) ──────────────────────────────────
 # Sample recent pull_request runs' logs for the "Test mode: selective|full"
 # line emitted by ci.yml's Compute test mode step. Degrades to nulls on any
 # failure (rate limit, missing log, no matches) — never aborts the job.
 #
-# Tunable: SELECTIVE_SAMPLE_LIMIT caps how many PR runs we download logs for
-# (each is an API call). Default 40 is enough for a 14d signal without
-# thrashing the Actions log API under the nightly cadence.
-SELECTIVE_SAMPLE_LIMIT="${SELECTIVE_SAMPLE_LIMIT:-40}"
+# Tunables:
+#   SELECTIVE_SAMPLE_LIMIT  max PR runs to pull logs for (default 12)
+#   SELECTIVE_BUDGET_SECS   wall-clock budget for the whole sample loop
+#                           (default 90). Stops early so a slow Actions log
+#                           API cannot blow the 10-min telemetry job.
+SELECTIVE_SAMPLE_LIMIT="${SELECTIVE_SAMPLE_LIMIT:-12}"
+SELECTIVE_BUDGET_SECS="${SELECTIVE_BUDGET_SECS:-90}"
 sel_selective=0
 sel_full=0
 sel_skip=0
 sel_sampled=0
 sel_ratio=""
 sel_note="n/a"
+sel_budget_hit=0
 
 pr_run_ids="$(printf '%s' "$runs" | jq -r \
   --argjson cutoff "$cutoff_epoch" \
@@ -151,10 +145,17 @@ pr_run_ids="$(printf '%s' "$runs" | jq -r \
     | .[].databaseId // empty
   ' 2>/dev/null || true)"
 
+sel_started="$(date -u +%s)"
 if [ -n "$pr_run_ids" ]; then
   while IFS= read -r rid; do
     [ -z "$rid" ] && continue
-    # --log can be large; grep the mode line only. Tolerate missing logs.
+    now="$(date -u +%s)"
+    if [ $((now - sel_started)) -ge "$SELECTIVE_BUDGET_SECS" ]; then
+      sel_budget_hit=1
+      break
+    fi
+    # Prefer the tiny job log over the full run log when possible; fall back
+    # to --log. Tolerate missing logs / rate limits.
     mode_line="$(gh run view "$rid" --log 2>/dev/null \
       | grep -E 'Test mode: (selective|full)|Tier 0 returned NONE|No test-job suites affected' \
       | head -n 1 || true)"
@@ -181,35 +182,40 @@ if [ "$sel_decided" -gt 0 ]; then
     sel_ratio="0"
   fi
   sel_note="sampled=${sel_sampled} selective=${sel_selective} full=${sel_full} none_skip=${sel_skip}"
+  if [ "$sel_budget_hit" -eq 1 ]; then
+    sel_note="${sel_note} budget_hit"
+  fi
 else
   sel_ratio=""
   sel_note="no Test-mode lines in sampled PR logs"
 fi
 
-# Fold selective metrics into the JSONL row (re-write last line's fields by
-# appending a sibling object — keep the original row intact for back-compat
-# and add a dedicated selective row keyed the same way).
-sel_row="$(jq -nc \
-  --arg at "$generated_at" \
-  --arg wf "$WORKFLOW_FILE" \
-  --argjson days "$DAYS" \
-  --arg scope "$scope" \
-  --argjson sampled "$sel_sampled" \
-  --argjson selective "$sel_selective" \
-  --argjson full "$sel_full" \
-  --argjson none_skip "$sel_skip" \
-  --arg ratio "${sel_ratio}" \
-  --arg note "$sel_note" \
-  '{
-     generated_at:$at, workflow:$wf, window_days:$days, branch_scope:$scope,
-     metric:"selective_hit_rate",
-     sampled:$sampled, selective:$selective, full:$full, none_skip:$none_skip,
-     selective_ratio:(if $ratio == "" then null else ($ratio|tonumber) end),
-     note:$note
-   }' 2>/dev/null || true)"
-if [ -n "$sel_row" ]; then
-  printf '%s\n' "$sel_row" >> "$METRICS_FILE"
-fi
+# Longitudinal sink: ONE compact JSON object per invocation. Selective fields
+# are folded into the base row so qa-telemetry.yml's `tail -n 1` still captures
+# the full series (a sibling row would clobber the base metrics on the
+# ci-metrics branch).
+row="$(printf '%s' "$metrics" | jq -c \
+        --arg at "$generated_at" \
+        --arg wf "$WORKFLOW_FILE" \
+        --argjson days "$DAYS" \
+        --arg scope "$scope" \
+        --argjson sel_sampled "$sel_sampled" \
+        --argjson sel_selective "$sel_selective" \
+        --argjson sel_full "$sel_full" \
+        --argjson sel_none_skip "$sel_skip" \
+        --arg sel_ratio "${sel_ratio}" \
+        --arg sel_note "$sel_note" \
+        '{generated_at:$at, workflow:$wf, window_days:$days, branch_scope:$scope} + .
+         + {
+             selective_sampled:$sel_sampled,
+             selective_count:$sel_selective,
+             selective_full_count:$sel_full,
+             selective_none_skip:$sel_none_skip,
+             selective_ratio:(if $sel_ratio == "" then null else ($sel_ratio|tonumber) end),
+             selective_note:$sel_note
+           }')"
+mkdir -p "$(dirname "$METRICS_FILE")"
+printf '%s\n' "$row" >> "$METRICS_FILE"
 
 # Human summary -> GitHub step summary (or stdout when run locally).
 summary_out="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
