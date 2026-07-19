@@ -87,23 +87,18 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
             throw ValidationError("--parallel must be greater than zero")
         }
 
-        let hasAPIKey = !(apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
-        let loopback = Self.isLoopbackBindHost(host)
-
-        if allowAnonymous && hasAPIKey {
-            throw ValidationError("--allow-anonymous cannot be combined with --api-key")
-        }
-        if allowAnonymous && !loopback {
-            throw ValidationError("--allow-anonymous is only valid for loopback binds (127.0.0.1, localhost, ::1); non-loopback hosts require --api-key")
-        }
-        if !hasAPIKey {
-            if !loopback {
-                throw ValidationError("refusing to bind \(host) without --api-key (non-loopback binds require authentication)")
-            }
-            if !allowAnonymous {
-                throw ValidationError("refusing unauthenticated bind without --allow-anonymous (any local process can invoke inference). Pass --api-key or --allow-anonymous.")
-            }
+        // Bind authorization is enforced by the SHARED rule on
+        // ServerConfiguration (#2314) so the CLI and the library facade
+        // (`ManifoldServer.serve`) cannot drift. The CLI renders the shared
+        // refusal reasons with flag names; the facade renders the same reasons
+        // with field names.
+        switch serverConfiguration().resolveBindAuthorization() {
+        case .authenticated:
+            break
+        case .anonymousLoopback:
             fputs("warning: ManifoldServer started with --allow-anonymous; any process on \(host) can invoke inference without credentials\n", stderr)
+        case .refused(let reason):
+            throw ValidationError(cliBindRefusalMessage(reason))
         }
 
         if unsafeCORS, corsOrigin != nil {
@@ -120,6 +115,23 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
         }
     }
 
+    /// CLI-surface wording (flag names) for a refused bind. The library facade
+    /// renders the same ``ServerConfiguration/BindRefusalReason`` cases with
+    /// field names (`ManifoldServer.bindRefusalMessage`); both come from the one
+    /// shared rule in ``ServerConfiguration/resolveBindAuthorization()``.
+    private func cliBindRefusalMessage(_ reason: ServerConfiguration.BindRefusalReason) -> String {
+        switch reason {
+        case .apiKeyCombinedWithAnonymous:
+            return "--allow-anonymous cannot be combined with --api-key"
+        case .anonymousOnNonLoopback:
+            return "--allow-anonymous is only valid for loopback binds (127.0.0.1, localhost, ::1); non-loopback hosts require --api-key"
+        case .keylessNonLoopback(let host):
+            return "refusing to bind \(host) without --api-key (non-loopback binds require authentication)"
+        case .keylessLoopbackWithoutOptIn:
+            return "refusing unauthenticated bind without --allow-anonymous (any local process can invoke inference). Pass --api-key or --allow-anonymous."
+        }
+    }
+
     internal func serverConfiguration() -> ServerConfiguration {
         // maxServerRequestBodyBytes is not CLI-configurable; it flows from
         // ManifoldConfiguration.shared so host apps can set it at startup.
@@ -128,6 +140,7 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
             host: host,
             port: port,
             apiKey: apiKey,
+            allowAnonymous: allowAnonymous,
             parallelSlots: parallel,
             unsafeCORS: unsafeCORS,
             corsOrigin: corsOrigin,
