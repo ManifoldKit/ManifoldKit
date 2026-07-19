@@ -48,8 +48,8 @@ internal struct ChatCompletionMessage: Codable, Equatable, Sendable {
 
 internal extension ChatCompletionMessage {
     /// Projects this wire message into the engine's structured-history shape,
-    /// preserving the role plus any tool call / tool result parts so a
-    /// `StructuredHistoryReceiver` backend can replay the full turn structure.
+    /// preserving the role plus any tool call / tool result parts so the
+    /// backend can replay the full turn structure from `hints.history` (#2312).
     var structuredMessage: StructuredMessage {
         var parts: [MessagePart] = []
         // A tool turn's content is the tool *result* payload — it belongs in the

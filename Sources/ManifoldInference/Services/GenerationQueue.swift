@@ -384,10 +384,10 @@ final class GenerationQueue {
     /// Structured-message variant of ``generate(messages:...)``.
     ///
     /// Threads ``StructuredMessage`` (carrying ``MessagePart`` content
-    /// including thinking signatures) through to the backend boundary.
-    /// Backends adopting ``StructuredHistoryReceiver`` see the structured
-    /// form; text-only backends keep receiving the flattened `(role,
-    /// content)` shape via ``ConversationHistoryReceiver``.
+    /// including thinking signatures) through to the backend boundary on
+    /// ``GenerationRuntimeHints/history``. Backends read the structured form
+    /// directly, or derive the flattened `(role, content)` / tool-aware shapes
+    /// from it per call (#2312).
     func generate(
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String? = nil,
@@ -518,10 +518,11 @@ final class GenerationQueue {
     /// Common dispatch path shared by ``generate(structuredMessages:...)``
     /// and ``generateWithConfig(structuredMessages:...)``.
     ///
-    /// Performs the optional exact-token pre-flight + trim loop, hands the
-    /// structured history to ``StructuredHistoryReceiver`` adopters,
-    /// flattens to `(role, content)` for ``ConversationHistoryReceiver``
-    /// adopters, and finally invokes ``InferenceBackend/generate(...)``.
+    /// Performs the optional exact-token pre-flight + trim loop, threads the
+    /// structured history onto ``GenerationRuntimeHints/history``, and invokes
+    /// ``InferenceBackend/generate(...)`` — which consumes it on the call stack
+    /// (#2312). Backends derive the flattened `(role, content)` / tool-aware
+    /// shapes from it as needed.
     private func dispatchToBackend(
         backend: InferenceBackend,
         messages: [StructuredMessage],
