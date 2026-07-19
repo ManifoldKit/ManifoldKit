@@ -41,7 +41,7 @@ import ManifoldInference
 /// serialises access to mutable state under the state lock. Adapters
 /// composed into this envelope must not propagate the unchecked label —
 /// they are value types and Sendable by virtue of their stored witnesses.
-open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unchecked Sendable {
+open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Lock
 
@@ -106,13 +106,6 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         set { withStateLock { _ephemeralAPIKey = newValue.flatMap { SecureBytes($0) } } }
     }
 
-    private var _conversationHistory: [(role: String, content: String)]?
-    /// Full conversation history for multi-turn support.
-    public var conversationHistory: [(role: String, content: String)]? {
-        get { withStateLock { _conversationHistory } }
-        set { withStateLock { _conversationHistory = newValue } }
-    }
-
     private var _lastUsage: (promptTokens: Int, completionTokens: Int)?
     /// Token usage from the most recent generation, if available.
     public var lastUsage: (promptTokens: Int, completionTokens: Int)? {
@@ -124,19 +117,26 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     private var _generationID: UInt64 = 0
     private var _activeEventIDTracker: SSEEventIDTracker?
 
-    /// Per-request runtime hints for the in-flight generation (JSON mode,
-    /// thinking markers, structured output). Split out of ``GenerationConfig``
-    /// in #2152; because the cloud adapter indirection (`buildRequest` /
-    /// `parseResponseStream`) is not on the `generate(...)` argument path, the
-    /// active call's hints are stashed here under the state lock — mirroring the
-    /// existing per-generation state (`_generationID`, `_lastUsage`). The queue
-    /// serialises generation, so exactly one call's hints are live at a time.
-    /// Subclasses read them via ``activeHints``.
+    /// Per-request runtime hints stashed for the **asynchronous** stream-parse
+    /// path only — chiefly Ollama's `snapshotForExtractor` thinking-marker read,
+    /// which runs inside the generation `Task` where a threaded parameter can't
+    /// reach. The synchronous request-building path (`buildRequest`) does **not**
+    /// read this stash: it receives `hints` as a call-stack parameter, so the
+    /// per-call history / jsonMode / structuredOutput baked into the request
+    /// body are never sourced from shared instance state (#2312).
+    ///
+    /// - Warning: This field is shared mutable state. It is safe for the fields
+    ///   the synchronous body consumes (they come from the parameter instead),
+    ///   but the async readers still observe whichever call wrote last. That is
+    ///   acceptable for the in-process queue (which serialises generation) and
+    ///   for the marker/sampler fields those readers use; it is **not** a home
+    ///   for anything whose cross-request bleed would corrupt output — history
+    ///   is exactly that, which is why history rides the parameter, not here.
     private var _activeHints = GenerationRuntimeHints()
 
-    /// The in-flight generation's ``GenerationRuntimeHints``. Read by subclass
-    /// `buildRequest` / `parseResponseStream` overrides that honour JSON mode,
-    /// structured output, or thinking markers.
+    /// The in-flight generation's ``GenerationRuntimeHints`` for the async
+    /// stream-parse path. See ``_activeHints`` for why the synchronous
+    /// request-building path takes `hints` as a parameter instead.
     public var activeHints: GenerationRuntimeHints {
         get { withStateLock { _activeHints } }
         set { withStateLock { _activeHints = newValue } }
@@ -292,14 +292,21 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
 
     /// Builds the URLRequest for a generation call.
     ///
-    /// Called by ``generate(prompt:systemPrompt:config:)`` after validating state.
-    /// Subclasses must override to produce the API-specific request format.
+    /// Called by ``generate(prompt:systemPrompt:config:hints:)`` after
+    /// validating state, synchronously and before any suspension. Subclasses
+    /// must override to produce the API-specific request format.
+    ///
+    /// The per-call conversation history is `hints.history` — read it from this
+    /// parameter, **never** from shared backend instance state. Threading it on
+    /// the call stack is what makes concurrent requests against one shared
+    /// backend instance safe (#2312).
     open func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
-        fatalError("\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:)`")
+        fatalError("\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:hints:)`")
     }
 
     /// Extracts a text token from an SSE JSON payload.
@@ -489,12 +496,6 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         return resolveAPIKeySecure()?.stringValue
     }
 
-    // MARK: - ConversationHistoryReceiver
-
-    public func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        withStateLock { _conversationHistory = messages }
-    }
-
     // MARK: - Model Lifecycle
 
     /// Sets `isModelLoaded` to `true`.
@@ -527,9 +528,13 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             throw CloudBackendError.invalidURL("Backend not configured. Call loadModel first.")
         }
 
-        // Stash the per-request hints so the adapter-indirected `buildRequest`
-        // and `parseResponseStream` overrides can read them via `activeHints`.
-        // Set before request building, which reads jsonMode / structuredOutput.
+        // Stash the per-request hints so the *asynchronous* stream-parse path
+        // (Ollama's `snapshotForExtractor` thinking-marker read) can reach them.
+        // The synchronous request-building path does NOT read this stash — it
+        // takes `hints` as a threaded parameter (below), so the per-call
+        // history / jsonMode / structuredOutput used to build the request body
+        // can never be clobbered by a concurrent request sharing this instance
+        // (#2312).
         withStateLock { _activeHints = hints }
 
         try validateGenerationConfig(config)
@@ -537,7 +542,8 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         let request = try makeGenerationRequest(
             prompt: prompt,
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
         let (genID, eventIDTracker) = beginGeneration()
         let taskContext = makeGenerationTaskContext(
@@ -579,17 +585,19 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     private func makeGenerationRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         // Adapter-routed path: delegate request building to the routing's
         // closure. Legacy path: subclass override of `buildRequest`.
         if let routing = withStateLock({ _adapterRouting }) {
-            return try routing.buildRequest(prompt, systemPrompt, config)
+            return try routing.buildRequest(prompt, systemPrompt, config, hints)
         }
         return try buildRequest(
             prompt: prompt,
             systemPrompt: systemPrompt,
-            config: config
+            config: config,
+            hints: hints
         )
     }
 

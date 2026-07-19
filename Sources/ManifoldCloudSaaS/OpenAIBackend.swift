@@ -20,7 +20,7 @@ import ManifoldCloudCore
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendURLModelConfigurable, EndpointBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendURLModelConfigurable, EndpointBackendKeychainConfigurable, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 2/B/ii)
     //
@@ -109,14 +109,15 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             framedTransport: liveLimitsTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
-            buildRequest: { prompt, systemPrompt, config in
+            buildRequest: { prompt, systemPrompt, config, hints in
                 guard let backend = weakSelfBox.value else {
                     throw CloudBackendError.backendDeallocated
                 }
                 return try backend.buildRequest(
                     prompt: prompt,
                     systemPrompt: systemPrompt,
-                    config: config
+                    config: config,
+                    hints: hints
                 )
             },
             streamConsumerFactory: { OpenAIStreamEventExtractor() }
@@ -240,34 +241,6 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         )
     }
 
-    // MARK: - Structured History
-
-    /// Structured replay history. Set by ``GenerationQueue`` when the
-    /// caller uses ``InferenceService/enqueue(structuredMessages:...)``;
-    /// carries ``MessagePart/image(data:mimeType:)`` parts so vision turns
-    /// can be serialised as `image_url` content parts on the request body.
-    ///
-    /// Also consumed by text-only multi-turn replay: when no image parts are
-    /// present the encoder still uses the structured history so a user that
-    /// later attaches an image gets the structured array shape consistently.
-    private var _structuredHistory: [StructuredMessage]?
-
-    public func setStructuredHistory(_ messages: [StructuredMessage]) {
-        withStateLock { self._structuredHistory = messages }
-    }
-
-    // MARK: - Tool-Aware Conversation History
-
-    /// Cached tool-aware history from the most recent
-    /// `setToolAwareHistory(_:)` call. Consumed once by `buildRequest` and
-    /// cleared after use so a subsequent non-tool generation falls back to the
-    /// plain string history in `conversationHistory`.
-    private var toolAwareHistory: [ToolAwareHistoryEntry]?
-
-    public func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
-        withStateLock { self.toolAwareHistory = messages }
-    }
-
     // MARK: - Model Lifecycle
 
     // Plan is informational for cloud backends.
@@ -286,7 +259,8 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     public override func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         guard let baseURL else {
             throw CloudBackendError.invalidURL("No base URL configured")
@@ -294,17 +268,9 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
 
         let completionsURL = baseURL.appendingPathComponent("v1/chat/completions")
 
-        // Snapshot and clear: tool-aware history is a one-shot payload supplied
-        // by the orchestrator loop. If a subsequent non-tool generation runs on
-        // the same backend instance, it must fall back to `conversationHistory`
-        // rather than replaying stale tool-result messages.
-        let snapshotToolHistory: [ToolAwareHistoryEntry]? = withStateLock {
-            let snapshot = self.toolAwareHistory
-            self.toolAwareHistory = nil
-            return snapshot
-        }
-
-        let structuredSnapshot: [StructuredMessage]? = withStateLock { self._structuredHistory }
+        // Per-call conversation history, threaded on the stack (#2312) — never
+        // read from shared instance state.
+        let history = hints.history
 
         var messages: [[String: Any]] = []
         if let systemPrompt, !systemPrompt.isEmpty {
@@ -312,21 +278,19 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         }
 
         // Precedence:
-        //   1. tool-aware history — only set during a tool-call loop, must
-        //      win over the structured/plain replay so the model sees the
-        //      `tool_calls` ↔ `tool` pairing it requires.
-        //   2. structured history (only when it carries images) — emits
-        //      `image_url` content parts for vision turns, and collapses
-        //      text-only turns to plain string content for the common case.
-        //   3. plain (role, content) history — legacy fallback. Keeps the
-        //      common text-only wire shape minimal and matches every
-        //      pre-vision OpenAIBackend test that asserts on it.
+        //   1. tool-aware history — present during a tool-call loop (any turn
+        //      carries a tool call/result part), must win over the
+        //      structured/plain replay so the model sees the `tool_calls` ↔
+        //      `tool` pairing it requires.
+        //   2. structured history that carries images — emits `image_url`
+        //      content parts for vision turns.
+        //   3. plain (role, content) history — the common text-only wire shape,
+        //      kept minimal to match every pre-vision OpenAIBackend test that
+        //      asserts on it.
         //   4. prompt-only single user turn.
-        if let toolHistory = snapshotToolHistory {
-            messages.append(contentsOf: toolHistory.map(OpenAIToolEncoding.encodeChatCompletionsEntry))
-        } else if let structured = structuredSnapshot,
-                  !structured.isEmpty,
-                  CloudImageEncoding.imageCount(in: structured) > 0 {
+        if history.containsToolParts {
+            messages.append(contentsOf: history.toolAwareHistory.map(OpenAIToolEncoding.encodeChatCompletionsEntry))
+        } else if !history.isEmpty, history.containsImages {
             // Vision pre-flight: refuse to forward images to a model that
             // doesn't advertise vision support. ``GenerationQueue``
             // already gates this path on `capabilities.supportsVision`, but
@@ -338,20 +302,18 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
                     "Model \"\(modelName)\" does not support image input. Switch to a vision-capable OpenAI model (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4.1, o1, o3) and retry."
                 )
             }
-            messages.append(contentsOf: structured.map { CloudMessageEncoder.openAI.encodeStructuredMessageContent(for: $0) })
-        } else if let history = conversationHistory {
+            messages.append(contentsOf: history.map { CloudMessageEncoder.openAI.encodeStructuredMessageContent(for: $0) })
+        } else if !history.isEmpty {
             // Reasoning-model asymmetry: OpenAI-compatible providers (DeepSeek,
             // o-series, hosted Qwen reasoning) deliver chain-of-thought via
             // `reasoning_content` / `reasoning` deltas but **don't** require
             // it on multi-turn replay — and most providers reject blocks they
-            // didn't emit. ``GenerationQueue`` already collapsed
-            // structured history to `(role, content)` text via
-            // ``StructuredMessage/textContent``, which drops `.thinking`
-            // parts. So thinking is informational only on this backend's
-            // replay path. Anthropic's multi-turn signature contract is
-            // handled by ``ClaudeBackend`` reading the structured history
-            // directly. (#604)
-            messages.append(contentsOf: history.map { ["role": $0.role, "content": $0.content] as [String: Any] })
+            // didn't emit. The flattened projection drops `.thinking` parts via
+            // ``StructuredMessage/textContent``, so thinking is informational
+            // only on this backend's replay path. Anthropic's multi-turn
+            // signature contract is handled by ``ClaudeBackend`` reading the
+            // structured history directly. (#604)
+            messages.append(contentsOf: history.flattenedHistory.map { ["role": $0.role, "content": $0.content] as [String: Any] })
         } else {
             messages.append(["role": "user", "content": prompt])
         }
@@ -377,7 +339,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // (`additionalProperties:false` + all-required + null-unions) and
         // emitted under `response_format: {type:"json_schema", strict:true}`,
         // which guarantees the model's output validates against the schema.
-        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: activeHints.structuredOutput)
+        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: hints.structuredOutput)
         let strictRequested = capabilities.supportsStrictSchema && strictSchemaString != nil
         if strictRequested,
            let schemaString = strictSchemaString,
@@ -390,7 +352,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
                     "schema": strictSchema,
                 ] as [String: Any],
             ]
-        } else if activeHints.jsonMode {
+        } else if hints.jsonMode {
             // OpenAI-native providers accept `response_format`; Ollama's
             // OpenAI-compatible adapter looks for the legacy top-level
             // `format: "json"` switch.

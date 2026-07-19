@@ -75,7 +75,6 @@ public struct MLXVLMGateScenario: FuzzScenario {
 
         let handle = try await factory.makeHandle()
         let backend = handle.backend
-        let receiver = backend as? ConversationHistoryReceiver
 
         var merged: [GenerationEvent] = []
 
@@ -94,21 +93,21 @@ public struct MLXVLMGateScenario: FuzzScenario {
             }
         }
 
-        // Fold the first turn into history before running turn 2 so the
-        // shared prefix is what a real chat client would re-send. Backends
-        // without `ConversationHistoryReceiver` proceed without the explicit
-        // history wiring — `MLXBackend` is the primary target here and does
-        // conform.
-        receiver?.setConversationHistory([
-            ("user", Self.firstUserPrompt),
-            ("assistant", turn1Text),
-            ("user", Self.secondUserPrompt),
+        // Fold the first turn into history before running turn 2 so the shared
+        // prefix is what a real chat client would re-send. History rides
+        // `hints.history` on the call stack (#2312); backends that ignore it
+        // proceed without the explicit history wiring — `MLXBackend` is the
+        // primary target here and consumes it.
+        let turn2Hints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: Self.firstUserPrompt),
+            StructuredMessage(role: "assistant", content: turn1Text),
+            StructuredMessage(role: "user", content: Self.secondUserPrompt),
         ])
-
         let turn2Stream = try backend.generate(
             prompt: Self.secondUserPrompt,
             systemPrompt: nil,
-            config: deterministicConfig
+            config: deterministicConfig,
+            hints: turn2Hints
         )
         for try await event in turn2Stream.events {
             merged.append(event)

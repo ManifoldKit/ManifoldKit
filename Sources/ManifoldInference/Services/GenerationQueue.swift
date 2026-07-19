@@ -567,12 +567,17 @@ final class GenerationQueue {
                 config: config,
                 hints: hints
             )
-            GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: result.trimmedMessages)
+            // Thread the (post-trim) conversation history to the backend on the
+            // call stack via `hints.history` — never via shared instance state,
+            // so concurrent requests against one backend can't leak each other's
+            // history (#2312).
+            var hintsWithHistory = hints
+            hintsWithHistory.history = result.trimmedMessages
             let stream = try backend.generateEnforcingCapabilities(
                 prompt: result.prompt,
                 systemPrompt: nil,
                 config: config,
-                hints: hints
+                hints: hintsWithHistory
             )
             if hints.captureRenderedPrompt {
                 return Self.prependingPromptRendered(text: result.prompt, to: stream)
@@ -627,13 +632,17 @@ final class GenerationQueue {
             effectiveSystemPrompt = systemPrompt
         }
 
-        GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: messages)
+        // Thread the conversation history to the backend on the call stack via
+        // `hints.history` — never via shared instance state, so concurrent
+        // requests against one backend can't leak each other's history (#2312).
+        var hintsWithHistory = hints
+        hintsWithHistory.history = messages
 
         let stream = try backend.generateEnforcingCapabilities(
             prompt: assembledPrompt,
             systemPrompt: effectiveSystemPrompt,
             config: config,
-            hints: hints
+            hints: hintsWithHistory
         )
         if hints.captureRenderedPrompt {
             return Self.prependingPromptRendered(text: assembledPrompt, to: stream)

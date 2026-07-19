@@ -74,22 +74,6 @@ internal extension ChatCompletionMessage {
         return StructuredMessage(role: role.rawValue, parts: parts)
     }
 
-    /// Projects this wire message into the tool-aware history shape consumed by
-    /// `ToolCallingHistoryReceiver` backends (Ollama's `/api/chat`).
-    var toolAwareHistoryEntry: ToolAwareHistoryEntry {
-        ToolAwareHistoryEntry(
-            role: role.rawValue,
-            content: content ?? "",
-            toolCalls: toolCalls?.map { call in
-                ToolCall(
-                    id: call.id,
-                    toolName: call.function.name ?? "",
-                    arguments: call.function.arguments ?? ""
-                )
-            },
-            toolCallId: role == .tool ? toolCallID : nil
-        )
-    }
 }
 
 internal struct ChatCompletionRequest: Codable, Equatable, Sendable {
@@ -682,43 +666,37 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
     /// Threads the request's structured multi-turn history onto the backend and
     /// kicks off generation.
     ///
-    /// Mirrors the engine's non-prompt-template dispatch path
-    /// (`GenerationQueue.dispatchToBackend` →
-    /// `GenerationHistoryInstaller.installHistory`): per-message roles, tool
-    /// calls, and tool results are preserved by installing them through the
-    /// public history-receiver protocols (`ToolCallingHistoryReceiver`,
-    /// `StructuredHistoryReceiver`, `ConversationHistoryReceiver`) rather than
-    /// being collapsed into one `role: text` string. The backends the server
+    /// Mirrors the engine's dispatch path (`GenerationQueue.dispatchToBackend`):
+    /// per-message roles, tool calls, and tool results are preserved on
+    /// `hints.history` (the structured shape) rather than collapsed into one
+    /// `role: text` string. History travels on the `generate(…)` call stack, not
+    /// through shared backend instance state — the fix for the concurrent
+    /// cross-client leak under `--parallel > 1` (#2312). The backends the server
     /// can actually load (Ollama, Foundation) reconstruct the turn structure
-    /// from that installed history; the `prompt` argument carries the latest
-    /// user turn for the absent-history fallback shape.
+    /// from that history; the `prompt` argument carries the latest user turn for
+    /// the absent-history fallback shape.
     private func generate(
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
     ) throws -> GenerationStream {
         let conversation = request.messages.filter { $0.role != .system && $0.role != .developer }
-        installHistory(from: conversation, on: backend)
+        // Thread the conversation history to the backend on the call stack via
+        // `hints.history` — NOT via shared backend instance state. Under
+        // `--parallel > 1` the server hands one backend instance to concurrent
+        // requests; a set-then-use install let request B overwrite request A's
+        // history before A consumed it, returning one client's answer to another
+        // (#2312). The structured form carries tool parts, so tool-aware
+        // backends still reconstruct their `tool_use`/`tool_result` wire shape
+        // via `[StructuredMessage].toolAwareHistory`.
+        var hints = try generationHints(for: request)
+        hints.history = conversation.map(\.structuredMessage)
         let (prompt, systemPrompt) = promptParts(for: request)
         return try backend.generate(
             prompt: prompt,
             systemPrompt: systemPrompt,
             config: generationConfig(for: request),
-            hints: generationHints(for: request)
+            hints: hints
         )
-    }
-
-    /// Installs the structured conversation history on whichever receiver
-    /// protocol(s) the backend opts into — the same precedence the engine uses.
-    private func installHistory(from conversation: [ChatCompletionMessage], on backend: any InferenceBackend) {
-        if let toolReceiver = backend as? ToolCallingHistoryReceiver {
-            toolReceiver.setToolAwareHistory(conversation.map(\.toolAwareHistoryEntry))
-        }
-        if let structuredReceiver = backend as? StructuredHistoryReceiver {
-            structuredReceiver.setStructuredHistory(conversation.map(\.structuredMessage))
-        }
-        if let historyReceiver = backend as? ConversationHistoryReceiver {
-            historyReceiver.setConversationHistory(conversation.map { (role: $0.role.rawValue, content: $0.content ?? "") })
-        }
     }
 
     /// Builds the `(prompt, systemPrompt)` pair for the legacy single-string

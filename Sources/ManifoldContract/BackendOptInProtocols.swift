@@ -10,12 +10,6 @@ public protocol TokenizerVendor: AnyObject {
     var tokenizer: any TokenizerProvider { get }
 }
 
-/// Adopted by cloud backends to receive the full conversation history for multi-turn support.
-/// This avoids InferenceService having a hard dependency on specific backend types.
-public protocol ConversationHistoryReceiver: AnyObject {
-    func setConversationHistory(_ messages: [(role: String, content: String)])
-}
-
 /// One turn in a structured conversation history — a role plus an ordered
 /// list of ``MessagePart`` values.
 ///
@@ -58,34 +52,17 @@ public struct StructuredMessage: Sendable, Hashable {
     /// Thinking blocks are intentionally excluded: they would either be
     /// double-counted against the context window or leak provider-internal
     /// reasoning into prompts that the wire format does not natively
-    /// support. Backends that want to replay thinking adopt
-    /// ``StructuredHistoryReceiver`` instead and read ``parts`` directly.
+    /// support. Backends that want to replay thinking read ``parts`` directly
+    /// off the ``GenerationRuntimeHints/history`` entries instead.
     public var textContent: String {
         parts.compactMap(\.textContent).joined()
     }
 }
 
-/// Adopted by backends that can consume the full structured conversation
-/// history — including thinking blocks with their provider signatures and
-/// tool call / result parts.
-///
-/// `GenerationQueue` calls this in addition to (not instead of)
-/// ``ConversationHistoryReceiver`` so backends can pick whichever shape
-/// matches their wire format. The Anthropic backend reads the structured
-/// form so it can serialize prior `thinking` content blocks with their
-/// `signature` verbatim — required for multi-turn extended-thinking
-/// requests. OpenAI-compatible reasoning APIs (DeepSeek, etc.) drop
-/// thinking on replay and continue to read the flattened
-/// ``ConversationHistoryReceiver`` form.
-public protocol StructuredHistoryReceiver: AnyObject {
-    func setStructuredHistory(_ messages: [StructuredMessage])
-}
-
 /// One entry in a tool-aware conversation history.
 ///
-/// Extends the plain `(role, content)` shape that ``ConversationHistoryReceiver``
-/// accepts with the tool-calling fields the Ollama and OpenAI-compatible
-/// `/api/chat` wire contracts require:
+/// Extends the plain `(role, content)` history shape with the tool-calling
+/// fields the Ollama and OpenAI-compatible `/api/chat` wire contracts require:
 ///
 /// - `toolCalls` — attached to `role: "assistant"` entries that preceded a
 ///   tool invocation. Each element carries the backend-assigned call id,
@@ -126,16 +103,94 @@ public struct ToolAwareHistoryEntry: Sendable, Equatable, Hashable {
     }
 }
 
-/// Adopted by backends that can accept a tool-aware conversation history on
-/// each generation request.
-///
-/// Implemented by the Ollama adapter so the coordinator can feed
-/// `role: "tool"` entries (carrying a ``ToolCall/id`` back to the server) and
-/// `role: "assistant"` entries annotated with the `toolCalls` the model
-/// previously emitted. Backends without tool-call wire support keep the
-/// classic ``ConversationHistoryReceiver`` contract.
-public protocol ToolCallingHistoryReceiver: AnyObject {
-    func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry])
+// MARK: - History Projections
+
+extension Array where Element == StructuredMessage {
+
+    /// Flattens structured history to the legacy `(role, content)` shape for
+    /// text-only wire encoders.
+    ///
+    /// **Lossy by design**: carries only `.text` parts. Thinking parts are
+    /// dropped (they would bloat the prompt with provider-internal reasoning or
+    /// fail validation on providers that don't accept replayed thinking);
+    /// tool-call / tool-result / image parts are dropped because the string
+    /// shape cannot represent them. Backends that need those shapes read the
+    /// structured `self` or ``toolAwareHistory`` instead.
+    public var flattenedHistory: [(role: String, content: String)] {
+        map { (role: $0.role, content: $0.textContent) }
+    }
+
+    /// Projects structured history to the tool-aware wire shape
+    /// (``ToolAwareHistoryEntry``) for the Ollama / OpenAI-compatible
+    /// `/api/chat` contracts.
+    ///
+    /// Total and lossless for the fields the wire needs: an assistant turn's
+    /// `.toolCall` parts become `toolCalls`; a tool turn's `.toolResult` part
+    /// supplies the visible `content` and its ``ToolResult/callId`` becomes
+    /// `toolCallId`; every other turn projects to `(role, textContent)` with
+    /// both tool fields `nil` — exactly the shape the tool-dispatch loop used to
+    /// build by hand before history moved onto ``GenerationRuntimeHints/history``.
+    public var toolAwareHistory: [ToolAwareHistoryEntry] {
+        map { message in
+            var toolCalls: [ToolCall] = []
+            var toolCallId: String?
+            for part in message.parts {
+                switch part {
+                case .toolCall(let call):
+                    toolCalls.append(call)
+                case .toolResult(let result):
+                    // A tool turn's result content is the visible payload and
+                    // its callId threads the result back to its originating call.
+                    toolCallId = result.callId
+                case .text, .thinking, .image, .audio, .generatedMedia:
+                    break
+                }
+            }
+            let content: String = {
+                // Tool turns surface the result payload as their content
+                // (matching the hand-built entry); every other turn joins its
+                // text parts.
+                if let resultContent = message.parts.compactMap({ part -> String? in
+                    if case .toolResult(let result) = part { return result.content }
+                    return nil
+                }).first {
+                    return resultContent
+                }
+                return message.textContent
+            }()
+            return ToolAwareHistoryEntry(
+                role: message.role,
+                content: content,
+                toolCalls: toolCalls.isEmpty ? nil : toolCalls,
+                toolCallId: toolCallId
+            )
+        }
+    }
+
+    /// True when any turn carries a tool call or tool result part — i.e. the
+    /// history needs the tool-aware wire encoding rather than the plain
+    /// `(role, content)` fallback.
+    public var containsToolParts: Bool {
+        contains { message in
+            message.parts.contains { part in
+                switch part {
+                case .toolCall, .toolResult: return true
+                default: return false
+                }
+            }
+        }
+    }
+
+    /// True when any turn carries an image part — i.e. the history must use a
+    /// multimodal wire encoding rather than the text-only fallback.
+    public var containsImages: Bool {
+        contains { message in
+            message.parts.contains { part in
+                if case .image = part { return true }
+                return false
+            }
+        }
+    }
 }
 
 /// Adopted by cloud backends that track token usage per response.

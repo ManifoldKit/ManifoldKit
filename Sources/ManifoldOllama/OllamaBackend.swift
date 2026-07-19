@@ -20,7 +20,7 @@ import ManifoldCloudCore
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, AdvisoryResidencyConfigurable, ToolCallingHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
+public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, AdvisoryResidencyConfigurable, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Ollama)
     //
@@ -216,14 +216,15 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             framedTransport: adapter.framedTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
-            buildRequest: { prompt, systemPrompt, config in
+            buildRequest: { prompt, systemPrompt, config, hints in
                 guard let backend = weakSelfBox.value else {
                     throw CloudBackendError.backendDeallocated
                 }
                 return try backend.buildRequest(
                     prompt: prompt,
                     systemPrompt: systemPrompt,
-                    config: config
+                    config: config,
+                    hints: hints
                 )
             },
             streamConsumerFactory: {
@@ -301,14 +302,15 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             framedTransport: adapter.framedTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
-            buildRequest: { prompt, systemPrompt, config in
+            buildRequest: { prompt, systemPrompt, config, hints in
                 guard let backend = weakSelfBox.value else {
                     throw CloudBackendError.backendDeallocated
                 }
                 return try backend.buildRequest(
                     prompt: prompt,
                     systemPrompt: systemPrompt,
-                    config: config
+                    config: config,
+                    hints: hints
                 )
             },
             streamConsumerFactory: {
@@ -469,32 +471,6 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         )
     }
 
-    // MARK: - Tool-Aware Conversation History
-
-    /// Cached tool-aware history from the most recent
-    /// `setToolAwareHistory(_:)` call. Consumed once by `buildRequest` and
-    /// cleared after use so a subsequent non-tool generation falls back to the
-    /// plain string history in `conversationHistory`.
-    private var toolAwareHistory: [ToolAwareHistoryEntry]?
-
-    // MARK: - Structured (multimodal) Conversation History
-
-    /// Cached structured history from the most recent `setStructuredHistory(_:)`
-    /// call. Carries `MessagePart.image` payloads that the flattened
-    /// `ConversationHistoryReceiver` projection (text-only) drops on the floor.
-    /// Consumed once by `buildRequest` — when present and any turn carries an
-    /// image, the request emits Ollama's message-level `images: [base64]`
-    /// field. Cleared after use so a subsequent text-only generation on the
-    /// same instance falls back to the plain string `conversationHistory`,
-    /// mirroring `toolAwareHistory`'s snapshot-and-clear contract.
-    ///
-    /// Guarded by `stateLock` like every other load/turn-state field.
-    private var _structuredHistory: [StructuredMessage]?
-
-    public func setStructuredHistory(_ messages: [StructuredMessage]) {
-        withStateLock { _structuredHistory = messages }
-    }
-
     /// Encodes structured turns into Ollama `/api/chat` message dicts, lifting
     /// `MessagePart.image` payloads onto the message-level `images: [base64]`
     /// field that Ollama's multimodal models consume. Ollama takes raw base64
@@ -598,7 +574,8 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     public override func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         guard let baseURL else {
             throw CloudBackendError.invalidURL("No base URL configured")
@@ -606,53 +583,38 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
         let chatURL = baseURL.appendingPathComponent("api/chat")
 
-        // Build the messages array. When tool-aware history is present (set
-        // by the orchestrator in the middle of a tool-dispatch loop), we emit
-        // the OpenAI-compatible shape Ollama expects:
+        // Build the messages array from the per-call history threaded on the
+        // stack (#2312) — never from shared instance state. When any turn
+        // carries a tool call/result part (the orchestrator is mid tool-dispatch
+        // loop) we emit the OpenAI-compatible shape Ollama expects:
         //   - assistant entries optionally carry a `tool_calls` array with
         //     {id, type: "function", function: {name, arguments}} entries.
         //   - tool entries carry `tool_call_id` alongside role and content.
-        // When tool-aware history is absent we fall back to the classic
-        // ConversationHistoryReceiver string tuples — this preserves the
-        // shape every existing OllamaBackend test asserts on.
+        // Otherwise we fall back to the classic string tuples — this preserves
+        // the shape every existing OllamaBackend test asserts on.
         var messages: [[String: Any]] = []
         if let systemPrompt, !systemPrompt.isEmpty {
             messages.append(["role": "system", "content": systemPrompt])
         }
-        // Snapshot and clear: tool-aware history is a one-shot payload supplied
-        // by the orchestrator loop. If a subsequent non-tool generation runs on
-        // the same backend instance, it must fall back to `conversationHistory`
-        // rather than replaying stale tool-result messages.
-        // Both one-shot payloads are snapshot-and-cleared together so neither
-        // leaks into a later turn on the same instance.
-        let (snapshotToolHistory, snapshotStructuredHistory): ([ToolAwareHistoryEntry]?, [StructuredMessage]?) = withStateLock {
-            let tools = self.toolAwareHistory
-            let structured = self._structuredHistory
-            self.toolAwareHistory = nil
-            self._structuredHistory = nil
-            return (tools, structured)
-        }
+        let history = hints.history
         // Vision turns only take the structured path: a turn carries images
-        // only via `MessagePart.image`, which the text-only `conversationHistory`
-        // projection drops. Falling through to the existing text path when no
-        // image is present preserves every existing OllamaBackend wire-shape
-        // assertion (the structured encoder is image-aware but the plain
-        // string history is what the suite pins).
-        let structuredCarriesImage = snapshotStructuredHistory?.contains { message in
-            message.parts.contains { if case .image = $0 { return true } else { return false } }
-        } ?? false
-        if let toolHistory = snapshotToolHistory {
+        // only via `MessagePart.image`, which the text-only flattened projection
+        // drops. Falling through to the text path when no image is present
+        // preserves every existing OllamaBackend wire-shape assertion (the
+        // structured encoder is image-aware but the plain string history is
+        // what the suite pins).
+        if history.containsToolParts {
             messages.append(contentsOf: CloudMessageEncoder.ollama.encodeMessages(
                 systemPrompt: nil,
                 prompt: "",
                 structuredHistory: nil,
-                toolAwareHistory: toolHistory,
+                toolAwareHistory: history.toolAwareHistory,
                 plainHistory: nil
             ))
-        } else if structuredCarriesImage, let structured = snapshotStructuredHistory {
-            messages.append(contentsOf: Self.encodeOllamaMessagesWithImages(structured))
-        } else if let history = conversationHistory {
-            messages.append(contentsOf: history.map { ["role": $0.role, "content": $0.content] })
+        } else if history.containsImages {
+            messages.append(contentsOf: Self.encodeOllamaMessagesWithImages(history))
+        } else if !history.isEmpty {
+            messages.append(contentsOf: history.flattenedHistory.map { ["role": $0.role, "content": $0.content] })
         } else {
             messages.append(["role": "user", "content": prompt])
         }
@@ -729,7 +691,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             "options": options,
             "keep_alive": keepAlive,
         ]
-        if activeHints.jsonMode {
+        if hints.jsonMode {
             body["format"] = "json"
         }
         if let think = thinkDirective {
@@ -825,12 +787,6 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         }
     }
 
-    // MARK: - ToolCallingHistoryReceiver
-
-    public func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
-        withStateLock { self.toolAwareHistory = messages }
-    }
-
     // MARK: - Unload
 
     public override func unloadModel() {
@@ -841,7 +797,6 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             _manifest = nil
             _autoDetectedThinkingMarkers = nil
             _pendingStreamConfig = nil
-            _structuredHistory = nil
         }
         super.unloadModel()
     }

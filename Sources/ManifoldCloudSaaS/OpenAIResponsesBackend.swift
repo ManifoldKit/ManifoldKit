@@ -51,7 +51,7 @@ import ManifoldCloudCore
 ///     }
 /// }
 /// ```
-public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendURLModelConfigurable, EndpointBackendKeychainConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendURLModelConfigurable, EndpointBackendKeychainConfigurable, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Responses)
     //
@@ -105,14 +105,15 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             framedTransport: adapter.framedTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
-            buildRequest: { prompt, systemPrompt, config in
+            buildRequest: { prompt, systemPrompt, config, hints in
                 guard let backend = weakSelfBox.value else {
                     throw CloudBackendError.backendDeallocated
                 }
                 return try backend.buildRequest(
                     prompt: prompt,
                     systemPrompt: systemPrompt,
-                    config: config
+                    config: config,
+                    hints: hints
                 )
             },
             streamConsumerFactory: { OpenAIResponsesStreamEventExtractor() }
@@ -204,18 +205,6 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         )
     }
 
-    // MARK: - Tool-Aware Conversation History
-
-    /// One-shot tool-aware history payload supplied by the orchestrator.
-    /// Consumed and cleared by ``buildRequest(prompt:systemPrompt:config:)``
-    /// so subsequent non-tool generations fall back to the plain string
-    /// history.
-    private var toolAwareHistory: [ToolAwareHistoryEntry]?
-
-    public func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
-        withStateLock { self.toolAwareHistory = messages }
-    }
-
     // MARK: - Model Lifecycle
 
     public override func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
@@ -233,7 +222,8 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     public override func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         guard let baseURL else {
             throw CloudBackendError.invalidURL("No base URL configured")
@@ -241,28 +231,25 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
 
         let responsesURL = baseURL.appendingPathComponent("v1/responses")
 
-        // Snapshot and clear: tool-aware history is one-shot.
-        let snapshotToolHistory: [ToolAwareHistoryEntry]? = withStateLock {
-            let snapshot = self.toolAwareHistory
-            self.toolAwareHistory = nil
-            return snapshot
-        }
+        // Per-call conversation history, threaded on the stack (#2312) — never
+        // read from shared instance state.
+        let history = hints.history
 
         var input: [[String: Any]] = []
         if let systemPrompt, !systemPrompt.isEmpty {
             input.append(["role": "system", "content": systemPrompt])
         }
-        if let toolHistory = snapshotToolHistory {
+        if history.containsToolParts {
             // Responses API encodes tool turns as `function_call` /
             // `function_call_output` items rather than role-tagged messages.
-            for entry in toolHistory {
+            for entry in history.toolAwareHistory {
                 input.append(contentsOf: OpenAIToolEncoding.encodeResponsesEntries(entry))
             }
-        } else if let history = conversationHistory {
+        } else if !history.isEmpty {
             // The Responses API accepts the same `(role, content)` shape as
             // Chat Completions for plain text turns; reasoning items are
             // server-managed and not replayed by the client.
-            input.append(contentsOf: history.map { ["role": $0.role, "content": $0.content] as [String: Any] })
+            input.append(contentsOf: history.flattenedHistory.map { ["role": $0.role, "content": $0.content] as [String: Any] })
         } else {
             input.append(["role": "user", "content": prompt])
         }
@@ -295,12 +282,12 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         // Completions' `response_format` (see `OpenAIBackend.buildRequest`).
         // `GenerationQueue`'s `StructuredOutputRouter` selects `.jsonSchema`
         // whenever `capabilities.supportsStructuredOutput` is true and leaves
-        // the schema on `activeHints.structuredOutput` for the backend to honor on
+        // the schema on `hints.structuredOutput` for the backend to honor on
         // the wire; this backend previously never read it back, silently
         // dropping the caller's schema. The Responses API expects the format
         // nested under `text.format` rather than a top-level
         // `response_format` key.
-        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: activeHints.structuredOutput)
+        let strictSchemaString = StrictSchemaTransform.jsonSchemaString(from: hints.structuredOutput)
         let strictRequested = capabilities.supportsStrictSchema && strictSchemaString != nil
         if strictRequested,
            let schemaString = strictSchemaString,
@@ -313,7 +300,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
                     "schema": strictSchema,
                 ] as [String: Any],
             ]
-        } else if activeHints.jsonMode {
+        } else if hints.jsonMode {
             body["text"] = ["format": ["type": "json_object"]]
         }
 

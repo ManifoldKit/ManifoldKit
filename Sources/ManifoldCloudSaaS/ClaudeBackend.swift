@@ -8,7 +8,7 @@ import ManifoldCloudCore
 /// Streams completions from the Anthropic Messages API (`/v1/messages`).
 /// Handles Claude-specific SSE event types (`content_block_delta`, etc.)
 /// and authentication via `x-api-key` header.
-public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendKeychainConfigurable, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Claude)
     //
@@ -83,14 +83,15 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             framedTransport: adapter.framedTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
-            buildRequest: { prompt, systemPrompt, config in
+            buildRequest: { prompt, systemPrompt, config, hints in
                 guard let backend = weakSelfBox.value else {
                     throw CloudBackendError.backendDeallocated
                 }
                 return try backend.buildRequest(
                     prompt: prompt,
                     systemPrompt: systemPrompt,
-                    config: config
+                    config: config,
+                    hints: hints
                 )
             },
             streamConsumerFactory: { ClaudeStreamEventExtractor() }
@@ -143,24 +144,6 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     public var cachePolicy: PromptCachePolicy {
         get { withStateLock { _cachePolicy } }
         set { withStateLock { _cachePolicy = newValue } }
-    }
-
-    // MARK: - Structured History
-
-    /// Structured replay history. Set by the coordinator when the caller
-    /// uses ``InferenceService/enqueue(structuredMessages:...)``; carries
-    /// the prior assistant turns' ``MessagePart/thinking(_:signature:)``
-    /// blocks so the request body can include them with their signatures
-    /// verbatim. Anthropic rejects multi-turn extended-thinking requests
-    /// that drop or alter the signature.
-    private var _structuredHistory: [StructuredMessage]?
-    public var structuredHistory: [StructuredMessage]? {
-        get { withStateLock { _structuredHistory } }
-        set { withStateLock { _structuredHistory = newValue } }
-    }
-
-    public func setStructuredHistory(_ messages: [StructuredMessage]) {
-        withStateLock { _structuredHistory = messages }
     }
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
@@ -251,20 +234,6 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     /// burning a round-trip.
     static let maxImagesPerTurn: Int = 5
 
-    // MARK: - Tool-Aware Conversation History
-
-    /// Cached tool-aware history from the most recent
-    /// ``setToolAwareHistory(_:)`` call. Consumed once by ``buildRequest``
-    /// and cleared after use so a subsequent non-tool generation falls back
-    /// to the plain string history in ``conversationHistory`` (or the
-    /// structured history when present). Same one-shot snapshot pattern
-    /// used by ``OllamaBackend`` and ``OpenAIBackend``.
-    private var _toolAwareHistory: [ToolAwareHistoryEntry]?
-
-    public func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
-        withStateLock { self._toolAwareHistory = messages }
-    }
-
     // MARK: - Model Lifecycle
 
     // Plan is informational for cloud backends.
@@ -284,7 +253,8 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     public override func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         guard let baseURL else {
             throw CloudBackendError.invalidURL("No base URL configured")
@@ -296,41 +266,33 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
 
         let messagesURL = baseURL.appendingPathComponent("v1/messages")
 
-        // Snapshot and clear: tool-aware history is a one-shot payload
-        // supplied by the orchestrator during a tool-call loop. If a
-        // subsequent non-tool generation runs on the same backend instance,
-        // it must fall back to the structured/plain history rather than
-        // replaying stale tool-result messages.
-        let snapshotToolHistory: [ToolAwareHistoryEntry]? = withStateLock {
-            let snapshot = self._toolAwareHistory
-            self._toolAwareHistory = nil
-            return snapshot
-        }
+        // Per-call conversation history, threaded on the stack (#2312) — never
+        // read from shared instance state.
+        let history = hints.history
 
         // Precedence:
-        //   1. tool-aware history — only set during a tool-call loop, must
-        //      win over the structured/plain replay so the model sees the
+        //   1. tool-aware history — present during a tool-call loop (any turn
+        //      carries a tool call/result part), must win so the model sees the
         //      `tool_use` ↔ `tool_result` pairing it requires.
         //   2. structured history — carries thinking blocks with signatures
         //      for multi-turn extended-thinking replay (#604) and image
         //      content blocks for vision turns.
-        //   3. plain (role, content) history — legacy fallback.
-        //   4. prompt-only single user turn.
+        //   3. prompt-only single user turn.
         let chatMessages: [[String: Any]]
-        if let toolHistory = snapshotToolHistory, !toolHistory.isEmpty {
+        if history.containsToolParts {
             chatMessages = CloudMessageEncoder.claude.encodeMessages(
                 systemPrompt: nil,
                 prompt: "",
                 structuredHistory: nil,
-                toolAwareHistory: toolHistory,
+                toolAwareHistory: history.toolAwareHistory,
                 plainHistory: nil
             )
-        } else if let structured = structuredHistory, !structured.isEmpty {
+        } else if !history.isEmpty {
             // Per-turn image cap: Anthropic rejects more than 5 inline
             // base64 images on a single turn. Validate before serialising
             // so the failure message names the offending turn rather than
             // surfacing as an opaque HTTP 400 from Anthropic.
-            for message in structured {
+            for message in history {
                 let count = CloudImageEncoding.imageCount(in: message.parts)
                 if count > Self.maxImagesPerTurn {
                     throw InferenceError.inferenceFailure(
@@ -344,15 +306,13 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             // path on `capabilities.supportsVision`, but the backend may be
             // driven directly — e.g. the OpenAI-compat server — so keep the
             // belt-and-suspenders check here.)
-            let totalImages = CloudImageEncoding.imageCount(in: structured)
+            let totalImages = CloudImageEncoding.imageCount(in: history)
             if totalImages > 0, !BackendVisionCapability.claudeMessagesSupportsImageInput(modelName: modelName) {
                 throw InferenceError.inferenceFailure(
                     "Model \"\(modelName)\" does not support image input. Switch to a Claude 3, 3.5, 3.7, or 4 family model and retry."
                 )
             }
-            chatMessages = structured.map { CloudMessageEncoder.claude.encodeStructuredMessageContent(for: $0) }
-        } else if let history = conversationHistory {
-            chatMessages = history.map { ["role": $0.role, "content": $0.content] }
+            chatMessages = history.map { CloudMessageEncoder.claude.encodeStructuredMessageContent(for: $0) }
         } else {
             chatMessages = [["role": "user", "content": prompt]]
         }
@@ -418,7 +378,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             // strict-schema support, encode each tool's `input_schema` in
             // Anthropic's strict shape and flag `strict: true`.
             let strictRequested = capabilities.supportsStrictSchema
-                && StrictSchemaTransform.jsonSchemaString(from: activeHints.structuredOutput) != nil
+                && StrictSchemaTransform.jsonSchemaString(from: hints.structuredOutput) != nil
             var toolEntries = CloudMessageEncoder.claude.encodeTools(config.tools, strict: strictRequested)
             // Tag the last tool entry with cache_control when automatic so
             // Anthropic caches the entire system+tools prefix. The breakpoint

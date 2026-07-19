@@ -172,20 +172,14 @@ struct GenerationToolDispatchLoop {
             registry.validator = JSONSchemaValidator()
         }
 
-        // Grows across iterations so each regeneration sees the prior turn's
-        // tool calls and results. Cloud backends receive that history through
-        // the structured `ToolCallingHistoryReceiver` wire (below); local
-        // prompt-template backends — which are *not* tool-aware receivers —
-        // instead need the tool turns threaded back into the structured
-        // messages so `PromptRenderer` re-renders them natively. Without this,
-        // a templated backend re-rendered the *identical* original prompt every
-        // iteration and never saw a single tool result (#1909, Ring 2).
+        // The single structured history for the whole loop. Grows across
+        // iterations so each regeneration sees the prior turn's tool calls and
+        // results: tool turns are appended after each dispatch (#1909, Ring 2)
+        // and reach the backend via `hints.history` on the call stack (#2312).
+        // Local prompt-template backends re-render it through `PromptRenderer`;
+        // tool-aware cloud backends derive their `tool_use`/`tool_result` wire
+        // shape from its tool parts. No parallel instance-state history exists.
         var currentMessages = messages
-        // `toolAwareHistory` is maintained in parallel for tool-call turns.
-        // Seeded lazily on the first tool dispatch so plain-text turns keep
-        // using the classic `setConversationHistory` path and existing
-        // backends that don't know about tool-aware history see no change.
-        var toolAwareHistory: [ToolAwareHistoryEntry]?
         var lastCallSignature: (toolName: String, arguments: String)?
         var toolResultByteTotal = 0
         var iterations = 0
@@ -225,11 +219,11 @@ struct GenerationToolDispatchLoop {
                 return .runTokenBudget
             }
 
-            if let toolAwareHistory,
-               let receiver = currentBackend() as? ToolCallingHistoryReceiver {
-                receiver.setToolAwareHistory(toolAwareHistory)
-            }
-
+            // History (including any tool turns appended below) reaches the
+            // backend through `currentMessages` → `hints.history` on the call
+            // stack — no shared instance-state install (#2312). Tool-aware
+            // backends derive their `tool_use`/`tool_result` wire shape from the
+            // structured tool parts via `[StructuredMessage].toolAwareHistory`.
             let stream = try generateWithConfig(currentMessages, systemPrompt, config, hints)
 
             // Tool calls are buffered during stream iteration and dispatched
@@ -336,46 +330,24 @@ struct GenerationToolDispatchLoop {
                 return .stop
             }
 
-            var nextHistory = toolAwareHistory ?? currentMessages.map {
-                ToolAwareHistoryEntry(role: $0.role, content: $0.textContent)
-            }
-            nextHistory.append(
-                ToolAwareHistoryEntry(
+            // Thread the just-dispatched tool turn into the structured history
+            // (#1909, Ring 2) so the next regeneration shows the model its own
+            // call and the result. This one structured history serves every
+            // backend now: local prompt-template backends re-render it through
+            // `PromptRenderer`, and tool-aware cloud backends derive their
+            // `tool_use`/`tool_result` wire shape from these tool parts via
+            // `[StructuredMessage].toolAwareHistory`. There is no separate
+            // instance-state install to keep in sync (#2312).
+            currentMessages.append(
+                StructuredMessage(
                     role: "assistant",
-                    content: "",
-                    toolCalls: dispatchedInThisTurn.map(\.0)
+                    parts: dispatchedInThisTurn.map { MessagePart.toolCall($0.0) }
                 )
             )
-            for (call, result) in dispatchedInThisTurn {
-                nextHistory.append(
-                    ToolAwareHistoryEntry(
-                        role: "tool",
-                        content: result.content,
-                        toolCallId: call.id
-                    )
-                )
-            }
-            toolAwareHistory = nextHistory
-
-            // Local prompt-template backends do not consume the tool-aware wire
-            // history — they re-render `currentMessages` through `PromptRenderer`.
-            // Thread the just-dispatched tool turn into that structured history so
-            // the next regeneration shows the model its own call and the result
-            // in the template's native format (#1909, Ring 2). Cloud backends
-            // (tool-aware receivers) already got this via `setToolAwareHistory`,
-            // so skip them to avoid duplicating the turn.
-            if (currentBackend() as? ToolCallingHistoryReceiver) == nil {
+            for (_, result) in dispatchedInThisTurn {
                 currentMessages.append(
-                    StructuredMessage(
-                        role: "assistant",
-                        parts: dispatchedInThisTurn.map { MessagePart.toolCall($0.0) }
-                    )
+                    StructuredMessage(role: "tool", parts: [.toolResult(result)])
                 )
-                for (_, result) in dispatchedInThisTurn {
-                    currentMessages.append(
-                        StructuredMessage(role: "tool", parts: [.toolResult(result)])
-                    )
-                }
             }
         }
     }

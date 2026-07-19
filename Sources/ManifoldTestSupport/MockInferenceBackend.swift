@@ -5,7 +5,7 @@ import ManifoldInference
 /// Configurable mock inference backend for testing.
 ///
 /// Shared across all test targets via the `ManifoldTestSupport` module.
-public final class MockInferenceBackend: InferenceBackend, ConversationHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
+public final class MockInferenceBackend: InferenceBackend, @unchecked Sendable {
     public var isModelLoaded: Bool = false
     public var isGenerating: Bool = false
 
@@ -247,6 +247,14 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
         lastSystemPrompt = systemPrompt
         lastConfig = config
         lastHints = hints
+        // History now arrives per-call on `hints.history` (#2312) rather than
+        // through the retired receiver setters. Mirror it into the observable
+        // properties tests assert on, only when non-empty (the old setters were
+        // only invoked with a non-empty turn history).
+        if !hints.history.isEmpty {
+            lastReceivedStructuredHistory = hints.history
+            lastReceivedHistory = hints.history.flattenedHistory
+        }
         if let error = shouldThrowOnGenerate { throw error }
         guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
 
@@ -443,22 +451,17 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
         resetConversationCallCount += 1
     }
 
-    // MARK: - ConversationHistoryReceiver
+    // MARK: - Observed history
 
+    /// Flattened `(role, content)` projection of the last non-empty
+    /// `hints.history` this backend received. Populated in ``generate`` (history
+    /// now arrives per-call on `hints.history`, #2312).
     public var lastReceivedHistory: [(role: String, content: String)]?
 
-    public func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        lastReceivedHistory = messages
-    }
-
-    /// Last structured history the coordinator handed to this backend.
+    /// Last structured history this backend received on `hints.history`.
     /// Tests assert on this to verify the structured threading path
     /// preserves thinking signatures end-to-end (#482, #604).
     public var lastReceivedStructuredHistory: [StructuredMessage]?
-
-    public func setStructuredHistory(_ messages: [StructuredMessage]) {
-        lastReceivedStructuredHistory = messages
-    }
 }
 
 /// Test-only gate that pauses ``MockInferenceBackend`` token emission until

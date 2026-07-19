@@ -1,21 +1,20 @@
 import Foundation
 
-/// Installs structured conversation history on backends that opt in, and
-/// provides the legacy flattened history shape for text-only consumers.
+/// Prompt-render projections over structured conversation history.
+///
+/// History no longer travels to backends through this type — it rides
+/// ``GenerationRuntimeHints/history`` on the `generate(…)` call stack (#2312).
+/// What remains here are the engine-internal projections the prompt-render and
+/// vision-gating paths use.
 enum GenerationHistoryInstaller {
-    /// Flattens ``StructuredMessage`` to the legacy `(role, content)` shape
-    /// for the genuine string-only ``ConversationHistoryReceiver`` seam.
+    /// Flattens ``StructuredMessage`` to the legacy `(role, content)` shape.
     ///
     /// This projection is **lossy by design**: it carries only `.text` parts.
     /// Thinking parts are dropped because they would either bloat the prompt
     /// with provider-internal reasoning or fail validation on the
     /// non-Anthropic providers that don't accept replayed thinking; tool-call /
     /// tool-result / image parts are dropped because the string seam cannot
-    /// represent them. That drop is *intentional redundancy*, not the
-    /// tool-rendering bug fixed in #1909: backends that need the structured
-    /// shape adopt ``StructuredHistoryReceiver`` and receive the unflattened
-    /// form *first* (see ``installHistory(on:structuredMessages:)``), so the
-    /// flattened form is only a fallback for backends that inspect strings.
+    /// represent them.
     ///
     /// - Important: This is **not** the projection used to render a prompt for a
     ///   templateless model. The prompt-render fallback in ``PromptRenderer``
@@ -76,21 +75,6 @@ enum GenerationHistoryInstaller {
                 if case .image = part { return true }
                 return false
             }
-        }
-    }
-
-    /// Hands history to whichever receiver protocol the backend conforms to.
-    ///
-    /// A backend may conform to both — ``StructuredHistoryReceiver`` is set
-    /// first so a backend that needs structured access (Anthropic) gets the
-    /// authoritative shape, and the flattened ``ConversationHistoryReceiver``
-    /// fallback is set afterwards for backends that only inspect strings.
-    static func installHistory(on backend: InferenceBackend, structuredMessages: [StructuredMessage]) {
-        if let structuredReceiver = backend as? StructuredHistoryReceiver {
-            structuredReceiver.setStructuredHistory(structuredMessages)
-        }
-        if let historyReceiver = backend as? ConversationHistoryReceiver {
-            historyReceiver.setConversationHistory(flatten(structuredMessages))
         }
     }
 }
