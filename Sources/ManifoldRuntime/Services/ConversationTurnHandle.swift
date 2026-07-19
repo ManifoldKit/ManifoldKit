@@ -160,4 +160,10 @@ package actor ConversationTurnOutcomeCompletion {
             waiters.append(continuation)
         }
     }
+
+    /// Non-blocking peek: whether the terminal outcome has been resolved yet.
+    /// Lets a test observe that `finalize` settles post-turn effects *before*
+    /// it resolves the awaited outcome (the #2329 store-teardown-race guard),
+    /// without racing `value()`'s suspension.
+    package var isCompleted: Bool { stored != nil }
 }

@@ -3,47 +3,20 @@ import ManifoldInference
 
 package struct ConversationTurnExecutor: Sendable {
     private let persistence: ConversationPersistencePort
-    /// Narrow view of `persistence` used by the shared generation inner loop
-    /// (`runGenerationTurn`, `fetchAndPrepareTurnHistory`). See
-    /// ``TurnPersistencePort`` — flow-specific setup (send/regenerate/edit/
+    /// Narrow view of `persistence` used by the shared generation inner loop.
+    /// See ``TurnPersistencePort`` — flow-specific setup (send/regenerate/edit/
     /// branch) keeps reading `persistence` directly since it needs the
     /// broader surface (message-batch mutations, session create/copy).
     private var turnPersistence: any TurnPersistencePort { persistence }
     private let inferenceService: InferenceService
-    private let pipeline: PromptContextPipeline?
-    private let budgetPlanner: ContextBudgetPlanner?
-    private let ragService: RAGService?
-    /// Best-effort usage persistence. `nil` when the host did not wire a store.
-    private let usageStore: (any UsageStore)?
-    private let registry: InFlightStreamRegistry
     /// Typed per-turn event seam. Wraps the host's `@Sendable` sink; the private
     /// `emit` helper forwards through it. See ``TurnEventEmitter``.
     private let events: TurnEventEmitter
-    private let emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
-    private let generationHooks: [any GenerationHook]
     /// Pre-turn / post-turn compress-and-replace seam. Owns both compression
     /// policies and the shared summarisation generate closure. See
     /// ``TurnCompressionCoordinator`` for the ordering contract the
     /// characterization goldens pin.
     private let compression: TurnCompressionCoordinator
-    private let hookTimeout: Duration
-    private let historyShaper: (any HistoryShaper)?
-    private let historyAssembler: HistoryAssembler
-    /// Optional richer provider that attaches host-app data to each turn from a
-    /// full metadata snapshot. When absent, ``legacyTurnContextProvider`` keeps
-    /// the old session-ID-only seam source-compatible.
-    private let hostTurnContextProvider: (any HostTurnContextProvider)?
-    /// Legacy session-ID-only host appData seam. Kept for source compatibility
-    /// and used only when ``hostTurnContextProvider`` is `nil`.
-    private let legacyTurnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
-    /// Mutable holder for `sessionToolSources` + `hookRegistry`. The executor
-    /// reads a snapshot once per turn (top of the send loop) so a host call
-    /// to ``ConversationRuntime/updateSessionToolSources(_:)`` /
-    /// ``ConversationRuntime/updateHookRegistry(_:)`` made between turns
-    /// takes effect on the next turn without rebuilding the runtime. See
-    /// ``RuntimeBindingsBox`` for the rationale (host-app demo swaps per
-    /// scenario card; full runtime rebuild would be overkill).
-    private let bindings: RuntimeBindingsBox
     /// Per-turn session-tool advertise/register/unregister seam. See
     /// ``SessionToolDispatchBinder`` and #1606 (register-before-enqueue).
     private let toolDispatch: SessionToolDispatchBinder
@@ -52,6 +25,14 @@ package struct ConversationTurnExecutor: Sendable {
     /// ``SessionBranchCoordinator`` — ``runBranchFlow`` keeps event emission
     /// and the generate-after decision, the turn-loop-shared concerns.
     private let sessionBranching: SessionBranchCoordinator
+    /// History + context assembly + RAG + system prompt + tool wiring.
+    /// See ``TurnPreparation`` (#1957 Priority 3).
+    private let preparation: TurnPreparation
+    /// Stream drain + single parameterized finalization path.
+    /// See ``TurnStreamFinalizer`` (#1957 Priority 3).
+    private let finalizer: TurnStreamFinalizer
+    private let registry: InFlightStreamRegistry
+    private let generationHooks: [any GenerationHook]
 
     init(
         persistence: ConversationPersistencePort,
@@ -75,14 +56,9 @@ package struct ConversationTurnExecutor: Sendable {
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
-        self.pipeline = pipeline
-        self.budgetPlanner = budgetPlanner
-        self.ragService = ragService
-        self.usageStore = usageStore
         self.registry = registry
         let events = TurnEventEmitter(emit)
         self.events = events
-        self.emptyResponseObserver = emptyResponseObserver
         self.generationHooks = generationHooks
         self.compression = TurnCompressionCoordinator(
             persistence: persistence,
@@ -91,14 +67,36 @@ package struct ConversationTurnExecutor: Sendable {
             preTurnPolicy: preTurnCompressionPolicy,
             postTurnPolicy: compressionPolicy
         )
-        self.hookTimeout = hookTimeout
-        self.historyShaper = historyShaper
-        self.historyAssembler = HistoryAssembler(providers: historyProviders)
-        self.hostTurnContextProvider = hostTurnContextProvider
-        self.legacyTurnContextProvider = turnContextProvider
-        self.bindings = bindings
-        self.toolDispatch = SessionToolDispatchBinder(inferenceService: inferenceService)
+        let toolDispatch = SessionToolDispatchBinder(inferenceService: inferenceService)
+        self.toolDispatch = toolDispatch
         self.sessionBranching = SessionBranchCoordinator(persistence: persistence)
+        let historyAssembler = HistoryAssembler(providers: historyProviders)
+        self.preparation = TurnPreparation(
+            persistence: persistence,
+            inferenceService: inferenceService,
+            pipeline: pipeline,
+            budgetPlanner: budgetPlanner,
+            ragService: ragService,
+            events: events,
+            historyShaper: historyShaper,
+            historyAssembler: historyAssembler,
+            hostTurnContextProvider: hostTurnContextProvider,
+            legacyTurnContextProvider: turnContextProvider,
+            bindings: bindings,
+            toolDispatch: toolDispatch
+        )
+        self.finalizer = TurnStreamFinalizer(
+            persistence: persistence,
+            inferenceService: inferenceService,
+            registry: registry,
+            events: events,
+            emptyResponseObserver: emptyResponseObserver,
+            generationHooks: generationHooks,
+            compression: self.compression,
+            usageStore: usageStore,
+            hookTimeout: hookTimeout,
+            toolDispatch: toolDispatch
+        )
     }
 
     // MARK: Send flow
@@ -402,7 +400,7 @@ package struct ConversationTurnExecutor: Sendable {
             }
             let preparedHistory: PreparedTurnHistory
             do {
-                preparedHistory = try await fetchAndPrepareTurnHistory(
+                preparedHistory = try await preparation.prepareHistory(
                     sessionID: sessionID,
                     turnKind: turnKind,
                     userPrompt: userPrompt
@@ -430,9 +428,8 @@ package struct ConversationTurnExecutor: Sendable {
     // MARK: Shared generation inner loop
     //
     // All four turn flows (send, regenerate, edit, branch) converge here
-    // after their respective setup steps. The caller is responsible for
-    // fetching a clean `history` slice; this method owns context assembly →
-    // enqueue → drain → finalise.
+    // after their respective setup steps. Glue only: prepare → enqueue →
+    // finalize. See ``TurnPreparation`` and ``TurnStreamFinalizer``.
 
     private func runGenerationTurn(
         sessionID: UUID,
@@ -442,242 +439,35 @@ package struct ConversationTurnExecutor: Sendable {
         handle: ConversationStreamHandle,
         outcomeCompletion: ConversationTurnOutcomeCompletion? = nil
     ) async {
-        let history = preparedHistory.history
-        let turnContext = preparedHistory.turnContext
-        let messageCount = turnContext.messageCount
-
-        // Context assembly hook. Always emit `.beforeContextAssembly` and
-        // `.contextAssembled` so adapters that pin against these events
-        // see them on every turn — even when no providers are registered
-        // (slots = []). Stable event ordering matters more than skipping
-        // a no-op emission.
-        let request = PromptContextRequest(
-            sessionID: sessionID,
-            messageCount: messageCount,
-            userInput: userPrompt
-        )
-        emit(.beforeContextAssembly(prompt: userPrompt, request: request))
-
-        var slots: [PromptSlot]
-        if let budgetPlanner {
-            // Weight-split path: ContextBudgetPlanner handles proportional
-            // allocation across providers with spillover. TurnConfig has no
-            // contextWindowSize today, so we pass 0 (unknown) as contextSize.
-            do {
-                slots = try await budgetPlanner.assemble(
-                    totalBudget: Int.max,
-                    contextSize: 0,
-                    context: turnContext
-                )
-            } catch {
-                let conversationError = ConversationError.contextAssembly(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
-                    sessionID: sessionID,
-                    handle: handle,
-                    error: conversationError
-                )
-                return
-            }
-        } else if let pipeline {
-            do {
-                slots = try await pipeline.assemble(
-                    totalBudget: Int.max,
-                    contextSize: 0,
-                    context: turnContext
-                )
-            } catch {
-                let conversationError = ConversationError.contextAssembly(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
-                    sessionID: sessionID,
-                    handle: handle,
-                    error: conversationError
-                )
-                return
-            }
-        } else {
-            slots = []
-        }
-
-        var ragCitations: [Citation] = []
-        // Structured retrieved passages for the embedded-Jinja `documents` block
-        // (#1967). A grounding template formats these directly; templates without
-        // a `documents` block still get the same passages via the system-prompt
-        // slots above. Empty when RAG didn't run or returned nothing.
-        var ragDocuments: [RetrievedDocument] = []
-        if let ragService, let userPrompt {
-            do {
-                let result = try await ragService.retrieve(query: userPrompt)
-                slots.append(contentsOf: result.slots)
-                ragCitations = result.citations
-                ragDocuments = result.documents
-            } catch {
-                Log.inference.warning("ConversationRuntime: RAG retrieval failed, continuing without retrieved context: \(error.localizedDescription)")
-            }
-        }
-
-        emit(.contextAssembled(slots: slots))
-
-        // Multi-agent session snapshot. Read once per turn so the active
-        // agent's system prompt, handoff detector, and message tagging all
-        // use the same state — a mid-turn write from another flow can't
-        // partially update us. `sessionRecord` is `nil` for sessionless
-        // flows or hosts without a SessionStore wired in; both paths are
-        // identical to the legacy single-agent surface.
-        var sessionRecord: ChatSession? = await turnPersistence.fetchSession(sessionID: sessionID)
-
-        // Snapshot the host-mutable bindings once per turn. A
-        // `ConversationRuntime.updateSessionToolSources(_:)` /
-        // `updateHookRegistry(_:)` call concurrent with this turn takes
-        // effect on the *next* turn — deliberately, so a long in-flight
-        // generation isn't reconfigured mid-stream.
-        let (turnSessionToolSources, turnHookRegistry) = await bindings.snapshot()
-
-        let activeAgent: AgentDefinition? = {
-            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
-            return sessionRecord.agents.first(where: { $0.id == activeID })
-        }()
-        let agentSiblings: [AgentDefinition] = {
-            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return [] }
-            return sessionRecord.agents.filter { $0.id != activeID }
-        }()
-
-        // Configure the handoff detector for this turn. The closure is
-        // captured by the GenerationQueue's loop construction; we always
-        // (re)set it so a host that mutates session.agents between turns
-        // sees the new registry on the next call without a clear/reset
-        // dance.
-        if let sessionRecord {
-            await inferenceService.setHandoffDetector { @Sendable callSessionID, call in
-                guard callSessionID == sessionRecord.id else {
-                    // Detector closures live on the queue but loop captures
-                    // a per-request sessionID; mismatches are defensive —
-                    // route through the regular dispatch path.
-                    return .regular(call)
+        let prepared: TurnPreparation.PreparedTurn
+        do {
+            prepared = try await preparation.prepareGeneration(
+                sessionID: sessionID,
+                userPrompt: userPrompt,
+                preparedHistory: preparedHistory,
+                config: config
+            )
+        } catch {
+            let conversationError: ConversationError
+            if let failure = error as? TurnPreparation.GenerationFailure {
+                switch failure {
+                case .contextAssembly(let underlying):
+                    conversationError = .contextAssembly(underlying)
                 }
-                return HandoffDetector.classify(call, in: sessionRecord)
-            }
-        } else {
-            await inferenceService.setHandoffDetector(nil)
-        }
-
-        // Pre-tool-use hook plumbing. The runtime owns the HookRegistry
-        // (Runtime can import Inference, not the other way round) so we
-        // adapt the registry into the closure shape the dispatch loop
-        // accepts. The adapter enforces the sanitize-only invariant and
-        // emits `.hookFired(event: "preToolUse", ...)` on every call.
-        if let turnHookRegistry {
-            // Pass the bare `@Sendable` sink (not a main-actor-capturing
-            // wrapper) so the adapter closure stays free of `@MainActor` state
-            // — invariant 5.
-            let sink = events.sink
-            let adapter = PreToolUseHookAdapter.make(
-                registry: turnHookRegistry,
-                eventEmitter: { event in sink(event) }
-            )
-            await inferenceService.setPreToolUseHook(adapter)
-        } else {
-            await inferenceService.setPreToolUseHook(nil)
-        }
-
-        // Build the assistant message slot up front so token deltas can
-        // reference its id from the first emitted token.
-        //
-        // Citations carry the provenance of any retrieved passages so the UI
-        // can render a "Sources" disclosure beneath the assistant bubble.
-        // `nil` when RAG didn't run for this turn (no service, no user
-        // prompt, or retrieval threw).
-        var assistantMessage = ChatMessage(
-            role: .assistant,
-            content: "",
-            sessionID: sessionID,
-            citations: ragCitations.isEmpty ? nil : ragCitations,
-            agentID: activeAgent?.id
-        )
-        let assistantID = assistantMessage.id
-        func writeFinalContent(_ text: String, into message: inout ChatMessage) {
-            message.contentParts.removeAll {
-                if case .text = $0 { return true }
-                return false
-            }
-            if !text.isEmpty {
-                message.contentParts.append(.text(text))
-            }
-        }
-
-        // Multi-agent: re-derive the active system prompt from the
-        // session's `activeAgentID` per turn (plan §Handoff semantics
-        // option (a)). Prior assistant messages keep their `agentID`
-        // attribution — no history rewrite. The handoff-instructions block
-        // is prepended so weak local models actually trigger transfers
-        // when they're appropriate (plan AI-review fix #2).
-        let basePrompt: String?
-        if let activeAgent {
-            let instructions = HandoffDetector.handoffInstructions(for: activeAgent, siblings: agentSiblings)
-            if instructions.isEmpty {
-                basePrompt = activeAgent.systemPrompt
             } else {
-                basePrompt = "\(instructions)\n\n\(activeAgent.systemPrompt)"
+                conversationError = .contextAssembly(error)
             }
-        } else {
-            basePrompt = config.systemPrompt
-        }
-        let composedSystemPrompt = composeSystemPrompt(basePrompt, slots: slots)
-
-        // kind.backendRole == nil means use record.role directly (.chat case);
-        // non-chat kinds supply a fixed role. Records with isWireVisible == false
-        // are filtered out before this map runs.
-        var structuredHistory: [StructuredMessage] = history
-            .filter { $0.kind.isWireVisible }
-            .map { record in
-                let role = record.kind.backendRole ?? record.role
-                return StructuredMessage(role: role.rawValue, parts: record.contentParts)
-            }
-
-        // Multi-agent boundary message (plan AI-review fix #3). When the
-        // last assistant turn in history was authored by a different agent
-        // than the one about to author this turn, prepend a synthetic
-        // system-role marker so the receiving agent sees an explicit
-        // context-handover boundary instead of "what is this conversation."
-        // Not persisted as a `ChatMessage` — transient per turn.
-        if let activeAgent,
-           let lastAssistant = history.last(where: { $0.role == .assistant }),
-           let previousAgentID = lastAssistant.agentID,
-           previousAgentID != activeAgent.id,
-           let previousAgent = sessionRecord?.agents.first(where: { $0.id == previousAgentID }) {
-            let boundary = HandoffDetector.boundaryMessage(
-                from: previousAgent,
-                to: activeAgent,
-                payload: nil
+            emit(.errorRaised(conversationError))
+            await completeOutcome(
+                outcomeCompletion,
+                sessionID: sessionID,
+                handle: handle,
+                error: conversationError
             )
-            structuredHistory.append(StructuredMessage(role: "system", parts: [.text(boundary)]))
+            return
         }
 
-        // Forward the registered tool surface so the backend's GenerationConfig
-        // gets `tools = registry.advertisedDefinitions` (legacy parity with
-        // GenerationQueue.enqueueGeneration). `advertisedDefinitions`
-        // already honours `advertisedToolNames` filtering — registering a
-        // tool but limiting which names go on the wire works without
-        // unregistering the executor. Fetched on the main actor because the
-        // registry and InferenceService accessors are both MainActor-isolated.
-        let advertisedTools: [ToolDefinition] = await toolDispatch.advertisedToolDefinitions(
-            sessionToolSources: turnSessionToolSources,
-            sessionRecord: sessionRecord
-        )
-
-        // Wire dispatch for the session tools we just advertised. Without this
-        // the model can *call* `generate_image` / `web_search` / etc. but the
-        // dispatch loop finds no registry executor and returns `unknownTool`
-        // (#1606). Registered after `advertisedTools` is computed so advertising
-        // is unaffected; unregistered once the stream fully drains below.
-        let registeredSessionToolNames = await toolDispatch.registerSessionToolExecutors(
-            sources: turnSessionToolSources,
-            sessionRecord: sessionRecord
-        )
-
+        let assistantID = prepared.assistantMessage.id
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
         do {
@@ -688,21 +478,27 @@ package struct ConversationTurnExecutor: Sendable {
             // on this path — same limitation as before TurnConfig composed
             // GenerationConfig, just now sourced from one place instead of
             // three duplicated fields.
+            //
+            // Per-request handoffDetector / preToolUseHook close the
+            // service-global race (#1494); preparation also installed them
+            // on the service for any legacy queue-level reader.
             (token, stream) = try await inferenceService.enqueueAsync(
-                structuredMessages: structuredHistory,
-                systemPrompt: composedSystemPrompt,
+                structuredMessages: prepared.structuredHistory,
+                systemPrompt: prepared.composedSystemPrompt,
                 temperature: config.generation.temperature,
                 topP: config.generation.topP,
                 repeatPenalty: config.generation.repeatPenalty,
                 maxOutputTokens: config.maxOutputTokens,
                 maxThinkingTokens: config.maxThinkingTokens,
-                tools: advertisedTools,
+                tools: prepared.advertisedTools,
                 priority: .userInitiated,
                 requestGroupID: sessionID,
-                documents: ragDocuments
+                handoffDetector: prepared.handoffDetector,
+                preToolUseHook: prepared.preToolUseHook,
+                documents: prepared.ragDocuments
             )
         } catch {
-            await toolDispatch.unregisterSessionToolExecutors(registeredSessionToolNames)
+            await toolDispatch.unregisterSessionToolExecutors(prepared.registeredSessionToolNames)
             let conversationError = ConversationError.inference(error)
             emit(.errorRaised(conversationError))
             await completeOutcome(
@@ -728,528 +524,16 @@ package struct ConversationTurnExecutor: Sendable {
 
         emit(.streamStarted(messageID: assistantID))
 
-        // Drain the stream, mirroring GenerationQueue's four features:
-        //   (a) token batcher — coalesce per-token events into UI-cadenced batches
-        //   (b) thinking-block disclosure — track/batch reasoning tokens and emit
-        //       thinkingStarted / thinkingUpdated / thinkingFinalized events
-        //   (c) tool dispatch — persist toolCall + toolResult content parts and
-        //       emit toolCallRequested / toolCallCompleted events
-        //   (d) loop detection — stop the stream when RepetitionDetector fires
-        var accumulator = GenerationStreamAccumulator()
-        var streamFailed: ConversationError?
-
-        var consumer = GenerationStreamConsumer(
-            loopDetectionEnabled: config.loopDetectionEnabled,
-            repetitionGuard: config.repetitionGuard
-        )
-        var batcher = StreamingTokenBatcher(
-            interval: config.streamingUpdateInterval,
-            maxBufferedCharacters: config.streamingBatchCharacterLimit
-        )
-        var thinkingBatcher = StreamingTokenBatcher(
-            interval: config.thinkingStreamingUpdateInterval,
-            maxBufferedCharacters: config.thinkingStreamingBatchCharacterLimit
-        )
-        var thinkingDisplayed = ""
-
-        // Whether the turn's progress/stall timeout fired. When set, the
-        // terminal path below reports `.timedOut` instead of the generic
-        // `.stop` failure reason so a consumer can tell an unresponsive
-        // backend apart from a real inference error.
-        var timedOut = false
-
-        // Progress/stall timeout (opt-in via `config.progressStallTimeout`).
-        // Reuse `GenerationStream`'s existing idle-stream primitive — the same
-        // one the structured-output reliability envelope uses — rather than a
-        // bespoke monitor: wrapping the queue's event stream makes iteration
-        // throw `InferenceError.idleTimeout` when no event arrives within the
-        // window. When the timeout is nil we iterate the queue's stream
-        // directly, keeping the default path byte-identical.
-        let timeoutWrapper: GenerationStream? = config.progressStallTimeout.map {
-            GenerationStream(stream.events, idleTimeout: $0)
-        }
-        let drainEvents = timeoutWrapper?.events ?? stream.events
-
-        do {
-            eventLoop: for try await event in drainEvents {
-                let cancelled = await isCancelled(handle: handle)
-                if cancelled { break }
-
-                switch consumer.handle(event) {
-                case .appendText(let text):
-                    accumulator.recordTextToken()
-                    if let batch = batcher.append(text, now: ContinuousClock.now) {
-                        accumulator.appendVisibleText(batch)
-                        emit(.tokenEmitted(messageID: assistantID, delta: batch))
-                        if consumer.shouldStopForLoop(content: accumulator.visibleText) {
-                            await inferenceService.cancelAsync(token)
-                            emit(.loopDetected(messageID: assistantID))
-                            break eventLoop
-                        }
-                    }
-
-                case .appendThinkingText(let text):
-                    if accumulator.appendThinkingText(text) {
-                        emit(.thinkingStarted(messageID: assistantID))
-                    }
-                    if let batch = thinkingBatcher.append(text, now: ContinuousClock.now) {
-                        thinkingDisplayed += batch
-                        emit(.thinkingUpdated(messageID: assistantID, partialText: thinkingDisplayed))
-                        if consumer.shouldStopForLoop(content: accumulator.currentThinkingText) {
-                            await inferenceService.cancelAsync(token)
-                            emit(.loopDetected(messageID: assistantID))
-                            break eventLoop
-                        }
-                    }
-
-                case .recordThinkingSignature(let signature):
-                    accumulator.recordThinkingSignature(signature)
-
-                case .finalizeThinking:
-                    if let batch = thinkingBatcher.flush(now: ContinuousClock.now) {
-                        thinkingDisplayed += batch
-                    }
-                    thinkingDisplayed = ""
-                    if let block = accumulator.finalizeThinking() {
-                        assistantMessage.contentParts.append(.thinking(block.text, signature: block.signature))
-                        emit(.thinkingFinalized(messageID: assistantID, text: block.text, signature: block.signature))
-                    }
-
-                case .dispatchToolCall(let call):
-                    assistantMessage.contentParts.append(.toolCall(call))
-                    emit(.toolCallRequested(call))
-
-                case .recordToolApproval(let callId):
-                    emit(.toolCallApproved(callId))
-
-                case .appendToolResult(let result):
-                    assistantMessage.contentParts.append(.toolResult(result))
-                    emit(.toolCallCompleted(result.callId, result))
-
-                case .toolIterationLimitExceeded(let iterations):
-                    emit(.errorRaised(.inference(
-                        InferenceError.inferenceFailure("Tool-call loop stopped after \(iterations) iterations.")
-                    )))
-
-                case .runTokenBudgetExceeded(let tokensUsed, let limit):
-                    emit(.errorRaised(.inference(
-                        InferenceError.inferenceFailure("Tool-call loop stopped after reaching the run-level token budget (used \(tokensUsed) of \(limit) tokens).")
-                    )))
-
-                case .recordUsage(let prompt, let completion, let cachedInputTokens, let cacheWriteTokens):
-                    accumulator.recordUsage(
-                        prompt: prompt,
-                        completion: completion,
-                        cachedInputTokens: cachedInputTokens,
-                        cacheWriteTokens: cacheWriteTokens
-                    )
-
-                case .recordHandoff(let handoff):
-                    // Persist the active-agent swap and emit the typed
-                    // ConversationEvent so adapters can render a handoff
-                    // chip. The next turn re-derives the system prompt
-                    // from the new activeAgentID and prepends the boundary
-                    // message into structuredHistory.
-                    if var current = sessionRecord {
-                        let previousID = current.activeAgentID
-                        current.activeAgentID = handoff.targetAgentID
-                        // Use the narrow single-column write rather than
-                        // rewriting the whole record: a concurrent edit to
-                        // another session field (title, agents, updatedAt) must
-                        // not be clobbered by this stale snapshot mid-stream.
-                        _ = await turnPersistence.setActiveAgent(
-                            sessionID: current.id,
-                            agentID: handoff.targetAgentID
-                        )
-                        sessionRecord = current
-                        emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
-                    } else {
-                        Log.inference.warning(
-                            "ConversationTurnExecutor: received handoff event but session record was unavailable; agent swap dropped"
-                        )
-                    }
-
-                case .generationCompleted:
-                    // Terminal "response finished" signal from the
-                    // orchestrator. The executor already finalizes the
-                    // assistant turn (persistence, `.responseCompleted`) when
-                    // the stream loop exits below, so there is no additional
-                    // timeline work to do here — the event exists so UI /
-                    // accessibility consumers that drive announcements off the
-                    // raw event stream get a single in-band "finished" signal.
-                    break
-
-                case .ignore:
-                    break
-                }
-            }
-        } catch let InferenceError.idleTimeout(timeout) where config.progressStallTimeout != nil {
-            // Progress/stall timeout fired: the backend went unresponsive for
-            // longer than `config.progressStallTimeout`. Cancel the in-flight
-            // backend work so it doesn't keep running after we stop consuming,
-            // then classify this as a distinct timed-out outcome (not a generic
-            // inference failure). A user cancel that raced ahead still wins —
-            // the `isCancelled` check below re-derives the terminal reason.
-            //
-            // The `where` clause scopes the `.timedOut` reclassification to
-            // turns that actually armed this executor's stall wrapper. An
-            // `InferenceError.idleTimeout` surfacing from a deeper layer (a
-            // cloud backend's own stream-idle policy) on a turn with no
-            // `progressStallTimeout` falls through to the generic catch below
-            // and stays a plain `.inference` failure — the turn-level
-            // timed-out outcome means "the turn's own stall knob fired",
-            // nothing broader.
-            await inferenceService.cancelAsync(token)
-            if await isCancelled(handle: handle) {
-                streamFailed = .cancelled
-            } else {
-                timedOut = true
-                streamFailed = .inference(InferenceError.idleTimeout(timeout))
-            }
-        } catch {
-            // Map CancellationError to `.cancelled` even when the registry has
-            // not yet observed `markCancelled` for this handle. `stopGeneration`
-            // schedules `runtime.cancel(_:)` on a separate Task, which can race
-            // the backend's CancellationError back here ahead of the registry
-            // flip; without this guard the adapter surfaces an error UI for a
-            // user-initiated cancel.
-            let cancelled = await isCancelled(handle: handle) || error is CancellationError
-            if cancelled {
-                streamFailed = .cancelled
-            } else {
-                streamFailed = .inference(error)
-            }
-        }
-
-        // Tool dispatch is complete once the stream has drained — the dispatch
-        // loop runs on the producer side as we consume events. Unregister the
-        // session-scoped executors now so the shared registry doesn't carry a
-        // stale ``ChatSession`` binding into the next turn (#1606). All
-        // remaining exit paths below are post-stream, so this is the single
-        // cleanup point alongside the enqueue-failure path above.
-        await toolDispatch.unregisterSessionToolExecutors(registeredSessionToolNames)
-
-        // Flush remaining buffered tokens (normal end, error, or cancellation).
-        if let batch = batcher.flush(now: ContinuousClock.now) {
-            accumulator.appendVisibleText(batch)
-            emit(.tokenEmitted(messageID: assistantID, delta: batch))
-        }
-
-        // Finalize an unclosed thinking block — the model may not emit a closing
-        // event if generation is cut short.
-        if accumulator.hasOpenThinkingBlock {
-            _ = thinkingBatcher.flush(now: ContinuousClock.now)
-            if let block = accumulator.finalizeThinking() {
-                assistantMessage.contentParts.append(.thinking(block.text, signature: block.signature))
-                emit(.thinkingFinalized(messageID: assistantID, text: block.text, signature: block.signature))
-            }
-        }
-
-        // Finalise the assistant message. If the stream produced no visible
-        // content and was not cancelled, drop it — matches the
-        // `ChatViewModel`/`GenerationQueue` rule that keeps the
-        // transcript clean of empty turns.
-        //
-        // Unregister before emitting terminal events so that any cancel(_:)
-        // called after this point is a documented no-op rather than a
-        // late-cancel that could still mark the handle cancelled and confuse
-        // observers.
-        let cancelled = await isCancelled(handle: handle)
-        if cancelled {
-            await inferenceService.cancelAsync(token)
-        }
-        await registry.unregister(handle: handle)
-
-        // Capture token usage off the active backend before any subsequent
-        // turn can overwrite it. The legacy `GenerationQueue` set this
-        // on the assistant `ChatMessage` immediately after the stream ended;
-        // the runtime path needs the same per-turn pinning so back-to-back
-        // sends do not cross-contaminate prompt/completion counts. Read on
-        // the main actor — `InferenceService.lastTokenUsage` is MainActor-
-        // isolated.
-        let usage: (promptTokens: Int, completionTokens: Int, cachedInputTokens: Int?, cacheWriteTokens: Int?)?
-        if let recordedUsage = accumulator.tokenUsage {
-            usage = recordedUsage
-        } else if let fallback = await readLastTokenUsage() {
-            // The fallback reads `TokenUsageProvider.lastUsage`, a
-            // prompt/completion-only tracker predating cache-token
-            // accounting — no cache fields available on this path.
-            usage = (fallback.promptTokens, fallback.completionTokens, nil, nil)
-        } else {
-            usage = nil
-        }
-        if let usage {
-            assistantMessage.promptTokens = usage.promptTokens
-            assistantMessage.completionTokens = usage.completionTokens
-            emit(.tokenUsageRecorded(
-                messageID: assistantID,
-                promptTokens: usage.promptTokens,
-                completionTokens: usage.completionTokens
-            ))
-        }
-
-        // True when the assistant message already carries tool-related content
-        // parts, even if no visible text tokens arrived. Used below so all
-        // three terminal paths (error, cancellation, normal) persist tool-only
-        // turns rather than silently dropping them.
-        let hasToolContent = assistantMessage.contentParts.contains { part in
-            if case .toolCall = part { return true }
-            if case .toolResult = part { return true }
-            return false
-        }
-
-        // True when the model emitted reasoning/thinking content this turn,
-        // even with no visible text and no tool calls. Without this, a
-        // thinking-only turn fell through `isEmptyResponse` (which only
-        // tracks visible tokens) and was silently dropped below — a real
-        // behavioral bug once thinking content parts are persisted (#2281).
-        let hasThinkingContent = accumulator.hasThinkingContent
-
-        let reason: FinishReason
-        if cancelled {
-            reason = .cancelled
-        } else if let streamFailed {
-            // An inference error during streaming. Persist whatever we have
-            // (parity with ChatViewModel.stopGeneration's partial-save
-            // behaviour) and emit error. We do not collapse this into
-            // `.streamFinished(reason: .empty)` because consumers need to
-            // know the run failed.
-            //
-            // A progress/stall timeout takes this same partial-save path but
-            // reports `.timedOut` so the terminal event and outcome stay
-            // distinguishable from a generic inference failure.
-            let failureReason: FinishReason = timedOut ? .timedOut : .stop
-            writeFinalContent(accumulator.visibleText, into: &assistantMessage)
-            if !accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent {
-                do {
-                    try await turnPersistence.insertMessage(assistantMessage)
-                    emit(.messageInserted(assistantMessage))
-                } catch {
-                    let persistenceError = ConversationError.persistence(error)
-                    emit(.errorRaised(persistenceError))
-                    emit(.errorRaised(streamFailed))
-                    emit(.streamFinished(messageID: assistantID, reason: failureReason))
-                    await completeOutcome(
-                        outcomeCompletion,
-                        sessionID: sessionID,
-                        handle: handle,
-                        assistantMessageID: assistantID,
-                        reason: failureReason,
-                        error: persistenceError,
-                        finalText: accumulator.visibleText,
-                        promptTokens: usage?.promptTokens,
-                        completionTokens: usage?.completionTokens
-                    )
-                    return
-                }
-            }
-            emit(.errorRaised(streamFailed))
-            emit(.streamFinished(messageID: assistantID, reason: failureReason))
-            await completeOutcome(
-                outcomeCompletion,
-                sessionID: sessionID,
-                handle: handle,
-                assistantMessageID: assistantID,
-                assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent) ? assistantMessage : nil,
-                reason: failureReason,
-                error: streamFailed,
-                finalText: accumulator.visibleText,
-                promptTokens: usage?.promptTokens,
-                completionTokens: usage?.completionTokens
-            )
-            return
-        } else if accumulator.isEmptyResponse && !hasToolContent && !hasThinkingContent {
-            reason = .empty
-        } else {
-            reason = .stop
-        }
-
-        if cancelled {
-            // On cancel, persist whatever streamed in so far if non-empty —
-            // matches ChatViewModel.stopGeneration's behaviour.
-            if !accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent {
-                writeFinalContent(accumulator.visibleText, into: &assistantMessage)
-                do {
-                    try await turnPersistence.insertMessage(assistantMessage)
-                    emit(.messageInserted(assistantMessage))
-                } catch {
-                    emit(.errorRaised(.persistence(error)))
-                    // Fall through and still emit streamFinished — the
-                    // cancellation outcome is the load-bearing signal here.
-                }
-            }
-            emit(.streamFinished(messageID: assistantID, reason: reason))
-            await completeOutcome(
-                outcomeCompletion,
-                sessionID: sessionID,
-                handle: handle,
-                assistantMessageID: assistantID,
-                assistantMessage: (!accumulator.visibleText.isEmpty || hasToolContent || hasThinkingContent) ? assistantMessage : nil,
-                reason: reason,
-                error: nil,
-                finalText: accumulator.visibleText,
-                promptTokens: usage?.promptTokens,
-                completionTokens: usage?.completionTokens
-            )
-            return
-        }
-
-        if reason == .empty {
-            // Drop the empty assistant message. No persistence happens; we
-            // emit the terminal events and return.
-            //
-            // Issue #965: a switch-cancel-resend race used to silently drop
-            // the resent turn here. The fix lives in
-            // `GenerationQueue.discardRequests(notMatching:)`, but a stream
-            // may still legitimately reach this branch (e.g. backend yields
-            // zero tokens for a malformed prompt). Log a warning with backend
-            // + sessionID so a future regression is observable instead of
-            // silent. Semantics are unchanged — this branch still drops.
-            let backendName = await readActiveBackendName()
-            Log.inference.warning(
-                "ConversationRuntime: dropping empty assistant turn (sessionID=\(sessionID, privacy: .private), backend=\(backendName ?? "nil", privacy: .public))"
-            )
-            emptyResponseObserver?(ConversationRuntime.EmptyResponseDiagnostic(sessionID: sessionID, backendName: backendName))
-            emit(.streamFinished(messageID: assistantID, reason: reason))
-            emit(.afterGeneration(messageID: assistantID, finalText: ""))
-            await completeOutcome(
-                outcomeCompletion,
-                sessionID: sessionID,
-                handle: handle,
-                assistantMessageID: assistantID,
-                reason: reason,
-                finalText: "",
-                promptTokens: usage?.promptTokens,
-                completionTokens: usage?.completionTokens
-            )
-            return
-        }
-
-        // Happy path: persist the assistant message.
-        writeFinalContent(accumulator.visibleText, into: &assistantMessage)
-        do {
-            try await turnPersistence.insertMessage(assistantMessage)
-            emit(.messageInserted(assistantMessage))
-        } catch {
-            let conversationError = ConversationError.persistence(error)
-            emit(.errorRaised(conversationError))
-            emit(.streamFinished(messageID: assistantID, reason: reason))
-            await completeOutcome(
-                outcomeCompletion,
-                sessionID: sessionID,
-                handle: handle,
-                assistantMessageID: assistantID,
-                reason: reason,
-                error: conversationError,
-                finalText: accumulator.visibleText,
-                promptTokens: usage?.promptTokens,
-                completionTokens: usage?.completionTokens
-            )
-            return
-        }
-
-        emit(.streamFinished(messageID: assistantID, reason: reason))
-        emit(.afterGeneration(messageID: assistantID, finalText: accumulator.visibleText))
-        await completeOutcome(
-            outcomeCompletion,
+        await finalizer.run(
             sessionID: sessionID,
+            prepared: prepared,
+            token: token,
+            stream: stream,
+            config: config,
             handle: handle,
-            assistantMessageID: assistantID,
-            assistantMessage: assistantMessage,
-            reason: reason,
-            finalText: accumulator.visibleText,
-            promptTokens: usage?.promptTokens,
-            completionTokens: usage?.completionTokens
-        )
-
-        // Touch session timestamp so the sidebar reflects the assistant
-        // turn's recency (parity with ChatViewModel's behaviour).
-        if await turnPersistence.touchSession(sessionID: sessionID) == false {
-            emit(.sessionTouchFailed(sessionID: sessionID))
-        }
-
-        // Best-effort usage recording. A persistence failure here must not
-        // abort the turn loop or surface an error to the user — the
-        // generation has already succeeded. Log the failure so it's
-        // observable in crash reporters and development builds.
-        if let usageStore, let usage {
-            // `activeBackendName` is the closest proxy for the model
-            // identifier available without threading extra state through
-            // enqueueAsync. The endpoint identity is now threaded from the
-            // lifecycle coordinator (#1207) so endpoint-backed turns attribute
-            // usage to the serving ``APIEndpointRecord``.
-            let backendName = await readActiveBackendName()
-            let endpointID = await readActiveEndpointID()
-            let record = TurnUsage(
-                sessionID: sessionID,
-                endpointID: endpointID,
-                modelIdentifier: backendName ?? "unknown",
-                promptTokens: usage.promptTokens,
-                completionTokens: usage.completionTokens,
-                cachedInputTokens: usage.cachedInputTokens,
-                cacheWriteTokens: usage.cacheWriteTokens
-            )
-            do {
-                try await usageStore.record(record)
-            } catch {
-                Log.persistence.warning(
-                    "UsageStore.record failed (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"
-                )
-            }
-        }
-
-        // Post-generation hooks: fire and await with a per-hook timeout.
-        // Not called on cancel, error, or empty-response paths (those all
-        // return before reaching this point).
-        if !generationHooks.isEmpty || turnHookRegistry != nil {
-            let completedTurn = CompletedTurn(
-                sessionID: sessionID,
-                assistantMessage: assistantMessage,
-                promptTokens: usage?.promptTokens,
-                completionTokens: usage?.completionTokens,
-                appData: turnContext.appData
-            )
-            for hook in generationHooks {
-                let hookLabel = "\(type(of: hook))"
-                let timeout = hookTimeout
-                await withHookTimeout(timeout, label: hookLabel) {
-                    await hook.postGeneration(completedTurn)
-                }
-            }
-
-            // B.2 unified hook seam: the same completed-turn payload also
-            // flows through the HookRegistry so hosts standardised on the
-            // registry (preToolUse/preCompact) get postGeneration without
-            // adopting the separate `GenerationHook` protocol. Observational
-            // like `.preCompact` — `block` is not honoured, there is no
-            // mutation channel once the turn has committed.
-            if let turnHookRegistry {
-                let input = HookInput(
-                    event: .postGeneration,
-                    sessionID: sessionID,
-                    completedTurn: completedTurn
-                )
-                let output = await turnHookRegistry.run(input)
-                emit(.hookFired(event: "postGeneration", sessionID: sessionID))
-                if output.block {
-                    Log.inference.warning(
-                        "postGeneration hook returned block:true — block is not honoured for postGeneration; the turn has already completed."
-                    )
-                }
-            }
-        }
-
-        // Post-turn compression: runs after the terminal `streamFinished` /
-        // `afterGeneration`, including the preCompact hook (observational in
-        // v1 — block:true is ignored). Failures log and continue; the
-        // generation has already succeeded. See ``TurnCompressionCoordinator``.
-        await compression.compressAfterTurnIfNeeded(
-            sessionID: sessionID,
-            promptTokens: usage?.promptTokens,
-            hookRegistry: turnHookRegistry
+            outcomeCompletion: outcomeCompletion
         )
     }
-
 
     // MARK: Helpers
 
@@ -1283,103 +567,6 @@ package struct ConversationTurnExecutor: Sendable {
         ))
     }
 
-    private enum TurnPreparationFailure: Error {
-        case persistence(any Error)
-        case contextAssembly(any Error)
-    }
-
-    private enum HistoryShaperValidationError: LocalizedError, Sendable {
-        case duplicateMessageIDs
-        case nonCanonicalMessageIDs
-        case orderViolation
-
-        var errorDescription: String? {
-            switch self {
-            case .duplicateMessageIDs:
-                return "HistoryShaper returned duplicate prompt-visible message IDs."
-            case .nonCanonicalMessageIDs:
-                return "HistoryShaper may only return canonical message IDs."
-            case .orderViolation:
-                return "HistoryShaper must preserve canonical record order for visible messages."
-            }
-        }
-    }
-
-    private func fetchAndPrepareTurnHistory(
-        sessionID: UUID,
-        turnKind: TurnKind,
-        userPrompt: String?
-    ) async throws -> PreparedTurnHistory {
-        let canonicalHistory: [ChatMessage]
-        do {
-            // Generation-bound fetch: heals orphan tool calls (turn cancelled
-            // or process killed mid-tool) before token estimation, the
-            // optional HistoryShaper, and context-window assembly run —
-            // otherwise the unanswered tool_use reproduces the #629 cloud-API
-            // rejection. See HealedHistoryFetch.swift for the seam contract.
-            canonicalHistory = try await turnPersistence.fetchHealedMessages(sessionID: sessionID)
-        } catch {
-            throw TurnPreparationFailure.persistence(error)
-        }
-
-        let request = TurnContextBuildRequest(
-            sessionID: sessionID,
-            turnKind: turnKind,
-            messageCount: canonicalHistory.count,
-            userInput: userPrompt,
-            conversationText: conversationText(for: canonicalHistory),
-            tokenizer: await readTokenizer()
-        )
-
-        let appData: (any Sendable)?
-        do {
-            appData = try await resolveTurnAppData(for: request)
-        } catch {
-            throw TurnPreparationFailure.contextAssembly(error)
-        }
-
-        let shapedHistory: [ChatMessage]
-        do {
-            shapedHistory = try await shapeHistory(
-                canonicalHistory,
-                sessionID: sessionID,
-                request: HistoryShapingRequest(
-                    turnContextRequest: request,
-                    appData: appData
-                )
-            )
-        } catch {
-            throw TurnPreparationFailure.contextAssembly(error)
-        }
-
-        let historyProviderContext = makeTurnContext(
-            sessionID: sessionID,
-            history: shapedHistory,
-            tokenizer: request.tokenizer,
-            appData: appData
-        )
-
-        let assembledHistory: [ChatMessage]
-        do {
-            assembledHistory = try await historyAssembler.assemble(
-                history: shapedHistory,
-                context: historyProviderContext
-            )
-        } catch {
-            throw TurnPreparationFailure.persistence(error)
-        }
-
-        return PreparedTurnHistory(
-            history: assembledHistory,
-            turnContext: makeTurnContext(
-                sessionID: sessionID,
-                history: assembledHistory,
-                tokenizer: request.tokenizer,
-                appData: appData
-            )
-        )
-    }
-
     private func failPreparedTurn(
         _ error: Error,
         sessionID: UUID,
@@ -1387,7 +574,7 @@ package struct ConversationTurnExecutor: Sendable {
         outcomeCompletion: ConversationTurnOutcomeCompletion?
     ) async {
         let conversationError: ConversationError
-        if let failure = error as? TurnPreparationFailure {
+        if let failure = error as? TurnPreparation.HistoryFailure {
             switch failure {
             case .persistence(let underlying):
                 conversationError = .persistence(underlying)
@@ -1404,150 +591,5 @@ package struct ConversationTurnExecutor: Sendable {
             handle: handle,
             error: conversationError
         )
-    }
-
-    private func resolveTurnAppData(
-        for request: TurnContextBuildRequest
-    ) async throws -> (any Sendable)? {
-        if let hostTurnContextProvider {
-            return try await hostTurnContextProvider.appData(for: request)
-        }
-        return legacyTurnContextProvider?(request.sessionID)
-    }
-
-    private func shapeHistory(
-        _ canonicalHistory: [ChatMessage],
-        sessionID: UUID,
-        request: HistoryShapingRequest
-    ) async throws -> [ChatMessage] {
-        guard let historyShaper else { return canonicalHistory }
-
-        let result = try await historyShaper.shape(history: canonicalHistory, request: request)
-        try validateShapedHistory(result.promptHistory, against: canonicalHistory)
-        emit(.historyShaped(sessionID: sessionID, diagnostics: result.diagnostics))
-        return result.promptHistory
-    }
-
-    private func validateShapedHistory(
-        _ promptHistory: [ChatMessage],
-        against canonicalHistory: [ChatMessage]
-    ) throws {
-        let canonicalIDs = canonicalHistory.map(\.id)
-        let canonicalIDSet = Set(canonicalIDs)
-        let promptIDs = promptHistory.map(\.id)
-        // Build a Set once for O(1) membership — reused for both duplicate
-        // detection and the canonicalVisibleIDs filter below (was O(n×m)).
-        let promptIDSet = Set(promptIDs)
-
-        guard promptIDSet.count == promptIDs.count else {
-            throw HistoryShaperValidationError.duplicateMessageIDs
-        }
-
-        guard promptIDs.allSatisfy(canonicalIDSet.contains) else {
-            throw HistoryShaperValidationError.nonCanonicalMessageIDs
-        }
-
-        // Order is preserved: we filter canonicalIDs (canonical ordering) using
-        // the set, so canonicalVisibleIDs retains canonical order as before.
-        let canonicalVisibleIDs = canonicalIDs.filter { promptIDSet.contains($0) }
-        guard canonicalVisibleIDs == promptIDs else {
-            throw HistoryShaperValidationError.orderViolation
-        }
-    }
-
-    private func makeTurnContext(
-        sessionID: UUID,
-        history: [ChatMessage],
-        tokenizer: (any TokenizerProvider)?,
-        appData: (any Sendable)?
-    ) -> TurnContext {
-        TurnContext(
-            sessionID: sessionID,
-            messageCount: history.count,
-            conversationText: conversationText(for: history),
-            tokenizer: tokenizer,
-            appData: appData
-        )
-    }
-
-    private func conversationText(for history: [ChatMessage]) -> String? {
-        guard !history.isEmpty else { return nil }
-        let joined = history
-            .compactMap { record -> String? in
-                let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
-                return text.isEmpty ? nil : text
-            }
-            .joined(separator: " ")
-            .lowercased()
-        return joined.isEmpty ? nil : joined
-    }
-
-    @MainActor
-    private func readTokenizer() async -> (any TokenizerProvider)? {
-        inferenceService.tokenizer
-    }
-
-    /// Runs `operation` with a timeout. If the operation doesn't finish within
-    /// `duration`, the operation task is cancelled and a warning is logged.
-    /// The hook receives a Task cancellation signal; it is not forcibly killed.
-    private func withHookTimeout(
-        _ duration: Duration,
-        label: String,
-        operation: @escaping @Sendable () async -> Void
-    ) async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                await operation()
-            }
-            group.addTask {
-                do {
-                    try await Task.sleep(for: duration)
-                    Log.inference.warning(
-                        "GenerationHook '\(label, privacy: .public)' timed out after \(duration, privacy: .public) and was cancelled"
-                    )
-                } catch {
-                    // Timer was cancelled because operation finished first — no action needed.
-                }
-            }
-            // Wait for whichever finishes first, then cancel the other.
-            await group.next()
-            group.cancelAll()
-        }
-    }
-
-    private func isCancelled(handle: ConversationStreamHandle) async -> Bool {
-        if Task.isCancelled { return true }
-        return await registry.isCancelled(handle)
-    }
-
-    @MainActor
-    private func readLastTokenUsage() async -> (promptTokens: Int, completionTokens: Int)? {
-        inferenceService.lastTokenUsage
-    }
-
-    @MainActor
-    private func readActiveBackendName() async -> String? {
-        inferenceService.activeBackendName
-    }
-
-    @MainActor
-    private func readActiveEndpointID() async -> UUID? {
-        inferenceService.activeEndpointID
-    }
-
-
-    private func composeSystemPrompt(_ base: String?, slots: [PromptSlot]) -> String? {
-        let slotText = slots
-            .filter { $0.isEnabled }
-            .map(\.content)
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
-        switch (base, slotText.isEmpty) {
-        case (nil, true): return nil
-        case (nil, false): return slotText
-        case (let base?, true): return base.isEmpty ? nil : base
-        case (let base?, false):
-            return base.isEmpty ? slotText : "\(base)\n\n\(slotText)"
-        }
     }
 }
