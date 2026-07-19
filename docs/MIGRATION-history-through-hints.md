@@ -1,5 +1,8 @@
 # Migration: conversation history moves onto `GenerationRuntimeHints.history` (#2312)
 
+**Audience:** consumer
+**Status:** living
+
 **Applies to:** anyone implementing a custom `InferenceBackend`, or code that
 installed conversation history on a backend before calling `generate(…)`.
 
