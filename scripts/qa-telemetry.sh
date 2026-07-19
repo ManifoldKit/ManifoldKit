@@ -7,7 +7,7 @@ set -euo pipefail
 # the repo optimises hard for "fewer, larger CI runs" (see CLAUDE.md "Issue &
 # PR hygiene") but never measured the levers it tunes. This script queries the
 # GitHub Actions API for
-# the trailing window of CI runs and computes three numbers:
+# the trailing window of CI runs and computes:
 #
 #   • total      — how many CI runs the window produced.
 #   • rerun_tax  — fraction of runs whose latest attempt > 1 (the "re-run tax";
@@ -15,9 +15,13 @@ set -euo pipefail
 #   • avg_ttg    — average time-to-green per commit (head SHA): wall-clock from
 #                  the first run opened on a SHA to the first successful run on
 #                  that SHA. Only computed where a success exists.
+#   • selective_hit_rate (#2326 item 5) — fraction of sampled PR runs that took
+#                  mode=selective vs mode=full (NONE/skip reported separately).
+#                  Sampled from Actions logs; degrades to n/a on API failure.
 #
-# Output: a Markdown block appended to $GITHUB_STEP_SUMMARY (when set) and one
-# compact JSON row appended to docs/ci-metrics.jsonl for longitudinal tracking.
+# Output: a Markdown block appended to $GITHUB_STEP_SUMMARY (when set) and
+# compact JSON row(s) appended to docs/ci-metrics.jsonl for longitudinal
+# tracking (base metrics row + optional selective_hit_rate row).
 #
 # Resilience is deliberate: a missing field, an empty API response, or a
 # never-green SHA must NOT abort the run. Every derived metric degrades to a
@@ -109,13 +113,107 @@ else
 fi
 scope="${BRANCH:-all branches}"
 
-# Longitudinal sink: one compact JSON object per invocation.
+# ── Selective-path hit rate (#2326 item 5) ──────────────────────────────────
+# Sample recent pull_request runs' logs for the "Test mode: selective|full"
+# line emitted by ci.yml's Compute test mode step. Degrades to nulls on any
+# failure (rate limit, missing log, no matches) — never aborts the job.
+#
+# Tunables:
+#   SELECTIVE_SAMPLE_LIMIT  max PR runs to pull logs for (default 12)
+#   SELECTIVE_BUDGET_SECS   wall-clock budget for the whole sample loop
+#                           (default 90). Stops early so a slow Actions log
+#                           API cannot blow the 10-min telemetry job.
+SELECTIVE_SAMPLE_LIMIT="${SELECTIVE_SAMPLE_LIMIT:-12}"
+SELECTIVE_BUDGET_SECS="${SELECTIVE_BUDGET_SECS:-90}"
+sel_selective=0
+sel_full=0
+sel_skip=0
+sel_sampled=0
+sel_ratio=""
+sel_note="n/a"
+sel_budget_hit=0
+
+pr_run_ids="$(printf '%s' "$runs" | jq -r \
+  --argjson cutoff "$cutoff_epoch" \
+  --argjson limit "$SELECTIVE_SAMPLE_LIMIT" '
+    (if (type == "array") then . else [] end)
+    | map(select((.createdAt // "") != ""
+                 and ((.createdAt | fromdateiso8601) >= $cutoff)
+                 and (.event // "") == "pull_request"
+                 and ((.conclusion // "") == "success" or (.conclusion // "") == "failure")))
+    | .[:$limit]
+    | .[].databaseId // empty
+  ' 2>/dev/null || true)"
+
+sel_started="$(date -u +%s)"
+if [ -n "$pr_run_ids" ]; then
+  while IFS= read -r rid; do
+    [ -z "$rid" ] && continue
+    now="$(date -u +%s)"
+    if [ $((now - sel_started)) -ge "$SELECTIVE_BUDGET_SECS" ]; then
+      sel_budget_hit=1
+      break
+    fi
+    # Full run log; tolerate missing logs / rate limits. Budget checked
+    # between iterations (one slow call can still overrun SELECTIVE_BUDGET_SECS).
+    mode_line="$(gh run view "$rid" --log 2>/dev/null \
+      | grep -E 'Test mode: (selective|full)|Tier 0 returned NONE|No test-job suites affected' \
+      | head -n 1 || true)"
+    [ -z "$mode_line" ] && continue
+    sel_sampled=$((sel_sampled + 1))
+    case "$mode_line" in
+      *"Test mode: selective"*) sel_selective=$((sel_selective + 1)) ;;
+      *"Test mode: full"*)      sel_full=$((sel_full + 1)) ;;
+      *NONE*|*"No test-job suites affected"*) sel_skip=$((sel_skip + 1)) ;;
+    esac
+  done <<EOF
+$pr_run_ids
+EOF
+fi
+
+sel_decided=$((sel_selective + sel_full + sel_skip))
+if [ "$sel_decided" -gt 0 ]; then
+  # Hit rate = selective / (selective + full). NONE/skip is reported separately
+  # — it is a win, not a selective miss.
+  sel_base=$((sel_selective + sel_full))
+  if [ "$sel_base" -gt 0 ]; then
+    sel_ratio="$(awk -v s="$sel_selective" -v b="$sel_base" 'BEGIN { printf "%.3f", s/b }')"
+  else
+    sel_ratio="0"
+  fi
+  sel_note="sampled=${sel_sampled} selective=${sel_selective} full=${sel_full} none_skip=${sel_skip}"
+  if [ "$sel_budget_hit" -eq 1 ]; then
+    sel_note="${sel_note} budget_hit"
+  fi
+else
+  sel_ratio=""
+  sel_note="no Test-mode lines in sampled PR logs"
+fi
+
+# Longitudinal sink: ONE compact JSON object per invocation. Selective fields
+# are folded into the base row so qa-telemetry.yml's `tail -n 1` still captures
+# the full series (a sibling row would clobber the base metrics on the
+# ci-metrics branch).
 row="$(printf '%s' "$metrics" | jq -c \
         --arg at "$generated_at" \
         --arg wf "$WORKFLOW_FILE" \
         --argjson days "$DAYS" \
         --arg scope "$scope" \
-        '{generated_at:$at, workflow:$wf, window_days:$days, branch_scope:$scope} + .')"
+        --argjson sel_sampled "$sel_sampled" \
+        --argjson sel_selective "$sel_selective" \
+        --argjson sel_full "$sel_full" \
+        --argjson sel_none_skip "$sel_skip" \
+        --arg sel_ratio "${sel_ratio}" \
+        --arg sel_note "$sel_note" \
+        '{generated_at:$at, workflow:$wf, window_days:$days, branch_scope:$scope} + .
+         + {
+             selective_sampled:$sel_sampled,
+             selective_count:$sel_selective,
+             selective_full_count:$sel_full,
+             selective_none_skip:$sel_none_skip,
+             selective_ratio:(if $sel_ratio == "" then null else ($sel_ratio|tonumber) end),
+             selective_note:$sel_note
+           }')"
 mkdir -p "$(dirname "$METRICS_FILE")"
 printf '%s\n' "$row" >> "$METRICS_FILE"
 
@@ -132,8 +230,14 @@ summary_out="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
   echo "| Re-run tax (attempt > 1) | ${rerun_count} (${rerun_ratio}) |"
   echo "| Commits reaching green | ${green_commits} |"
   echo "| Avg time-to-green | ${avg_ttg_human} |"
+  echo "| Selective hit rate | ${sel_ratio:-n/a} (${sel_note}) |"
   echo ""
   echo "Appended to \`${METRICS_FILE}\`."
+  echo ""
+  echo "_Selective hit rate (#2326 item 5): fraction of PR runs that took"
+  echo "\`mode=selective\` among those that decided selective-vs-full. If"
+  echo "sustained &lt;~0.25, tighten hub expansion in \`affected-suites.sh\` or"
+  echo "accept full-as-default and simplify Tier 2._"
 } >> "$summary_out"
 
-echo "qa-telemetry: total=${total} rerun=${rerun_count}/${total} (${rerun_ratio}) avg_ttg=${avg_ttg_human}"
+echo "qa-telemetry: total=${total} rerun=${rerun_count}/${total} (${rerun_ratio}) avg_ttg=${avg_ttg_human} selective_ratio=${sel_ratio:-n/a} (${sel_note})"

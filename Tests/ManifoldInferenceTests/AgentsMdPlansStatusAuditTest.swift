@@ -49,9 +49,12 @@ import Foundation
 /// the checkout is shallow, before ever trusting `git log`'s output. The
 /// check can only ever suppress a false positive, never manufacture one from
 /// missing/truncated history — but that means the staleness rule is
-/// currently enforced only where the checkout is a full clone (`scripts/test.sh
-/// --profile local`), not on CI's shallow `actions/checkout`. See
-/// `Tests/README.md` for the fetch-depth follow-up this implies for CI.
+/// currently enforced where the checkout is a full clone: local
+/// `scripts/test.sh --profile local`, and nightly-slow-tests.yml (which
+/// checks out `fetch-depth: 0` and runs ManifoldInferenceTests). Per-PR CI
+/// deliberately uses a shallow checkout (#2326 item 9) — the Status:-presence
+/// half of this audit still runs there; only the age-based stale check is
+/// deferred to nightly.
 final class AgentsMdPlansStatusAuditTest: XCTestCase {
 
     /// A non-"Active" plan whose most recent commit touching it is older

@@ -23,34 +23,20 @@ import Foundation
 /// a doc-comment *mention* of an audit no longer counts as coverage, only a
 /// real `func test_sabotage...` declaration does.
 ///
-/// ## When this actually runs (read before trusting a green PR)
+/// ## When this actually runs
 ///
-/// This audit enumerates `Tests/**` from disk at runtime. That is a filesystem
-/// dependency the Tier 2 selective-CI resolver (`scripts/affected-suites.sh`,
-/// issue #1590) cannot see: it reasons about the static SwiftPM import graph,
-/// and `ManifoldCoreTests` (this file's target) does not depend on whatever
-/// target a new audit file lands in. So on a `pull_request` run, this audit
-/// executes only if `ManifoldCoreTests` happens to be in the affected set —
-/// which, for the PR shape it exists to police (a new `*Audit*.swift` added to
-/// some *other* test target), it usually is not.
+/// This audit enumerates `Tests/**` from disk at runtime — a filesystem
+/// dependency the Tier 2 selective-CI resolver (`scripts/affected-suites.sh`)
+/// cannot see from the import graph alone. Since #2290 / #2326 the resolver
+/// **force-includes `ManifoldCoreTests`** (this target) whenever any
+/// `Sources/**` or `Tests/**` path is in the affected set, so a new
+/// `*Audit*.swift` without a `test_sabotage…` method fails on the PR head,
+/// not only at `merge_group`.
 ///
-/// **A green PR check is therefore not evidence that this audit passed.** It
-/// may simply not have run. This was proven live on PR #2212: the audit fails
-/// on that head (`swift test --filter AuditSabotageCoverageAuditTest` → exit 1),
-/// while its PR CI went green having run only `ManifoldPersistenceSwiftDataTests`.
-///
-/// What *is* guaranteed: `merge_group` is not `pull_request`, so the resolver
-/// emits FULL there (`affected-suites.sh`, event-name gate) and the queue runs
-/// this audit on every PR before the squash. Nothing merges without it. The cost
-/// of the gap is therefore red-at-queue latency, not a merged hole — the same
-/// accepted trade-off documented at the `Compute test mode` step in
-/// `.github/workflows/ci.yml`, of which this audit is one instance.
-///
-/// Do not restate a per-PR guarantee here without checking the resolver first:
-/// the previous version of this comment claimed "a new audit without a sabotage
-/// test fails CI in the PR that adds it", which is false and is why #2212 was
-/// authored, reviewed, and read as compliant while carrying a failing audit.
-/// See issue #2290.
+/// `merge_group` still runs FULL as a belt-and-suspenders backstop. Do not
+/// remove the force-include without restoring an equivalent fail-earlier path
+/// (see issue #2290 — forcing `ManifoldBackendsTests` is not an option; it
+/// routes to a full-bundle compile and can make selective slower than full).
 ///
 /// Deliberately not itself sabotage-covered by a *file-planting* test:
 /// testing "does this coverage-checker detect an uncovered audit" only needs
