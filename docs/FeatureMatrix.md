@@ -6,6 +6,13 @@
 Generated from `Sources/ManifoldKit/FeatureMatrix.swift` by `scripts/render-feature-matrix.sh`.
 Do not edit by hand — re-run the script.
 
+> **Remaining SwiftPM traits only.** This table lists the opt-in traits still
+> declared in `Package.swift` (`Macros`, `Server`, and WWDC stubs) — it is
+> **not** a full product or backend capability map. Most capabilities compile
+> unconditionally in core, or ship in the `manifold-mlx` / `manifold-llama`
+> companion packages. For the real surface see [AGENTS.md](../AGENTS.md)
+> (products) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md).
+
 | Trait | Description | Capabilities Unlocked |
 |-------|-------------|-----------------------|
 | `CoreAI` | Stub: Apple's CoreAI tensor runtime — confirmed a DEAD END for ManifoldKit. It consumes a proprietary .aimodel format (AIModel/InferenceFunction/NDArray) with no LanguageModel/ModelExecutor protocol and no GGUF/MLX path, so it is not a backend seam. Name is misleading; rename/retire in a later real-code PR. Pure no-op stub. | _(none — harness/build lever)_ |

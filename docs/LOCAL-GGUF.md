@@ -25,10 +25,10 @@ goes wrong when discovery or load fails. Closes [#1468](https://github.com/Manif
    entries always come first.
 
 You don't need to choose between them — put models in either and the sheet
-will surface both. Hosts that want strict app-scoped semantics (no
-`~/Documents/Models` fallback) can construct `ModelStorageService` via the
-internal `init(includeUserDocumentsFallback:)` overload from their own
-module.
+will surface both. The public `ModelStorageService` default **includes** the
+Documents fallback. The `init(includeUserDocumentsFallback:)` overload is
+`package` access only — host apps in external modules cannot call it; opting
+out of the Documents scan is an in-package concern, not a consumer API.
 
 ## Actionable load errors
 

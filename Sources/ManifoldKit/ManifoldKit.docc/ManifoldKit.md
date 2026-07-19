@@ -10,16 +10,18 @@ Most AI-chat libraries hand you a single layer — a UI kit, an engine wrapper, 
 a thin cloud client — and leave the rest as an exercise. `ManifoldKit` ships the
 assembled product: import one umbrella module and you get a SwiftUI `ChatView`,
 the `ConversationRuntime` turn loop (send / regenerate / edit / cancel /
-branch), SwiftData persistence, model download & management UI, and inference
-backends spanning on-device (MLX, llama.cpp, Apple Foundation Models) and cloud
-(OpenAI, Anthropic, Ollama, LAN) — all behind one `InferenceBackend` protocol.
-Swapping engines is a config change, not a rewrite.
+branch), SwiftData persistence, and the in-core inference backends (Apple
+Foundation Models, OpenAI, Anthropic, Ollama / LAN) — all behind one
+`InferenceBackend` protocol. Swapping engines is a config change, not a rewrite.
 
 `import ManifoldKit` re-exports the 80%-case modules — the inference surface,
-`ConversationRuntime`, persistence, the backends, and the chat UI. Specialised
-modules stay explicit imports: `ManifoldMCP` (Model Context Protocol),
-`ManifoldVoice` (speech I/O), `ManifoldUIModelManagement` (the model browser),
-and `ManifoldAppIntents`.
+`ConversationRuntime`, persistence, the in-core backend families, and the chat
+UI. Specialised modules stay explicit imports: `ManifoldUIModelManagement`
+(model browser / download UI), `ManifoldMCP` (Model Context Protocol),
+`ManifoldVoice` (speech I/O), and `ManifoldAppIntents`. On-device MLX and
+llama.cpp inference ship as the separate `manifold-mlx` / `manifold-llama`
+companion packages — add the package and pass its registrar to
+`quickStart(backends:)`; they are not pulled in by the umbrella import alone.
 
 ### Hello World
 

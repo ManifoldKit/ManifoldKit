@@ -148,6 +148,13 @@ public enum FeatureMatrix {
         lines.append("Generated from `Sources/ManifoldKit/FeatureMatrix.swift` by `scripts/render-feature-matrix.sh`.")
         lines.append("Do not edit by hand — re-run the script.")
         lines.append("")
+        lines.append("> **Remaining SwiftPM traits only.** This table lists the opt-in traits still")
+        lines.append("> declared in `Package.swift` (`Macros`, `Server`, and WWDC stubs) — it is")
+        lines.append("> **not** a full product or backend capability map. Most capabilities compile")
+        lines.append("> unconditionally in core, or ship in the `manifold-mlx` / `manifold-llama`")
+        lines.append("> companion packages. For the real surface see [AGENTS.md](../AGENTS.md)")
+        lines.append("> (products) and [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md).")
+        lines.append("")
         lines.append("| Trait | Description | Capabilities Unlocked |")
         lines.append("|-------|-------------|-----------------------|")
         for trait in traits.sorted(by: { $0.name.lowercased() < $1.name.lowercased() }) {

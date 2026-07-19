@@ -87,43 +87,77 @@ failures=0
 
 # ── Check 1: install-pin freshness ────────────────────────────────────────
 #
-# Every `from: "X.Y.Z"` line in README.md must reference the current release.
+# Every core `ManifoldKit.git` `from: "X.Y.Z"` pin in the scanned consumer-facing
+# docs must reference the current release in version.txt. Companion package pins
+# (`manifold-llama.git` / `manifold-mlx.git`) are ignored — they track those
+# packages' own versions.
+#
 # We do NOT match `exact: "..."`, `branch: "..."`, or `revision: "..."` —
-# those are intentional pins for specific scenarios. Only the open-ended
-# `from:` declarations are required to match `version.txt`.
+# those are intentional pins for specific scenarios. Historical migration docs
+# (docs/MIGRATION-*.md, docs/plans/**) are intentionally excluded.
 echo
-echo "── Check: README install pins match version.txt ─────────────────────"
+echo "── Check: core ManifoldKit install pins match version.txt ───────────"
 
-# Grep with -n for line numbers; awk to extract the version literal.
-# `mapfile` is bash 4+; macOS ships bash 3.2, so use a portable read loop.
-pin_lines=()
-while IFS= read -r line; do
-    pin_lines+=("$line")
-done < <(grep -nE '^\s*from:\s*"[0-9]+\.[0-9]+\.[0-9]+' "${README_PATH}" || true)
-
-if [[ ${#pin_lines[@]} -eq 0 ]]; then
-    echo "::warning::README contains no \`from: \"X.Y.Z\"\` install pins. Did the install snippet move?"
-fi
+# Same file set as Check 6 (marker presence) plus SECURITY / APP-EVAL / DocC.
+pin_scan_files=("${README_PATH}")
+for f in \
+    "${REPO_ROOT}"/docs/QUICKSTART*.md \
+    "${REPO_ROOT}/docs/SWIFTUI-MULTI-SESSION.md" \
+    "${REPO_ROOT}/docs/APP-EVAL.md" \
+    "${REPO_ROOT}/SECURITY.md" \
+    "${REPO_ROOT}/Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPGettingStarted.md"
+do
+    [[ -f "$f" ]] && pin_scan_files+=("$f")
+done
 
 bad_pins=0
-for entry in "${pin_lines[@]}"; do
-    line_no="${entry%%:*}"
-    line_text="${entry#*:}"
-    pinned_version=$(printf '%s' "${line_text}" | sed -nE 's/.*from:\s*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p')
-    if [[ -z "${pinned_version}" ]]; then
-        continue
-    fi
-    if [[ "${pinned_version}" != "${CURRENT_VERSION}" ]]; then
-        echo "::error file=README.md,line=${line_no}::Install pin \`from: \"${pinned_version}\"\` does not match version.txt (${CURRENT_VERSION})."
-        bad_pins=$((bad_pins + 1))
-    fi
+for f in "${pin_scan_files[@]}"; do
+    rel="${f#"${REPO_ROOT}/"}"
+    # Shape-agnostic: same-line url+from, or ManifoldKit.git url followed within
+    # 4 lines by a from: pin. Companion urls are ignored.
+    while IFS= read -r hit; do
+        [[ -z "$hit" ]] && continue
+        line_no="${hit%%:*}"
+        pinned_version="${hit#*:}"
+        if [[ "${pinned_version}" != "${CURRENT_VERSION}" ]]; then
+            echo "::error file=${rel},line=${line_no}::Core \`ManifoldKit.git\` install pin \`from: \"${pinned_version}\"\` does not match version.txt (${CURRENT_VERSION})."
+            bad_pins=$((bad_pins + 1))
+        fi
+    done < <(awk '
+        function isCoreUrl(s) { return (s ~ /ManifoldKit\.git/) }
+        function isCompanionUrl(s) { return (s ~ /manifold-(llama|mlx)\.git/) }
+        # BSD awk (macOS) has no match(..., array) — extract via RSTART/RLENGTH.
+        function extractFrom(s,   t) {
+            if (match(s, /from:[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/)) {
+                t = substr(s, RSTART, RLENGTH)
+                sub(/from:[[:space:]]*"/, "", t)
+                sub(/"/, "", t)
+                return t
+            }
+            return ""
+        }
+        {
+            if (isCompanionUrl($0)) { waiting = 0; next }
+            if (isCoreUrl($0)) {
+                v = extractFrom($0)
+                if (v != "") { print FNR ":" v; waiting = 0; next }
+                waiting = 1; window = 4; next
+            }
+            if (waiting) {
+                v = extractFrom($0)
+                if (v != "") { print FNR ":" v; waiting = 0; next }
+                if ($0 ~ /\.package\(/ || isCompanionUrl($0)) { waiting = 0; next }
+                window--; if (window <= 0) waiting = 0
+            }
+        }
+    ' "$f")
 done
 
 if [[ ${bad_pins} -gt 0 ]]; then
     failures=$((failures + 1))
-    echo "Found ${bad_pins} stale install pin(s). Bump them to ${CURRENT_VERSION}."
+    echo "Found ${bad_pins} stale core install pin(s). Bump them to ${CURRENT_VERSION}."
 else
-    echo "✓ All \`from:\` install pins match version.txt (${CURRENT_VERSION})."
+    echo "✓ All core \`ManifoldKit.git\` \`from:\` install pins match version.txt (${CURRENT_VERSION})."
 fi
 
 # ── Check 2: deleted API references ───────────────────────────────────────
@@ -398,10 +432,16 @@ echo
 echo "── Check: ManifoldKit install pins carry x-release-please-version ────"
 
 # Build the file list: README + every existing docs/QUICKSTART*.md + the
-# multi-session guide. A glob that matches nothing expands to itself, so we
-# test -f before scanning.
+# multi-session guide + APP-EVAL + SECURITY + MCP getting-started DocC.
+# A glob that matches nothing expands to itself, so we test -f before scanning.
 marker_scan_files=("${README_PATH}")
-for f in "${REPO_ROOT}"/docs/QUICKSTART*.md "${REPO_ROOT}/docs/SWIFTUI-MULTI-SESSION.md"; do
+for f in \
+    "${REPO_ROOT}"/docs/QUICKSTART*.md \
+    "${REPO_ROOT}/docs/SWIFTUI-MULTI-SESSION.md" \
+    "${REPO_ROOT}/docs/APP-EVAL.md" \
+    "${REPO_ROOT}/SECURITY.md" \
+    "${REPO_ROOT}/Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPGettingStarted.md"
+do
     [[ -f "$f" ]] && marker_scan_files+=("$f")
 done
 

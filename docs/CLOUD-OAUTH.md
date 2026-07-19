@@ -136,8 +136,12 @@ backend.configure(
     modelName: "claude-opus-4-5"
 )
 
-// 4. Load it (marks `isModelLoaded = true`).
-try await backend.loadModel(from: nil, plan: .init(modelInfo: .init(id: "claude-opus-4-5")))
+// 4. Load it (marks `isModelLoaded = true`). URL is non-optional; for cloud
+// backends pass the same base URL configure already set, with ModelLoadPlan.cloud().
+try await backend.loadModel(
+    from: URL(string: "https://api.anthropic.com")!,
+    plan: .cloud()
+)
 ```
 
 From this point, every call to `backend.generate(prompt:systemPrompt:config:)`

@@ -419,8 +419,9 @@ lines.append(">")
 lines.append("> **Approx. note:** Binary-delta and build-time columns are approximations measured on one machine")
 lines.append("> at one point in time. Rerun `scripts/measure-trait-costs.sh` after any heavy dependency bump.")
 lines.append(">")
-lines.append("> **Resolution note:** Checkout weights are fetched *regardless of trait set* — SwiftPM traits gate")
-lines.append("> compilation and linking, not dependency resolution. See the \"Why the clone is heavy\" section below.")
+lines.append("> **Resolution note:** For the *remaining* opt-in traits (`Server` / `Macros`), checkout weights")
+lines.append("> still resolve when those traits are enabled. Heavy ML (mlx-swift / llama.cpp) is companion-optional")
+lines.append("> since v0.48 — core never fetches it. See the hand-written section below.")
 lines.append("")
 
 // Table header
@@ -446,7 +447,7 @@ for trait in traits {
 }
 
 lines.append("")
-lines.append("¹ Checkout weight: disk space in `.build/checkouts/<dep>`. Fetched on first `swift package resolve` **regardless of trait set**.")
+lines.append("¹ Checkout weight: disk space in `.build/checkouts/<dep>` for the remaining opt-in traits. Heavy ML is companion-optional since v0.48.")
 lines.append("")
 lines.append("² Artifact MB: prebuilt binary artifacts in `.build/artifacts`. None remain in core since v0.48 — the ~617 MB llama.cpp xcframework moved to manifold-llama.")
 lines.append("")

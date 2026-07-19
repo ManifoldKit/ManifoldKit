@@ -400,9 +400,11 @@ Register an executor with `ToolRegistry`, then thread the registry's
 let registry = ToolRegistry()
 registry.register(MyWeatherTool())
 
+var config = GenerationConfig()
+config.tools = registry.definitions
 let (_, stream) = try inferenceService.enqueue(
     messages: history,
-    tools: registry.definitions
+    config: config
 )
 ```
 
@@ -524,9 +526,10 @@ These are mistakes assistants make against ManifoldKit. Don't write any of them:
    extensible struct (since #1742), not an enum — a `switch` over it needs a
    `default:` arm.
 4. **Local model loading goes through
-   `ChatViewModel.dispatchSelectedLoad()`** — there is no shortcut
-   like `vm.loadModel(url:)` or `vm.loadModel(from:)`. Foundation Models are
-   the exception: call `vm.loadFoundationModelIfAvailable()` directly.
+   `ChatViewModel.dispatchSelectedLoad()` / `vm.dispatchSelectedLoad()`** —
+   there is no shortcut like `vm.loadModel(url:)` or `vm.loadModel(from:)`.
+   Foundation Models are the exception: call
+   `vm.loadFoundationModelIfAvailable()` directly.
 5. **There is no `vm.setTheme(_:)` / `ChatViewModel.theme` property.** Theming
    is a SwiftUI environment cascade, not a view-model API — apply
    `.manifoldTheme(_:)` (or the individual `.messageBubbleStyle(_:)` /
@@ -680,7 +683,7 @@ docs/API-DESIGN.md § 7b.
 
 | Target | Role |
 |--------|------|
-| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI` + `ManifoldSkills` + `ManifoldHuggingFace`. `ManifoldModelCatalog` is deliberately *not* a direct edge — consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. |
+| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI` + `ManifoldSkills`. `ManifoldModelCatalog` is deliberately *not* a direct edge — consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (`ManifoldUIModelManagement`, `ManifoldHuggingFace`, MCP, Voice, AppIntents, …) stay explicit imports — HF is a dependency of the model-management UI / quickStart seed path, not an umbrella re-export. |
 
 **Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. All backend-family edges are unconditional; the companion-package families (`ManifoldMLX`, `ManifoldLlama`) depend on this package's `ManifoldInference` from their own repos.
 

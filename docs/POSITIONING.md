@@ -113,7 +113,7 @@ management, with no backend code written by the consumer. The turn loop
 
 ### Pillar 2 — Backend portability behind one protocol
 
-![One GenerationStream protocol fans out to MLX, llama.cpp, Apple Foundation Models, OpenAI, Anthropic, Ollama, LAN, and the AnyLanguageModel bridge](images/product/generationstream-backends-fan.svg)
+![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, OpenAI/Claude/Ollama, and the opt-in AnyLanguageModel bridge](images/product/generationstream-backends-fan.png)
 
 MLX, llama.cpp / GGUF, Apple Foundation Models, and cloud (OpenAI Chat
 Completions, OpenAI Responses, Anthropic, Ollama, LAN) all implement the same
@@ -128,6 +128,8 @@ same `enqueue(...)` call, the same `GenerationStream`, the same
 `ConversationRuntime` turn loop drives every one.
 
 ### Pillar 3 — n-1 OS reach, platform-shift-ready
+
+![Next Apple runtime plugs into the same GenerationStream protocol — ship on OS 26 now, adopt OS 27 after beta, without a rewrite](images/product/wwdc-backend-timing.png)
 
 ManifoldKit follows an **n-1 platform policy**: the current Apple OS and the one
 before it (iOS 18+ / macOS 15+). Everything Apple announced at WWDC 2026 —
@@ -168,6 +170,8 @@ guaranteed" section that names what ManifoldKit deliberately does *not* do.
 ---
 
 ## 5. ManifoldKit vs. the field
+
+![Capability matrix — ManifoldKit fills the full stack while UI-only kits, engine wrappers, thin cloud clients, and Foundation Models-only cover partial layers; deployment floor iOS 18+ / macOS 15+](images/product/vs-field-matrix.png)
 
 The Swift AI market is layered. ManifoldKit is the only entry that spans all of
 it as an installable package. (Stars/activity verified 2026-07-07.)

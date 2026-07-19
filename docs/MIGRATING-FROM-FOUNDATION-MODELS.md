@@ -14,8 +14,9 @@ registry, and `GenerationConfig`.
 > `ConversationRuntime` if you want headless control). `session.respond(to:)`
 > becomes `chatVM.sendMessage(_:)`. Tools map onto `ToolDefinition` +
 > `ToolRegistry`. `@Generable` has **no macro equivalent yet** — use the raw
-> structured-output strategies (`GenerationConfig.structuredOutput`) and track
-> the ergonomic sugar in [#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915).
+> structured-output strategies on `GenerationRuntimeHints.structuredOutput`
+> (v0.69+; not `GenerationConfig`) and track the ergonomic sugar in
+> [#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915).
 
 ---
 
@@ -45,8 +46,8 @@ AnyLanguageModel knowledge transfers directly to configuring those providers.
 | `SystemLanguageModel` (the model) | `InferenceBackend` (the protocol) + `FoundationBackend` (that model) | One of many backends |
 | AnyLanguageModel `LanguageModel` (provider abstraction) | `InferenceBackend` + the AnyLanguageModel **bridge** | MK consumes AnyLanguageModel as a backend |
 | `Tool` protocol / tool calling | `ToolDefinition` + `ToolRegistry` + `ToolExecutor` | Local **and** cloud, with approval gating |
-| `@Generable` / guided generation | `GenerationConfig.structuredOutput` (`.gbnf` / `.jsonSchema` / `.guided` / `.jsonPrompting`) | **No `@Generable` macro** — see below |
-| `GenerationOptions` (temperature, etc.) | `GenerationConfig` (temperature, topP, topK, …) | Same knobs, one struct |
+| `@Generable` / guided generation | `GenerationRuntimeHints.structuredOutput` (`.gbnf` / `.jsonSchema` / `.guided` / `.jsonPrompting`) | **No `@Generable` macro** — see below. (Pre-v0.69 this lived on `GenerationConfig`; that placement is retired.) |
+| `GenerationOptions` (temperature, etc.) | `GenerationConfig` (temperature, topP, topK, …) | Same knobs, one struct; pass per-request extras via `GenerationRuntimeHints` |
 | Transcript / conversation history | `MessageStore` + `SessionStore` (SwiftData) | Persisted by default |
 
 ---
@@ -163,19 +164,27 @@ This is the one place where the translation is **not** one-to-one, so be precise
 Apple's `@Generable` + guided generation gives you a *decoded Swift instance*
 straight from the model. **ManifoldKit has no `@Generable` macro and no
 `generate(as: MyType.self)` API.** What ships is the raw strategy layer on
-`GenerationConfig.structuredOutput`:
+`GenerationRuntimeHints.structuredOutput` (moved off `GenerationConfig` in
+v0.69 — that field is gone):
 
 ```swift,no-build
 import ManifoldKit
 
 var config = GenerationConfig()
+var hints = GenerationRuntimeHints()
 
 // Constrain output with a JSON Schema document (capability-routed):
-config.structuredOutput = .jsonSchema(#"""
+hints.structuredOutput = .jsonSchema(#"""
 { "type": "object",
   "properties": { "sentiment": { "enum": ["pos", "neg", "neutral"] } },
   "required": ["sentiment"] }
 """#)
+
+let (_, stream) = try inference.enqueue(
+    messages: [.user("Classify this…")],
+    config: config,
+    hints: hints
+)
 
 // Other strategies:
 //   .gbnf("root ::= ...")       — GBNF grammar (llama.cpp-class backends)
@@ -211,8 +220,8 @@ constrains the *generation*, but does not hand you a typed instance.
 2. Replace `session.respond(to:)` with `chatVM.sendMessage(_:)`.
 3. To stay on Apple's model only, pass `backends: [FoundationBackends.self]`.
 4. Port `Tool`s to `ToolDefinition` + a `ToolRegistry` executor.
-5. Port `@Generable` to `GenerationConfig.structuredOutput` (raw strategy) +
-   manual `JSONDecoder` — no typed-instance API yet ([#1915]).
+5. Port `@Generable` to `GenerationRuntimeHints.structuredOutput` (raw strategy)
+   + manual `JSONDecoder` — no typed-instance API yet ([#1915]).
 6. For a non-native provider AnyLanguageModel supports, add the
    [AnyLanguageModel bridge](PROVIDER-BRIDGE.md) and configure by URL scheme.
 

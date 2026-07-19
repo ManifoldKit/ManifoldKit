@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # extract-snippets.sh — Extract fenced Swift code blocks from README.md,
-# docs/QUICKSTART*.md, docs/WHY-MANIFOLDKIT.md, and DocC catalogs into
-# standalone .swift files for downstream compilation.
+# docs/QUICKSTART*.md, docs/SWIFTUI-MULTI-SESSION.md, docs/RECIPES.md,
+# docs/WHY-MANIFOLDKIT.md, and DocC catalogs into standalone .swift files for
+# downstream compilation.
 #
 # Wave D-C1 of the DX overhaul: the README's Hello World snippet is the
 # single most important piece of copy-paste correctness in the repo. This
@@ -114,6 +115,8 @@ INPUTS=(
     "docs/QUICKSTART-TOOLS.md"
     "docs/QUICKSTART-APPINTENTS.md"
     "docs/QUICKSTART-VOICE.md"
+    "docs/SWIFTUI-MULTI-SESSION.md"
+    "docs/RECIPES.md"
     "docs/WHY-MANIFOLDKIT.md"
 )
 
@@ -125,9 +128,11 @@ mkdir -p "$OUT_DIR"
 # explicitly so intent survives a future glob change.)
 rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift "$OUT_DIR"/quickstart-cli-*.swift \
       "$OUT_DIR"/quickstart-rag-*.swift "$OUT_DIR"/why-*.swift \
+      "$OUT_DIR"/swiftui-multi-session-*.swift "$OUT_DIR"/recipes-*.swift \
       "$OUT_DIR"/docc-*.swift \
       "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip \
       "$OUT_DIR"/quickstart-rag-*.skip "$OUT_DIR"/why-*.skip \
+      "$OUT_DIR"/swiftui-multi-session-*.skip "$OUT_DIR"/recipes-*.skip \
       "$OUT_DIR"/docc-*.skip 2>/dev/null || true
 
 total=0
@@ -287,6 +292,8 @@ extract_one "docs/QUICKSTART-MODEL-SELECTION.md" "quickstart-model-selection"
 extract_one "docs/QUICKSTART-TOOLS.md" "quickstart-tools"
 extract_one "docs/QUICKSTART-APPINTENTS.md" "quickstart-appintents"
 extract_one "docs/QUICKSTART-VOICE.md" "quickstart-voice"
+extract_one "docs/SWIFTUI-MULTI-SESSION.md" "swiftui-multi-session"
+extract_one "docs/RECIPES.md" "recipes"
 extract_one "docs/WHY-MANIFOLDKIT.md" "why"
 
 # DocC catalogs. Walk every Markdown file inside any Sources/*/Documentation.docc/
