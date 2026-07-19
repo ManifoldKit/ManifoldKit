@@ -189,9 +189,15 @@ extension ClaudeBackendTests {
         let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
 
         // When hints.history is set, its messages are used directly as the request body.
+        // Claude's structured encoder gives user turns plain string content and
+        // assistant turns a `content[]` block array (so thinking/tool blocks can
+        // ride along) — the shape production has always emitted, since the engine
+        // always drove Claude through the structured encoder.
         XCTAssertGreaterThanOrEqual(messages.count, 2, "History messages must be included in request")
         XCTAssertEqual(messages[0]["content"] as? String, "What is 2+2?")
-        XCTAssertEqual(messages[1]["content"] as? String, "4")
+        let assistantContent = try XCTUnwrap(messages[1]["content"] as? [[String: Any]])
+        XCTAssertEqual(assistantContent.first?["type"] as? String, "text")
+        XCTAssertEqual(assistantContent.first?["text"] as? String, "4")
     }
 }
 
