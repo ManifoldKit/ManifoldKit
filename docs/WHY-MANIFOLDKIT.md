@@ -108,7 +108,7 @@ canonical place — [`docs/QUICKSTART.md` → Hello World](QUICKSTART.md#hello-w
 (mirrored in the [README](../README.md#hello-world)) — so there is exactly one
 form to keep correct. From there:
 
-![One GenerationStream protocol fans out to MLX, llama.cpp, Apple Foundation Models, OpenAI, Anthropic, Ollama, LAN, and the AnyLanguageModel bridge](images/product/generationstream-backends-fan.svg)
+![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, OpenAI/Claude/Ollama, and the opt-in AnyLanguageModel bridge](images/product/generationstream-backends-fan.png)
 
 - **One protocol, every backend.** MLX, llama.cpp/GGUF, Apple Foundation Models,
   OpenAI, Anthropic, Ollama, LAN — plus Gemini / xAI / Groq / Mistral through the
