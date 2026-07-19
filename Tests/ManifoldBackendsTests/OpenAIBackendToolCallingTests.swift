@@ -432,6 +432,64 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
         XCTAssertEqual(toolEntry["content"] as? String, "2099-01-01T00:00:00Z")
     }
 
+    /// Sabotage-proven regression test for the #2312 follow-up: a *persisted*
+    /// tool turn replays as one combined `StructuredMessage` (call + result +
+    /// final answer all in the same message's `contentParts` —
+    /// `TurnStreamFinalizer` appends them onto the same `ChatMessage` as it
+    /// streams), not the split shape `test_toolAwareHistory_shapesMessagesArray`
+    /// covers. Before this fix, `toolAwareHistory` mapped that one message to
+    /// one wire entry carrying `tool_calls` *and* `tool_call_id` simultaneously
+    /// (with `content` overwritten by the tool's raw result, clobbering the
+    /// model's real answer) and never emitted the paired `role: "tool"`
+    /// message — a shape OpenAI rejects with 400 on any follow-up turn.
+    ///
+    /// Sabotage proof (verified during development): reverting
+    /// `toolAwareHistory` to its pre-fix one-entry-per-message `map` makes
+    /// this test fail — `messages.count` drops to 1 and that entry carries
+    /// both `tool_calls` and `tool_call_id`.
+    func test_toolAwareHistory_splitsCombinedPersistedToolTurn() throws {
+        let (backend, _) = makeBackend()
+        let hints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "what time?"),
+            StructuredMessage(role: "assistant", parts: [
+                .toolCall(ToolCall(id: "t-1", toolName: "now", arguments: "{}")),
+                .toolResult(ToolResult(callId: "t-1", content: "2099-01-01T00:00:00Z")),
+                .text("It's noon."),
+            ]),
+        ])
+
+        let request = try backend.buildRequest(
+            prompt: "(ignored — tool-aware history takes precedence)",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: hints
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.count, 4, "user, assistant(tool_calls), tool(result), assistant(final answer)")
+
+        let assistantCall = messages[1]
+        XCTAssertEqual(assistantCall["role"] as? String, "assistant")
+        XCTAssertEqual(assistantCall["content"] as? String, "")
+        XCTAssertNil(assistantCall["tool_call_id"], "must not carry tool_call_id alongside tool_calls")
+        let toolCalls = try XCTUnwrap(assistantCall["tool_calls"] as? [[String: Any]])
+        XCTAssertEqual(toolCalls.count, 1)
+        XCTAssertEqual(toolCalls[0]["id"] as? String, "t-1")
+
+        let toolEntry = messages[2]
+        XCTAssertEqual(toolEntry["role"] as? String, "tool")
+        XCTAssertEqual(toolEntry["tool_call_id"] as? String, "t-1")
+        XCTAssertEqual(toolEntry["content"] as? String, "2099-01-01T00:00:00Z")
+        XCTAssertNil(toolEntry["tool_calls"])
+
+        let finalAnswer = messages[3]
+        XCTAssertEqual(finalAnswer["role"] as? String, "assistant")
+        XCTAssertEqual(finalAnswer["content"] as? String, "It's noon.", "the model's real answer, not the tool's raw result")
+        XCTAssertNil(finalAnswer["tool_calls"])
+        XCTAssertNil(finalAnswer["tool_call_id"])
+    }
+
     // removed: `setToolAwareHistory` snapshot-and-clear retired in #2312.
     // History now threads per-call through `hints.history` — each
     // `buildRequest` call gets exactly the history its caller passed, with no

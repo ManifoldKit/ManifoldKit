@@ -100,11 +100,10 @@ final class CloudImageEncodeCountTests: XCTestCase {
     // MARK: - Tests
 
     /// Three consecutive `generate(...)` calls on the same backend, each
-    /// with the same single-image user turn surfaced in
-    /// ``ClaudeBackend/setStructuredHistory(_:)``, must produce three
-    /// encode invocations. There is no caching today — this test is the
-    /// regression guard for that fact, and the bar the eventual blob-store
-    /// PR must move.
+    /// with the same single-image user turn surfaced via
+    /// `hints.history`, must produce three encode invocations. There is
+    /// no caching today — this test is the regression guard for that
+    /// fact, and the bar the eventual blob-store PR must move.
     func test_repeatedTurnsReencodeImagesEachTime() async throws {
         let (backend, url) = try await makeBackend()
         defer { MockURLProtocol.unstub(url: url) }

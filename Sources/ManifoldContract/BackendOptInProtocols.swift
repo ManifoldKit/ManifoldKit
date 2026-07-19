@@ -124,46 +124,96 @@ extension Array where Element == StructuredMessage {
     /// (``ToolAwareHistoryEntry``) for the Ollama / OpenAI-compatible
     /// `/api/chat` contracts.
     ///
-    /// Total and lossless for the fields the wire needs: an assistant turn's
-    /// `.toolCall` parts become `toolCalls`; a tool turn's `.toolResult` part
-    /// supplies the visible `content` and its ``ToolResult/callId`` becomes
-    /// `toolCallId`; every other turn projects to `(role, textContent)` with
-    /// both tool fields `nil` — exactly the shape the tool-dispatch loop used to
-    /// build by hand before history moved onto ``GenerationRuntimeHints/history``.
+    /// A `StructuredMessage` reaching this projection can carry a tool turn in
+    /// either of two shapes:
+    ///
+    /// - **Split** — a dedicated `role: "assistant"` message holding only
+    ///   `.toolCall` part(s), and a separate `role: "tool"` message holding one
+    ///   `.toolResult` part. This is what the in-process tool-dispatch loop and
+    ///   the server's per-request wire messages produce.
+    /// - **Combined** — one `role: "assistant"` message carrying its
+    ///   `.toolCall`(s), the resulting `.toolResult`(s), and the model's final
+    ///   `.text` answer together. This is what a *persisted* tool turn replays
+    ///   as: ``TurnStreamFinalizer`` appends call/result parts onto the same
+    ///   ``ChatMessage`` as it streams, then writes the turn's one accumulated
+    ///   answer as a single trailing `.text` part.
+    ///
+    /// Both shapes fan out to the same wire-correct sequence — one
+    /// `role: "assistant"` entry carrying every `toolCalls` in the message
+    /// (content empty; a combined message's own text is not a pre-call
+    /// preamble, it is the *post-result* answer, see below), one
+    /// `role: "tool"` entry per `.toolResult` (content = the result payload,
+    /// `toolCallId` = the result's ``ToolResult/callId``), and — only for a
+    /// combined message whose accumulated text is non-empty — a trailing
+    /// `role: message.role` entry carrying that text. A message with neither
+    /// calls nor results projects 1:1 to `(role, textContent)` as before.
+    ///
+    /// Emitting the tool_calls entry and the tool-result entry(ies) as
+    /// *separate* wire messages (rather than one entry carrying both
+    /// `toolCalls` and `toolCallId`) is required for correctness: OpenAI /
+    /// Claude / OpenAI Responses reject an assistant message whose
+    /// `tool_calls` aren't followed by matching `tool`-role messages, and
+    /// stuffing the result payload into the same entry's `content` overwrites
+    /// the model's real answer with the tool's raw output (#2312 follow-up).
     public var toolAwareHistory: [ToolAwareHistoryEntry] {
-        map { message in
+        flatMap { message -> [ToolAwareHistoryEntry] in
             var toolCalls: [ToolCall] = []
-            var toolCallId: String?
+            var toolResults: [ToolResult] = []
             for part in message.parts {
                 switch part {
                 case .toolCall(let call):
                     toolCalls.append(call)
                 case .toolResult(let result):
-                    // A tool turn's result content is the visible payload and
-                    // its callId threads the result back to its originating call.
-                    toolCallId = result.callId
+                    toolResults.append(result)
                 case .text, .thinking, .image, .audio, .generatedMedia:
                     break
                 }
             }
-            let content: String = {
-                // Tool turns surface the result payload as their content
-                // (matching the hand-built entry); every other turn joins its
-                // text parts.
-                if let resultContent = message.parts.compactMap({ part -> String? in
-                    if case .toolResult(let result) = part { return result.content }
-                    return nil
-                }).first {
-                    return resultContent
-                }
-                return message.textContent
-            }()
-            return ToolAwareHistoryEntry(
-                role: message.role,
-                content: content,
-                toolCalls: toolCalls.isEmpty ? nil : toolCalls,
-                toolCallId: toolCallId
-            )
+
+            guard !toolResults.isEmpty else {
+                // No results on this turn: a plain turn, or a split-shape
+                // assistant turn that only issued calls. One entry, as before.
+                return [
+                    ToolAwareHistoryEntry(
+                        role: message.role,
+                        content: message.textContent,
+                        toolCalls: toolCalls.isEmpty ? nil : toolCalls,
+                        toolCallId: nil
+                    )
+                ]
+            }
+
+            var entries: [ToolAwareHistoryEntry] = []
+            if !toolCalls.isEmpty {
+                entries.append(
+                    ToolAwareHistoryEntry(
+                        role: message.role,
+                        content: "",
+                        toolCalls: toolCalls,
+                        toolCallId: nil
+                    )
+                )
+            }
+            entries.append(contentsOf: toolResults.map { result in
+                ToolAwareHistoryEntry(
+                    role: "tool",
+                    content: result.content,
+                    toolCalls: nil,
+                    toolCallId: result.callId
+                )
+            })
+            let finalText = message.textContent
+            if !finalText.isEmpty {
+                entries.append(
+                    ToolAwareHistoryEntry(
+                        role: message.role,
+                        content: finalText,
+                        toolCalls: nil,
+                        toolCallId: nil
+                    )
+                )
+            }
+            return entries
         }
     }
 
