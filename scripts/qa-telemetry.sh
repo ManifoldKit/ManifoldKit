@@ -154,8 +154,8 @@ if [ -n "$pr_run_ids" ]; then
       sel_budget_hit=1
       break
     fi
-    # Prefer the tiny job log over the full run log when possible; fall back
-    # to --log. Tolerate missing logs / rate limits.
+    # Full run log; tolerate missing logs / rate limits. Budget checked
+    # between iterations (one slow call can still overrun SELECTIVE_BUDGET_SECS).
     mode_line="$(gh run view "$rid" --log 2>/dev/null \
       | grep -E 'Test mode: (selective|full)|Tier 0 returned NONE|No test-job suites affected' \
       | head -n 1 || true)"
