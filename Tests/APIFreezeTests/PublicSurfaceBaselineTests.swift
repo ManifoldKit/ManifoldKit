@@ -59,6 +59,7 @@ final class PublicSurfaceBaselineTests: XCTestCase {
         "ManifoldUIModelManagement",
         "ManifoldHuggingFace",
         "ManifoldVoice",
+        "ManifoldFuzz",
         "ManifoldTestSupport",
         "ManifoldPersistenceTestSupport",
         "ManifoldBackendTestKit",
