@@ -28,6 +28,7 @@
 		BF1005000000000000000000 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11006000000000000000000 /* SettingsUITests.swift */; };
 		BF1006000000000000000000 /* CloudAPIUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11007000000000000000000 /* CloudAPIUITests.swift */; };
 		BF1007000000000000000000 /* ToolApprovalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11008000000000000000000 /* ToolApprovalUITests.swift */; };
+		BF9999000000000000000000 /* ModelSwitcherChipUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19999000000000000000000 /* ModelSwitcherChipUITests.swift */; };
 		BF0011000000000000000000 /* PendingPayloadBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10008000000000000000000 /* PendingPayloadBuffer.swift */; };
 		BF0012000000000000000000 /* AskManifoldDemoIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10009000000000000000000 /* AskManifoldDemoIntent.swift */; };
 		BF0013000000000000000000 /* ManifoldDemoShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10010000000000000000000 /* ManifoldDemoShortcuts.swift */; };
@@ -103,6 +104,7 @@
 		F11006000000000000000000 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		F11007000000000000000000 /* CloudAPIUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudAPIUITests.swift; sourceTree = "<group>"; };
 		F11008000000000000000000 /* ToolApprovalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolApprovalUITests.swift; sourceTree = "<group>"; };
+		F19999000000000000000000 /* ModelSwitcherChipUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSwitcherChipUITests.swift; sourceTree = "<group>"; };
 		F10008000000000000000000 /* PendingPayloadBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Concurrency/PendingPayloadBuffer.swift; sourceTree = "<group>"; };
 		F10009000000000000000000 /* AskManifoldDemoIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents/AskManifoldDemoIntent.swift; sourceTree = "<group>"; };
 		F10010000000000000000000 /* ManifoldDemoShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents/ManifoldDemoShortcuts.swift; sourceTree = "<group>"; };
@@ -300,6 +302,7 @@
 				F11008000000000000000000 /* ToolApprovalUITests.swift */,
 				F11009000000000000000000 /* AppIntentUITests.swift */,
 				F11010000000000000000000 /* DemoScenarioUITests.swift */,
+				F19999000000000000000000 /* ModelSwitcherChipUITests.swift */,
 				F11011000000000000000000 /* InboundPayloadEnvelopeTests.swift */,
 				F11012000000000000000000 /* ArchitectInspectorUITests.swift */,
 			);
@@ -476,6 +479,7 @@
 				BF1007000000000000000000 /* ToolApprovalUITests.swift in Sources */,
 				BF1008000000000000000000 /* AppIntentUITests.swift in Sources */,
 				BF1009000000000000000000 /* DemoScenarioUITests.swift in Sources */,
+				BF9999000000000000000000 /* ModelSwitcherChipUITests.swift in Sources */,
 				BF1010000000000000000000 /* InboundPayloadEnvelope.swift in Sources */,
 				BF1011000000000000000000 /* InboundPayloadEnvelopeTests.swift in Sources */,
 				BFA112000000000000000000 /* ArchitectInspectorUITests.swift in Sources */,
