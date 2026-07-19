@@ -28,6 +28,7 @@ ManifoldUI
 ManifoldUIModelManagement
 ManifoldHuggingFace
 ManifoldVoice
+ManifoldFuzz
 ManifoldTestSupport
 ManifoldPersistenceTestSupport
 ManifoldBackendTestKit

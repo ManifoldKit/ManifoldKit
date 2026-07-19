@@ -96,9 +96,10 @@ final class TestTargetGateAuditTest: XCTestCase {
             "See scripts/test.sh's MCP_FILTER_REQUESTED handling and " +
             "nightly-slow-tests.yml.",
         "ManifoldFuzzTests":
-            "ManifoldFuzz is a dev tool, not a published library product " +
-            "(see AGENTS.md § Targets). Its campaign runs via scripts/fuzz.sh " +
-            "on a weekly-only cadence (fuzz-weekly.yml), not swift test.",
+            "ManifoldFuzz is now a published library product (see AGENTS.md " +
+            "§ Targets), but ManifoldFuzzTests is still gate-exempt because " +
+            "its campaign runs via scripts/fuzz.sh on a weekly-only cadence " +
+            "(fuzz-weekly.yml), not swift test.",
     ]
 
     func test_everyTestTargetIsGatedInScriptAndExecutedByCI() throws {
