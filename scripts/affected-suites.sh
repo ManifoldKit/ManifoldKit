@@ -366,6 +366,27 @@ if [[ -z "$AFFECTED" ]]; then
   emit NONE
 fi
 
+# ---- Fail-earlier audit anchors (#2290 / #2326 item 6) -----------------------
+# Cross-cutting audits walk the filesystem (AuditSabotageCoverageAuditTest,
+# SilentCatchAuditTest, TestSuiteSilentSkipAuditTest, ContractTestSupportSplit,
+# …). The import-graph resolver cannot see those reads, so a PR that only
+# touches e.g. ManifoldPersistenceSwiftDataTests used to leave ManifoldCoreTests
+# out of the selective set — green on the PR head, red at merge_group.
+#
+# Force-include the two xcscheme-backed anchors that host the bulk of those
+# audits. Both compile as a subgraph via xcodebuild (ci-selective-test.sh), so
+# the cost is bounded — unlike ManifoldBackendsTests, which routes to a full
+# swift-test bundle compile and must NEVER be force-included here (that trade
+# was rejected in #2290: it can make a narrow PR slower than mode=full).
+#
+# Only when we already selected something (code/test change). NONE stays NONE
+# for docs/scripts-only diffs.
+if [[ -n "$CHANGED_SOURCES" || -n "$DIRECT_SUITES" ]]; then
+  affected_add "ManifoldCoreTests"
+  affected_add "ManifoldInferenceTests"
+  log "force-include audit anchors: ManifoldCoreTests ManifoldInferenceTests (#2290)"
+fi
+
 # Stable, deterministic ordering for the output line. Safe to expand AFFECTED
 # unguarded here: the emptiness check above already returned for the empty case.
 result="$(printf '%s\n' $AFFECTED | sort -u | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"

@@ -43,6 +43,15 @@ import XCTest
 /// (XCTest-free). If it must use `XCTAssert*` / `XCTestCase`, put it in
 /// `ManifoldContractTestSupport`.
 ///
+/// ## When this runs under selective CI
+///
+/// This audit reads `Sources/ManifoldContractTestSupport/` off disk, but
+/// `ManifoldCoreTests` does not depend on that target in Package.swift — so
+/// the import-graph resolver alone would not select this suite when only
+/// ContractTestSupport sources change. Since #2290 the resolver
+/// force-includes `ManifoldCoreTests` whenever any `Sources/**` path is
+/// affected, so this audit still fails on the PR head for that shape.
+///
 /// ``xctestImportOffenders(supportDir:)`` and
 /// ``executableTargetOffenders(manifest:)`` are the detection functions
 /// shared by their audit and the in-file sabotage tests.

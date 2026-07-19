@@ -286,8 +286,9 @@ jobs:
       # — selective applies to pull_request only.
       #
       # NONE means the changed files do not map to any test-job suite (e.g. a
-      # docs-only or script-only change). The `test` job maps NONE → mode=full as a
-      # conservative fallback — see "Compute test mode" for the rationale.
+      # docs-only or script-only change). The `test` job maps NONE → mode=skip
+      # on pull_request (#2326 item 8) so a scripts-only path hit does not burn
+      # a full ~12 min macOS suite; the job still reports green on ubuntu.
       - name: Tier 0 — affected-suite resolver
         id: affected
         env:
@@ -306,13 +307,13 @@ jobs:
             if [ "$affected" = "FULL" ]; then
               echo "Running the **full** test-job suite list (no narrowing)."
             elif [ "$affected" = "NONE" ]; then
-              echo "No test-job suites matched the changed files — falling back to a **full run** as a conservative measure (NONE → full)."
+              echo "No test-job suites matched the changed files — **skipping** the macOS suite (NONE → skip, #2326 item 8). Sibling jobs / the merge_group full run remain the backstop."
             else
               n=$(printf '%s\n' "$affected" | wc -w | tr -d ' ')
               echo "Running **${n}** affected test-job suite(s) via selective path: \`${affected}\`"
             fi
             echo ""
-            echo "_Tier 0 (execution routing) + Tier 2 (compile pruning, issue #1590) are now wired. When mode=selective the \`test\` job runs only the affected suites via xcodebuild per-target instead of the full swift-test bundle._"
+            echo "_Tier 0 + Tier 2 (#1590). Selective mode force-includes ManifoldCoreTests + ManifoldInferenceTests as audit anchors (#2290). NONE skips the macOS build on PR heads (#2326)._"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Tier 0: affected=${affected}"
 
@@ -412,12 +413,31 @@ jobs:
         timeout-minutes: 15
         run: swift package resolve
 
+  # Required-check ack when Tier 0 returns NONE (#2326 item 8). Same check
+  # context name as the heavy job (`name: test`) so branch protection / the
+  # merge queue see a green `test` without spinning a macOS runner. Mutually
+  # exclusive with `test` below via the affected==NONE gate. merge_group never
+  # hits this path: the resolver's event-name gate emits FULL there.
+  test-none-ack:
+    name: test
+    needs: [changes]
+    if: needs.changes.outputs.already-validated != 'true' && needs.changes.outputs.affected == 'NONE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: No test-job suites affected
+        run: |
+          echo "Tier 0 returned NONE — no test-job suite maps to the changed files."
+          echo "Required 'test' check satisfied without a macOS build (#2326 item 8)."
+          echo "merge_group still runs the full suite before squash."
+
   test:
     needs: [changes]
     # Skip the post-merge re-test when the merge queue already validated this exact
     # SHA (see the changes job's "Skip post-merge re-test" step). On pull_request
     # and merge_group the flag is empty, so '' != 'true' keeps the job running.
-    if: needs.changes.outputs.already-validated != 'true'
+    # NONE is handled by test-none-ack above — do not burn a macOS slot for it.
+    if: needs.changes.outputs.already-validated != 'true' && needs.changes.outputs.affected != 'NONE'
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
     # Backstop against an org-wide macOS-slot stall (see the `changes` job's
     # timeout-minutes comment). 150 is a backstop, not a budget: the worst
@@ -432,19 +452,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # Full history (not the usual fetch-depth: 2 — paths-filter would be
-          # happy with that alone). This job runs ManifoldInferenceTests,
-          # which includes AgentsMdPlansStatusAuditTest's stale-plan-expiry
-          # check (#2226): it reads `git log -1` per docs/plans/*.md file to
-          # decide staleness, and a shallow clone makes every file look
-          # freshly touched (the boundary commit "introduces" everything
-          # reachable from it) instead of failing loudly — the check
-          # degrades to a false-negative that's expensive to notice. The repo
-          # is small (~1800 commits, ~40MB) so the full fetch is cheap;
-          # re-shallow this if that ever stops being true, alongside the
-          # audit's `isShallowRepository` guard in
-          # AgentsMdPlansStatusAuditTest.swift.
-          fetch-depth: 0
+          # Shallow is enough for the suite itself (#2326 item 9).
+          # AgentsMdPlansStatusAuditTest's stale-plan check deliberately
+          # no-ops on shallow clones (isShallowRepository guard) — the
+          # Status:-presence half still runs; staleness is enforced on
+          # nightly-slow-tests.yml which already checks out fetch-depth: 0
+          # and runs ManifoldInferenceTests (coverage lane).
+          fetch-depth: 2
 
       - name: Detect dependency-graph changes
         id: deps-changed
@@ -628,19 +642,17 @@ jobs:
       #   - Suite has an xcscheme AND is not trait-gated → xcodebuild (subgraph compile)
       #   - ManifoldBackendsTests → serial swift test (hardware dep in subgraph)
       # Saves ~127s full-bundle compile by compiling only the affected subgraph(s).
-      # When Tier 0 returns FULL (hub-module change, push to main) or NONE (no
-      # test-job suites affected), fall through to the existing full swift-test batch.
+      # When Tier 0 returns FULL (hub-module change, push to main), fall through
+      # to the existing full swift-test batch. NONE never reaches this job —
+      # test-none-ack reports the required check instead (#2326 item 8).
       #
-      # KNOWN GAP: in selective mode, cross-cutting audit suites that live
-      # *inside* another test target (e.g. SilentCatchAuditTest inside
-      # ManifoldInferenceTests) do not run on the PR head unless that target
-      # itself is in the affected set — xcodebuild per-target compilation runs
-      # the whole target, but a target not selected by Tier 0 doesn't run at
-      # all. The merge_group full run (mode always resolves to `full` there,
-      # see the resolver's event-name gate) remains the hard pre-merge gate, so
-      # the cost of this gap is red-at-queue latency on a rare PR, not a merged
-      # hole — nothing lands without the full audit suite having run somewhere
-      # before the squash.
+      # Fail-earlier audits (#2290 / #2326 item 6): affected-suites.sh force-
+      # includes ManifoldCoreTests + ManifoldInferenceTests whenever any
+      # Sources/** or Tests/** path is selected, so filesystem-walking audits
+      # (AuditSabotageCoverage, SilentCatch, …) run on the PR head. Do NOT
+      # force-include ManifoldBackendsTests — it routes to a full-bundle
+      # compile and can make selective slower than full. merge_group still
+      # runs FULL as the hard pre-merge gate.
       - name: Compute test mode (Tier 2 selective or full)
         id: test-mode
         run: |
@@ -648,13 +660,10 @@ jobs:
           affected="${{ needs.changes.outputs.affected }}"
           # Helper: emit "full" with a reason and exit
           emit_full() { echo "mode=full" >> "$GITHUB_OUTPUT"; echo "Test mode: full ($1)"; exit 0; }
-          # NONE means no test-job suite maps to the changed files. We fall back
-          # to full rather than skipping all tests: the resolver is conservative
-          # (it can over-approximate but never under-approximate), and a NONE on
-          # a non-docs PR is almost certainly a graph-snapshot gap, not proof that
-          # nothing needs testing. Nightly is the backstop; we never skip here.
+          # NONE is handled by test-none-ack (job-level if excludes this job).
+          # Empty/unset is treated as FULL — never silently skip a real suite.
           [[ "$affected" == "FULL" || "$affected" == "NONE" || -z "$affected" ]] \
-            && emit_full "affected=${affected:-unset} (NONE falls back to full as conservative measure)"
+            && emit_full "affected=${affected:-unset}"
           # Fall back to full if total suite count is large (≥8), to avoid
           # excessive sequential xcodebuild overhead outweighing the compile savings.
           #
@@ -665,9 +674,16 @@ jobs:
           # `sort -u`), so the counter could only ever be 0 or 1 — the `>= 2` guard
           # was structurally unreachable. If a second full-bundle suite is ever
           # added, reintroduce a real count check rather than resurrecting this one.
+          #
+          # Force-included audit anchors (#2290) must not tip a previously-
+          # selective leaf PR into full. Count non-anchor suites against the
+          # threshold; still *run* the anchors in the selective path.
+          non_anchor_count=$(printf '%s\n' $affected \
+            | grep -vE '^(ManifoldCoreTests|ManifoldInferenceTests)$' \
+            | grep -c '.' || true)
           total_count=$(printf '%s\n' $affected | wc -w | tr -d ' ')
-          [[ $total_count -ge 8 ]] \
-            && emit_full "${total_count} suites — xcodebuild overhead exceeds full-run savings"
+          [[ $non_anchor_count -ge 8 ]] \
+            && emit_full "${total_count} suites (${non_anchor_count} non-anchor) — xcodebuild overhead exceeds full-run savings"
           echo "mode=selective" >> "$GITHUB_OUTPUT"
           echo "suites=$affected" >> "$GITHUB_OUTPUT"
           echo "Test mode: selective — ${total_count} suite(s): $affected"
@@ -1132,12 +1148,22 @@ jobs:
   # Package.resolved, any cold-start*.sh script, or the specialised module
   # sources). Nightly runs all six unconditionally every day.
   cold-start:
-    needs: [changes]
+    # Cap macOS fan-out (#2326 item 7): wait for `test` so mega-PRs never run
+    # test + digester + server + macros + cold-start + ios = 6 concurrent
+    # macos-15 jobs against the org ~5-slot cap. Peak becomes ~4 (test + three
+    # parallel satellites that stay free) then cold-start/ios serially after.
+    # `test-none-ack` also reports the `test` check context when affected=NONE;
+    # needs.test.result is 'skipped' in that case — still allow cold-start.
+    needs: [changes, test]
     # Path-gated, and skipped on a queue-validated push to main. NOTE: the queue
     # validated `test` + `lint` on the merged tree, not this suite (satellites
     # never run on merge_group) — this suite's merged-tree signal comes from the
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
-    if: needs.changes.outputs.cold-start == 'true' && needs.changes.outputs.already-validated != 'true'
+    if: |
+      always() &&
+      needs.changes.outputs.cold-start == 'true' &&
+      needs.changes.outputs.already-validated != 'true' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
     runs-on: macos-15  # match the `test` job runner so cache keys collide
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale. 70 covers the six sequential
@@ -1218,12 +1244,17 @@ jobs:
   # ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests suite to
   # keep runtime short.  See scripts/test-ios-simulator.sh for the full rationale.
   ci-ios-file-protection:
-    needs: [changes]
+    # Cap macOS fan-out (#2326 item 7) — same rationale as cold-start above.
+    needs: [changes, test]
     # Path-gated, and skipped on a queue-validated push to main. NOTE: the queue
     # validated `test` + `lint` on the merged tree, not this suite (satellites
     # never run on merge_group) — this suite's merged-tree signal comes from the
     # nightly backstop instead (≤24h; see the queue-validated step's comment).
-    if: needs.changes.outputs.persistence == 'true' && needs.changes.outputs.already-validated != 'true'
+    if: |
+      always() &&
+      needs.changes.outputs.persistence == 'true' &&
+      needs.changes.outputs.already-validated != 'true' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
     runs-on: macos-15  # match the `test` job runner
     # Backstop against an org-wide macOS-slot stall — see the `changes` job's
     # timeout-minutes comment for the rationale.

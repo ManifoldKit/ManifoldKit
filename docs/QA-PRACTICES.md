@@ -97,13 +97,12 @@ Each sabotage test:
 
 `AuditSabotageCoverageAuditTest` (in `ManifoldCoreTests`) enforces the pairing:
 any `Tests/**/*Audit*.swift` file without a `func test_sabotage...` method
-fails the audit. Note *where* it fails: the audit lives in `ManifoldCoreTests`,
-and the Tier 2 selective resolver schedules suites from the static SwiftPM
-import graph — so a new audit added to a *different* test target usually does
-not schedule `ManifoldCoreTests` on the PR's own run. The `merge_group` full
-run catches it instead (`affected-suites.sh`: any event other than
-`pull_request` emits FULL). Nothing merges uncovered, but expect the red at
-the queue rather than on the PR head.
+fails the audit. The Tier 2 selective resolver schedules suites from the
+static SwiftPM import graph, which cannot see filesystem-walking audits — so
+`affected-suites.sh` **force-includes** `ManifoldCoreTests` +
+`ManifoldInferenceTests` whenever any `Sources/**` or `Tests/**` path is
+selected (#2290 / #2326). A new audit without sabotage coverage therefore
+fails on the PR head. `merge_group` still runs FULL as a backstop.
 
 **Why.** Audit tests are line-grep heuristics with allowlists. Over time, an
 allowlist entry can drift, a regex can be loosened to land an unrelated fix,
@@ -122,8 +121,8 @@ to in-file in the 2026-07 audit-hardening pass.
 **Run them.** Nothing special — they are ordinary tests in the audit's home
 target, so `scripts/test.sh --profile local` runs them automatically. On CI,
 they run whenever their home target is scheduled: always on the `merge_group`
-full run, and on a PR run only when the resolver maps the diff to that target
-(see above).
+full run, and on a PR run when the resolver maps the diff to that target or
+force-includes the Core/Inference audit anchors (see above).
 
 **Extend.** When you add a new audit (practice 2), pair it in the same file:
 

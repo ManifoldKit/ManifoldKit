@@ -7,7 +7,7 @@ set -euo pipefail
 # the repo optimises hard for "fewer, larger CI runs" (see CLAUDE.md "Issue &
 # PR hygiene") but never measured the levers it tunes. This script queries the
 # GitHub Actions API for
-# the trailing window of CI runs and computes three numbers:
+# the trailing window of CI runs and computes:
 #
 #   • total      — how many CI runs the window produced.
 #   • rerun_tax  — fraction of runs whose latest attempt > 1 (the "re-run tax";
@@ -15,9 +15,13 @@ set -euo pipefail
 #   • avg_ttg    — average time-to-green per commit (head SHA): wall-clock from
 #                  the first run opened on a SHA to the first successful run on
 #                  that SHA. Only computed where a success exists.
+#   • selective_hit_rate (#2326 item 5) — fraction of sampled PR runs that took
+#                  mode=selective vs mode=full (NONE/skip reported separately).
+#                  Sampled from Actions logs; degrades to n/a on API failure.
 #
-# Output: a Markdown block appended to $GITHUB_STEP_SUMMARY (when set) and one
-# compact JSON row appended to docs/ci-metrics.jsonl for longitudinal tracking.
+# Output: a Markdown block appended to $GITHUB_STEP_SUMMARY (when set) and
+# compact JSON row(s) appended to docs/ci-metrics.jsonl for longitudinal
+# tracking (base metrics row + optional selective_hit_rate row).
 #
 # Resilience is deliberate: a missing field, an empty API response, or a
 # never-green SHA must NOT abort the run. Every derived metric degrades to a
@@ -119,6 +123,94 @@ row="$(printf '%s' "$metrics" | jq -c \
 mkdir -p "$(dirname "$METRICS_FILE")"
 printf '%s\n' "$row" >> "$METRICS_FILE"
 
+# ── Selective-path hit rate (#2326 item 5) ──────────────────────────────────
+# Sample recent pull_request runs' logs for the "Test mode: selective|full"
+# line emitted by ci.yml's Compute test mode step. Degrades to nulls on any
+# failure (rate limit, missing log, no matches) — never aborts the job.
+#
+# Tunable: SELECTIVE_SAMPLE_LIMIT caps how many PR runs we download logs for
+# (each is an API call). Default 40 is enough for a 14d signal without
+# thrashing the Actions log API under the nightly cadence.
+SELECTIVE_SAMPLE_LIMIT="${SELECTIVE_SAMPLE_LIMIT:-40}"
+sel_selective=0
+sel_full=0
+sel_skip=0
+sel_sampled=0
+sel_ratio=""
+sel_note="n/a"
+
+pr_run_ids="$(printf '%s' "$runs" | jq -r \
+  --argjson cutoff "$cutoff_epoch" \
+  --argjson limit "$SELECTIVE_SAMPLE_LIMIT" '
+    (if (type == "array") then . else [] end)
+    | map(select((.createdAt // "") != ""
+                 and ((.createdAt | fromdateiso8601) >= $cutoff)
+                 and (.event // "") == "pull_request"
+                 and ((.conclusion // "") == "success" or (.conclusion // "") == "failure")))
+    | .[:$limit]
+    | .[].databaseId // empty
+  ' 2>/dev/null || true)"
+
+if [ -n "$pr_run_ids" ]; then
+  while IFS= read -r rid; do
+    [ -z "$rid" ] && continue
+    # --log can be large; grep the mode line only. Tolerate missing logs.
+    mode_line="$(gh run view "$rid" --log 2>/dev/null \
+      | grep -E 'Test mode: (selective|full)|Tier 0 returned NONE|No test-job suites affected' \
+      | head -n 1 || true)"
+    [ -z "$mode_line" ] && continue
+    sel_sampled=$((sel_sampled + 1))
+    case "$mode_line" in
+      *"Test mode: selective"*) sel_selective=$((sel_selective + 1)) ;;
+      *"Test mode: full"*)      sel_full=$((sel_full + 1)) ;;
+      *NONE*|*"No test-job suites affected"*) sel_skip=$((sel_skip + 1)) ;;
+    esac
+  done <<EOF
+$pr_run_ids
+EOF
+fi
+
+sel_decided=$((sel_selective + sel_full + sel_skip))
+if [ "$sel_decided" -gt 0 ]; then
+  # Hit rate = selective / (selective + full). NONE/skip is reported separately
+  # — it is a win, not a selective miss.
+  sel_base=$((sel_selective + sel_full))
+  if [ "$sel_base" -gt 0 ]; then
+    sel_ratio="$(awk -v s="$sel_selective" -v b="$sel_base" 'BEGIN { printf "%.3f", s/b }')"
+  else
+    sel_ratio="0"
+  fi
+  sel_note="sampled=${sel_sampled} selective=${sel_selective} full=${sel_full} none_skip=${sel_skip}"
+else
+  sel_ratio=""
+  sel_note="no Test-mode lines in sampled PR logs"
+fi
+
+# Fold selective metrics into the JSONL row (re-write last line's fields by
+# appending a sibling object — keep the original row intact for back-compat
+# and add a dedicated selective row keyed the same way).
+sel_row="$(jq -nc \
+  --arg at "$generated_at" \
+  --arg wf "$WORKFLOW_FILE" \
+  --argjson days "$DAYS" \
+  --arg scope "$scope" \
+  --argjson sampled "$sel_sampled" \
+  --argjson selective "$sel_selective" \
+  --argjson full "$sel_full" \
+  --argjson none_skip "$sel_skip" \
+  --arg ratio "${sel_ratio}" \
+  --arg note "$sel_note" \
+  '{
+     generated_at:$at, workflow:$wf, window_days:$days, branch_scope:$scope,
+     metric:"selective_hit_rate",
+     sampled:$sampled, selective:$selective, full:$full, none_skip:$none_skip,
+     selective_ratio:(if $ratio == "" then null else ($ratio|tonumber) end),
+     note:$note
+   }' 2>/dev/null || true)"
+if [ -n "$sel_row" ]; then
+  printf '%s\n' "$sel_row" >> "$METRICS_FILE"
+fi
+
 # Human summary -> GitHub step summary (or stdout when run locally).
 summary_out="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 {
@@ -132,8 +224,14 @@ summary_out="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
   echo "| Re-run tax (attempt > 1) | ${rerun_count} (${rerun_ratio}) |"
   echo "| Commits reaching green | ${green_commits} |"
   echo "| Avg time-to-green | ${avg_ttg_human} |"
+  echo "| Selective hit rate | ${sel_ratio:-n/a} (${sel_note}) |"
   echo ""
   echo "Appended to \`${METRICS_FILE}\`."
+  echo ""
+  echo "_Selective hit rate (#2326 item 5): fraction of PR runs that took"
+  echo "\`mode=selective\` among those that decided selective-vs-full. If"
+  echo "sustained &lt;~0.25, tighten hub expansion in \`affected-suites.sh\` or"
+  echo "accept full-as-default and simplify Tier 2._"
 } >> "$summary_out"
 
-echo "qa-telemetry: total=${total} rerun=${rerun_count}/${total} (${rerun_ratio}) avg_ttg=${avg_ttg_human}"
+echo "qa-telemetry: total=${total} rerun=${rerun_count}/${total} (${rerun_ratio}) avg_ttg=${avg_ttg_human} selective_ratio=${sel_ratio:-n/a} (${sel_note})"
