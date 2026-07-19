@@ -201,15 +201,15 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         XCTAssertEqual(tokens.joined(), "The weather is sunny.")
     }
 
-    /// #1909, Ring 2: a backend that is **not** a `ToolCallingHistoryReceiver`
-    /// (every local prompt-template backend) re-renders its structured history
-    /// each turn. The dispatch loop must thread the prior tool call + result
-    /// back into that structured history, or the local backend re-renders the
-    /// identical original prompt every iteration and never sees the result.
+    /// #1909, Ring 2: a prompt-template backend (every local backend) re-renders
+    /// its structured history each turn. The dispatch loop must thread the
+    /// prior tool call + result back into that structured history via
+    /// `GenerationRuntimeHints.history` (#2312), or the local backend
+    /// re-renders the identical original prompt every iteration and never sees
+    /// the result.
     ///
-    /// `MockInferenceBackend` is deliberately *not* tool-aware, so it stands in
-    /// for `LlamaBackend` here. We assert the second turn's structured history
-    /// carries the `.toolResult`.
+    /// `MockInferenceBackend` stands in for `LlamaBackend` here. We assert the
+    /// second turn's `hints.history` carries the `.toolResult`.
     func test_toolCall_threadsResultIntoNextTurnStructuredHistory_forNonToolAwareBackend() async throws {
         let executor = RecordingExecutor(name: "get_weather") { _ in
             ToolResult(callId: "", content: #"{"summary":"sunny"}"#, errorKind: nil)
@@ -315,10 +315,9 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         XCTAssertEqual(result.content, "streamed-result")
     }
 
-    func test_toolCall_threadsResultIntoNextTurnHistory_viaToolCallingHistoryReceiver() async throws {
-        // The mock is a ConversationHistoryReceiver but not a
-        // ToolCallingHistoryReceiver — exercise that the coordinator still
-        // runs a second backend turn carrying the tool result. Use a
+    func test_toolCall_threadsResultIntoNextTurnHistory_viaHintsHistory() async throws {
+        // Exercise that the coordinator runs a second backend turn carrying
+        // the tool result via `GenerationRuntimeHints.history` (#2312). Use a
         // dedicated tool-aware mock for this assertion.
         let toolAwareBackend = ToolAwareMockBackend()
         toolAwareBackend.isModelLoaded = true
@@ -342,8 +341,9 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         let (_, stream) = try coordinator.enqueue(structuredMessages: [StructuredMessage(role: "user", content: "what time?")], config: GenerationConfig(maxOutputTokens: 16))
         _ = try await collectEvents(stream)
 
-        // The backend recorded the tool-aware history passed for its second
-        // turn — must include a `role: "tool"` entry with the call id.
+        // The backend recorded the tool-aware projection of `hints.history`
+        // for its second turn — must include a `role: "tool"` entry with the
+        // call id.
         let history = try XCTUnwrap(toolAwareBackend.receivedToolAwareHistories.last)
         let toolEntry = history.last { $0.role == "tool" }
         XCTAssertNotNil(toolEntry)
@@ -741,10 +741,11 @@ extension GenerationQueue {
 
 // MARK: - ToolAwareMockBackend
 
-/// Backend variant that records the tool-aware history for each generate
-/// call. Used to assert the coordinator passes structured tool entries to
-/// backends that conform to `ToolCallingHistoryReceiver`.
-private final class ToolAwareMockBackend: InferenceBackend, ToolCallingHistoryReceiver, ConversationHistoryReceiver, @unchecked Sendable {
+/// Backend variant that records the tool-aware projection of
+/// `GenerationRuntimeHints.history` for each generate call. Used to assert
+/// the coordinator threads structured tool entries through hints (#2312)
+/// rather than dropping them for backends with no special history handling.
+private final class ToolAwareMockBackend: InferenceBackend, @unchecked Sendable {
     private let lock = NSLock()
 
     var isModelLoaded: Bool {
@@ -791,6 +792,12 @@ private final class ToolAwareMockBackend: InferenceBackend, ToolCallingHistoryRe
         lock.lock()
         let tokens = _tokensToYieldPerTurn.isEmpty ? [] : _tokensToYieldPerTurn.removeFirst()
         let calls = _scriptedToolCallsPerTurn.isEmpty ? [] : _scriptedToolCallsPerTurn.removeFirst()
+        // History now arrives per-call on `hints.history` (#2312) rather than
+        // through a retired setter. Record the tool-aware projection only
+        // when non-empty, mirroring `MockInferenceBackend`'s recording rule.
+        if !hints.history.isEmpty {
+            _receivedToolAwareHistories.append(hints.history.toolAwareHistory)
+        }
         lock.unlock()
         let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
             Task {
@@ -805,18 +812,6 @@ private final class ToolAwareMockBackend: InferenceBackend, ToolCallingHistoryRe
     func stopGeneration() {}
     func unloadModel() { isModelLoaded = false }
     func resetConversation() {}
-
-    // MARK: - History hooks
-
-    func setConversationHistory(_ messages: [(role: String, content: String)]) {
-        // No-op; the tool-aware path is what the test asserts on.
-    }
-
-    func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
-        lock.lock()
-        _receivedToolAwareHistories.append(messages)
-        lock.unlock()
-    }
 }
 
 @MainActor

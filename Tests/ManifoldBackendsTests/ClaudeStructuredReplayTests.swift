@@ -11,9 +11,8 @@ import ManifoldTestSupport
 /// Tests for #604: structured multi-turn replay against the Anthropic
 /// Messages API. ``ClaudeBackend`` must:
 ///
-/// 1. Read the structured history when one is supplied
-///    (``StructuredHistoryReceiver``), prefer it over the flattened
-///    `(role, content)` form.
+/// 1. Read the structured history from ``GenerationRuntimeHints/history``
+///    (threaded per call since #2312, not installed on shared backend state).
 /// 2. Serialize prior assistant turns as a `content[]` array with thinking
 ///    blocks **before** text blocks, signature carried verbatim.
 /// 3. Drop signature-less thinking blocks from the replay payload (sending
@@ -84,16 +83,19 @@ final class ClaudeStructuredReplayTests: XCTestCase {
         defer { MockURLProtocol.unstub(url: url) }
 
         let signature = "sig_abc123_xyz_load_bearing"
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", content: "What is 2+2?"),
-            StructuredMessage(role: "assistant", parts: [
-                .thinking("The user is asking simple arithmetic.", signature: signature),
-                .text("The answer is 4."),
-            ]),
-            StructuredMessage(role: "user", content: "Now what is 5+5?"),
-        ])
-
-        let stream = try backend.generate(prompt: "Now what is 5+5?", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "Now what is 5+5?",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "What is 2+2?"),
+                StructuredMessage(role: "assistant", parts: [
+                    .thinking("The user is asking simple arithmetic.", signature: signature),
+                    .text("The answer is 4."),
+                ]),
+                StructuredMessage(role: "user", content: "Now what is 5+5?"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -127,10 +129,14 @@ final class ClaudeStructuredReplayTests: XCTestCase {
         sseStub(url: url)
         defer { MockURLProtocol.unstub(url: url) }
 
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", content: "Hello"),
-        ])
-        let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "Hello",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "Hello"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -152,16 +158,19 @@ final class ClaudeStructuredReplayTests: XCTestCase {
         sseStub(url: url)
         defer { MockURLProtocol.unstub(url: url) }
 
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", content: "Q1"),
-            StructuredMessage(role: "assistant", parts: [
-                .thinking("local-only reasoning, no signature", signature: nil),
-                .text("Visible answer."),
-            ]),
-            StructuredMessage(role: "user", content: "Q2"),
-        ])
-
-        let stream = try backend.generate(prompt: "Q2", systemPrompt: nil, config: GenerationConfig())
+        let stream = try backend.generate(
+            prompt: "Q2",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "Q1"),
+                StructuredMessage(role: "assistant", parts: [
+                    .thinking("local-only reasoning, no signature", signature: nil),
+                    .text("Visible answer."),
+                ]),
+                StructuredMessage(role: "user", content: "Q2"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let json = try extractRequestJSON(host: url.host)
@@ -173,32 +182,12 @@ final class ClaudeStructuredReplayTests: XCTestCase {
         XCTAssertEqual(assistantContent[0]["text"] as? String, "Visible answer.")
     }
 
-    // MARK: - 4. Structured history takes precedence over flattened history
-
-    func test_buildRequest_prefersStructuredHistory_overConversationHistory() async throws {
-        let (backend, url) = try await makeBackend()
-        sseStub(url: url)
-        defer { MockURLProtocol.unstub(url: url) }
-
-        // Set both — coordinator sets the flattened form too, but the
-        // structured form must win when present.
-        backend.setConversationHistory([
-            (role: "user", content: "OLD"),
-            (role: "assistant", content: "OLD-ANSWER"),
-        ])
-        backend.setStructuredHistory([
-            StructuredMessage(role: "user", content: "NEW"),
-            StructuredMessage(role: "assistant", content: "NEW-ANSWER"),
-        ])
-
-        let stream = try backend.generate(prompt: "ignored", systemPrompt: nil, config: GenerationConfig())
-        for try await _ in stream.events { }
-
-        let json = try extractRequestJSON(host: url.host)
-        let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
-        XCTAssertEqual(messages[0]["content"] as? String, "NEW",
-            "Structured history must override the legacy conversationHistory when both are set")
-    }
+    // removed: this test asserted precedence between the flattened
+    // `setConversationHistory` and structured `setStructuredHistory` receiver
+    // channels, both retired in #2312 — `hints.history: [StructuredMessage]`
+    // is now the single channel, so there is no longer a precedence rule to
+    // pin. `test_buildRequest_userTurn_flattensToStringContent` above already
+    // covers "hints.history is what the request body is built from."
 
     // MARK: - 5. Signature parsed from signature_delta SSE
 

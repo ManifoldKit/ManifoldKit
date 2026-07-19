@@ -229,11 +229,11 @@ struct OllamaBackendTests {
 
     @Test func buildRequest_jsonModeEnabled_addsFormat() throws {
         let (backend, _) = makeConfiguredBackend()
-        backend.activeHints = GenerationRuntimeHints(jsonMode: true)
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints(jsonMode: true)
         )
 
         let body = try #require(request.httpBody)
@@ -246,7 +246,8 @@ struct OllamaBackendTests {
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints()
         )
 
         let body = try #require(request.httpBody)
@@ -261,7 +262,8 @@ struct OllamaBackendTests {
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig(stopSequences: ["</s>", "User:"])
+            config: GenerationConfig(stopSequences: ["</s>", "User:"]),
+            hints: GenerationRuntimeHints()
         )
 
         let body = try #require(request.httpBody)
@@ -275,7 +277,8 @@ struct OllamaBackendTests {
         let request = try backend.buildRequest(
             prompt: "hello",
             systemPrompt: nil,
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: GenerationRuntimeHints()
         )
 
         let body = try #require(request.httpBody)
@@ -925,11 +928,6 @@ struct OllamaBackendTests {
         let (backend, chatURL) = makeConfiguredBackend()
         try await loadBackend(backend)
 
-        backend.setConversationHistory([
-            (role: "user", content: "First message"),
-            (role: "assistant", content: "First reply"),
-        ])
-
         let chunks: [Data] = [
             ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"ok"},"done":false}"#),
             ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true}"#),
@@ -937,7 +935,15 @@ struct OllamaBackendTests {
         MockURLProtocol.stub(url: chatURL, response: .sse(chunks: chunks, statusCode: 200))
         defer { MockURLProtocol.unstub(url: chatURL) }
 
-        let stream = try backend.generate(prompt: "ignored when history set", systemPrompt: nil, config: .init())
+        let stream = try backend.generate(
+            prompt: "ignored when history set",
+            systemPrompt: nil,
+            config: .init(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "First message"),
+                StructuredMessage(role: "assistant", content: "First reply"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let captured = MockURLProtocol.capturedRequests.last(where: {
@@ -952,23 +958,17 @@ struct OllamaBackendTests {
         #expect(messages[1]["content"] == "First reply")
     }
 
-    /// Network-mocked unit test: verifies that every turn passed to
-    /// `setConversationHistory` appears in the outgoing `messages` array in
+    /// Network-mocked unit test: verifies that every turn passed via
+    /// `hints.history` appears in the outgoing `messages` array in
     /// order. The coverage gap this closes: prior tests only set 2-turn history
     /// and didn't assert positional correctness of each entry.
     ///
-    /// Sabotage check: deleting the `setConversationHistory` call below causes
+    /// Sabotage check: deleting the `history:` argument below causes
     /// the messages count assertion to fail (backend falls back to the bare
     /// prompt-only message), confirming the assertion is load-bearing.
     @Test func generate_forwardsFullConversationHistoryInRequestBody() async throws {
         let (backend, chatURL) = makeConfiguredBackend()
         try await loadBackend(backend)
-
-        backend.setConversationHistory([
-            (role: "user",      content: "What is 2+2?"),
-            (role: "assistant", content: "4."),
-            (role: "user",      content: "And 3+3?"),
-        ])
 
         let chunks: [Data] = [
             ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"6"},"done":false}"#),
@@ -977,7 +977,16 @@ struct OllamaBackendTests {
         MockURLProtocol.stub(url: chatURL, response: .sse(chunks: chunks, statusCode: 200))
         defer { MockURLProtocol.unstub(url: chatURL) }
 
-        let stream = try backend.generate(prompt: "And 3+3?", systemPrompt: nil, config: .init())
+        let stream = try backend.generate(
+            prompt: "And 3+3?",
+            systemPrompt: nil,
+            config: .init(),
+            hints: GenerationRuntimeHints(history: [
+                StructuredMessage(role: "user", content: "What is 2+2?"),
+                StructuredMessage(role: "assistant", content: "4."),
+                StructuredMessage(role: "user", content: "And 3+3?"),
+            ])
+        )
         for try await _ in stream.events { }
 
         let captured = MockURLProtocol.capturedRequests.last(where: { $0.url == chatURL })

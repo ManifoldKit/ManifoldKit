@@ -175,7 +175,7 @@ struct SSECloudBackendAdapterRoutingTests {
             framedTransport: framedTransport,
             streamFinalizer: finalizer,
             errorBodyDecoder: errorDecoder,
-            buildRequest: { _, _, _ in
+            buildRequest: { _, _, _, _ in
                 buildRequestCount.increment()
                 var req = URLRequest(url: endpoint)
                 req.httpMethod = "POST"
@@ -248,7 +248,7 @@ struct SSECloudBackendAdapterRoutingTests {
             framedTransport: framedTransport,
             streamFinalizer: finalizer,
             errorBodyDecoder: RecordingErrorBodyDecoder(),
-            buildRequest: { _, _, _ in URLRequest(url: URL(string: "https://unused.test/x")!) }
+            buildRequest: { _, _, _, _ in URLRequest(url: URL(string: "https://unused.test/x")!) }
         )
         let parser = CloudRoutedStreamParser(
             routing: routing,
@@ -336,7 +336,7 @@ struct SSECloudBackendAdapterRoutingTests {
             framedTransport: RecordingFramedTransport(frames: []),
             streamFinalizer: RecordingFinalizer(terminalFrame: Data()),
             errorBodyDecoder: decoder,
-            buildRequest: { _, _, _ in URLRequest(url: URL(string: "https://unused.test/x")!) }
+            buildRequest: { _, _, _, _ in URLRequest(url: URL(string: "https://unused.test/x")!) }
         )
 
         let backend = TestBackend(
@@ -392,7 +392,8 @@ private final class LegacyTestBackend: SSECloudBackend, @unchecked Sendable {
     override func buildRequest(
         prompt: String,
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        hints: GenerationRuntimeHints
     ) throws -> URLRequest {
         lock.lock(); _buildRequestInvocations += 1; lock.unlock()
         var req = URLRequest(url: endpoint)

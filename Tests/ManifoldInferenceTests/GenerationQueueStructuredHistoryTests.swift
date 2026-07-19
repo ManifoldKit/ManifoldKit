@@ -26,7 +26,7 @@ final class GenerationQueueStructuredHistoryTests: XCTestCase {
         try await super.tearDown()
     }
 
-    // MARK: - 1. Structured messages reach the backend's StructuredHistoryReceiver
+    // MARK: - 1. Structured messages reach the backend via GenerationRuntimeHints.history
 
     func test_generate_structuredMessages_reachStructuredReceiver() async throws {
         let signature = "sig_load_bearing"
@@ -43,20 +43,20 @@ final class GenerationQueueStructuredHistoryTests: XCTestCase {
         for try await _ in stream.events {}
 
         let observed = try XCTUnwrap(provider.backend.lastReceivedStructuredHistory,
-            "Coordinator must invoke setStructuredHistory(...) on backends conforming to StructuredHistoryReceiver")
+            "Coordinator must thread structured history via GenerationRuntimeHints.history (#2312)")
         XCTAssertEqual(observed.count, 3)
         XCTAssertEqual(observed[1].parts.count, 2)
         XCTAssertEqual(observed[1].parts[0].thinkingContent, "internal reasoning")
         XCTAssertEqual(observed[1].parts[0].thinkingSignature, signature,
             "Signature must survive the trip from caller through coordinator to backend without being stripped")
 
-        // Sabotage check: removing `installHistory(...)`'s
-        // StructuredHistoryReceiver branch leaves
+        // Sabotage check: removing the `hintsWithHistory.history = ...`
+        // assignment in `GenerationQueue.dispatchToBackend` leaves
         // lastReceivedStructuredHistory == nil and the XCTUnwrap above
         // fails, surfacing a clear regression message.
     }
 
-    // MARK: - 2. (role, content) entry still flattens to ConversationHistoryReceiver
+    // MARK: - 2. (role, content) entry still flattens to the legacy shape
 
     func test_generate_legacyTupleEntry_setsBothFlattenedAndStructured() async throws {
         let stream = try coordinator.generate(messages: [
@@ -82,8 +82,8 @@ final class GenerationQueueStructuredHistoryTests: XCTestCase {
 
     // MARK: - 3. Flattened history drops thinking content
 
-    /// Backends that only conform to ``ConversationHistoryReceiver`` (every
-    /// non-Anthropic cloud / local backend today) get the flattened form.
+    /// Backends that read `hints.history.flattenedHistory` (every non-Anthropic
+    /// cloud / local backend today) get the flattened form.
     /// Thinking parts must be excluded from that flattening so prompt text
     /// doesn't leak provider-internal reasoning into requests that don't
     /// support replayed thinking.

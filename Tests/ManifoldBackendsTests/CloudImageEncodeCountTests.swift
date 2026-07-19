@@ -119,11 +119,11 @@ final class CloudImageEncodeCountTests: XCTestCase {
         ]
 
         for _ in 0..<3 {
-            backend.setStructuredHistory(history)
             let stream = try backend.generate(
                 prompt: "Describe this.",
                 systemPrompt: nil,
-                config: GenerationConfig()
+                config: GenerationConfig(),
+                hints: GenerationRuntimeHints(history: history)
             )
             for try await _ in stream.events { }
         }
@@ -152,11 +152,11 @@ final class CloudImageEncodeCountTests: XCTestCase {
         ]
 
         for _ in 0..<3 {
-            backend.setStructuredHistory(history)
             let stream = try backend.generate(
                 prompt: "Compare these.",
                 systemPrompt: nil,
-                config: GenerationConfig()
+                config: GenerationConfig(),
+                hints: GenerationRuntimeHints(history: history)
             )
             for try await _ in stream.events { }
         }

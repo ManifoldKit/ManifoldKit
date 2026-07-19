@@ -187,11 +187,21 @@ enum PublicSurfaceConsumer {
 
     private static func consumeBackendOptInProtocols() {
         // Existence + name shape of the opt-in protocol surface. Host apps
-        // and adapters write `class X: ConversationHistoryReceiver`-style
-        // declarations against these names.
+        // and adapters write `class X: TokenizerVendor`-style declarations
+        // against these names.
+        //
+        // The history-receiver protocols (`ConversationHistoryReceiver` /
+        // `StructuredHistoryReceiver` / `ToolCallingHistoryReceiver`) were
+        // retired in #2312 — conversation history now travels per-call on
+        // `GenerationRuntimeHints.history` rather than through set-then-use
+        // instance-state install. The consumer-facing surface is the hints
+        // field plus the `[StructuredMessage]` projections below.
         let _: any TokenizerVendor.Type = MockTokenizerVendorBackend.self
-        let _: ConversationHistoryReceiver.Type = MockInferenceBackend.self
-        let _: StructuredHistoryReceiver.Type = MockInferenceBackend.self
+        let _: [StructuredMessage] = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "hi")
+        ]).history
+        let _: [(role: String, content: String)] = [StructuredMessage(role: "user", content: "hi")].flattenedHistory
+        let _: [ToolAwareHistoryEntry] = [StructuredMessage(role: "user", content: "hi")].toolAwareHistory
     }
 
     // MARK: - Errors

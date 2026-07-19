@@ -492,16 +492,17 @@ struct OpenAICompatEndpointTests {
 
         try await loadBackend(backend)
 
-        backend.setConversationHistory([
-            (role: "user", content: "What is 2+2?"),
-            (role: "assistant", content: "4"),
-            (role: "user", content: "And 3+3?"),
+        let hints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "What is 2+2?"),
+            StructuredMessage(role: "assistant", content: "4"),
+            StructuredMessage(role: "user", content: "And 3+3?"),
         ])
 
         let stream = try backend.generate(
             prompt: "And 3+3?",
             systemPrompt: "You are a calculator.",
-            config: GenerationConfig()
+            config: GenerationConfig(),
+            hints: hints
         )
         for try await _ in stream.events { }
 

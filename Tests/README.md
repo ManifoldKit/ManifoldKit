@@ -150,7 +150,7 @@ Reference adopters live alongside their target:
    }
    ```
 
-3. If the backend adopts an opt-in protocol, add the matching mixin (`ConversationHistoryReceiverContractMixin`, `StructuredHistoryReceiverContractMixin`, etc.) and a concrete `test_…` method that calls its assertion helper. Protocol-extension methods are not XCTest-discoverable on their own.
+3. If the backend adopts an opt-in protocol, add the matching mixin (e.g. `GrammarFailClosedContractMixin`) and a concrete `test_…` method that calls its assertion helper. Protocol-extension methods are not XCTest-discoverable on their own. (Conversation history is no longer an opt-in receiver protocol — it threads per-call on `GenerationRuntimeHints.history` since #2312; assert history behaviour via the backend's request body or recorded hints.)
 4. Every `true` capability flag your backend declares must have at least one assertion family that records a claim against it (or call `claimWithoutBehaviouralAssertion(...)` as a temporary bootstrap — file the follow-up issue).
 5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
 6. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.

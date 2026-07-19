@@ -314,7 +314,8 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "hi",
             systemPrompt: "you are helpful",
-            config: GenerationConfig(maxOutputTokens: 800, maxThinkingTokens: 2000)
+            config: GenerationConfig(maxOutputTokens: 800, maxThinkingTokens: 2000),
+            hints: GenerationRuntimeHints()
         )
 
         XCTAssertEqual(request.url?.path, "/v1/responses")
@@ -345,7 +346,8 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         let request = try backend.buildRequest(
             prompt: "hi",
             systemPrompt: nil,
-            config: GenerationConfig(maxThinkingTokens: 0)
+            config: GenerationConfig(maxThinkingTokens: 0),
+            hints: GenerationRuntimeHints()
         )
 
         let body = try JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any]

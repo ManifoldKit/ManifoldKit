@@ -90,7 +90,7 @@ struct DemoScenarioAssertionFailure: Error, CustomStringConvertible {
 
 @MainActor
 struct DemoScenarioE2EHarness {
-    let backend: any InferenceBackend & ToolCallingHistoryReceiver
+    let backend: any InferenceBackend
     let backendName: String
     let modelName: String
 
@@ -167,8 +167,16 @@ struct DemoScenarioE2EHarness {
         var finalText = ""
 
         for _ in 0..<config.maxToolIterations {
-            backend.setToolAwareHistory(history)
-            let stream = try backend.generate(prompt: "", systemPrompt: nil, config: config)
+            // History now travels per-call on `hints.history` rather than via
+            // a `setToolAwareHistory` install (#2312) — project the tool-aware
+            // entries built above into `StructuredMessage`s for this turn.
+            let structuredHistory = history.map(Self.structuredMessage(from:))
+            let stream = try backend.generate(
+                prompt: "",
+                systemPrompt: nil,
+                config: config,
+                hints: GenerationRuntimeHints(history: structuredHistory)
+            )
 
             var turnCalls: [ToolCall] = []
             var turnText = ""
@@ -204,6 +212,24 @@ struct DemoScenarioE2EHarness {
             toolTraces: toolTraces,
             finalText: finalText
         )
+    }
+
+    /// Projects a `ToolAwareHistoryEntry` into the `StructuredMessage` shape
+    /// `GenerationRuntimeHints.history` now carries (#2312).
+    private static func structuredMessage(from entry: ToolAwareHistoryEntry) -> StructuredMessage {
+        if let toolCalls = entry.toolCalls, !toolCalls.isEmpty {
+            return StructuredMessage(
+                role: entry.role,
+                parts: (entry.content.isEmpty ? [] : [.text(entry.content)]) + toolCalls.map { .toolCall($0) }
+            )
+        }
+        if let toolCallId = entry.toolCallId {
+            return StructuredMessage(
+                role: entry.role,
+                parts: [.toolResult(ToolResult(callId: toolCallId, content: entry.content))]
+            )
+        }
+        return StructuredMessage(role: entry.role, content: entry.content)
     }
 }
 

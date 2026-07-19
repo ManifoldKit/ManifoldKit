@@ -11,10 +11,10 @@ import ManifoldInference
 /// multimodal model.
 ///
 /// These perform real inference: a tiny solid-color PNG is generated in code,
-/// attached to a user turn via ``OllamaBackend/setStructuredHistory(_:)``
-/// (which lifts the bytes onto Ollama's message-level `images: [base64]`
-/// field), and the model is asked to describe it. No stubs — real HTTP, real
-/// NDJSON streaming, real multimodal inference.
+/// attached to a user turn via ``GenerationRuntimeHints/history`` (which lifts
+/// the bytes onto Ollama's message-level `images: [base64]` field), and the
+/// model is asked to describe it. No stubs — real HTTP, real NDJSON
+/// streaming, real multimodal inference.
 ///
 /// Skipped automatically when:
 /// - No Ollama server is reachable at `localhost:11434`.
@@ -121,20 +121,23 @@ final class OllamaVisionE2ETests: XCTestCase {
     /// Sends a structured user turn carrying `imageData` plus `prompt` and
     /// returns the concatenated visible token text.
     private func describe(imageData: Data, prompt: String) async throws -> String {
-        backend.setStructuredHistory([
+        let history: [StructuredMessage] = [
             StructuredMessage(role: "user", parts: [
                 .text(prompt),
                 .image(data: imageData, mimeType: "image/png"),
             ]),
-        ])
+        ]
         let config = GenerationConfig(
             temperature: 0.1,
             maxOutputTokens: 128
         )
+        // History now travels per-call on `hints.history` rather than via a
+        // `setStructuredHistory` install (#2312).
         let stream = try backend.generate(
             prompt: prompt,
             systemPrompt: nil,
-            config: config
+            config: config,
+            hints: GenerationRuntimeHints(history: history)
         )
         var text = ""
         for try await event in stream.events {

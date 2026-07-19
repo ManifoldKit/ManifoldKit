@@ -201,7 +201,8 @@ struct ClaudeExtendedThinkingTests {
         let request = try backend.buildRequest(
             prompt: "hi",
             systemPrompt: nil,
-            config: GenerationConfig(maxOutputTokens: 8000, maxThinkingTokens: 5000)
+            config: GenerationConfig(maxOutputTokens: 8000, maxThinkingTokens: 5000),
+            hints: GenerationRuntimeHints()
         )
 
         let body = try JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any]

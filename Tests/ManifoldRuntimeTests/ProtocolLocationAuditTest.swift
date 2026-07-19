@@ -19,9 +19,9 @@ import ManifoldRuntime
 /// P2a (#1719, Jun 2026) extracted the zero-dependency ``ManifoldContract``
 /// leaf below ManifoldInference and moved the backend-facing value type
 /// ``MessagePart`` down into it. ``MessagePart`` is structurally required by
-/// ``StructuredMessage`` (the `parts:` payload of the ``StructuredHistoryReceiver``
-/// backend protocol, which lives in Contract), so it must live in Contract or
-/// below — it can no longer stay in ManifoldInference. The wire-shaped
+/// ``StructuredMessage`` (its `parts:` payload; `StructuredMessage` lives in
+/// Contract and is the shape of ``GenerationRuntimeHints/history``), so it must
+/// live in Contract or below — it can no longer stay in ManifoldInference. The wire-shaped
 /// ``Message`` enum moved down in the same sanctioned scope. The assertions
 /// below pin those two to ``ManifoldContract`` and keep the persistence-agnostic
 /// records pinned to ``ManifoldInference``.
@@ -80,8 +80,8 @@ final class ProtocolLocationAuditTest: XCTestCase {
     /// P2a (#1719) moved the backend-facing value types ``MessagePart`` and the
     /// wire-shaped ``Message`` enum down into the zero-dependency
     /// ``ManifoldContract`` leaf. ``MessagePart`` is load-bearing there:
-    /// ``StructuredMessage`` (the payload of the Contract-resident
-    /// ``StructuredHistoryReceiver`` backend protocol) exposes `parts: [MessagePart]`,
+    /// ``StructuredMessage`` (the Contract-resident shape of
+    /// ``GenerationRuntimeHints/history``) exposes `parts: [MessagePart]`,
     /// so the type cannot stay above Contract. Pinned here so a future move back
     /// up — which would re-introduce the layering inversion the extraction
     /// removed — fails loudly.

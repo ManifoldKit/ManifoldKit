@@ -16,8 +16,6 @@ BackendContractMixin.BackendUnderContract AssociatedType
 BackendContractMixin.assertUniversalBackendContract(file:line:) Func
 BackendContractMixin.contractBackendName Var
 BackendContractMixin.makeContractBackend() Func
-ConversationHistoryReceiverContractMixin Protocol
-ConversationHistoryReceiverContractMixin.assertConversationHistoryReceiverContract(readHistory:file:line:) Func
 FixtureComparator Struct
 FixtureComparator.CompareMode Enum
 FixtureComparator.CompareMode.totalOrder EnumElement
@@ -63,5 +61,3 @@ LocalDriverCoverageChecks.assertAdapterShape(_:expectedName:file:line:) Func
 LocalDriverCoverageChecks.assertCoverage(adapter:sourceFileSuffix:sentinels:filePath:file:line:) Func
 LocalDriverCoverageChecks.defaultSentinels Var
 LocalDriverCoverageChecks.locateRepoFile(suffix:filePath:) Func
-StructuredHistoryReceiverContractMixin Protocol
-StructuredHistoryReceiverContractMixin.assertStructuredHistoryReceiverContract(readHistory:file:line:) Func

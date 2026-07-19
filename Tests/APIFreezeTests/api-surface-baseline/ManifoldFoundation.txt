@@ -22,7 +22,6 @@ FoundationBackend.loadModel(from:plan:) Func
 FoundationBackend.metricSink Var
 FoundationBackend.probeIsReady() Func
 FoundationBackend.resetConversation() Func
-FoundationBackend.setStructuredHistory(_:) Func
 FoundationBackend.stopGeneration() Func
 FoundationBackend.tokenizer Var
 FoundationBackend.traceSink Var

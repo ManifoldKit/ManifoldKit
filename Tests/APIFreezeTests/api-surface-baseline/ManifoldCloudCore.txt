@@ -141,7 +141,7 @@ SSECloudBackend.activeHints Var
 SSECloudBackend.adapterRouting Var
 SSECloudBackend.backendName Var
 SSECloudBackend.baseURL Var
-SSECloudBackend.buildRequest(prompt:systemPrompt:config:) Func
+SSECloudBackend.buildRequest(prompt:systemPrompt:config:hints:) Func
 SSECloudBackend.capabilities Var
 SSECloudBackend.checkStatusCode(_:bytes:) Func
 SSECloudBackend.configure(adapterRouting:) Func
@@ -149,7 +149,6 @@ SSECloudBackend.configure(baseURL:apiKey:modelName:) Func
 SSECloudBackend.configure(baseURL:keychainAccount:modelName:) Func
 SSECloudBackend.configure(baseURL:modelName:) Func
 SSECloudBackend.configure(baseURL:tokenProvider:modelName:) Func
-SSECloudBackend.conversationHistory Var
 SSECloudBackend.effectiveSSEStreamLimits Var
 SSECloudBackend.ephemeralAPIKey Var
 SSECloudBackend.errorBodyByteCap Var
@@ -177,7 +176,6 @@ SSECloudBackend.requestIdleTimeout Var
 SSECloudBackend.resolveAPIKey() Func
 SSECloudBackend.retrySleeper Var
 SSECloudBackend.retryStrategy Var
-SSECloudBackend.setConversationHistory(_:) Func
 SSECloudBackend.setIsGenerating(_:) Func
 SSECloudBackend.setIsModelLoaded(_:) Func
 SSECloudBackend.signalsLoadingUntilFirstToken Var

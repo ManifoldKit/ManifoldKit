@@ -121,8 +121,6 @@ nothing and CI stays green). Every adopting suite must:
 - ``BackendContractChecks``
 - ``BackendContractMixin``
 - ``GrammarFailClosedContractMixin``
-- ``ConversationHistoryReceiverContractMixin``
-- ``StructuredHistoryReceiverContractMixin``
 
 ### Local-backend scenarios
 
