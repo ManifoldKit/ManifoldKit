@@ -379,11 +379,6 @@ API breakage: func ManifoldBootstrap.build(configuration:ragConfiguration:infere
 API breakage: constructor ChatSession.init(id:title:createdAt:updatedAt:systemPrompt:selectedModelID:selectedEndpointID:temperature:topP:repeatPenalty:promptTemplate:contextSizeOverride:pinnedMessageIDs:isPinned:pinnedAt:agents:activeAgentID:activeSkillName:) has been removed
 API breakage: constructor ManifoldTheme.init(chatTheme:accent:ground:surface:surface2:ink:ink2:ink3:statusOK:statusOKSoft:statusWarn:statusWarnSoft:statusError:statusErrorSoft:statusOKColor:statusWarnColor:statusErrorColor:glass:shape:type:) has been removed
 API breakage: constructor SessionRowView.init(session:) has been removed
-
-# --- #2312: history threads through GenerationRuntimeHints.history (feat!) ---
-# Deliberate removals of the set-then-use history receiver protocols +
-# backend setters + the buildRequest hints: signature. Self-expire once this
-# lands on main and branches rebase past it. See PR #2333 / MIGRATION-history-through-hints.md.
 API breakage: accessor CloudAdapterRouting.buildRequest.Get() has return type change from (Swift.String, Swift.String?, ManifoldContract.GenerationConfig) throws -> Foundation.URLRequest to (Swift.String, Swift.String?, ManifoldContract.GenerationConfig, ManifoldContract.GenerationRuntimeHints) throws -> Foundation.URLRequest
 API breakage: class ClaudeBackend has removed conformance to ConversationHistoryReceiver
 API breakage: class ClaudeBackend has removed conformance to StructuredHistoryReceiver
@@ -420,8 +415,11 @@ API breakage: func OpenAIResponsesBackend.setToolAwareHistory(_:) has been remov
 API breakage: func ScriptedBackend.setConversationHistory(_:) has been removed
 API breakage: func SSECloudBackend.buildRequest(prompt:systemPrompt:config:) has been renamed to func buildRequest(prompt:systemPrompt:config:hints:)
 API breakage: func SSECloudBackend.setConversationHistory(_:) has been removed
+API breakage: protocol ConversationHistoryReceiver has been removed
 API breakage: protocol ConversationHistoryReceiverContractMixin has been removed
+API breakage: protocol StructuredHistoryReceiver has been removed
 API breakage: protocol StructuredHistoryReceiverContractMixin has been removed
+API breakage: protocol ToolCallingHistoryReceiver has been removed
 API breakage: var ClaudeBackend.structuredHistory has been removed
 API breakage: var CloudAdapterRouting.buildRequest has declared type change from (Swift.String, Swift.String?, ManifoldContract.GenerationConfig) throws -> Foundation.URLRequest to (Swift.String, Swift.String?, ManifoldContract.GenerationConfig, ManifoldContract.GenerationRuntimeHints) throws -> Foundation.URLRequest
 API breakage: var SSECloudBackend.conversationHistory has been removed
