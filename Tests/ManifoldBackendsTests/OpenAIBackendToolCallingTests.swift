@@ -490,6 +490,59 @@ final class OpenAIBackendToolCallingTests: XCTestCase {
         XCTAssertNil(finalAnswer["tool_call_id"])
     }
 
+    /// Companion to `test_toolAwareHistory_splitsCombinedPersistedToolTurn`:
+    /// pins the two shapes that test can't see because it exercises exactly
+    /// one call/one result/non-empty text. Two real sabotages would pass that
+    /// test alone: dropping every result past the first (e.g. `.prefix(1)`
+    /// instead of mapping every `ToolResult`), and emitting a spurious empty
+    /// trailing entry when a combined turn has no final text at all (missing
+    /// the `!finalText.isEmpty` guard). This test catches both.
+    func test_toolAwareHistory_parallelCallsAllResultsSurviveAndEmptyFinalTextOmitsTrailingEntry() throws {
+        let (backend, _) = makeBackend()
+        let hints = GenerationRuntimeHints(history: [
+            StructuredMessage(role: "user", content: "what time is it in NYC and London?"),
+            StructuredMessage(role: "assistant", parts: [
+                .toolCall(ToolCall(id: "t-1", toolName: "now", arguments: #"{"tz":"America/New_York"}"#)),
+                .toolCall(ToolCall(id: "t-2", toolName: "now", arguments: #"{"tz":"Europe/London"}"#)),
+                .toolResult(ToolResult(callId: "t-1", content: "07:00")),
+                .toolResult(ToolResult(callId: "t-2", content: "12:00")),
+                // No final `.text` part: the turn ended on the tool results
+                // (e.g. cancelled/truncated before the model replied further).
+            ]),
+        ])
+
+        let request = try backend.buildRequest(
+            prompt: "(ignored — tool-aware history takes precedence)",
+            systemPrompt: nil,
+            config: GenerationConfig(),
+            hints: hints
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        XCTAssertEqual(
+            messages.count, 4,
+            "user, assistant(tool_calls x2), tool(t-1), tool(t-2) — and NO 5th entry for empty final text"
+        )
+
+        let assistantCall = messages[1]
+        XCTAssertEqual(assistantCall["role"] as? String, "assistant")
+        let toolCalls = try XCTUnwrap(assistantCall["tool_calls"] as? [[String: Any]])
+        XCTAssertEqual(toolCalls.map { $0["id"] as? String }, ["t-1", "t-2"], "both calls survive, in emission order")
+
+        let toolEntry1 = messages[2]
+        XCTAssertEqual(toolEntry1["role"] as? String, "tool")
+        XCTAssertEqual(toolEntry1["tool_call_id"] as? String, "t-1")
+        XCTAssertEqual(toolEntry1["content"] as? String, "07:00")
+
+        // The result that would be dropped by a `.prefix(1)`-style sabotage:
+        // must be present, not absent.
+        let toolEntry2 = messages[3]
+        XCTAssertEqual(toolEntry2["role"] as? String, "tool")
+        XCTAssertEqual(toolEntry2["tool_call_id"] as? String, "t-2", "second result must not be silently dropped")
+        XCTAssertEqual(toolEntry2["content"] as? String, "12:00")
+    }
+
     // removed: `setToolAwareHistory` snapshot-and-clear retired in #2312.
     // History now threads per-call through `hints.history` — each
     // `buildRequest` call gets exactly the history its caller passed, with no
