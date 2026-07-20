@@ -876,14 +876,18 @@ the release PR sits open for a while, re-check that your prose is still on the b
 
 **Pre-bump demo-app gate (mandatory before merging the release PR):** run `scripts/demo-apps-build.sh` — it builds both example apps (Advanced iOS, Minimal iOS + macOS) and must be green. The demos consume ManifoldKit by local path, so package drift (retired traits, renamed modules, iOS-unavailable symbols pulled in via the `ManifoldKit` umbrella) breaks them while `swift test` stays green — `swift test` builds for macOS only, so iOS-only API unavailability is invisible to it. This gate is **release-time, not per-PR**: demo breakage is rare and the xcodebuild runs are slow, so paying for them once per release (not per PR) is the right trade. Do not bump the version if it fails.
 
-**Pre-bump companion-canary gate (mandatory before merging the release PR):** run
-`scripts/companion-canary-check.sh` — it reports whether manifold-mlx and manifold-llama still
-build against core `main`, and fails on a red *or stale* canary (`--dispatch` triggers fresh runs
-and waits). Principle 9 requires known consumers to be built against a change before it ships;
+**Pre-bump companion-canary gate (mandatory to RUN before merging the release PR; a red is a
+stop until examined):** run `scripts/companion-canary-check.sh` — it reports whether manifold-mlx
+and manifold-llama still build against core `main`, and fails on a red canary *or* one that
+didn't cover the commits being released (`--dispatch` triggers fresh runs and waits). Staleness
+is **commit-relative, not wall-clock**: a canary that started before `origin/main`'s tip commit
+never tested it, however recent it is — a pure age window would have passed the very incident
+below, since the last green ran 21 minutes *before* the seam-moving commit landed.
+Principle 9 requires known consumers to be built against a change before it ships;
 the demo gate covers the example apps, and this covers the companion packages. Each companion
 already runs a `Canary (core main)` workflow (nightly + on `core-release` + on demand) — the
 signal existed long before this gate did, which is the point: on 2026-07-20 that canary went red
-at 07:29 with `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 shipped at 09:14 anyway,
+at 07:29 with `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 merged at 09:14:33Z and published 10s later anyway,
 and both companions were stranded a minor behind until their adaptation PRs landed. A red canary
 does not automatically block the release — the usual response is to land the companions'
 adaptation PRs in lockstep (below) — but shipping past one must be a **deliberate** decision,
@@ -925,7 +929,9 @@ since the last tag; if any `feat`/`fix`/breaking change is already queued, a for
 could under-version it (patch instead of its minor — notably once a companion reaches 1.0),
 so the commit falls back to `fix(deps):` and lets release-please compute the version.
 
-**Companion release PRs are the one documented `--admin` carve-out.** A companion's own
+**Companion release PRs are the one documented direct-merge carve-out** (an explicit, narrow
+exception to the "no `--admin`, no `gh api` direct merge" rule above — note it uses the `gh api`
+form, not `--admin`). A companion's own
 `chore(main): release X` PR touches only `CHANGELOG.md` and `.release-please-manifest.json` —
 both in its CI `paths-ignore` set — so the required `test` check never runs, never reports, and
 the PR sits `BLOCKED` forever. It is structurally unmergeable through the normal path, so it is

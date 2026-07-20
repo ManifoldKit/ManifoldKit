@@ -13,10 +13,10 @@
 # `Canary (core main)` workflow that builds it against core main (nightly, on
 # `core-release`, and on demand) — so a core seam move is detected within a
 # day. On 2026-07-20 that canary went red at 07:29 with
-# `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 shipped at 09:14
-# anyway, and both companions were stranded a minor behind until their
-# adaptation PRs landed. The detection worked; nothing was gated on it. This
-# script is that gate.
+# `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 merged at 09:14:33Z
+# and published 10s later anyway, and both companions were stranded a minor
+# behind until their adaptation PRs landed. The detection worked; nothing was
+# gated on it. This script is that gate.
 #
 # A canary failure means CORE MOVED A SEAM the companions still depend on. It
 # does not necessarily block the release — the correct response is usually to
@@ -24,9 +24,22 @@
 # pin-bump releases") — but it must be a deliberate decision, not a surprise
 # discovered by the post-release fan-out.
 #
-# FRESHNESS: a green canary from before the commits you are about to release
-# proves nothing. Runs older than --max-age-hours (default 24) are treated as
-# STALE and fail the gate. Use --dispatch to trigger fresh runs and wait.
+# FRESHNESS — the subtle part, and the reason a naive version of this gate
+# would NOT have caught the incident above. The canary builds against core
+# main HEAD *as of its own run time*, so "the canary is recent" and "the canary
+# covered the commits I am about to release" are different claims, and only
+# the second one matters. Replay the real incident one day earlier: the last
+# green canary was 2026-07-19T06:42Z; the seam-moving commit (#2312) merged at
+# 06:58Z, 21 minutes later; a release cut that evening would have read a green
+# run 13h old — inside any sane wall-clock window — and passed on a tree that
+# was already broken. The 07-20 red only existed because a nightly happened to
+# re-run after the merge.
+#
+# So the primary check is COMMIT-RELATIVE: a canary that started before the tip
+# commit of the branch being released is STALE no matter how recent it is.
+# --max-age-hours (default 24) is kept as a secondary bound for the case where
+# main is quiet but the canary has simply gone unrun. Use --dispatch to trigger
+# fresh runs and wait for them.
 #
 # Usage:
 #   scripts/companion-canary-check.sh                     # check last known result
@@ -48,9 +61,28 @@ POLL_MAX=40          # 40 * 30s = 20 min ceiling per wait loop
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --dispatch)       DISPATCH=1; shift ;;
-        --max-age-hours)  MAX_AGE_HOURS="${2:-24}"; shift 2 ;;
-        -h|--help)        sed -n '2,36p' "$0"; exit 0 ;;
+        --dispatch)  DISPATCH=1; shift ;;
+        --max-age-hours)
+            # `shift 2` with only one arg left FAILS on bash 3.2 and does NOT
+            # shift — without `set -e` that spins this loop forever. Guard it.
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --max-age-hours requires a value." >&2
+                exit 2
+            fi
+            MAX_AGE_HOURS="$2"
+            # A non-numeric value would make the `-gt` comparison below error;
+            # with `set -uo pipefail` (no -e) that falls through to the PASS
+            # branch, turning the gate green on an arbitrarily stale canary.
+            # Fail closed at parse time instead.
+            case "$MAX_AGE_HOURS" in
+                ''|*[!0-9]*)
+                    echo "ERROR: --max-age-hours must be a whole number of hours (got '$MAX_AGE_HOURS')." >&2
+                    exit 2
+                    ;;
+            esac
+            shift 2
+            ;;
+        -h|--help)   sed -n '2,42p' "$0"; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -68,36 +100,70 @@ iso_to_epoch() {
         || echo ""
 }
 
+latest_run_id() {
+    gh run list --repo "ManifoldKit/$1" --workflow "$WORKFLOW" --limit 1 \
+        --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null
+}
+
 if [ "$DISPATCH" -eq 1 ]; then
     echo "Dispatching fresh canary runs..."
+    # Record the run each repo is on BEFORE dispatching. `workflow_dispatch`
+    # registration routinely lags more than a few seconds, so polling `.[0]`
+    # right after dispatch can observe the PREVIOUS run — already `completed` —
+    # break instantly, and then grade that stale run as if it were the fresh
+    # one. Waiting for the id to CHANGE is what makes --dispatch mean anything.
+    prior_ids=""
     for repo in $COMPANIONS; do
+        prior_ids="${prior_ids}${repo}=$(latest_run_id "$repo") "
         if gh workflow run "$WORKFLOW" --repo "ManifoldKit/$repo" >/dev/null 2>&1; then
             echo "  dispatched: $repo"
         else
             echo "  WARNING: could not dispatch $repo (checking last known result instead)" >&2
         fi
     done
-    # Give GitHub a moment to register the runs before polling for them.
-    sleep 10
+
     for repo in $COMPANIONS; do
+        prior=$(printf '%s' "$prior_ids" | tr ' ' '\n' | sed -n "s/^${repo}=//p")
         printf '  waiting for %s' "$repo"
         i=0
         while [ "$i" -lt "$POLL_MAX" ]; do
-            status=$(gh run list --repo "ManifoldKit/$repo" --workflow "$WORKFLOW" --limit 1 \
-                        --json status --jq '.[0].status' 2>/dev/null)
-            [ "$status" = "completed" ] && break
+            current=$(latest_run_id "$repo")
+            if [ -n "$current" ] && [ "$current" != "$prior" ]; then
+                status=$(gh run view "$current" --repo "ManifoldKit/$repo" \
+                            --json status --jq '.status' 2>/dev/null)
+                [ "$status" = "completed" ] && break
+            fi
             printf '.'
             sleep "$POLL_SECONDS"
             i=$((i + 1))
         done
         printf '\n'
-        [ "$i" -ge "$POLL_MAX" ] && echo "  WARNING: $repo canary still running after $((POLL_MAX * POLL_SECONDS / 60))m" >&2
+        if [ "$i" -ge "$POLL_MAX" ]; then
+            echo "  WARNING: $repo canary did not produce a completed new run after $((POLL_MAX * POLL_SECONDS / 60))m" >&2
+        fi
     done
 fi
 
 now_epoch=$(date -u "+%s")
 failures=0
 summary=""
+
+# Tip commit of the tree being released. A canary that started before this
+# commit did not test it — see FRESHNESS above. Prefer origin/main (what a
+# release actually ships); fall back to HEAD when there is no remote ref.
+# If neither resolves we cannot prove coverage, so fail closed rather than
+# silently degrade to the weaker wall-clock check.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+git -C "$REPO_ROOT" fetch -q origin main 2>/dev/null || true
+head_epoch=$(git -C "$REPO_ROOT" log -1 --format=%ct origin/main 2>/dev/null \
+             || git -C "$REPO_ROOT" log -1 --format=%ct HEAD 2>/dev/null \
+             || echo "")
+head_desc="origin/main"
+if [ -z "$head_epoch" ]; then
+    echo "ERROR: could not resolve the tip commit of origin/main or HEAD in $REPO_ROOT." >&2
+    echo "       Cannot prove the canary covered the commits being released." >&2
+    exit 2
+fi
 
 for repo in $COMPANIONS; do
     run_json=$(gh run list --repo "ManifoldKit/$repo" --workflow "$WORKFLOW" --limit 1 \
@@ -126,11 +192,18 @@ for repo in $COMPANIONS; do
     elif [ "$age_hours" -lt 0 ]; then
         summary="${summary}  ${repo}  STALE (could not parse run timestamp '${created}')\n"
         failures=$((failures + 1))
+    elif [ "$created_epoch" -lt "$head_epoch" ]; then
+        # PRIMARY check: green, but it started before the tip commit — so it
+        # never saw the code being released. This is the case a wall-clock
+        # window silently passes.
+        behind_mins=$(( (head_epoch - created_epoch) / 60 ))
+        summary="${summary}  ${repo}  STALE (green, but ran ${behind_mins}m BEFORE ${head_desc} tip — did not test it) — re-run with --dispatch\n      ${url}\n"
+        failures=$((failures + 1))
     elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
         summary="${summary}  ${repo}  STALE (last green ${age_hours}h ago, max ${MAX_AGE_HOURS}h) — re-run with --dispatch\n      ${url}\n"
         failures=$((failures + 1))
     else
-        summary="${summary}  ${repo}  PASS (green ${age_hours}h ago)\n"
+        summary="${summary}  ${repo}  PASS (green ${age_hours}h ago, covers ${head_desc} tip)\n"
     fi
 done
 
