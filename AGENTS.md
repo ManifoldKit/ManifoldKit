@@ -887,8 +887,10 @@ Principle 9 requires known consumers to be built against a change before it ship
 the demo gate covers the example apps, and this covers the companion packages. Each companion
 already runs a `Canary (core main)` workflow (nightly + on `core-release` + on demand) — the
 signal existed long before this gate did, which is the point: on 2026-07-20 that canary went red
-at 07:29 with `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 merged at 09:14:33Z and published 10s later anyway,
-and both companions were stranded a minor behind until their adaptation PRs landed. A red canary
+at 07:29 with `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 merged at 09:14:33Z and
+published 10s later anyway, and both companions were stranded a minor behind until their
+adaptation PRs landed. The gate proves coverage as of the moment it runs, so anything merged to
+`main` between running it and merging the release PR is still uncovered — run it late. A red canary
 does not automatically block the release — the usual response is to land the companions'
 adaptation PRs in lockstep (below) — but shipping past one must be a **deliberate** decision,
 not a surprise discovered by the post-release fan-out.

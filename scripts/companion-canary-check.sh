@@ -44,7 +44,8 @@
 # Usage:
 #   scripts/companion-canary-check.sh                     # check last known result
 #   scripts/companion-canary-check.sh --dispatch          # trigger fresh runs, wait, then check
-#   scripts/companion-canary-check.sh --max-age-hours 48  # loosen the freshness bound
+#   scripts/companion-canary-check.sh --max-age-hours 48  # loosen the secondary age bound
+#   scripts/companion-canary-check.sh --allow-stale-ref   # proceed when origin/main can't be fetched
 #
 # Requires: gh (authenticated). Bash 3.2 compatible — CI runners ship 3.2, so
 # no associative arrays.
@@ -56,12 +57,14 @@ WORKFLOW="canary.yml"
 WORKFLOW_NAME="Canary (core main)"
 MAX_AGE_HOURS=24
 DISPATCH=0
+ALLOW_STALE_REF=0
 POLL_SECONDS=30
 POLL_MAX=40          # 40 * 30s = 20 min ceiling per wait loop
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --dispatch)  DISPATCH=1; shift ;;
+        --dispatch)         DISPATCH=1; shift ;;
+        --allow-stale-ref)  ALLOW_STALE_REF=1; shift ;;
         --max-age-hours)
             # `shift 2` with only one arg left FAILS on bash 3.2 and does NOT
             # shift — without `set -e` that spins this loop forever. Guard it.
@@ -113,16 +116,24 @@ if [ "$DISPATCH" -eq 1 ]; then
     # break instantly, and then grade that stale run as if it were the fresh
     # one. Waiting for the id to CHANGE is what makes --dispatch mean anything.
     prior_ids=""
+    dispatched=""
     for repo in $COMPANIONS; do
         prior_ids="${prior_ids}${repo}=$(latest_run_id "$repo") "
         if gh workflow run "$WORKFLOW" --repo "ManifoldKit/$repo" >/dev/null 2>&1; then
             echo "  dispatched: $repo"
+            dispatched="${dispatched}${repo} "
         else
             echo "  WARNING: could not dispatch $repo (checking last known result instead)" >&2
         fi
     done
 
     for repo in $COMPANIONS; do
+        # Don't wait on a repo whose dispatch failed — no new run can appear,
+        # so the poll would burn its full ceiling (20m each) for nothing.
+        case " $dispatched " in
+            *" $repo "*) ;;
+            *) echo "  skipping wait for $repo (dispatch failed)"; continue ;;
+        esac
         prior=$(printf '%s' "$prior_ids" | tr ' ' '\n' | sed -n "s/^${repo}=//p")
         printf '  waiting for %s' "$repo"
         i=0
@@ -148,22 +159,60 @@ now_epoch=$(date -u "+%s")
 failures=0
 summary=""
 
-# Tip commit of the tree being released. A canary that started before this
-# commit did not test it — see FRESHNESS above. Prefer origin/main (what a
-# release actually ships); fall back to HEAD when there is no remote ref.
-# If neither resolves we cannot prove coverage, so fail closed rather than
-# silently degrade to the weaker wall-clock check.
+# Timestamp of the tree being released. A canary that started before the code
+# landed did not test it — see FRESHNESS above.
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-git -C "$REPO_ROOT" fetch -q origin main 2>/dev/null || true
-head_epoch=$(git -C "$REPO_ROOT" log -1 --format=%ct origin/main 2>/dev/null \
-             || git -C "$REPO_ROOT" log -1 --format=%ct HEAD 2>/dev/null \
-             || echo "")
+
+# A failed fetch is NOT harmless: `origin/main` still resolves, to the stale
+# local ref, so the comparison silently produces a plausible-but-wrong answer
+# (offline laptop + three-day-old local ref + yesterday's canary => PASS over
+# three days of untested commits). The `exit 2` below only catches the rare
+# case where NO ref resolves. So fail closed on the fetch itself.
+if ! git -C "$REPO_ROOT" fetch -q origin main 2>/dev/null; then
+    if [ "$ALLOW_STALE_REF" -eq 1 ]; then
+        echo "WARNING: could not fetch origin/main — comparing against the local ref," >&2
+        echo "         which may be behind. Coverage is asserted against stale data." >&2
+    else
+        echo "ERROR: could not fetch origin/main in $REPO_ROOT." >&2
+        echo "       The local ref may be behind, which would silently pass a canary" >&2
+        echo "       that never saw the commits being released. Re-run with network," >&2
+        echo "       or pass --allow-stale-ref to accept the weaker check knowingly." >&2
+        exit 2
+    fi
+fi
+
+# Use the NEWEST commit date in recent history, not just the tip's. A tip whose
+# date is older than an ancestor's (rebase, cherry-pick, clock skew, a bot
+# commit authored earlier) would otherwise understate how fresh the tree is and
+# let a canary that predates real work pass.
 head_desc="origin/main"
+head_epoch=$(git -C "$REPO_ROOT" log --format=%ct -50 origin/main 2>/dev/null | sort -rn | head -1)
 if [ -z "$head_epoch" ]; then
-    echo "ERROR: could not resolve the tip commit of origin/main or HEAD in $REPO_ROOT." >&2
+    head_desc="HEAD"
+    head_epoch=$(git -C "$REPO_ROOT" log --format=%ct -50 HEAD 2>/dev/null | sort -rn | head -1)
+fi
+if [ -z "$head_epoch" ]; then
+    echo "ERROR: could not resolve a commit date from origin/main or HEAD in $REPO_ROOT." >&2
     echo "       Cannot prove the canary covered the commits being released." >&2
     exit 2
 fi
+
+# Merge-queue skew. A commit's committer date is stamped when the queue BUILDS
+# the candidate; it only lands on main after validation — a consistent lag, not
+# noise (measured across six consecutive main commits: 14m35s to 18m00s). So
+# for ~15 minutes after a commit's date, that commit is not yet on main, and a
+# canary starting in that window clones a tree WITHOUT it, goes green, and
+# would be credited with covering it. The likeliest way to hit that window is
+# running --dispatch while a PR sits in the queue — exactly the release-day
+# sequence this gate exists for. Require the canary to start a margin past the
+# newest commit date to compensate; erring here costs a spurious STALE (safe),
+# not a false PASS.
+#
+# The durable fix is for companion-canary.yml to record the core SHA it built
+# and compare ancestry instead of clocks; that needs a companion-workflow
+# change, so this margin holds the line until then.
+MERGE_LAND_MARGIN_SECONDS=1800
+head_epoch_effective=$((head_epoch + MERGE_LAND_MARGIN_SECONDS))
 
 for repo in $COMPANIONS; do
     run_json=$(gh run list --repo "ManifoldKit/$repo" --workflow "$WORKFLOW" --limit 1 \
@@ -192,12 +241,12 @@ for repo in $COMPANIONS; do
     elif [ "$age_hours" -lt 0 ]; then
         summary="${summary}  ${repo}  STALE (could not parse run timestamp '${created}')\n"
         failures=$((failures + 1))
-    elif [ "$created_epoch" -lt "$head_epoch" ]; then
-        # PRIMARY check: green, but it started before the tip commit — so it
-        # never saw the code being released. This is the case a wall-clock
-        # window silently passes.
-        behind_mins=$(( (head_epoch - created_epoch) / 60 ))
-        summary="${summary}  ${repo}  STALE (green, but ran ${behind_mins}m BEFORE ${head_desc} tip — did not test it) — re-run with --dispatch\n      ${url}\n"
+    elif [ "$created_epoch" -lt "$head_epoch_effective" ]; then
+        # PRIMARY check: green, but it started before the newest commit had
+        # demonstrably landed — so it never saw the code being released. This
+        # is the case a wall-clock window silently passes.
+        behind_mins=$(( (head_epoch_effective - created_epoch) / 60 ))
+        summary="${summary}  ${repo}  STALE (green, but started ${behind_mins}m before ${head_desc}'s newest commit had landed — did not test it) — re-run with --dispatch\n      ${url}\n"
         failures=$((failures + 1))
     elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
         summary="${summary}  ${repo}  STALE (last green ${age_hours}h ago, max ${MAX_AGE_HOURS}h) — re-run with --dispatch\n      ${url}\n"
