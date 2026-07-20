@@ -887,6 +887,33 @@ a consumer who must stay on an old OS needs the warning *before* their resolve b
 in the notes of the release that broke it. Whoever cuts the release preceding a floor bump
 writes the notice.
 
+**Companion pin-bump releases (`deps:`, not `fix:`).** Every core `feat:`/`fix:` release
+fans out via the org-shared `companion-core-bump.yml` (in `ManifoldKit/.github`) into a pin
+bump on manifold-mlx and manifold-llama: those repos pin `.upToNextMinor(from: …)`, so a new
+core **minor** falls outside their window and a consumer wanting both-at-latest can't resolve
+until the companion republishes. That republish is genuinely forced, but it carries **no
+functional change** — so it must not read as a bug fix. The shared workflow commits it as
+`deps: bump ManifoldKit pin to vX.Y.Z` with a `Release-As:` trailer that forces the patch
+(release-please only auto-cuts for `feat`/`fix`, so a bare `deps:` would produce no release).
+It renders under a **Dependencies** CHANGELOG heading, kept visible by the explicit
+`changelog-sections` in each companion's `release-please-config.json` — release-please's
+empty-config default silently *discards* unlisted types like `deps`. The forced patch is used
+only when the caller trips release-please **and** the pin bump is the sole releasable commit
+since the last tag; if any `feat`/`fix`/breaking change is already queued, a forced patch+1
+could under-version it (patch instead of its minor — notably once a companion reaches 1.0),
+so the commit falls back to `fix(deps):` and lets release-please compute the version.
+
+Consequence for how velocity is read: **count core PRs merged, not companion tags.** A single
+core change legitimately produces up to three tags (core + two companions); the companion
+`deps:` republishes are coordination artifacts, not independent increments, and carry zero
+bug-fix credit. This is a labeling/accounting fix, not a decoupling — the pins stay
+`.upToNextMinor` because pre-1.0 core minors still break the backend-facing surface (the
+canonical example: the `ClaimRegistry` instance-scoping change forced real companion source
+edits, not just a version string). Widening the pins so companions republish *only* when
+their own code changes is a **1.0 agenda item**, gated on freezing that surface — not
+something to attempt while it still churns. Owned here; companion `AGENTS.md` files point back
+to this section.
+
 ## PR workflow
 
 All changes go through PRs — direct pushes to `main` are blocked.
