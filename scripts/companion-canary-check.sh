@@ -35,17 +35,20 @@
 # was already broken. The 07-20 red only existed because a nightly happened to
 # re-run after the merge.
 #
-# So the primary check is COMMIT-RELATIVE: a canary that started before the tip
-# commit of the branch being released is STALE no matter how recent it is.
-# --max-age-hours (default 24) is kept as a secondary bound for the case where
-# main is quiet but the canary has simply gone unrun. Use --dispatch to trigger
-# fresh runs and wait for them.
+# So the primary check is LANDING-RELATIVE: a canary that started before the
+# tip commit actually landed on main is STALE no matter how recent it is. The
+# landing time is asked of GitHub (`/commits/{sha}/pulls` -> `merged_at`)
+# rather than inferred from the commit date, because a commit's date is stamped
+# when the merge queue builds the candidate and can precede the real merge by
+# 13-44 minutes with no upper bound (it is CI duration under a concurrency cap).
+# --max-age-hours (default 24) is a secondary bound for the case where main is
+# quiet but the canary has simply gone unrun. Use --dispatch to trigger fresh
+# runs and wait for them.
 #
 # Usage:
 #   scripts/companion-canary-check.sh                     # check last known result
 #   scripts/companion-canary-check.sh --dispatch          # trigger fresh runs, wait, then check
 #   scripts/companion-canary-check.sh --max-age-hours 48  # loosen the secondary age bound
-#   scripts/companion-canary-check.sh --allow-stale-ref   # proceed when origin/main can't be fetched
 #
 # Requires: gh (authenticated). Bash 3.2 compatible — CI runners ship 3.2, so
 # no associative arrays.
@@ -57,14 +60,12 @@ WORKFLOW="canary.yml"
 WORKFLOW_NAME="Canary (core main)"
 MAX_AGE_HOURS=24
 DISPATCH=0
-ALLOW_STALE_REF=0
 POLL_SECONDS=30
 POLL_MAX=40          # 40 * 30s = 20 min ceiling per wait loop
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --dispatch)         DISPATCH=1; shift ;;
-        --allow-stale-ref)  ALLOW_STALE_REF=1; shift ;;
         --max-age-hours)
             # `shift 2` with only one arg left FAILS on bash 3.2 and does NOT
             # shift — without `set -e` that spins this loop forever. Guard it.
@@ -85,7 +86,13 @@ while [ $# -gt 0 ]; do
             esac
             shift 2
             ;;
-        -h|--help)   sed -n '2,42p' "$0"; exit 0 ;;
+        -h|--help)
+            # Print the whole leading comment block, however far it grows. A
+            # fixed line range silently truncated the Usage section once the
+            # header expanded — `-h` printed no invocation forms at all.
+            awk 'NR==1 {next} /^#/ {sub(/^#[ ]?/, ""); print; next} {exit}' "$0"
+            exit 0
+            ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -169,16 +176,15 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # three days of untested commits). The `exit 2` below only catches the rare
 # case where NO ref resolves. So fail closed on the fetch itself.
 if ! git -C "$REPO_ROOT" fetch -q origin main 2>/dev/null; then
-    if [ "$ALLOW_STALE_REF" -eq 1 ]; then
-        echo "WARNING: could not fetch origin/main — comparing against the local ref," >&2
-        echo "         which may be behind. Coverage is asserted against stale data." >&2
-    else
-        echo "ERROR: could not fetch origin/main in $REPO_ROOT." >&2
-        echo "       The local ref may be behind, which would silently pass a canary" >&2
-        echo "       that never saw the commits being released. Re-run with network," >&2
-        echo "       or pass --allow-stale-ref to accept the weaker check knowingly." >&2
-        exit 2
-    fi
+    echo "ERROR: could not fetch origin/main in $REPO_ROOT." >&2
+    echo "       The local ref may be behind, which would silently pass a canary" >&2
+    echo "       that never saw the commits being released." >&2
+    # Deliberately no --allow-stale-ref escape: you cannot cut a release without
+    # network anyway (merging the release PR, pushing the tag, and the
+    # core-release fan-out all need it), so a flag here could only ever let the
+    # gate assert coverage it cannot verify, in a situation where you can't
+    # release regardless.
+    exit 2
 fi
 
 # Use the NEWEST commit date in recent history, not just the tip's. A tip whose
@@ -198,21 +204,42 @@ if [ -z "$head_epoch" ]; then
 fi
 
 # Merge-queue skew. A commit's committer date is stamped when the queue BUILDS
-# the candidate; it only lands on main after validation — a consistent lag, not
-# noise (measured across six consecutive main commits: 14m35s to 18m00s). So
-# for ~15 minutes after a commit's date, that commit is not yet on main, and a
-# canary starting in that window clones a tree WITHOUT it, goes green, and
-# would be credited with covering it. The likeliest way to hit that window is
-# running --dispatch while a PR sits in the queue — exactly the release-day
-# sequence this gate exists for. Require the canary to start a margin past the
-# newest commit date to compensate; erring here costs a spurious STALE (safe),
-# not a false PASS.
+# the candidate; it lands on main only after validation. That lag is systematic
+# and UNBOUNDED — it is CI duration, and ci.yml fans out up to 5 macOS jobs
+# against an org-wide ~5-concurrent cap, so a busy queue stretches it. Measured
+# over 25 consecutive main commits: mostly 13-18m, but with a tail at 37m, 41m
+# and 44m. A canary starting inside that window clones a tree WITHOUT the
+# commit, goes green, and would be credited with covering it.
 #
-# The durable fix is for companion-canary.yml to record the core SHA it built
-# and compare ancestry instead of clocks; that needs a companion-workflow
-# change, so this margin holds the line until then.
-MERGE_LAND_MARGIN_SECONDS=1800
-head_epoch_effective=$((head_epoch + MERGE_LAND_MARGIN_SECONDS))
+# Since the lag has no ceiling, NO constant margin is provably safe. So don't
+# guess: ask GitHub when the tip actually merged. `/commits/{sha}/pulls` gives
+# the exact `merged_at` for a PR-merged commit, which is every commit here
+# (main is protected — direct pushes are blocked). That turns the check exact
+# and removes the spurious-STALE window a large margin would create.
+#
+# The margin below survives only as a fallback for the cases where merge time
+# can't be resolved (a direct push, or the API being unavailable), sized past
+# the observed 44m tail.
+MERGE_LAND_MARGIN_SECONDS=3600
+
+head_sha=$(git -C "$REPO_ROOT" rev-parse "$head_desc" 2>/dev/null || echo "")
+merged_at=""
+if [ -n "$head_sha" ]; then
+    merged_at=$(gh api "repos/ManifoldKit/ManifoldKit/commits/${head_sha}/pulls" \
+                   --jq '.[0].merged_at // empty' 2>/dev/null || true)
+fi
+merged_epoch=""
+if [ -n "$merged_at" ]; then
+    merged_epoch=$(iso_to_epoch "$merged_at")
+fi
+
+if [ -n "$merged_epoch" ]; then
+    head_epoch_effective="$merged_epoch"
+    head_basis="merged ${merged_at}"
+else
+    head_epoch_effective=$((head_epoch + MERGE_LAND_MARGIN_SECONDS))
+    head_basis="newest commit date +$((MERGE_LAND_MARGIN_SECONDS / 60))m (merge time unavailable)"
+fi
 
 for repo in $COMPANIONS; do
     run_json=$(gh run list --repo "ManifoldKit/$repo" --workflow "$WORKFLOW" --limit 1 \
@@ -246,13 +273,22 @@ for repo in $COMPANIONS; do
         # demonstrably landed — so it never saw the code being released. This
         # is the case a wall-clock window silently passes.
         behind_mins=$(( (head_epoch_effective - created_epoch) / 60 ))
-        summary="${summary}  ${repo}  STALE (green, but started ${behind_mins}m before ${head_desc}'s newest commit had landed — did not test it) — re-run with --dispatch\n      ${url}\n"
+        # If the deadline is still in the future, an immediate re-dispatch would
+        # fail identically and burn a second full companion build. Say how long
+        # to wait rather than inviting the pointless retry.
+        wait_mins=$(( (head_epoch_effective - now_epoch + 59) / 60 ))
+        if [ "$wait_mins" -gt 0 ]; then
+            retry_hint="wait ~${wait_mins}m, then re-run with --dispatch"
+        else
+            retry_hint="re-run with --dispatch"
+        fi
+        summary="${summary}  ${repo}  STALE (green, but started ${behind_mins}m before ${head_desc} landed — did not test it) — ${retry_hint}\n      ${url}\n"
         failures=$((failures + 1))
     elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
         summary="${summary}  ${repo}  STALE (last green ${age_hours}h ago, max ${MAX_AGE_HOURS}h) — re-run with --dispatch\n      ${url}\n"
         failures=$((failures + 1))
     else
-        summary="${summary}  ${repo}  PASS (green ${age_hours}h ago, covers ${head_desc} tip)\n"
+        summary="${summary}  ${repo}  PASS (green ${age_hours}h ago, started after ${head_desc} ${head_basis})\n"
     fi
 done
 
