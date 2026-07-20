@@ -225,9 +225,26 @@ MERGE_LAND_MARGIN_SECONDS=3600
 head_sha=$(git -C "$REPO_ROOT" rev-parse "$head_desc" 2>/dev/null || echo "")
 merged_at=""
 if [ -n "$head_sha" ]; then
+    # Take the LATEST merge among any PRs containing this commit. `.[0]` would
+    # be fine for every commit on main today (a 40-commit sweep returned
+    # exactly one PR each), but the API permits several — a cherry-picked
+    # commit belongs to more than one — and their order is unspecified. Picking
+    # an arbitrary one could yield an EARLIER deadline and let a stale canary
+    # pass, so take the max explicitly.
     merged_at=$(gh api "repos/ManifoldKit/ManifoldKit/commits/${head_sha}/pulls" \
-                   --jq '.[0].merged_at // empty' 2>/dev/null || true)
+                   --jq '[.[] | select(.merged_at != null) | .merged_at] | max // empty' 2>/dev/null || true)
 fi
+
+# TWO STAGES ON PURPOSE — do not collapse these into one.
+# `gh api` writes HTTP error bodies to STDOUT, not stderr, so on a 404/422
+# `merged_at` is not empty: it holds a JSON blob like
+#   [{"message":"No commit found for SHA: ...","status":"422"}]
+# Parsing it through `iso_to_epoch` is what turns that garbage into an empty
+# `merged_epoch` and routes us to the margin fallback. Collapsing this into
+# `head_epoch_effective=$(iso_to_epoch "$merged_at")` would set it to the empty
+# string, make the `-lt` comparison below error, and — with `set -uo pipefail`
+# and no `-e` — fall through the elif chain to PASS. That is the exact
+# fail-open class this gate exists to prevent.
 merged_epoch=""
 if [ -n "$merged_at" ]; then
     merged_epoch=$(iso_to_epoch "$merged_at")
@@ -239,6 +256,11 @@ if [ -n "$merged_epoch" ]; then
 else
     head_epoch_effective=$((head_epoch + MERGE_LAND_MARGIN_SECONDS))
     head_basis="newest commit date +$((MERGE_LAND_MARGIN_SECONDS / 60))m (merge time unavailable)"
+    # Say so on stderr as well as in the summary line: every defect found in
+    # this script's review was a silent degradation that read as success, and a
+    # note tucked into a PASS banner is easy to skim past.
+    echo "WARNING: could not determine the merge time for ${head_sha:-<unknown>};" >&2
+    echo "         falling back to the newest commit date +$((MERGE_LAND_MARGIN_SECONDS / 60))m, which is an ESTIMATE." >&2
 fi
 
 for repo in $COMPANIONS; do
@@ -282,7 +304,7 @@ for repo in $COMPANIONS; do
         else
             retry_hint="re-run with --dispatch"
         fi
-        summary="${summary}  ${repo}  STALE (green, but started ${behind_mins}m before ${head_desc} landed — did not test it) — ${retry_hint}\n      ${url}\n"
+        summary="${summary}  ${repo}  STALE (green, but started ${behind_mins}m before ${head_desc} ${head_basis} — did not test it) — ${retry_hint}\n      ${url}\n"
         failures=$((failures + 1))
     elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
         summary="${summary}  ${repo}  STALE (last green ${age_hours}h ago, max ${MAX_AGE_HOURS}h) — re-run with --dispatch\n      ${url}\n"
