@@ -520,10 +520,12 @@ fi
   echo '```'
   echo "MLX benchmark (TTFT/TPS sentinels):"
   grep -h "MLX summary\|\[MLX run" "$OUT"/mlx-*.log 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+  echo "llama.cpp benchmark (BENCH_RESULT sentinel):"
+  grep -h "BENCH_RESULT" "$OUT"/llama.log 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
   echo "llama prefill footprint (bytes/token):"
   grep -hi "bytesPerToken\|lastMeasured\|prefill" "$OUT"/llama.log 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
-  echo "core backend benchmark:"
-  grep -hi "tokensPerSecond\|TTFT\|benchmark" "$OUT"/core.log 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
+  echo "core backend benchmark (BENCH_RESULT sentinel):"
+  grep -h "BENCH_RESULT" "$OUT"/core.log 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
   echo '```'
   echo
   echo "## Capability scores (manifold-eval)"
