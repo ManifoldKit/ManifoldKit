@@ -865,7 +865,35 @@ Use **Prisma-style Highlights format** (adopted v0.11.2, PR #649): `### Highligh
 
 Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, amend + force-push, then merge through the queue: `gh pr merge <N> --squash --auto` (same rule as feature PRs — no `--admin`, no `gh api` direct merge; the queue validates the release commit against current main and the post-merge CI run self-skips).
 
+**Rewrite last, and merge promptly — Release Please silently overwrites the rewrite.** Any
+`feat:`/`fix:` merging to `main` while the release PR is open causes Release Please to regenerate
+the branch, discarding a hand-written CHANGELOG with no warning and no conflict. This has already
+eaten one rewrite (a 0.73.0 draft written 2026-07-18 was regenerated away when the UI-refresh and
+history-hints PRs landed, and its "0.74.0 ships the refresh" pre-announcement silently became
+false). So: do the Highlights rewrite as the **last** step before merging, not days ahead, and if
+the release PR sits open for a while, re-check that your prose is still on the branch — and still
+*true* — before merging.
+
 **Pre-bump demo-app gate (mandatory before merging the release PR):** run `scripts/demo-apps-build.sh` — it builds both example apps (Advanced iOS, Minimal iOS + macOS) and must be green. The demos consume ManifoldKit by local path, so package drift (retired traits, renamed modules, iOS-unavailable symbols pulled in via the `ManifoldKit` umbrella) breaks them while `swift test` stays green — `swift test` builds for macOS only, so iOS-only API unavailability is invisible to it. This gate is **release-time, not per-PR**: demo breakage is rare and the xcodebuild runs are slow, so paying for them once per release (not per PR) is the right trade. Do not bump the version if it fails.
+
+**Pre-bump companion-canary gate (mandatory to RUN before merging the release PR; a red is a
+stop until examined):** run `scripts/companion-canary-check.sh` — it reports whether manifold-mlx
+and manifold-llama still build against core `main`, and fails on a red canary *or* one that
+didn't cover the commits being released (`--dispatch` triggers fresh runs and waits). Staleness
+is **commit-relative, not wall-clock**: a canary that started before `origin/main`'s tip commit
+never tested it, however recent it is — a pure age window would have passed the very incident
+below, since the last green ran 21 minutes *before* the seam-moving commit landed.
+Principle 9 requires known consumers to be built against a change before it ships;
+the demo gate covers the example apps, and this covers the companion packages. Each companion
+already runs a `Canary (core main)` workflow (nightly + on `core-release` + on demand) — the
+signal existed long before this gate did, which is the point: on 2026-07-20 that canary went red
+at 07:29 with `cannot find type 'StructuredHistoryReceiver'`, v0.73.0 merged at 09:14:33Z and
+published 10s later anyway, and both companions were stranded a minor behind until their
+adaptation PRs landed. The gate proves coverage as of the moment it runs, so anything merged to
+`main` between running it and merging the release PR is still uncovered — run it late. A red canary
+does not automatically block the release — the usual response is to land the companions'
+adaptation PRs in lockstep (below) — but shipping past one must be a **deliberate** decision,
+not a surprise discovered by the post-release fan-out.
 
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 
@@ -902,6 +930,17 @@ only when the caller trips release-please **and** the pin bump is the sole relea
 since the last tag; if any `feat`/`fix`/breaking change is already queued, a forced patch+1
 could under-version it (patch instead of its minor — notably once a companion reaches 1.0),
 so the commit falls back to `fix(deps):` and lets release-please compute the version.
+
+**Companion release PRs are the one documented direct-merge carve-out** (an explicit, narrow
+exception to the "no `--admin`, no `gh api` direct merge" rule above — note it uses the `gh api`
+form, not `--admin`). A companion's own
+`chore(main): release X` PR touches only `CHANGELOG.md` and `.release-please-manifest.json` —
+both in its CI `paths-ignore` set — so the required `test` check never runs, never reports, and
+the PR sits `BLOCKED` forever. It is structurally unmergeable through the normal path, so it is
+merged directly: `gh api --method PUT repos/ManifoldKit/<companion>/pulls/<N>/merge -f merge_method=squash`.
+This carve-out applies **only** to companion release PRs, never to core and never to a feature
+PR; core release PRs still go through the merge queue (above). The rule was previously recorded
+only in a comment inside manifold-llama's `ci.yml`, which is not where anyone looks for it.
 
 Consequence for how velocity is read: **count core PRs merged, not companion tags.** A single
 core change legitimately produces up to three tags (core + two companions); the companion
