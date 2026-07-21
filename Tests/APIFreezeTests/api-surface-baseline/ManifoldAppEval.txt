@@ -1,5 +1,7 @@
 AppEvalHistoryLedger Enum
+AppEvalHistoryLedger conformances: Copyable,Escapable
 AppEvalHistoryLedger.LedgerError Enum
+AppEvalHistoryLedger.LedgerError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 AppEvalHistoryLedger.LedgerError.decodingFailed EnumElement
 AppEvalHistoryLedger.LedgerError.description Var
 AppEvalHistoryLedger.LedgerError.encodingFailed EnumElement
@@ -7,6 +9,7 @@ AppEvalHistoryLedger.LedgerError.malformedLine EnumElement
 AppEvalHistoryLedger.append(_:to:) Func
 AppEvalHistoryLedger.read(from:) Func
 AppEvalLedgerEntry Struct
+AppEvalLedgerEntry conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 AppEvalLedgerEntry.__derived_struct_equals(_:_:) Func
 AppEvalLedgerEntry.checkpointCount Var
 AppEvalLedgerEntry.currentSchemaVersion Var
@@ -18,22 +21,29 @@ AppEvalLedgerEntry.init(from:) Constructor
 AppEvalLedgerEntry.schemaVersion Var
 AppEvalLedgerEntry.verdict Var
 AppEvalMarkdownRenderer Enum
+AppEvalMarkdownRenderer conformances: Copyable,Escapable
 AppEvalMarkdownRenderer.render(_:) Func
 AppEvalOutcome Struct
+AppEvalOutcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 AppEvalOutcome.fixtures Var
 AppEvalOutcome.init(fixtures:) Constructor
 AppEvalOutcome.make(from:) Func
 AppEvalOutcome.verdict Var
 AppEvalRunner Enum
+AppEvalRunner attrs: Custom
+AppEvalRunner conformances: Copyable,Escapable,Sendable,SendableMetatype
 AppEvalRunner.run(_:probe:customScorers:toolExecutors:preTurnCompressionPolicy:) Func
 AppEvalStarterCorpus Enum
+AppEvalStarterCorpus conformances: Copyable,Escapable
 AppEvalStarterCorpus.all Var
 AppEvalTokenEmissionGate Class
+AppEvalTokenEmissionGate conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 AppEvalTokenEmissionGate.advance() Func
 AppEvalTokenEmissionGate.init() Constructor
 AppEvalTokenEmissionGate.unownedExecutor Var
 AppEvalTokenEmissionGate.waitForAdvance() Func
 AppEvalVerdict Enum
+AppEvalVerdict conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 AppEvalVerdict.__derived_enum_equals(_:_:) Func
 AppEvalVerdict.aggregate(_:) Func
 AppEvalVerdict.aggregate(verdicts:) Func
@@ -44,6 +54,7 @@ AppEvalVerdict.hash(into:) Func
 AppEvalVerdict.hashValue Var
 AppEvalVerdict.pass EnumElement
 BuiltInCheckpointAssertion Enum
+BuiltInCheckpointAssertion conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 BuiltInCheckpointAssertion.AllCases TypeAlias
 BuiltInCheckpointAssertion.RawValue TypeAlias
 BuiltInCheckpointAssertion.allCases Var
@@ -56,8 +67,11 @@ BuiltInCheckpointAssertion.init(rawValue:) Constructor
 BuiltInCheckpointAssertion.rawValue Var
 BuiltInCheckpointAssertion.requiredContent EnumElement
 BuiltInCheckpointScorers Enum
+BuiltInCheckpointScorers conformances: Copyable,Escapable
 BuiltInCheckpointScorers.ContentMatchOptions Struct
+BuiltInCheckpointScorers.ContentMatchOptions conformances: Copyable,Escapable,Sendable,SendableMetatype
 BuiltInCheckpointScorers.ContentMatchOptions.Scope Enum
+BuiltInCheckpointScorers.ContentMatchOptions.Scope conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 BuiltInCheckpointScorers.ContentMatchOptions.Scope.__derived_enum_equals(_:_:) Func
 BuiltInCheckpointScorers.ContentMatchOptions.Scope.cumulative EnumElement
 BuiltInCheckpointScorers.ContentMatchOptions.Scope.hash(into:) Func
@@ -73,10 +87,12 @@ BuiltInCheckpointScorers.scoreExpectedToolCalls(_:) Func
 BuiltInCheckpointScorers.scoreForbiddenContent(_:options:) Func
 BuiltInCheckpointScorers.scoreRequiredContent(_:options:) Func
 CachingJudge Struct
+CachingJudge conformances: Copyable,Escapable,EvalJudge,Sendable,SendableMetatype
 CachingJudge.cacheFile(for:) Func
 CachingJudge.init(underlying:directory:) Constructor
 CachingJudge.judge(_:) Func
 CheckpointEvaluationContext Struct
+CheckpointEvaluationContext conformances: Copyable,Escapable,Sendable,SendableMetatype
 CheckpointEvaluationContext.checkpoint Var
 CheckpointEvaluationContext.eventKinds Var
 CheckpointEvaluationContext.fixtureID Var
@@ -88,14 +104,17 @@ CheckpointEvaluationContext.output Var
 CheckpointEvaluationContext.producedMessageCount Var
 CheckpointEvaluationContext.snapshot Var
 CheckpointOutcome Struct
+CheckpointOutcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 CheckpointOutcome.afterTurnIndex Var
 CheckpointOutcome.init(label:afterTurnIndex:scores:) Constructor
 CheckpointOutcome.label Var
 CheckpointOutcome.scores Var
 CheckpointScorer Protocol
+CheckpointScorer conformances: Copyable,Escapable,Sendable,SendableMetatype
 CheckpointScorer.id Var
 CheckpointScorer.score(_:) Func
 ContextWindowPreTurnCompressionPolicy Struct
+ContextWindowPreTurnCompressionPolicy conformances: Copyable,Escapable,PreTurnCompressionPolicy,Sendable,SendableMetatype
 ContextWindowPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
 ContextWindowPreTurnCompressionPolicy.contextWindow Var
 ContextWindowPreTurnCompressionPolicy.init(contextWindow:triggerFraction:messageCountFallback:) Constructor
@@ -103,21 +122,26 @@ ContextWindowPreTurnCompressionPolicy.messageCountFallback Var
 ContextWindowPreTurnCompressionPolicy.shouldCompressBeforeTurn(messageCount:lastPromptTokens:) Func
 ContextWindowPreTurnCompressionPolicy.triggerFraction Var
 EvalJudge Protocol
+EvalJudge conformances: Copyable,Escapable,Sendable,SendableMetatype
 EvalJudge.judge(_:) Func
 EventSubsequenceChecker Enum
+EventSubsequenceChecker conformances: Copyable,Escapable
 EventSubsequenceChecker.Result Struct
+EventSubsequenceChecker.Result conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 EventSubsequenceChecker.Result.__derived_struct_equals(_:_:) Func
 EventSubsequenceChecker.Result.failureReason Var
 EventSubsequenceChecker.Result.init(passed:failureReason:) Constructor
 EventSubsequenceChecker.Result.passed Var
 EventSubsequenceChecker.check(_:against:) Func
 FixedCountPreTurnCompressionPolicy Struct
+FixedCountPreTurnCompressionPolicy conformances: Copyable,Escapable,PreTurnCompressionPolicy,Sendable,SendableMetatype
 FixedCountPreTurnCompressionPolicy.compressAfterMessages Var
 FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
 FixedCountPreTurnCompressionPolicy.init(compressAfterMessages:summaryContent:) Constructor
 FixedCountPreTurnCompressionPolicy.shouldCompressBeforeTurn(messageCount:lastPromptTokens:) Func
 FixedCountPreTurnCompressionPolicy.summaryContent Var
 FixtureOutcome Struct
+FixtureOutcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 FixtureOutcome.checkpoints Var
 FixtureOutcome.errorDescription Var
 FixtureOutcome.fixtureID Var
@@ -125,6 +149,7 @@ FixtureOutcome.init(fixtureID:checkpoints:) Constructor
 FixtureOutcome.init(fixtureID:errorDescription:) Constructor
 FixtureOutcome.verdict Var
 GoldenCheckpoint Struct
+GoldenCheckpoint conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenCheckpoint.__derived_struct_equals(_:_:) Func
 GoldenCheckpoint.afterTurnIndex Var
 GoldenCheckpoint.custom Var
@@ -140,6 +165,7 @@ GoldenCheckpoint.init(from:) Constructor
 GoldenCheckpoint.label Var
 GoldenCheckpoint.requiredContent Var
 GoldenExpectedCompression Struct
+GoldenExpectedCompression conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenExpectedCompression.__derived_struct_equals(_:_:) Func
 GoldenExpectedCompression.encode(to:) Func
 GoldenExpectedCompression.init(from:) Constructor
@@ -147,6 +173,7 @@ GoldenExpectedCompression.init(maxRetainedMessages:minInsertedRecords:) Construc
 GoldenExpectedCompression.maxRetainedMessages Var
 GoldenExpectedCompression.minInsertedRecords Var
 GoldenExpectedContextSlots Struct
+GoldenExpectedContextSlots conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenExpectedContextSlots.__derived_struct_equals(_:_:) Func
 GoldenExpectedContextSlots.encode(to:) Func
 GoldenExpectedContextSlots.init(from:) Constructor
@@ -154,6 +181,7 @@ GoldenExpectedContextSlots.init(minSlots:maxSlots:) Constructor
 GoldenExpectedContextSlots.maxSlots Var
 GoldenExpectedContextSlots.minSlots Var
 GoldenExpectedToolCall Struct
+GoldenExpectedToolCall conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenExpectedToolCall.__derived_struct_equals(_:_:) Func
 GoldenExpectedToolCall.argumentsContain Var
 GoldenExpectedToolCall.encode(to:) Func
@@ -161,6 +189,7 @@ GoldenExpectedToolCall.init(from:) Constructor
 GoldenExpectedToolCall.init(name:argumentsContain:) Constructor
 GoldenExpectedToolCall.name Var
 GoldenScriptedToolCall Struct
+GoldenScriptedToolCall conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenScriptedToolCall.__derived_struct_equals(_:_:) Func
 GoldenScriptedToolCall.arguments Var
 GoldenScriptedToolCall.encode(to:) Func
@@ -169,6 +198,7 @@ GoldenScriptedToolCall.init(name:arguments:result:) Constructor
 GoldenScriptedToolCall.name Var
 GoldenScriptedToolCall.result Var
 GoldenTaskFixture Struct
+GoldenTaskFixture conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenTaskFixture.__derived_struct_equals(_:_:) Func
 GoldenTaskFixture.checkpoints Var
 GoldenTaskFixture.encode(to:) Func
@@ -178,37 +208,49 @@ GoldenTaskFixture.init(id:systemPrompt:turns:checkpoints:) Constructor
 GoldenTaskFixture.systemPrompt Var
 GoldenTaskFixture.turns Var
 GoldenTaskLoader Enum
+GoldenTaskLoader conformances: Copyable,Escapable
 GoldenTaskLoader.LoadError Enum
+GoldenTaskLoader.LoadError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 GoldenTaskLoader.LoadError.decodeFailed EnumElement
 GoldenTaskLoader.LoadError.description Var
 GoldenTaskLoader.LoadError.directoryMissing EnumElement
 GoldenTaskLoader.load(from:) Func
 GoldenTaskLoader.loadAll(from:) Func
 GoldenTaskMapper Enum
+GoldenTaskMapper conformances: Copyable,Escapable
 GoldenTaskMapper.MapError Enum
+GoldenTaskMapper.MapError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 GoldenTaskMapper.MapError.description Var
 GoldenTaskMapper.MapError.editNotYetSupported EnumElement
 GoldenTaskMapper.MapError.sendTurnMissingText EnumElement
 GoldenTaskMapper.map(_:) Func
 GoldenTaskRunner Enum
+GoldenTaskRunner attrs: Custom
+GoldenTaskRunner conformances: Copyable,Escapable,Sendable,SendableMetatype
 GoldenTaskRunner.CheckpointResult Struct
+GoldenTaskRunner.CheckpointResult conformances: Copyable,Escapable,Sendable,SendableMetatype
 GoldenTaskRunner.CheckpointResult.checkpoint Var
 GoldenTaskRunner.CheckpointResult.init(checkpoint:scores:) Constructor
 GoldenTaskRunner.CheckpointResult.scores Var
 GoldenTaskRunner.Outcome Struct
+GoldenTaskRunner.Outcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 GoldenTaskRunner.Outcome.checkpointResults Var
 GoldenTaskRunner.Outcome.fixture Var
 GoldenTaskRunner.Outcome.init(fixture:checkpointResults:) Constructor
 GoldenTaskRunner.PrefixError Enum
+GoldenTaskRunner.PrefixError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 GoldenTaskRunner.PrefixError.description Var
 GoldenTaskRunner.PrefixError.turnIndexOutOfRange EnumElement
 GoldenTaskRunner.ScorerRegistrationError Enum
+GoldenTaskRunner.ScorerRegistrationError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 GoldenTaskRunner.ScorerRegistrationError.description Var
 GoldenTaskRunner.ScorerRegistrationError.duplicateScorerID EnumElement
 GoldenTaskRunner.ScorerRegistrationError.reservedScorerID EnumElement
 GoldenTaskRunner.run(_:probe:customScorers:toolExecutors:preTurnCompressionPolicy:) Func
 GoldenTurn Struct
+GoldenTurn conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GoldenTurn.Kind Enum
+GoldenTurn.Kind conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 GoldenTurn.Kind.RawValue TypeAlias
 GoldenTurn.Kind.edit EnumElement
 GoldenTurn.Kind.init(rawValue:) Constructor
@@ -225,6 +267,7 @@ GoldenTurn.kind Var
 GoldenTurn.scriptedToolCall Var
 GoldenTurn.text Var
 JSONValue Enum
+JSONValue conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 JSONValue.__derived_enum_equals(_:_:) Func
 JSONValue.array EnumElement
 JSONValue.bool EnumElement
@@ -235,8 +278,10 @@ JSONValue.number EnumElement
 JSONValue.object EnumElement
 JSONValue.string EnumElement
 JudgeCacheKey Enum
+JudgeCacheKey conformances: Copyable,Escapable
 JudgeCacheKey.hash(for:) Func
 JudgeRequest Struct
+JudgeRequest conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 JudgeRequest.__derived_struct_equals(_:_:) Func
 JudgeRequest.candidate Var
 JudgeRequest.content Var
@@ -245,6 +290,7 @@ JudgeRequest.init(id:content:candidate:reference:rubric:) Constructor
 JudgeRequest.reference Var
 JudgeRequest.rubric Var
 JudgeVerdict Struct
+JudgeVerdict conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 JudgeVerdict.__derived_struct_equals(_:_:) Func
 JudgeVerdict.encode(to:) Func
 JudgeVerdict.flags Var
@@ -253,12 +299,16 @@ JudgeVerdict.init(score:rationale:flags:) Constructor
 JudgeVerdict.rationale Var
 JudgeVerdict.score Var
 JudgedCheckpointScorer Struct
+JudgedCheckpointScorer conformances: CheckpointScorer,Copyable,Escapable,Sendable,SendableMetatype
 JudgedCheckpointScorer.id Var
 JudgedCheckpointScorer.init(id:judge:) Constructor
 JudgedCheckpointScorer.score(_:) Func
 RuntimeScenario Struct
+RuntimeScenario conformances: Copyable,Escapable,Sendable,SendableMetatype
 RuntimeScenario.ScenarioTurn Struct
+RuntimeScenario.ScenarioTurn conformances: Copyable,Escapable,Sendable,SendableMetatype
 RuntimeScenario.ScenarioTurn.Action Enum
+RuntimeScenario.ScenarioTurn.Action conformances: Copyable,Escapable,Sendable,SendableMetatype
 RuntimeScenario.ScenarioTurn.Action.regenerate EnumElement
 RuntimeScenario.ScenarioTurn.Action.send EnumElement
 RuntimeScenario.ScenarioTurn.action Var
@@ -283,14 +333,19 @@ RuntimeScenario.toolExecutors Var
 RuntimeScenario.turns Var
 RuntimeScenario.userMessages Var
 RuntimeScenarioRunner Enum
+RuntimeScenarioRunner attrs: Custom
+RuntimeScenarioRunner conformances: Copyable,Escapable,Sendable,SendableMetatype
 RuntimeScenarioRunner.Result Struct
+RuntimeScenarioRunner.Result conformances: Copyable,Escapable,Sendable,SendableMetatype
 RuntimeScenarioRunner.Result.RunModeKind Enum
+RuntimeScenarioRunner.Result.RunModeKind conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RuntimeScenarioRunner.Result.RunModeKind.__derived_enum_equals(_:_:) Func
 RuntimeScenarioRunner.Result.RunModeKind.hash(into:) Func
 RuntimeScenarioRunner.Result.RunModeKind.hashValue Var
 RuntimeScenarioRunner.Result.RunModeKind.live EnumElement
 RuntimeScenarioRunner.Result.RunModeKind.scripted EnumElement
 RuntimeScenarioRunner.Result.SubsequenceFailure Struct
+RuntimeScenarioRunner.Result.SubsequenceFailure conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 RuntimeScenarioRunner.Result.SubsequenceFailure.description Var
 RuntimeScenarioRunner.Result.SubsequenceFailure.reason Var
 RuntimeScenarioRunner.Result.SubsequenceFailure.scenarioID Var
@@ -302,17 +357,23 @@ RuntimeScenarioRunner.Result.subsequenceFailureReason Var
 RuntimeScenarioRunner.Result.subsequencePassed Var
 RuntimeScenarioRunner.Result.trace Var
 RuntimeScenarioRunner.RunMode Enum
+RuntimeScenarioRunner.RunMode conformances: Copyable,Escapable
 RuntimeScenarioRunner.RunMode.live EnumElement
 RuntimeScenarioRunner.RunMode.scripted EnumElement
 RuntimeScenarioRunner.run(_:mode:ragService:preTurnCompressionPolicy:) Func
 ScenarioStateProbe Protocol
+ScenarioStateProbe conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScenarioStateProbe.snapshot(after:runResult:) Func
 ScriptedGenerationBackend Class
+ScriptedGenerationBackend attrs: Final
+ScriptedGenerationBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 ScriptedGenerationBackend.ScriptedEvent Enum
+ScriptedGenerationBackend.ScriptedEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScriptedGenerationBackend.ScriptedEvent.delay EnumElement
 ScriptedGenerationBackend.ScriptedEvent.emit EnumElement
 ScriptedGenerationBackend.ScriptedEvent.throwError EnumElement
 ScriptedGenerationBackend.TurnScript Struct
+ScriptedGenerationBackend.TurnScript conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScriptedGenerationBackend.TurnScript.empty Var
 ScriptedGenerationBackend.TurnScript.events Var
 ScriptedGenerationBackend.TurnScript.failMidStream(_:afterTokens:tokens:) Func

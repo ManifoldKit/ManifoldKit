@@ -4,6 +4,7 @@
 (top-level).withFallbacks(_:policy:) Func
 (top-level).withRetry(strategy:sleeper:operation:) Func
 AppearanceMode Enum
+AppearanceMode conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable
 AppearanceMode.AllCases TypeAlias
 AppearanceMode.ID TypeAlias
 AppearanceMode.RawValue TypeAlias
@@ -15,7 +16,10 @@ AppearanceMode.light EnumElement
 AppearanceMode.rawValue Var
 AppearanceMode.system EnumElement
 AppleTTSBackend Class
+AppleTTSBackend attrs: Final
+AppleTTSBackend conformances: AudioGenerationBackend,Copyable,Escapable,Sendable,SendableMetatype
 AppleTTSBackend.BackendError Enum
+AppleTTSBackend.BackendError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 AppleTTSBackend.BackendError.__derived_enum_equals(_:_:) Func
 AppleTTSBackend.BackendError.fileWriteFailed EnumElement
 AppleTTSBackend.BackendError.noAudioProduced EnumElement
@@ -26,6 +30,7 @@ AppleTTSBackend.init() Constructor
 AppleTTSBackend.isGenerating Var
 AppleTTSBackend.stopGeneration() Func
 AssembledPrompt Struct
+AssembledPrompt conformances: Copyable,Escapable,Sendable,SendableMetatype
 AssembledPrompt.budgetBreakdown Var
 AssembledPrompt.contextUtilization Var
 AssembledPrompt.init(orderedSlots:messages:totalTokens:budgetBreakdown:contextUtilization:) Constructor
@@ -33,6 +38,7 @@ AssembledPrompt.messages Var
 AssembledPrompt.orderedSlots Var
 AssembledPrompt.totalTokens Var
 AttributeValue Enum
+AttributeValue conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 AttributeValue.__derived_enum_equals(_:_:) Func
 AttributeValue.bool EnumElement
 AttributeValue.double EnumElement
@@ -41,7 +47,10 @@ AttributeValue.hashValue Var
 AttributeValue.int EnumElement
 AttributeValue.string EnumElement
 AudioGenerationService Class
+AudioGenerationService attrs: Custom,Final
+AudioGenerationService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 AudioGenerationService.State Enum
+AudioGenerationService.State conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 AudioGenerationService.State.__derived_enum_equals(_:_:) Func
 AudioGenerationService.State.generating EnumElement
 AudioGenerationService.State.hash(into:) Func
@@ -51,6 +60,7 @@ AudioGenerationService.generate(config:) Func
 AudioGenerationService.init(backend:) Constructor
 AudioGenerationService.state Var
 AudioGenerationServiceError Enum
+AudioGenerationServiceError conformances: BackendError,Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 AudioGenerationServiceError.__derived_enum_equals(_:_:) Func
 AudioGenerationServiceError.alreadyGenerating EnumElement
 AudioGenerationServiceError.errorDescription Var
@@ -58,9 +68,11 @@ AudioGenerationServiceError.hash(into:) Func
 AudioGenerationServiceError.hashValue Var
 AudioGenerationServiceError.isRetryable Var
 AutoApproveGate Struct
+AutoApproveGate conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolApprovalGate
 AutoApproveGate.approve(_:) Func
 AutoApproveGate.init() Constructor
 BackendActivityPhase Enum
+BackendActivityPhase conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 BackendActivityPhase.__derived_enum_equals(_:_:) Func
 BackendActivityPhase.idle EnumElement
 BackendActivityPhase.modelLoading EnumElement
@@ -69,7 +81,9 @@ BackendActivityPhase.stalled EnumElement
 BackendActivityPhase.streaming EnumElement
 BackendActivityPhase.waitingForFirstToken EnumElement
 BackendLoadOptions Struct
+BackendLoadOptions conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 BackendLoadOptions.KVCacheQuantization Enum
+BackendLoadOptions.KVCacheQuantization conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 BackendLoadOptions.KVCacheQuantization.AllCases TypeAlias
 BackendLoadOptions.KVCacheQuantization.RawValue TypeAlias
 BackendLoadOptions.KVCacheQuantization.allCases Var
@@ -88,8 +102,10 @@ BackendLoadOptions.kvCacheQuantization Var
 BackendLoadOptions.platformDefaultFlashAttention Var
 BackendLoadOptions.prefillBatchSize Var
 BackendRegistrar Protocol
+BackendRegistrar conformances: Copyable,Escapable
 BackendRegistrar.register(with:) Func
 BudgetPolicy Struct
+BudgetPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
 BudgetPolicy.cap(for:) Func
 BudgetPolicy.caps Var
 BudgetPolicy.customPriority Var
@@ -99,6 +115,7 @@ BudgetPolicy.init(priorities:caps:customPriority:) Constructor
 BudgetPolicy.priorities Var
 BudgetPolicy.priority(for:) Func
 ChatMessage Struct
+ChatMessage conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 ChatMessage.ID TypeAlias
 ChatMessage.__derived_struct_equals(_:_:) Func
 ChatMessage.agentID Var
@@ -119,6 +136,7 @@ ChatMessage.sessionID Var
 ChatMessage.status Var
 ChatMessage.timestamp Var
 ChatSession Struct
+ChatSession conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 ChatSession.ID TypeAlias
 ChatSession.__derived_struct_equals(_:_:) Func
 ChatSession.activeAgentID Var
@@ -145,6 +163,7 @@ ChatSession.title Var
 ChatSession.topP Var
 ChatSession.updatedAt Var
 ChatTemplate Struct
+ChatTemplate conformances: Copyable,Escapable,Sendable,SendableMetatype
 ChatTemplate.builtInPromptTemplate Var
 ChatTemplate.format(_:systemPrompt:tools:) Func
 ChatTemplate.init(builtIn:) Constructor
@@ -152,6 +171,7 @@ ChatTemplate.init(embeddedJinja:) Constructor
 ChatTemplate.stopSequences Var
 ChatTemplate.thinkingMarkers Var
 Citation Struct
+Citation conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 Citation.__derived_struct_equals(_:_:) Func
 Citation.chunkIndex Var
 Citation.documentID Var
@@ -166,6 +186,8 @@ Citation.score Var
 Citation.snippet Var
 Citation.snippetCharacterLimit Var
 CompositeURLSessionDelegate Class
+CompositeURLSessionDelegate attrs: Final,ObjC
+CompositeURLSessionDelegate conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,URLSessionDataDelegate,URLSessionDelegate,URLSessionDownloadDelegate,URLSessionTaskDelegate
 CompositeURLSessionDelegate.dataDelegate Var
 CompositeURLSessionDelegate.downloadDelegate Var
 CompositeURLSessionDelegate.init() Constructor
@@ -182,6 +204,7 @@ CompositeURLSessionDelegate.urlSession(_:downloadTask:didWriteData:totalBytesWri
 CompositeURLSessionDelegate.urlSession(_:task:didCompleteWithError:) Func
 CompositeURLSessionDelegate.urlSession(_:task:willPerformHTTPRedirection:newRequest:completionHandler:) Func
 ConfusionCounts Struct
+ConfusionCounts conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ConfusionCounts.__derived_struct_equals(_:_:) Func
 ConfusionCounts.compute(actual:expected:) Func
 ConfusionCounts.empty Var
@@ -195,6 +218,7 @@ ConfusionCounts.recall Var
 ConfusionCounts.relevant Var
 ConfusionCounts.tp Var
 ContextBudget Struct
+ContextBudget conformances: Copyable,Escapable
 ContextBudget.availableForHistory Var
 ContextBudget.init(maxTokens:systemPromptTokens:messageTokens:availableForHistory:responseBuffer:) Constructor
 ContextBudget.maxTokens Var
@@ -203,17 +227,21 @@ ContextBudget.responseBuffer Var
 ContextBudget.systemPromptTokens Var
 ContextBudget.usageRatio Var
 ContextWindowManager Enum
+ContextWindowManager conformances: Copyable,Escapable
 ContextWindowManager.calculateBudget(systemPrompt:messages:maxTokens:responseBuffer:tokenizer:) Func
 ContextWindowManager.estimateTokenCount(_:tokenizer:) Func
 ContextWindowManager.resolveContextSize(sessionOverride:modelContextLength:backendMaxTokens:defaultSize:) Func
 ContextWindowManager.trimMessages(_:systemPrompt:maxTokens:responseBuffer:tokenizer:) Func
 DefaultDialogueSummariser Struct
+DefaultDialogueSummariser conformances: Copyable,DialogueSummariser,Escapable,Sendable,SendableMetatype
 DefaultDialogueSummariser.init(maxSummaryTokens:) Constructor
 DefaultDialogueSummariser.maxSummaryTokens Var
 DefaultDialogueSummariser.summarise(turns:using:) Func
 DialogueSummariser Protocol
+DialogueSummariser conformances: Copyable,Escapable,Sendable,SendableMetatype
 DialogueSummariser.summarise(turns:using:) Func
 DocumentRecord Struct
+DocumentRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 DocumentRecord.ID TypeAlias
 DocumentRecord.__derived_struct_equals(_:_:) Func
 DocumentRecord.chunkCount Var
@@ -228,12 +256,14 @@ DocumentRecord.init(id:title:sourceURL:fileType:chunkCount:indexedAt:) Construct
 DocumentRecord.sourceURL Var
 DocumentRecord.title Var
 EvalRunOutput Struct
+EvalRunOutput conformances: Copyable,Escapable,Sendable,SendableMetatype
 EvalRunOutput.init(visibleText:thinkingText:toolCalls:stopReason:) Constructor
 EvalRunOutput.stopReason Var
 EvalRunOutput.thinkingText Var
 EvalRunOutput.toolCalls Var
 EvalRunOutput.visibleText Var
 EvalScore Struct
+EvalScore conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 EvalScore.__derived_struct_equals(_:_:) Func
 EvalScore.answer Var
 EvalScore.explanation Var
@@ -241,9 +271,11 @@ EvalScore.init(value:answer:explanation:metadata:) Constructor
 EvalScore.metadata Var
 EvalScore.value Var
 EvalScorer Protocol
+EvalScorer conformances: Copyable,Escapable,Sendable,SendableMetatype
 EvalScorer.Expected AssociatedType
 EvalScorer.score(output:expected:) Func
 ExecutorState Enum
+ExecutorState conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ExecutorState.__derived_enum_equals(_:_:) Func
 ExecutorState.canGenerate Var
 ExecutorState.generating EnumElement
@@ -255,6 +287,7 @@ ExecutorState.ready EnumElement
 ExecutorState.unloaded EnumElement
 ExecutorState.wedged EnumElement
 ExponentialBackoffStrategy Struct
+ExponentialBackoffStrategy conformances: Copyable,Escapable,RetryStrategy,Sendable,SendableMetatype
 ExponentialBackoffStrategy.baseDelay Var
 ExponentialBackoffStrategy.delay(for:attempt:totalDelayed:) Func
 ExponentialBackoffStrategy.init(maxRetries:baseDelay:maxTotalDelay:jitterProvider:) Constructor
@@ -262,6 +295,8 @@ ExponentialBackoffStrategy.jitterProvider Var
 ExponentialBackoffStrategy.maxRetries Var
 ExponentialBackoffStrategy.maxTotalDelay Var
 FallbackBackend Class
+FallbackBackend attrs: Final
+FallbackBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 FallbackBackend.backends Var
 FallbackBackend.capabilities Var
 FallbackBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -275,12 +310,14 @@ FallbackBackend.secureWipe() Func
 FallbackBackend.stopGeneration() Func
 FallbackBackend.unloadModel() Func
 FallbackExhaustedError Struct
+FallbackExhaustedError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 FallbackExhaustedError.errorDescription Var
 FallbackExhaustedError.init(perBackendErrors:) Constructor
 FallbackExhaustedError.isRetryable Var
 FallbackExhaustedError.lastError Var
 FallbackExhaustedError.perBackendErrors Var
 FallbackPolicy Struct
+FallbackPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
 FallbackPolicy.advanceAfterFirstToken Var
 FallbackPolicy.default Var
 FallbackPolicy.defaultShouldAdvance Var
@@ -288,12 +325,15 @@ FallbackPolicy.init(shouldAdvance:advanceAfterFirstToken:perBackendRetries:) Con
 FallbackPolicy.perBackendRetries Var
 FallbackPolicy.shouldAdvance Var
 GBNFSchemaPreValidator Struct
+GBNFSchemaPreValidator conformances: Copyable,Escapable,Sendable,SendableMetatype
 GBNFSchemaPreValidator.CVEAuditRecord Struct
+GBNFSchemaPreValidator.CVEAuditRecord conformances: Copyable,Escapable,Sendable,SendableMetatype
 GBNFSchemaPreValidator.CVEAuditRecord.auditedOn Var
 GBNFSchemaPreValidator.CVEAuditRecord.cveID Var
 GBNFSchemaPreValidator.CVEAuditRecord.isFixed Var
 GBNFSchemaPreValidator.CVEAuditRecord.note Var
 GBNFSchemaPreValidator.ValidationFailure Struct
+GBNFSchemaPreValidator.ValidationFailure conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 GBNFSchemaPreValidator.ValidationFailure.__derived_struct_equals(_:_:) Func
 GBNFSchemaPreValidator.ValidationFailure.init(reason:path:) Constructor
 GBNFSchemaPreValidator.ValidationFailure.path Var
@@ -302,6 +342,7 @@ GBNFSchemaPreValidator.cveStatus Var
 GBNFSchemaPreValidator.init() Constructor
 GBNFSchemaPreValidator.validate(_:path:) Func
 GenAIAttributeKeys Enum
+GenAIAttributeKeys conformances: Copyable,Escapable
 GenAIAttributeKeys.errorType Var
 GenAIAttributeKeys.meanInterTokenLatencyMs Var
 GenAIAttributeKeys.requestModel Var
@@ -312,6 +353,7 @@ GenAIAttributeKeys.usageCompletionTokens Var
 GenAIAttributeKeys.usagePromptTokens Var
 GenAIAttributeKeys.wallClockMs Var
 GenSpan Struct
+GenSpan conformances: Copyable,Escapable,Sendable,SendableMetatype
 GenSpan.attributes Var
 GenSpan.context Var
 GenSpan.end Var
@@ -321,13 +363,16 @@ GenSpan.name Var
 GenSpan.start Var
 GenSpan.status Var
 GenSpanTree Enum
+GenSpanTree conformances: Copyable,Escapable
 GenSpanTree.generation(_:under:name:) Func
 GenSpanTree.run(name:traceID:start:attributes:) Func
 GenSpanTree.tool(under:name:start:attributes:) Func
 GenSpanTree.turn(under:name:start:attributes:) Func
 GenerationEvent Enum
+GenerationEvent conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationEvent.kind Var
 GenerationEventKind Enum
+GenerationEventKind conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 GenerationEventKind.AllCases TypeAlias
 GenerationEventKind.RawValue TypeAlias
 GenerationEventKind.allCases Var
@@ -357,17 +402,20 @@ GenerationEventKind.toolProgress EnumElement
 GenerationEventKind.toolResult EnumElement
 GenerationEventKind.usage EnumElement
 GenerationEventRecorder Class
+GenerationEventRecorder conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 GenerationEventRecorder.init() Constructor
 GenerationEventRecorder.start(on:) Func
 GenerationEventRecorder.trace Var
 GenerationEventRecorder.unownedExecutor Var
 GenerationEventTrace Struct
+GenerationEventTrace conformances: Copyable,Escapable,Sendable,SendableMetatype
 GenerationEventTrace.events Var
 GenerationEventTrace.init(events:) Constructor
 GenerationEventTrace.init(recorder:) Constructor
 GenerationEventTrace.kinds Var
 GenerationEventTrace.save(to:) Func
 GenerationPriority Enum
+GenerationPriority conformances: Comparable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 GenerationPriority.<(_:_:) Func
 GenerationPriority.RawValue TypeAlias
 GenerationPriority.background EnumElement
@@ -376,6 +424,7 @@ GenerationPriority.normal EnumElement
 GenerationPriority.rawValue Var
 GenerationPriority.userInitiated EnumElement
 GenerationRequestToken Struct
+GenerationRequestToken conformances: Comparable,Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GenerationRequestToken.<(_:_:) Func
 GenerationRequestToken.__derived_struct_equals(_:_:) Func
 GenerationRequestToken.description Var
@@ -383,7 +432,9 @@ GenerationRequestToken.hash(into:) Func
 GenerationRequestToken.hashValue Var
 GenerationRequestToken.rawValue Var
 GenerationStreamConsumer Struct
+GenerationStreamConsumer conformances: Copyable,Escapable,Sendable,SendableMetatype
 GenerationStreamConsumer.StreamAction Enum
+GenerationStreamConsumer.StreamAction conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationStreamConsumer.StreamAction.__derived_enum_equals(_:_:) Func
 GenerationStreamConsumer.StreamAction.appendText EnumElement
 GenerationStreamConsumer.StreamAction.appendThinkingText EnumElement
@@ -404,6 +455,7 @@ GenerationStreamConsumer.loopDetectionEnabled Var
 GenerationStreamConsumer.repetitionGuard Var
 GenerationStreamConsumer.shouldStopForLoop(content:) Func
 HuggingFaceServiceProtocol Protocol
+HuggingFaceServiceProtocol conformances: Copyable,Escapable,Sendable,SendableMetatype
 HuggingFaceServiceProtocol.curatedModels(for:) Func
 HuggingFaceServiceProtocol.downloadPlan(for:) Func
 HuggingFaceServiceProtocol.downloadURL(for:) Func
@@ -412,8 +464,11 @@ HuggingFaceServiceProtocol.probe(timeout:) Func
 HuggingFaceServiceProtocol.searchModels(query:) Func
 HuggingFaceServiceProtocol.searchModels(query:limit:) Func
 ImageGenerationService Class
+ImageGenerationService attrs: Custom,Final
+ImageGenerationService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 ImageGenerationService.BackendFactory TypeAlias
 ImageGenerationService.State Enum
+ImageGenerationService.State conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ImageGenerationService.State.==(_:_:) Func
 ImageGenerationService.State.generating EnumElement
 ImageGenerationService.State.idle EnumElement
@@ -428,12 +483,14 @@ ImageGenerationService.registerBackendFactory(for:factory:) Func
 ImageGenerationService.state Var
 ImageGenerationService.unload() Func
 ImageGenerationServiceError Enum
+ImageGenerationServiceError conformances: BackendError,Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ImageGenerationServiceError.__derived_enum_equals(_:_:) Func
 ImageGenerationServiceError.errorDescription Var
 ImageGenerationServiceError.isRetryable Var
 ImageGenerationServiceError.noFactoryRegistered EnumElement
 ImageGenerationServiceError.notLoaded EnumElement
 InMemoryMetricSink Class
+InMemoryMetricSink conformances: Actor,Copyable,Escapable,InferenceMetricSink,Sendable,SendableMetatype
 InMemoryMetricSink.clear() Func
 InMemoryMetricSink.init(capacity:) Constructor
 InMemoryMetricSink.recentMetrics() Func
@@ -441,7 +498,9 @@ InMemoryMetricSink.record(_:) Func
 InMemoryMetricSink.shared Var
 InMemoryMetricSink.unownedExecutor Var
 InboundPayload Struct
+InboundPayload conformances: Copyable,Escapable,Sendable,SendableMetatype
 InboundPayload.Source Enum
+InboundPayload.Source conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 InboundPayload.Source.__derived_enum_equals(_:_:) Func
 InboundPayload.Source.appIntent EnumElement
 InboundPayload.Source.deepLink EnumElement
@@ -453,11 +512,14 @@ InboundPayload.init(prompt:attachments:source:) Constructor
 InboundPayload.prompt Var
 InboundPayload.source Var
 InferenceBackend Protocol
+InferenceBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 InferenceBackend.enforceRequiredCapabilities(_:) Func
 InferenceBackend.generateEnforcingCapabilities(prompt:systemPrompt:config:hints:) Func
 InferenceBackend.withFallbacks(_:policy:) Func
 InferenceError Enum
+InferenceError conformances: BackendError,CategorizedError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 InferenceMetric Struct
+InferenceMetric conformances: Copyable,Escapable,Sendable,SendableMetatype
 InferenceMetric.asGenSpan(context:name:) Func
 InferenceMetric.cachedPromptTokens Var
 InferenceMetric.completionTokens Var
@@ -471,11 +533,15 @@ InferenceMetric.timeToFirstToken Var
 InferenceMetric.timestamp Var
 InferenceMetric.wallClockDuration Var
 InferenceMetricSink Protocol
+InferenceMetricSink conformances: Copyable,Escapable,Sendable,SendableMetatype
 InferenceMetricSink.record(_:) Func
 InferenceService Class
+InferenceService attrs: Custom,Final
+InferenceService conformances: BackendRegistrySampling,Copyable,Escapable,ModelTypeCompatibilityProvider,Observable,Sendable,SendableMetatype
 InferenceService.GenerationPriority TypeAlias
 InferenceService.GenerationRequestToken TypeAlias
 InferenceService.GenerationRoute Enum
+InferenceService.GenerationRoute conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 InferenceService.GenerationRoute.__derived_enum_equals(_:_:) Func
 InferenceService.GenerationRoute.deep EnumElement
 InferenceService.GenerationRoute.hash(into:) Func
@@ -543,9 +609,12 @@ InferenceService.unloadModel() Func
 InferenceService.waitUntilModelReady(maxPollCount:pollIntervalNanoseconds:) Func
 InferenceService.waitUntilModelReady(readinessUpdates:maxPollCount:pollIntervalNanoseconds:) Func
 JSONSchemaValidating Protocol
+JSONSchemaValidating conformances: Copyable,Escapable,Sendable,SendableMetatype
 JSONSchemaValidating.validateAgainst(_:value:) Func
 JSONSchemaValidator Struct
+JSONSchemaValidator conformances: Copyable,Escapable,JSONSchemaValidating,Sendable,SendableMetatype
 JSONSchemaValidator.ValidationFailure Struct
+JSONSchemaValidator.ValidationFailure conformances: Copyable,Equatable,Error,Escapable,Hashable,Sendable,SendableMetatype
 JSONSchemaValidator.ValidationFailure.__derived_struct_equals(_:_:) Func
 JSONSchemaValidator.ValidationFailure.hash(into:) Func
 JSONSchemaValidator.ValidationFailure.hashValue Var
@@ -557,6 +626,7 @@ JSONSchemaValidator.validate(_:against:) Func
 JSONSchemaValidator.validate(arguments:against:) Func
 JSONSchemaValidator.validateAgainst(_:value:) Func
 KeepAlivePolicy Struct
+KeepAlivePolicy conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 KeepAlivePolicy.__derived_struct_equals(_:_:) Func
 KeepAlivePolicy.evictOnMemoryWarning Var
 KeepAlivePolicy.idleTimeout Var
@@ -564,9 +634,11 @@ KeepAlivePolicy.init(idleTimeout:evictOnMemoryWarning:memoryWarningGrace:) Const
 KeepAlivePolicy.memoryWarningGrace Var
 KeepAlivePolicy.never Var
 LoadIntent Enum
+LoadIntent conformances: Copyable,Escapable,Sendable,SendableMetatype
 LoadIntent.cloudEndpoint EnumElement
 LoadIntent.localModel EnumElement
 MacroAveragedMetrics Struct
+MacroAveragedMetrics conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MacroAveragedMetrics.__derived_struct_equals(_:_:) Func
 MacroAveragedMetrics.f1 Var
 MacroAveragedMetrics.init(perClass:) Constructor
@@ -574,7 +646,9 @@ MacroAveragedMetrics.init(precision:recall:f1:) Constructor
 MacroAveragedMetrics.precision Var
 MacroAveragedMetrics.recall Var
 MarkdownRendering Enum
+MarkdownRendering conformances: Copyable,Escapable
 MarkdownRendering.Block Enum
+MarkdownRendering.Block conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MarkdownRendering.Block.__derived_enum_equals(_:_:) Func
 MarkdownRendering.Block.code EnumElement
 MarkdownRendering.Block.markdown EnumElement
@@ -584,6 +658,7 @@ MarkdownRendering.renderToVisibleString(_:) Func
 MarkdownRendering.renderVisibleText(parts:) Func
 MarkdownRendering.stripMarkdownSyntax(_:) Func
 MessageKind Enum
+MessageKind conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MessageKind.__derived_enum_equals(_:_:) Func
 MessageKind.annotation EnumElement
 MessageKind.backendRole Var
@@ -600,6 +675,7 @@ MessageKind.memory EnumElement
 MessageKind.rawStorage Var
 MessageKind.toolResult EnumElement
 MessageRole Enum
+MessageRole conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MessageRole.RawValue TypeAlias
 MessageRole.assistant EnumElement
 MessageRole.init(rawValue:) Constructor
@@ -607,6 +683,7 @@ MessageRole.rawValue Var
 MessageRole.system EnumElement
 MessageRole.user EnumElement
 MessageStatus Enum
+MessageStatus conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MessageStatus.RawValue TypeAlias
 MessageStatus.failed EnumElement
 MessageStatus.init(rawValue:) Constructor
@@ -614,10 +691,13 @@ MessageStatus.rawValue Var
 MessageStatus.sending EnumElement
 MessageStatus.sent EnumElement
 ModelBenchmarkRunner Protocol
+ModelBenchmarkRunner conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelBenchmarkRunner.runBenchmark(for:) Func
 ModelCapabilityTier Enum
+ModelCapabilityTier conformances: Comparable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelCapabilityTier.estimate(from:) Func
 ModelExecutor Class
+ModelExecutor conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 ModelExecutor.backendName Var
 ModelExecutor.generate(prompt:systemPrompt:config:hints:) Func
 ModelExecutor.init(key:backendName:loader:makeWatchdog:) Constructor
@@ -629,15 +709,19 @@ ModelExecutor.stopGeneration() Func
 ModelExecutor.unload() Func
 ModelExecutor.unownedExecutor Var
 ModelExecutorKey Struct
+ModelExecutorKey conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelExecutorKey.__derived_struct_equals(_:_:) Func
 ModelExecutorKey.hash(into:) Func
 ModelExecutorKey.hashValue Var
 ModelExecutorKey.init(_:) Constructor
 ModelExecutorKey.rawValue Var
 ModelFitScorer Struct
+ModelFitScorer conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelFitScorer.rank(_:useCase:requestedContextSize:device:environment:) Func
 ModelFitScorer.score(_:useCase:requestedContextSize:device:environment:) Func
 ModelLoadCoordinator Class
+ModelLoadCoordinator attrs: Custom,Final
+ModelLoadCoordinator conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelLoadCoordinator.currentActivityPhase Var
 ModelLoadCoordinator.currentContextSizeOverride Var
 ModelLoadCoordinator.currentLoadPlanEnvironment Var
@@ -657,21 +741,26 @@ ModelLoadCoordinator.progressBridgePollInterval Var
 ModelLoadCoordinator.status Var
 ModelLoadCoordinator.statusUpdates() Func
 ModelLoadPlan Struct
+ModelLoadPlan conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.compute(for:requestedContextSize:environment:absoluteContextCeiling:headroomFraction:measuredBytesPerToken:) Func
 ModelLoadPlan.compute(for:requestedContextSize:strategy:environment:absoluteContextCeiling:headroomFraction:measuredBytesPerToken:) Func
 ModelLoadReadinessState Enum
+ModelLoadReadinessState conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelLoadReadinessState.__derived_enum_equals(_:_:) Func
 ModelLoadReadinessState.idle EnumElement
 ModelLoadReadinessState.isReady Var
 ModelLoadReadinessState.loading EnumElement
 ModelLoadReadinessState.ready EnumElement
 ModelLoadStatus Enum
+ModelLoadStatus conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelLoadStatus.__derived_enum_equals(_:_:) Func
 ModelLoadStatus.failed EnumElement
 ModelLoadStatus.idle EnumElement
 ModelLoadStatus.loaded EnumElement
 ModelLoadStatus.loading EnumElement
 ModelRegistry Class
+ModelRegistry attrs: Custom,Final
+ModelRegistry conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 ModelRegistry.availableModels Var
 ModelRegistry.compatibility(for:) Func
 ModelRegistry.foundationModelProvider Var
@@ -683,6 +772,8 @@ ModelRegistry.refreshAsync() Func
 ModelRegistry.selectModel(_:) Func
 ModelRegistry.selectedModel Var
 ModelSelection Class
+ModelSelection attrs: Custom,Final
+ModelSelection conformances: Copyable,Escapable,ModelSelecting,Observable,Sendable,SendableMetatype
 ModelSelection.availableModels Var
 ModelSelection.groupModels(_:by:) Func
 ModelSelection.groupedModels(by:) Func
@@ -700,6 +791,7 @@ ModelSelection.selectedModel Var
 ModelSelection.sortModels(_:by:) Func
 ModelSelection.sortedModels(by:) Func
 ModelSelectionGroup Enum
+ModelSelectionGroup conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable,Sendable,SendableMetatype
 ModelSelectionGroup.AllCases TypeAlias
 ModelSelectionGroup.ID TypeAlias
 ModelSelectionGroup.RawValue TypeAlias
@@ -711,6 +803,7 @@ ModelSelectionGroup.init(rawValue:) Constructor
 ModelSelectionGroup.rawValue Var
 ModelSelectionGroup.title Var
 ModelSelectionSortOrder Enum
+ModelSelectionSortOrder conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable,Sendable,SendableMetatype
 ModelSelectionSortOrder.AllCases TypeAlias
 ModelSelectionSortOrder.ID TypeAlias
 ModelSelectionSortOrder.RawValue TypeAlias
@@ -723,6 +816,8 @@ ModelSelectionSortOrder.rawValue Var
 ModelSelectionSortOrder.size EnumElement
 ModelSelectionSortOrder.type EnumElement
 NLEmbeddingBackend Class
+NLEmbeddingBackend attrs: Final
+NLEmbeddingBackend conformances: Copyable,EmbeddingBackend,Escapable,Sendable,SendableMetatype
 NLEmbeddingBackend.dimensions Var
 NLEmbeddingBackend.embed(_:) Func
 NLEmbeddingBackend.init(language:) Constructor
@@ -730,23 +825,28 @@ NLEmbeddingBackend.isModelLoaded Var
 NLEmbeddingBackend.loadModel(from:) Func
 NLEmbeddingBackend.unloadModel() Func
 OversizeAction Enum
+OversizeAction conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 OversizeAction.==(_:_:) Func
 OversizeAction.allow EnumElement
 OversizeAction.rejectWithError EnumElement
 OversizeAction.spillToFile EnumElement
 OversizeAction.truncate EnumElement
 PartialSnapshot Struct
+PartialSnapshot conformances: Copyable,Escapable,Sendable,SendableMetatype
 PartialSnapshot.decoded Var
 PartialSnapshot.fields Var
 PartialSnapshot.init(fields:decoded:rawText:) Constructor
 PartialSnapshot.rawText Var
 PostGenerationTask Protocol
+PostGenerationTask conformances: Copyable,Escapable,Sendable,SendableMetatype
 PostGenerationTask.run(message:session:) Func
 PreToolUseOutcome Enum
+PreToolUseOutcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 PreToolUseOutcome.__derived_enum_equals(_:_:) Func
 PreToolUseOutcome.block EnumElement
 PreToolUseOutcome.proceed EnumElement
 ProbeResult Struct
+ProbeResult conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ProbeResult.__derived_struct_equals(_:_:) Func
 ProbeResult.failureReason Var
 ProbeResult.httpStatus Var
@@ -755,12 +855,15 @@ ProbeResult.latency Var
 ProbeResult.succeeded Var
 ProbeResult.timestamp Var
 PromptAssembler Enum
+PromptAssembler conformances: Copyable,Escapable
 PromptAssembler.assemble(slots:messages:systemPrompt:capabilities:responseBuffer:tokenizer:policy:) Func
 PromptAssembler.assemble(slots:messages:systemPrompt:contextSize:responseBuffer:tokenizer:policy:) Func
 PromptContextProvider Protocol
+PromptContextProvider conformances: Copyable,Escapable,Sendable,SendableMetatype
 PromptContextProvider.contributeSlots(budget:context:) Func
 PromptContextProvider.contributeSlots(messageCount:) Func
 PromptSlot Struct
+PromptSlot conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 PromptSlot.ID TypeAlias
 PromptSlot.content Var
 PromptSlot.id Var
@@ -772,6 +875,7 @@ PromptSlot.role Var
 PromptSlot.sourceRecordID Var
 PromptSlot.tokenBudget Var
 PromptSlotPosition Enum
+PromptSlotPosition conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 PromptSlotPosition.__derived_enum_equals(_:_:) Func
 PromptSlotPosition.atDepth EnumElement
 PromptSlotPosition.bottomOfHistory EnumElement
@@ -786,6 +890,7 @@ PromptSlotPosition.sortIndex(messageCount:) Func
 PromptSlotPosition.systemPreamble EnumElement
 PromptSlotPosition.topOfHistory EnumElement
 PromptSlotRole Enum
+PromptSlotRole conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 PromptSlotRole.__derived_enum_equals(_:_:) Func
 PromptSlotRole.archival EnumElement
 PromptSlotRole.characterContext EnumElement
@@ -800,19 +905,23 @@ PromptSlotRole.retrieval EnumElement
 PromptSlotRole.system EnumElement
 PromptSlotRole.userInstruction EnumElement
 ProviderBudget Struct
+ProviderBudget conformances: Copyable,Escapable,Sendable,SendableMetatype
 ProviderBudget.allocated Var
 ProviderBudget.init(allocated:totalContextSize:) Constructor
 ProviderBudget.totalContextSize Var
 ProviderBudget.unlimited Var
 RealWedgeWatchdog Struct
+RealWedgeWatchdog conformances: Copyable,Escapable,Sendable,SendableMetatype,WedgeWatchdog
 RealWedgeWatchdog.awaitWedgeBudget() Func
 RealWedgeWatchdog.budget Var
 RealWedgeWatchdog.init(budget:) Constructor
 ReaskPolicy Struct
+ReaskPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
 ReaskPolicy.includeRawOutput Var
 ReaskPolicy.init(maxAttempts:includeRawOutput:) Constructor
 ReaskPolicy.maxAttempts Var
 RecordingTraceSink Class
+RecordingTraceSink conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype,TraceSink
 RecordingTraceSink.children(of:) Func
 RecordingTraceSink.clear() Func
 RecordingTraceSink.init() Constructor
@@ -821,13 +930,17 @@ RecordingTraceSink.recordedSpans() Func
 RecordingTraceSink.roots(in:) Func
 RecordingTraceSink.unownedExecutor Var
 RedirectGuardDelegate Class
+RedirectGuardDelegate attrs: Final,ObjC
+RedirectGuardDelegate conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,URLSessionDelegate,URLSessionTaskDelegate
 RedirectGuardDelegate.hopCap Var
 RedirectGuardDelegate.init() Constructor
 RedirectGuardDelegate.init(hopCap:) Constructor
 RedirectGuardDelegate.urlSession(_:task:didCompleteWithError:) Func
 RedirectGuardDelegate.urlSession(_:task:willPerformHTTPRedirection:newRequest:completionHandler:) Func
 RenderConsistency Struct
+RenderConsistency conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 RenderConsistency.Status Enum
+RenderConsistency.Status conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RenderConsistency.Status.__derived_enum_equals(_:_:) Func
 RenderConsistency.Status.consistent EnumElement
 RenderConsistency.Status.hash(into:) Func
@@ -841,15 +954,19 @@ RenderConsistency.detail Var
 RenderConsistency.status Var
 RenderConsistency.toolDefinitionRendered Var
 RenderConsistencyChecker Enum
+RenderConsistencyChecker conformances: Copyable,Escapable
 RenderConsistencyChecker.check(chatTemplateRaw:) Func
 RenderedPrompt Struct
+RenderedPrompt conformances: Copyable,Escapable,Sendable,SendableMetatype
 RenderedPrompt.init(text:stopSequences:) Constructor
 RenderedPrompt.stopSequences Var
 RenderedPrompt.text Var
 RepetitionDetector Enum
+RepetitionDetector conformances: Copyable,Escapable
 RepetitionDetector.looksLikeLooping(_:) Func
 RepetitionDetector.repetitionRate(of:unitRange:) Func
 RepetitionGuardConfig Struct
+RepetitionGuardConfig conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RepetitionGuardConfig.__derived_struct_equals(_:_:) Func
 RepetitionGuardConfig.default Var
 RepetitionGuardConfig.doubleRepeatMaximumUnit Var
@@ -864,6 +981,7 @@ RepetitionGuardConfig.tripleRepeatMaximumUnit Var
 RepetitionGuardConfig.tripleRepeatMinimumCharacters Var
 RepetitionGuardConfig.tripleRepeatMinimumUnit Var
 ResidentModelStatus Struct
+ResidentModelStatus conformances: Copyable,Escapable,Sendable,SendableMetatype
 ResidentModelStatus.backend Var
 ResidentModelStatus.estimatedFootprintBytes Var
 ResidentModelStatus.idleDuration Var
@@ -871,6 +989,7 @@ ResidentModelStatus.lastActivityAt Var
 ResidentModelStatus.loadedAt Var
 ResidentModelStatus.modelID Var
 ResolvedSlot Struct
+ResolvedSlot conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 ResolvedSlot.ID TypeAlias
 ResolvedSlot.content Var
 ResolvedSlot.id Var
@@ -880,14 +999,18 @@ ResolvedSlot.position Var
 ResolvedSlot.role Var
 ResolvedSlot.tokenCount Var
 RetryExhaustedError Struct
+RetryExhaustedError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 RetryExhaustedError.attempts Var
 RetryExhaustedError.errorDescription Var
 RetryExhaustedError.init(lastError:attempts:) Constructor
 RetryExhaustedError.isRetryable Var
 RetryExhaustedError.lastError Var
 RetryStrategy Protocol
+RetryStrategy conformances: Copyable,Escapable,Sendable,SendableMetatype
 RetryStrategy.delay(for:attempt:totalDelayed:) Func
 RouterBackend Class
+RouterBackend attrs: Final
+RouterBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 RouterBackend.capabilities Var
 RouterBackend.children Var
 RouterBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -900,20 +1023,25 @@ RouterBackend.selectBackend(for:) Func
 RouterBackend.stopGeneration() Func
 RouterBackend.unloadModel() Func
 SchemaProviding Protocol
+SchemaProviding conformances: Copyable,Escapable
 SchemaProviding.jsonSchema Var
 ScoreValue Enum
+ScoreValue conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ScoreValue.__derived_enum_equals(_:_:) Func
 ScoreValue.bool EnumElement
 ScoreValue.doubleValue Var
 ScoreValue.number EnumElement
 ScoreValue.unavailable EnumElement
 ScoredModel Struct
+ScoredModel conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 ScoredModel.ID TypeAlias
 ScoredModel.id Var
 ScoredModel.init(model:score:) Constructor
 ScoredModel.model Var
 ScoredModel.score Var
 SettingsService Class
+SettingsService attrs: Final
+SettingsService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 SettingsService.appearanceMode Var
 SettingsService.effectiveRepeatPenalty(session:) Func
 SettingsService.effectiveTemperature(session:) Func
@@ -925,6 +1053,7 @@ SettingsService.globalTopP Var
 SettingsService.init(defaults:) Constructor
 SettingsService.shared Var
 SpanContext Struct
+SpanContext conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 SpanContext.__derived_struct_equals(_:_:) Func
 SpanContext.child(spanID:) Func
 SpanContext.hash(into:) Func
@@ -935,6 +1064,7 @@ SpanContext.root(traceID:) Func
 SpanContext.spanID Var
 SpanContext.traceID Var
 SpanID Struct
+SpanID conformances: Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 SpanID.__derived_struct_equals(_:_:) Func
 SpanID.bytes Var
 SpanID.description Var
@@ -943,6 +1073,7 @@ SpanID.hashValue Var
 SpanID.init(bytes:) Constructor
 SpanID.random() Func
 SpanKind Enum
+SpanKind conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 SpanKind.__derived_enum_equals(_:_:) Func
 SpanKind.chain EnumElement
 SpanKind.hash(into:) Func
@@ -953,6 +1084,7 @@ SpanKind.other EnumElement
 SpanKind.retriever EnumElement
 SpanKind.tool EnumElement
 SpanStatus Enum
+SpanStatus conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 SpanStatus.__derived_enum_equals(_:_:) Func
 SpanStatus.error EnumElement
 SpanStatus.hash(into:) Func
@@ -960,14 +1092,18 @@ SpanStatus.hashValue Var
 SpanStatus.ok EnumElement
 SpanStatus.unset EnumElement
 StandardBenchmarkRunner Class
+StandardBenchmarkRunner attrs: Final
+StandardBenchmarkRunner conformances: Copyable,Escapable,ModelBenchmarkRunner,Sendable,SendableMetatype
 StandardBenchmarkRunner.init(inferenceService:) Constructor
 StandardBenchmarkRunner.runBenchmark(for:) Func
 StructuredOutput Struct
+StructuredOutput conformances: Copyable,Escapable,Sendable,SendableMetatype
 StructuredOutput.init(value:rawText:strategy:) Constructor
 StructuredOutput.rawText Var
 StructuredOutput.strategy Var
 StructuredOutput.value Var
 StructuredOutputEnvelopeError Enum
+StructuredOutputEnvelopeError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 StructuredOutputEnvelopeError.cancelled EnumElement
 StructuredOutputEnvelopeError.emptyOutput EnumElement
 StructuredOutputEnvelopeError.errorDescription Var
@@ -975,29 +1111,36 @@ StructuredOutputEnvelopeError.isRetryable Var
 StructuredOutputEnvelopeError.stalled EnumElement
 StructuredOutputEnvelopeError.unparsable EnumElement
 StructuredOutputError Enum
+StructuredOutputError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 StructuredOutputError.decodeFailure EnumElement
 StructuredOutputError.errorDescription Var
 StructuredOutputError.isRetryable Var
 StructuredOutputError.reaskBudgetExhausted EnumElement
 StructuredOutputError.schemaEncodingFailure EnumElement
 StructuredOutputReliabilityPolicy Struct
+StructuredOutputReliabilityPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
 StructuredOutputReliabilityPolicy.init(maxRetries:stallTimeout:retryDelay:) Constructor
 StructuredOutputReliabilityPolicy.maxRetries Var
 StructuredOutputReliabilityPolicy.retryDelay Var
 StructuredOutputReliabilityPolicy.stallTimeout Var
 ToolApprovalDecision Enum
+ToolApprovalDecision conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolApprovalDecision.__derived_enum_equals(_:_:) Func
 ToolApprovalDecision.approved EnumElement
 ToolApprovalDecision.denied EnumElement
 ToolApprovalGate Protocol
+ToolApprovalGate conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolApprovalGate.approve(_:) Func
 ToolGrammarBuilder Struct
+ToolGrammarBuilder conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolGrammarBuilder.LoweringReport Struct
+ToolGrammarBuilder.LoweringReport conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolGrammarBuilder.LoweringReport.__derived_struct_equals(_:_:) Func
 ToolGrammarBuilder.LoweringReport.firstDegradation Var
 ToolGrammarBuilder.LoweringReport.lowersFully Var
 ToolGrammarBuilder.LoweringReport.toolName Var
 ToolGrammarBuilder.Mode Enum
+ToolGrammarBuilder.Mode conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolGrammarBuilder.Mode.__derived_enum_equals(_:_:) Func
 ToolGrammarBuilder.Mode.permissive EnumElement
 ToolGrammarBuilder.Mode.strict EnumElement
@@ -1008,11 +1151,14 @@ ToolGrammarBuilder.buildSchemaGrammar(for:) Func
 ToolGrammarBuilder.init(preValidator:) Constructor
 ToolGrammarBuilder.loweringReport(for:) Func
 ToolOutputPolicy Struct
+ToolOutputPolicy conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolOutputPolicy.__derived_struct_equals(_:_:) Func
 ToolOutputPolicy.init(maxBytes:onOversize:) Constructor
 ToolOutputPolicy.maxBytes Var
 ToolOutputPolicy.onOversize Var
 ToolRegistry Class
+ToolRegistry attrs: Custom,Final
+ToolRegistry conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolRegistry.advertisedDefinitions Var
 ToolRegistry.advertisedToolNames Var
 ToolRegistry.coercesArguments Var
@@ -1028,7 +1174,9 @@ ToolRegistry.requiresApproval(toolName:) Func
 ToolRegistry.unregister(name:) Func
 ToolRegistry.validator Var
 ToolSystemPromptBuilder Struct
+ToolSystemPromptBuilder conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolSystemPromptBuilder.Style Enum
+ToolSystemPromptBuilder.Style conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolSystemPromptBuilder.Style.__derived_enum_equals(_:_:) Func
 ToolSystemPromptBuilder.Style.hash(into:) Func
 ToolSystemPromptBuilder.Style.hashValue Var
@@ -1037,6 +1185,7 @@ ToolSystemPromptBuilder.Style.standard EnumElement
 ToolSystemPromptBuilder.Style.strict EnumElement
 ToolSystemPromptBuilder.preferTools(for:style:) Func
 TraceID Struct
+TraceID conformances: Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 TraceID.__derived_struct_equals(_:_:) Func
 TraceID.bytes Var
 TraceID.description Var
@@ -1045,11 +1194,14 @@ TraceID.hashValue Var
 TraceID.init(bytes:) Constructor
 TraceID.random() Func
 TraceSink Protocol
+TraceSink conformances: Copyable,Escapable,Sendable,SendableMetatype
 TraceSink.record(_:) Func
 TranscriptHealer Enum
+TranscriptHealer conformances: Copyable,Escapable
 TranscriptHealer.heal(_:) Func
 TranscriptHealer.healParts(_:resultIDs:) Func
 TurnContext Struct
+TurnContext conformances: Copyable,Escapable,Sendable,SendableMetatype
 TurnContext.appData Var
 TurnContext.conversationText Var
 TurnContext.init(sessionID:messageCount:conversationText:tokenizer:appData:) Constructor
@@ -1057,15 +1209,20 @@ TurnContext.messageCount Var
 TurnContext.sessionID Var
 TurnContext.tokenizer Var
 URLSessionFactory Enum
+URLSessionFactory conformances: Copyable,Escapable
 URLSessionFactory.background(identifier:hopCap:additionalDownloadDelegate:) Func
 URLSessionFactory.defaultRequestTimeout Var
 URLSessionFactory.defaultResourceTimeout Var
 URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:) Func
 VideoGenerationBackend Protocol
+VideoGenerationBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 VideoGenerationBackend.cancel() Func
 VideoGenerationBackend.generate(prompt:config:) Func
 VideoGenerationService Class
+VideoGenerationService attrs: Custom,Final
+VideoGenerationService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 VideoGenerationService.State Enum
+VideoGenerationService.State conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VideoGenerationService.State.__derived_enum_equals(_:_:) Func
 VideoGenerationService.State.generating EnumElement
 VideoGenerationService.State.hash(into:) Func
@@ -1075,6 +1232,7 @@ VideoGenerationService.generate(prompt:config:) Func
 VideoGenerationService.init(backend:) Constructor
 VideoGenerationService.state Var
 VideoGenerationServiceError Enum
+VideoGenerationServiceError conformances: BackendError,Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 VideoGenerationServiceError.__derived_enum_equals(_:_:) Func
 VideoGenerationServiceError.alreadyGenerating EnumElement
 VideoGenerationServiceError.errorDescription Var
@@ -1082,8 +1240,10 @@ VideoGenerationServiceError.hash(into:) Func
 VideoGenerationServiceError.hashValue Var
 VideoGenerationServiceError.isRetryable Var
 VoiceDescriptor Struct
+VoiceDescriptor conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 VoiceDescriptor.ID TypeAlias
 VoiceDescriptor.Quality Enum
+VoiceDescriptor.Quality conformances: CaseIterable,Comparable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 VoiceDescriptor.Quality.<(_:_:) Func
 VoiceDescriptor.Quality.AllCases TypeAlias
 VoiceDescriptor.Quality.RawValue TypeAlias
@@ -1105,4 +1265,5 @@ VoiceDescriptor.language Var
 VoiceDescriptor.name Var
 VoiceDescriptor.quality Var
 WedgeWatchdog Protocol
+WedgeWatchdog conformances: Copyable,Escapable,Sendable,SendableMetatype
 WedgeWatchdog.awaitWedgeBudget() Func

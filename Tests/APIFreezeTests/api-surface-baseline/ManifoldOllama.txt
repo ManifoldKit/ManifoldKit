@@ -1,7 +1,9 @@
 CloudPayloadHandler Struct
+CloudPayloadHandler conformances: Copyable,Escapable,SSEPayloadHandler,Sendable,SendableMetatype
 CloudPayloadHandler.makeOllamaStreamConsumer(config:autoDetectedMarkers:) Func
 CloudPayloadHandler.ollama Var
 OllamaAdapter Struct
+OllamaAdapter conformances: CloudHTTPProviderAdapter,Copyable,Escapable,Sendable,SendableMetatype
 OllamaAdapter.buildRequest(prompt:systemPrompt:config:history:) Func
 OllamaAdapter.capabilities Var
 OllamaAdapter.errorBodyDecoder Var
@@ -11,6 +13,8 @@ OllamaAdapter.messageEncoder Var
 OllamaAdapter.payloadHandler Var
 OllamaAdapter.streamFinalizer Var
 OllamaBackend Class
+OllamaBackend attrs: Final
+OllamaBackend conformances: AdvisoryResidencyConfigurable,Copyable,EndpointBackendURLModelConfigurable,Escapable,InferenceBackend,Sendable,SendableMetatype
 OllamaBackend.adapter Var
 OllamaBackend.applyAdvisoryKeepAlive(idleTimeout:) Func
 OllamaBackend.backendName Var
@@ -30,18 +34,25 @@ OllamaBackend.parseResponseStream(bytes:config:continuation:) Func
 OllamaBackend.signalsLoadingUntilFirstToken Var
 OllamaBackend.unloadModel() Func
 OllamaBackends Enum
+OllamaBackends conformances: BackendRegistrar,Copyable,Escapable
 OllamaBackends.register(with:) Func
 OllamaErrorBodyDecoder Struct
+OllamaErrorBodyDecoder conformances: Copyable,ErrorBodyDecoder,Escapable,Sendable,SendableMetatype
 OllamaErrorBodyDecoder.extractMessage(from:) Func
 OllamaErrorBodyDecoder.init() Constructor
 OllamaModelListService Class
+OllamaModelListService attrs: Final
+OllamaModelListService conformances: Copyable,Escapable,Sendable,SendableMetatype
 OllamaModelListService.fetchModels(from:) Func
 OllamaModelListService.init(urlSession:) Constructor
 OllamaStreamEventExtractor Class
+OllamaStreamEventExtractor attrs: Final
+OllamaStreamEventExtractor conformances: CloudStreamEventConsumer,Copyable,Escapable,Sendable,SendableMetatype
 OllamaStreamEventExtractor.consume(payload:) Func
 OllamaStreamEventExtractor.finish(cancelled:) Func
 OllamaStreamEventExtractor.init(config:thinkingMarkers:autoDetectedMarkers:) Constructor
 RemoteModelInfo Struct
+RemoteModelInfo conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 RemoteModelInfo.ID TypeAlias
 RemoteModelInfo.__derived_struct_equals(_:_:) Func
 RemoteModelInfo.familyTag Var

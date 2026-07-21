@@ -1,6 +1,8 @@
 AdvisoryResidencyConfigurable Protocol
+AdvisoryResidencyConfigurable conformances: Copyable,Escapable
 AdvisoryResidencyConfigurable.applyAdvisoryKeepAlive(idleTimeout:) Func
 AgentDefinition Struct
+AgentDefinition conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 AgentDefinition.ID TypeAlias
 AgentDefinition.__derived_struct_equals(_:_:) Func
 AgentDefinition.allowedToolNames Var
@@ -14,25 +16,32 @@ AgentDefinition.init(id:name:systemPrompt:description:allowedToolNames:) Constru
 AgentDefinition.name Var
 AgentDefinition.systemPrompt Var
 AgentHandoff Struct
+AgentHandoff conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AgentHandoff.__derived_struct_equals(_:_:) Func
 AgentHandoff.init(targetAgentID:payload:) Constructor
 AgentHandoff.payload Var
 AgentHandoff.targetAgentID Var
 Array Struct
+Array conformances: BidirectionalCollection,CVarArg,Collection,ContiguousBytes,Copyable,CustomDebugStringConvertible,CustomReflectable,CustomStringConvertible,DataProtocol,Decodable,DecodableWithConfiguration,Encodable,EncodableWithConfiguration,Equatable,Escapable,ExpressibleByArrayLiteral,Hashable,MutableCollection,MutableDataProtocol,RandomAccessCollection,RangeReplaceableCollection,Sendable,SendableMetatype,Sequence
 Array.asRoleContentTuples Var
 Array.containsImages Var
 Array.containsToolParts Var
 Array.flattenedHistory Var
 Array.toolAwareHistory Var
 AsyncSequence Protocol
+AsyncSequence attrs: Available
+AsyncSequence conformances: Copyable,Escapable
 AsyncSequence.coalescedSentences() Func
 AudioGenerationBackend Protocol
+AudioGenerationBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 AudioGenerationBackend.generate(config:) Func
 AudioGenerationBackend.isGenerating Var
 AudioGenerationBackend.stopGeneration() Func
 BackendError Protocol
+BackendError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 BackendError.isRetryable Var
 BackendName Struct
+BackendName conformances: Copyable,CustomStringConvertible,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 BackendName.RawValue TypeAlias
 BackendName.allCases Var
 BackendName.claude Var
@@ -49,6 +58,7 @@ BackendName.parse(_:) Func
 BackendName.rawValue Var
 BackendName.wellKnown Var
 BackendVisionCapability Enum
+BackendVisionCapability conformances: Copyable,Escapable
 BackendVisionCapability.claudeMessagesSupportsImageInput(modelName:) Func
 BackendVisionCapability.llamaSupportsImageInput Var
 BackendVisionCapability.mlxSupportsImageInput(probedCapabilities:) Func
@@ -56,12 +66,15 @@ BackendVisionCapability.ollamaSupportsImageInput(probedVision:) Func
 BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName:) Func
 BackendVisionCapability.openAIResponsesSupportsImageInput(modelName:) Func
 CancellableModelLoading Protocol
+CancellableModelLoading conformances: Copyable,Escapable
 CancellableModelLoading.awaitModelLoadSettled() Func
 CancellableModelLoading.cancelModelLoad() Func
 CancellableModelLoading.isModelLoadInFlight Var
 ChatError Struct
+ChatError conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 ChatError.ID TypeAlias
 ChatError.Kind Enum
+ChatError.Kind conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ChatError.Kind.__derived_enum_equals(_:_:) Func
 ChatError.Kind.configuration EnumElement
 ChatError.Kind.generation EnumElement
@@ -70,6 +83,7 @@ ChatError.Kind.hashValue Var
 ChatError.Kind.memoryPressure EnumElement
 ChatError.Kind.persistence EnumElement
 ChatError.Recovery Enum
+ChatError.Recovery conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ChatError.Recovery.__derived_enum_equals(_:_:) Func
 ChatError.Recovery.configureAPIKey EnumElement
 ChatError.Recovery.dismissOnly EnumElement
@@ -85,7 +99,9 @@ ChatError.message Var
 ChatError.recovery Var
 ChatError.underlyingError Var
 CloudBackendError Enum
+CloudBackendError conformances: BackendError,CategorizedError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 DocumentChunk Struct
+DocumentChunk conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 DocumentChunk.ID TypeAlias
 DocumentChunk.__derived_struct_equals(_:_:) Func
 DocumentChunk.chunkIndex Var
@@ -96,6 +112,7 @@ DocumentChunk.id Var
 DocumentChunk.init(id:documentID:text:chunkIndex:) Constructor
 DocumentChunk.text Var
 EmbeddingBackend Protocol
+EmbeddingBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 EmbeddingBackend.capabilities Var
 EmbeddingBackend.dimensions Var
 EmbeddingBackend.embed(_:) Func
@@ -103,6 +120,7 @@ EmbeddingBackend.isModelLoaded Var
 EmbeddingBackend.loadModel(from:) Func
 EmbeddingBackend.unloadModel() Func
 EmbeddingCapabilities Struct
+EmbeddingCapabilities conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 EmbeddingCapabilities.__derived_struct_equals(_:_:) Func
 EmbeddingCapabilities.default Var
 EmbeddingCapabilities.encode(to:) Func
@@ -114,17 +132,22 @@ EmbeddingCapabilities.maxBatchSize Var
 EmbeddingCapabilities.maxInputLength Var
 EmbeddingCapabilities.producesNormalizedVectors Var
 EmbeddingError Enum
+EmbeddingError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 EmbeddingError.dimensionMismatch EnumElement
 EmbeddingError.encodingFailed EnumElement
 EmbeddingError.errorDescription Var
 EmbeddingError.isRetryable Var
 EmbeddingError.modelNotLoaded EnumElement
 EndpointBackendKeychainConfigurable Protocol
+EndpointBackendKeychainConfigurable conformances: Copyable,Escapable
 EndpointBackendKeychainConfigurable.configure(baseURL:keychainAccount:modelName:) Func
 EndpointBackendURLModelConfigurable Protocol
+EndpointBackendURLModelConfigurable conformances: Copyable,Escapable
 EndpointBackendURLModelConfigurable.configure(baseURL:modelName:) Func
 GenerationCompletion Struct
+GenerationCompletion conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationCompletion.Reason Enum
+GenerationCompletion.Reason conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GenerationCompletion.Reason.__derived_enum_equals(_:_:) Func
 GenerationCompletion.Reason.cancelled EnumElement
 GenerationCompletion.Reason.error EnumElement
@@ -138,6 +161,7 @@ GenerationCompletion.__derived_struct_equals(_:_:) Func
 GenerationCompletion.init(reason:) Constructor
 GenerationCompletion.reason Var
 GenerationConfig Struct
+GenerationConfig conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationConfig.__derived_struct_equals(_:_:) Func
 GenerationConfig.encode(to:) Func
 GenerationConfig.frequencyContextSize Var
@@ -168,6 +192,7 @@ GenerationConfig.topK Var
 GenerationConfig.topP Var
 GenerationConfig.yieldEveryNTokens Var
 GenerationEvent Enum
+GenerationEvent conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationEvent.__derived_enum_equals(_:_:) Func
 GenerationEvent.generationCompleted EnumElement
 GenerationEvent.handoffRequested EnumElement
@@ -193,6 +218,7 @@ GenerationEvent.toolProgress EnumElement
 GenerationEvent.toolResult EnumElement
 GenerationEvent.usage EnumElement
 GenerationRuntimeHints Struct
+GenerationRuntimeHints conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationRuntimeHints.__derived_struct_equals(_:_:) Func
 GenerationRuntimeHints.captureRenderedPrompt Var
 GenerationRuntimeHints.documents Var
@@ -204,9 +230,12 @@ GenerationRuntimeHints.renderingMode Var
 GenerationRuntimeHints.structuredOutput Var
 GenerationRuntimeHints.thinkingMarkers Var
 GenerationStream Class
+GenerationStream attrs: Custom,Final
+GenerationStream conformances: AsyncSequence,Copyable,Escapable,Observable,Sendable,SendableMetatype
 GenerationStream.AsyncIterator TypeAlias
 GenerationStream.Element TypeAlias
 GenerationStream.Phase Enum
+GenerationStream.Phase conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 GenerationStream.Phase.__derived_enum_equals(_:_:) Func
 GenerationStream.Phase.connecting EnumElement
 GenerationStream.Phase.done EnumElement
@@ -225,14 +254,17 @@ GenerationStream.phase Var
 GenerationStream.setPhase(_:) Func
 GenerationStream.structuredOutputStrategy Var
 GrammarPhaseGate Struct
+GrammarPhaseGate conformances: Copyable,Escapable,Sendable,SendableMetatype
 GrammarPhaseGate.init(gateOnThinking:) Constructor
 GrammarPhaseGate.isGrammarActive Var
 GrammarPhaseGate.observe(_:) Func
 HandoffDetectionResult Enum
+HandoffDetectionResult conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 HandoffDetectionResult.__derived_enum_equals(_:_:) Func
 HandoffDetectionResult.handoff EnumElement
 HandoffDetectionResult.regular EnumElement
 ImageGenerationBackend Protocol
+ImageGenerationBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 ImageGenerationBackend.generate(prompt:config:) Func
 ImageGenerationBackend.isGenerating Var
 ImageGenerationBackend.isLoaded Var
@@ -240,6 +272,7 @@ ImageGenerationBackend.loadModel(from:) Func
 ImageGenerationBackend.stopGeneration() Func
 ImageGenerationBackend.unloadModel() Func
 InferenceBackend Protocol
+InferenceBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 InferenceBackend.capabilities Var
 InferenceBackend.generate(prompt:systemPrompt:config:) Func
 InferenceBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -252,10 +285,13 @@ InferenceBackend.secureWipe() Func
 InferenceBackend.stopGeneration() Func
 InferenceBackend.unloadModel() Func
 InferenceError Enum
+InferenceError conformances: BackendError,CategorizedError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 InlineXMLToolCallMarkers Struct
+InlineXMLToolCallMarkers conformances: Copyable,Escapable,LocalToolCallShape,Sendable,SendableMetatype
 InlineXMLToolCallMarkers.init() Constructor
 InlineXMLToolCallMarkers.shapeName Var
 LlamaDRYSamplerOptions Struct
+LlamaDRYSamplerOptions conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 LlamaDRYSamplerOptions.__derived_struct_equals(_:_:) Func
 LlamaDRYSamplerOptions.allowedLength Var
 LlamaDRYSamplerOptions.base Var
@@ -266,6 +302,7 @@ LlamaDRYSamplerOptions.multiplier Var
 LlamaDRYSamplerOptions.penaltyLastN Var
 LlamaDRYSamplerOptions.sequenceBreakers Var
 LlamaMirostatV2SamplerOptions Struct
+LlamaMirostatV2SamplerOptions conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 LlamaMirostatV2SamplerOptions.__derived_struct_equals(_:_:) Func
 LlamaMirostatV2SamplerOptions.encode(to:) Func
 LlamaMirostatV2SamplerOptions.eta Var
@@ -274,6 +311,7 @@ LlamaMirostatV2SamplerOptions.init(tau:eta:seed:) Constructor
 LlamaMirostatV2SamplerOptions.seed Var
 LlamaMirostatV2SamplerOptions.tau Var
 LlamaXTCSamplerOptions Struct
+LlamaXTCSamplerOptions conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 LlamaXTCSamplerOptions.__derived_struct_equals(_:_:) Func
 LlamaXTCSamplerOptions.encode(to:) Func
 LlamaXTCSamplerOptions.init(from:) Constructor
@@ -283,22 +321,28 @@ LlamaXTCSamplerOptions.probability Var
 LlamaXTCSamplerOptions.seed Var
 LlamaXTCSamplerOptions.threshold Var
 LoadProgressReporting Protocol
+LoadProgressReporting conformances: Copyable,Escapable
 LoadProgressReporting.setLoadProgressHandler(_:) Func
 LocalInferenceAdapter Protocol
+LocalInferenceAdapter conformances: Copyable,Escapable,Sendable,SendableMetatype
 LocalInferenceAdapter.adapterName Var
 LocalInferenceAdapter.declaredCapabilities Var
 LocalInferenceAdapter.thinkingMarkerStrategy Var
 LocalInferenceAdapter.toolCallShape Var
 LocalThinkingMarkerStrategy Enum
+LocalThinkingMarkerStrategy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 LocalThinkingMarkerStrategy.__derived_enum_equals(_:_:) Func
 LocalThinkingMarkerStrategy.eagerWhenMarkersPresent EnumElement
 LocalThinkingMarkerStrategy.hash(into:) Func
 LocalThinkingMarkerStrategy.hashValue Var
 LocalThinkingMarkerStrategy.never EnumElement
 LocalToolCallShape Protocol
+LocalToolCallShape conformances: Copyable,Escapable,Sendable,SendableMetatype
 LocalToolCallShape.shapeName Var
 ManifoldKitError Enum
+ManifoldKitError conformances: BackendError,Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 Message Enum
+Message conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 Message.__derived_enum_equals(_:_:) Func
 Message.asRoleContentTuple Var
 Message.assistant EnumElement
@@ -307,6 +351,7 @@ Message.role Var
 Message.system EnumElement
 Message.user EnumElement
 MessagePart Enum
+MessagePart conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MessagePart.__derived_enum_equals(_:_:) Func
 MessagePart.audio EnumElement
 MessagePart.audioContent Var
@@ -331,25 +376,31 @@ MessagePart.toolCallContent Var
 MessagePart.toolResult EnumElement
 MessagePart.toolResultContent Var
 MultimodalProjectorConfigurable Protocol
+MultimodalProjectorConfigurable conformances: Copyable,Escapable
 MultimodalProjectorConfigurable.setMmprojURL(_:) Func
 OutputParserSession Struct
+OutputParserSession conformances: Copyable,Escapable
 OutputParserSession.finalize() Func
 OutputParserSession.ingest(_:) Func
 OutputParserSession.init(_:) Constructor
 PassthroughReranker Struct
+PassthroughReranker conformances: Copyable,Escapable,Reranker,Sendable,SendableMetatype
 PassthroughReranker.init() Constructor
 PassthroughReranker.isReady Var
 PassthroughReranker.rerank(query:candidates:limit:) Func
 PromptRenderingMode Enum
+PromptRenderingMode conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 PromptRenderingMode.__derived_enum_equals(_:_:) Func
 PromptRenderingMode.chatTemplate EnumElement
 PromptRenderingMode.completion EnumElement
 PromptRenderingMode.hash(into:) Func
 PromptRenderingMode.hashValue Var
 Reranker Protocol
+Reranker conformances: Copyable,Escapable,Sendable,SendableMetatype
 Reranker.isReady Var
 Reranker.rerank(query:candidates:limit:) Func
 RetrievedDocument Struct
+RetrievedDocument conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RetrievedDocument.__derived_struct_equals(_:_:) Func
 RetrievedDocument.docID Var
 RetrievedDocument.documentID Var
@@ -361,18 +412,22 @@ RetrievedDocument.init(from:) Constructor
 RetrievedDocument.text Var
 RetrievedDocument.title Var
 SSEPayloadHandler Protocol
+SSEPayloadHandler conformances: Copyable,Escapable,Sendable,SendableMetatype
 SSEPayloadHandler.extractEvents(from:) Func
 SSEPayloadHandler.extractStreamError(from:) Func
 SSEPayloadHandler.extractToken(from:) Func
 SSEPayloadHandler.extractUsage(from:) Func
 SSEPayloadHandler.isStreamEnd(_:) Func
 Stage Enum
+Stage conformances: Copyable,Escapable,Sendable,SendableMetatype
 Stage.thinking EnumElement
 Stage.tool EnumElement
 StreamTransform Protocol
+StreamTransform conformances: Copyable,Escapable,Sendable,SendableMetatype
 StreamTransform.finalize() Func
 StreamTransform.process(_:) Func
 StructuredMessage Struct
+StructuredMessage conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 StructuredMessage.__derived_struct_equals(_:_:) Func
 StructuredMessage.hash(into:) Func
 StructuredMessage.hashValue Var
@@ -382,14 +437,17 @@ StructuredMessage.parts Var
 StructuredMessage.role Var
 StructuredMessage.textContent Var
 ThinkingTransform Struct
+ThinkingTransform conformances: Copyable,Escapable,Sendable,SendableMetatype,StreamTransform
 ThinkingTransform.finalize() Func
 ThinkingTransform.init(markers:trimLeadingNewlineAfterClose:) Constructor
 ThinkingTransform.markers Var
 ThinkingTransform.process(_:) Func
 ThinkingTransform.trimLeadingNewlineAfterClose Var
 TokenCountingBackend Protocol
+TokenCountingBackend conformances: Copyable,Escapable
 TokenCountingBackend.countTokens(_:) Func
 TokenUsage Struct
+TokenUsage conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 TokenUsage.__derived_struct_equals(_:_:) Func
 TokenUsage.cacheWriteTokens Var
 TokenUsage.cachedInputTokens Var
@@ -399,12 +457,16 @@ TokenUsage.hashValue Var
 TokenUsage.init(promptTokens:completionTokens:cachedInputTokens:cacheWriteTokens:) Constructor
 TokenUsage.promptTokens Var
 TokenUsageProvider Protocol
+TokenUsageProvider conformances: Copyable,Escapable
 TokenUsageProvider.lastUsage Var
 TokenizerProvider Protocol
+TokenizerProvider conformances: Copyable,Escapable,Sendable,SendableMetatype
 TokenizerProvider.tokenCount(_:) Func
 TokenizerVendor Protocol
+TokenizerVendor conformances: Copyable,Escapable
 TokenizerVendor.tokenizer Var
 ToolAwareHistoryEntry Struct
+ToolAwareHistoryEntry conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolAwareHistoryEntry.__derived_struct_equals(_:_:) Func
 ToolAwareHistoryEntry.content Var
 ToolAwareHistoryEntry.hash(into:) Func
@@ -414,6 +476,7 @@ ToolAwareHistoryEntry.role Var
 ToolAwareHistoryEntry.toolCallId Var
 ToolAwareHistoryEntry.toolCalls Var
 ToolCallMarker Struct
+ToolCallMarker conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolCallMarker.close Var
 ToolCallMarker.closesAtEnd Var
 ToolCallMarker.init(open:close:closesAtEnd:parseBodyMulti:) Constructor
@@ -422,18 +485,21 @@ ToolCallMarker.open Var
 ToolCallMarker.parseBody Var
 ToolCallMarker.parseBodyMulti Var
 ToolCallTransform Struct
+ToolCallTransform conformances: Copyable,Escapable,Sendable,SendableMetatype,StreamTransform
 ToolCallTransform.finalize() Func
 ToolCallTransform.init(markers:surfaceTruncatedToolBody:) Constructor
 ToolCallTransform.markers Var
 ToolCallTransform.process(_:) Func
 ToolCallTransform.surfaceTruncatedToolBody Var
 ToolExecutor Protocol
+ToolExecutor conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolExecutor.definition Var
 ToolExecutor.execute(arguments:) Func
 ToolExecutor.executeStreaming(arguments:) Func
 ToolExecutor.requiresApproval Var
 ToolExecutor.supportsConcurrentDispatch Var
 ToolProgressEvent Struct
+ToolProgressEvent conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolProgressEvent.__derived_struct_equals(_:_:) Func
 ToolProgressEvent.callId Var
 ToolProgressEvent.fraction Var
@@ -443,11 +509,13 @@ ToolProgressEvent.init(callId:name:message:fraction:) Constructor
 ToolProgressEvent.message Var
 ToolProgressEvent.name Var
 TypedToolExecutor Struct
+TypedToolExecutor conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolExecutor
 TypedToolExecutor.definition Var
 TypedToolExecutor.execute(arguments:) Func
 TypedToolExecutor.init(definition:requiresApproval:handler:) Constructor
 TypedToolExecutor.requiresApproval Var
 VectorSearchHit Struct
+VectorSearchHit conformances: Copyable,Escapable,Sendable,SendableMetatype
 VectorSearchHit.chunk Var
 VectorSearchHit.documentTitle Var
 VectorSearchHit.init(chunk:documentTitle:score:) Constructor

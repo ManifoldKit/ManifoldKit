@@ -1,14 +1,20 @@
 APIConfigurationView Struct
+APIConfigurationView attrs: Custom
+APIConfigurationView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 APIConfigurationView.Body TypeAlias
 APIConfigurationView.body Var
 APIConfigurationView.init() Constructor
 ConnectedServicesView Struct
+ConnectedServicesView attrs: Custom
+ConnectedServicesView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ConnectedServicesView.Body TypeAlias
 ConnectedServicesView.body Var
 ConnectedServicesView.init(toolRegistry:catalog:isFoundationModelsActive:userDefaults:) Constructor
 DiffusionModelCatalog Enum
+DiffusionModelCatalog conformances: Copyable,Escapable
 DiffusionModelCatalog.curated Var
 DiffusionModelCatalogEntry Struct
+DiffusionModelCatalogEntry conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 DiffusionModelCatalogEntry.ID TypeAlias
 DiffusionModelCatalogEntry.__derived_struct_equals(_:_:) Func
 DiffusionModelCatalogEntry.approximateBytes Var
@@ -20,15 +26,21 @@ DiffusionModelCatalogEntry.hashValue Var
 DiffusionModelCatalogEntry.id Var
 DiffusionModelCatalogEntry.init(id:displayName:description:approximateBytes:) Constructor
 DocumentLibrarySheet Struct
+DocumentLibrarySheet attrs: Custom
+DocumentLibrarySheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 DocumentLibrarySheet.Body TypeAlias
 DocumentLibrarySheet.body Var
 DocumentLibrarySheet.init(ragService:hasEmbeddingBackend:) Constructor
 DocumentLibrarySheet.init(viewModel:) Constructor
 DocumentLibraryView Struct
+DocumentLibraryView attrs: Custom
+DocumentLibraryView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 DocumentLibraryView.Body TypeAlias
 DocumentLibraryView.body Var
 DocumentLibraryView.init(viewModel:) Constructor
 DocumentLibraryViewModel Class
+DocumentLibraryViewModel attrs: Custom,Final
+DocumentLibraryViewModel conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 DocumentLibraryViewModel.delete(_:) Func
 DocumentLibraryViewModel.documents Var
 DocumentLibraryViewModel.errorMessage Var
@@ -40,24 +52,34 @@ DocumentLibraryViewModel.isLoading Var
 DocumentLibraryViewModel.ragService Var
 DocumentLibraryViewModel.refresh() Func
 EnvironmentValues Struct
+EnvironmentValues attrs: Available
+EnvironmentValues conformances: Copyable,CustomStringConvertible,Escapable,Sendable,SendableMetatype
 EnvironmentValues.endpointStore Var
 ImageModelInstallView Struct
+ImageModelInstallView attrs: Custom
+ImageModelInstallView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ImageModelInstallView.Body TypeAlias
 ImageModelInstallView.body Var
 ImageModelInstallView.init(huggingFaceService:storageRoot:catalog:onInstalled:) Constructor
 ImageModelManagementSheet Struct
+ImageModelManagementSheet attrs: Custom
+ImageModelManagementSheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ImageModelManagementSheet.Body TypeAlias
 ImageModelManagementSheet.body Var
 ImageModelManagementSheet.init(huggingFaceService:storageRoot:catalog:onInstalled:) Constructor
 ModelImportError Enum
+ModelImportError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 ModelImportError.__derived_enum_equals(_:_:) Func
 ModelImportError.errorDescription Var
 ModelImportError.hash(into:) Func
 ModelImportError.hashValue Var
 ModelImportError.unsupportedFormat EnumElement
 ModelManagementSheet Struct
+ModelManagementSheet attrs: Custom
+ModelManagementSheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ModelManagementSheet.Body TypeAlias
 ModelManagementSheet.Tab Enum
+ModelManagementSheet.Tab conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable
 ModelManagementSheet.Tab.AllCases TypeAlias
 ModelManagementSheet.Tab.RawValue TypeAlias
 ModelManagementSheet.Tab.allCases Var
@@ -70,7 +92,10 @@ ModelManagementSheet.body Var
 ModelManagementSheet.init(initialTab:recommendedModelIDs:recommendationTitle:recommendationMessage:) Constructor
 ModelManagementSheet.init(modelRegistry:initialTab:recommendedModelIDs:recommendationTitle:recommendationMessage:) Constructor
 ModelManagementViewModel Class
+ModelManagementViewModel attrs: Custom,Final
+ModelManagementViewModel conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 ModelManagementViewModel.SortMode Enum
+ModelManagementViewModel.SortMode conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelManagementViewModel.SortMode.AllCases TypeAlias
 ModelManagementViewModel.SortMode.RawValue TypeAlias
 ModelManagementViewModel.SortMode.allCases Var
@@ -126,12 +151,16 @@ ModelManagementViewModel.startDownload(_:) Func
 ModelManagementViewModel.totalStorageUsed Var
 ModelManagementViewModel.trackedDownloads Var
 ModelPicker Struct
+ModelPicker attrs: Custom
+ModelPicker conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ModelPicker.Body TypeAlias
 ModelPicker.body Var
 ModelPicker.init(modelRegistry:grouped:onSelect:) Constructor
 ModelSwitcher Enum
+ModelSwitcher conformances: Copyable,Escapable
 ModelSwitcher.rows(models:endpoints:selectedModelID:selectedEndpointID:physicalMemoryBytes:compatibility:downloadStatus:endpointFault:) Func
 ModelSwitcherCapabilityGlyph Enum
+ModelSwitcherCapabilityGlyph conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelSwitcherCapabilityGlyph.AllCases TypeAlias
 ModelSwitcherCapabilityGlyph.RawValue TypeAlias
 ModelSwitcherCapabilityGlyph.accessibilityLabel Var
@@ -143,6 +172,7 @@ ModelSwitcherCapabilityGlyph.reasoning EnumElement
 ModelSwitcherCapabilityGlyph.tools EnumElement
 ModelSwitcherCapabilityGlyph.vision EnumElement
 ModelSwitcherEntry Enum
+ModelSwitcherEntry conformances: Copyable,Equatable,Escapable,Identifiable,Sendable,SendableMetatype
 ModelSwitcherEntry.ID TypeAlias
 ModelSwitcherEntry.__derived_enum_equals(_:_:) Func
 ModelSwitcherEntry.displayName Var
@@ -150,6 +180,7 @@ ModelSwitcherEntry.endpoint EnumElement
 ModelSwitcherEntry.id Var
 ModelSwitcherEntry.model EnumElement
 ModelSwitcherFitVerdict Enum
+ModelSwitcherFitVerdict conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelSwitcherFitVerdict.__derived_enum_equals(_:_:) Func
 ModelSwitcherFitVerdict.good EnumElement
 ModelSwitcherFitVerdict.hash(into:) Func
@@ -158,6 +189,7 @@ ModelSwitcherFitVerdict.poor EnumElement
 ModelSwitcherFitVerdict.unknown EnumElement
 ModelSwitcherFitVerdict.warn EnumElement
 ModelSwitcherRow Struct
+ModelSwitcherRow conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 ModelSwitcherRow.ID TypeAlias
 ModelSwitcherRow.capabilityGlyphs Var
 ModelSwitcherRow.downloadStatus Var
@@ -170,12 +202,16 @@ ModelSwitcherRow.isAvailable Var
 ModelSwitcherRow.isSelected Var
 ModelSwitcherRow.unavailableReason Var
 ModelSwitcherRowView Struct
+ModelSwitcherRowView attrs: Custom
+ModelSwitcherRowView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ModelSwitcherRowView.Body TypeAlias
 ModelSwitcherRowView.body Var
 ModelSwitcherRowView.init(row:onFixEndpoint:) Constructor
 ModelSwitcherRowView.onFixEndpoint Var
 ModelSwitcherRowView.row Var
 ModelSwitcherView Struct
+ModelSwitcherView attrs: Custom
+ModelSwitcherView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ModelSwitcherView.Body TypeAlias
 ModelSwitcherView.body Var
 ModelSwitcherView.init(rows:onSelect:onFixEndpoint:) Constructor
@@ -183,11 +219,15 @@ ModelSwitcherView.onFixEndpoint Var
 ModelSwitcherView.onSelect Var
 ModelSwitcherView.rows Var
 RemoteServerConfigSheet Struct
+RemoteServerConfigSheet attrs: Custom
+RemoteServerConfigSheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 RemoteServerConfigSheet.Body TypeAlias
 RemoteServerConfigSheet.body Var
 RemoteServerConfigSheet.init(onSave:) Constructor
 RemoteServerConfigSheet.onSave Var
 StorageManagementView Struct
+StorageManagementView attrs: Custom
+StorageManagementView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 StorageManagementView.Body TypeAlias
 StorageManagementView.body Var
 StorageManagementView.init() Constructor

@@ -1,13 +1,16 @@
 CacheBreakpointPlan Struct
+CacheBreakpointPlan conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 CacheBreakpointPlan.__derived_struct_equals(_:_:) Func
 CacheBreakpointPlan.cacheSystem Var
 CacheBreakpointPlan.cacheToolsTail Var
 CacheBreakpointPlan.init(maxBreakpoints:cacheSystem:cacheToolsTail:) Constructor
 CacheBreakpointPlan.maxBreakpoints Var
 ClaudeMessageStopFinalizer Struct
+ClaudeMessageStopFinalizer conformances: Copyable,Escapable,Sendable,SendableMetatype,StreamFinalizer
 ClaudeMessageStopFinalizer.finalize(frame:) Func
 ClaudeMessageStopFinalizer.init() Constructor
 CloudAdapterRouting Struct
+CloudAdapterRouting conformances: Copyable,Escapable,Sendable,SendableMetatype
 CloudAdapterRouting.buildRequest Var
 CloudAdapterRouting.errorBodyDecoder Var
 CloudAdapterRouting.framedTransport Var
@@ -16,12 +19,15 @@ CloudAdapterRouting.payloadHandler Var
 CloudAdapterRouting.streamConsumerFactory Var
 CloudAdapterRouting.streamFinalizer Var
 CloudBackendError Enum
+CloudBackendError conformances: BackendError,CategorizedError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 CloudBackendError.sanitizedParseError(_:host:) Func
 CloudBackendError.sanitizedServerError(statusCode:rawMessage:host:) Func
 CloudErrorSanitizer Enum
+CloudErrorSanitizer conformances: Copyable,Escapable
 CloudErrorSanitizer.maxLength Var
 CloudErrorSanitizer.sanitize(_:host:) Func
 CloudHTTPProviderAdapter Protocol
+CloudHTTPProviderAdapter conformances: Copyable,Escapable,Sendable,SendableMetatype
 CloudHTTPProviderAdapter.buildRequest(prompt:systemPrompt:config:history:) Func
 CloudHTTPProviderAdapter.capabilities Var
 CloudHTTPProviderAdapter.errorBodyDecoder Var
@@ -31,6 +37,7 @@ CloudHTTPProviderAdapter.payloadHandler Var
 CloudHTTPProviderAdapter.probeCapabilities() Func
 CloudHTTPProviderAdapter.streamFinalizer Var
 CloudMessageEncoder Enum
+CloudMessageEncoder conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 CloudMessageEncoder.__derived_enum_equals(_:_:) Func
 CloudMessageEncoder.annotateCacheBreakpoints(plan:systemPrompt:systemBlock:toolEntries:) Func
 CloudMessageEncoder.claude EnumElement
@@ -44,7 +51,9 @@ CloudMessageEncoder.ollama EnumElement
 CloudMessageEncoder.openAI EnumElement
 CloudMessageEncoder.openAIResponses EnumElement
 CloudPayloadHandler Struct
+CloudPayloadHandler conformances: Copyable,Escapable,SSEPayloadHandler,Sendable,SendableMetatype
 CloudPayloadHandler.Provider Enum
+CloudPayloadHandler.Provider conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 CloudPayloadHandler.Provider.RawValue TypeAlias
 CloudPayloadHandler.Provider.claude EnumElement
 CloudPayloadHandler.Provider.init(rawValue:) Constructor
@@ -61,23 +70,32 @@ CloudPayloadHandler.isStreamEnd(_:) Func
 CloudPayloadHandler.openAI Var
 CloudPayloadHandler.provider Var
 CloudStreamEventConsumer Protocol
+CloudStreamEventConsumer conformances: Copyable,Escapable,Sendable,SendableMetatype
 CloudStreamEventConsumer.consume(frame:) Func
 CloudStreamEventConsumer.consume(payload:) Func
 CloudStreamEventConsumer.finish(cancelled:) Func
 ConnectAddressPinningDelegate Class
+ConnectAddressPinningDelegate attrs: Final,ObjC
+ConnectAddressPinningDelegate conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,URLSessionDelegate,URLSessionTaskDelegate
 ConnectAddressPinningDelegate.init() Constructor
 ConnectAddressPinningDelegate.pinnedData(for:on:) Func
 ConnectAddressPinningDelegate.urlSession(_:task:didFinishCollecting:) Func
 DNSRebindingGuard Enum
+DNSRebindingGuard conformances: Copyable,Escapable
 DNSRebindingGuard.validate(url:) Func
 DefaultWebSearchRuntime Class
+DefaultWebSearchRuntime attrs: Custom,Final
+DefaultWebSearchRuntime conformances: Copyable,Escapable,Sendable,SendableMetatype,WebSearchRuntime
 DefaultWebSearchRuntime.init(baseURL:tokenProvider:model:session:) Constructor
 DefaultWebSearchRuntime.search(query:) Func
 ErrorBodyDecoder Protocol
+ErrorBodyDecoder conformances: Copyable,Escapable,Sendable,SendableMetatype
 ErrorBodyDecoder.extractMessage(from:) Func
 FramedTransport Protocol
+FramedTransport conformances: Copyable,Escapable,Sendable,SendableMetatype
 FramedTransport.frames(from:) Func
 JSONValue Enum
+JSONValue conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 JSONValue.__derived_enum_equals(_:_:) Func
 JSONValue.array EnumElement
 JSONValue.bool EnumElement
@@ -99,11 +117,13 @@ JSONValue.string EnumElement
 JSONValue.stringValue Var
 JSONValue.subscript(_:) Subscript
 NDJSONTransport Struct
+NDJSONTransport conformances: Copyable,Escapable,FramedTransport,Sendable,SendableMetatype
 NDJSONTransport.frames(from:) Func
 NDJSONTransport.init(maxLineBytes:maxTotalBytes:) Constructor
 NDJSONTransport.maxLineBytes Var
 NDJSONTransport.maxTotalBytes Var
 NamedSSETransport Struct
+NamedSSETransport conformances: Copyable,Escapable,FramedTransport,Sendable,SendableMetatype
 NamedSSETransport.eventDataKey Var
 NamedSSETransport.eventNameKey Var
 NamedSSETransport.frames(from:) Func
@@ -111,32 +131,40 @@ NamedSSETransport.init(limits:) Constructor
 NamedSSETransport.unwrap(envelope:) Func
 NamedSSETransport.unwrapData(frame:) Func
 OllamaDoneFlagFinalizer Struct
+OllamaDoneFlagFinalizer conformances: Copyable,Escapable,Sendable,SendableMetatype,StreamFinalizer
 OllamaDoneFlagFinalizer.finalize(frame:) Func
 OllamaDoneFlagFinalizer.init() Constructor
 OpenAIDoneSentinelFinalizer Struct
+OpenAIDoneSentinelFinalizer conformances: Copyable,Escapable,Sendable,SendableMetatype,StreamFinalizer
 OpenAIDoneSentinelFinalizer.finalize(frame:) Func
 OpenAIDoneSentinelFinalizer.init() Constructor
 OpenAIResponsesEventFinalizer Struct
+OpenAIResponsesEventFinalizer conformances: Copyable,Escapable,Sendable,SendableMetatype,StreamFinalizer
 OpenAIResponsesEventFinalizer.finalize(frame:) Func
 OpenAIResponsesEventFinalizer.init() Constructor
 ParsedFrame Struct
+ParsedFrame conformances: Copyable,Escapable,Sendable,SendableMetatype
 ParsedFrame.init(raw:json:namedEvent:) Constructor
 ParsedFrame.json Var
 ParsedFrame.make(from:) Func
 ParsedFrame.namedEvent Var
 ParsedFrame.raw Var
 PinnedSessionDelegate Class
+PinnedSessionDelegate attrs: Final,ObjC
+PinnedSessionDelegate conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,URLSessionDelegate
 PinnedSessionDelegate.init() Constructor
 PinnedSessionDelegate.loadDefaultPins() Func
 PinnedSessionDelegate.pinnedHosts Var
 PinnedSessionDelegate.urlSession(_:didReceive:completionHandler:) Func
 PromptCachePolicy Enum
+PromptCachePolicy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 PromptCachePolicy.__derived_enum_equals(_:_:) Func
 PromptCachePolicy.automatic EnumElement
 PromptCachePolicy.disabled EnumElement
 PromptCachePolicy.hash(into:) Func
 PromptCachePolicy.hashValue Var
 SSECloudBackend Class
+SSECloudBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 SSECloudBackend.activeHints Var
 SSECloudBackend.adapterRouting Var
 SSECloudBackend.backendName Var
@@ -187,13 +215,17 @@ SSECloudBackend.unloadModel() Func
 SSECloudBackend.urlSession Var
 SSECloudBackend.withStateLock(_:) Func
 SSETransport Struct
+SSETransport conformances: Copyable,Escapable,FramedTransport,Sendable,SendableMetatype
 SSETransport.frames(from:) Func
 SSETransport.init(limits:) Constructor
 SSETransport.init(limitsProvider:) Constructor
 StreamFinalizer Protocol
+StreamFinalizer conformances: Copyable,Escapable,Sendable,SendableMetatype
 StreamFinalizer.finalize(frame:) Func
 StreamTermination Enum
+StreamTermination conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 StreamTermination.TokenUsage Struct
+StreamTermination.TokenUsage conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 StreamTermination.TokenUsage.__derived_struct_equals(_:_:) Func
 StreamTermination.TokenUsage.completionTokens Var
 StreamTermination.TokenUsage.init(promptTokens:completionTokens:) Constructor
@@ -202,13 +234,16 @@ StreamTermination.__derived_enum_equals(_:_:) Func
 StreamTermination.streamComplete EnumElement
 StreamTermination.streamContinue EnumElement
 ThinkingBlockManager Struct
+ThinkingBlockManager conformances: Copyable,Escapable
 ThinkingBlockManager.flushIfOpen(into:) Func
 ThinkingBlockManager.init() Constructor
 ThinkingBlockManager.isOpen Var
 ThinkingBlockManager.open() Func
 TokenProvider Protocol
+TokenProvider conformances: Copyable,Escapable,Sendable,SendableMetatype
 TokenProvider.token() Func
 URLSessionProvider Enum
+URLSessionProvider conformances: Copyable,Escapable
 URLSessionProvider.background(identifier:hopCap:additionalDownloadDelegate:) Func
 URLSessionProvider.defaultHopCap Var
 URLSessionProvider.networkDisabled Var
@@ -217,6 +252,7 @@ URLSessionProvider.throwingPinned() Func
 URLSessionProvider.throwingUnpinned() Func
 URLSessionProvider.unpinned Var
 WebSearchRuntimeError Enum
+WebSearchRuntimeError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 WebSearchRuntimeError.__derived_enum_equals(_:_:) Func
 WebSearchRuntimeError.errorDescription Var
 WebSearchRuntimeError.httpFailure EnumElement

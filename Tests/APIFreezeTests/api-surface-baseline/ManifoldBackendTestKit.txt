@@ -1,6 +1,9 @@
 (top-level).XCTAssertEventsMatch(actual:fixtureURL:mode:file:line:) Func
 BackendContractChecks Enum
+BackendContractChecks conformances: Copyable,Escapable
 BackendContractChecks.ClaimRegistry Class
+BackendContractChecks.ClaimRegistry attrs: Final
+BackendContractChecks.ClaimRegistry conformances: Copyable,Escapable
 BackendContractChecks.ClaimRegistry.init() Constructor
 BackendContractChecks.assertAllInvariants(makingBackend:file:line:) Func
 BackendContractChecks.assertCapabilityMetaContract(_:backendName:capabilities:file:line:) Func
@@ -12,15 +15,20 @@ BackendContractChecks.recordCapabilityClaim(_:backend:flag:) Func
 BackendContractChecks.resetCapabilityClaims(_:forBackend:) Func
 BackendContractChecks.unprovenClaims(_:backendName:capabilities:) Func
 BackendContractMixin Protocol
+BackendContractMixin attrs: Custom
+BackendContractMixin conformances: Copyable,Escapable
 BackendContractMixin.BackendUnderContract AssociatedType
 BackendContractMixin.assertUniversalBackendContract(file:line:) Func
 BackendContractMixin.contractBackendName Var
 BackendContractMixin.makeContractBackend() Func
 FixtureComparator Struct
+FixtureComparator conformances: Copyable,Escapable
 FixtureComparator.CompareMode Enum
+FixtureComparator.CompareMode conformances: Copyable,Escapable
 FixtureComparator.CompareMode.totalOrder EnumElement
 FixtureComparator.CompareMode.unorderedSet EnumElement
 FixtureComparator.FixtureEvent Struct
+FixtureComparator.FixtureEvent conformances: Copyable,Equatable,Escapable,Hashable
 FixtureComparator.FixtureEvent.__derived_struct_equals(_:_:) Func
 FixtureComparator.FixtureEvent.defaultKey Var
 FixtureComparator.FixtureEvent.event Var
@@ -35,9 +43,12 @@ FixtureComparator.noveltyLog Var
 FixtureComparator.parse(jsonlContents:sourcePath:) Func
 FixtureComparator.project(_:) Func
 GrammarFailClosedContractMixin Protocol
+GrammarFailClosedContractMixin attrs: Custom
+GrammarFailClosedContractMixin conformances: BackendContractMixin,Copyable,Escapable
 GrammarFailClosedContractMixin.assertGrammarFailClosedContract(forbiddenRequestURL:file:line:) Func
 GrammarFailClosedContractMixin.capabilityClaimRegistry Var
 LocalBackendContractParticipant Struct
+LocalBackendContractParticipant conformances: Copyable,Escapable,Sendable,SendableMetatype
 LocalBackendContractParticipant.capabilities Var
 LocalBackendContractParticipant.fixtureDirectory Var
 LocalBackendContractParticipant.init(label:fixtureDirectory:capabilities:requiresSlowTests:makeBackend:) Constructor
@@ -45,6 +56,7 @@ LocalBackendContractParticipant.label Var
 LocalBackendContractParticipant.makeBackend Var
 LocalBackendContractParticipant.requiresSlowTests Var
 LocalBackendContractRunner Enum
+LocalBackendContractRunner conformances: Copyable,Escapable
 LocalBackendContractRunner.assertCapabilityGateDisclaimedRequirementThrows(participant:file:line:) Func
 LocalBackendContractRunner.assertSimplePromptEmitsTokensInOrder(participant:fixturesRoot:file:line:) Func
 LocalBackendContractRunner.assertStopsGeneratingAfterStreamEnd(participant:file:line:) Func
@@ -52,7 +64,9 @@ LocalBackendContractRunner.isSimulator() Func
 LocalBackendContractRunner.locateFixturesRoot(filePath:) Func
 LocalBackendContractRunner.skipIfHardwareGated(_:) Func
 LocalDriverCoverageChecks Enum
+LocalDriverCoverageChecks conformances: Copyable,Escapable
 LocalDriverCoverageChecks.CapabilitySentinel Struct
+LocalDriverCoverageChecks.CapabilitySentinel conformances: Copyable,Escapable,Sendable,SendableMetatype
 LocalDriverCoverageChecks.CapabilitySentinel.claimed Var
 LocalDriverCoverageChecks.CapabilitySentinel.init(label:claimed:sourceToken:) Constructor
 LocalDriverCoverageChecks.CapabilitySentinel.label Var

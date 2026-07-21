@@ -1,9 +1,12 @@
 (top-level).encodeToolChoice(_:) Func
 AsyncSignal Class
+AsyncSignal attrs: Final
+AsyncSignal conformances: Copyable,Escapable,Sendable,SendableMetatype
 AsyncSignal.init() Constructor
 AsyncSignal.signal() Func
 AsyncSignal.wait() Func
 BackendChoice Enum
+BackendChoice conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 BackendChoice.AllCases TypeAlias
 BackendChoice.RawValue TypeAlias
 BackendChoice.allCases Var
@@ -17,11 +20,13 @@ BackendChoice.ollama EnumElement
 BackendChoice.openai EnumElement
 BackendChoice.rawValue Var
 CancelDuringThinkingScenario Struct
+CancelDuringThinkingScenario conformances: Copyable,Escapable,FuzzScenario,Sendable,SendableMetatype
 CancelDuringThinkingScenario.humanName Var
 CancelDuringThinkingScenario.id Var
 CancelDuringThinkingScenario.init() Constructor
 CancelDuringThinkingScenario.run() Func
 CancellationRaceDetector Struct
+CancellationRaceDetector conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionDetector
 CancellationRaceDetector.humanName Var
 CancellationRaceDetector.id Var
 CancellationRaceDetector.init(minTokenChars:) Constructor
@@ -29,18 +34,22 @@ CancellationRaceDetector.inspect(_:) Func
 CancellationRaceDetector.inspiredBy Var
 CancellationRaceDetector.minTokenChars Var
 ChatMessage Struct
+ChatMessage conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ChatMessage.__derived_struct_equals(_:_:) Func
 ChatMessage.init(role:text:) Constructor
 ChatMessage.role Var
 ChatMessage.text Var
 ContextExhaustionSilentDetector Struct
+ContextExhaustionSilentDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 ContextExhaustionSilentDetector.humanName Var
 ContextExhaustionSilentDetector.id Var
 ContextExhaustionSilentDetector.init() Constructor
 ContextExhaustionSilentDetector.inspect(_:) Func
 ContextExhaustionSilentDetector.inspiredBy Var
 Corpus Enum
+Corpus conformances: Copyable,Escapable
 Corpus.Subset Enum
+Corpus.Subset conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 Corpus.Subset.RawValue TypeAlias
 Corpus.Subset.full EnumElement
 Corpus.Subset.init(rawValue:) Constructor
@@ -50,8 +59,10 @@ Corpus.Subset.smoke EnumElement
 Corpus.load() Func
 Corpus.load(subset:) Func
 CorpusEntry Struct
+CorpusEntry conformances: Copyable,Decodable,Encodable,Escapable,Identifiable,Sendable,SendableMetatype
 CorpusEntry.ID TypeAlias
 CorpusEntry.Turn Struct
+CorpusEntry.Turn conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 CorpusEntry.Turn.encode(to:) Func
 CorpusEntry.Turn.init(from:) Constructor
 CorpusEntry.Turn.role Var
@@ -63,20 +74,24 @@ CorpusEntry.init(from:) Constructor
 CorpusEntry.system Var
 CorpusEntry.turns Var
 Detector Protocol
+Detector conformances: Copyable,Escapable,Sendable,SendableMetatype
 Detector.humanName Var
 Detector.id Var
 Detector.inspect(_:) Func
 Detector.inspiredBy Var
 DetectorContract Protocol
+DetectorContract conformances: Copyable,Escapable
 DetectorContract.adversarialFixture Var
 DetectorContract.boundaryFixture Var
 DetectorContract.detector Var
 DetectorContract.negativeFixture Var
 DetectorContract.positiveFixture Var
 DetectorRegistry Enum
+DetectorRegistry conformances: Copyable,Escapable
 DetectorRegistry.all Var
 DetectorRegistry.resolve(_:) Func
 EmptyOutputAfterWorkDetector Struct
+EmptyOutputAfterWorkDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 EmptyOutputAfterWorkDetector.humanName Var
 EmptyOutputAfterWorkDetector.id Var
 EmptyOutputAfterWorkDetector.init(workThresholdMs:) Constructor
@@ -84,13 +99,16 @@ EmptyOutputAfterWorkDetector.inspect(_:) Func
 EmptyOutputAfterWorkDetector.inspiredBy Var
 EmptyOutputAfterWorkDetector.workThresholdMs Var
 EmptyVisibleAfterThinkDetector Struct
+EmptyVisibleAfterThinkDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 EmptyVisibleAfterThinkDetector.humanName Var
 EmptyVisibleAfterThinkDetector.id Var
 EmptyVisibleAfterThinkDetector.init() Constructor
 EmptyVisibleAfterThinkDetector.inspect(_:) Func
 EmptyVisibleAfterThinkDetector.inspiredBy Var
 EventRecorder Struct
+EventRecorder conformances: Copyable,Escapable,Sendable,SendableMetatype
 EventRecorder.Capture Struct
+EventRecorder.Capture conformances: Copyable,Escapable,Sendable,SendableMetatype
 EventRecorder.Capture.completionTokens Var
 EventRecorder.Capture.error Var
 EventRecorder.Capture.events Var
@@ -115,6 +133,7 @@ EventRecorder.init() Constructor
 EventRecorder.maxBufferedCharacters Var
 EventRecorder.maxBufferedEvents Var
 Finding Struct
+Finding conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 Finding.__derived_struct_equals(_:_:) Func
 Finding.count Var
 Finding.detectorId Var
@@ -130,16 +149,19 @@ Finding.severity Var
 Finding.subCheck Var
 Finding.trigger Var
 FindingsArtifactRenderer Enum
+FindingsArtifactRenderer conformances: Copyable,Escapable
 FindingsArtifactRenderer.markdown(totalRuns:rows:outputDir:) Func
 FindingsArtifactRenderer.replayCommand(hash:outputDir:) Func
 FindingsArtifactRenderer.reproCommand(seed:modelId:outputDir:) Func
 FindingsArtifactRenderer.reproScript(hash:seed:modelId:outputDir:) Func
 FindingsArtifactRenderer.summary(for:) Func
 FindingsIndexCodec Enum
+FindingsIndexCodec conformances: Copyable,Escapable
 FindingsIndexCodec.load(from:) Func
 FindingsIndexCodec.sortedRows(_:) Func
 FindingsIndexCodec.write(_:to:) Func
 FindingsIndexFile Struct
+FindingsIndexFile conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 FindingsIndexFile.__derived_struct_equals(_:_:) Func
 FindingsIndexFile.encode(to:) Func
 FindingsIndexFile.init(from:) Constructor
@@ -147,6 +169,7 @@ FindingsIndexFile.init(totalRuns:rows:) Constructor
 FindingsIndexFile.rows Var
 FindingsIndexFile.totalRuns Var
 FindingsIndexRow Struct
+FindingsIndexRow conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 FindingsIndexRow.__derived_struct_equals(_:_:) Func
 FindingsIndexRow.encode(to:) Func
 FindingsIndexRow.finding Var
@@ -156,24 +179,29 @@ FindingsIndexRow.lastSeen Var
 FindingsIndexRow.modelId Var
 FindingsIndexRow.seed Var
 FindingsMergeReport Struct
+FindingsMergeReport conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 FindingsMergeReport.__derived_struct_equals(_:_:) Func
 FindingsMergeReport.mergedInputs Var
 FindingsMergeReport.skippedInputs Var
 FindingsMergeReport.totalRuns Var
 FindingsMergeReport.uniqueFindings Var
 FindingsMerger Enum
+FindingsMerger conformances: Copyable,Escapable
 FindingsMerger.merge(workerOutputDirs:into:) Func
 FindingsSink Class
+FindingsSink conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 FindingsSink.init(outputDir:) Constructor
 FindingsSink.noteEmptyRun() Func
 FindingsSink.recordRun(_:findings:) Func
 FindingsSink.snapshot() Func
 FindingsSink.unownedExecutor Var
 FuzzBackendFactory Protocol
+FuzzBackendFactory conformances: Copyable,Escapable,Sendable,SendableMetatype
 FuzzBackendFactory.makeHandle() Func
 FuzzBackendFactory.supportsDeterministicReplay Var
 FuzzBackendFactory.teardown() Func
 FuzzConfig Struct
+FuzzConfig conformances: Copyable,Escapable,Sendable,SendableMetatype
 FuzzConfig.backend Var
 FuzzConfig.corpusSubset Var
 FuzzConfig.detectorFilter Var
@@ -189,12 +217,15 @@ FuzzConfig.sessionScripts Var
 FuzzConfig.tools Var
 FuzzConfig.workers Var
 FuzzReport Struct
+FuzzReport conformances: Copyable,Escapable,Sendable,SendableMetatype
 FuzzReport.dedupedCount Var
 FuzzReport.findings Var
 FuzzReport.perDetectorFlagRate Var
 FuzzReport.totalRuns Var
 FuzzRunner Class
+FuzzRunner conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 FuzzRunner.BackendHandle Struct
+FuzzRunner.BackendHandle conformances: Copyable,Escapable,Sendable,SendableMetatype
 FuzzRunner.BackendHandle.backend Var
 FuzzRunner.BackendHandle.backendName Var
 FuzzRunner.BackendHandle.init(backend:modelId:modelURL:backendName:templateMarkers:memoryBudgetBytes:) Constructor
@@ -206,67 +237,82 @@ FuzzRunner.init(config:factory:) Constructor
 FuzzRunner.run(reporter:) Func
 FuzzRunner.unownedExecutor Var
 FuzzScenario Protocol
+FuzzScenario conformances: Copyable,Escapable,Sendable,SendableMetatype
 FuzzScenario.humanName Var
 FuzzScenario.id Var
 FuzzScenario.run() Func
 HarnessMetadata Enum
+HarnessMetadata conformances: Copyable,Escapable
 HarnessMetadata.currentThermalState() Func
 HarnessMetadata.fileSHA256(_:) Func
 HarnessMetadata.fuzzVersion Var
 HarnessMetadata.snapshot(repoRoot:) Func
 KVCollisionDetector Struct
+KVCollisionDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 KVCollisionDetector.humanName Var
 KVCollisionDetector.id Var
 KVCollisionDetector.init() Constructor
 KVCollisionDetector.inspect(_:) Func
 KVCollisionDetector.inspiredBy Var
 KVReuseCoverageScenario Struct
+KVReuseCoverageScenario conformances: Copyable,Escapable,FuzzScenario,Sendable,SendableMetatype
 KVReuseCoverageScenario.humanName Var
 KVReuseCoverageScenario.id Var
 KVReuseCoverageScenario.init() Constructor
 KVReuseCoverageScenario.run() Func
 LengthStretchMutator Struct
+LengthStretchMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableMetatype
 LengthStretchMutator.id Var
 LengthStretchMutator.init() Constructor
 LengthStretchMutator.mutate(_:rng:) Func
 LoopingDetector Struct
+LoopingDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 LoopingDetector.humanName Var
 LoopingDetector.id Var
 LoopingDetector.init() Constructor
 LoopingDetector.inspect(_:) Func
 LoopingDetector.inspiredBy Var
 MLXVLMGateScenario Struct
+MLXVLMGateScenario conformances: Copyable,Escapable,FuzzScenario,Sendable,SendableMetatype
 MLXVLMGateScenario.factory Var
 MLXVLMGateScenario.humanName Var
 MLXVLMGateScenario.id Var
 MLXVLMGateScenario.init(factory:) Constructor
 MLXVLMGateScenario.run() Func
 MemoryGrowthDetector Struct
+MemoryGrowthDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 MemoryGrowthDetector.humanName Var
 MemoryGrowthDetector.id Var
 MemoryGrowthDetector.init() Constructor
 MemoryGrowthDetector.inspect(_:) Func
 MemoryGrowthDetector.inspiredBy Var
 MultiTurnMutator Struct
+MultiTurnMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableMetatype
 MultiTurnMutator.id Var
 MultiTurnMutator.init() Constructor
 MultiTurnMutator.mutate(_:rng:) Func
 Mutator Protocol
+Mutator conformances: Copyable,Escapable,Sendable,SendableMetatype
 Mutator.id Var
 Mutator.mutate(_:rng:) Func
 MutatorChain Enum
+MutatorChain conformances: Copyable,Escapable
 MutatorChain.allRandom(_:rng:pool:) Func
 MutatorRegistry Enum
+MutatorRegistry conformances: Copyable,Escapable
 MutatorRegistry.all Var
 ParallelFuzzWorkerPlanError Enum
+ParallelFuzzWorkerPlanError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 ParallelFuzzWorkerPlanError.__derived_enum_equals(_:_:) Func
 ParallelFuzzWorkerPlanError.backendWorkerLimit EnumElement
 ParallelFuzzWorkerPlanError.invalidWorkerCount EnumElement
 ParallelFuzzWorkerPlanner Enum
+ParallelFuzzWorkerPlanner conformances: Copyable,Escapable
 ParallelFuzzWorkerPlanner.deriveSeed(base:workerIndex:) Func
 ParallelFuzzWorkerPlanner.makePlan(backend:requestedWorkers:seed:minutes:iterations:) Func
 ParallelFuzzWorkerPlanner.workerLimit(for:) Func
 ParallelFuzzWorkerSlice Struct
+ParallelFuzzWorkerSlice conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ParallelFuzzWorkerSlice.__derived_struct_equals(_:_:) Func
 ParallelFuzzWorkerSlice.index Var
 ParallelFuzzWorkerSlice.init(index:seed:minutes:iterations:) Constructor
@@ -274,6 +320,7 @@ ParallelFuzzWorkerSlice.iterations Var
 ParallelFuzzWorkerSlice.minutes Var
 ParallelFuzzWorkerSlice.seed Var
 RaceStallDetector Struct
+RaceStallDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 RaceStallDetector.firstTokenStallMs Var
 RaceStallDetector.humanName Var
 RaceStallDetector.id Var
@@ -281,7 +328,9 @@ RaceStallDetector.init(firstTokenStallMs:) Constructor
 RaceStallDetector.inspect(_:) Func
 RaceStallDetector.inspiredBy Var
 Replayer Struct
+Replayer conformances: Copyable,Escapable,Sendable,SendableMetatype
 Replayer.DriftReport Struct
+Replayer.DriftReport conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 Replayer.DriftReport.__derived_struct_equals(_:_:) Func
 Replayer.DriftReport.any Var
 Replayer.DriftReport.currentGitRev Var
@@ -291,9 +340,11 @@ Replayer.DriftReport.modelHashDrifted Var
 Replayer.DriftReport.recordedGitRev Var
 Replayer.DriftReport.recordedModelHash Var
 Replayer.Failure Enum
+Replayer.Failure conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 Replayer.Failure.__derived_enum_equals(_:_:) Func
 Replayer.Failure.decodeFailed EnumElement
 Replayer.Outcome Enum
+Replayer.Outcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 Replayer.Outcome.__derived_enum_equals(_:_:) Func
 Replayer.Outcome.driftRefused EnumElement
 Replayer.Outcome.nonDeterministicBackend EnumElement
@@ -301,6 +352,7 @@ Replayer.Outcome.recordNotFound EnumElement
 Replayer.Outcome.reproduced EnumElement
 Replayer.Outcome.schemaUnsupported EnumElement
 Replayer.Result Struct
+Replayer.Result conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 Replayer.Result.__derived_struct_equals(_:_:) Func
 Replayer.Result.attempts Var
 Replayer.Result.drift Var
@@ -315,12 +367,15 @@ Replayer.replay(hash:attempts:force:) Func
 Replayer.replay(record:originalHash:attempts:) Func
 Replayer.resolveRecordURL(hash:) Func
 RotatingFuzzFactory Struct
+RotatingFuzzFactory conformances: Copyable,Escapable,FuzzBackendFactory,Sendable,SendableMetatype
 RotatingFuzzFactory.blockSize Var
 RotatingFuzzFactory.children Var
 RotatingFuzzFactory.init(children:blockSize:) Constructor
 RotatingFuzzFactory.makeHandle() Func
 RunRecord Struct
+RunRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.ConfigSnapshot Struct
+RunRecord.ConfigSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.ConfigSnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.ConfigSnapshot.contextLimit Var
 RunRecord.ConfigSnapshot.encode(to:) Func
@@ -333,6 +388,7 @@ RunRecord.ConfigSnapshot.temperature Var
 RunRecord.ConfigSnapshot.toolChoice Var
 RunRecord.ConfigSnapshot.topP Var
 RunRecord.EventSnapshot Struct
+RunRecord.EventSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.EventSnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.EventSnapshot.encode(to:) Func
 RunRecord.EventSnapshot.init(from:) Constructor
@@ -340,6 +396,7 @@ RunRecord.EventSnapshot.kind Var
 RunRecord.EventSnapshot.t Var
 RunRecord.EventSnapshot.v Var
 RunRecord.HarnessSnapshot Struct
+RunRecord.HarnessSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.HarnessSnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.HarnessSnapshot.encode(to:) Func
 RunRecord.HarnessSnapshot.fuzzVersion Var
@@ -350,6 +407,7 @@ RunRecord.HarnessSnapshot.packageGitRev Var
 RunRecord.HarnessSnapshot.swiftVersion Var
 RunRecord.HarnessSnapshot.thermalState Var
 RunRecord.MarkerSnapshot Struct
+RunRecord.MarkerSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.MarkerSnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.MarkerSnapshot.close Var
 RunRecord.MarkerSnapshot.encode(to:) Func
@@ -357,6 +415,7 @@ RunRecord.MarkerSnapshot.init(from:) Constructor
 RunRecord.MarkerSnapshot.init(open:close:) Constructor
 RunRecord.MarkerSnapshot.open Var
 RunRecord.MemorySnapshot Struct
+RunRecord.MemorySnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.MemorySnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.MemorySnapshot.afterBytes Var
 RunRecord.MemorySnapshot.beforeBytes Var
@@ -364,6 +423,7 @@ RunRecord.MemorySnapshot.encode(to:) Func
 RunRecord.MemorySnapshot.init(from:) Constructor
 RunRecord.MemorySnapshot.peakBytes Var
 RunRecord.ModelSnapshot Struct
+RunRecord.ModelSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.ModelSnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.ModelSnapshot.backend Var
 RunRecord.ModelSnapshot.encode(to:) Func
@@ -375,7 +435,9 @@ RunRecord.ModelSnapshot.memoryBudgetBytes Var
 RunRecord.ModelSnapshot.tokenizerHash Var
 RunRecord.ModelSnapshot.url Var
 RunRecord.PromptSnapshot Struct
+RunRecord.PromptSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.PromptSnapshot.Message Struct
+RunRecord.PromptSnapshot.Message conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.PromptSnapshot.Message.__derived_struct_equals(_:_:) Func
 RunRecord.PromptSnapshot.Message.encode(to:) Func
 RunRecord.PromptSnapshot.Message.init(from:) Constructor
@@ -391,9 +453,11 @@ RunRecord.PromptSnapshot.init(from:) Constructor
 RunRecord.PromptSnapshot.messages Var
 RunRecord.PromptSnapshot.mutators Var
 RunRecord.SchemaError Enum
+RunRecord.SchemaError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 RunRecord.SchemaError.__derived_enum_equals(_:_:) Func
 RunRecord.SchemaError.unsupportedFutureSchema EnumElement
 RunRecord.TimingSnapshot Struct
+RunRecord.TimingSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 RunRecord.TimingSnapshot.__derived_struct_equals(_:_:) Func
 RunRecord.TimingSnapshot.encode(to:) Func
 RunRecord.TimingSnapshot.firstTokenMs Var
@@ -430,6 +494,7 @@ RunRecord.truncated Var
 RunRecord.ts Var
 RunRecord.validate(schemaVersion:) Func
 ScenarioOutcome Struct
+ScenarioOutcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ScenarioOutcome.__derived_struct_equals(_:_:) Func
 ScenarioOutcome.events Var
 ScenarioOutcome.extras Var
@@ -439,9 +504,12 @@ ScenarioOutcome.init(scenarioId:invariantHeld:failureReason:events:extras:) Cons
 ScenarioOutcome.invariantHeld Var
 ScenarioOutcome.scenarioId Var
 ScenarioRegistry Enum
+ScenarioRegistry conformances: Copyable,Escapable
 ScenarioRegistry.all Var
 ScenarioRegistry.resolve(_:) Func
 ScenarioTestBackend Class
+ScenarioTestBackend attrs: Final
+ScenarioTestBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 ScenarioTestBackend.capabilities Var
 ScenarioTestBackend.emitThinkingComplete Var
 ScenarioTestBackend.firstThinkingTokenEmitted Var
@@ -460,10 +528,13 @@ ScenarioTestBackend.thinkingTokensToYield Var
 ScenarioTestBackend.tokensToYield Var
 ScenarioTestBackend.unloadModel() Func
 SeededRNG Struct
+SeededRNG conformances: Copyable,Escapable,RandomNumberGenerator
 SeededRNG.init(seed:) Constructor
 SeededRNG.next() Func
 SessionCapture Struct
+SessionCapture conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionCapture.StepResult Struct
+SessionCapture.StepResult conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionCapture.StepResult.elapsedMs Var
 SessionCapture.StepResult.index Var
 SessionCapture.StepResult.init(index:step:record:timeline:elapsedMs:) Constructor
@@ -471,6 +542,7 @@ SessionCapture.StepResult.record Var
 SessionCapture.StepResult.step Var
 SessionCapture.StepResult.timeline Var
 SessionCapture.TimelineEvent Enum
+SessionCapture.TimelineEvent conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 SessionCapture.TimelineEvent.RawValue TypeAlias
 SessionCapture.TimelineEvent.deleted EnumElement
 SessionCapture.TimelineEvent.edited EnumElement
@@ -485,6 +557,7 @@ SessionCapture.sessionID Var
 SessionCapture.steps Var
 SessionCapture.turnRecords Var
 SessionContextLeakDetector Struct
+SessionContextLeakDetector conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionDetector
 SessionContextLeakDetector.humanName Var
 SessionContextLeakDetector.id Var
 SessionContextLeakDetector.init(minLeakChars:) Constructor
@@ -492,20 +565,25 @@ SessionContextLeakDetector.inspect(_:) Func
 SessionContextLeakDetector.inspiredBy Var
 SessionContextLeakDetector.minLeakChars Var
 SessionDetector Protocol
+SessionDetector conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionDetector.humanName Var
 SessionDetector.id Var
 SessionDetector.inspect(_:) Func
 SessionDetector.inspiredBy Var
 SessionDetectorRegistry Enum
+SessionDetectorRegistry conformances: Copyable,Escapable
 SessionDetectorRegistry.all Var
 SessionDetectorRegistry.resolve(_:) Func
 SessionFuzzRunner Class
+SessionFuzzRunner conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 SessionFuzzRunner.defaultServiceFactory(_:_:) Func
 SessionFuzzRunner.init(config:factory:scripts:serviceFactory:) Constructor
 SessionFuzzRunner.run(reporter:) Func
 SessionFuzzRunner.unownedExecutor Var
 SessionScript Struct
+SessionScript conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 SessionScript.Step Enum
+SessionScript.Step conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 SessionScript.Step.__derived_enum_equals(_:_:) Func
 SessionScript.Step.delete EnumElement
 SessionScript.Step.edit EnumElement
@@ -526,7 +604,9 @@ SessionScript.sessionLabel Var
 SessionScript.steps Var
 SessionScript.systemPrompt Var
 SessionScriptRunner Class
+SessionScriptRunner conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 SessionScriptRunner.Options Struct
+SessionScriptRunner.Options conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionScriptRunner.Options.backendName Var
 SessionScriptRunner.Options.contextLimit Var
 SessionScriptRunner.Options.init(modelId:modelURL:backendName:templateMarkers:temperature:topP:repeatPenalty:maxOutputTokens:requestGroupID:toolDefinitions:contextLimit:memoryBudgetBytes:requestTimeout:) Constructor
@@ -545,6 +625,7 @@ SessionScriptRunner.execute(_:) Func
 SessionScriptRunner.init(service:options:seed:harness:) Constructor
 SessionScriptRunner.unownedExecutor Var
 Severity Enum
+Severity conformances: Comparable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 Severity.<(_:_:) Func
 Severity.RawValue TypeAlias
 Severity.confirmed EnumElement
@@ -554,10 +635,13 @@ Severity.init(rawValue:) Constructor
 Severity.rawValue Var
 Severity.regression EnumElement
 Shrinker Struct
+Shrinker conformances: Copyable,Escapable,Sendable,SendableMetatype
 Shrinker.Failure Enum
+Shrinker.Failure conformances: Copyable,Error,Escapable,Sendable,SendableMetatype
 Shrinker.Failure.recordNotFound EnumElement
 Shrinker.Failure.replayFailed EnumElement
 Shrinker.Result Struct
+Shrinker.Result conformances: Copyable,Escapable,Sendable,SendableMetatype
 Shrinker.Result.originalPromptLength Var
 Shrinker.Result.reason Var
 Shrinker.Result.shrunkMutators Var
@@ -566,6 +650,7 @@ Shrinker.Result.shrunkPromptLength Var
 Shrinker.Result.shrunkSystemPrompt Var
 Shrinker.Result.steps Var
 Shrinker.TerminationReason Enum
+Shrinker.TerminationReason conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 Shrinker.TerminationReason.RawValue TypeAlias
 Shrinker.TerminationReason.budgetExhausted EnumElement
 Shrinker.TerminationReason.init(rawValue:) Constructor
@@ -577,22 +662,27 @@ Shrinker.init(replayer:clock:) Constructor
 Shrinker.shrink(hash:maxSteps:timeLimit:) Func
 Shrinker.writeShrunkArtefact(hash:result:) Func
 SyntheticToolset Enum
+SyntheticToolset conformances: Copyable,Escapable
 SyntheticToolset.definitions Var
 SystemPromptMutator Struct
+SystemPromptMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableMetatype
 SystemPromptMutator.id Var
 SystemPromptMutator.init() Constructor
 SystemPromptMutator.mutate(_:rng:) Func
 TemplateTokenInjectMutator Struct
+TemplateTokenInjectMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableMetatype
 TemplateTokenInjectMutator.id Var
 TemplateTokenInjectMutator.init() Constructor
 TemplateTokenInjectMutator.mutate(_:rng:) Func
 TemplateTokenLeakDetector Struct
+TemplateTokenLeakDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 TemplateTokenLeakDetector.humanName Var
 TemplateTokenLeakDetector.id Var
 TemplateTokenLeakDetector.init() Constructor
 TemplateTokenLeakDetector.inspect(_:) Func
 TemplateTokenLeakDetector.inspiredBy Var
 TerminalReporter Class
+TerminalReporter conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 TerminalReporter.error(_:) Func
 TerminalReporter.finalSummary(report:) Func
 TerminalReporter.finding(_:) Func
@@ -602,22 +692,26 @@ TerminalReporter.iterationStart(iter:model:temp:totalFindings:) Func
 TerminalReporter.preflight(backend:model:detectors:) Func
 TerminalReporter.unownedExecutor Var
 ThinkingAcrossRetryScenario Struct
+ThinkingAcrossRetryScenario conformances: Copyable,Escapable,FuzzScenario,Sendable,SendableMetatype
 ThinkingAcrossRetryScenario.humanName Var
 ThinkingAcrossRetryScenario.id Var
 ThinkingAcrossRetryScenario.init() Constructor
 ThinkingAcrossRetryScenario.run() Func
 ThinkingBudgetZeroScenario Struct
+ThinkingBudgetZeroScenario conformances: Copyable,Escapable,FuzzScenario,Sendable,SendableMetatype
 ThinkingBudgetZeroScenario.humanName Var
 ThinkingBudgetZeroScenario.id Var
 ThinkingBudgetZeroScenario.init() Constructor
 ThinkingBudgetZeroScenario.run() Func
 ThinkingClassificationDetector Struct
+ThinkingClassificationDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 ThinkingClassificationDetector.humanName Var
 ThinkingClassificationDetector.id Var
 ThinkingClassificationDetector.init() Constructor
 ThinkingClassificationDetector.inspect(_:) Func
 ThinkingClassificationDetector.inspiredBy Var
 TimeoutDetector Struct
+TimeoutDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 TimeoutDetector.fallbackThresholdMs Var
 TimeoutDetector.humanName Var
 TimeoutDetector.id Var
@@ -625,12 +719,14 @@ TimeoutDetector.init(fallbackThresholdMs:) Constructor
 TimeoutDetector.inspect(_:) Func
 TimeoutDetector.inspiredBy Var
 ToolCallValidityDetector Struct
+ToolCallValidityDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 ToolCallValidityDetector.humanName Var
 ToolCallValidityDetector.id Var
 ToolCallValidityDetector.init(validator:) Constructor
 ToolCallValidityDetector.inspect(_:) Func
 ToolCallValidityDetector.inspiredBy Var
 TurnBoundaryKVStateDetector Struct
+TurnBoundaryKVStateDetector conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionDetector
 TurnBoundaryKVStateDetector.humanName Var
 TurnBoundaryKVStateDetector.id Var
 TurnBoundaryKVStateDetector.init(minResidueChars:) Constructor
@@ -638,16 +734,19 @@ TurnBoundaryKVStateDetector.inspect(_:) Func
 TurnBoundaryKVStateDetector.inspiredBy Var
 TurnBoundaryKVStateDetector.minResidueChars Var
 UnicodeInjectMutator Struct
+UnicodeInjectMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableMetatype
 UnicodeInjectMutator.id Var
 UnicodeInjectMutator.init() Constructor
 UnicodeInjectMutator.mutate(_:rng:) Func
 WarmupCostScenario Struct
+WarmupCostScenario conformances: Copyable,Escapable,FuzzScenario,Sendable,SendableMetatype
 WarmupCostScenario.humanName Var
 WarmupCostScenario.id Var
 WarmupCostScenario.init() Constructor
 WarmupCostScenario.init(factory:) Constructor
 WarmupCostScenario.run() Func
 WhitespaceCollapseMutator Struct
+WhitespaceCollapseMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableMetatype
 WhitespaceCollapseMutator.id Var
 WhitespaceCollapseMutator.init() Constructor
 WhitespaceCollapseMutator.mutate(_:rng:) Func

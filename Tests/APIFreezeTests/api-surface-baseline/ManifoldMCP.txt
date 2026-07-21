@@ -1,7 +1,9 @@
 AuthRetryDecision Enum
+AuthRetryDecision conformances: Copyable,Escapable,Sendable,SendableMetatype
 AuthRetryDecision.fail EnumElement
 AuthRetryDecision.retry EnumElement
 MCPApprovalPolicy Enum
+MCPApprovalPolicy conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPApprovalPolicy.__derived_enum_equals(_:_:) Func
 MCPApprovalPolicy.encode(to:) Func
 MCPApprovalPolicy.hash(into:) Func
@@ -13,10 +15,13 @@ MCPApprovalPolicy.persistentForTool EnumElement
 MCPApprovalPolicy.sessionForServer EnumElement
 MCPApprovalPolicy.sessionForTool EnumElement
 MCPAuthorization Protocol
+MCPAuthorization conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPAuthorization.authorizationHeader(for:) Func
 MCPAuthorization.handleUnauthorized(statusCode:body:) Func
 MCPAuthorizationDescriptor Enum
+MCPAuthorizationDescriptor conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPAuthorizationDescriptor.OAuthDescriptor Struct
+MCPAuthorizationDescriptor.OAuthDescriptor conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPAuthorizationDescriptor.OAuthDescriptor.__derived_struct_equals(_:_:) Func
 MCPAuthorizationDescriptor.OAuthDescriptor.allowDynamicClientRegistration Var
 MCPAuthorizationDescriptor.OAuthDescriptor.authorizationServerIssuer Var
@@ -38,6 +43,7 @@ MCPAuthorizationDescriptor.init(from:) Constructor
 MCPAuthorizationDescriptor.none EnumElement
 MCPAuthorizationDescriptor.oauth EnumElement
 MCPAuthorizationRequest Struct
+MCPAuthorizationRequest conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MCPAuthorizationRequest.__derived_struct_equals(_:_:) Func
 MCPAuthorizationRequest.authorizationServerURL Var
 MCPAuthorizationRequest.init(serverID:resourceMetadataURL:authorizationServerURL:requiredScopes:) Constructor
@@ -45,6 +51,7 @@ MCPAuthorizationRequest.requiredScopes Var
 MCPAuthorizationRequest.resourceMetadataURL Var
 MCPAuthorizationRequest.serverID Var
 MCPCapabilities Struct
+MCPCapabilities conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 MCPCapabilities.__derived_struct_equals(_:_:) Func
 MCPCapabilities.encode(to:) Func
 MCPCapabilities.init(from:) Constructor
@@ -57,6 +64,7 @@ MCPCapabilities.supportsPrompts Var
 MCPCapabilities.supportsResources Var
 MCPCapabilities.supportsToolListChanged Var
 MCPCatalog Enum
+MCPCatalog conformances: Copyable,Escapable
 MCPCatalog.all Var
 MCPCatalog.all(oauthRedirectBaseURL:) Func
 MCPCatalog.github Var
@@ -66,6 +74,7 @@ MCPCatalog.linear(oauthRedirectBaseURL:) Func
 MCPCatalog.notion Var
 MCPCatalog.notion(oauthRedirectBaseURL:) Func
 MCPClient Class
+MCPClient conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 MCPClient.connect(_:authorization:) Func
 MCPClient.connectionEvents Var
 MCPClient.connectionState Var
@@ -75,6 +84,7 @@ MCPClient.init(configuration:) Constructor
 MCPClient.sources() Func
 MCPClient.unownedExecutor Var
 MCPClientConfiguration Struct
+MCPClientConfiguration conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPClientConfiguration.init(sseStreamLimits:requestTimeout:maxConcurrentRequestsPerSession:maxMessageBytes:maxJSONNestingDepth:keychain:lifecyclePolicy:networkPathObserver:lifecycleObserver:samplingHandler:) Constructor
 MCPClientConfiguration.keychain Var
 MCPClientConfiguration.lifecycleObserver Var
@@ -87,6 +97,7 @@ MCPClientConfiguration.requestTimeout Var
 MCPClientConfiguration.samplingHandler Var
 MCPClientConfiguration.sseStreamLimits Var
 MCPConnectionEvent Enum
+MCPConnectionEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPConnectionEvent.authorizationRequired EnumElement
 MCPConnectionEvent.connected EnumElement
 MCPConnectionEvent.connecting EnumElement
@@ -95,6 +106,7 @@ MCPConnectionEvent.error EnumElement
 MCPConnectionEvent.scopeDowngraded EnumElement
 MCPConnectionEvent.toolsChanged EnumElement
 MCPConnectionState Enum
+MCPConnectionState conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPConnectionState.__derived_enum_equals(_:_:) Func
 MCPConnectionState.connecting EnumElement
 MCPConnectionState.failed EnumElement
@@ -104,6 +116,7 @@ MCPConnectionState.idle EnumElement
 MCPConnectionState.ready EnumElement
 MCPConnectionState.reconnecting EnumElement
 MCPDisconnectReason Enum
+MCPDisconnectReason conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPDisconnectReason.__derived_enum_equals(_:_:) Func
 MCPDisconnectReason.encode(to:) Func
 MCPDisconnectReason.failed EnumElement
@@ -116,6 +129,7 @@ MCPDisconnectReason.requested EnumElement
 MCPDisconnectReason.transportClosed EnumElement
 MCPDisconnectReason.unauthorized EnumElement
 MCPError Enum
+MCPError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 MCPError.__derived_enum_equals(_:_:) Func
 MCPError.authorizationFailed EnumElement
 MCPError.authorizationRequired EnumElement
@@ -138,10 +152,12 @@ MCPError.transportFailure EnumElement
 MCPError.unauthorized EnumElement
 MCPError.unsupportedProtocolVersion EnumElement
 MCPKeychainConfiguration Struct
+MCPKeychainConfiguration conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPKeychainConfiguration.accessGroup Var
 MCPKeychainConfiguration.accessibility Var
 MCPKeychainConfiguration.init(accessGroup:accessibility:) Constructor
 MCPLifecycleEvent Enum
+MCPLifecycleEvent conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPLifecycleEvent.__derived_enum_equals(_:_:) Func
 MCPLifecycleEvent.didEnterBackground EnumElement
 MCPLifecycleEvent.hash(into:) Func
@@ -149,10 +165,13 @@ MCPLifecycleEvent.hashValue Var
 MCPLifecycleEvent.memoryWarning EnumElement
 MCPLifecycleEvent.willEnterForeground EnumElement
 MCPLifecycleEventObserver Protocol
+MCPLifecycleEventObserver conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPLifecycleEventObserver.events Var
 MCPNetworkPathObserver Protocol
+MCPNetworkPathObserver conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPNetworkPathObserver.pathUpdates Var
 MCPNetworkPathStatus Enum
+MCPNetworkPathStatus conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPNetworkPathStatus.__derived_enum_equals(_:_:) Func
 MCPNetworkPathStatus.hash(into:) Func
 MCPNetworkPathStatus.hashValue Var
@@ -160,10 +179,13 @@ MCPNetworkPathStatus.requiresConnection EnumElement
 MCPNetworkPathStatus.satisfied EnumElement
 MCPNetworkPathStatus.unsatisfied EnumElement
 MCPNoAuthorization Struct
+MCPNoAuthorization conformances: Copyable,Escapable,MCPAuthorization,Sendable,SendableMetatype
 MCPNoAuthorization.authorizationHeader(for:) Func
 MCPNoAuthorization.handleUnauthorized(statusCode:body:) Func
 MCPNoAuthorization.init() Constructor
 MCPNotificationLifecycleEventObserver Class
+MCPNotificationLifecycleEventObserver attrs: Final
+MCPNotificationLifecycleEventObserver conformances: AsyncSequence,Copyable,Escapable,MCPLifecycleEventObserver,Sendable,SendableMetatype
 MCPNotificationLifecycleEventObserver.AsyncIterator TypeAlias
 MCPNotificationLifecycleEventObserver.Element TypeAlias
 MCPNotificationLifecycleEventObserver.__AsyncSequence_Failure TypeAlias
@@ -172,14 +194,17 @@ MCPNotificationLifecycleEventObserver.init(notificationCenter:mapping:) Construc
 MCPNotificationLifecycleEventObserver.makeAsyncIterator() Func
 MCPNotificationLifecycleEventObserver.platformMemoryWarnings(notificationCenter:) Func
 MCPOAuthAuthorization Class
+MCPOAuthAuthorization conformances: Actor,Copyable,Escapable,MCPAuthorization,Sendable,SendableMetatype
 MCPOAuthAuthorization.authorizationHeader(for:) Func
 MCPOAuthAuthorization.disconnect() Func
 MCPOAuthAuthorization.handleUnauthorized(statusCode:body:) Func
 MCPOAuthAuthorization.init(descriptor:serverID:resourceURL:redirectListener:tokenStore:clock:random:session:currentDate:eventContinuation:) Constructor
 MCPOAuthAuthorization.unownedExecutor Var
 MCPOAuthRedirectListener Protocol
+MCPOAuthRedirectListener conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPOAuthRedirectListener.authorize(authorizationURL:callbackURLScheme:prefersEphemeralSession:) Func
 MCPOAuthTokenStore Struct
+MCPOAuthTokenStore conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPOAuthTokenStore.Delete TypeAlias
 MCPOAuthTokenStore.Read TypeAlias
 MCPOAuthTokenStore.Write TypeAlias
@@ -193,6 +218,7 @@ MCPOAuthTokenStore.read Var
 MCPOAuthTokenStore.subjectIdentifier(from:) Func
 MCPOAuthTokenStore.write Var
 MCPOAuthTokens Struct
+MCPOAuthTokens conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 MCPOAuthTokens.__derived_struct_equals(_:_:) Func
 MCPOAuthTokens.accessToken Var
 MCPOAuthTokens.accessTokenData Var
@@ -207,12 +233,16 @@ MCPOAuthTokens.scopes Var
 MCPOAuthTokens.subjectIdentifier Var
 MCPOAuthTokens.tokenType Var
 MCPSamplingRequest Struct
+MCPSamplingRequest conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MCPSamplingRequest.Message Struct
+MCPSamplingRequest.Message conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MCPSamplingRequest.Message.Content Enum
+MCPSamplingRequest.Message.Content conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MCPSamplingRequest.Message.Content.__derived_enum_equals(_:_:) Func
 MCPSamplingRequest.Message.Content.image EnumElement
 MCPSamplingRequest.Message.Content.text EnumElement
 MCPSamplingRequest.Message.Role Enum
+MCPSamplingRequest.Message.Role conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MCPSamplingRequest.Message.Role.RawValue TypeAlias
 MCPSamplingRequest.Message.Role.assistant EnumElement
 MCPSamplingRequest.Message.Role.init(rawValue:) Constructor
@@ -223,6 +253,7 @@ MCPSamplingRequest.Message.content Var
 MCPSamplingRequest.Message.init(role:content:) Constructor
 MCPSamplingRequest.Message.role Var
 MCPSamplingRequest.ModelPreferences Struct
+MCPSamplingRequest.ModelPreferences conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MCPSamplingRequest.ModelPreferences.__derived_struct_equals(_:_:) Func
 MCPSamplingRequest.ModelPreferences.costPriority Var
 MCPSamplingRequest.ModelPreferences.hintNames Var
@@ -238,6 +269,7 @@ MCPSamplingRequest.stopSequences Var
 MCPSamplingRequest.systemPrompt Var
 MCPSamplingRequest.temperature Var
 MCPSamplingResult Struct
+MCPSamplingResult conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MCPSamplingResult.__derived_struct_equals(_:_:) Func
 MCPSamplingResult.content Var
 MCPSamplingResult.init(role:content:model:stopReason:) Constructor
@@ -245,6 +277,7 @@ MCPSamplingResult.model Var
 MCPSamplingResult.role Var
 MCPSamplingResult.stopReason Var
 MCPServerDescriptor Struct
+MCPServerDescriptor conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPServerDescriptor.__derived_struct_equals(_:_:) Func
 MCPServerDescriptor.allowsSTDIOTransport Var
 MCPServerDescriptor.allowsSampling Var
@@ -266,12 +299,14 @@ MCPServerDescriptor.toolFilter Var
 MCPServerDescriptor.toolNamespace Var
 MCPServerDescriptor.transport Var
 MCPSessionLifecyclePolicy Enum
+MCPSessionLifecyclePolicy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPSessionLifecyclePolicy.__derived_enum_equals(_:_:) Func
 MCPSessionLifecyclePolicy.cancelOnBackground EnumElement
 MCPSessionLifecyclePolicy.detachAndResumeOnForeground EnumElement
 MCPSessionLifecyclePolicy.hash(into:) Func
 MCPSessionLifecyclePolicy.hashValue Var
 MCPStdioCommand Struct
+MCPStdioCommand conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPStdioCommand.__derived_struct_equals(_:_:) Func
 MCPStdioCommand.arguments Var
 MCPStdioCommand.codesignRequirement Var
@@ -286,19 +321,25 @@ MCPStdioCommand.init(from:) Constructor
 MCPStdioCommand.npx(package:args:) Func
 MCPStdioCommand.workingDirectory Var
 MCPToolCountView Struct
+MCPToolCountView attrs: Custom
+MCPToolCountView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 MCPToolCountView.Body TypeAlias
 MCPToolCountView.body Var
 MCPToolCountView.compatibleToolCount Var
 MCPToolCountView.init(totalToolCount:compatibleToolCount:) Constructor
 MCPToolCountView.totalToolCount Var
 MCPToolExecutor Class
+MCPToolExecutor attrs: Final
+MCPToolExecutor conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolExecutor
 MCPToolExecutor.definition Var
 MCPToolExecutor.execute(arguments:) Func
 MCPToolExecutor.init(definition:) Constructor
 MCPToolExecutor.requiresApproval Var
 MCPToolExecutor.supportsConcurrentDispatch Var
 MCPToolFilter Struct
+MCPToolFilter conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPToolFilter.Mode Enum
+MCPToolFilter.Mode conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MCPToolFilter.Mode.RawValue TypeAlias
 MCPToolFilter.Mode.allowAll EnumElement
 MCPToolFilter.Mode.allowList EnumElement
@@ -317,6 +358,8 @@ MCPToolFilter.maxToolCount Var
 MCPToolFilter.mode Var
 MCPToolFilter.names Var
 MCPToolSource Class
+MCPToolSource attrs: Final
+MCPToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPToolSource.capabilities Var
 MCPToolSource.close() Func
 MCPToolSource.currentToolNames() Func
@@ -332,6 +375,7 @@ MCPToolSource.register(in:) Func
 MCPToolSource.serverID Var
 MCPToolSource.unregister(from:) Func
 MCPTransportKind Enum
+MCPTransportKind conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPTransportKind.__derived_enum_equals(_:_:) Func
 MCPTransportKind.encode(to:) Func
 MCPTransportKind.hash(into:) Func

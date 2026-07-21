@@ -1,4 +1,5 @@
 OTLPTraceSink Class
+OTLPTraceSink conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype,TraceSink
 OTLPTraceSink.init(endpoint:session:) Constructor
 OTLPTraceSink.record(_:) Func
 OTLPTraceSink.unownedExecutor Var

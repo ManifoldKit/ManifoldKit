@@ -2,7 +2,9 @@
 (top-level).ImageGeneration TypeAlias
 (top-level).VideoGeneration TypeAlias
 APIEndpointRecord Struct
+APIEndpointRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 APIEndpointRecord.CodingKeys Enum
+APIEndpointRecord.CodingKeys conformances: CodingKey,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 APIEndpointRecord.CodingKeys.RawValue TypeAlias
 APIEndpointRecord.CodingKeys.baseURL EnumElement
 APIEndpointRecord.CodingKeys.createdAt EnumElement
@@ -35,15 +37,19 @@ APIEndpointRecord.modelName Var
 APIEndpointRecord.name Var
 APIEndpointRecord.provider Var
 AudioGenerationEvent Enum
+AudioGenerationEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 AudioGenerationEvent.completed EnumElement
 AudioGenerationEvent.progress EnumElement
 BackgroundDownloadManaging Protocol
+BackgroundDownloadManaging attrs: Custom
+BackgroundDownloadManaging conformances: Copyable,Escapable
 BackgroundDownloadManaging.activeDownloads Var
 BackgroundDownloadManaging.cancelDownload(id:) Func
 BackgroundDownloadManaging.reconnectBackgroundSession() Func
 BackgroundDownloadManaging.retryDownload(id:) Func
 BackgroundDownloadManaging.startDownload(_:plan:) Func
 CatalogEntry Struct
+CatalogEntry conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 CatalogEntry.ID TypeAlias
 CatalogEntry.__derived_struct_equals(_:_:) Func
 CatalogEntry.downloadedAt Var
@@ -60,7 +66,9 @@ CatalogEntry.quantization Var
 CatalogEntry.sizeBytes Var
 CatalogEntry.source Var
 ChatTemplateToolDescriptor Struct
+ChatTemplateToolDescriptor conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ChatTemplateToolDescriptor.ArgEncoding Enum
+ChatTemplateToolDescriptor.ArgEncoding conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ChatTemplateToolDescriptor.ArgEncoding.RawValue TypeAlias
 ChatTemplateToolDescriptor.ArgEncoding.init(rawValue:) Constructor
 ChatTemplateToolDescriptor.ArgEncoding.json EnumElement
@@ -68,6 +76,7 @@ ChatTemplateToolDescriptor.ArgEncoding.keyEqualsValue EnumElement
 ChatTemplateToolDescriptor.ArgEncoding.keyValue EnumElement
 ChatTemplateToolDescriptor.ArgEncoding.rawValue Var
 ChatTemplateToolDescriptor.Extractability Enum
+ChatTemplateToolDescriptor.Extractability conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ChatTemplateToolDescriptor.Extractability.RawValue TypeAlias
 ChatTemplateToolDescriptor.Extractability.buried EnumElement
 ChatTemplateToolDescriptor.Extractability.clean EnumElement
@@ -75,6 +84,7 @@ ChatTemplateToolDescriptor.Extractability.init(rawValue:) Constructor
 ChatTemplateToolDescriptor.Extractability.rawValue Var
 ChatTemplateToolDescriptor.Extractability.toolless EnumElement
 ChatTemplateToolDescriptor.ToolCallDialect Struct
+ChatTemplateToolDescriptor.ToolCallDialect conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ChatTemplateToolDescriptor.ToolCallDialect.__derived_struct_equals(_:_:) Func
 ChatTemplateToolDescriptor.ToolCallDialect.argEncoding Var
 ChatTemplateToolDescriptor.ToolCallDialect.closeDelimiter Var
@@ -94,6 +104,7 @@ ChatTemplateToolDescriptor.init(from:) Constructor
 ChatTemplateToolDescriptor.init(parsingChatTemplate:) Constructor
 ChatTemplateToolDescriptor.toolsExpressible Var
 CloudBackendError Enum
+CloudBackendError conformances: CategorizedError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 CloudBackendError.authenticationFailed EnumElement
 CloudBackendError.backendDeallocated EnumElement
 CloudBackendError.blockedAddress EnumElement
@@ -113,11 +124,13 @@ CloudBackendError.streamInterrupted EnumElement
 CloudBackendError.timeout EnumElement
 CloudBackendError.unpinnedCredentialedHost EnumElement
 CloudModelManifestTable Enum
+CloudModelManifestTable conformances: Copyable,Escapable
 CloudModelManifestTable.claude(modelName:) Func
 CloudModelManifestTable.claudeManifests Var
 CloudModelManifestTable.openAI(modelName:) Func
 CloudModelManifestTable.openAIManifests Var
 CuratedModelCapabilities Struct
+CuratedModelCapabilities conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 CuratedModelCapabilities.__derived_struct_equals(_:_:) Func
 CuratedModelCapabilities.hash(into:) Func
 CuratedModelCapabilities.hashValue Var
@@ -126,6 +139,8 @@ CuratedModelCapabilities.supportsCode Var
 CuratedModelCapabilities.supportsMultilingual Var
 CuratedModelCapabilities.supportsReasoning Var
 DiagnosticsService Class
+DiagnosticsService attrs: Custom,Final
+DiagnosticsService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 DiagnosticsService.count Var
 DiagnosticsService.defaultCapacity Var
 DiagnosticsService.dismiss(_:) Func
@@ -135,6 +150,8 @@ DiagnosticsService.isEmpty Var
 DiagnosticsService.record(_:) Func
 DiagnosticsService.warnings Var
 DownloadState Class
+DownloadState attrs: Final
+DownloadState conformances: Copyable,Escapable,Identifiable,Observable
 DownloadState.ID TypeAlias
 DownloadState.id Var
 DownloadState.init(model:) Constructor
@@ -146,12 +163,14 @@ DownloadState.startedAt Var
 DownloadState.status Var
 DownloadState.updateProgress(bytesDownloaded:totalBytes:) Func
 DownloadStatus Enum
+DownloadStatus conformances: Copyable,Escapable,Sendable,SendableMetatype
 DownloadStatus.cancelled EnumElement
 DownloadStatus.completed EnumElement
 DownloadStatus.downloading EnumElement
 DownloadStatus.failed EnumElement
 DownloadStatus.queued EnumElement
 GeneratedMediaPayload Struct
+GeneratedMediaPayload conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GeneratedMediaPayload.__derived_struct_equals(_:_:) Func
 GeneratedMediaPayload.asImagePayload Var
 GeneratedMediaPayload.asVideoPayload Var
@@ -174,6 +193,7 @@ GeneratedMediaPayload.url Var
 GeneratedMediaPayload.videoConfig Var
 GeneratedMediaPayload.width Var
 HuggingFaceError Enum
+HuggingFaceError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 HuggingFaceError.downloadFailed EnumElement
 HuggingFaceError.errorDescription Var
 HuggingFaceError.insufficientDiskSpace EnumElement
@@ -183,6 +203,7 @@ HuggingFaceError.modelNotFound EnumElement
 HuggingFaceError.networkUnavailable EnumElement
 HuggingFaceError.searchFailed EnumElement
 ImageGenerationConfig Struct
+ImageGenerationConfig conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 ImageGenerationConfig.__derived_struct_equals(_:_:) Func
 ImageGenerationConfig.aspectRatio Var
 ImageGenerationConfig.encode(to:) Func
@@ -198,6 +219,7 @@ ImageGenerationConfig.seed Var
 ImageGenerationConfig.steps Var
 ImageGenerationConfig.width Var
 ImageGenerationConfigSnapshot Struct
+ImageGenerationConfigSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ImageGenerationConfigSnapshot.__derived_struct_equals(_:_:) Func
 ImageGenerationConfigSnapshot.aspectRatio Var
 ImageGenerationConfigSnapshot.encode(to:) Func
@@ -214,10 +236,12 @@ ImageGenerationConfigSnapshot.steps Var
 ImageGenerationConfigSnapshot.toConfig() Func
 ImageGenerationConfigSnapshot.width Var
 ImageGenerationEvent Enum
+ImageGenerationEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 ImageGenerationEvent.completed EnumElement
 ImageGenerationEvent.preview EnumElement
 ImageGenerationEvent.progress EnumElement
 ImageMessagePayload Struct
+ImageMessagePayload conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ImageMessagePayload.__derived_struct_equals(_:_:) Func
 ImageMessagePayload.encode(to:) Func
 ImageMessagePayload.generatedAt Var
@@ -230,6 +254,7 @@ ImageMessagePayload.init(prompt:imageURL:modelIdentifier:generationConfig:genera
 ImageMessagePayload.modelIdentifier Var
 ImageMessagePayload.prompt Var
 ImageModelInfo Struct
+ImageModelInfo conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 ImageModelInfo.ID TypeAlias
 ImageModelInfo.__derived_struct_equals(_:_:) Func
 ImageModelInfo.directoryURL Var
@@ -246,7 +271,9 @@ ImageModelInfo.init(id:name:directoryURL:format:fileSize:huggingFaceRepoID:varia
 ImageModelInfo.name Var
 ImageModelInfo.variant Var
 ImageModelLoadPlan Struct
+ImageModelLoadPlan conformances: Copyable,Escapable,Sendable,SendableMetatype
 ImageModelLoadPlan.Inputs Struct
+ImageModelLoadPlan.Inputs conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ImageModelLoadPlan.Inputs.__derived_struct_equals(_:_:) Func
 ImageModelLoadPlan.Inputs.activationMemoryBytes Var
 ImageModelLoadPlan.Inputs.availableMemoryBytes Var
@@ -257,6 +284,7 @@ ImageModelLoadPlan.Inputs.textEncoderWeightBytes Var
 ImageModelLoadPlan.Inputs.unetWeightBytes Var
 ImageModelLoadPlan.Inputs.vaeWeightBytes Var
 ImageModelLoadPlan.Outcome Struct
+ImageModelLoadPlan.Outcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ImageModelLoadPlan.Outcome.__derived_struct_equals(_:_:) Func
 ImageModelLoadPlan.Outcome.headroomBytes Var
 ImageModelLoadPlan.Outcome.init(totalEstimatedBytes:headroomBytes:verdict:reasons:) Constructor
@@ -264,6 +292,7 @@ ImageModelLoadPlan.Outcome.reasons Var
 ImageModelLoadPlan.Outcome.totalEstimatedBytes Var
 ImageModelLoadPlan.Outcome.verdict Var
 ImageModelLoadPlan.Reason Enum
+ImageModelLoadPlan.Reason conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ImageModelLoadPlan.Reason.__derived_enum_equals(_:_:) Func
 ImageModelLoadPlan.Reason.activationMemoryExceedsBudget EnumElement
 ImageModelLoadPlan.Reason.textEncoderTooLarge EnumElement
@@ -279,7 +308,9 @@ ImageModelLoadPlan.reasons Var
 ImageModelLoadPlan.totalEstimatedBytes Var
 ImageModelLoadPlan.verdict Var
 ImagePlaceholderHash Struct
+ImagePlaceholderHash conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ImagePlaceholderHash.ColorGrid Struct
+ImagePlaceholderHash.ColorGrid conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ImagePlaceholderHash.ColorGrid.__derived_struct_equals(_:_:) Func
 ImagePlaceholderHash.ColorGrid.aspectRatio Var
 ImagePlaceholderHash.ColorGrid.colors Var
@@ -290,6 +321,7 @@ ImagePlaceholderHash.ColorGrid.imageHeight Var
 ImagePlaceholderHash.ColorGrid.imageWidth Var
 ImagePlaceholderHash.ColorGrid.width Var
 ImagePlaceholderHash.RGBColor Struct
+ImagePlaceholderHash.RGBColor conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ImagePlaceholderHash.RGBColor.__derived_struct_equals(_:_:) Func
 ImagePlaceholderHash.RGBColor.blue Var
 ImagePlaceholderHash.RGBColor.green Var
@@ -307,6 +339,7 @@ ImagePlaceholderHash.init(from:) Constructor
 ImagePlaceholderHash.init(value:) Constructor
 ImagePlaceholderHash.value Var
 Log Enum
+Log conformances: Copyable,Escapable
 Log.download Var
 Log.inference Var
 Log.network Var
@@ -316,13 +349,16 @@ Log.quickStart Var
 Log.security Var
 Log.ui Var
 ManifoldConfiguration Struct
+ManifoldConfiguration conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldConfiguration.CustomHostTrustPolicy Enum
+ManifoldConfiguration.CustomHostTrustPolicy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ManifoldConfiguration.CustomHostTrustPolicy.__derived_enum_equals(_:_:) Func
 ManifoldConfiguration.CustomHostTrustPolicy.hash(into:) Func
 ManifoldConfiguration.CustomHostTrustPolicy.hashValue Var
 ManifoldConfiguration.CustomHostTrustPolicy.platformDefault EnumElement
 ManifoldConfiguration.CustomHostTrustPolicy.requireExplicitPins EnumElement
 ManifoldConfiguration.Features Struct
+ManifoldConfiguration.Features conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldConfiguration.Features.init(showContextIndicator:showMemoryIndicator:showChatExport:showModelDownload:showStorageTab:showGenerationSettings:showAdvancedSettings:showCloudAPIManagement:showUpgradeHint:showAudioInput:showImageAttachment:) Constructor
 ManifoldConfiguration.Features.showAdvancedSettings Var
 ManifoldConfiguration.Features.showAudioInput Var
@@ -336,6 +372,7 @@ ManifoldConfiguration.Features.showModelDownload Var
 ManifoldConfiguration.Features.showStorageTab Var
 ManifoldConfiguration.Features.showUpgradeHint Var
 ManifoldConfiguration.NetworkPolicy Enum
+ManifoldConfiguration.NetworkPolicy conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ManifoldConfiguration.NetworkPolicy.__derived_enum_equals(_:_:) Func
 ManifoldConfiguration.NetworkPolicy.allowlist EnumElement
 ManifoldConfiguration.NetworkPolicy.unrestricted EnumElement
@@ -364,6 +401,7 @@ ManifoldConfiguration.shared Var
 ManifoldConfiguration.sseStreamLimits Var
 ManifoldConfiguration.useSecureEnclave Var
 ManifoldKitError Enum
+ManifoldKitError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ManifoldKitError.__derived_enum_equals(_:_:) Func
 ManifoldKitError.cancelled EnumElement
 ManifoldKitError.decodingFailure EnumElement
@@ -379,12 +417,15 @@ ManifoldKitError.timedOut EnumElement
 ManifoldKitError.tlsFailure EnumElement
 ManifoldKitError.unknown EnumElement
 MediaGeneration Enum
+MediaGeneration conformances: Copyable,Escapable
 MediaGeneration.Config TypeAlias
 MediaGenerationEvent Enum
+MediaGenerationEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 MediaGenerationEvent.completed EnumElement
 MediaGenerationEvent.preview EnumElement
 MediaGenerationEvent.progress EnumElement
 MediaKind Enum
+MediaKind conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MediaKind.AllCases TypeAlias
 MediaKind.RawValue TypeAlias
 MediaKind.allCases Var
@@ -394,6 +435,7 @@ MediaKind.init(rawValue:) Constructor
 MediaKind.rawValue Var
 MediaKind.video EnumElement
 ModelCapabilities Struct
+ModelCapabilities conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelCapabilities.__derived_struct_equals(_:_:) Func
 ModelCapabilities.contextLength Var
 ModelCapabilities.init(supportsVision:supportsAudio:supportsCodeGeneration:supportsMultilingual:contextLength:) Constructor
@@ -402,13 +444,16 @@ ModelCapabilities.supportsCodeGeneration Var
 ModelCapabilities.supportsMultilingual Var
 ModelCapabilities.supportsVision Var
 ModelCapabilityProbe Enum
+ModelCapabilityProbe conformances: Copyable,Escapable
 ModelCapabilityProbe.probe(modelDirectory:) Func
 ModelCapabilityProbeError Enum
+ModelCapabilityProbeError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ModelCapabilityProbeError.__derived_enum_equals(_:_:) Func
 ModelCapabilityProbeError.configNotFound EnumElement
 ModelCapabilityProbeError.errorDescription Var
 ModelCapabilityProbeError.invalidConfigJSON EnumElement
 ModelCatalog Class
+ModelCatalog conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 ModelCatalog.catalog() Func
 ModelCatalog.enforceDiskBudget(_:) Func
 ModelCatalog.evict(_:deleteArtifact:) Func
@@ -418,6 +463,7 @@ ModelCatalog.record(_:) Func
 ModelCatalog.touch(_:at:) Func
 ModelCatalog.unownedExecutor Var
 ModelDiscoveryError Enum
+ModelDiscoveryError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ModelDiscoveryError.__derived_enum_equals(_:_:) Func
 ModelDiscoveryError.errorDescription Var
 ModelDiscoveryError.fileMissing EnumElement
@@ -427,6 +473,7 @@ ModelDiscoveryError.notReadable EnumElement
 ModelDiscoveryError.path Var
 ModelDiscoveryError.unexpectedFileKind EnumElement
 ModelDownloadFile Struct
+ModelDownloadFile conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelDownloadFile.__derived_struct_equals(_:_:) Func
 ModelDownloadFile.encode(to:) Func
 ModelDownloadFile.expectedChecksum Var
@@ -438,12 +485,14 @@ ModelDownloadFile.relativePath Var
 ModelDownloadFile.sizeBytes Var
 ModelDownloadFile.url Var
 ModelDownloadPlan Enum
+ModelDownloadPlan conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelDownloadPlan.__derived_enum_equals(_:_:) Func
 ModelDownloadPlan.hash(into:) Func
 ModelDownloadPlan.hashValue Var
 ModelDownloadPlan.singleFile EnumElement
 ModelDownloadPlan.snapshot EnumElement
 ModelFileChecksum Struct
+ModelFileChecksum conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelFileChecksum.__derived_struct_equals(_:_:) Func
 ModelFileChecksum.algorithm Var
 ModelFileChecksum.encode(to:) Func
@@ -453,12 +502,15 @@ ModelFileChecksum.hexDigest Var
 ModelFileChecksum.init(algorithm:hexDigest:) Constructor
 ModelFileChecksum.init(from:) Constructor
 ModelFileChecksumAlgorithm Enum
+ModelFileChecksumAlgorithm conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelFileChecksumAlgorithm.RawValue TypeAlias
 ModelFileChecksumAlgorithm.init(rawValue:) Constructor
 ModelFileChecksumAlgorithm.rawValue Var
 ModelFileChecksumAlgorithm.sha256 EnumElement
 ModelInfo Struct
+ModelInfo conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 ModelInfo.CloudReasoningProducer Enum
+ModelInfo.CloudReasoningProducer conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelInfo.CloudReasoningProducer.__derived_enum_equals(_:_:) Func
 ModelInfo.CloudReasoningProducer.anthropic EnumElement
 ModelInfo.CloudReasoningProducer.hash(into:) Func
@@ -510,6 +562,7 @@ ModelInfo.supportsReasoning Var
 ModelInfo.toolCallClaim Var
 ModelInfo.url Var
 ModelManifest Struct
+ModelManifest conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 ModelManifest.__derived_struct_equals(_:_:) Func
 ModelManifest.contextWindow Var
 ModelManifest.encode(to:) Func
@@ -524,6 +577,7 @@ ModelManifest.supportsTools Var
 ModelManifest.thinkingMarkers Var
 ModelManifest.unknown(modelIdentifier:producerKind:) Func
 ModelSource Enum
+ModelSource conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelSource.__derived_enum_equals(_:_:) Func
 ModelSource.bundled EnumElement
 ModelSource.encode(to:) Func
@@ -533,6 +587,8 @@ ModelSource.huggingFace EnumElement
 ModelSource.imported EnumElement
 ModelSource.init(from:) Constructor
 ModelStorageService Class
+ModelStorageService attrs: Final
+ModelStorageService conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelStorageService.availableDiskSpace() Func
 ModelStorageService.deleteModel(_:) Func
 ModelStorageService.discoverImageModels(in:) Func
@@ -547,9 +603,11 @@ ModelStorageService.modelsDirectory Var
 ModelStorageService.storageUsedFormatted Var
 ModelStorageService.userDocumentsModelsDirectory Var
 NetworkPolicyError Enum
+NetworkPolicyError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 NetworkPolicyError.__derived_enum_equals(_:_:) Func
 NetworkPolicyError.hostNotAllowed EnumElement
 OperationalError Enum
+OperationalError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 OperationalError.__derived_enum_equals(_:_:) Func
 OperationalError.benchmarkCacheUnavailable EnumElement
 OperationalError.category Var
@@ -558,6 +616,7 @@ OperationalError.modelFileDeletionFailed EnumElement
 OperationalError.sessionRenamePersistenceFailed EnumElement
 OperationalError.titleGenerationFailed EnumElement
 OperationalWarning Struct
+OperationalWarning conformances: Copyable,Equatable,Escapable,Identifiable,Sendable,SendableMetatype
 OperationalWarning.ID TypeAlias
 OperationalWarning.__derived_struct_equals(_:_:) Func
 OperationalWarning.error Var
@@ -565,6 +624,7 @@ OperationalWarning.id Var
 OperationalWarning.init(id:error:timestamp:) Constructor
 OperationalWarning.timestamp Var
 PersonaRecord Struct
+PersonaRecord conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 PersonaRecord.ID TypeAlias
 PersonaRecord.__derived_struct_equals(_:_:) Func
 PersonaRecord.createdAt Var
@@ -575,6 +635,7 @@ PersonaRecord.init(id:name:systemPrompt:createdAt:) Constructor
 PersonaRecord.name Var
 PersonaRecord.systemPrompt Var
 ProducerKind Enum
+ProducerKind conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ProducerKind.RawValue TypeAlias
 ProducerKind.cloud EnumElement
 ProducerKind.init(rawValue:) Constructor
@@ -582,11 +643,13 @@ ProducerKind.lan EnumElement
 ProducerKind.local EnumElement
 ProducerKind.rawValue Var
 SSEStreamError Enum
+SSEStreamError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 SSEStreamError.__derived_enum_equals(_:_:) Func
 SSEStreamError.eventRateExceeded EnumElement
 SSEStreamError.eventTooLarge EnumElement
 SSEStreamError.streamTooLarge EnumElement
 SSEStreamLimits Struct
+SSEStreamLimits conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 SSEStreamLimits.__derived_struct_equals(_:_:) Func
 SSEStreamLimits.default Var
 SSEStreamLimits.init(maxEventBytes:maxTotalBytes:maxEventsPerSecond:) Constructor
@@ -594,6 +657,7 @@ SSEStreamLimits.maxEventBytes Var
 SSEStreamLimits.maxEventsPerSecond Var
 SSEStreamLimits.maxTotalBytes Var
 SamplerPresetRecord Struct
+SamplerPresetRecord conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 SamplerPresetRecord.ID TypeAlias
 SamplerPresetRecord.__derived_struct_equals(_:_:) Func
 SamplerPresetRecord.createdAt Var
@@ -611,6 +675,7 @@ SamplerPresetRecord.repetitionContextSize Var
 SamplerPresetRecord.temperature Var
 SamplerPresetRecord.topP Var
 SamplingParameterSet Struct
+SamplingParameterSet conformances: Copyable,Decodable,Encodable,Equatable,Escapable,ExpressibleByArrayLiteral,Hashable,OptionSet,RawRepresentable,Sendable,SendableMetatype,SetAlgebra
 SamplingParameterSet.ArrayLiteralElement TypeAlias
 SamplingParameterSet.Element TypeAlias
 SamplingParameterSet.RawValue TypeAlias
@@ -624,6 +689,7 @@ SamplingParameterSet.temperature Var
 SamplingParameterSet.topK Var
 SamplingParameterSet.topP Var
 SpeechGenerationConfig Struct
+SpeechGenerationConfig conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 SpeechGenerationConfig.__derived_struct_equals(_:_:) Func
 SpeechGenerationConfig.encode(to:) Func
 SpeechGenerationConfig.hash(into:) Func
@@ -636,7 +702,9 @@ SpeechGenerationConfig.rate Var
 SpeechGenerationConfig.text Var
 SpeechGenerationConfig.voice Var
 VideoGenerationConfig Struct
+VideoGenerationConfig conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VideoGenerationConfig.AspectRatio Enum
+VideoGenerationConfig.AspectRatio conformances: Copyable,Escapable
 VideoGenerationConfig.AspectRatio.landscape Var
 VideoGenerationConfig.AspectRatio.portrait Var
 VideoGenerationConfig.AspectRatio.square Var
@@ -654,6 +722,7 @@ VideoGenerationConfig.init(from:) Constructor
 VideoGenerationConfig.sourceImageURL Var
 VideoGenerationConfig.width Var
 VideoGenerationConfigSnapshot Struct
+VideoGenerationConfigSnapshot conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VideoGenerationConfigSnapshot.__derived_struct_equals(_:_:) Func
 VideoGenerationConfigSnapshot.aspectRatio Var
 VideoGenerationConfigSnapshot.duration Var
@@ -667,12 +736,14 @@ VideoGenerationConfigSnapshot.sourceImageURL Var
 VideoGenerationConfigSnapshot.toConfig() Func
 VideoGenerationConfigSnapshot.width Var
 VideoGenerationEvent Enum
+VideoGenerationEvent conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 VideoGenerationEvent.completed EnumElement
 VideoGenerationEvent.encode(to:) Func
 VideoGenerationEvent.generating EnumElement
 VideoGenerationEvent.init(from:) Constructor
 VideoGenerationEvent.queued EnumElement
 VideoMessagePayload Struct
+VideoMessagePayload conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VideoMessagePayload.__derived_struct_equals(_:_:) Func
 VideoMessagePayload.encode(to:) Func
 VideoMessagePayload.generatedAt Var

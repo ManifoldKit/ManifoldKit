@@ -1,19 +1,23 @@
 AgentInstruction Struct
+AgentInstruction conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AgentInstruction.__derived_struct_equals(_:_:) Func
 AgentInstruction.content Var
 AgentInstruction.directory Var
 AgentInstruction.init(directory:content:) Constructor
 AgentInstruction.sourcePath Var
 AgentInstructionContextProvider Struct
+AgentInstructionContextProvider conformances: Copyable,Escapable,PromptContextProvider,Sendable,SendableMetatype
 AgentInstructionContextProvider.contributeSlots(messageCount:) Func
 AgentInstructionContextProvider.init(currentDirectory:stoppingAt:loader:) Constructor
 AgentInstructionLoader Struct
+AgentInstructionLoader conformances: Copyable,Escapable,Sendable,SendableMetatype
 AgentInstructionLoader.defaultFileName Var
 AgentInstructionLoader.discover(from:stoppingAt:) Func
 AgentInstructionLoader.init() Constructor
 AgentInstructionLoader.loadMerged(from:stoppingAt:) Func
 AgentInstructionLoader.merged(_:) Func
 SkillDefinition Struct
+SkillDefinition conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Identifiable,Sendable,SendableMetatype
 SkillDefinition.ID TypeAlias
 SkillDefinition.__derived_struct_equals(_:_:) Func
 SkillDefinition.aliases Var
@@ -33,27 +37,33 @@ SkillDefinition.skillDirectory Var
 SkillDefinition.sourcePath Var
 SkillDefinition.whenToUse Var
 SkillDispatchError Enum
+SkillDispatchError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 SkillDispatchError.__derived_enum_equals(_:_:) Func
 SkillDispatchError.malformedArguments EnumElement
 SkillDispatchError.unknownSkill EnumElement
 SkillDispatchError.unknownTool EnumElement
 SkillLoader Struct
+SkillLoader conformances: Copyable,Escapable,Sendable,SendableMetatype
 SkillLoader.defaultClaudeCodePaths Var
 SkillLoader.discover() Func
 SkillLoader.init(searchPaths:) Constructor
 SkillLoader.searchPaths Var
 SkillReferenceError Enum
+SkillReferenceError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 SkillReferenceError.__derived_enum_equals(_:_:) Func
 SkillReferenceError.pathEscapesSkillDirectory EnumElement
 SkillReferenceError.undeclaredReference EnumElement
 SkillReferenceError.unreadable EnumElement
 SkillRegistry Class
+SkillRegistry conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 SkillRegistry.all() Func
 SkillRegistry.init() Constructor
 SkillRegistry.load(_:) Func
 SkillRegistry.skill(named:) Func
 SkillRegistry.unownedExecutor Var
 SkillToolSource Class
+SkillToolSource attrs: Final
+SkillToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionToolSource
 SkillToolSource.allowedToolNames(for:) Func
 SkillToolSource.init(registry:setActiveSkill:) Constructor
 SkillToolSource.invokeSkillToolName Var

@@ -1,9 +1,13 @@
 (top-level).makeInMemoryContainer() Func
 GlassBoxDemoRAG Enum
+GlassBoxDemoRAG conformances: Copyable,Escapable
 GlassBoxDemoRAG.makeBootstrap(configuration:inferenceService:ragConfiguration:) Func
 GlassBoxDemoRAG.makeConfiguration(baseURL:modelName:) Func
 InMemoryPersistenceHarness Enum
+InMemoryPersistenceHarness attrs: Custom
+InMemoryPersistenceHarness conformances: Copyable,Escapable,Sendable,SendableMetatype
 InMemoryPersistenceHarness.Stack Struct
+InMemoryPersistenceHarness.Stack conformances: Copyable,Escapable
 InMemoryPersistenceHarness.Stack.container Var
 InMemoryPersistenceHarness.Stack.context Var
 InMemoryPersistenceHarness.Stack.provider Var
