@@ -253,27 +253,6 @@ extension MessagePart {
         return nil
     }
 
-    /// The ``ImageMessagePayload`` of a `.generatedMedia` image part, or `nil`
-    /// for any other case (including video/audio media parts).
-    ///
-    /// Deprecated shim for the pre-P4b `generatedImage` accessor: pattern-matches
-    /// the collapsed `.generatedMedia` case and reconstructs the legacy payload.
-    @available(*, deprecated, message: "Use generatedMediaContent and check .kind == .image; reconstruct via GeneratedMediaPayload.asImagePayload if needed.")
-    public var generatedImageContent: ImageMessagePayload? {
-        if case .generatedMedia(let p) = self { return p.asImagePayload }
-        return nil
-    }
-
-    /// The ``VideoMessagePayload`` of a `.generatedMedia` video part, or `nil`
-    /// for any other case.
-    ///
-    /// Deprecated shim for the pre-P4b `generatedVideo` accessor.
-    @available(*, deprecated, message: "Use generatedMediaContent and check .kind == .video; reconstruct via GeneratedMediaPayload.asVideoPayload if needed.")
-    public var generatedVideoContent: VideoMessagePayload? {
-        if case .generatedMedia(let p) = self { return p.asVideoPayload }
-        return nil
-    }
-
     /// The compact placeholder hash for an uploaded image part, or `nil` for
     /// non-image parts and legacy image parts that pre-date placeholders.
     public var imagePlaceholderHash: ImagePlaceholderHash? {

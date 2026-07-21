@@ -2,16 +2,16 @@ import Foundation
 
 /// Configuration for a one-shot text-to-speech (TTS) generation request.
 ///
-/// The audio modality for the generic ``MediaGeneration`` seam
-/// (``AudioGeneration``). Mirrors the role ``ImageGenerationConfig`` plays for
-/// image generation: a single value type the caller hands a TTS backend so each
-/// backend need not invent its own request shape. Backends that do not honour a
-/// field silently ignore it, matching the ``ImageGenerationConfig`` convention.
+/// The request shape for the audio (TTS) modality. Mirrors the role
+/// ``ImageGenerationConfig`` plays for image generation: a single value type
+/// the caller hands a TTS backend so each backend need not invent its own
+/// request shape. Backends that do not honour a field silently ignore it,
+/// matching the ``ImageGenerationConfig`` convention.
 ///
 /// One-shot only — this produces a single audio artifact persisted as a
 /// ``GeneratedMediaPayload`` with ``MediaKind/audio``. Realtime/duplex speech
-/// is out of scope. No backend conformance ships in core; this is the seam's
-/// config surface only.
+/// is out of scope. No backend conformance ships in core; this is the
+/// modality's config surface only.
 public struct SpeechGenerationConfig: Sendable, Codable, Equatable, Hashable {
 
     /// The text to synthesise into speech.

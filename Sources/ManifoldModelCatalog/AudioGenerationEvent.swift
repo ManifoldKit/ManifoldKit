@@ -4,9 +4,9 @@ import Foundation
 /// text-to-speech (TTS) generation run.
 ///
 /// Sibling to ``ImageGenerationEvent`` / ``VideoGenerationEvent`` for the audio
-/// modality of the generic ``MediaGeneration`` seam (``AudioGeneration``). Two
-/// cases: progress ticks while the synthesiser renders, and a single terminal
-/// ``completed`` carrying a file URL pointing at the produced audio artifact.
+/// modality. Two cases: progress ticks while the synthesiser renders, and a
+/// single terminal ``completed`` carrying a file URL pointing at the produced
+/// audio artifact.
 ///
 /// ## Why `URL`, not raw samples?
 ///
