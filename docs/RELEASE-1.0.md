@@ -14,9 +14,11 @@
 >
 > **Both things that were open are now settled.**
 > [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot)'s
-> isolation-change blind spot was closed 2026-07-21: the normalizer now emits
-> conformance and filtered-attribute signal, so an isolation/`Sendable` change
-> on a public symbol shows up as baseline drift instead of silently passing.
+> isolation-change blind spot was closed at type level 2026-07-21: the
+> normalizer now emits conformance and filtered-attribute signal, so an
+> isolation/`Sendable` change on a public type shows up as baseline drift
+> instead of silently passing. (Member-level isolation changes and two narrow
+> edges remain documented manual review items — see the Appendix A resolution.)
 > Policy 2's two sub-questions were ruled on separately — "what counts as a
 > critical fix" on 2026-07-16 (narrow: security + data-loss/corruption only),
 > and "how a fix reaches the 1.x line" on 2026-07-21, via
@@ -69,9 +71,11 @@ Two known limitations of this instrumentation are recorded in
 [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot) — the more
 consequential was that neither gate reliably detected an actor-isolation change
 (adding `@MainActor` to a public symbol), which is source-breaking under Swift 6
-but is not an ABI property. That gap is now closed (2026-07-21): the
-public-surface baseline emits conformance and filtered-attribute signal, so an
-isolation/`Sendable` change registers as drift.
+but is not an ABI property. That gap is now closed at type level (2026-07-21):
+the public-surface baseline emits conformance and filtered-attribute signal, so
+an isolation/`Sendable` change on a public type registers as drift. Member-level
+changes and two narrow edges remain manual review items — see Appendix A's
+resolution for the honest residual list.
 
 Default visibility is `package`, not `public`
 ([`API-DESIGN.md` § 3](API-DESIGN.md)); the 1.0 surface is the set of symbols
@@ -420,9 +424,18 @@ Coverage added: `Tests/APIFreezeTests/PublicSurfaceBaselineTests.swift` gained
 fixture-driven tests reproducing this Appendix's three probe states (plain
 public struct / `@MainActor` / explicit `Sendable`-only) as minimal ABIRoot
 JSON fixtures under `Tests/APIFreezeTests/Fixtures/`, asserting the normalizer
-now produces three distinct outputs. All 28 checked-in baselines were
+now produces three distinct outputs. All 29 checked-in baselines were
 regenerated against the new normalizer (`scripts/api-surface-baseline.sh`) as
 part of the same change.
+
+Residual gaps, stated rather than implied (the docstring carries the full
+evidence): member-level isolation changes (too noisy to emit — ~8× line growth
+for a marker that cannot distinguish `@MainActor` from any other custom
+attribute); an authored `@preconcurrency` change (masked by the same denylist
+entry that suppresses 55 compiler-inferred occurrences); and `@MainActor`
+*removal* on a type that is Sendable-by-members and carries a second
+Custom-marked attribute. All three are manual review items — narrower than the
+original Appendix A scope, not zero.
 
 ---
 

@@ -63,7 +63,7 @@ recorded in docs/RELEASE-1.0.md Appendix A):
         conformances -- see ATTR_DENYLIST below for what's excluded and why.
   - ATTR_DENYLIST was chosen empirically, not assumed, against a real dump of
     every DEFAULT_MODULES target (2026-07-21, `scripts/api-surface-baseline.sh`
-    treeish, all 28 modules, ~340 declAttributes-bearing nodes at type level).
+    treeish, all 29 modules, ~340 declAttributes-bearing nodes at type level).
     Two noise sources were found and confirmed to carry ZERO source-level
     signal for a PR reviewing THIS repo's code:
       1. `OriginallyDefinedIn`, `TypeEraser`, `EagerMove`, `Frozen`: observed
@@ -114,6 +114,20 @@ recorded in docs/RELEASE-1.0.md Appendix A):
     is the accepted minimum; a member-level `nonisolated`/`@MainActor` change
     on an otherwise-unisolated type remains a manual review item, same as the
     original Appendix A scope but narrower.
+  - Two further residual edges, accepted with eyes open (review 2026-07-21):
+      1. Denylisting `Preconcurrency` also hides an AUTHORED `@preconcurrency`
+         change on a type this repo declares, not only the compiler-inferred
+         View noise -- the marker is name-based and cannot tell the two
+         apart. Accepted because the 55 inferred occurrences would bury the
+         rare authored one; a deliberate `@preconcurrency` change on a public
+         type is a manual review item.
+      2. Removal asymmetry: `@MainActor` REMOVAL registers only via the
+         `Custom` attr flipping off or the implicit `Sendable`/
+         `SendableMetatype` conformances leaving. A type that is
+         Sendable-by-members anyway AND carries a second Custom-marked
+         attribute (e.g. a property wrapper) changes neither line when
+         `@MainActor` is removed -- a narrow, compound edge, also a manual
+         review item.
 
 Deliberately coarse (a presence tripwire, not a full ABI differ -- see
 scripts/api-surface-baseline.sh for the full mechanism writeup):
