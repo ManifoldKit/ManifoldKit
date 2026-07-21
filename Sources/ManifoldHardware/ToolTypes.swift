@@ -610,6 +610,15 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
 ///
 /// ``ToolResult/ErrorKind`` is unchanged — streaming is additive on top of the
 /// existing single-shot vocabulary, not a new failure mode.
+///
+/// ## Vocabulary freeze (1.0)
+///
+/// **The `ToolExecutionEvent` vocabulary is frozen as of the 1.0 release.**
+/// `.progress` and `.completed` are the complete, stable set the streaming
+/// tool-dispatch loop switches over; adding a case is source-breaking for
+/// exhaustive `switch` statements, so new cases land only in a major
+/// (`feat!:`) release. Cross-module consumers should add an
+/// `@unknown default:` arm to stay resilient to a future major (see #2208).
 public enum ToolExecutionEvent: Sendable {
 
     /// Interim progress chunk.
@@ -631,6 +640,16 @@ public enum ToolExecutionEvent: Sendable {
 ///
 /// Pass this via ``GenerationConfig/toolChoice`` alongside a non-empty
 /// ``GenerationConfig/tools`` list.
+///
+/// ## Vocabulary freeze (1.0)
+///
+/// **The `ToolChoice` vocabulary is frozen as of the 1.0 release.** The four
+/// cases above are the complete, stable set every backend's tool-choice
+/// encoder and the grammar-constrained-sampling dispatcher switches over;
+/// adding a case is source-breaking for exhaustive `switch` statements, so new
+/// cases land only in a major (`feat!:`) release. Cross-module consumers
+/// should add an `@unknown default:` arm to stay resilient to a future major
+/// (see #2208).
 public enum ToolChoice: Sendable, Codable, Equatable, Hashable {
 
     /// The backend decides whether to call a tool (default behaviour).

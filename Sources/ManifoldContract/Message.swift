@@ -39,6 +39,14 @@ import Foundation
 /// drives. Keeping this enum thin is what lets callers script a quick
 /// generation without constructing those records; widening it would blur the
 /// boundary the two-tier design exists to draw.
+///
+/// ## Vocabulary freeze (1.0)
+///
+/// **The `Message` vocabulary is frozen as of the 1.0 release.** `.system` /
+/// `.user` / `.assistant` are the complete, stable set; adding a case is
+/// source-breaking for exhaustive `switch` statements, so new cases land only
+/// in a major (`feat!:`) release. Cross-module consumers should add an
+/// `@unknown default:` arm to stay resilient to a future major (see #2208).
 public enum Message: Sendable, Equatable {
     /// A system message, typically setting role/persona/policy.
     case system(String)

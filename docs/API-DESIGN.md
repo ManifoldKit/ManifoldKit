@@ -136,6 +136,34 @@ without a migration note is how three of the five surveyed local apps ended up b
 against `main` after the P7 shim retirement (plan Part B.2); the note is what lets a
 consumer fix forward in one pass instead of archaeology.
 
+## 4b. Enum growth policy (#2208)
+
+Two shapes for a public vocabulary, chosen by whether the set of values is
+closed or open-ended:
+
+- **Closed, cross-module sum types stay `enum`, documented non-exhaustive.**
+  `GenerationEvent`, `MessagePart`, `Message`, `ToolChoice`,
+  `ToolExecutionEvent`, `InferenceError`, `ChatError.Kind`,
+  `ChatError.Recovery`, and `WebSearchRuntimeError` carry a "Vocabulary freeze
+  (1.0)" doc-comment block (see `GenerationEvent.swift` for the canonical
+  wording) declaring the case set frozen as of 1.0. Case additions to a
+  documented-non-exhaustive enum are **MINOR releases** (adding a case is
+  still source-breaking for exhaustive `switch` statements, so it still needs
+  a changelog callout); consumers switching over any of these types must
+  include an `@unknown default:` arm so a future minor doesn't force a
+  recompile-and-fix pass. `PublicEnumFreezeAuditTest` enforces that every
+  public enum in `Sources/` either carries the freeze marker or is listed in
+  its allowlist — a new public enum with neither fails CI.
+- **Open-set identifiers use the extensible-struct pattern instead of an
+  enum.** `BackendName` is the precedent: a `RawRepresentable` struct with
+  `public static let` constants for the well-known values and a
+  `wellKnown`/`allCases` list, so third-party/future values decode and
+  round-trip without a source-breaking case addition. Reach for this shape
+  when the vocabulary is genuinely open (pluggable backends, provider
+  identifiers) rather than a fixed, reviewed set — `CloudPayloadHandler.Provider`
+  and `CloudMessageEncoder` converted from closed enums to this pattern in
+  #2208 for exactly this reason.
+
 ## 5. Namespace posture
 
 **The SwiftPM products are the API. Module placement is internal topology.** Which

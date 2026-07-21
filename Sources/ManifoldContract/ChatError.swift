@@ -26,6 +26,14 @@ public struct ChatError: Identifiable, Sendable {
         self.recovery = recovery
     }
 
+    /// ## Vocabulary freeze (1.0)
+    ///
+    /// **The `Kind` vocabulary is frozen as of the 1.0 release.** The four
+    /// cases above are the complete, stable set; adding a case is
+    /// source-breaking for exhaustive `switch` statements, so new cases land
+    /// only in a major (`feat!:`) release. Cross-module consumers should add
+    /// an `@unknown default:` arm to stay resilient to a future major (see
+    /// #2208).
     public enum Kind: Equatable, Sendable {
         case generation
         case persistence
@@ -33,6 +41,15 @@ public struct ChatError: Identifiable, Sendable {
         case memoryPressure
     }
 
+    /// ## Vocabulary freeze (1.0)
+    ///
+    /// **The `Recovery` vocabulary is frozen as of the 1.0 release.** The four
+    /// cases above are the complete, stable set every recovery-button
+    /// consumer switches over; adding a case is source-breaking for
+    /// exhaustive `switch` statements, so new cases land only in a major
+    /// (`feat!:`) release. Cross-module consumers should add an
+    /// `@unknown default:` arm to stay resilient to a future major (see
+    /// #2208).
     public enum Recovery: Equatable, Sendable {
         case retry
         case configureAPIKey

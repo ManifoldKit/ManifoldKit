@@ -8,20 +8,54 @@ import ManifoldInference
 ///
 /// Phase 1b/B of the cross-backend unification plan: collapses
 /// `ClaudeMessageEncoder` + `OllamaMessageEncoder` + the OpenAI inline
-/// encoding into one enum so the surface (`encodeMessages`, `encodeTools`)
-/// is the same shape across every provider. Phase 2 will dissolve this enum
-/// behind the composed `CloudHTTPProviderAdapter` (each case becomes an
-/// adapter's `MessageEncoding` witness).
+/// encoding into one type so the surface (`encodeMessages`, `encodeTools`,
+/// `encodeToolResults`, `annotateCacheBreakpoints`) is the same shape
+/// across every provider. Phase 2 will dissolve this type behind the
+/// composed `CloudHTTPProviderAdapter` (each provider becomes an adapter's
+/// `MessageEncoding` witness).
 ///
 /// Each method returns Foundation primitive graphs (`[[String: Any]]`,
 /// `[Any]`) ready for `JSONSerialization.data(withJSONObject:)`. Callers
 /// own ordering decisions (system prompt prepending, history precedence)
 /// — the encoder is stateless and per-message.
-public enum CloudMessageEncoder: Sendable {
-    case openAI
-    case openAIResponses
-    case claude
-    case ollama
+///
+/// ### Extensible struct, not a closed enum (#2208)
+///
+/// `CloudMessageEncoder` was a `String`-backed `enum`. It is now a
+/// `RawRepresentable` struct following the ``BackendName``
+/// (`Notification.Name` / `URLResourceKey`) pattern, so a future provider
+/// family doesn't force every exhaustive `switch` in this file — and any
+/// third-party consumer's — to grow a new arm in lockstep. The four
+/// well-known providers are `public static let` constants; existing
+/// `.openAI` / `.claude` / `.ollama` / `.openAIResponses` call sites are
+/// unaffected.
+///
+/// Every `switch self` below now carries a `default:` arm for an unknown
+/// provider. The chosen fallback is the OpenAI Chat-Completions-compatible
+/// path — the same path already used for custom / LM Studio endpoints
+/// (`CloudSaaSBackends` routes `.custom`/`.lmStudio` through `OpenAIBackend`,
+/// which always constructs `CloudMessageEncoder.openAI`), so an unrecognised
+/// provider degrades to the most broadly compatible wire shape rather than
+/// failing outright.
+public struct CloudMessageEncoder: RawRepresentable, Sendable, Hashable, CustomStringConvertible {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public var description: String { rawValue }
+
+    public static let openAI = CloudMessageEncoder(rawValue: "openAI")
+    public static let openAIResponses = CloudMessageEncoder(rawValue: "openAIResponses")
+    public static let claude = CloudMessageEncoder(rawValue: "claude")
+    public static let ollama = CloudMessageEncoder(rawValue: "ollama")
+
+    /// The complete set of providers shipped with ManifoldKit. A new
+    /// provider family would add an entry here; third-party providers are
+    /// fully supported via `CloudMessageEncoder(rawValue:)` without one.
+    public static let wellKnown: [CloudMessageEncoder] = [.openAI, .openAIResponses, .claude, .ollama]
+    public static let allCases: [CloudMessageEncoder] = wellKnown
 
     // MARK: encodeMessages
 
@@ -92,12 +126,89 @@ public enum CloudMessageEncoder: Sendable {
     public func encodeTools(_ tools: [ToolDefinition], strict: Bool = false) -> [[String: Any]] {
         guard !tools.isEmpty else { return [] }
         switch self {
-        case .openAI, .openAIResponses:
-            return tools.map { OpenAIToolEncoding.encodeToolDefinition($0, strict: strict) }
         case .claude:
             return tools.map { Self.claudeEncodeToolDefinition($0, strict: strict) }
         case .ollama:
             return tools.map(Self.ollamaEncodeToolDefinition)
+        default: // .openAI, .openAIResponses, and any unknown provider
+            return tools.map { OpenAIToolEncoding.encodeToolDefinition($0, strict: strict) }
+        }
+    }
+
+    // MARK: encodeToolResults
+
+    /// Encodes a list of tool results (one per tool the model called) into
+    /// the provider's history shape. The result for `.claude` is a single
+    /// `user` turn carrying one or more `tool_result` content blocks;
+    /// `.openAI` / `.openAIResponses` / `.ollama` return one entry per
+    /// result. AI-engineering plan item 7 — explicit, not implicit.
+    public func encodeToolResults(_ results: [ToolResult]) -> [[String: Any]] {
+        guard !results.isEmpty else { return [] }
+        switch self {
+        case .openAIResponses:
+            // Responses API: each result is a `function_call_output` item.
+            return results.map { result in
+                [
+                    "type": "function_call_output",
+                    "call_id": result.callId,
+                    "output": result.content,
+                ]
+            }
+        case .claude:
+            // Anthropic Messages: bundle every `tool_result` into one user turn.
+            let blocks: [[String: Any]] = results.map { result in
+                [
+                    "type": "tool_result",
+                    "tool_use_id": result.callId,
+                    "content": result.content,
+                ]
+            }
+            return [["role": "user", "content": blocks]]
+        default: // .openAI, .ollama, and any unknown provider
+            // Chat Completions / Ollama: each result is a `{role: "tool", tool_call_id, content}` entry.
+            return results.map { result in
+                [
+                    "role": "tool",
+                    "tool_call_id": result.callId,
+                    "content": result.content,
+                ]
+            }
+        }
+    }
+
+    // MARK: annotateCacheBreakpoints
+
+    /// Mutates `messages` / `tools` to add provider-specific cache markers.
+    /// No-op for OpenAI, OpenAI Responses, and Ollama. For Claude, attaches
+    /// `cache_control: { type: "ephemeral" }` to the last tool entry and/or
+    /// the system block per the plan, capped at `plan.maxBreakpoints`.
+    ///
+    /// `systemBlock` is the value the caller intends to set as the request
+    /// body's `system` field (Claude's wire shape). Passed `inout` so the
+    /// caller can substitute a content-block array when the plan asks for
+    /// system caching — the plain-string form has no slot for
+    /// `cache_control`.
+    public func annotateCacheBreakpoints(
+        plan: CacheBreakpointPlan,
+        systemPrompt: String?,
+        systemBlock: inout Any?,
+        toolEntries: inout [[String: Any]]
+    ) {
+        guard case .claude = self else { return }
+        var remaining = plan.maxBreakpoints
+        if plan.cacheSystem, remaining > 0, let systemPrompt, !systemPrompt.isEmpty {
+            systemBlock = [
+                [
+                    "type": "text",
+                    "text": systemPrompt,
+                    "cache_control": ["type": "ephemeral"],
+                ] as [String: Any]
+            ]
+            remaining -= 1
+        }
+        if plan.cacheToolsTail, remaining > 0, !toolEntries.isEmpty {
+            toolEntries[toolEntries.count - 1]["cache_control"] = ["type": "ephemeral"]
+            remaining -= 1
         }
     }
 
@@ -105,41 +216,40 @@ public enum CloudMessageEncoder: Sendable {
 
     private var needsInlineSystemEntry: Bool {
         switch self {
-        case .openAI, .openAIResponses: return true
-        case .ollama: return true
         case .claude: return false // Claude routes system prompts via a top-level body field.
+        default: return true // .openAI, .openAIResponses, .ollama, and any unknown provider
         }
     }
 
     private var supportsStructuredHistory: Bool {
         switch self {
-        case .openAI, .claude: return true
         case .openAIResponses, .ollama: return false
+        default: return true // .openAI, .claude, and any unknown provider
         }
     }
 
     private func encodeStructuredMessage(_ message: StructuredMessage) -> [String: Any] {
         switch self {
-        case .openAI:
-            return Self.openAIEncodeChatCompletionsContent(for: message)
         case .claude:
             return Self.claudeEncodeMessageContent(for: message)
         case .openAIResponses, .ollama:
             // No structured-history support yet on these providers.
             return ["role": message.role, "content": message.textContent]
+        default: // .openAI and any unknown provider
+            return Self.openAIEncodeChatCompletionsContent(for: message)
         }
     }
 
     private func encodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [[String: Any]] {
         switch self {
-        case .openAI:
-            return [OpenAIToolEncoding.encodeChatCompletionsEntry(entry)]
         case .openAIResponses:
             return OpenAIToolEncoding.encodeResponsesEntries(entry)
         case .claude:
             return [Self.claudeEncodeToolAwareEntry(entry)]
         case .ollama:
             return [Self.ollamaEncodeToolAwareEntry(entry)]
+        default: // .openAI and any unknown provider
+            return [OpenAIToolEncoding.encodeChatCompletionsEntry(entry)]
         }
     }
 
@@ -424,8 +534,6 @@ extension CloudMessageEncoder {
     /// Inlined from `OllamaMessageEncoder.applyToolChoice`.
     package static func ollamaApplyToolChoice(_ choice: ToolChoice, into body: inout [String: Any]) {
         switch choice {
-        case .auto:
-            break
         case .none:
             body["tool_choice"] = "none"
         case .required:
@@ -435,6 +543,10 @@ extension CloudMessageEncoder {
                 "type": "function",
                 "function": ["name": name],
             ]
+        default:
+            // .auto and any unknown future choice mode: omit the field and
+            // let the server apply its default behaviour.
+            break
         }
     }
 }

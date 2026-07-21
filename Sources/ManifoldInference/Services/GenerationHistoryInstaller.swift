@@ -63,6 +63,10 @@ enum GenerationHistoryInstaller {
                 case .thinking, .image, .audio, .generatedMedia:
                     // Not representable in a text prompt; dropped (see #1909 doc).
                     break
+                @unknown default:
+                    // An unrecognised future part kind: drop, same as the
+                    // other non-text-representable cases above.
+                    break
                 }
             }
             return (role: message.role, content: pieces.joined(separator: "\n"))

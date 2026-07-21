@@ -396,13 +396,6 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             }
             body["tools"] = toolEntries
             switch config.toolChoice {
-            case .auto:
-                // Anthropic defaults to auto when tool_choice is omitted.
-                break
-            case .none:
-                // Unreachable: guarded above. The .none case suppresses
-                // tools entirely rather than sending a tool_choice value.
-                break
             case .required:
                 body["tool_choice"] = ["type": "any"]
             case .tool(let name):
@@ -410,6 +403,14 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
                     "type": "tool",
                     "name": name,
                 ]
+            case .none:
+                // Unreachable: guarded above. The .none case suppresses
+                // tools entirely rather than sending a tool_choice value.
+                break
+            default:
+                // .auto (Anthropic defaults to auto when tool_choice is
+                // omitted) and any unknown future choice mode: omit the field.
+                break
             }
         }
 

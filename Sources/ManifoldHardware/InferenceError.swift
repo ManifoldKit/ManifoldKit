@@ -1,6 +1,15 @@
 import Foundation
 
 /// Errors that can occur during model loading and inference.
+///
+/// ## Vocabulary freeze (1.0)
+///
+/// **The `InferenceError` vocabulary is frozen as of the 1.0 release.** The
+/// cases above are the complete, stable set every `isRetryable` /
+/// `category` consumer switches over; adding a case is source-breaking for
+/// exhaustive `switch` statements, so new cases land only in a major
+/// (`feat!:`) release. Cross-module consumers should add an
+/// `@unknown default:` arm to stay resilient to a future major (see #2208).
 public enum InferenceError: LocalizedError, CategorizedError {
     case modelNotFound(path: String)
     case modelLoadFailed(underlying: Error)

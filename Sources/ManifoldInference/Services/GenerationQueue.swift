@@ -801,6 +801,11 @@ final class GenerationQueue {
                 // `.none` means "must not call a tool" — injecting a tool-call
                 // grammar would do the opposite. Leave sampling unconstrained.
                 mode = nil
+            @unknown default:
+                // An unrecognised future choice mode: fall back to the
+                // permissive (`.auto`) grammar rather than guessing at a
+                // stricter constraint the mode doesn't actually ask for.
+                mode = .permissive
             }
             if let mode,
                let derived = ToolGrammarBuilder().buildGrammar(for: config.tools, mode: mode) {
