@@ -147,11 +147,12 @@ closed or open-ended:
   `ChatError.Recovery`, and `WebSearchRuntimeError` carry a "Vocabulary freeze
   (1.0)" doc-comment block (see `GenerationEvent.swift` for the canonical
   wording) declaring the case set frozen as of 1.0. Case additions to a
-  documented-non-exhaustive enum are **MINOR releases** (adding a case is
-  still source-breaking for exhaustive `switch` statements, so it still needs
-  a changelog callout); consumers switching over any of these types must
-  include an `@unknown default:` arm so a future minor doesn't force a
-  recompile-and-fix pass. `PublicEnumFreezeAuditTest` enforces that every
+  frozen enum are **major (`feat!:`) releases** (adding a case is
+  source-breaking for exhaustive `switch` statements — matching every marker,
+  the `GenerationEvent` precedent, and the Conventional-Commits rule that a
+  source-breaking change is a MAJOR bump); consumers switching over any of
+  these types should include an `@unknown default:` arm so the addition
+  doesn't force a recompile-and-fix pass. `PublicEnumFreezeAuditTest` enforces that every
   public enum in `Sources/` either carries the freeze marker or is listed in
   its allowlist — a new public enum with neither fails CI.
 - **Open-set identifiers use the extensible-struct pattern instead of an

@@ -543,9 +543,11 @@ extension CloudMessageEncoder {
                 "type": "function",
                 "function": ["name": name],
             ]
-        default:
-            // .auto and any unknown future choice mode: omit the field and
-            // let the server apply its default behaviour.
+        case .auto:
+            // Omit the field and let the server apply its default behaviour.
+            break
+        @unknown default:
+            // Any unknown future ToolChoice mode: same permissive fallback.
             break
         }
     }

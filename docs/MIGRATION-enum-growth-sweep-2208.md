@@ -87,15 +87,16 @@ block (same wording pattern as `GenerationEvent`'s pre-existing one). Their
 shape is unchanged — this is a documentation-only change to these eight
 types themselves.
 
-Case additions to a documented-non-exhaustive enum are still source-breaking
-for exhaustive `switch` statements, so they land only in a major (`feat!:`)
-release — same as `GenerationEvent` today. Cross-module consumer switches
-over these eight that were exhaustive with no `default:`/`@unknown default:`
-gained one in this PR (7 call sites across `ManifoldInference`,
+Case additions to a frozen enum are source-breaking for exhaustive `switch`
+statements, so they land only in a major (`feat!:`) release — same as
+`GenerationEvent` today. Cross-module consumer switches over these eight
+gained an `@unknown default:` arm in this PR (across `ManifoldInference`,
 `ManifoldCloudCore`, `ManifoldCloudSaaS`, `ManifoldFuzz`, and `ManifoldUI` —
-see the PR diff for the full list, including `ChatError.Recovery`'s
-`recoveryButton(for:)` in `ChatShellViews.swift`, which previously dropped a
-button silently on an unhandled case rather than erroring).
+see the PR diff for the full list). One example is `ChatError.Recovery`'s
+`recoveryButton(for:)` in `ChatShellViews.swift`: origin/main already handled
+it exhaustively as `case .dismissOnly, .none: EmptyView()`, so the new
+`@unknown default:` arm is future-resilience only — behaviourally identical
+for every known case.
 
 If your own code has an exhaustive `switch` over any of these eight types,
 add an `@unknown default:` arm now — it costs nothing today and avoids a

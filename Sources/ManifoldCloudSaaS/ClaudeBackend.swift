@@ -407,9 +407,11 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
                 // Unreachable: guarded above. The .none case suppresses
                 // tools entirely rather than sending a tool_choice value.
                 break
-            default:
-                // .auto (Anthropic defaults to auto when tool_choice is
-                // omitted) and any unknown future choice mode: omit the field.
+            case .auto:
+                // Anthropic defaults to auto when tool_choice is omitted.
+                break
+            @unknown default:
+                // Any unknown future ToolChoice mode: omit the field.
                 break
             }
         }
