@@ -45,31 +45,31 @@ public enum URLSessionFactory {
     /// - Returns: A new `URLSession`. Callers should retain the result for
     ///   the duration of the calls they make through it; sessions hold
     ///   their delegate strongly until invalidated.
+    ///
+    /// Every request emits begin/end to `NetworkActivityCenter.shared` (a
+    /// `package`-visible activity funnel as of the 2026-07 inert-surface
+    /// sweep, #2128) via an internally-wired ``NetworkActivityTrackingDelegate``,
+    /// stashed in ``CompositeURLSessionDelegate/ownedDataDelegate`` so it
+    /// survives past `additionalDataDelegate`'s weak reference.
     public static func ephemeral(
         hopCap: Int = 3,
         resourceTimeout: TimeInterval = defaultResourceTimeout,
-        additionalDataDelegate: URLSessionDataDelegate? = nil,
-        activityCenter: NetworkActivityCenter? = NetworkActivityCenter.shared
+        additionalDataDelegate: URLSessionDataDelegate? = nil
     ) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = defaultRequestTimeout
         config.timeoutIntervalForResource = resourceTimeout
         config.tlsMinimumSupportedProtocolVersion = .TLSv12
         NetworkPolicyURLProtocol.register(in: config)
-        // Slot the tracking delegate ahead of the caller's data delegate so
-        // every request emits begin/end to the shared activity center. When
-        // `activityCenter` is nil (tests that want to assert *no* tracking)
-        // we skip the wrapper entirely. The tracker is stashed in
-        // ``CompositeURLSessionDelegate/ownedDataDelegate`` so it survives
-        // past `additionalDataDelegate`'s weak reference.
-        let tracker: NetworkActivityTrackingDelegate? = activityCenter.map { center in
-            NetworkActivityTrackingDelegate(center: center, downstream: additionalDataDelegate)
-        }
+        let tracker = NetworkActivityTrackingDelegate(
+            center: NetworkActivityCenter.shared,
+            downstream: additionalDataDelegate
+        )
         let composite = CompositeURLSessionDelegate(
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,
             downloadDelegate: nil,
-            dataDelegate: tracker == nil ? additionalDataDelegate : nil,
+            dataDelegate: nil,
             ownedDataDelegate: tracker
         )
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)

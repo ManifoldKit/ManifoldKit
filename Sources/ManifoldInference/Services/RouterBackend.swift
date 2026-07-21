@@ -11,10 +11,10 @@ import Foundation
 /// Lifecycle delegation is intentionally narrow:
 ///
 /// - `loadModel(from:plan:)` is **not** routed by capability — picking a
-///   model is the host's job. ``RouterBackend`` itself does not load or
+///   model is the host's job. `RouterBackend` itself does not load or
 ///   identify a single model; `isModelLoaded` reflects whether any child is
 ///   loaded. Use ``InferenceService`` (which holds one backend per model
-///   type) for load orchestration; reach for ``RouterBackend`` only when a
+///   type) for load orchestration; reach for `RouterBackend` only when a
 ///   single conceptual session multiplexes across already-loaded children.
 /// - `stopGeneration()` and `unloadModel()` fan out to every child — a
 ///   request may be in flight on the most recently picked child, but other
@@ -28,12 +28,23 @@ import Foundation
 /// asks "can the runtime as a whole do X?" — for a per-request question
 /// the right answer comes from `GenerationConfig.requiredCapabilities` and
 /// the dispatch performed in `generate(...)`.
-public final class RouterBackend: InferenceBackend, @unchecked Sendable {
+///
+/// `package`-visibility (2026-07 inert-surface sweep, #2128): the reliability
+/// wrappers (this type, ``FallbackBackend``, ``RetryStrategy``) were
+/// adjudicated together in the v1-rationalisation plan's B.5 item as
+/// "zero adopters, zero docs, well-tested" — wire-and-document or demote.
+/// The 2026-07-21 eight-app consumer screen found no adopter for the
+/// capability-select routing this type provides specifically (unlike
+/// `FallbackBackend`'s error-advance routing, which stays public and gains
+/// docs in the same sweep), so it demotes rather than promotes. Well-tested
+/// in-package (`RouterBackendTests`) and reachable again on a first real
+/// adopter.
+package final class RouterBackend: InferenceBackend, @unchecked Sendable {
     /// Children, in priority order. The first child satisfying a request's
     /// requirements is chosen.
-    public let children: [any InferenceBackend]
+    package let children: [any InferenceBackend]
 
-    public init(children: [any InferenceBackend]) {
+    package init(children: [any InferenceBackend]) {
         // An empty router would produce a `.noBackendSatisfiesRequirements([])`
         // error on every `generate(...)` call — surfacing that at the wiring
         // site (host code that built the router) is far easier to debug than
@@ -45,17 +56,17 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         self.children = children
     }
 
-    public var isModelLoaded: Bool {
+    package var isModelLoaded: Bool {
         // Any child with a loaded model means the runtime can serve a
         // request that it can satisfy.
         children.contains { $0.isModelLoaded }
     }
 
-    public var isGenerating: Bool {
+    package var isGenerating: Bool {
         children.contains { $0.isGenerating }
     }
 
-    public var capabilities: BackendCapabilities {
+    package var capabilities: BackendCapabilities {
         // Union semantics — see type doc-comment for why this surface is the
         // right answer for "can the runtime as a whole do X?". The merge lives
         // in `BackendCapabilities.union(_:)` so RouterBackend and FallbackBackend
@@ -70,7 +81,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
     /// back to an unloaded child that satisfies (so the error surfaces as
     /// "no model loaded" from the chosen backend, not as a routing failure).
     /// Public so hosts can do a dry-run check before issuing a request.
-    public func selectBackend(
+    package func selectBackend(
         for requirements: Set<GenerationCapabilityRequirement>
     ) -> (any InferenceBackend)? {
         let predicate: (any InferenceBackend) -> Bool = requirements.isEmpty
@@ -82,7 +93,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         return children.first(where: predicate)
     }
 
-    public func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
+    package func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
         // Loading is not a routing decision — the host owns model selection.
         // Surface as a config error so the wrong call site is obvious in tests.
         throw InferenceError.inferenceFailure(
@@ -90,7 +101,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         )
     }
 
-    public func generate(
+    package func generate(
         prompt: String,
         systemPrompt: String?,
         config: GenerationConfig,
@@ -121,15 +132,15 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         )
     }
 
-    public func stopGeneration() {
+    package func stopGeneration() {
         for child in children { child.stopGeneration() }
     }
 
-    public func unloadModel() {
+    package func unloadModel() {
         for child in children { child.unloadModel() }
     }
 
-    public func resetConversation() {
+    package func resetConversation() {
         for child in children { child.resetConversation() }
     }
 }

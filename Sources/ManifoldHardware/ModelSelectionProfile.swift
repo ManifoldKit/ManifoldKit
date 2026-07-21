@@ -97,15 +97,54 @@ public struct ModelSelectionProfile: Sendable, Equatable {
 /// this, Tier 0 would have to live in a separate code path and could never be
 /// compared head-to-head against a model the user could download.
 ///
-/// > Not yet wired: as of the 2026-07-03 inert-surface audit, no production
-/// > code path constructs a `.resident` case. `Sources/ManifoldKit/QuickStartSeed.swift`
-/// > maps every seed to `.downloadable(...)`, so `ModelFitScorer.scoreResident(...)`
-/// > and the `.resident` branches of `score(candidate:)`/`rank(candidates:)` never
-/// > run in the shipped app. The "Apple Foundation Models as instant Tier-0"
-/// > unified ranking described in `ManifoldUIModelManagement`'s
-/// > `DeviceAwareModelRecommendations.md` DocC article is not yet a live
-/// > capability — a host must construct `.resident(ModelSelectionProfile(...))`
-/// > itself to exercise this path.
+/// ## The `.resident` seam — host-constructs, not yet wired by any shipped path
+///
+/// As of the 2026-07-03 inert-surface audit (re-confirmed in the 2026-07
+/// #2128 sweep), no production code path constructs a `.resident` case.
+/// `Sources/ManifoldKit/QuickStartSeed.swift` maps every seed to
+/// `.downloadable(...)`, so `ModelFitScorer.scoreResident(...)` and the
+/// `.resident` branches of `score(candidate:)`/`rank(candidates:)` never run
+/// in the shipped app. This is a real, tested capability with no wired
+/// producer yet — not dead code — and it stays public because a host
+/// supplies the missing producer itself, the same way `ModelSelectionProfile`
+/// documents itself as reachable "without instantiating a backend."
+///
+/// A host that wants the "Apple Foundation Models as an instant Tier 0"
+/// unified ranking (described in `ManifoldUIModelManagement`'s
+/// "Device-Aware Model Recommendations" DocC article) builds one
+/// `.resident` candidate per OS-resident model and mixes it into the same
+/// candidate list as its `.downloadable` entries:
+///
+/// ```swift,no-build
+/// import ManifoldHardware
+///
+/// // Your candidate models — replace with the results of a HuggingFace search
+/// // or a curated catalog. Empty here so the snippet stands alone.
+/// let searchResults: [DownloadableModel] = []
+///
+/// let foundationCandidate = ModelSelectionCandidate.resident(
+///     ModelSelectionProfile(
+///         modelID: "apple-foundation",
+///         residency: .osResident,
+///         contentFiltering: .applied,       // Apple FM sanitizes output
+///         declaredContextLength: 4096
+///     )
+/// )
+///
+/// let downloadableCandidates: [ModelSelectionCandidate] = searchResults.map { .downloadable($0) }
+///
+/// let ranked = ModelFitScorer().rank(
+///     candidates: [foundationCandidate] + downloadableCandidates,
+///     useCase: .chat,
+///     device: .current,
+///     foundationAvailable: true
+/// )
+/// ```
+///
+/// When `foundationAvailable` is `false`, every `.resident` candidate
+/// collapses to the bottom of the ranking exactly like a model that won't
+/// load on this device — there is no separate "unavailable" code path to
+/// handle.
 public enum ModelSelectionCandidate: Sendable {
     /// A model already usable now — OS-resident or on disk — with its profile.
     case resident(ModelSelectionProfile)

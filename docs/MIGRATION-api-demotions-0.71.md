@@ -557,3 +557,126 @@ write inline (see the rewritten article).
 **No digester allowlist entries needed** for D.3 — both are pure
 `public` → `package` visibility demotions with no public-signature changes
 elsewhere (same as D.1/A.1–A.3; see the note at the top of this file).
+
+## 2026-07-21 inert-surface sweep (#2128 rulings)
+
+Four more demotions, decided in the #2128 rulings comment dated 2026-07-21
+(consumer evidence: the eight-app consumer screen run that day — three
+first-party apps, manifold-mlx, manifold-llama, manifold-eval, plus the two
+apps added to the survey since the plan's original six-repo baseline).
+Same contract as every entry above: `package` types are not part of the
+public SwiftPM surface, and (except where noted) no behavior changed.
+
+### `NetworkActivityCenter` (`ManifoldNetworking`) — demoted, not deleted
+
+`NetworkActivityCenter` (the class, its `.shared` singleton, and all its
+members) plus its three supporting types — `NetworkActivity`,
+`NetworkActivityKind`, `NetworkActivityToken` — move `public` → `package`
+together. The producer wiring stays real and live:
+`URLSessionFactory.ephemeral(...)`, `BackgroundDownloadManager`, and
+`HuggingFaceService` all still funnel begin/end/updateDownload calls into
+`NetworkActivityCenter.shared` on every request. What's missing is a reader:
+as of the 2026-07-21 screen, nothing outside this package subscribes via
+`.updates()` or displays `.current`/`.activeHosts`/`.inFlightCount` — the
+status-indicator surface the type was built for doesn't exist anywhere yet.
+
+**Signature changes this forced (Swift does not allow a `public` function to
+take a `package`-typed parameter, even a defaulted one):**
+
+- `URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:)`
+  → `ephemeral(hopCap:resourceTimeout:additionalDataDelegate:)`. The
+  `activityCenter` parameter is gone from the public signature; the factory
+  always wires `NetworkActivityCenter.shared` internally now. No caller
+  anywhere in this repo or the eight surveyed consumer repos ever passed a
+  non-default value.
+- `HuggingFaceService.init(hubClient:activityCenter:)` →
+  `init(hubClient:)`, same reasoning.
+- `BackgroundDownloadManager.init(storageService:sessionIdentifier:persistenceDirectory:tempScanDirectory:userDefaults:activityCenter:)`
+  → drops `activityCenter:`, same reasoning.
+
+**Replacement for hosts:** none needed — every dropped parameter only ever
+carried its default value in practice. A host that previously passed a
+custom `NetworkActivityCenter` for test isolation should construct the
+`URLSession`/service/manager the normal way; the shared center is
+process-wide and `@MainActor`-isolated, so parallel test isolation was never
+actually achieved by injecting a fresh instance through these particular
+call sites (the in-package unit tests that need isolation construct
+`NetworkActivityTrackingDelegate` directly instead — see
+`Tests/ManifoldNetworkingTests/NetworkActivityCenterTests.swift`).
+
+**Digester allowlist:** three entries appended to
+`.github/api-breakage-allowlist.txt` for the signature changes above (two
+"has been removed" constructor breakages, one "has been renamed" — the
+digester reads a parameter's removal from an otherwise-identical signature as
+a rename). No entry needed for the `NetworkActivityCenter`
+visibility demotion itself or its three supporting types (pure `public` →
+`package`, invisible to the digester by construction — see the note at the
+top of this file).
+
+**Re-promotion signal:** issue #1292 tracks a documented consumer-app ask for
+exactly the network-status indicator this type was built for.
+
+### `ModelCatalog` (`ManifoldModelCatalog`) — demoted, not deleted
+
+`ModelCatalog` (the actor, `manifestFileName`, `init`, and all five methods —
+`catalog()`, `record(_:)`, `evict(_:deleteArtifact:)`,
+`enforceDiskBudget(_:)`, `touch(_:at:)`) moves `public` → `package`. As
+recorded in the type's own doc comment since the 2026-07-03 inert-surface
+audit, no production code path constructs one — `ManifoldBootstrap`,
+`ModelManagementViewModel`, and `ModelRegistry` all use
+`ModelStorageService` directly. Only this type's own in-package tests
+construct and exercise it.
+
+**What did NOT move:** `CatalogEntry` and `ModelSource` stay `public` — they
+carry no behavior of their own (plain `Codable` value types) and are not the
+inert surface; only the actor that drove them is. No other public
+declaration in this package references either type, so this leaves no
+orphaned public signature.
+
+**Digester allowlist:** none needed (pure visibility demotion).
+
+### `RouterBackend` (`ManifoldInference`) — demoted, not deleted
+
+`RouterBackend` (the class, `children`, `init(children:)`, and every method —
+`selectBackend(for:)`, `loadModel(from:plan:)`, `generate(...)`,
+`stopGeneration()`, `unloadModel()`, `resetConversation()`, plus the
+`isModelLoaded`/`isGenerating`/`capabilities` properties) moves `public` →
+`package`. This resolves the plan's B.5 adjudication item for the
+reliability-wrapper cluster (`FallbackBackend`, `RouterBackend`,
+`RetryStrategy` + friends): well-tested (`RouterBackendTests`, unaffected by
+this PR), zero adopters. Unlike `FallbackBackend`'s error-advance routing
+(which stays public and gains a DocC article — "Reliability Wrappers" — in
+this same PR), the 2026-07-21 screen found no adopter for the
+capability-select routing `RouterBackend` provides specifically, so it
+demotes rather than promotes.
+
+Every doc comment elsewhere in the package that symbol-linked
+```` ``RouterBackend`` ```` is rewritten to a plain `` `RouterBackend` `` code
+span in this PR (`ManifoldHardware/BackendCapabilities.swift`,
+`ManifoldHardware/InferenceError.swift`,
+`ManifoldHardware/GenerationCapabilityRequirement.swift`,
+`ManifoldInference/Protocols/InferenceBackend+CapabilityGate.swift`,
+`ManifoldInference/Services/FallbackBackend.swift`,
+`ManifoldInference/Services/FallbackPolicy.swift`) — the same "would render
+as a broken link in public docs" fix D.3/D.4 applied above.
+
+**Digester allowlist:** none needed (pure visibility demotion;
+`RouterBackend: InferenceBackend` conformance is unaffected — a `package`
+type can conform to a `public` protocol without widening anything).
+
+**Re-promotion signal:** a host that needs capability-based multiplexing
+across already-loaded backends is the trigger; open an issue describing the
+use case.
+
+### Benchmark surface on `ModelManagementViewModel` (`ManifoldUIModelManagement`)
+
+`benchmarkRunner`, `isBenchmarking`, `benchmarkResults`, and
+`runBenchmark(for:)` move `public` → `package`. **What did NOT move:** the
+underlying `ModelBenchmarkRunner` protocol and `ModelBenchmarkResult` value
+type (in `ManifoldModelCatalog`) stay `public` — the benchmark *engine* is a
+live, documented capability; what's inert is this specific view model's
+action wiring, for which the 2026-07-21 eight-app screen found zero adopters.
+`benchmarkCache` (the storage-neutral cache property) is unaffected and
+stays public — it is not part of this demotion.
+
+**Digester allowlist:** none needed (pure visibility demotion).

@@ -115,14 +115,21 @@ public final class ModelManagementViewModel {
     // MARK: - Benchmark
 
     /// Optional benchmark runner. Set this at app startup to enable the `runBenchmark` action.
-    public var benchmarkRunner: (any ModelBenchmarkRunner)?
+    ///
+    /// `package`-visibility (2026-07 inert-surface sweep, #2128): the 2026-07-21
+    /// eight-app consumer screen found zero adopters of this benchmark surface
+    /// across any consumer app — the underlying ``ModelBenchmarkRunner`` /
+    /// ``ModelBenchmarkResult`` engine types stay public (they're a live,
+    /// documented capability), but nothing outside this package wires this
+    /// view model's `runBenchmark`/`benchmarkResults` action into a UI.
+    package var benchmarkRunner: (any ModelBenchmarkRunner)?
 
     /// `true` while a benchmark is in progress.
-    public private(set) var isBenchmarking: Bool = false
+    package private(set) var isBenchmarking: Bool = false
 
     /// Benchmark results keyed by model file name, populated after each successful
     /// ``runBenchmark(for:)`` call and pre-loaded from ``ModelBenchmarkCache`` on context injection.
-    public private(set) var benchmarkResults: [String: ModelBenchmarkResult] = [:]
+    package private(set) var benchmarkResults: [String: ModelBenchmarkResult] = [:]
 
     /// Storage-neutral cache for benchmark results. Set by host code at app
     /// startup (typically `ManifoldBootstrap.benchmarkCache`).
@@ -609,7 +616,7 @@ public final class ModelManagementViewModel {
     ///
     /// The model must already be loaded in the relevant `InferenceService`. This method is
     /// a no-op when ``benchmarkRunner`` is `nil` or a benchmark is already in progress.
-    public func runBenchmark(for model: ModelInfo) async {
+    package func runBenchmark(for model: ModelInfo) async {
         guard let runner = benchmarkRunner, !isBenchmarking else { return }
         isBenchmarking = true
         defer { isBenchmarking = false }

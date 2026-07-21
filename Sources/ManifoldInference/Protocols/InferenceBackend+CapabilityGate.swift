@@ -5,7 +5,7 @@ public extension InferenceBackend {
     /// Enforces ``GenerationConfig/requiredCapabilities`` against this backend's
     /// advertised ``InferenceBackend/capabilities`` and then generates.
     ///
-    /// The capability gate previously lived **only** in ``RouterBackend`` — the
+    /// The capability gate previously lived **only** in `RouterBackend` — the
     /// footgun audit's class A ("cross-cutting invariant wired into one branch
     /// only"). A host that set `requiredCapabilities` and ran against a single
     /// concrete backend (no router) had the constraint silently ignored: the
@@ -16,7 +16,7 @@ public extension InferenceBackend {
     ///
     /// The guard is a no-op when `requiredCapabilities` is empty (the standard
     /// chat path), so it adds nothing to normal generation. When this backend is
-    /// itself a ``RouterBackend``, its merged capabilities pass the gate whenever
+    /// itself a `RouterBackend`, its merged capabilities pass the gate whenever
     /// some child can satisfy the request, and the router then performs precise
     /// per-child selection — the double check is benign.
     func generateEnforcingCapabilities(

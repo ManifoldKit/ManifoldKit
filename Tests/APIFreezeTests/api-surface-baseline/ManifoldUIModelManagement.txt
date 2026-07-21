@@ -108,8 +108,6 @@ ModelManagementViewModel.SortMode.size EnumElement
 ModelManagementViewModel.activeDownloads Var
 ModelManagementViewModel.activeModelFileName Var
 ModelManagementViewModel.benchmarkCache Var
-ModelManagementViewModel.benchmarkResults Var
-ModelManagementViewModel.benchmarkRunner Var
 ModelManagementViewModel.canRunModel(sizeBytes:) Func
 ModelManagementViewModel.cancelDownload(id:) Func
 ModelManagementViewModel.compatibilityTier(for:) Func
@@ -125,7 +123,6 @@ ModelManagementViewModel.hasLoadedModelsOnce Var
 ModelManagementViewModel.importModel(from:) Func
 ModelManagementViewModel.init(huggingFaceService:downloadManager:deviceCapability:modelStorage:diagnostics:userDefaults:fileRemover:) Constructor
 ModelManagementViewModel.invalidateModelCache() Func
-ModelManagementViewModel.isBenchmarking Var
 ModelManagementViewModel.isDirectRepoLookup Var
 ModelManagementViewModel.isModelDownloaded(_:) Func
 ModelManagementViewModel.isRefreshingModels Var
@@ -140,7 +137,6 @@ ModelManagementViewModel.recommendedModel(useCase:device:) Func
 ModelManagementViewModel.recommendedModels Var
 ModelManagementViewModel.refreshDiscoveredModels() Func
 ModelManagementViewModel.retryDownload(for:) Func
-ModelManagementViewModel.runBenchmark(for:) Func
 ModelManagementViewModel.search() Func
 ModelManagementViewModel.searchError Var
 ModelManagementViewModel.searchQuery Var

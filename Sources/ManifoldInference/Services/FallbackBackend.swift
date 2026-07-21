@@ -32,7 +32,7 @@ public struct FallbackExhaustedError: BackendError {
 /// An ``InferenceBackend`` that wraps an ordered list of backends and advances
 /// to the next one when an attempt fails with a routable error.
 ///
-/// This is the error-advance counterpart to ``RouterBackend``'s capability-select
+/// This is the error-advance counterpart to `RouterBackend`'s capability-select
 /// routing. The first backend in the list is tried first (place your cheapest /
 /// lowest-latency / most-preferred backend first); on a routable failure
 /// (per ``FallbackPolicy/shouldAdvance``) the chain advances to the next. The
@@ -58,7 +58,7 @@ public struct FallbackExhaustedError: BackendError {
 ///
 /// `stopGeneration()`, `unloadModel()`, `resetConversation()`, and `secureWipe()`
 /// fan out to every backend — the chain may have left state on more than one.
-/// `loadModel(from:plan:)` is **not** routed: like ``RouterBackend``, picking and
+/// `loadModel(from:plan:)` is **not** routed: like `RouterBackend`, picking and
 /// loading a model is the host's job; load each backend before composing the
 /// chain. `capabilities` is the union of every backend's capabilities (see
 /// ``BackendCapabilities/union(_:)``).

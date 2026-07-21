@@ -13,15 +13,16 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
     /// - Parameters:
     ///   - hubClient: The Hub client used for API requests and repo operations.
     ///     Defaults to `.default`, which uses the shared Hub configuration.
-    ///   - activityCenter: Center to notify on metadata fetch start/end so the
-    ///     framework-wide network indicator reflects HF traffic even when the
-    ///     SDK bypasses ``URLSessionFactory``. Defaults to ``NetworkActivityCenter/shared``.
+    ///
+    /// Metadata fetch start/end is always reported to `NetworkActivityCenter.shared`
+    /// (a `package`-visible activity funnel as of the 2026-07 inert-surface
+    /// sweep, #2128) so framework-internal network observability reflects HF
+    /// traffic even when the SDK bypasses ``URLSessionFactory``.
     public init(
-        hubClient: HubClient = .default,
-        activityCenter: NetworkActivityCenter = .shared
+        hubClient: HubClient = .default
     ) {
         self.hubClient = hubClient
-        self.activityCenter = activityCenter
+        self.activityCenter = .shared
     }
 
     /// Wraps a `hubClient.*` call with begin/end on the activity center so

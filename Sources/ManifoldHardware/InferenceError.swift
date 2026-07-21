@@ -24,7 +24,7 @@ public enum InferenceError: LocalizedError, CategorizedError {
     /// Thrown by backends when `config.grammar != nil` but the backend does not support
     /// grammar-constrained sampling. `isRetryable` is `false`.
     case unsupportedGrammar(reason: String)
-    /// Thrown by ``RouterBackend`` when no wired child backend satisfies every
+    /// Thrown by `RouterBackend` when no wired child backend satisfies every
     /// requirement in ``GenerationConfig/requiredCapabilities``. The associated
     /// value lists the unsatisfied requirements (across all children — i.e. the
     /// requirements no child could meet) so the host can surface a fix-it message.

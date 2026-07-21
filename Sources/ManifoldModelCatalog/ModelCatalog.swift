@@ -8,18 +8,21 @@ import ManifoldHardware
 /// artifact itself: source provenance, download time, last-used time, expected
 /// integrity hash, and quantization labels.
 ///
-/// > Not yet wired: as of the 2026-07-03 inert-surface audit, no production
-/// > code path constructs a `ModelCatalog`. `ManifoldBootstrap`,
-/// > `ModelManagementViewModel`, and `ModelRegistry` all use
-/// > `ModelStorageService` directly and never reference this type. `.touch(_:)`
-/// > (which CHANGELOG v0.22.0 describes as "called automatically on every
-/// > successful model load") has zero production call sites — only this
-/// > type's own tests construct and exercise a `ModelCatalog`. A host that
-/// > wants the sidecar-manifest behavior (download provenance, LRU
-/// > disk-budget eviction) must construct and drive one itself.
-public actor ModelCatalog {
+/// > `package`-visibility (2026-07 inert-surface sweep, #2128): as of the
+/// > 2026-07-03 inert-surface audit, no production code path constructs a
+/// > `ModelCatalog`. `ManifoldBootstrap`, `ModelManagementViewModel`, and
+/// > `ModelRegistry` all use `ModelStorageService` directly and never
+/// > reference this type. `.touch(_:)` (which CHANGELOG v0.22.0 describes as
+/// > "called automatically on every successful model load") has zero
+/// > production call sites — only this type's own in-package tests construct
+/// > and exercise a `ModelCatalog`. A host that wants the sidecar-manifest
+/// > behavior (download provenance, LRU disk-budget eviction) must construct
+/// > and drive one itself; that path is no longer reachable outside this
+/// > package (`CatalogEntry`/`ModelSource` stay public — they carry no
+/// > behavior of their own and are not the inert surface).
+package actor ModelCatalog {
 
-    public static let manifestFileName = ".manifold-catalog.json"
+    package static let manifestFileName = ".manifold-catalog.json"
 
     private let storage: ModelStorageService
     private let fileManager: FileManager
@@ -27,7 +30,7 @@ public actor ModelCatalog {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    public init(
+    package init(
         storage: ModelStorageService,
         fileManager: FileManager = .default,
         manifestURL: URL? = nil
@@ -53,7 +56,7 @@ public actor ModelCatalog {
     /// If the manifest is valid but stale, disk presence still wins: missing
     /// artifacts are dropped and newly discovered artifacts are backfilled as
     /// ``ModelSource/imported`` entries.
-    public func catalog() async throws -> [CatalogEntry] {
+    package func catalog() async throws -> [CatalogEntry] {
         let manifest = try loadManifestOrRebuild()
         let reconciled = try reconcile(manifest.entries)
         if reconciled != manifest.entries {
@@ -63,7 +66,7 @@ public actor ModelCatalog {
     }
 
     /// Records or replaces metadata for a model after a successful import/download.
-    public func record(_ entry: CatalogEntry) async throws {
+    package func record(_ entry: CatalogEntry) async throws {
         let entries = try await catalog()
         var byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         byID[entry.id] = entry
@@ -72,7 +75,7 @@ public actor ModelCatalog {
 
     /// Removes a catalog entry and optionally deletes its on-disk artifact.
     @discardableResult
-    public func evict(_ id: ModelInfo.ID, deleteArtifact: Bool) async throws -> CatalogEntry? {
+    package func evict(_ id: ModelInfo.ID, deleteArtifact: Bool) async throws -> CatalogEntry? {
         var entries = try await catalog()
         guard let index = entries.firstIndex(where: { $0.id == id }) else {
             return nil
@@ -90,7 +93,7 @@ public actor ModelCatalog {
     /// Artifacts are deleted for evicted entries. Missing artifacts are ignored by
     /// the deletion step because reconciliation already treats disk as truth.
     @discardableResult
-    public func enforceDiskBudget(_ maxBytes: UInt64) async throws -> [CatalogEntry] {
+    package func enforceDiskBudget(_ maxBytes: UInt64) async throws -> [CatalogEntry] {
         var entries = try await catalog()
         var total = entries.reduce(UInt64(0)) { $0 + $1.sizeBytes }
         guard total > maxBytes else { return [] }
@@ -115,7 +118,7 @@ public actor ModelCatalog {
     }
 
     /// Updates last-used time for a cataloged model.
-    public func touch(_ id: ModelInfo.ID, at date: Date = Date()) async throws {
+    package func touch(_ id: ModelInfo.ID, at date: Date = Date()) async throws {
         var entries = try await catalog()
         guard let index = entries.firstIndex(where: { $0.id == id }) else {
             return

@@ -2,18 +2,18 @@ import Foundation
 import Observation
 import os
 
-/// Public, framework-owned summary of in-flight network activity.
+/// Framework-owned summary of in-flight network activity.
 ///
-/// Consumer apps that surface a "is ManifoldKit talking to the network right
-/// now?" indicator (status pill, trust sheet, settings light) bind to
-/// ``NetworkActivityCenter/shared`` instead of building a parallel observer
-/// that drifts away from MK's actual networking the moment a new code path
-/// (manifest fetch, resume probe, HEAD check) is added inside MK.
+/// An app that wants to surface a "is ManifoldKit talking to the network
+/// right now?" indicator (status pill, trust sheet, settings light) would
+/// bind to ``NetworkActivityCenter/shared`` instead of building a parallel
+/// observer that drifts away from MK's actual networking the moment a new
+/// code path (manifest fetch, resume probe, HEAD check) is added inside MK.
 ///
 /// The center is a strict superset of `BackgroundDownloadManager.activeDownloads`:
 /// it also reports HuggingFace metadata fetches, redirect / probe traffic, and
 /// any future generic data-task that flows through ``URLSessionFactory``.
-public enum NetworkActivity: Sendable, Equatable {
+package enum NetworkActivity: Sendable, Equatable {
 
     /// No active network traffic.
     case idle
@@ -44,11 +44,7 @@ public enum NetworkActivity: Sendable, Equatable {
 }
 
 /// Classifier for a single in-flight unit of network work.
-///
-/// Promoted to the public surface so external consumers (CLI tools, alternate
-/// download orchestrators) that need to plug into the center can describe
-/// their traffic without reaching into MK internals.
-public enum NetworkActivityKind: Sendable, Equatable {
+package enum NetworkActivityKind: Sendable, Equatable {
     case probe
     case metadata
     case download(modelID: String)
@@ -61,7 +57,7 @@ public enum NetworkActivityKind: Sendable, Equatable {
 /// ``NetworkActivityCenter/end(_:)`` (or `updateDownload`) so the center can
 /// distinguish overlapping calls. The token is intentionally `Sendable` and
 /// value-typed so it can cross actor boundaries without ceremony.
-public struct NetworkActivityToken: Sendable, Hashable {
+package struct NetworkActivityToken: Sendable, Hashable {
     internal let id: UUID
     internal init(id: UUID = UUID()) {
         self.id = id
@@ -70,11 +66,19 @@ public struct NetworkActivityToken: Sendable, Hashable {
 
 /// `@Observable @MainActor` source of truth for live network activity.
 ///
+/// > Note: `package`-visibility (2026-07 inert-surface sweep, #2128) — the
+/// > producer wiring below (``URLSessionFactory``, `BackgroundDownloadManager`,
+/// > `HuggingFaceService`) is real and live, but as of the 2026-07-21
+/// > eight-app consumer screen nothing outside this package reads `.current`,
+/// > subscribes via ``updates()``, or displays `.activeHosts`/`.inFlightCount` —
+/// > the read side the type was built for doesn't exist yet anywhere. Expect
+/// > re-promotion to `public` once a host builds the status-indicator surface
+/// > this was designed for — issue #1292 tracks a documented consumer-app ask
+/// > for exactly that indicator.
+///
 /// Bind from SwiftUI via the shared singleton:
 ///
 /// ```swift
-/// import ManifoldInference
-///
 /// struct NetworkPill: View {
 ///     @State private var center = NetworkActivityCenter.shared
 ///     var body: some View {
@@ -93,7 +97,7 @@ public struct NetworkActivityToken: Sendable, Hashable {
 ///
 /// ## Funnel points
 ///
-/// - ``URLSessionFactory/ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:)``
+/// - ``URLSessionFactory/ephemeral(hopCap:resourceTimeout:additionalDataDelegate:)``
 ///   wires a tracking delegate that emits begin/end for every data task
 ///   that flows through the factory.
 /// - `BackgroundDownloadManager` (in `ManifoldHuggingFace`) bypasses the
@@ -109,7 +113,7 @@ public struct NetworkActivityToken: Sendable, Hashable {
 /// itself never touches the network — it is a passive aggregator.
 @Observable
 @MainActor
-public final class NetworkActivityCenter {
+package final class NetworkActivityCenter {
 
     /// Shared process-wide instance. ``URLSessionFactory`` and
     /// `BackgroundDownloadManager` route activity here by default.
@@ -117,19 +121,19 @@ public final class NetworkActivityCenter {
     /// The reference itself is immutable, so non-isolated callers can read
     /// `.shared` to pass into a factory; every *method* on the returned
     /// instance remains `@MainActor`-isolated.
-    public nonisolated static let shared = NetworkActivityCenter()
+    package nonisolated static let shared = NetworkActivityCenter()
 
     /// Current coalesced activity. ``NetworkActivity/idle`` when no requests
     /// are in flight. When several tasks are active, downloads win over
     /// metadata, which wins over probes — the integrator's status indicator
     /// should reflect the most user-visible work first.
-    public private(set) var current: NetworkActivity = .idle
+    package private(set) var current: NetworkActivity = .idle
 
     /// Number of in-flight requests across all kinds.
-    public var inFlightCount: Int { entries.count }
+    package var inFlightCount: Int { entries.count }
 
     /// Distinct hostnames currently in flight, sorted for stable rendering.
-    public var activeHosts: [String] {
+    package var activeHosts: [String] {
         var seen = Set<String>()
         var result: [String] = []
         for entry in entries.values where !entry.host.isEmpty {
@@ -156,20 +160,21 @@ public final class NetworkActivityCenter {
     /// subscriber can clean up independently when its `Task` is cancelled.
     private var subscribers: [UUID: AsyncStream<NetworkActivity>.Continuation] = [:]
 
-    /// Designated initialiser. Public so test suites can spin up isolated
-    /// centers without relying on the shared singleton.
+    /// Designated initialiser. `package` so test suites (and any in-package
+    /// caller) can spin up isolated centers without relying on the shared
+    /// singleton.
     ///
     /// Marked `nonisolated` so the `static let shared` initialiser can run
     /// at process start without hopping to `@MainActor`. All mutation API
     /// on the resulting instance remains `@MainActor`-isolated.
-    public nonisolated init() {}
+    package nonisolated init() {}
 
     // MARK: - Tracking API
 
     /// Records the start of a new in-flight request and returns a token to
     /// pair with ``end(_:)``.
     @discardableResult
-    public func begin(kind: NetworkActivityKind, host: String) -> NetworkActivityToken {
+    package func begin(kind: NetworkActivityKind, host: String) -> NetworkActivityToken {
         let token = NetworkActivityToken()
         entries[token.id] = Entry(
             kind: kind,
@@ -188,13 +193,13 @@ public final class NetworkActivityCenter {
     /// stale token — unknown tokens are ignored, which makes
     /// "begin from delegate / end from cancel" races a no-op rather than a
     /// crash.
-    public func end(_ token: NetworkActivityToken) {
+    package func end(_ token: NetworkActivityToken) {
         guard entries.removeValue(forKey: token.id) != nil else { return }
         recomputeCurrent()
     }
 
     /// Updates byte counters for a download token and refreshes throughput.
-    public func updateDownload(
+    package func updateDownload(
         _ token: NetworkActivityToken,
         bytesReceived: Int64,
         totalBytes: Int64?
@@ -221,7 +226,7 @@ public final class NetworkActivityCenter {
 
     /// Async stream of state transitions. Emits the current state once on
     /// subscribe so late observers don't miss in-flight activity.
-    public func updates() -> AsyncStream<NetworkActivity> {
+    package func updates() -> AsyncStream<NetworkActivity> {
         AsyncStream { continuation in
             let id = UUID()
             subscribers[id] = continuation

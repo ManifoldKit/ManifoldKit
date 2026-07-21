@@ -162,11 +162,26 @@ final class PublicSurfaceBaselineTests: XCTestCase {
         }
     }
 
-    /// For each scoped module: the baseline file exists, is non-empty,
-    /// every line matches `<name> <knownKind>` (or one of the two
-    /// isolation/Sendable-signal shapes below), and the file is already
-    /// sorted + de-duplicated (the normalizer's contract — a diff-stable
-    /// baseline depends on this).
+    /// Modules whose entire pre-existing public surface was mechanically
+    /// demoted `public` → `package` and which have shipped no other public
+    /// declaration since. `ManifoldNetworking`'s only public surface was
+    /// `NetworkActivityCenter` (+ `NetworkActivity`/`NetworkActivityKind`/
+    /// `NetworkActivityToken`), demoted whole in the 2026-07-21
+    /// inert-surface sweep (#2128; see
+    /// `docs/MIGRATION-api-demotions-0.71.md`'s "2026-07-21 inert-surface
+    /// sweep" section) — the target still exists and is still linked (its
+    /// producer wiring, `NetworkActivityTrackingDelegate`, is real and
+    /// package-internal), it simply has zero `public` declarations left. A
+    /// future re-promotion (issue #1292) or a new public type added to this
+    /// module removes it from this list; until then an empty baseline here
+    /// is the correct, intentional state, not baseline rot.
+    private static let expectedEmptyModules: Set<String> = ["ManifoldNetworking"]
+
+    /// For each scoped module: the baseline file exists, is non-empty
+    /// (unless listed in ``expectedEmptyModules``), every line matches
+    /// `<name> <knownKind>` (or one of the two isolation/Sendable-signal
+    /// shapes below), and the file is already sorted + de-duplicated (the
+    /// normalizer's contract — a diff-stable baseline depends on this).
     func testEachModuleBaselineIsWellFormed() throws {
         for module in Self.expectedModules {
             let fileURL = Self.baselineDir().appendingPathComponent("\(module).txt")
@@ -177,6 +192,10 @@ final class PublicSurfaceBaselineTests: XCTestCase {
             let contents = try String(contentsOf: fileURL, encoding: .utf8)
             let lines = contents.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
 
+            if Self.expectedEmptyModules.contains(module) {
+                XCTAssertTrue(lines.isEmpty, "\(module).txt is expected to be empty (see expectedEmptyModules) but has content — did a new public declaration get added? If so, remove it from expectedEmptyModules.")
+                continue
+            }
             XCTAssertFalse(lines.isEmpty, "\(module).txt is empty — expected a non-trivial public surface.")
 
             var previous: String?

@@ -123,12 +123,11 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         sessionIdentifier: String? = nil,
         persistenceDirectory: URL? = nil,
         tempScanDirectory: URL? = nil,
-        userDefaults: UserDefaults = .standard,
-        activityCenter: NetworkActivityCenter = .shared
+        userDefaults: UserDefaults = .standard
     ) {
         self.storageService = storageService
         self._sessionIdentifier = sessionIdentifier ?? Self.sessionIdentifier
-        self.progressReporter = DownloadProgressReporter(activityCenter: activityCenter)
+        self.progressReporter = DownloadProgressReporter(activityCenter: .shared)
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let resolvedPersistenceDirectory = persistenceDirectory

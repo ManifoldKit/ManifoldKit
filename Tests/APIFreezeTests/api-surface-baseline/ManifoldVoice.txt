@@ -144,6 +144,7 @@ VoiceConversationController.isRecording Var
 VoiceConversationController.isSpeaking Var
 VoiceConversationController.lastCommittedTranscript Var
 VoiceConversationController.liveTranscript Var
+VoiceConversationController.onSpeechProgress Var
 VoiceConversationController.openSystemSettings() Func
 VoiceConversationController.recoveryAffordance Var
 VoiceConversationController.showsTranscriptPreview Var

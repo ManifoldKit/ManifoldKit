@@ -250,6 +250,22 @@ adjudicates as posted and rides whatever minor is next, outside this plan):
 - `SettingsService` — #2128 says "never written, resolvers never called"; the origin
   app injects `SettingsService.shared` into its main store (3 injection sites,
   source-verified). Likely flips cut → keep-and-document.
+  **Third disposition option recorded (2026-07-21 inert-surface sweep, #2128):**
+  keep-and-demote-to-package. The "3 injection sites" evidence above is
+  external-only (the origin app); independent of any external app,
+  `GenerationSettingsView` (`ManifoldUI`) is a live **in-package** consumer —
+  it reads/writes `SettingsService.shared.appearanceMode` directly, is wired
+  into `ChatShellViews`, and is snapshot-tested
+  (`Tests/ManifoldSnapshotTests/ModelAndSettingsControlTests.swift`,
+  `ChatViewControlTests.swift`). Whether that in-package consumer alone
+  justifies staying `public` (a companion/consumer app could still want to
+  read `SettingsService` directly, the way the origin app does today) or
+  whether `package` is sufficient once the origin app's injection sites
+  migrate onto a public seam `ManifoldUI` already exposes is the open
+  question this disposition leaves for adjudication. **Demotion is gated on
+  the origin app's `SettingsService.shared` injection-site migration landing
+  first** — do not demote while an external consumer still constructs/reads
+  it directly.
 - `AssembledPrompt`/`MessageRole` — **severed from any demotion** (origin-app
   review): the app's eval package uses `PromptAssembler`/`AssembledPrompt`/
   `MessageRole` to reproduce its production prompt-assembly and compression semantics
@@ -415,7 +431,7 @@ ManifoldKit umbrella types; MCPHost module (small, coherent, documented).
 | GenerationRequestToken, RepetitionDetector | hand-rolled streaming runner (bypassed turn loop); token threaded through the memory package's public API driving LIVE extraction | B.3 — MK parity (timeout, thinking-filter, outcome taxonomy, tuning) + B.0 re-base + observer-path migration, then demote (severable as a whole) |
 | AssembledPrompt (+MessageRole) | eval package reproduces production prompt assembly for golden baselines | stays public — severed from demotion until ManifoldAppEval reproduces the golden assembly (B.5) |
 | BackendActivityPhase, ModelLoadReadinessState | input-bar progress; model warmup UI | B.4 — one lifecycle signal |
-| SettingsService (docs'd) | main-store dependency (`.shared`, 3 injection sites) | B.5 — re-adjudicate #2128 item with this evidence |
+| SettingsService (docs'd) | main-store dependency (`.shared`, 3 injection sites) | B.5 — re-adjudicate #2128 item with this evidence. Third option recorded 2026-07-21: keep-and-demote-to-package, since `GenerationSettingsView` (`ManifoldUI`, wired into `ChatShellViews`, snapshot-tested) is a live in-package consumer independent of the origin app's 3 injection sites. Demotion gated on the origin app's injection sites migrating first — not yet landed. |
 | GenerationParameter | settings-sheet capability check | keep or fold into BackendCapabilities (B.5) |
 | MemoryPressureEvent | memory-pressure handling in the main store | legit host concern — keep, document |
 | ManifoldSchemaV4, ManifoldSchemaV5 | test comments only | no action |
