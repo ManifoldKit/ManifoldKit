@@ -48,7 +48,7 @@ public enum URLSessionFactory {
     ///
     /// Every request emits begin/end to `NetworkActivityCenter.shared` (a
     /// `package`-visible activity funnel as of the 2026-07 inert-surface
-    /// sweep, #2128) via an internally-wired ``NetworkActivityTrackingDelegate``,
+    /// sweep, #2128) via an internally-wired `NetworkActivityTrackingDelegate`,
     /// stashed in ``CompositeURLSessionDelegate/ownedDataDelegate`` so it
     /// survives past `additionalDataDelegate`'s weak reference.
     public static func ephemeral(

@@ -59,7 +59,7 @@ transient errors (via ``withRetry(strategy:sleeper:operation:)`` with
 backend:
 
 ```swift,no-build
-let policy = FallbackPolicy(perBackendRetries: 2, advanceAfterFirstToken: false)
+let policy = FallbackPolicy(perBackendRetries: 2)
 let backend = primary.withFallbacks([secondary], policy: policy)
 ```
 
