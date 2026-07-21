@@ -1,5 +1,8 @@
 # Migration: cloud provider vocabulary struct-ified; 8 wire enums frozen (#2208)
 
+**Audience:** consumer
+**Status:** historical
+
 **This is a breaking change** for exhaustive `switch` statements over
 `CloudMessageEncoder` and `CloudPayloadHandler.Provider`. Everything else in
 this sweep is additive (doc comments, a new audit test).

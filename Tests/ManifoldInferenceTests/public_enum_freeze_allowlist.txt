@@ -243,13 +243,11 @@ ManifoldPersistenceTestSupport/InMemoryPersistenceHarness.swift:public enum InMe
 ManifoldRuntime/Models/APIEndpointValidationReason.swift:public enum APIEndpointValidationReason: Error, Equatable, Sendable {
 ManifoldRuntime/Models/ChatIntentAction.swift:public enum ChatIntentAction: Sendable, Codable, Equatable {
 ManifoldRuntime/Models/ConversationEventKind.swift:public enum ConversationEventKind: String, Codable, Sendable, CaseIterable {
-ManifoldRuntime/Models/ConversationRun.swift:public enum RunStatus: String, Sendable, CaseIterable, Equatable {
 ManifoldRuntime/Models/RuntimeBootstrapMilestone.swift:public enum RuntimeBootstrapMilestone: Sendable, Hashable, CaseIterable, CustomStringConvertible {
 ManifoldRuntime/Protocols/DocumentParser.swift:public enum DocumentParserError: LocalizedError {
 ManifoldRuntime/Protocols/HistoryProvider.swift:public enum HistoryInsertionPosition: Sendable {
 ManifoldRuntime/Protocols/HistoryShaper.swift:public enum Kind: String, Sendable, Hashable {
 ManifoldRuntime/Protocols/MessageStore.swift:public enum MessageStoreMutation: Sendable, Equatable {
-ManifoldRuntime/Protocols/RunStore.swift:public enum RunStoreError: Error, LocalizedError, Sendable, Equatable {
 ManifoldRuntime/Protocols/SessionStore.swift:public enum ChatPersistenceError: Error, LocalizedError, Sendable, Equatable {
 ManifoldRuntime/Services/AudioRuntimeEvent.swift:public enum AudioRuntimeEvent: Sendable, Equatable {
 ManifoldRuntime/Services/ChatExportService.swift:public enum ChatExportService {
@@ -261,7 +259,6 @@ ManifoldRuntime/Services/ConversationExporter.swift:public enum ConversationExpo
 ManifoldRuntime/Services/ConversationExporter.swift:public enum ConversationExporter {
 ManifoldRuntime/Services/ConversationImporter.swift:public enum ConversationImportWriteError: Error, LocalizedError, Sendable {
 ManifoldRuntime/Services/ConversationRuntime+TurnInput.swift:public enum TurnKind: Sendable, Codable {
-ManifoldRuntime/Services/ConversationRuntimeBackgroundBridge.swift:public enum ManifoldBackgroundTaskIdentifiers {
 ManifoldRuntime/Services/ConversationRuntimeTypes.swift:public enum CompressionReason: Sendable, Hashable {
 ManifoldRuntime/Services/ConversationRuntimeTypes.swift:public enum ConversationError: Error, Sendable {
 ManifoldRuntime/Services/ConversationRuntimeTypes.swift:public enum FinishReason: Sendable, Hashable {
@@ -278,8 +275,6 @@ ManifoldRuntime/Services/JSONLImportFormat.swift:public enum JSONLImportError: E
 ManifoldRuntime/Services/PersonaStore.swift:public enum PersonaStoreError: Error, LocalizedError, Sendable, Equatable {
 ManifoldRuntime/Services/RAGService.swift:public enum RAGError: LocalizedError {
 ManifoldRuntime/Services/RAGService.swift:public enum RetrievalStrategy: Sendable {
-ManifoldRuntime/Services/ReciprocalRankFusion.swift:public enum ReciprocalRankFusion {
-ManifoldRuntime/Services/RunEvent.swift:public enum RunEvent: Sendable, Equatable {
 ManifoldRuntime/Services/SamplerPresetStore.swift:public enum SamplerPresetStoreError: Error, LocalizedError, Sendable, Equatable {
 ManifoldRuntime/Services/SessionListService.swift:public enum SessionListEvent: Sendable {
 ManifoldRuntime/Services/ToolCallConformance.swift:public enum ToolCallCapability: String, Codable, Sendable {
@@ -328,7 +323,6 @@ ManifoldTools/Scenarios/ScenarioLoader.swift:public enum ScenarioLoader {
 ManifoldTools/ScriptedBackend.swift:public enum Turn: Sendable {
 ManifoldTools/TranscriptLogger.swift:public enum Event {
 ManifoldTools/VLModelDetector.swift:public enum VLModelDetector {
-ManifoldUI/Accessibility/AccessibilityAnnouncer.swift:public enum Priority: Sendable {
 ManifoldUI/Utilities/ChatExporter.swift:public enum ChatExporter {
 ManifoldUI/Utilities/ChatExporter.swift:public enum ChatExporterError: Error, Equatable {
 ManifoldUI/Utilities/SpotlightIndexer.swift:public enum SpotlightIndexer {
@@ -358,3 +352,18 @@ ManifoldVoice/VoiceTypes.swift:public enum VoiceAuthorizationStatus: Sendable, E
 ManifoldVoice/VoiceTypes.swift:public enum VoiceCaptureState: Equatable {
 ManifoldVoice/VoiceTypes.swift:public enum VoiceError: LocalizedError, Equatable {
 ManifoldVoice/VoiceTypes.swift:public enum VoiceRecoveryAffordance: Sendable, Equatable {
+#
+# Public enums that landed on main after the #2208 sweep was authored (MCP
+# sampling #1925, the #2307 UI-refresh theming + model-switcher surface, schema
+# V13). Same "unassessed, not cleared" status as the block above — a PR
+# touching one should add the marker and drop its line here.
+ManifoldMCP/MCPSampling.swift:public enum Role: String, Sendable, Equatable {
+ManifoldMCP/MCPSampling.swift:public enum Content: Sendable, Equatable {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV13.swift:public enum ManifoldSchemaV13: VersionedSchema {
+ManifoldUI/Theming/ThinkingBlockStyle.swift:public enum ThinkingBlockState: Sendable, Equatable {
+ManifoldUI/Theming/ComposerStyle.swift:public enum ComposerPhase: Sendable, Equatable {
+ManifoldUI/Theming/ToolInvocationStyle.swift:public enum ToolInvocationLifecycleState: Sendable, Equatable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcherEntry: Identifiable, Sendable, Equatable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcherFitVerdict: Sendable, Equatable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcher {
