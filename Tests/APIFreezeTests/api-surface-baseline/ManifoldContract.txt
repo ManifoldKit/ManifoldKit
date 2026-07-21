@@ -356,10 +356,8 @@ MessagePart.__derived_enum_equals(_:_:) Func
 MessagePart.audio EnumElement
 MessagePart.audioContent Var
 MessagePart.encode(to:) Func
-MessagePart.generatedImageContent Var
 MessagePart.generatedMedia EnumElement
 MessagePart.generatedMediaContent Var
-MessagePart.generatedVideoContent Var
 MessagePart.generatingImagePlaceholderIfNeeded() Func
 MessagePart.hash(into:) Func
 MessagePart.hashValue Var

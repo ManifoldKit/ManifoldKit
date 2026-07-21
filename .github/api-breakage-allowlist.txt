@@ -423,3 +423,10 @@ API breakage: protocol ToolCallingHistoryReceiver has been removed
 API breakage: var ClaudeBackend.structuredHistory has been removed
 API breakage: var CloudAdapterRouting.buildRequest has declared type change from (Swift.String, Swift.String?, ManifoldContract.GenerationConfig) throws -> Foundation.URLRequest to (Swift.String, Swift.String?, ManifoldContract.GenerationConfig, ManifoldContract.GenerationRuntimeHints) throws -> Foundation.URLRequest
 API breakage: var SSECloudBackend.conversationHistory has been removed
+API breakage: var MessagePart.generatedImageContent has been removed
+API breakage: var MessagePart.generatedVideoContent has been removed
+API breakage: enum MediaGenerationEvent has been removed
+API breakage: enum MediaGeneration has been removed
+API breakage: typealias ImageGeneration has been removed
+API breakage: typealias VideoGeneration has been removed
+API breakage: typealias AudioGeneration has been removed

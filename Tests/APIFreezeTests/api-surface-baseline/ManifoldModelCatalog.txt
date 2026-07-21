@@ -1,6 +1,3 @@
-(top-level).AudioGeneration TypeAlias
-(top-level).ImageGeneration TypeAlias
-(top-level).VideoGeneration TypeAlias
 APIEndpointRecord Struct
 APIEndpointRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 APIEndpointRecord.CodingKeys Enum
@@ -416,14 +413,6 @@ ManifoldKitError.serverError EnumElement
 ManifoldKitError.timedOut EnumElement
 ManifoldKitError.tlsFailure EnumElement
 ManifoldKitError.unknown EnumElement
-MediaGeneration Enum
-MediaGeneration conformances: Copyable,Escapable
-MediaGeneration.Config TypeAlias
-MediaGenerationEvent Enum
-MediaGenerationEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
-MediaGenerationEvent.completed EnumElement
-MediaGenerationEvent.preview EnumElement
-MediaGenerationEvent.progress EnumElement
 MediaKind Enum
 MediaKind conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MediaKind.AllCases TypeAlias
