@@ -1,6 +1,10 @@
 AppEntityResolver Protocol
+AppEntityResolver attrs: Available
+AppEntityResolver conformances: Copyable,Escapable,Sendable,SendableMetatype
 AppEntityResolver.resolve(_:id:) Func
 AppIntentApprovalPolicy Enum
+AppIntentApprovalPolicy attrs: Available
+AppIntentApprovalPolicy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 AppIntentApprovalPolicy.__derived_enum_equals(_:_:) Func
 AppIntentApprovalPolicy.hash(into:) Func
 AppIntentApprovalPolicy.hashValue Var
@@ -8,6 +12,8 @@ AppIntentApprovalPolicy.readOnlyAutoApprove EnumElement
 AppIntentApprovalPolicy.requiresApproval Var
 AppIntentApprovalPolicy.requiresUserApproval EnumElement
 AppIntentToolExecutor Struct
+AppIntentToolExecutor attrs: Available
+AppIntentToolExecutor conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolExecutor
 AppIntentToolExecutor.ApprovalPolicy TypeAlias
 AppIntentToolExecutor.definition Var
 AppIntentToolExecutor.execute(arguments:) Func
@@ -15,9 +21,13 @@ AppIntentToolExecutor.executeStreaming(arguments:) Func
 AppIntentToolExecutor.init(_:description:approvalPolicy:entityResolver:) Constructor
 AppIntentToolExecutor.requiresApproval Var
 AskManifoldHandler Protocol
+AskManifoldHandler attrs: Available
+AskManifoldHandler conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 AskManifoldHandler.ask(_:) Func
 AskManifoldHandler.displayName() Func
 AskManifoldIntent Struct
+AskManifoldIntent attrs: Available
+AskManifoldIntent conformances: AppIntent,Copyable,Escapable,PersistentlyIdentifiable,Sendable,SendableMetatype
 AskManifoldIntent.$prompt Var
 AskManifoldIntent.PerformResult TypeAlias
 AskManifoldIntent.SummaryContent TypeAlias
@@ -29,15 +39,24 @@ AskManifoldIntent.perform() Func
 AskManifoldIntent.prompt Var
 AskManifoldIntent.title Var
 CodingUserInfoKey Struct
+CodingUserInfoKey conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 CodingUserInfoKey.manifoldResolvedEntities Var
 Decoder Protocol
+Decoder conformances: Copyable,Escapable
 Decoder.resolvedAppEntity(_:as:) Func
 DefaultAppEntityResolver Struct
+DefaultAppEntityResolver attrs: Available
+DefaultAppEntityResolver conformances: AppEntityResolver,Copyable,Escapable,Sendable,SendableMetatype
 DefaultAppEntityResolver.init() Constructor
 DefaultAppEntityResolver.resolve(_:id:) Func
 DiscoverableAppIntent Protocol
+DiscoverableAppIntent attrs: Available
+DiscoverableAppIntent conformances: AppIntent,Copyable,Decodable,Escapable,PersistentlyIdentifiable,Sendable,SendableMetatype
 IntentEnumParameter Protocol
+IntentEnumParameter conformances: CaseIterable,Copyable,Escapable,RawRepresentable,Sendable,SendableMetatype
 IntentProgressReporter Class
+IntentProgressReporter attrs: Available
+IntentProgressReporter conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 IntentProgressReporter.$current Var
 IntentProgressReporter.current Var
 IntentProgressReporter.events Var
@@ -46,15 +65,22 @@ IntentProgressReporter.init() Constructor
 IntentProgressReporter.report(message:fraction:) Func
 IntentProgressReporter.unownedExecutor Var
 ManifoldIntentConfiguration Class
+ManifoldIntentConfiguration attrs: Available
+ManifoldIntentConfiguration conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 ManifoldIntentConfiguration.configure(handler:) Func
 ManifoldIntentConfiguration.handler Var
 ManifoldIntentConfiguration.shared Var
 ManifoldIntentConfiguration.unownedExecutor Var
 ProgressReportingAppIntent Protocol
+ProgressReportingAppIntent attrs: Available
+ProgressReportingAppIntent conformances: AppIntent,Copyable,Escapable,PersistentlyIdentifiable,Sendable,SendableMetatype
 ProgressReportingAppIntent.supportsProgressReporting Var
 ResolvedEntityBox Struct
+ResolvedEntityBox conformances: Copyable,Escapable,Sendable,SendableMetatype
 ResolvedEntityBox.entity(_:as:) Func
 ResolvedEntityBox.init(values:) Constructor
 ResolvedEntityBox.values Var
 ToolRegistry Class
+ToolRegistry attrs: Custom,Final
+ToolRegistry conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolRegistry.registerAppIntents(_:approvalPolicy:entityResolver:) Func

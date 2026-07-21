@@ -1,6 +1,8 @@
 FoundationAvailability Enum
+FoundationAvailability conformances: Copyable,Escapable
 FoundationAvailability.reason Var
 FoundationAvailabilityReason Enum
+FoundationAvailabilityReason conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 FoundationAvailabilityReason.__derived_enum_equals(_:_:) Func
 FoundationAvailabilityReason.appleIntelligenceNotEnabled EnumElement
 FoundationAvailabilityReason.available EnumElement
@@ -11,6 +13,8 @@ FoundationAvailabilityReason.modelNotReady EnumElement
 FoundationAvailabilityReason.notBuilt EnumElement
 FoundationAvailabilityReason.unsupportedOS EnumElement
 FoundationBackend Class
+FoundationBackend attrs: Available,Final
+FoundationBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype,TokenizerVendor
 FoundationBackend.availabilityReason Var
 FoundationBackend.capabilities Var
 FoundationBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -28,4 +32,5 @@ FoundationBackend.traceSink Var
 FoundationBackend.unloadModel() Func
 FoundationBackend.unloadModelAndWait() Func
 FoundationBackends Enum
+FoundationBackends conformances: BackendRegistrar,Copyable,Escapable
 FoundationBackends.register(with:) Func

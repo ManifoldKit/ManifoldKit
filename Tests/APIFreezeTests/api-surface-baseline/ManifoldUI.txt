@@ -2,8 +2,10 @@
 (top-level).ChatMessageRenderer TypeAlias
 (top-level).LinkPreviewProvider TypeAlias
 AppearanceMode Enum
+AppearanceMode conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable
 AppearanceMode.colorScheme Var
 ArchitectEventCategory Enum
+ArchitectEventCategory conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ArchitectEventCategory.__derived_enum_equals(_:_:) Func
 ArchitectEventCategory.agent EnumElement
 ArchitectEventCategory.compression EnumElement
@@ -18,6 +20,7 @@ ArchitectEventCategory.thinking EnumElement
 ArchitectEventCategory.tool EnumElement
 ArchitectEventCategory.videoGeneration EnumElement
 ArchitectEventEntry Struct
+ArchitectEventEntry conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 ArchitectEventEntry.ID TypeAlias
 ArchitectEventEntry.category Var
 ArchitectEventEntry.event Var
@@ -32,11 +35,15 @@ ArchitectEventEntry.kind Var
 ArchitectEventEntry.label Var
 ArchitectEventEntry.summary Var
 ArchitectView Struct
+ArchitectView attrs: Custom
+ArchitectView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ArchitectView.Body TypeAlias
 ArchitectView.body Var
 ArchitectView.init(runtime:capabilities:imageRuntime:videoRuntime:) Constructor
 ArchitectView.onRequestIncognitoMode Var
 ArchitectViewModel Class
+ArchitectViewModel attrs: Custom,Final
+ArchitectViewModel conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 ArchitectViewModel.clearLog() Func
 ArchitectViewModel.compressionEvents Var
 ArchitectViewModel.eventLog Var
@@ -46,6 +53,7 @@ ArchitectViewModel.latestContextEvent Var
 ArchitectViewModel.startRecording() Func
 ArchitectViewModel.stopRecording() Func
 AudioGenerationProgress Struct
+AudioGenerationProgress conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AudioGenerationProgress.__derived_struct_equals(_:_:) Func
 AudioGenerationProgress.error Var
 AudioGenerationProgress.fractionComplete Var
@@ -54,43 +62,58 @@ AudioGenerationProgress.isComplete Var
 AudioGenerationProgress.messageID Var
 AudioGenerationProgress.prompt Var
 BootstrapLoadingView Struct
+BootstrapLoadingView attrs: Custom
+BootstrapLoadingView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 BootstrapLoadingView.Body TypeAlias
 BootstrapLoadingView.body Var
 BootstrapLoadingView.init(milestone:) Constructor
 CardMessageBubbleStyle Struct
+CardMessageBubbleStyle conformances: Copyable,Escapable,MessageBubbleStyle,Sendable,SendableMetatype
 CardMessageBubbleStyle.Body TypeAlias
 CardMessageBubbleStyle.init() Constructor
 CardMessageBubbleStyle.makeBody(configuration:) Func
 CardToolInvocationStyle Struct
+CardToolInvocationStyle conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolInvocationStyle
 CardToolInvocationStyle.Body TypeAlias
 CardToolInvocationStyle.init() Constructor
 CardToolInvocationStyle.makeBody(configuration:) Func
 ChatExportSheet Struct
+ChatExportSheet attrs: Custom
+ChatExportSheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ChatExportSheet.Body TypeAlias
 ChatExportSheet.body Var
 ChatExportSheet.init() Constructor
 ChatExporter Enum
+ChatExporter conformances: Copyable,Escapable
 ChatExporter.exportFile(title:messages:format:) Func
 ChatExporter.string(title:messages:format:) Func
 ChatExporterError Enum
+ChatExporterError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 ChatExporterError.__derived_enum_equals(_:_:) Func
 ChatExporterError.writeFailed EnumElement
 ChatInputBar Struct
+ChatInputBar attrs: Custom
+ChatInputBar conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ChatInputBar.Body TypeAlias
 ChatInputBar.body Var
 ChatInputBar.init() Constructor
 ChatMessagePartRenderParameters Struct
+ChatMessagePartRenderParameters attrs: Custom
+ChatMessagePartRenderParameters conformances: Copyable,Escapable,Sendable,SendableMetatype
 ChatMessagePartRenderParameters.defaultPartView() Func
 ChatMessagePartRenderParameters.init(part:role:isStreaming:defaultView:) Constructor
 ChatMessagePartRenderParameters.isStreaming Var
 ChatMessagePartRenderParameters.part Var
 ChatMessagePartRenderParameters.role Var
 ChatMessageRenderParameters Struct
+ChatMessageRenderParameters attrs: Custom
+ChatMessageRenderParameters conformances: Copyable,Escapable,Sendable,SendableMetatype
 ChatMessageRenderParameters.defaultMessageView() Func
 ChatMessageRenderParameters.isPinned Var
 ChatMessageRenderParameters.isStreaming Var
 ChatMessageRenderParameters.message Var
 ChatMessageScrollAnchor Enum
+ChatMessageScrollAnchor conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ChatMessageScrollAnchor.__derived_enum_equals(_:_:) Func
 ChatMessageScrollAnchor.bottom EnumElement
 ChatMessageScrollAnchor.center EnumElement
@@ -98,6 +121,7 @@ ChatMessageScrollAnchor.hash(into:) Func
 ChatMessageScrollAnchor.hashValue Var
 ChatMessageScrollAnchor.top EnumElement
 ChatScrollToMessageRequest Struct
+ChatScrollToMessageRequest conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 ChatScrollToMessageRequest.ID TypeAlias
 ChatScrollToMessageRequest.__derived_struct_equals(_:_:) Func
 ChatScrollToMessageRequest.anchor Var
@@ -108,6 +132,7 @@ ChatScrollToMessageRequest.init(requestID:messageID:anchor:) Constructor
 ChatScrollToMessageRequest.messageID Var
 ChatScrollToMessageRequest.requestID Var
 ChatTheme Struct
+ChatTheme conformances: Copyable,Escapable,Sendable,SendableMetatype
 ChatTheme.assistantBubbleBackground Var
 ChatTheme.background(for:) Func
 ChatTheme.bubbleFont Var
@@ -123,6 +148,8 @@ ChatTheme.standard Var
 ChatTheme.systemBubbleBackground Var
 ChatTheme.userBubbleBackground Var
 ChatView Struct
+ChatView attrs: Custom
+ChatView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ChatView.$showModelManagement Var
 ChatView.Body TypeAlias
 ChatView.body Var
@@ -136,12 +163,16 @@ ChatView.init(showModelManagement:linkPreviewProvider:) Constructor
 ChatView.init(showModelManagement:linkPreviewProvider:apiConfiguration:) Constructor
 ChatView.showModelManagement Var
 ChatViewModel Class
+ChatViewModel attrs: Custom,Final
+ChatViewModel conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 ChatViewModel.ModelLoadState Enum
+ChatViewModel.ModelLoadState conformances: Copyable,Escapable
 ChatViewModel.ModelLoadState.failed EnumElement
 ChatViewModel.ModelLoadState.idle EnumElement
 ChatViewModel.ModelLoadState.loaded EnumElement
 ChatViewModel.ModelLoadState.loading EnumElement
 ChatViewModel.TurnState Enum
+ChatViewModel.TurnState conformances: Copyable,Escapable
 ChatViewModel.TurnState.completed EnumElement
 ChatViewModel.TurnState.failed EnumElement
 ChatViewModel.TurnState.generating EnumElement
@@ -235,6 +266,7 @@ ChatViewModel.regenerateLastResponse() Func
 ChatViewModel.removeStagedAttachment(at:) Func
 ChatViewModel.repeatPenalty Var
 ChatViewModel.requestScrollToMessage(id:anchor:) Func
+ChatViewModel.resolveBranchOriginTitle Var
 ChatViewModel.respond(to:) Func
 ChatViewModel.retrySend(_:) Func
 ChatViewModel.runtime Var
@@ -271,6 +303,7 @@ ChatViewModel.videoGenerationProgress Var
 ChatViewModel.videoRuntime Var
 ChatViewModel.webSearchRuntime Var
 ChatViewModelAudioError Enum
+ChatViewModelAudioError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 ChatViewModelAudioError.__derived_enum_equals(_:_:) Func
 ChatViewModelAudioError.errorDescription Var
 ChatViewModelAudioError.hash(into:) Func
@@ -278,6 +311,7 @@ ChatViewModelAudioError.hashValue Var
 ChatViewModelAudioError.noActiveConversation EnumElement
 ChatViewModelAudioError.notConfigured EnumElement
 ChatViewModelImageError Enum
+ChatViewModelImageError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 ChatViewModelImageError.__derived_enum_equals(_:_:) Func
 ChatViewModelImageError.errorDescription Var
 ChatViewModelImageError.hash(into:) Func
@@ -285,6 +319,7 @@ ChatViewModelImageError.hashValue Var
 ChatViewModelImageError.noActiveConversation EnumElement
 ChatViewModelImageError.notConfigured EnumElement
 ChatViewModelVideoError Enum
+ChatViewModelVideoError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 ChatViewModelVideoError.__derived_enum_equals(_:_:) Func
 ChatViewModelVideoError.errorDescription Var
 ChatViewModelVideoError.hash(into:) Func
@@ -292,23 +327,28 @@ ChatViewModelVideoError.hashValue Var
 ChatViewModelVideoError.noActiveConversation EnumElement
 ChatViewModelVideoError.notConfigured EnumElement
 ChatViewModelWebSearchError Enum
+ChatViewModelWebSearchError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 ChatViewModelWebSearchError.__derived_enum_equals(_:_:) Func
 ChatViewModelWebSearchError.errorDescription Var
 ChatViewModelWebSearchError.hash(into:) Func
 ChatViewModelWebSearchError.hashValue Var
 ChatViewModelWebSearchError.notConfigured EnumElement
 CitationsView Struct
+CitationsView attrs: Custom
+CitationsView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 CitationsView.Body TypeAlias
 CitationsView.body Var
 CitationsView.citations Var
 CitationsView.init(citations:onSelect:) Constructor
 ComposerConfiguration Struct
+ComposerConfiguration conformances: Copyable,Escapable
 ComposerConfiguration.affordances Var
 ComposerConfiguration.content Var
 ComposerConfiguration.hasAttachments Var
 ComposerConfiguration.init(content:affordances:phase:hasAttachments:) Constructor
 ComposerConfiguration.phase Var
 ComposerPhase Enum
+ComposerPhase conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ComposerPhase.__derived_enum_equals(_:_:) Func
 ComposerPhase.composing EnumElement
 ComposerPhase.generating EnumElement
@@ -317,30 +357,41 @@ ComposerPhase.hashValue Var
 ComposerPhase.idle EnumElement
 ComposerPhase.voice EnumElement
 ComposerStyle Protocol
+ComposerStyle conformances: Copyable,Escapable,Sendable,SendableMetatype
 ComposerStyle.Body AssociatedType
 ComposerStyle.Configuration TypeAlias
 ComposerStyle.glass Var
 ComposerStyle.makeBody(configuration:) Func
 ComposerStyle.plain Var
 ContextIndicatorView Struct
+ContextIndicatorView attrs: Custom
+ContextIndicatorView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ContextIndicatorView.Body TypeAlias
 ContextIndicatorView.body Var
 ContextIndicatorView.init(usedTokens:maxTokens:) Constructor
 ContextIndicatorView.maxTokens Var
 ContextIndicatorView.usedTokens Var
 DiagnosticsDisclosure Struct
+DiagnosticsDisclosure attrs: Custom
+DiagnosticsDisclosure conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 DiagnosticsDisclosure.Body TypeAlias
 DiagnosticsDisclosure.body Var
 DiagnosticsDisclosure.init(diagnostics:) Constructor
 DiagnosticsView Struct
+DiagnosticsView attrs: Custom
+DiagnosticsView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 DiagnosticsView.Body TypeAlias
 DiagnosticsView.body Var
 DiagnosticsView.init(diagnostics:) Constructor
 EmptySessionSuggestionsView Struct
+EmptySessionSuggestionsView attrs: Custom
+EmptySessionSuggestionsView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 EmptySessionSuggestionsView.Body TypeAlias
 EmptySessionSuggestionsView.body Var
 EmptySessionSuggestionsView.init(title:suggestions:onSelectSuggestion:) Constructor
 EnvironmentValues Struct
+EnvironmentValues attrs: Available
+EnvironmentValues conformances: Copyable,CustomStringConvertible,Escapable,Sendable,SendableMetatype
 EnvironmentValues.chatMessagePartRenderer Var
 EnvironmentValues.chatMessageRenderer Var
 EnvironmentValues.chatTheme Var
@@ -353,26 +404,35 @@ EnvironmentValues.sessionRowStyle Var
 EnvironmentValues.thinkingBlockStyle Var
 EnvironmentValues.toolInvocationStyle Var
 ExportButton Struct
+ExportButton attrs: Custom
+ExportButton conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ExportButton.Body TypeAlias
 ExportButton.body Var
 ExportButton.init(format:label:systemImage:) Constructor
 GenerationSettingsView Struct
+GenerationSettingsView attrs: Custom
+GenerationSettingsView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 GenerationSettingsView.Body TypeAlias
 GenerationSettingsView.body Var
 GenerationSettingsView.init(apiConfiguration:) Constructor
 GenerativeContextMenuItems Struct
+GenerativeContextMenuItems attrs: Custom
+GenerativeContextMenuItems conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 GenerativeContextMenuItems.Body TypeAlias
 GenerativeContextMenuItems.body Var
 GenerativeContextMenuItems.init(message:viewModel:) Constructor
 GlassComposerStyle Struct
+GlassComposerStyle conformances: ComposerStyle,Copyable,Escapable,Sendable,SendableMetatype
 GlassComposerStyle.Body TypeAlias
 GlassComposerStyle.init() Constructor
 GlassComposerStyle.makeBody(configuration:) Func
 IMessageMessageBubbleStyle Struct
+IMessageMessageBubbleStyle conformances: Copyable,Escapable,MessageBubbleStyle,Sendable,SendableMetatype
 IMessageMessageBubbleStyle.Body TypeAlias
 IMessageMessageBubbleStyle.init() Constructor
 IMessageMessageBubbleStyle.makeBody(configuration:) Func
 ImageGenerationProgress Struct
+ImageGenerationProgress conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ImageGenerationProgress.__derived_struct_equals(_:_:) Func
 ImageGenerationProgress.error Var
 ImageGenerationProgress.init(messageID:prompt:step:totalSteps:isComplete:error:) Constructor
@@ -384,14 +444,18 @@ ImageGenerationProgress.prompt Var
 ImageGenerationProgress.step Var
 ImageGenerationProgress.totalSteps Var
 ImageGenerationToolSource Class
+ImageGenerationToolSource attrs: Custom,Final
+ImageGenerationToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionToolSource
 ImageGenerationToolSource.init(viewModel:) Constructor
 ImageGenerationToolSource.resolve(toolName:arguments:session:) Func
 ImageGenerationToolSource.toolDefinitions(for:) Func
 IngestionIntent Enum
+IngestionIntent conformances: Copyable,Escapable,Sendable,SendableMetatype
 IngestionIntent.appendToActive EnumElement
 IngestionIntent.draft EnumElement
 IngestionIntent.newSession EnumElement
 IngestionPreset Struct
+IngestionPreset conformances: Copyable,Escapable,Sendable,SendableMetatype
 IngestionPreset.init(modelID:systemPrompt:temperature:topP:repeatPenalty:) Constructor
 IngestionPreset.modelID Var
 IngestionPreset.repeatPenalty Var
@@ -399,7 +463,9 @@ IngestionPreset.systemPrompt Var
 IngestionPreset.temperature Var
 IngestionPreset.topP Var
 InlineCitationRenderer Enum
+InlineCitationRenderer conformances: Copyable,Escapable
 InlineCitationRenderer.Segment Enum
+InlineCitationRenderer.Segment conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 InlineCitationRenderer.Segment.__derived_enum_equals(_:_:) Func
 InlineCitationRenderer.Segment.marker EnumElement
 InlineCitationRenderer.Segment.text EnumElement
@@ -409,6 +475,7 @@ InlineCitationRenderer.deepLinkURL(citationIndex:) Func
 InlineCitationRenderer.hasResolvableMarker(in:citations:) Func
 InlineCitationRenderer.segments(for:citations:) Func
 LinkPreviewMetadata Struct
+LinkPreviewMetadata conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 LinkPreviewMetadata.__derived_struct_equals(_:_:) Func
 LinkPreviewMetadata.imageURL Var
 LinkPreviewMetadata.init(url:title:summary:siteName:imageURL:) Constructor
@@ -417,6 +484,7 @@ LinkPreviewMetadata.summary Var
 LinkPreviewMetadata.title Var
 LinkPreviewMetadata.url Var
 ManifoldTheme Struct
+ManifoldTheme conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldTheme.accent Var
 ManifoldTheme.categorical Var
 ManifoldTheme.chatTheme Var
@@ -445,6 +513,7 @@ ManifoldTheme.surface Var
 ManifoldTheme.surface2 Var
 ManifoldTheme.type Var
 ManifoldThemeCategoricalTints Struct
+ManifoldThemeCategoricalTints conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldThemeCategoricalTints.blue Var
 ManifoldThemeCategoricalTints.blueColor Var
 ManifoldThemeCategoricalTints.gray Var
@@ -455,18 +524,22 @@ ManifoldThemeCategoricalTints.orangeColor Var
 ManifoldThemeCategoricalTints.purple Var
 ManifoldThemeCategoricalTints.purpleColor Var
 ManifoldThemeShapeScale Struct
+ManifoldThemeShapeScale conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldThemeShapeScale.init(xs:sm:md:lg:) Constructor
 ManifoldThemeShapeScale.lg Var
 ManifoldThemeShapeScale.md Var
 ManifoldThemeShapeScale.sm Var
 ManifoldThemeShapeScale.xs Var
 ManifoldThemeTypeScale Struct
+ManifoldThemeTypeScale conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldThemeTypeScale.body Var
 ManifoldThemeTypeScale.caption Var
 ManifoldThemeTypeScale.caption2 Var
 ManifoldThemeTypeScale.init(title:body:caption:caption2:) Constructor
 ManifoldThemeTypeScale.title Var
 MemoryIndicatorView Struct
+MemoryIndicatorView attrs: Custom
+MemoryIndicatorView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 MemoryIndicatorView.Body TypeAlias
 MemoryIndicatorView.appMemoryBytes Var
 MemoryIndicatorView.body Var
@@ -474,11 +547,13 @@ MemoryIndicatorView.init(pressureLevel:physicalMemoryBytes:appMemoryBytes:) Cons
 MemoryIndicatorView.physicalMemoryBytes Var
 MemoryIndicatorView.pressureLevel Var
 MessageBubbleConfiguration Struct
+MessageBubbleConfiguration conformances: Copyable,Escapable
 MessageBubbleConfiguration.content Var
 MessageBubbleConfiguration.init(content:role:isStreaming:) Constructor
 MessageBubbleConfiguration.isStreaming Var
 MessageBubbleConfiguration.role Var
 MessageBubbleStyle Protocol
+MessageBubbleStyle conformances: Copyable,Escapable,Sendable,SendableMetatype
 MessageBubbleStyle.Body AssociatedType
 MessageBubbleStyle.Configuration TypeAlias
 MessageBubbleStyle.card Var
@@ -486,6 +561,8 @@ MessageBubbleStyle.iMessage Var
 MessageBubbleStyle.makeBody(configuration:) Func
 MessageBubbleStyle.plain Var
 MessageBubbleView Struct
+MessageBubbleView attrs: Custom
+MessageBubbleView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 MessageBubbleView.Body TypeAlias
 MessageBubbleView.accessibilityLabel(for:) Func
 MessageBubbleView.body Var
@@ -499,53 +576,68 @@ MessageBubbleView.session Var
 MessageBubbleView.statusAccessibilityLabel(for:) Func
 MessageBubbleView.statusText(for:) Func
 ModelLoadingIndicatorView Struct
+ModelLoadingIndicatorView attrs: Custom
+ModelLoadingIndicatorView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ModelLoadingIndicatorView.Body TypeAlias
 ModelLoadingIndicatorView.body Var
 ModelLoadingIndicatorView.init(progress:onCancel:) Constructor
 ModelLoadingIndicatorView.onCancel Var
 ModelLoadingIndicatorView.progress Var
 PendingPayload Enum
+PendingPayload conformances: Copyable,Escapable,Sendable,SendableMetatype
 PendingPayload.file EnumElement
 PendingPayload.image EnumElement
 PendingPayload.text EnumElement
 PendingPayload.url EnumElement
 PersonaPickerView Struct
+PersonaPickerView attrs: Custom
+PersonaPickerView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 PersonaPickerView.Body TypeAlias
 PersonaPickerView.body Var
 PersonaPickerView.init() Constructor
 PlainComposerStyle Struct
+PlainComposerStyle conformances: ComposerStyle,Copyable,Escapable,Sendable,SendableMetatype
 PlainComposerStyle.Body TypeAlias
 PlainComposerStyle.init() Constructor
 PlainComposerStyle.makeBody(configuration:) Func
 PlainMessageBubbleStyle Struct
+PlainMessageBubbleStyle conformances: Copyable,Escapable,MessageBubbleStyle,Sendable,SendableMetatype
 PlainMessageBubbleStyle.Body TypeAlias
 PlainMessageBubbleStyle.init() Constructor
 PlainMessageBubbleStyle.makeBody(configuration:) Func
 PlainSessionRowStyle Struct
+PlainSessionRowStyle conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionRowStyle
 PlainSessionRowStyle.Body TypeAlias
 PlainSessionRowStyle.init() Constructor
 PlainSessionRowStyle.makeBody(configuration:) Func
 PlainThinkingBlockStyle Struct
+PlainThinkingBlockStyle conformances: Copyable,Escapable,Sendable,SendableMetatype,ThinkingBlockStyle
 PlainThinkingBlockStyle.Body TypeAlias
 PlainThinkingBlockStyle.init() Constructor
 PlainThinkingBlockStyle.makeBody(configuration:) Func
 PlainToolInvocationStyle Struct
+PlainToolInvocationStyle conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolInvocationStyle
 PlainToolInvocationStyle.Body TypeAlias
 PlainToolInvocationStyle.init() Constructor
 PlainToolInvocationStyle.makeBody(configuration:) Func
 QuietSessionRowStyle Struct
+QuietSessionRowStyle conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionRowStyle
 QuietSessionRowStyle.Body TypeAlias
 QuietSessionRowStyle.init() Constructor
 QuietSessionRowStyle.makeBody(configuration:) Func
 ResolvedBubbleChrome Struct
+ResolvedBubbleChrome conformances: Copyable,Escapable
 ResolvedBubbleChrome.background Var
 ResolvedBubbleChrome.cornerRadius Var
 ResolvedBubbleChrome.padding Var
 SamplerPresetPickerView Struct
+SamplerPresetPickerView attrs: Custom
+SamplerPresetPickerView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 SamplerPresetPickerView.Body TypeAlias
 SamplerPresetPickerView.body Var
 SamplerPresetPickerView.init() Constructor
 SendMessageError Enum
+SendMessageError conformances: BackendError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 SendMessageError.empty EnumElement
 SendMessageError.emptyInput EnumElement
 SendMessageError.errorDescription Var
@@ -555,18 +647,25 @@ SendMessageError.noActiveSession EnumElement
 SendMessageError.noModelLoaded EnumElement
 SendMessageError.runtime EnumElement
 SessionExportSheet Struct
+SessionExportSheet attrs: Custom
+SessionExportSheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 SessionExportSheet.Body TypeAlias
 SessionExportSheet.body Var
 SessionExportSheet.init(session:) Constructor
 SessionListView Struct
+SessionListView attrs: Custom
+SessionListView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 SessionListView.Body TypeAlias
 SessionListView.body Var
 SessionListView.init() Constructor
 SessionManagerViewModel Class
+SessionManagerViewModel attrs: Custom,Final
+SessionManagerViewModel conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 SessionManagerViewModel.activeSession Var
 SessionManagerViewModel.autoGenerateTitle(for:firstMessage:) Func
 SessionManagerViewModel.autoLoadTask Var
 SessionManagerViewModel.autoRenameSession(_:firstMessage:inferenceService:) Func
+SessionManagerViewModel.branchOriginTitle(for:) Func
 SessionManagerViewModel.clearSearch() Func
 SessionManagerViewModel.configure(bootstrap:) Func
 SessionManagerViewModel.configure(persistence:autoLoad:diagnostics:) Func
@@ -604,6 +703,7 @@ SessionManagerViewModel.titleMatches Var
 SessionManagerViewModel.togglePin(_:) Func
 SessionManagerViewModel.unpinSession(_:) Func
 SessionRowConfiguration Struct
+SessionRowConfiguration conformances: Copyable,Escapable
 SessionRowConfiguration.init(title:snippet:updatedAt:isPinned:isSelected:) Constructor
 SessionRowConfiguration.isPinned Var
 SessionRowConfiguration.isSelected Var
@@ -611,18 +711,22 @@ SessionRowConfiguration.snippet Var
 SessionRowConfiguration.title Var
 SessionRowConfiguration.updatedAt Var
 SessionRowStyle Protocol
+SessionRowStyle conformances: Copyable,Escapable,Sendable,SendableMetatype
 SessionRowStyle.Body AssociatedType
 SessionRowStyle.Configuration TypeAlias
 SessionRowStyle.makeBody(configuration:) Func
 SessionRowStyle.plain Var
 SessionRowStyle.quiet Var
 SessionRowView Struct
+SessionRowView attrs: Custom
+SessionRowView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 SessionRowView.Body TypeAlias
 SessionRowView.body Var
 SessionRowView.init(session:isSelected:) Constructor
 SessionRowView.isSelected Var
 SessionRowView.session Var
 SessionSearchScope Enum
+SessionSearchScope conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 SessionSearchScope.AllCases TypeAlias
 SessionSearchScope.RawValue TypeAlias
 SessionSearchScope.allCases Var
@@ -631,36 +735,46 @@ SessionSearchScope.messages EnumElement
 SessionSearchScope.rawValue Var
 SessionSearchScope.titles EnumElement
 ShimmerThinkingBlockStyle Struct
+ShimmerThinkingBlockStyle conformances: Copyable,Escapable,Sendable,SendableMetatype,ThinkingBlockStyle
 ShimmerThinkingBlockStyle.Body TypeAlias
 ShimmerThinkingBlockStyle.init() Constructor
 ShimmerThinkingBlockStyle.makeBody(configuration:) Func
 SpotlightIndexer Enum
+SpotlightIndexer attrs: Custom
+SpotlightIndexer conformances: Copyable,Escapable,Sendable,SendableMetatype
 SpotlightIndexer.defaultDomainIdentifier Var
 SpotlightIndexer.deleteAll(domainIdentifier:) Func
 SpotlightIndexer.index(sessions:domainIdentifier:) Func
 SpotlightIndexer.sessionID(from:) Func
 StreamingCursorView Struct
+StreamingCursorView attrs: Custom
+StreamingCursorView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 StreamingCursorView.Body TypeAlias
 StreamingCursorView.body Var
 StreamingCursorView.init() Constructor
 ThinkingBlockConfiguration Struct
+ThinkingBlockConfiguration conformances: Copyable,Escapable
 ThinkingBlockConfiguration.init(state:text:toggleExpanded:) Constructor
 ThinkingBlockConfiguration.state Var
 ThinkingBlockConfiguration.text Var
 ThinkingBlockConfiguration.toggleExpanded Var
 ThinkingBlockState Enum
+ThinkingBlockState conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ThinkingBlockState.__derived_enum_equals(_:_:) Func
 ThinkingBlockState.expanded EnumElement
 ThinkingBlockState.settled EnumElement
 ThinkingBlockState.streaming EnumElement
 ThinkingBlockStyle Protocol
+ThinkingBlockStyle conformances: Copyable,Escapable,Sendable,SendableMetatype
 ThinkingBlockStyle.Body AssociatedType
 ThinkingBlockStyle.Configuration TypeAlias
 ThinkingBlockStyle.makeBody(configuration:) Func
 ThinkingBlockStyle.plain Var
 ThinkingBlockStyle.shimmer Var
 ToolErrorPresentation Struct
+ToolErrorPresentation conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolErrorPresentation.ReauthenticationCTA Struct
+ToolErrorPresentation.ReauthenticationCTA conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolErrorPresentation.ReauthenticationCTA.__derived_struct_equals(_:_:) Func
 ToolErrorPresentation.ReauthenticationCTA.actionID Var
 ToolErrorPresentation.ReauthenticationCTA.init(actionID:label:message:serviceName:) Constructor
@@ -672,6 +786,7 @@ ToolErrorPresentation.init(errorKind:toolName:) Constructor
 ToolErrorPresentation.reauthenticationCTA Var
 ToolErrorPresentation.summary Var
 ToolInvocationConfiguration Struct
+ToolInvocationConfiguration conformances: Copyable,Escapable
 ToolInvocationConfiguration.arguments Var
 ToolInvocationConfiguration.errorPresentation Var
 ToolInvocationConfiguration.init(state:toolName:arguments:resultContent:errorPresentation:onApprove:onDeny:onReauthenticate:) Constructor
@@ -682,6 +797,7 @@ ToolInvocationConfiguration.resultContent Var
 ToolInvocationConfiguration.state Var
 ToolInvocationConfiguration.toolName Var
 ToolInvocationLifecycleState Enum
+ToolInvocationLifecycleState conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolInvocationLifecycleState.__derived_enum_equals(_:_:) Func
 ToolInvocationLifecycleState.awaitingApproval EnumElement
 ToolInvocationLifecycleState.completed EnumElement
@@ -690,14 +806,18 @@ ToolInvocationLifecycleState.hash(into:) Func
 ToolInvocationLifecycleState.hashValue Var
 ToolInvocationLifecycleState.running EnumElement
 ToolInvocationStyle Protocol
+ToolInvocationStyle conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolInvocationStyle.Body AssociatedType
 ToolInvocationStyle.Configuration TypeAlias
 ToolInvocationStyle.card Var
 ToolInvocationStyle.makeBody(configuration:) Func
 ToolInvocationStyle.plain Var
 ToolInvocationView Struct
+ToolInvocationView attrs: Custom
+ToolInvocationView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ToolInvocationView.Body TypeAlias
 ToolInvocationView.State Enum
+ToolInvocationView.State conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolInvocationView.State.__derived_enum_equals(_:_:) Func
 ToolInvocationView.State.completed EnumElement
 ToolInvocationView.State.failed EnumElement
@@ -714,11 +834,16 @@ ToolInvocationView.pairedResult Var
 ToolInvocationView.part Var
 ToolInvocationView.state Var
 TypingIndicatorView Struct
+TypingIndicatorView attrs: Custom
+TypingIndicatorView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 TypingIndicatorView.Body TypeAlias
 TypingIndicatorView.body Var
 TypingIndicatorView.init() Constructor
 UIToolApprovalGate Class
+UIToolApprovalGate attrs: Custom,Final
+UIToolApprovalGate conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype,ToolApprovalGate
 UIToolApprovalGate.Policy Enum
+UIToolApprovalGate.Policy conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 UIToolApprovalGate.Policy.AllCases TypeAlias
 UIToolApprovalGate.Policy.__derived_enum_equals(_:_:) Func
 UIToolApprovalGate.Policy.allCases Var
@@ -735,6 +860,7 @@ UIToolApprovalGate.policy Var
 UIToolApprovalGate.resetForNewSession() Func
 UIToolApprovalGate.resolve(callId:with:) Func
 VideoGenerationProgress Struct
+VideoGenerationProgress conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 VideoGenerationProgress.__derived_struct_equals(_:_:) Func
 VideoGenerationProgress.error Var
 VideoGenerationProgress.fractionComplete Var
@@ -743,10 +869,14 @@ VideoGenerationProgress.isComplete Var
 VideoGenerationProgress.messageID Var
 VideoGenerationProgress.prompt Var
 VideoGenerationToolSource Class
+VideoGenerationToolSource attrs: Custom,Final
+VideoGenerationToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionToolSource
 VideoGenerationToolSource.init(viewModel:) Constructor
 VideoGenerationToolSource.resolve(toolName:arguments:session:) Func
 VideoGenerationToolSource.toolDefinitions(for:) Func
 View Protocol
+View attrs: Available,Custom
+View conformances: Copyable,Escapable
 View.chatMessagePartRenderer(_:) Func
 View.chatMessageRenderer(_:) Func
 View.chatTheme(_:) Func
@@ -760,14 +890,20 @@ View.sessionRowStyle(_:) Func
 View.thinkingBlockStyle(_:) Func
 View.toolInvocationStyle(_:) Func
 VisionInputButton Struct
+VisionInputButton attrs: Custom
+VisionInputButton conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 VisionInputButton.Body TypeAlias
 VisionInputButton.body Var
 VisionInputButton.init() Constructor
 VoicePickerView Struct
+VoicePickerView attrs: Custom
+VoicePickerView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 VoicePickerView.Body TypeAlias
 VoicePickerView.body Var
 VoicePickerView.init(viewModel:language:) Constructor
 WebSearchToolSource Class
+WebSearchToolSource attrs: Custom,Final
+WebSearchToolSource conformances: Copyable,Escapable,Sendable,SendableMetatype,SessionToolSource
 WebSearchToolSource.init(viewModel:) Constructor
 WebSearchToolSource.resolve(toolName:arguments:session:) Func
 WebSearchToolSource.toolDefinitions(for:) Func

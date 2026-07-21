@@ -1,10 +1,13 @@
 NetworkActivity Enum
+NetworkActivity conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 NetworkActivity.__derived_enum_equals(_:_:) Func
 NetworkActivity.downloading EnumElement
 NetworkActivity.fetchingMetadata EnumElement
 NetworkActivity.idle EnumElement
 NetworkActivity.probing EnumElement
 NetworkActivityCenter Class
+NetworkActivityCenter attrs: Custom,Final
+NetworkActivityCenter conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 NetworkActivityCenter.activeHosts Var
 NetworkActivityCenter.begin(kind:host:) Func
 NetworkActivityCenter.current Var
@@ -15,12 +18,14 @@ NetworkActivityCenter.shared Var
 NetworkActivityCenter.updateDownload(_:bytesReceived:totalBytes:) Func
 NetworkActivityCenter.updates() Func
 NetworkActivityKind Enum
+NetworkActivityKind conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 NetworkActivityKind.__derived_enum_equals(_:_:) Func
 NetworkActivityKind.download EnumElement
 NetworkActivityKind.generic EnumElement
 NetworkActivityKind.metadata EnumElement
 NetworkActivityKind.probe EnumElement
 NetworkActivityToken Struct
+NetworkActivityToken conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 NetworkActivityToken.__derived_struct_equals(_:_:) Func
 NetworkActivityToken.hash(into:) Func
 NetworkActivityToken.hashValue Var

@@ -8,7 +8,10 @@
 (top-level).makeIsolatedModelsDirectory() Func
 (top-level).withTimeout(_:file:line:_:) Func
 ChaosBackend Class
+ChaosBackend attrs: Final
+ChaosBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 ChaosBackend.FailureMode Enum
+ChaosBackend.FailureMode conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ChaosBackend.FailureMode.__derived_enum_equals(_:_:) Func
 ChaosBackend.FailureMode.burstThenStall EnumElement
 ChaosBackend.FailureMode.dropMidStream EnumElement
@@ -32,6 +35,8 @@ ChaosBackend.tokensToYield Var
 ChaosBackend.toolCallsEmittedCount Var
 ChaosBackend.unloadModel() Func
 DenyAllURLProtocol Class
+DenyAllURLProtocol attrs: Final,ObjC
+DenyAllURLProtocol conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol
 DenyAllURLProtocol.attemptedRequests Var
 DenyAllURLProtocol.canInit(with:) Func
 DenyAllURLProtocol.canonicalRequest(for:) Func
@@ -45,6 +50,8 @@ DenyAllURLProtocol.startLoading() Func
 DenyAllURLProtocol.stopLoading() Func
 DenyAllURLProtocol.unregister() Func
 ErrorInjectingPersistenceProvider Class
+ErrorInjectingPersistenceProvider attrs: Custom,Final
+ErrorInjectingPersistenceProvider conformances: Copyable,Escapable,MessageStore,Sendable,SendableMetatype,SessionStore
 ErrorInjectingPersistenceProvider.deleteAll() Func
 ErrorInjectingPersistenceProvider.deleteAllCallCount Var
 ErrorInjectingPersistenceProvider.deleteMessage(_:) Func
@@ -78,6 +85,7 @@ ErrorInjectingPersistenceProvider.updateMessageCallCount Var
 ErrorInjectingPersistenceProvider.updateSession(_:) Func
 ErrorInjectingPersistenceProvider.updateSessionCallCount Var
 GoldenQuery Struct
+GoldenQuery conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GoldenQuery.__derived_struct_equals(_:_:) Func
 GoldenQuery.hash(into:) Func
 GoldenQuery.hashValue Var
@@ -85,6 +93,7 @@ GoldenQuery.init(query:relevantDocumentTitles:) Constructor
 GoldenQuery.query Var
 GoldenQuery.relevantDocumentTitles Var
 HardwareRequirements Enum
+HardwareRequirements conformances: Copyable,Escapable
 HardwareRequirements.discoverGGUFModels(in:fileManager:minimumModelSize:maximumModelSize:) Func
 HardwareRequirements.discoverMLXModelDirectories(in:fileManager:) Func
 HardwareRequirements.findGGUFModel(in:nameContains:environment:fileManager:minimumModelSize:maximumModelSize:) Func
@@ -108,6 +117,8 @@ HardwareRequirements.selectFilesystemModel(from:environmentKey:nameContains:envi
 HardwareRequirements.selectOllamaModel(from:preferredSizeRange:environment:) Func
 HardwareRequirements.selectOllamaToolCapableModel(from:environment:isToolCapable:) Func
 HashingEmbeddingBackend Class
+HashingEmbeddingBackend attrs: Final
+HashingEmbeddingBackend conformances: Copyable,EmbeddingBackend,Escapable,Sendable,SendableMetatype
 HashingEmbeddingBackend.capabilities Var
 HashingEmbeddingBackend.dimensions Var
 HashingEmbeddingBackend.embed(_:) Func
@@ -116,9 +127,12 @@ HashingEmbeddingBackend.isModelLoaded Var
 HashingEmbeddingBackend.loadModel(from:) Func
 HashingEmbeddingBackend.unloadModel() Func
 ImageFixtures Enum
+ImageFixtures conformances: Copyable,Escapable
 ImageFixtures.largeJPEG(approxBytes:) Func
 ImageFixtures.oneByOnePNGData Var
 MidStreamErrorBackend Class
+MidStreamErrorBackend attrs: Final
+MidStreamErrorBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 MidStreamErrorBackend.capabilities Var
 MidStreamErrorBackend.errorToThrow Var
 MidStreamErrorBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -130,12 +144,16 @@ MidStreamErrorBackend.stopGeneration() Func
 MidStreamErrorBackend.tokensBeforeError Var
 MidStreamErrorBackend.unloadModel() Func
 MockBenchmarkRunner Class
+MockBenchmarkRunner attrs: Final
+MockBenchmarkRunner conformances: Copyable,Escapable,ModelBenchmarkRunner,Sendable,SendableMetatype
 MockBenchmarkRunner.callCount Var
 MockBenchmarkRunner.init(result:) Constructor
 MockBenchmarkRunner.result Var
 MockBenchmarkRunner.runBenchmark(for:) Func
 MockBenchmarkRunner.shouldThrow Var
 MockCancellableLoadBackend Class
+MockCancellableLoadBackend attrs: Final
+MockCancellableLoadBackend conformances: CancellableModelLoading,Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 MockCancellableLoadBackend.awaitModelLoadSettled() Func
 MockCancellableLoadBackend.cancelModelLoad() Func
 MockCancellableLoadBackend.cancelModelLoadCallCount Var
@@ -150,7 +168,10 @@ MockCancellableLoadBackend.loadModel(from:plan:) Func
 MockCancellableLoadBackend.stopGeneration() Func
 MockCancellableLoadBackend.unloadModel() Func
 MockChatSessionIntentHandler Class
+MockChatSessionIntentHandler attrs: Final
+MockChatSessionIntentHandler conformances: ChatSessionIntentHandler,Copyable,Escapable,Sendable,SendableMetatype
 MockChatSessionIntentHandler.Invocation Struct
+MockChatSessionIntentHandler.Invocation conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MockChatSessionIntentHandler.Invocation.__derived_struct_equals(_:_:) Func
 MockChatSessionIntentHandler.Invocation.action Var
 MockChatSessionIntentHandler.Invocation.init(action:sessionID:) Constructor
@@ -160,6 +181,8 @@ MockChatSessionIntentHandler.handle(_:sessionID:) Func
 MockChatSessionIntentHandler.init() Constructor
 MockChatSessionIntentHandler.invocations Var
 MockDownloadManager Class
+MockDownloadManager attrs: Custom,Final
+MockDownloadManager conformances: BackgroundDownloadManaging,Copyable,Escapable,Sendable,SendableMetatype
 MockDownloadManager.activeDownloads Var
 MockDownloadManager.cancelDownload(id:) Func
 MockDownloadManager.cancelledIDs Var
@@ -173,6 +196,8 @@ MockDownloadManager.startDownloadError Var
 MockDownloadManager.startedModels Var
 MockDownloadManager.startedPlans Var
 MockHuggingFaceService Class
+MockHuggingFaceService attrs: Final
+MockHuggingFaceService conformances: Copyable,Escapable,HuggingFaceServiceProtocol,Sendable,SendableMetatype
 MockHuggingFaceService.curatedModels(for:) Func
 MockHuggingFaceService.downloadPlan(for:) Func
 MockHuggingFaceService.downloadPlanError Var
@@ -188,7 +213,10 @@ MockHuggingFaceService.searchError Var
 MockHuggingFaceService.searchModels(query:limit:) Func
 MockHuggingFaceService.searchResults Var
 MockInferenceBackend Class
+MockInferenceBackend attrs: Final
+MockInferenceBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 MockInferenceBackend.ScriptedToolCallDelta Enum
+MockInferenceBackend.ScriptedToolCallDelta conformances: Copyable,Escapable,Sendable,SendableMetatype
 MockInferenceBackend.ScriptedToolCallDelta.call EnumElement
 MockInferenceBackend.ScriptedToolCallDelta.delta EnumElement
 MockInferenceBackend.ScriptedToolCallDelta.start EnumElement
@@ -233,6 +261,8 @@ MockInferenceBackend.unloadCallCount Var
 MockInferenceBackend.unloadModel() Func
 MockInferenceBackend.usageToYieldPerTurn Var
 MockLoadProgressBackend Class
+MockLoadProgressBackend attrs: Final
+MockLoadProgressBackend conformances: Copyable,Escapable,InferenceBackend,LoadProgressReporting,Sendable,SendableMetatype
 MockLoadProgressBackend.capabilities Var
 MockLoadProgressBackend.deliveredValues Var
 MockLoadProgressBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -245,6 +275,8 @@ MockLoadProgressBackend.setLoadProgressHandler(_:) Func
 MockLoadProgressBackend.stopGeneration() Func
 MockLoadProgressBackend.unloadModel() Func
 MockPostGenerationTask Class
+MockPostGenerationTask attrs: Final
+MockPostGenerationTask conformances: Copyable,Escapable,PostGenerationTask,Sendable,SendableMetatype
 MockPostGenerationTask.callCount Var
 MockPostGenerationTask.errorToThrow Var
 MockPostGenerationTask.init() Constructor
@@ -253,11 +285,15 @@ MockPostGenerationTask.receivedSessions Var
 MockPostGenerationTask.run(message:session:) Func
 MockPostGenerationTask.runDelay Var
 MockSecureEnclaveKeyStore Class
+MockSecureEnclaveKeyStore attrs: Final
+MockSecureEnclaveKeyStore conformances: Copyable,Escapable,SecureEnclaveKeyStoreProtocol,Sendable,SendableMetatype
 MockSecureEnclaveKeyStore.getOrCreatePrivateKey() Func
 MockSecureEnclaveKeyStore.init() Constructor
 MockSecureEnclaveKeyStore.unwrapFromStorage(_:) Func
 MockSecureEnclaveKeyStore.wrapForStorage(_:) Func
 MockTokenizerVendorBackend Class
+MockTokenizerVendorBackend attrs: Final
+MockTokenizerVendorBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype,TokenizerProvider,TokenizerVendor
 MockTokenizerVendorBackend.capabilities Var
 MockTokenizerVendorBackend.generate(prompt:systemPrompt:config:hints:) Func
 MockTokenizerVendorBackend.init() Constructor
@@ -271,7 +307,10 @@ MockTokenizerVendorBackend.tokenizer Var
 MockTokenizerVendorBackend.tokensToYield Var
 MockTokenizerVendorBackend.unloadModel() Func
 MockURLProtocol Class
+MockURLProtocol attrs: Final,ObjC
+MockURLProtocol conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol
 MockURLProtocol.StubbedResponse Enum
+MockURLProtocol.StubbedResponse conformances: Copyable,Escapable,Sendable,SendableMetatype
 MockURLProtocol.StubbedResponse.asyncSSE EnumElement
 MockURLProtocol.StubbedResponse.corruptedJSONChunk EnumElement
 MockURLProtocol.StubbedResponse.delayedFirstByte EnumElement
@@ -291,8 +330,11 @@ MockURLProtocol.stub(url:response:) Func
 MockURLProtocol.stubSequence(url:responses:) Func
 MockURLProtocol.unstub(url:) Func
 ModelLoadPlan Struct
+ModelLoadPlan conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.testStub(effectiveContextSize:) Func
 OllamaEmbeddingBackend Class
+OllamaEmbeddingBackend attrs: Final
+OllamaEmbeddingBackend conformances: Copyable,EmbeddingBackend,Escapable,Sendable,SendableMetatype
 OllamaEmbeddingBackend.defaultModel Var
 OllamaEmbeddingBackend.dimensions Var
 OllamaEmbeddingBackend.embed(_:) Func
@@ -301,6 +343,8 @@ OllamaEmbeddingBackend.isModelLoaded Var
 OllamaEmbeddingBackend.loadModel(from:) Func
 OllamaEmbeddingBackend.unloadModel() Func
 PerceivedLatencyBackend Class
+PerceivedLatencyBackend attrs: Final
+PerceivedLatencyBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 PerceivedLatencyBackend.capabilities Var
 PerceivedLatencyBackend.generate(prompt:systemPrompt:config:hints:) Func
 PerceivedLatencyBackend.init(coldStartDelay:timeToFirstToken:interTokenJitter:tokensToYield:rngSeed:) Constructor
@@ -311,7 +355,9 @@ PerceivedLatencyBackend.stopGeneration() Func
 PerceivedLatencyBackend.tokensToYield Var
 PerceivedLatencyBackend.unloadModel() Func
 RAGEvalCorpus Enum
+RAGEvalCorpus conformances: Copyable,Escapable
 RAGEvalCorpus.EvalDocument Struct
+RAGEvalCorpus.EvalDocument conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RAGEvalCorpus.EvalDocument.__derived_struct_equals(_:_:) Func
 RAGEvalCorpus.EvalDocument.hash(into:) Func
 RAGEvalCorpus.EvalDocument.hashValue Var
@@ -322,18 +368,23 @@ RAGEvalCorpus.documents Var
 RAGEvalCorpus.goldenQueries Var
 RAGEvalCorpus.writeDocuments() Func
 RAGEvalError Enum
+RAGEvalError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
 RAGEvalError.__derived_enum_equals(_:_:) Func
 RAGEvalError.errorDescription Var
 RAGEvalError.generationTierNotImplemented EnumElement
 RAGEvalError.hash(into:) Func
 RAGEvalError.hashValue Var
 RAGEvaluator Enum
+RAGEvaluator conformances: Copyable,Escapable
 RAGEvaluator.evaluateRetrieval(service:queries:k:) Func
 RecordingRetrySleeper Class
+RecordingRetrySleeper attrs: Final
+RecordingRetrySleeper conformances: Copyable,Escapable,Sendable,SendableMetatype
 RecordingRetrySleeper.asSleeper Var
 RecordingRetrySleeper.init() Constructor
 RecordingRetrySleeper.recordedSleeps Var
 RetrievalMetrics Struct
+RetrievalMetrics conformances: Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RetrievalMetrics.__derived_struct_equals(_:_:) Func
 RetrievalMetrics.description Var
 RetrievalMetrics.hash(into:) Func
@@ -346,15 +397,19 @@ RetrievalMetrics.precisionAtK Var
 RetrievalMetrics.queryCount Var
 RetrievalMetrics.recallAtK Var
 SampleDocumentCorpus Enum
+SampleDocumentCorpus conformances: Copyable,Escapable
 SampleDocumentCorpus.documentURLs() Func
 SampleDocumentCorpus.fileNames Var
 ScriptedResponseTool Struct
+ScriptedResponseTool conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolExecutor
 ScriptedResponseTool.definition Var
 ScriptedResponseTool.execute(arguments:) Func
 ScriptedResponseTool.init(toolName:response:) Constructor
 ScriptedResponseTool.response Var
 ScriptedResponseTool.toolName Var
 SlowMockBackend Class
+SlowMockBackend attrs: Final
+SlowMockBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 SlowMockBackend.capabilities Var
 SlowMockBackend.delayPerToken Var
 SlowMockBackend.generate(prompt:systemPrompt:config:hints:) Func
@@ -368,12 +423,15 @@ SlowMockBackend.stopGeneration() Func
 SlowMockBackend.tokensToYield Var
 SlowMockBackend.unloadModel() Func
 TokenEmissionGate Class
+TokenEmissionGate conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 TokenEmissionGate.advance() Func
 TokenEmissionGate.init() Constructor
 TokenEmissionGate.release() Func
 TokenEmissionGate.unownedExecutor Var
 TokenEmissionGate.waitForAdvance() Func
 TokenTrackingMockBackend Class
+TokenTrackingMockBackend attrs: Final
+TokenTrackingMockBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype,TokenUsageProvider
 TokenTrackingMockBackend.capabilities Var
 TokenTrackingMockBackend.generate(prompt:systemPrompt:config:hints:) Func
 TokenTrackingMockBackend.init() Constructor

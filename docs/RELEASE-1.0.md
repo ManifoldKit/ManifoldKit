@@ -12,12 +12,16 @@
 > Each retains the alternative that was considered and why it was rejected, so
 > the reasoning survives the decision.
 >
-> **Two things remain open, and are marked as such wherever they appear** — a
-> reader should never have to guess which text is a ruling and which is not:
+> **Both things that were open are now settled.**
 > [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot)'s
-> isolation-change blind spot (a confirmed gap in the API-freeze tooling, not a
-> policy question), and Policy 2's two sub-questions (what "critical fix"
-> includes, and how a fix reaches the 1.x line). Both need settling before 1.0.
+> isolation-change blind spot was closed 2026-07-21: the normalizer now emits
+> conformance and filtered-attribute signal, so an isolation/`Sendable` change
+> on a public symbol shows up as baseline drift instead of silently passing.
+> Policy 2's two sub-questions were ruled on separately — "what counts as a
+> critical fix" on 2026-07-16 (narrow: security + data-loss/corruption only),
+> and "how a fix reaches the 1.x line" on 2026-07-21, via
+> [Appendix B](#appendix-b--1x-maintenance-branch-runbook)'s runbook. See each
+> section for the resolution.
 
 ManifoldKit is built for sustained development — apps operated over months and
 years, not a demo that compiles once. `1.0.0` is the point where that promise
@@ -63,10 +67,11 @@ across the 1.0 boundary:
 
 Two known limitations of this instrumentation are recorded in
 [Appendix A](#appendix-a--api-digester-isolation-change-blind-spot) — the more
-consequential is that neither gate reliably detects an actor-isolation change
+consequential was that neither gate reliably detected an actor-isolation change
 (adding `@MainActor` to a public symbol), which is source-breaking under Swift 6
-but is not an ABI property. That gap must be closed, or explicitly accepted as a
-manual review item, before 1.0.
+but is not an ABI property. That gap is now closed (2026-07-21): the
+public-surface baseline emits conformance and filtered-attribute signal, so an
+isolation/`Sendable` change registers as drift.
 
 Default visibility is `package`, not `public`
 ([`API-DESIGN.md` § 3](API-DESIGN.md)); the 1.0 surface is the set of symbols
@@ -200,20 +205,26 @@ that a removal skipped its deprecation minor, and none can notice a support tail
 quietly lapsing. Both halves are kept by hand. Policy 1 carries the same caveat;
 it is recorded here for the same reason.
 
-> **Open sub-question — not part of the 2026-07-16 ruling.** The accepted
-> decision is the *shape* — deprecate-in-minor, remove-in-next-major, six-month
-> tail. Two things it does not settle, flagged rather than assumed:
+> **Both sub-questions left open by the 2026-07-16 ruling are now settled.**
+> The accepted decision was the *shape* — deprecate-in-minor, remove-in-next-major,
+> six-month tail. Two things it did not settle at the time:
 >
-> - **What "critical fix" includes.** The narrow reading (security and
->   data-loss/corruption only) is what makes the tail keepable; a reading that
->   includes ordinary bugs is a materially larger commitment. Undecided.
-> - **How a fix reaches the 1.x line** once `main` has moved to 2.0. This
->   implies some maintenance-branch-shaped process, which **does not exist
->   today** and would be a real operational cost to stand up.
+> - **What "critical fix" includes.** Decided 2026-07-16 (same ruling comment
+>   as the shape, settled slightly after the policy text above was first
+>   written): the narrow reading — security and data-loss/corruption fixes
+>   only. Ordinary bugs do not qualify for a 1.x backport once `main` has moved
+>   to 2.0; they are fixed on `main` only. This is what keeps the six-month
+>   tail a bounded, solo-maintainer-sustainable commitment rather than an
+>   open-ended one.
+> - **How a fix reaches the 1.x line** once `main` has moved to 2.0. Resolved
+>   2026-07-21 by [Appendix B](#appendix-b--1x-maintenance-branch-runbook): a
+>   decided-but-dormant `release/1.x` branch runbook — cherry-pick from
+>   `main`, never branch-only, with the release mechanics and CI caveats
+>   spelled out there.
 >
 > The six-month tail is the only clause here obliging labor *after* attention
-> has moved to the next major, which is why these are worth settling before 1.0
-> rather than at the first 1.x security report.
+> has moved to the next major, which is why these were worth settling before
+> 1.0 rather than at the first 1.x security report.
 
 ### Policy 3 — SwiftData schema-stability promise
 
@@ -362,14 +373,185 @@ inferred:
   is `ScratchIsolationProbe Struct` in every one of the three states (no
   isolation, `@MainActor`, explicit `Sendable`) — byte-identical, zero drift.
 
-**Consequence for 1.0.** Actor-isolation and `Sendable`-conformance changes on
-public symbols are **not covered by either automated gate**, confirmed rather
-than inferred. Until closed, treat this as a **manual review item**: any PR
-that adds/removes `@MainActor`, `nonisolated`, or `Sendable` on a public
-symbol must call it out in its PR body, the same way a public-surface addition
-already must be justified. The fix, if ever prioritized, is narrow and
-data-already-exists: teach `api-surface-extract.py` to also emit a
-`declAttributes`/`conformances` line per type — the raw digester dump already
-carries the signal, only the normalizer discards it. (`.swiftinterface`
-text is a second, independent path worth measuring — it does print
-`@MainActor` in source form — but wasn't exercised in this experiment.)
+**Consequence for 1.0 (historical — see Resolution below).** Actor-isolation
+and `Sendable`-conformance changes on public symbols were **not covered by
+either automated gate**, confirmed rather than inferred. Until closed, the
+project treated this as a **manual review item**: any PR that adds/removes
+`@MainActor`, `nonisolated`, or `Sendable` on a public symbol had to call it
+out in its PR body, the same way a public-surface addition already must be
+justified. The fix, if ever prioritized, was narrow and data-already-exists:
+teach `api-surface-extract.py` to also emit a `declAttributes`/`conformances`
+line per type — the raw digester dump already carries the signal, only the
+normalizer discarded it. (`.swiftinterface` text is a second, independent path
+worth measuring — it does print `@MainActor` in source form — but wasn't
+exercised in this experiment.)
+
+### Resolution (closed 2026-07-21)
+
+The blind spot named above is closed. `scripts/_lib/api-surface-extract.py`
+now emits two additional deterministic line kinds per public `TypeDecl`,
+alongside the existing `<Qualified> <declKind>` line:
+
+- `<Qualified> conformances: A,B,C` — the type's `conformances` array
+  (sorted, comma-joined), when non-empty. Adding `@MainActor` or an explicit
+  `Sendable` both extend this list (`Sendable`, `SendableMetatype`), so both
+  now register as baseline drift — an addition line for the new conformance
+  names.
+- `<Qualified> attrs: X,Y` — a **filtered** view of the type's
+  `declAttributes`, when the filtered list is non-empty. `@MainActor` shows up
+  as the raw digester's generic `"Custom"` marker (it does not name which
+  attribute), so an `attrs: Custom` line appearing is the isolation signal
+  itself, not just a proxy for it.
+
+The filter (a denylist, applied before the `attrs:` line is emitted) excludes
+attributes that vary with doc comments or the digester's own internal
+bookkeeping rather than with a source-visible API change — chosen empirically
+against a real `ManifoldContract` dump (2026-07-21) rather than assumed. See
+the module docstring in `api-surface-extract.py` for the exact denylist and
+the dump evidence behind each entry, in the same style as the existing
+`isInternal`/`spi_group_names` notes.
+
+Member-level isolation changes (`@MainActor` on one public method rather than
+the whole type) are addressed per the empirical finding recorded in the same
+docstring — see there for whether member-level `declAttributes` were clean
+enough to emit, or whether type-level remains the accepted minimum.
+
+Coverage added: `Tests/APIFreezeTests/PublicSurfaceBaselineTests.swift` gained
+fixture-driven tests reproducing this Appendix's three probe states (plain
+public struct / `@MainActor` / explicit `Sendable`-only) as minimal ABIRoot
+JSON fixtures under `Tests/APIFreezeTests/Fixtures/`, asserting the normalizer
+now produces three distinct outputs. All 28 checked-in baselines were
+regenerated against the new normalizer (`scripts/api-surface-baseline.sh`) as
+part of the same change.
+
+---
+
+## Appendix B — 1.x maintenance-branch runbook
+
+Resolves Policy 2's second open sub-question: once `main` moves past a 2.0
+breaking-change wave, how does a critical fix (per the 2026-07-16 ruling:
+security or data-loss/corruption only — see Policy 2 above) reach a consumer
+still pinned to the 1.x line, during the six-month support tail? This is a
+**decided-but-dormant procedure** — written down now, before it's needed under
+pressure, per the same reasoning that motivated settling it before 1.0. Cut
+day is whenever the first 2.0-breaking `feat!:`/`BREAKING CHANGE:` lands on
+`main`; nothing in this appendix executes before then.
+
+### Trigger
+
+Cut `release/1.x` from the last 1.x tag **the moment the first 2.0-breaking
+change merges to `main`** — not before (there is nothing to protect yet) and
+not later (every commit after that point diverges `main` from the last-known
+1.x-compatible state). "Last 1.x tag" is whatever `.release-please-manifest.json`
+recorded immediately before that merge; find it via `git log --oneline
+.release-please-manifest.json` or the GitHub Releases page.
+
+```bash
+git fetch origin
+git branch release/1.x <last-1.x-tag>   # e.g. v1.4.2
+git push origin release/1.x
+```
+
+### Flow — fix on `main` first, cherry-pick back, never branch-only
+
+A critical fix is developed and merged to `main` exactly like any other PR —
+same review loop, same CI gate, same conventions. Once merged there, it is
+cherry-picked onto `release/1.x`:
+
+```bash
+git fetch origin
+git checkout -b fix/1.x-cherry-pick-<short-desc> origin/release/1.x
+git cherry-pick <main-commit-sha>
+# resolve conflicts if 2.0 refactored the surrounding code — the fix's
+# *behavior*, not its diff, is what must land on 1.x
+git push -u origin fix/1.x-cherry-pick-<short-desc>
+gh pr create --base release/1.x --title "fix: <same summary as the main PR>" --body "Cherry-pick of <main-commit-sha> for the 1.x maintenance line. Refs #<issue>."
+```
+
+Never develop the fix branch-only against `release/1.x` — `main` is always
+first, so the 2.0 line never regresses on a bug 1.x already fixed. If the fix
+doesn't apply to `main` at all (the bug was introduced by the 2.0 break
+itself), it isn't a 1.x maintenance fix — it's an ordinary `main` bug fix.
+
+### Release mechanics
+
+**Feasibility check performed 2026-07-21** (read `release-please-config.json`
+and every workflow that references `release-please`, per this repo's shared
+convention that release automation lives in `ManifoldKit/.github` and is
+consumed here — see [`mk-compat-bump-deps-convention`
+memory / AGENTS.md § Release workflow]): today's automation does **not**
+support a second target branch.
+
+- `.github/workflows/release-please.yml` triggers on `push: branches: [main]`
+  only, and passes no `target-branch` input to `googleapis/release-please-action@…
+  # v5` — the action defaults `target-branch` to the repository's default
+  branch when the input is omitted. A push to `release/1.x` today fires no
+  release-please run at all.
+- `release-please-config.json` / `.release-please-manifest.json` describe a
+  single package (`"."`) with a single version state — there is no
+  second manifest scoped to a maintenance branch.
+- `release-please-action` v5 *does* support a `target-branch` input in
+  general (it is part of the underlying `release-please` CLI's contract), so
+  wiring a second branch is possible in principle — but doing so is a change
+  to shared release automation, which this PR is explicitly scoped not to
+  make (see the task that produced this appendix). Standing it up (a second
+  workflow trigger on `release/1.x`, a `target-branch: release/1.x` input, and
+  a second manifest/config pair, or equivalent) is future work for whoever
+  cuts `release/1.x` for real.
+
+**Mechanism to use as configured today: hand-tagged `1.x.y`.** Until the
+automation is extended, cut a 1.x release manually:
+
+```bash
+git checkout release/1.x
+git pull origin release/1.x
+# Update CHANGELOG.md by hand (Prisma-style Highlights format, same as any
+# release — see AGENTS.md § Release workflow) and bump version.txt.
+git add CHANGELOG.md version.txt
+git commit -m "chore(release): 1.4.3"
+git tag -a v1.4.3 -m "v1.4.3"
+git push origin release/1.x v1.4.3
+gh release create v1.4.3 --target release/1.x --notes-file <(sed -n '/## \[1.4.3\]/,/## \[/p' CHANGELOG.md | sed '$d')
+```
+
+Re-evaluate the target-branch approach before the first real 1.x maintenance
+release ships, if wiring it up by then looks cheaper than the hand-tag path
+above — this appendix does not forbid extending the automation later, only
+declines to do it in the PR that first documents the runbook.
+
+### CI
+
+**As configured today, a PR against `release/1.x` would not trigger the full
+gate.** `ci.yml`'s `pull_request` trigger is `branches: [main]` (and its
+`push` trigger the same); a PR whose base is `release/1.x` matches neither
+filter, so none of `ci.yml`'s jobs would run. This is a real gap the cut-day
+procedure must handle, not a claim that it's already covered:
+
+- **Cut-day step:** when `release/1.x` is created, add it to `ci.yml`'s
+  `pull_request.branches` and `push.branches` lists in a small, reviewed PR
+  against `main` (a workflow-file change, so it needs its own review — this
+  is exactly the kind of change this current PR is scoped not to make
+  pre-emptively, since the branch doesn't exist yet and an untested trigger
+  addition is unverifiable today).
+- Until that lands, a maintenance-branch PR's safety net is running the full
+  local gate by hand (`scripts/test.sh --profile local`) before merging —
+  the same discipline the Draft-PR review loop already asks of every PR,
+  just without CI's automated confirmation.
+
+### Scope
+
+Critical fixes only, per Policy 2's now-decided sub-question: **security, and
+data-loss/corruption bugs.** Ordinary bugs, performance regressions, and
+feature requests are not eligible for a 1.x backport — they land on `main`
+only. This is what keeps the six-month tail affordable for a solo maintainer;
+widening scope here would silently re-open the "tiered support" alternative
+Policy 2 already rejected.
+
+### End-of-life
+
+Six months after `2.0.0` ships. The exact EOL date is **recorded in this
+appendix, in a dated addendum, on the day `2.0.0` releases** — not computed
+ad hoc later, so a consumer reading this document always finds a concrete
+date rather than a relative one that drifts with when they happen to read it.
+(No such addendum exists yet, because no 2.0 release has shipped as of this
+writing.)

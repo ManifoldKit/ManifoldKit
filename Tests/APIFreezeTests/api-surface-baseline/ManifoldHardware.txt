@@ -1,4 +1,5 @@
 APIProvider Enum
+APIProvider conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable,Sendable,SendableMetatype
 APIProvider.AllCases TypeAlias
 APIProvider.ID TypeAlias
 APIProvider.RawValue TypeAlias
@@ -21,12 +22,15 @@ APIProvider.parse(_:) Func
 APIProvider.rawValue Var
 APIProvider.requiresAPIKey Var
 AppMemoryUsage Enum
+AppMemoryUsage conformances: Copyable,Escapable
 AppMemoryUsage.currentBytes() Func
 AppMemoryUsage.format(_:) Func
 AppleSiliconBandwidth Enum
+AppleSiliconBandwidth conformances: Copyable,Escapable
 AppleSiliconBandwidth.estimatedBandwidthGBs() Func
 AppleSiliconBandwidth.fallbackBandwidthGBs Var
 BackendBuildProfile Enum
+BackendBuildProfile conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 BackendBuildProfile.AllCases TypeAlias
 BackendBuildProfile.RawValue TypeAlias
 BackendBuildProfile.allCases Var
@@ -37,6 +41,7 @@ BackendBuildProfile.rawValue Var
 BackendBuildProfile.saas EnumElement
 BackendBuildProfile.selfHosted EnumElement
 BackendBuildTrait Enum
+BackendBuildTrait conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 BackendBuildTrait.AllCases TypeAlias
 BackendBuildTrait.RawValue TypeAlias
 BackendBuildTrait.allCases Var
@@ -48,6 +53,7 @@ BackendBuildTrait.mlx EnumElement
 BackendBuildTrait.ollama EnumElement
 BackendBuildTrait.rawValue Var
 BackendCapabilities Struct
+BackendCapabilities conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 BackendCapabilities.__derived_struct_equals(_:_:) Func
 BackendCapabilities.cancellationStyle Var
 BackendCapabilities.contextWindowSize Var
@@ -86,19 +92,24 @@ BackendCapabilities.unsatisfied(from:) Func
 BackendCapabilities.updating(supportedParameters:maxContextTokens:requiresPromptTemplate:supportsSystemPrompt:supportsToolCalling:supportsStructuredOutput:supportsNativeJSONMode:cancellationStyle:supportsTokenCounting:memoryStrategy:maxOutputTokens:supportsStreaming:isRemote:supportsKVCachePersistence:supportsGrammarConstrainedSampling:supportsThinking:supportsVision:streamsToolCallArguments:supportsParallelToolCalls:supportsGuidedStructuredOutput:supportsStrictSchema:sharesMLXProcessResources:rendersFullPrompt:maxAdvertisedToolCount:toolDialect:) Func
 BackendCapabilities.visibleParameters Var
 BackendDescriptorRegistry Struct
+BackendDescriptorRegistry conformances: Copyable,Escapable,Sendable,SendableMetatype
 BackendDescriptorRegistry.allCloudProviders Var
 BackendDescriptorRegistry.descriptor(for:) Func
 BackendDescriptorRegistry.register(_:) Func
 BackendDescriptorRegistry.shared Var
 BackendRegistrySampling Protocol
+BackendRegistrySampling attrs: Custom
+BackendRegistrySampling conformances: Copyable,Escapable
 BackendRegistrySampling.registeredBackendSnapshot() Func
 CancellationStyle Enum
+CancellationStyle conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 CancellationStyle.RawValue TypeAlias
 CancellationStyle.cooperative EnumElement
 CancellationStyle.explicit EnumElement
 CancellationStyle.init(rawValue:) Constructor
 CancellationStyle.rawValue Var
 CloudProviderDescriptor Struct
+CloudProviderDescriptor conformances: Copyable,Escapable,Sendable,SendableMetatype
 CloudProviderDescriptor.builtIns Var
 CloudProviderDescriptor.defaultBaseURL Var
 CloudProviderDescriptor.defaultModelName Var
@@ -109,6 +120,7 @@ CloudProviderDescriptor.providerID Var
 CloudProviderDescriptor.requiresAPIKey Var
 CloudProviderDescriptor.sortOrder Var
 CompiledBackends Struct
+CompiledBackends conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 CompiledBackends.__derived_struct_equals(_:_:) Func
 CompiledBackends.buildProfile Var
 CompiledBackends.cloudProviders Var
@@ -124,6 +136,7 @@ CompiledBackends.supportsCloudInference Var
 CompiledBackends.supportsLocalInference Var
 CompiledBackends.traits Var
 ContentFilteringDisclosure Enum
+ContentFilteringDisclosure conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ContentFilteringDisclosure.__derived_enum_equals(_:_:) Func
 ContentFilteringDisclosure.applied EnumElement
 ContentFilteringDisclosure.encode(to:) Func
@@ -133,6 +146,7 @@ ContentFilteringDisclosure.init(from:) Constructor
 ContentFilteringDisclosure.none EnumElement
 ContentFilteringDisclosure.unknown EnumElement
 CuratedModel Struct
+CuratedModel conformances: Copyable,Escapable,Identifiable,Sendable,SendableMetatype
 CuratedModel.ID TypeAlias
 CuratedModel.activeParameterBytes Var
 CuratedModel.all Var
@@ -150,6 +164,8 @@ CuratedModel.promptTemplate Var
 CuratedModel.recommendedFor Var
 CuratedModel.repoID Var
 DeviceCapabilityService Class
+DeviceCapabilityService attrs: Final
+DeviceCapabilityService conformances: Copyable,Escapable,Sendable,SendableMetatype
 DeviceCapabilityService.deviceDescription Var
 DeviceCapabilityService.init() Constructor
 DeviceCapabilityService.init(physicalMemory:) Constructor
@@ -157,6 +173,7 @@ DeviceCapabilityService.physicalMemory Var
 DeviceCapabilityService.queryAvailableMemory() Func
 DeviceCapabilityService.recommendedModelSize() Func
 DeviceProfile Struct
+DeviceProfile conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 DeviceProfile.__derived_struct_equals(_:_:) Func
 DeviceProfile.current Var
 DeviceProfile.init(physicalMemoryBytes:usableMemoryBytes:memoryBandwidthGBs:) Constructor
@@ -164,6 +181,7 @@ DeviceProfile.memoryBandwidthGBs Var
 DeviceProfile.physicalMemoryBytes Var
 DeviceProfile.usableMemoryBytes Var
 DownloadableModel Struct
+DownloadableModel conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
 DownloadableModel.ID TypeAlias
 DownloadableModel.__derived_struct_equals(_:_:) Func
 DownloadableModel.activeParameterBytes Var
@@ -188,6 +206,7 @@ DownloadableModel.sizeBytes Var
 DownloadableModel.sizeFormatted Var
 DownloadableModel.validate(fileName:) Func
 DownloadableModelGroup Struct
+DownloadableModelGroup conformances: Copyable,Escapable,Identifiable
 DownloadableModelGroup.ID TypeAlias
 DownloadableModelGroup.displayName Var
 DownloadableModelGroup.downloads Var
@@ -199,6 +218,7 @@ DownloadableModelGroup.repoID Var
 DownloadableModelGroup.sizeRange Var
 DownloadableModelGroup.variants Var
 EnabledBackends Struct
+EnabledBackends conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 EnabledBackends.__derived_struct_equals(_:_:) Func
 EnabledBackends.cloudProviders Var
 EnabledBackends.count Var
@@ -211,6 +231,7 @@ EnabledBackends.supportsGGUF Var
 EnabledBackends.supportsLocalInference Var
 EnabledBackends.supportsMLX Var
 FitQuality Enum
+FitQuality conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 FitQuality.AllCases TypeAlias
 FitQuality.__derived_enum_equals(_:_:) Func
 FitQuality.allCases Var
@@ -223,6 +244,7 @@ FitQuality.label Var
 FitQuality.marginal EnumElement
 FitQuality.notRecommended EnumElement
 FitWeights Struct
+FitWeights conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 FitWeights.__derived_struct_equals(_:_:) Func
 FitWeights.context Var
 FitWeights.fit Var
@@ -230,6 +252,8 @@ FitWeights.init(quality:speed:fit:context:) Constructor
 FitWeights.quality Var
 FitWeights.speed Var
 FrameworkCapabilityService Class
+FrameworkCapabilityService attrs: Custom,Final
+FrameworkCapabilityService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 FrameworkCapabilityService.canLoad(modelType:) Func
 FrameworkCapabilityService.canLoad(provider:) Func
 FrameworkCapabilityService.compatibility(for:) Func
@@ -239,7 +263,9 @@ FrameworkCapabilityService.init(inferenceService:) Constructor
 FrameworkCapabilityService.refresh() Func
 FrameworkCapabilityService.unavailableReason(for:) Func
 GGUFSignedManifest Struct
+GGUFSignedManifest conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GGUFSignedManifest.File Struct
+GGUFSignedManifest.File conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GGUFSignedManifest.File.__derived_struct_equals(_:_:) Func
 GGUFSignedManifest.File.encode(to:) Func
 GGUFSignedManifest.File.hash(into:) Func
@@ -249,6 +275,7 @@ GGUFSignedManifest.File.init(path:sha256:) Constructor
 GGUFSignedManifest.File.path Var
 GGUFSignedManifest.File.sha256 Var
 GGUFSignedManifest.Payload Struct
+GGUFSignedManifest.Payload conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GGUFSignedManifest.Payload.__derived_struct_equals(_:_:) Func
 GGUFSignedManifest.Payload.encode(to:) Func
 GGUFSignedManifest.Payload.files Var
@@ -257,6 +284,7 @@ GGUFSignedManifest.Payload.hashValue Var
 GGUFSignedManifest.Payload.init(files:) Constructor
 GGUFSignedManifest.Payload.init(from:) Constructor
 GGUFSignedManifest.Signature Struct
+GGUFSignedManifest.Signature conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GGUFSignedManifest.Signature.__derived_struct_equals(_:_:) Func
 GGUFSignedManifest.Signature.algorithm Var
 GGUFSignedManifest.Signature.encode(to:) Func
@@ -275,8 +303,10 @@ GGUFSignedManifest.init(payload:signature:) Constructor
 GGUFSignedManifest.payload Var
 GGUFSignedManifest.signature Var
 GGUFSignedManifestSignatureVerifying Protocol
+GGUFSignedManifestSignatureVerifying conformances: Copyable,Escapable,Sendable,SendableMetatype
 GGUFSignedManifestSignatureVerifying.verify(signature:canonicalPayload:) Func
 GGUFSignedManifestVerificationError Enum
+GGUFSignedManifestVerificationError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 GGUFSignedManifestVerificationError.__derived_enum_equals(_:_:) Func
 GGUFSignedManifestVerificationError.digestMismatch EnumElement
 GGUFSignedManifestVerificationError.errorDescription Var
@@ -286,11 +316,13 @@ GGUFSignedManifestVerificationError.missingManifestEntry EnumElement
 GGUFSignedManifestVerificationError.signatureRejected EnumElement
 GGUFSignedManifestVerificationError.unsignedManifest EnumElement
 GGUFSignedManifestVerifier Struct
+GGUFSignedManifestVerifier conformances: Copyable,Escapable,Sendable,SendableMetatype
 GGUFSignedManifestVerifier.canonicalPayloadData(for:) Func
 GGUFSignedManifestVerifier.init(signatureVerifier:) Constructor
 GGUFSignedManifestVerifier.verify(fileURL:manifest:expectedPath:) Func
 GGUFSignedManifestVerifier.verify(fileURL:manifestData:expectedPath:) Func
 GenerationCapabilityRequirement Enum
+GenerationCapabilityRequirement conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 GenerationCapabilityRequirement.__derived_enum_equals(_:_:) Func
 GenerationCapabilityRequirement.encode(to:) Func
 GenerationCapabilityRequirement.grammarConstrainedSampling EnumElement
@@ -306,6 +338,7 @@ GenerationCapabilityRequirement.structuredOutput EnumElement
 GenerationCapabilityRequirement.thinking EnumElement
 GenerationCapabilityRequirement.toolCalling EnumElement
 GenerationParameter Enum
+GenerationParameter conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 GenerationParameter.AllCases TypeAlias
 GenerationParameter.RawValue TypeAlias
 GenerationParameter.allCases Var
@@ -323,6 +356,7 @@ GenerationParameter.temperature EnumElement
 GenerationParameter.topK EnumElement
 GenerationParameter.topP EnumElement
 ImageModelFormat Enum
+ImageModelFormat conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ImageModelFormat.AllCases TypeAlias
 ImageModelFormat.RawValue TypeAlias
 ImageModelFormat.allCases Var
@@ -332,6 +366,7 @@ ImageModelFormat.init(rawValue:) Constructor
 ImageModelFormat.mlxDiffusion EnumElement
 ImageModelFormat.rawValue Var
 InferenceError Enum
+InferenceError conformances: CategorizedError,Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 InferenceError.alreadyGenerating EnumElement
 InferenceError.contextExhausted EnumElement
 InferenceError.errorDescription Var
@@ -346,6 +381,8 @@ InferenceError.noBackendSatisfiesRequirements EnumElement
 InferenceError.unsupportedGrammar EnumElement
 InferenceError.unsupportedModelArchitecture EnumElement
 JSONSchemaValue Enum
+JSONSchemaValue attrs: Indirect
+JSONSchemaValue conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 JSONSchemaValue.__derived_enum_equals(_:_:) Func
 JSONSchemaValue.array EnumElement
 JSONSchemaValue.bool EnumElement
@@ -359,11 +396,13 @@ JSONSchemaValue.number EnumElement
 JSONSchemaValue.object EnumElement
 JSONSchemaValue.string EnumElement
 LoadDenyPolicy Enum
+LoadDenyPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
 LoadDenyPolicy.custom EnumElement
 LoadDenyPolicy.platformDefault Var
 LoadDenyPolicy.throwError EnumElement
 LoadDenyPolicy.warnOnly EnumElement
 LocalModelDescriptor Struct
+LocalModelDescriptor conformances: Copyable,Escapable,Sendable,SendableMetatype
 LocalModelDescriptor.backendLabel Var
 LocalModelDescriptor.builtIns Var
 LocalModelDescriptor.engineLabel Var
@@ -373,12 +412,14 @@ LocalModelDescriptor.isDownloadable Var
 LocalModelDescriptor.modelType Var
 LocalModelDescriptor.sortOrder Var
 MemoryPressureEvent Enum
+MemoryPressureEvent conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 MemoryPressureEvent.__derived_enum_equals(_:_:) Func
 MemoryPressureEvent.didReload EnumElement
 MemoryPressureEvent.didUnload EnumElement
 MemoryPressureEvent.levelChanged EnumElement
 MemoryPressureEvent.willUnload EnumElement
 MemoryPressureLevel Enum
+MemoryPressureLevel conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MemoryPressureLevel.RawValue TypeAlias
 MemoryPressureLevel.critical EnumElement
 MemoryPressureLevel.init(rawValue:) Constructor
@@ -386,6 +427,7 @@ MemoryPressureLevel.nominal EnumElement
 MemoryPressureLevel.rawValue Var
 MemoryPressureLevel.warning EnumElement
 MemoryStrategy Enum
+MemoryStrategy conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MemoryStrategy.RawValue TypeAlias
 MemoryStrategy.external EnumElement
 MemoryStrategy.init(rawValue:) Constructor
@@ -393,6 +435,7 @@ MemoryStrategy.mappable EnumElement
 MemoryStrategy.rawValue Var
 MemoryStrategy.resident EnumElement
 ModelBenchmarkResult Struct
+ModelBenchmarkResult conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelBenchmarkResult.__derived_struct_equals(_:_:) Func
 ModelBenchmarkResult.encode(to:) Func
 ModelBenchmarkResult.hash(into:) Func
@@ -405,6 +448,7 @@ ModelBenchmarkResult.memoryBytes Var
 ModelBenchmarkResult.tier Var
 ModelBenchmarkResult.tokensPerSecond Var
 ModelCapabilityTier Enum
+ModelCapabilityTier conformances: Comparable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelCapabilityTier.<(_:_:) Func
 ModelCapabilityTier.RawValue TypeAlias
 ModelCapabilityTier.balanced EnumElement
@@ -417,12 +461,14 @@ ModelCapabilityTier.label Var
 ModelCapabilityTier.minimal EnumElement
 ModelCapabilityTier.rawValue Var
 ModelCompatibilityResult Enum
+ModelCompatibilityResult conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelCompatibilityResult.__derived_enum_equals(_:_:) Func
 ModelCompatibilityResult.isSupported Var
 ModelCompatibilityResult.supported EnumElement
 ModelCompatibilityResult.unavailableReason Var
 ModelCompatibilityResult.unsupported EnumElement
 ModelFitScore Struct
+ModelFitScore conformances: Comparable,Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelFitScore.<(_:_:) Func
 ModelFitScore.__derived_struct_equals(_:_:) Func
 ModelFitScore.composite Var
@@ -438,18 +484,22 @@ ModelFitScore.speed Var
 ModelFitScore.speedClass Var
 ModelFitScore.willRun Var
 ModelFitScorer Struct
+ModelFitScorer conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelFitScorer.init(speedSaturationTokensPerSecond:efficiencyFactor:) Constructor
 ModelFitScorer.rank(_:useCase:requestedContextSize:device:environment:) Func
 ModelFitScorer.rank(candidates:useCase:device:requestedContextSize:foundationAvailable:) Func
 ModelFitScorer.score(_:useCase:requestedContextSize:knownContextLength:device:environment:) Func
 ModelFitScorer.score(candidate:useCase:device:requestedContextSize:foundationAvailable:) Func
 ModelLoadPlan Struct
+ModelLoadPlan conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.Environment Struct
+ModelLoadPlan.Environment conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.Environment.availableMemoryBytes Var
 ModelLoadPlan.Environment.current Var
 ModelLoadPlan.Environment.init(availableMemoryBytes:physicalMemoryBytes:) Constructor
 ModelLoadPlan.Environment.physicalMemoryBytes Var
 ModelLoadPlan.Inputs Struct
+ModelLoadPlan.Inputs conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.Inputs.__derived_struct_equals(_:_:) Func
 ModelLoadPlan.Inputs.absoluteContextCeiling Var
 ModelLoadPlan.Inputs.appOverheadBytes Var
@@ -464,6 +514,7 @@ ModelLoadPlan.Inputs.physicalMemoryBytes Var
 ModelLoadPlan.Inputs.requestedContextSize Var
 ModelLoadPlan.Inputs.trainedContextLength Var
 ModelLoadPlan.Outcome Struct
+ModelLoadPlan.Outcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.Outcome.__derived_struct_equals(_:_:) Func
 ModelLoadPlan.Outcome.effectiveContextSize Var
 ModelLoadPlan.Outcome.estimatedKVBytes Var
@@ -473,6 +524,7 @@ ModelLoadPlan.Outcome.reasons Var
 ModelLoadPlan.Outcome.totalEstimatedBytes Var
 ModelLoadPlan.Outcome.verdict Var
 ModelLoadPlan.Reason Enum
+ModelLoadPlan.Reason conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelLoadPlan.Reason.__derived_enum_equals(_:_:) Func
 ModelLoadPlan.Reason.absoluteCeilingReached EnumElement
 ModelLoadPlan.Reason.insufficientKVCache EnumElement
@@ -480,6 +532,7 @@ ModelLoadPlan.Reason.insufficientResident EnumElement
 ModelLoadPlan.Reason.memoryCeilingReached EnumElement
 ModelLoadPlan.Reason.trainedContextExceeded EnumElement
 ModelLoadPlan.Verdict Enum
+ModelLoadPlan.Verdict conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ModelLoadPlan.Verdict.__derived_enum_equals(_:_:) Func
 ModelLoadPlan.Verdict.allow EnumElement
 ModelLoadPlan.Verdict.deny EnumElement
@@ -499,15 +552,18 @@ ModelLoadPlan.reasons Var
 ModelLoadPlan.systemManaged(requestedContextSize:) Func
 ModelLoadPlan.verdict Var
 ModelPackageKind Enum
+ModelPackageKind conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelPackageKind.RawValue TypeAlias
 ModelPackageKind.diffusion EnumElement
 ModelPackageKind.init(rawValue:) Constructor
 ModelPackageKind.mlxSnapshot EnumElement
 ModelPackageKind.rawValue Var
 ModelSelectionCandidate Enum
+ModelSelectionCandidate conformances: Copyable,Escapable,Sendable,SendableMetatype
 ModelSelectionCandidate.downloadable EnumElement
 ModelSelectionCandidate.resident EnumElement
 ModelSelectionProfile Struct
+ModelSelectionProfile conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ModelSelectionProfile.__derived_struct_equals(_:_:) Func
 ModelSelectionProfile.activeParameterBytes Var
 ModelSelectionProfile.contentFiltering Var
@@ -517,6 +573,7 @@ ModelSelectionProfile.init(modelID:residency:estimatedFootprintBytes:activeParam
 ModelSelectionProfile.modelID Var
 ModelSelectionProfile.residency Var
 ModelSizeRecommendation Enum
+ModelSizeRecommendation conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelSizeRecommendation.AllCases TypeAlias
 ModelSizeRecommendation.RawValue TypeAlias
 ModelSizeRecommendation.allCases Var
@@ -529,6 +586,7 @@ ModelSizeRecommendation.rawValue Var
 ModelSizeRecommendation.small EnumElement
 ModelSizeRecommendation.xlarge EnumElement
 ModelType Struct
+ModelType conformances: Copyable,CustomStringConvertible,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelType.RawValue TypeAlias
 ModelType.description Var
 ModelType.encode(to:) Func
@@ -540,11 +598,14 @@ ModelType.mlx Var
 ModelType.rawValue Var
 ModelType.wellKnown Var
 ModelTypeCompatibilityProvider Protocol
+ModelTypeCompatibilityProvider attrs: Custom
+ModelTypeCompatibilityProvider conformances: Copyable,Escapable
 ModelTypeCompatibilityProvider.canLoad(modelType:) Func
 ModelTypeCompatibilityProvider.canLoad(provider:) Func
 ModelTypeCompatibilityProvider.compatibility(for:) Func
 ModelTypeCompatibilityProvider.unavailableReason(for:) Func
 ModelUseCase Enum
+ModelUseCase conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ModelUseCase.AllCases TypeAlias
 ModelUseCase.RawValue TypeAlias
 ModelUseCase.allCases Var
@@ -559,6 +620,7 @@ ModelUseCase.rawValue Var
 ModelUseCase.reasoning EnumElement
 ModelUseCase.weights Var
 NeuralAcceleratorAvailability Enum
+NeuralAcceleratorAvailability conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 NeuralAcceleratorAvailability.__derived_enum_equals(_:_:) Func
 NeuralAcceleratorAvailability.available EnumElement
 NeuralAcceleratorAvailability.hash(into:) Func
@@ -567,8 +629,10 @@ NeuralAcceleratorAvailability.unavailableHardware EnumElement
 NeuralAcceleratorAvailability.unavailableOS EnumElement
 NeuralAcceleratorAvailability.unsupportedPlatform EnumElement
 NeuralAcceleratorProbe Enum
+NeuralAcceleratorProbe conformances: Copyable,Escapable,Sendable,SendableMetatype
 NeuralAcceleratorProbe.availability Var
 PrecisionVariant Enum
+PrecisionVariant conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 PrecisionVariant.AllCases TypeAlias
 PrecisionVariant.RawValue TypeAlias
 PrecisionVariant.allCases Var
@@ -577,6 +641,7 @@ PrecisionVariant.fullPrecision EnumElement
 PrecisionVariant.init(rawValue:) Constructor
 PrecisionVariant.rawValue Var
 PrefillFootprintEstimator Struct
+PrefillFootprintEstimator conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 PrefillFootprintEstimator.__derived_struct_equals(_:_:) Func
 PrefillFootprintEstimator.estimatedBytesPerToken Var
 PrefillFootprintEstimator.init(smoothingFactor:minimumSamplesForEstimate:) Constructor
@@ -590,6 +655,7 @@ PrefillFootprintEstimator.smoothedBytesPerToken Var
 PrefillFootprintEstimator.smoothingFactor Var
 PrefillFootprintEstimator.wouldExceedHeadroom(remainingBytes:nextChunkTokens:safetyFactor:) Func
 PromptTemplate Enum
+PromptTemplate conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Identifiable,RawRepresentable,Sendable,SendableMetatype
 PromptTemplate.AllCases TypeAlias
 PromptTemplate.ID TypeAlias
 PromptTemplate.RawValue TypeAlias
@@ -609,14 +675,17 @@ PromptTemplate.rawValue Var
 PromptTemplate.rendersToolsNatively Var
 PromptTemplate.thinkingMarkers Var
 RejectingGGUFSignedManifestSignatureVerifier Struct
+RejectingGGUFSignedManifestSignatureVerifier conformances: Copyable,Escapable,GGUFSignedManifestSignatureVerifying,Sendable,SendableMetatype
 RejectingGGUFSignedManifestSignatureVerifier.init() Constructor
 RejectingGGUFSignedManifestSignatureVerifier.verify(signature:canonicalPayload:) Func
 ResidencyState Enum
+ResidencyState conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ResidencyState.__derived_enum_equals(_:_:) Func
 ResidencyState.downloadable EnumElement
 ResidencyState.downloaded EnumElement
 ResidencyState.osResident EnumElement
 SpeedClass Enum
+SpeedClass conformances: CaseIterable,Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 SpeedClass.AllCases TypeAlias
 SpeedClass.__derived_enum_equals(_:_:) Func
 SpeedClass.allCases Var
@@ -629,15 +698,18 @@ SpeedClass.sluggish EnumElement
 SpeedClass.tooSlow EnumElement
 SpeedClass.usable EnumElement
 StructuredOutputRouter Enum
+StructuredOutputRouter conformances: Copyable,Escapable
 StructuredOutputRouter.selectStrategy(capabilities:gbnfGrammar:guidedType:jsonSchema:) Func
 StructuredOutputRouter.selectStrategy(capabilities:target:) Func
 StructuredOutputStrategy Enum
+StructuredOutputStrategy conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 StructuredOutputStrategy.==(_:_:) Func
 StructuredOutputStrategy.gbnf EnumElement
 StructuredOutputStrategy.guided EnumElement
 StructuredOutputStrategy.jsonPrompting EnumElement
 StructuredOutputStrategy.jsonSchema EnumElement
 StructuredOutputSupport Enum
+StructuredOutputSupport conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 StructuredOutputSupport.AllCases TypeAlias
 StructuredOutputSupport.RawValue TypeAlias
 StructuredOutputSupport.allCases Var
@@ -648,6 +720,7 @@ StructuredOutputSupport.jsonPrompting EnumElement
 StructuredOutputSupport.jsonSchema EnumElement
 StructuredOutputSupport.rawValue Var
 StructuredOutputTarget Struct
+StructuredOutputTarget conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 StructuredOutputTarget.==(_:_:) Func
 StructuredOutputTarget.gbnfGrammar Var
 StructuredOutputTarget.guided(_:jsonSchema:gbnfGrammar:) Func
@@ -657,6 +730,7 @@ StructuredOutputTarget.init(gbnfGrammar:guidedType:jsonSchema:encoder:) Construc
 StructuredOutputTarget.jsonSchema Var
 StructuredOutputTarget.jsonSchema(_:gbnfGrammar:encoder:) Func
 ThinkingMarkers Struct
+ThinkingMarkers conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 ThinkingMarkers.__derived_struct_equals(_:_:) Func
 ThinkingMarkers.close Var
 ThinkingMarkers.custom(open:close:) Func
@@ -673,6 +747,7 @@ ThinkingMarkers.phi4 Var
 ThinkingMarkers.qwen3 Var
 ThinkingMarkers.reflection Var
 ToolCall Struct
+ToolCall conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolCall.__derived_struct_equals(_:_:) Func
 ToolCall.arguments Var
 ToolCall.encode(to:) Func
@@ -683,6 +758,7 @@ ToolCall.init(from:) Constructor
 ToolCall.init(id:toolName:arguments:) Constructor
 ToolCall.toolName Var
 ToolCallArgEncoding Enum
+ToolCallArgEncoding conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ToolCallArgEncoding.RawValue TypeAlias
 ToolCallArgEncoding.custom EnumElement
 ToolCallArgEncoding.init(rawValue:) Constructor
@@ -690,6 +766,7 @@ ToolCallArgEncoding.json EnumElement
 ToolCallArgEncoding.keyValue EnumElement
 ToolCallArgEncoding.rawValue Var
 ToolCallDialect Struct
+ToolCallDialect conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolCallDialect.__derived_struct_equals(_:_:) Func
 ToolCallDialect.argEncoding Var
 ToolCallDialect.closeDelimiter Var
@@ -707,6 +784,7 @@ ToolCallDialect.mistral Var
 ToolCallDialect.openDelimiter Var
 ToolCallDialect.qwen Var
 ToolCallDialectFamily Enum
+ToolCallDialectFamily conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ToolCallDialectFamily.AllCases TypeAlias
 ToolCallDialectFamily.RawValue TypeAlias
 ToolCallDialectFamily.allCases Var
@@ -720,6 +798,7 @@ ToolCallDialectFamily.qwen EnumElement
 ToolCallDialectFamily.rawValue Var
 ToolCallDialectFamily.unknown EnumElement
 ToolCallExtractability Enum
+ToolCallExtractability conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ToolCallExtractability.RawValue TypeAlias
 ToolCallExtractability.buried EnumElement
 ToolCallExtractability.clean EnumElement
@@ -727,6 +806,7 @@ ToolCallExtractability.init(rawValue:) Constructor
 ToolCallExtractability.rawValue Var
 ToolCallExtractability.toolLess EnumElement
 ToolChoice Enum
+ToolChoice conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolChoice.__derived_enum_equals(_:_:) Func
 ToolChoice.auto EnumElement
 ToolChoice.encode(to:) Func
@@ -737,6 +817,7 @@ ToolChoice.none EnumElement
 ToolChoice.required EnumElement
 ToolChoice.tool EnumElement
 ToolDefinition Struct
+ToolDefinition conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolDefinition.__derived_struct_equals(_:_:) Func
 ToolDefinition.description Var
 ToolDefinition.encode(to:) Func
@@ -747,10 +828,13 @@ ToolDefinition.init(name:description:parameters:) Constructor
 ToolDefinition.name Var
 ToolDefinition.parameters Var
 ToolExecutionEvent Enum
+ToolExecutionEvent conformances: Copyable,Escapable,Sendable,SendableMetatype
 ToolExecutionEvent.completed EnumElement
 ToolExecutionEvent.progress EnumElement
 ToolResult Struct
+ToolResult conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolResult.ErrorKind Enum
+ToolResult.ErrorKind conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ToolResult.ErrorKind.AllCases TypeAlias
 ToolResult.ErrorKind.RawValue TypeAlias
 ToolResult.ErrorKind.allCases Var
@@ -781,6 +865,7 @@ ToolResult.init(from:) Constructor
 ToolResult.isError Var
 ToolResult.structuredContent Var
 ToolResultPart Enum
+ToolResultPart conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolResultPart.__derived_enum_equals(_:_:) Func
 ToolResultPart.audio EnumElement
 ToolResultPart.encode(to:) Func
@@ -793,6 +878,7 @@ ToolResultPart.resourceLink EnumElement
 ToolResultPart.text EnumElement
 ToolResultPart.unknown EnumElement
 UnloadReason Enum
+UnloadReason conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 UnloadReason.__derived_enum_equals(_:_:) Func
 UnloadReason.backgroundEviction EnumElement
 UnloadReason.criticalMemoryPressure EnumElement

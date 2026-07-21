@@ -1,4 +1,5 @@
 ClaudeAdapter Struct
+ClaudeAdapter conformances: CloudHTTPProviderAdapter,Copyable,Escapable,Sendable,SendableMetatype
 ClaudeAdapter.buildRequest(prompt:systemPrompt:config:history:) Func
 ClaudeAdapter.capabilities Var
 ClaudeAdapter.errorBodyDecoder Var
@@ -8,6 +9,8 @@ ClaudeAdapter.messageEncoder Var
 ClaudeAdapter.payloadHandler Var
 ClaudeAdapter.streamFinalizer Var
 ClaudeBackend Class
+ClaudeBackend attrs: Final
+ClaudeBackend conformances: Copyable,EndpointBackendKeychainConfigurable,Escapable,InferenceBackend,Sendable,SendableMetatype,TokenUsageProvider
 ClaudeBackend.adapter Var
 ClaudeBackend.backendName Var
 ClaudeBackend.buildRequest(prompt:systemPrompt:config:hints:) Func
@@ -21,17 +24,21 @@ ClaudeBackend.loadModel(from:plan:) Func
 ClaudeBackend.makeChecked(urlSession:) Func
 ClaudeBackend.manifest Var
 ClaudeStreamEventExtractor Class
+ClaudeStreamEventExtractor attrs: Final
+ClaudeStreamEventExtractor conformances: CloudStreamEventConsumer,Copyable,Escapable,Sendable,SendableMetatype
 ClaudeStreamEventExtractor.consume(frame:) Func
 ClaudeStreamEventExtractor.consume(payload:) Func
 ClaudeStreamEventExtractor.finish(cancelled:) Func
 ClaudeStreamEventExtractor.init() Constructor
 CloudPayloadHandler Struct
+CloudPayloadHandler conformances: Copyable,Escapable,SSEPayloadHandler,Sendable,SendableMetatype
 CloudPayloadHandler.claude Var
 CloudPayloadHandler.makeClaudeStreamConsumer() Func
 CloudPayloadHandler.makeOpenAIResponsesStreamConsumer() Func
 CloudPayloadHandler.makeOpenAIStreamConsumer() Func
 CloudPayloadHandler.openAIResponses Var
 CloudReranker Struct
+CloudReranker conformances: Copyable,Escapable,Reranker,Sendable,SendableMetatype
 CloudReranker.cohere(apiKey:model:urlSession:) Func
 CloudReranker.cohereDefaultModel Var
 CloudReranker.init(apiKey:baseURL:model:urlSession:) Constructor
@@ -40,8 +47,10 @@ CloudReranker.jina(apiKey:model:urlSession:) Func
 CloudReranker.jinaDefaultModel Var
 CloudReranker.rerank(query:candidates:limit:) Func
 CloudSaaSBackends Enum
+CloudSaaSBackends conformances: BackendRegistrar,Copyable,Escapable
 CloudSaaSBackends.register(with:) Func
 OpenAIAdapter Struct
+OpenAIAdapter conformances: CloudHTTPProviderAdapter,Copyable,Escapable,Sendable,SendableMetatype
 OpenAIAdapter.buildRequest(prompt:systemPrompt:config:history:) Func
 OpenAIAdapter.capabilities Var
 OpenAIAdapter.errorBodyDecoder Var
@@ -51,6 +60,8 @@ OpenAIAdapter.messageEncoder Var
 OpenAIAdapter.payloadHandler Var
 OpenAIAdapter.streamFinalizer Var
 OpenAIBackend Class
+OpenAIBackend attrs: Final
+OpenAIBackend conformances: Copyable,EndpointBackendKeychainConfigurable,EndpointBackendURLModelConfigurable,Escapable,InferenceBackend,Sendable,SendableMetatype,TokenUsageProvider
 OpenAIBackend.adapter Var
 OpenAIBackend.backendName Var
 OpenAIBackend.buildRequest(prompt:systemPrompt:config:hints:) Func
@@ -61,6 +72,7 @@ OpenAIBackend.loadModel(from:plan:) Func
 OpenAIBackend.makeChecked(urlSession:) Func
 OpenAIBackend.manifest Var
 OpenAIResponsesAdapter Struct
+OpenAIResponsesAdapter conformances: CloudHTTPProviderAdapter,Copyable,Escapable,Sendable,SendableMetatype
 OpenAIResponsesAdapter.buildRequest(prompt:systemPrompt:config:history:) Func
 OpenAIResponsesAdapter.capabilities Var
 OpenAIResponsesAdapter.errorBodyDecoder Var
@@ -70,6 +82,8 @@ OpenAIResponsesAdapter.messageEncoder Var
 OpenAIResponsesAdapter.payloadHandler Var
 OpenAIResponsesAdapter.streamFinalizer Var
 OpenAIResponsesBackend Class
+OpenAIResponsesBackend attrs: Final
+OpenAIResponsesBackend conformances: Copyable,EndpointBackendKeychainConfigurable,EndpointBackendURLModelConfigurable,Escapable,InferenceBackend,Sendable,SendableMetatype,TokenUsageProvider
 OpenAIResponsesBackend.adapter Var
 OpenAIResponsesBackend.backendName Var
 OpenAIResponsesBackend.buildRequest(prompt:systemPrompt:config:hints:) Func
@@ -79,11 +93,15 @@ OpenAIResponsesBackend.init(urlSession:) Constructor
 OpenAIResponsesBackend.loadModel(from:plan:) Func
 OpenAIResponsesBackend.makeChecked(urlSession:) Func
 OpenAIResponsesStreamEventExtractor Class
+OpenAIResponsesStreamEventExtractor attrs: Final
+OpenAIResponsesStreamEventExtractor conformances: CloudStreamEventConsumer,Copyable,Escapable,Sendable,SendableMetatype
 OpenAIResponsesStreamEventExtractor.consume(frame:) Func
 OpenAIResponsesStreamEventExtractor.consume(payload:) Func
 OpenAIResponsesStreamEventExtractor.finish(cancelled:) Func
 OpenAIResponsesStreamEventExtractor.init() Constructor
 OpenAIStreamEventExtractor Class
+OpenAIStreamEventExtractor attrs: Final
+OpenAIStreamEventExtractor conformances: CloudStreamEventConsumer,Copyable,Escapable,Sendable,SendableMetatype
 OpenAIStreamEventExtractor.consume(frame:) Func
 OpenAIStreamEventExtractor.consume(payload:) Func
 OpenAIStreamEventExtractor.finish(cancelled:) Func

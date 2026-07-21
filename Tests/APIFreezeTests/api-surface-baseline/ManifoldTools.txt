@@ -1,10 +1,13 @@
 ASTMatcher Enum
+ASTMatcher conformances: Copyable,Escapable
 ASTMatcher.CaseScore Struct
+ASTMatcher.CaseScore conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ASTMatcher.CaseScore.__derived_struct_equals(_:_:) Func
 ASTMatcher.CaseScore.bestFailures Var
 ASTMatcher.CaseScore.init(matched:bestFailures:) Constructor
 ASTMatcher.CaseScore.matched Var
 ASTMatcher.Failure Enum
+ASTMatcher.Failure conformances: Copyable,CustomStringConvertible,Equatable,Escapable,Sendable,SendableMetatype
 ASTMatcher.Failure.__derived_enum_equals(_:_:) Func
 ASTMatcher.Failure.argumentsUnparseable EnumElement
 ASTMatcher.Failure.description Var
@@ -13,6 +16,7 @@ ASTMatcher.Failure.missingRequiredParam EnumElement
 ASTMatcher.Failure.nameMismatch EnumElement
 ASTMatcher.Failure.valueNotAllowed EnumElement
 ASTMatcher.MatchResult Struct
+ASTMatcher.MatchResult conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ASTMatcher.MatchResult.__derived_struct_equals(_:_:) Func
 ASTMatcher.MatchResult.failures Var
 ASTMatcher.MatchResult.init(matched:failures:) Constructor
@@ -20,18 +24,23 @@ ASTMatcher.MatchResult.matched Var
 ASTMatcher.match(call:against:) Func
 ASTMatcher.scoreCase(emittedCalls:groundTruth:) Func
 AssertionEvaluator Enum
+AssertionEvaluator conformances: Copyable,Escapable
 AssertionEvaluator.evaluate(_:finalAnswer:toolsInvoked:toolResults:) Func
 AssertionOutcome Struct
+AssertionOutcome conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AssertionOutcome.__derived_struct_equals(_:_:) Func
 AssertionOutcome.init(passed:message:) Constructor
 AssertionOutcome.message Var
 AssertionOutcome.passed Var
 BFCLASTScorer Struct
+BFCLASTScorer conformances: Copyable,Escapable,EvalScorer,Sendable,SendableMetatype
 BFCLASTScorer.Expected TypeAlias
 BFCLASTScorer.init() Constructor
 BFCLASTScorer.score(output:expected:) Func
 BFCLCaseLoader Enum
+BFCLCaseLoader conformances: Copyable,Escapable
 BFCLCaseLoader.LoadError Enum
+BFCLCaseLoader.LoadError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 BFCLCaseLoader.LoadError.answerMissing EnumElement
 BFCLCaseLoader.LoadError.description Var
 BFCLCaseLoader.LoadError.fileUnreadable EnumElement
@@ -40,12 +49,14 @@ BFCLCaseLoader.load(questionsFile:answersFile:) Func
 BFCLCaseLoader.loadBundled(category:) Func
 BFCLCaseLoader.loadBundledSimple() Func
 BFCLExpectedCall Struct
+BFCLExpectedCall conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 BFCLExpectedCall.__derived_struct_equals(_:_:) Func
 BFCLExpectedCall.acceptedValues Var
 BFCLExpectedCall.functionName Var
 BFCLExpectedCall.init(functionName:acceptedValues:) Constructor
 BFCLExpectedCall.requiredParams Var
 BFCLLoadedCase Struct
+BFCLLoadedCase conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 BFCLLoadedCase.__derived_struct_equals(_:_:) Func
 BFCLLoadedCase.groundTruth Var
 BFCLLoadedCase.id Var
@@ -53,11 +64,14 @@ BFCLLoadedCase.init(id:prompt:tools:groundTruth:) Constructor
 BFCLLoadedCase.prompt Var
 BFCLLoadedCase.tools Var
 BFCLNameOnlyScorer Struct
+BFCLNameOnlyScorer conformances: Copyable,Escapable,EvalScorer,Sendable,SendableMetatype
 BFCLNameOnlyScorer.Expected TypeAlias
 BFCLNameOnlyScorer.init() Constructor
 BFCLNameOnlyScorer.score(output:expected:) Func
 BFCLRunRecord Struct
+BFCLRunRecord conformances: Copyable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 BFCLRunRecord.DecodedCall Struct
+BFCLRunRecord.DecodedCall conformances: Copyable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 BFCLRunRecord.DecodedCall.__derived_struct_equals(_:_:) Func
 BFCLRunRecord.DecodedCall.args Var
 BFCLRunRecord.DecodedCall.encode(to:) Func
@@ -74,13 +88,18 @@ BFCLRunRecord.make(id:model:emittedCalls:astMatched:nameMatched:) Func
 BFCLRunRecord.model Var
 BFCLRunRecord.nameMatched Var
 BFCLRunner Struct
+BFCLRunner attrs: Custom
+BFCLRunner conformances: Copyable,Escapable,Sendable,SendableMetatype
 BFCLRunner.CaseTimeout Struct
+BFCLRunner.CaseTimeout conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 BFCLRunner.CaseTimeout.description Var
 BFCLRunner.CaseTimeout.seconds Var
 BFCLRunner.Outcome Struct
+BFCLRunner.Outcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 BFCLRunner.Outcome.records Var
 BFCLRunner.Outcome.summary Var
 BFCLRunner.Summary Struct
+BFCLRunner.Summary conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 BFCLRunner.Summary.__derived_struct_equals(_:_:) Func
 BFCLRunner.Summary.astMatched Var
 BFCLRunner.Summary.errored Var
@@ -91,16 +110,20 @@ BFCLRunner.init(log:) Constructor
 BFCLRunner.run(cases:modelLabel:emit:) Func
 BFCLRunner.run(cases:service:modelLabel:perCaseTimeoutSeconds:) Func
 CalcTool Enum
+CalcTool conformances: Copyable,Escapable
 CalcTool.Args Struct
+CalcTool.Args conformances: Copyable,Decodable,Escapable,Sendable,SendableMetatype
 CalcTool.Args.a Var
 CalcTool.Args.b Var
 CalcTool.Args.init(from:) Constructor
 CalcTool.Args.op Var
 CalcTool.Result Struct
+CalcTool.Result conformances: Copyable,Encodable,Escapable,Sendable,SendableMetatype
 CalcTool.Result.answer Var
 CalcTool.Result.encode(to:) Func
 CalcTool.makeExecutor() Func
 CellStatus Enum
+CellStatus conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 CellStatus.__derived_enum_equals(_:_:) Func
 CellStatus.encode(to:) Func
 CellStatus.init(from:) Constructor
@@ -109,6 +132,7 @@ CellStatus.measured EnumElement
 CellStatus.notMeasured EnumElement
 CellStatus.renderFail EnumElement
 ConformanceRecord Struct
+ConformanceRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 ConformanceRecord.__derived_struct_equals(_:_:) Func
 ConformanceRecord.backend Var
 ConformanceRecord.coreCommit Var
@@ -128,7 +152,9 @@ ConformanceRecord.toolingVersions Var
 ConformanceRecord.transcriptRef Var
 ConformanceRecord.verdict Var
 ConformanceScorer Enum
+ConformanceScorer conformances: Copyable,Escapable
 ConformanceScorer.ExpectedCell Struct
+ConformanceScorer.ExpectedCell conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ConformanceScorer.ExpectedCell.__derived_struct_equals(_:_:) Func
 ConformanceScorer.ExpectedCell.backend Var
 ConformanceScorer.ExpectedCell.decoyLevel Var
@@ -138,6 +164,7 @@ ConformanceScorer.ExpectedCell.quant Var
 ConformanceScorer.ExpectedCell.repeatIndex Var
 ConformanceScorer.ExpectedCell.scenario Var
 ConformanceScorer.RecordContext Struct
+ConformanceScorer.RecordContext conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ConformanceScorer.RecordContext.__derived_struct_equals(_:_:) Func
 ConformanceScorer.RecordContext.coreCommit Var
 ConformanceScorer.RecordContext.init(renderer:coreCommit:toolingVersions:transcriptRef:) Constructor
@@ -145,6 +172,7 @@ ConformanceScorer.RecordContext.renderer Var
 ConformanceScorer.RecordContext.toolingVersions Var
 ConformanceScorer.RecordContext.transcriptRef Var
 ConformanceScorer.ResultRow Struct
+ConformanceScorer.ResultRow conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 ConformanceScorer.ResultRow.__derived_struct_equals(_:_:) Func
 ConformanceScorer.ResultRow.assertionsFailed Var
 ConformanceScorer.ResultRow.assertionsPassed Var
@@ -166,9 +194,11 @@ ConformanceScorer.ResultRow.toolFP Var
 ConformanceScorer.ResultRow.toolTP Var
 ConformanceScorer.ResultRow.verdict Var
 ConformanceScorer.ScoringError Enum
+ConformanceScorer.ScoringError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 ConformanceScorer.ScoringError.description Var
 ConformanceScorer.ScoringError.fileUnreadable EnumElement
 ConformanceScorer.Verdict Enum
+ConformanceScorer.Verdict conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 ConformanceScorer.Verdict.RawValue TypeAlias
 ConformanceScorer.Verdict.errored EnumElement
 ConformanceScorer.Verdict.fail EnumElement
@@ -186,7 +216,9 @@ ConformanceScorer.score(fileAt:) Func
 ConformanceScorer.score(jsonl:) Func
 ConformanceScorer.verdict(passed:failed:errored:) Func
 DecoyTools Enum
+DecoyTools conformances: Copyable,Escapable
 DecoyTools.Result Struct
+DecoyTools.Result conformances: Copyable,Encodable,Escapable,Sendable,SendableMetatype
 DecoyTools.Result.encode(to:) Func
 DecoyTools.Result.note Var
 DecoyTools.executors(_:) Func
@@ -194,9 +226,11 @@ DecoyTools.maxCount Var
 DecoyTools.names(_:) Func
 DecoyTools.take(_:) Func
 EmptyArgs Struct
+EmptyArgs conformances: Copyable,Decodable,Escapable,Sendable,SendableMetatype
 EmptyArgs.init() Constructor
 EmptyArgs.init(from:) Constructor
 FailureClass Enum
+FailureClass conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 FailureClass.RawValue TypeAlias
 FailureClass.init(rawValue:) Constructor
 FailureClass.loadFail EnumElement
@@ -206,10 +240,13 @@ FailureClass.rawValue Var
 FailureClass.renderFail EnumElement
 FailureClass.truncation EnumElement
 HttpGetFixtureTool Enum
+HttpGetFixtureTool conformances: Copyable,Escapable
 HttpGetFixtureTool.Args Struct
+HttpGetFixtureTool.Args conformances: Copyable,Decodable,Escapable,Sendable,SendableMetatype
 HttpGetFixtureTool.Args.init(from:) Constructor
 HttpGetFixtureTool.Args.url Var
 HttpGetFixtureTool.Result Struct
+HttpGetFixtureTool.Result conformances: Copyable,Encodable,Escapable,Sendable,SendableMetatype
 HttpGetFixtureTool.Result.body Var
 HttpGetFixtureTool.Result.encode(to:) Func
 HttpGetFixtureTool.Result.status Var
@@ -217,45 +254,58 @@ HttpGetFixtureTool.Result.url Var
 HttpGetFixtureTool.fixtures Var
 HttpGetFixtureTool.makeExecutor(allowRealNetwork:) Func
 ListDirTool Enum
+ListDirTool conformances: Copyable,Escapable
 ListDirTool.Args Struct
+ListDirTool.Args conformances: Copyable,Decodable,Escapable,Sendable,SendableMetatype
 ListDirTool.Args.dir Var
 ListDirTool.Args.init(from:) Constructor
 ListDirTool.Result Struct
+ListDirTool.Result conformances: Copyable,Encodable,Escapable,Sendable,SendableMetatype
 ListDirTool.Result.dir Var
 ListDirTool.Result.encode(to:) Func
 ListDirTool.Result.entries Var
 ListDirTool.makeExecutor(root:) Func
 MatrixRenderer Enum
+MatrixRenderer conformances: Copyable,Escapable
 MatrixRenderer.render(_:title:) Func
 NowTool Enum
+NowTool conformances: Copyable,Escapable
 NowTool.Result Struct
+NowTool.Result conformances: Copyable,Encodable,Escapable,Sendable,SendableMetatype
 NowTool.Result.encode(to:) Func
 NowTool.Result.timestamp Var
 NowTool.defaultFixture Var
 NowTool.fixture() Func
 NowTool.makeExecutor() Func
 ReadFileTool Enum
+ReadFileTool conformances: Copyable,Escapable
 ReadFileTool.Args Struct
+ReadFileTool.Args conformances: Copyable,Decodable,Escapable,Sendable,SendableMetatype
 ReadFileTool.Args.init(from:) Constructor
 ReadFileTool.Args.path Var
 ReadFileTool.Result Struct
+ReadFileTool.Result conformances: Copyable,Encodable,Escapable,Sendable,SendableMetatype
 ReadFileTool.Result.content Var
 ReadFileTool.Result.encode(to:) Func
 ReadFileTool.Result.path Var
 ReadFileTool.defaultRoot() Func
 ReadFileTool.makeExecutor(root:) Func
 SampleRepoSearchTool Enum
+SampleRepoSearchTool conformances: Copyable,Escapable
 SampleRepoSearchTool.Args Struct
+SampleRepoSearchTool.Args conformances: Copyable,Decodable,Escapable,Sendable,SendableMetatype
 SampleRepoSearchTool.Args.init(from:) Constructor
 SampleRepoSearchTool.Args.max_results Var
 SampleRepoSearchTool.Args.query Var
 SampleRepoSearchTool.Match Struct
+SampleRepoSearchTool.Match conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 SampleRepoSearchTool.Match.encode(to:) Func
 SampleRepoSearchTool.Match.init(from:) Constructor
 SampleRepoSearchTool.Match.line Var
 SampleRepoSearchTool.Match.path Var
 SampleRepoSearchTool.Match.snippet Var
 SampleRepoSearchTool.Result Struct
+SampleRepoSearchTool.Result conformances: Copyable,Decodable,Encodable,Escapable,Sendable,SendableMetatype
 SampleRepoSearchTool.Result.encode(to:) Func
 SampleRepoSearchTool.Result.init(from:) Constructor
 SampleRepoSearchTool.Result.matches Var
@@ -266,9 +316,12 @@ SampleRepoSearchTool.maxMatchesHardCap Var
 SampleRepoSearchTool.perFileMatchCap Var
 SampleRepoSearchTool.textExtensions Var
 SandboxResolver Enum
+SandboxResolver conformances: Copyable,Escapable
 SandboxResolver.resolve(path:inside:) Func
 Scenario Struct
+Scenario conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 Scenario.Assertion Struct
+Scenario.Assertion conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 Scenario.Assertion.__derived_struct_equals(_:_:) Func
 Scenario.Assertion.encode(to:) Func
 Scenario.Assertion.init(from:) Constructor
@@ -277,6 +330,7 @@ Scenario.Assertion.message Var
 Scenario.Assertion.value Var
 Scenario.Assertion.values Var
 Scenario.BackendSpec Struct
+Scenario.BackendSpec conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 Scenario.BackendSpec.__derived_struct_equals(_:_:) Func
 Scenario.BackendSpec.encode(to:) Func
 Scenario.BackendSpec.fallbackModel Var
@@ -297,10 +351,13 @@ Scenario.requiredTools Var
 Scenario.systemPrompt Var
 Scenario.userPrompt Var
 ScenarioCLIHarness Enum
+ScenarioCLIHarness conformances: Copyable,Escapable
 ScenarioCLIHarness.FilterError Enum
+ScenarioCLIHarness.FilterError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 ScenarioCLIHarness.FilterError.description Var
 ScenarioCLIHarness.FilterError.noMatch EnumElement
 ScenarioCLIHarness.Options Struct
+ScenarioCLIHarness.Options conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScenarioCLIHarness.Options.extraTools Var
 ScenarioCLIHarness.Options.fixturesRoot Var
 ScenarioCLIHarness.Options.init(scenarioFilter:output:fixturesRoot:extraTools:list:) Constructor
@@ -308,6 +365,7 @@ ScenarioCLIHarness.Options.list Var
 ScenarioCLIHarness.Options.output Var
 ScenarioCLIHarness.Options.scenarioFilter Var
 ScenarioCLIHarness.ParseOutcome Enum
+ScenarioCLIHarness.ParseOutcome conformances: Copyable,Escapable
 ScenarioCLIHarness.ParseOutcome.failure EnumElement
 ScenarioCLIHarness.ParseOutcome.helpRequested EnumElement
 ScenarioCLIHarness.ParseOutcome.options EnumElement
@@ -318,7 +376,9 @@ ScenarioCLIHarness.printToolSelectionSummary(extraTools:passedCount:total:cleanC
 ScenarioCLIHarness.resolveFixturesRoot(_:) Func
 ScenarioCLIHarness.runAll(scenarios:displayName:modelsFor:runOne:) Func
 ScenarioLoader Enum
+ScenarioLoader conformances: Copyable,Escapable
 ScenarioLoader.LoadError Enum
+ScenarioLoader.LoadError conformances: Copyable,CustomStringConvertible,Error,Escapable,Sendable,SendableMetatype
 ScenarioLoader.LoadError.decodeFailed EnumElement
 ScenarioLoader.LoadError.description Var
 ScenarioLoader.LoadError.directoryMissing EnumElement
@@ -326,7 +386,10 @@ ScenarioLoader.builtInDirectory() Func
 ScenarioLoader.load(from:) Func
 ScenarioLoader.loadBuiltIn() Func
 ScenarioRunner Class
+ScenarioRunner attrs: Custom,Final
+ScenarioRunner conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScenarioRunner.Outcome Struct
+ScenarioRunner.Outcome conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScenarioRunner.Outcome.assertions Var
 ScenarioRunner.Outcome.finalAnswer Var
 ScenarioRunner.Outcome.passed Var
@@ -340,6 +403,7 @@ ScenarioRunner.passAllRegisteredTools Var
 ScenarioRunner.run(_:) Func
 ScenarioRunner.service Var
 Scores Struct
+Scores conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 Scores.__derived_struct_equals(_:_:) Func
 Scores.encode(to:) Func
 Scores.f1 Var
@@ -348,7 +412,10 @@ Scores.init(precision:recall:f1:) Constructor
 Scores.precision Var
 Scores.recall Var
 ScriptedBackend Class
+ScriptedBackend attrs: Final
+ScriptedBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
 ScriptedBackend.Turn Enum
+ScriptedBackend.Turn conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScriptedBackend.Turn.mixed EnumElement
 ScriptedBackend.Turn.tokens EnumElement
 ScriptedBackend.Turn.toolCall EnumElement
@@ -363,15 +430,20 @@ ScriptedBackend.receivedHistories Var
 ScriptedBackend.stopGeneration() Func
 ScriptedBackend.unloadModel() Func
 ToolFixtures Enum
+ToolFixtures conformances: Copyable,Escapable
 ToolFixtures.bundledRoot() Func
 ToolResultRecord Struct
+ToolResultRecord conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ToolResultRecord.__derived_struct_equals(_:_:) Func
 ToolResultRecord.content Var
 ToolResultRecord.errorKind Var
 ToolResultRecord.init(toolName:content:errorKind:) Constructor
 ToolResultRecord.toolName Var
 TranscriptLogger Class
+TranscriptLogger attrs: Final
+TranscriptLogger conformances: Copyable,Escapable
 TranscriptLogger.Event Enum
+TranscriptLogger.Event conformances: Copyable,Escapable
 TranscriptLogger.Event.assertion EnumElement
 TranscriptLogger.Event.error EnumElement
 TranscriptLogger.Event.final EnumElement
@@ -384,6 +456,7 @@ TranscriptLogger.defaultFilename() Func
 TranscriptLogger.destination Var
 TranscriptLogger.init(url:backend:model:quant:append:) Constructor
 VLModelDetector Enum
+VLModelDetector conformances: Copyable,Escapable
 VLModelDetector.isVisionLanguageModel(at:) Func
 VLModelDetector.markerFileNames Var
 VLModelDetector.matchedMarkerFile(at:) Func

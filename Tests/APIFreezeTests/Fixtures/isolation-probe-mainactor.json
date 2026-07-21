@@ -1,0 +1,30 @@
+{
+  "ABIRoot": {
+    "kind": "Root",
+    "name": "FixtureModule",
+    "children": [
+      {
+        "kind": "TypeDecl",
+        "name": "ScratchIsolationProbe",
+        "printedName": "ScratchIsolationProbe",
+        "declKind": "Struct",
+        "moduleName": "FixtureModule",
+        "declAttributes": ["Custom"],
+        "conformances": [
+          {"kind": "Conformance", "name": "Sendable", "printedName": "Sendable"},
+          {"kind": "Conformance", "name": "SendableMetatype", "printedName": "SendableMetatype"}
+        ],
+        "children": [
+          {
+            "kind": "Var",
+            "name": "value",
+            "printedName": "value",
+            "declKind": "Var",
+            "moduleName": "FixtureModule",
+            "declAttributes": ["HasStorage"]
+          }
+        ]
+      }
+    ]
+  }
+}

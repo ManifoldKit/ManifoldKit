@@ -1,8 +1,12 @@
 AVAudioEngineFrameStream Class
+AVAudioEngineFrameStream attrs: Custom,Final
+AVAudioEngineFrameStream conformances: AudioFrameStream,Copyable,Escapable,Sendable,SendableMetatype
 AVAudioEngineFrameStream.init(frameDuration:) Constructor
 AVAudioEngineFrameStream.startCapturing(onFrame:) Func
 AVAudioEngineFrameStream.stopCapturing() Func
 AppleSpeechSynthesizer Class
+AppleSpeechSynthesizer attrs: Custom,Final,ObjC
+AppleSpeechSynthesizer conformances: AVSpeechSynthesizerDelegate,CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,SpeechProgressReporting,SpeechSynthesizing
 AppleSpeechSynthesizer.init() Constructor
 AppleSpeechSynthesizer.init(synthesizer:) Constructor
 AppleSpeechSynthesizer.onSpeechProgress Var
@@ -12,6 +16,8 @@ AppleSpeechSynthesizer.speechSynthesizer(_:didFinish:) Func
 AppleSpeechSynthesizer.speechSynthesizer(_:willSpeakRangeOfSpeechString:utterance:) Func
 AppleSpeechSynthesizer.stopSpeaking() Func
 AppleSpeechTranscriber Class
+AppleSpeechTranscriber attrs: Custom,Final,ObjC
+AppleSpeechTranscriber conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,SpeechTranscribing
 AppleSpeechTranscriber.cancelTranscribing() Func
 AppleSpeechTranscriber.init() Constructor
 AppleSpeechTranscriber.init(locale:) Constructor
@@ -19,6 +25,7 @@ AppleSpeechTranscriber.requestAuthorization() Func
 AppleSpeechTranscriber.startTranscribing(onUpdate:) Func
 AppleSpeechTranscriber.stopTranscribing() Func
 AudioFrame Struct
+AudioFrame conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AudioFrame.__derived_struct_equals(_:_:) Func
 AudioFrame.init(samples:sampleRate:isEcho:) Constructor
 AudioFrame.isEcho Var
@@ -27,10 +34,14 @@ AudioFrame.sampleRate Var
 AudioFrame.samples Var
 AudioFrame.zeroCrossingRate Var
 AudioFrameStream Protocol
+AudioFrameStream conformances: Copyable,Escapable
 AudioFrameStream.startCapturing(onFrame:) Func
 AudioFrameStream.stopCapturing() Func
 EnergyVoiceActivityDetector Class
+EnergyVoiceActivityDetector attrs: Custom,Final
+EnergyVoiceActivityDetector conformances: Copyable,Escapable,Sendable,SendableMetatype,VoiceActivityDetector
 EnergyVoiceActivityDetector.Configuration Struct
+EnergyVoiceActivityDetector.Configuration conformances: Copyable,Escapable,Sendable,SendableMetatype
 EnergyVoiceActivityDetector.Configuration.init(speechThreshold:silenceThreshold:onsetFrameCount:offsetFrameCount:minZeroCrossingRate:maxZeroCrossingRate:) Constructor
 EnergyVoiceActivityDetector.Configuration.maxZeroCrossingRate Var
 EnergyVoiceActivityDetector.Configuration.minZeroCrossingRate Var
@@ -42,10 +53,13 @@ EnergyVoiceActivityDetector.ingest(_:) Func
 EnergyVoiceActivityDetector.init(configuration:) Constructor
 EnergyVoiceActivityDetector.reset() Func
 LiveTranscriptionView Struct
+LiveTranscriptionView attrs: Custom
+LiveTranscriptionView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 LiveTranscriptionView.Body TypeAlias
 LiveTranscriptionView.body Var
 LiveTranscriptionView.init(text:title:) Constructor
 SpeechOptions Struct
+SpeechOptions conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 SpeechOptions.__derived_struct_equals(_:_:) Func
 SpeechOptions.init(voiceIdentifier:rate:pitchMultiplier:locale:) Constructor
 SpeechOptions.locale Var
@@ -53,6 +67,7 @@ SpeechOptions.pitchMultiplier Var
 SpeechOptions.rate Var
 SpeechOptions.voiceIdentifier Var
 SpeechProgress Struct
+SpeechProgress conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 SpeechProgress.__derived_struct_equals(_:_:) Func
 SpeechProgress.init(utteranceID:text:spokenRange:) Constructor
 SpeechProgress.spokenRange Var
@@ -60,32 +75,39 @@ SpeechProgress.spokenText Var
 SpeechProgress.text Var
 SpeechProgress.utteranceID Var
 SpeechProgressReporting Protocol
+SpeechProgressReporting conformances: Copyable,Escapable
 SpeechProgressReporting.onSpeechProgress Var
 SpeechSynthesizing Protocol
+SpeechSynthesizing conformances: Copyable,Escapable
 SpeechSynthesizing.speak(_:) Func
 SpeechSynthesizing.speak(_:options:enqueue:) Func
 SpeechSynthesizing.stopSpeaking() Func
 SpeechTranscribing Protocol
+SpeechTranscribing conformances: Copyable,Escapable
 SpeechTranscribing.cancelTranscribing() Func
 SpeechTranscribing.requestAuthorization() Func
 SpeechTranscribing.startTranscribing(onUpdate:) Func
 SpeechTranscribing.stopTranscribing() Func
 SpeechTranscribing.transcriptionUpdates() Func
 SpeechTranscriptionUpdate Struct
+SpeechTranscriptionUpdate conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 SpeechTranscriptionUpdate.__derived_struct_equals(_:_:) Func
 SpeechTranscriptionUpdate.init(text:isFinal:) Constructor
 SpeechTranscriptionUpdate.isFinal Var
 SpeechTranscriptionUpdate.text Var
 VoiceActivity Enum
+VoiceActivity conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VoiceActivity.__derived_enum_equals(_:_:) Func
 VoiceActivity.hash(into:) Func
 VoiceActivity.hashValue Var
 VoiceActivity.speechEnd EnumElement
 VoiceActivity.speechStart EnumElement
 VoiceActivityDetector Protocol
+VoiceActivityDetector conformances: Copyable,Escapable
 VoiceActivityDetector.ingest(_:) Func
 VoiceActivityDetector.reset() Func
 VoiceAuthorizationStatus Enum
+VoiceAuthorizationStatus conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VoiceAuthorizationStatus.__derived_enum_equals(_:_:) Func
 VoiceAuthorizationStatus.authorized EnumElement
 VoiceAuthorizationStatus.denied EnumElement
@@ -96,6 +118,7 @@ VoiceAuthorizationStatus.notDetermined EnumElement
 VoiceAuthorizationStatus.restricted EnumElement
 VoiceAuthorizationStatus.unsupportedLocale EnumElement
 VoiceCaptureState Enum
+VoiceCaptureState conformances: Copyable,Equatable,Escapable
 VoiceCaptureState.__derived_enum_equals(_:_:) Func
 VoiceCaptureState.failed EnumElement
 VoiceCaptureState.idle EnumElement
@@ -103,10 +126,14 @@ VoiceCaptureState.processing EnumElement
 VoiceCaptureState.recording EnumElement
 VoiceCaptureState.requestingPermission EnumElement
 VoiceComposerAccessory Struct
+VoiceComposerAccessory attrs: Custom
+VoiceComposerAccessory conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 VoiceComposerAccessory.Body TypeAlias
 VoiceComposerAccessory.body Var
 VoiceComposerAccessory.init(controller:mergeStrategy:) Constructor
 VoiceConversationController Class
+VoiceConversationController attrs: Custom,Final
+VoiceConversationController conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 VoiceConversationController.cancelRecording() Func
 VoiceConversationController.captureState Var
 VoiceConversationController.enqueueReadback(of:) Func
@@ -127,12 +154,14 @@ VoiceConversationController.stopRecording() Func
 VoiceConversationController.stopSpeaking() Func
 VoiceConversationController.togglePlayback(for:) Func
 VoiceDraftMergeStrategy Enum
+VoiceDraftMergeStrategy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VoiceDraftMergeStrategy.__derived_enum_equals(_:_:) Func
 VoiceDraftMergeStrategy.append EnumElement
 VoiceDraftMergeStrategy.hash(into:) Func
 VoiceDraftMergeStrategy.hashValue Var
 VoiceDraftMergeStrategy.replace EnumElement
 VoiceError Enum
+VoiceError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 VoiceError.__derived_enum_equals(_:_:) Func
 VoiceError.errorDescription Var
 VoiceError.microphoneAccessDenied EnumElement
@@ -144,10 +173,13 @@ VoiceError.speechRecognitionNotDetermined EnumElement
 VoiceError.speechRecognitionRestricted EnumElement
 VoiceError.unsupportedLocale EnumElement
 VoiceInputButton Struct
+VoiceInputButton attrs: Custom
+VoiceInputButton conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 VoiceInputButton.Body TypeAlias
 VoiceInputButton.body Var
 VoiceInputButton.init(isRecording:isBusy:action:) Constructor
 VoiceRecoveryAffordance Enum
+VoiceRecoveryAffordance conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 VoiceRecoveryAffordance.__derived_enum_equals(_:_:) Func
 VoiceRecoveryAffordance.hash(into:) Func
 VoiceRecoveryAffordance.hashValue Var

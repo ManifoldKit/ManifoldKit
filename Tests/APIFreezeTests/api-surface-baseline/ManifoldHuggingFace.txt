@@ -1,4 +1,6 @@
 BackgroundDownloadManager Class
+BackgroundDownloadManager attrs: Custom,Final,ObjC
+BackgroundDownloadManager conformances: BackgroundDownloadManaging,CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Observable,Sendable,SendableMetatype,URLSessionDelegate,URLSessionDownloadDelegate,URLSessionTaskDelegate
 BackgroundDownloadManager.activeDownloads Var
 BackgroundDownloadManager.cancelDownload(id:) Func
 BackgroundDownloadManager.checkDiskSpace(requiredBytes:) Func
@@ -16,6 +18,7 @@ BackgroundDownloadManager.urlSession(_:downloadTask:didWriteData:totalBytesWritt
 BackgroundDownloadManager.urlSession(_:task:didCompleteWithError:) Func
 BackgroundDownloadManager.validateDownloadedFile(at:modelType:expectedChecksum:) Func
 DiffusionDownloadProgress Struct
+DiffusionDownloadProgress conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 DiffusionDownloadProgress.__derived_struct_equals(_:_:) Func
 DiffusionDownloadProgress.currentFile Var
 DiffusionDownloadProgress.currentFileIndex Var
@@ -27,7 +30,9 @@ DiffusionDownloadProgress.totalBytesExpected Var
 DiffusionDownloadProgress.totalBytesReceived Var
 DiffusionDownloadProgress.totalFileCount Var
 DownloadFileValidator Struct
+DownloadFileValidator conformances: Copyable,Escapable
 DownloadFileValidator.DiffusionFileRole Enum
+DownloadFileValidator.DiffusionFileRole conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 DownloadFileValidator.DiffusionFileRole.__derived_enum_equals(_:_:) Func
 DownloadFileValidator.DiffusionFileRole.hash(into:) Func
 DownloadFileValidator.DiffusionFileRole.hashValue Var
@@ -39,9 +44,14 @@ DownloadFileValidator.DiffusionFileRole.weights EnumElement
 DownloadFileValidator.init() Constructor
 DownloadFileValidator.validate(_:diffusionRole:expectedSize:) Func
 HuggingFaceService Class
+HuggingFaceService attrs: Final
+HuggingFaceService conformances: Copyable,Escapable,HuggingFaceServiceProtocol,Sendable,SendableMetatype
 HuggingFaceService.DiffusionDownloadItem Struct
+HuggingFaceService.DiffusionDownloadItem conformances: Copyable,Escapable,Sendable,SendableMetatype
 HuggingFaceService.DiffusionDownloadPlan Struct
+HuggingFaceService.DiffusionDownloadPlan conformances: Copyable,Escapable,Sendable,SendableMetatype
 HuggingFaceService.DiffusionManifest Struct
+HuggingFaceService.DiffusionManifest conformances: Copyable,Escapable,Sendable,SendableMetatype
 HuggingFaceService.curatedModels(for:) Func
 HuggingFaceService.downloadDiffusionModel(from:to:displayName:preferFP16:urlSession:progress:) Func
 HuggingFaceService.downloadPlan(for:) Func

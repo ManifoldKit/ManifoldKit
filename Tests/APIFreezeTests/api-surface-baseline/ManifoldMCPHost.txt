@@ -1,4 +1,5 @@
 MCPHostError Enum
+MCPHostError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 MCPHostError.errorDescription Var
 MCPHostError.internalError EnumElement
 MCPHostError.invalidParams EnumElement
@@ -6,6 +7,7 @@ MCPHostError.methodNotFound EnumElement
 MCPHostError.resourceNotFound EnumElement
 MCPHostError.toolNotFound EnumElement
 MCPHostHTTPTransport Class
+MCPHostHTTPTransport conformances: Actor,Copyable,Escapable,MCPHostTransport,Sendable,SendableMetatype
 MCPHostHTTPTransport.boundPort Var
 MCPHostHTTPTransport.incomingMessages Var
 MCPHostHTTPTransport.init(port:maxMessageBytes:) Constructor
@@ -14,6 +16,7 @@ MCPHostHTTPTransport.shutdown() Func
 MCPHostHTTPTransport.start() Func
 MCPHostHTTPTransport.unownedExecutor Var
 MCPHostStdioTransport Class
+MCPHostStdioTransport conformances: Actor,AsyncSequence,Copyable,Escapable,MCPHostTransport,Sendable,SendableMetatype
 MCPHostStdioTransport.AsyncIterator TypeAlias
 MCPHostStdioTransport.Element TypeAlias
 MCPHostStdioTransport.__AsyncSequence_Failure TypeAlias
@@ -24,9 +27,11 @@ MCPHostStdioTransport.send(_:) Func
 MCPHostStdioTransport.shutdown() Func
 MCPHostStdioTransport.unownedExecutor Var
 MCPHostTransport Protocol
+MCPHostTransport conformances: Copyable,Escapable,Sendable,SendableMetatype
 MCPHostTransport.incomingMessages Var
 MCPHostTransport.send(_:) Func
 MCPHostTransportError Enum
+MCPHostTransportError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 MCPHostTransportError.errorDescription Var
 MCPHostTransportError.invalidContentLength EnumElement
 MCPHostTransportError.invalidHeader EnumElement
@@ -37,7 +42,9 @@ MCPHostTransportError.oversizeHeader EnumElement
 MCPHostTransportError.oversizeMessage EnumElement
 MCPHostTransportError.writeFailed EnumElement
 ManifoldMCPHost Class
+ManifoldMCPHost conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 ManifoldMCPHost.Configuration Struct
+ManifoldMCPHost.Configuration conformances: Copyable,Escapable,Sendable,SendableMetatype
 ManifoldMCPHost.Configuration.init(protocolVersion:serverName:serverVersion:maxMessageBytes:maxJSONNestingDepth:) Constructor
 ManifoldMCPHost.Configuration.maxJSONNestingDepth Var
 ManifoldMCPHost.Configuration.maxMessageBytes Var

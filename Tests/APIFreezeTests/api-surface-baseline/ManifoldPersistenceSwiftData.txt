@@ -9,8 +9,10 @@
 (top-level).ToolCallConformanceRecord TypeAlias
 (top-level).TurnUsageModel TypeAlias
 ConversationExporter Enum
+ConversationExporter conformances: Copyable,Escapable
 ConversationExporter.export(session:format:provider:directory:) Func
 FlatFileVectorStore Class
+FlatFileVectorStore conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype,VectorStore
 FlatFileVectorStore.bm25Search(query:limit:) Func
 FlatFileVectorStore.delete(documentID:) Func
 FlatFileVectorStore.deleteAll() Func
@@ -20,8 +22,12 @@ FlatFileVectorStore.keywordSearch(query:limit:) Func
 FlatFileVectorStore.search(embedding:limit:) Func
 FlatFileVectorStore.unownedExecutor Var
 InferenceService Class
+InferenceService attrs: Custom,Final
+InferenceService conformances: BackendRegistrySampling,Copyable,Escapable,ModelTypeCompatibilityProvider,Observable,Sendable,SendableMetatype
 InferenceService.loadEndpointBackend(from:) Func
 ManifoldBootstrap Class
+ManifoldBootstrap attrs: Custom,Final
+ManifoldBootstrap conformances: ChatRuntimeBootstrap,Copyable,Escapable,Sendable,SendableMetatype
 ManifoldBootstrap.addToolSources(_:) Func
 ManifoldBootstrap.apiEndpointStore Var
 ManifoldBootstrap.audioGenerationRuntime Var
@@ -56,10 +62,14 @@ ManifoldBootstrap.videoRuntime Var
 ManifoldBootstrap.webSearchRuntime Var
 ManifoldBootstrap.webSearchRuntimePort Var
 ManifoldMigrationPlan Enum
+ManifoldMigrationPlan conformances: Copyable,Escapable,SchemaMigrationPlan,SendableMetatype
 ManifoldMigrationPlan.schemas Var
 ManifoldMigrationPlan.stages Var
 ManifoldSchemaV11 Enum
+ManifoldSchemaV11 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV11.ToolCallConformanceRecord Class
+ManifoldSchemaV11.ToolCallConformanceRecord attrs: Final
+ManifoldSchemaV11.ToolCallConformanceRecord conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV11.ToolCallConformanceRecord.ID TypeAlias
 ManifoldSchemaV11.ToolCallConformanceRecord.Root TypeAlias
 ManifoldSchemaV11.ToolCallConformanceRecord.backend Var
@@ -84,7 +94,10 @@ ManifoldSchemaV11.ToolCallConformanceRecord.update(from:) Func
 ManifoldSchemaV11.models Var
 ManifoldSchemaV11.versionIdentifier Var
 ManifoldSchemaV12 Enum
+ManifoldSchemaV12 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV12.Persona Class
+ManifoldSchemaV12.Persona attrs: Final
+ManifoldSchemaV12.Persona conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV12.Persona.ID TypeAlias
 ManifoldSchemaV12.Persona.Root TypeAlias
 ManifoldSchemaV12.Persona.createdAt Var
@@ -99,7 +112,10 @@ ManifoldSchemaV12.Persona.systemPrompt Var
 ManifoldSchemaV12.models Var
 ManifoldSchemaV12.versionIdentifier Var
 ManifoldSchemaV13 Enum
+ManifoldSchemaV13 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV13.BranchOrigin Class
+ManifoldSchemaV13.BranchOrigin attrs: Final
+ManifoldSchemaV13.BranchOrigin conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV13.BranchOrigin.ID TypeAlias
 ManifoldSchemaV13.BranchOrigin.Root TypeAlias
 ManifoldSchemaV13.BranchOrigin.hashValue Var
@@ -113,7 +129,10 @@ ManifoldSchemaV13.BranchOrigin.sessionID Var
 ManifoldSchemaV13.models Var
 ManifoldSchemaV13.versionIdentifier Var
 ManifoldSchemaV4 Enum
+ManifoldSchemaV4 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV4.APIEndpoint Class
+ManifoldSchemaV4.APIEndpoint attrs: Final
+ManifoldSchemaV4.APIEndpoint conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV4.APIEndpoint.ID TypeAlias
 ManifoldSchemaV4.APIEndpoint.Root TypeAlias
 ManifoldSchemaV4.APIEndpoint.baseURL Var
@@ -136,6 +155,8 @@ ManifoldSchemaV4.APIEndpoint.schemaMetadata Var
 ManifoldSchemaV4.APIEndpoint.setAPIKey(_:) Func
 ManifoldSchemaV4.APIEndpoint.validate() Func
 ManifoldSchemaV4.ModelBenchmarkCache Class
+ManifoldSchemaV4.ModelBenchmarkCache attrs: Final
+ManifoldSchemaV4.ModelBenchmarkCache conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV4.ModelBenchmarkCache.ID TypeAlias
 ManifoldSchemaV4.ModelBenchmarkCache.Root TypeAlias
 ManifoldSchemaV4.ModelBenchmarkCache.hashValue Var
@@ -151,6 +172,8 @@ ManifoldSchemaV4.ModelBenchmarkCache.tierRaw Var
 ManifoldSchemaV4.ModelBenchmarkCache.toResult() Func
 ManifoldSchemaV4.ModelBenchmarkCache.tokensPerSecond Var
 ManifoldSchemaV4.SamplerPreset Class
+ManifoldSchemaV4.SamplerPreset attrs: Final
+ManifoldSchemaV4.SamplerPreset conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV4.SamplerPreset.ID TypeAlias
 ManifoldSchemaV4.SamplerPreset.Root TypeAlias
 ManifoldSchemaV4.SamplerPreset.createdAt Var
@@ -172,7 +195,10 @@ ManifoldSchemaV4.SamplerPreset.topP Var
 ManifoldSchemaV4.models Var
 ManifoldSchemaV4.versionIdentifier Var
 ManifoldSchemaV5 Enum
+ManifoldSchemaV5 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV5.RagDocument Class
+ManifoldSchemaV5.RagDocument attrs: Final
+ManifoldSchemaV5.RagDocument conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV5.RagDocument.ID TypeAlias
 ManifoldSchemaV5.RagDocument.Root TypeAlias
 ManifoldSchemaV5.RagDocument.chunkCount Var
@@ -189,7 +215,10 @@ ManifoldSchemaV5.RagDocument.title Var
 ManifoldSchemaV5.models Var
 ManifoldSchemaV5.versionIdentifier Var
 ManifoldSchemaV6 Enum
+ManifoldSchemaV6 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV6.TurnUsageModel Class
+ManifoldSchemaV6.TurnUsageModel attrs: Final
+ManifoldSchemaV6.TurnUsageModel conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV6.TurnUsageModel.ID TypeAlias
 ManifoldSchemaV6.TurnUsageModel.Root TypeAlias
 ManifoldSchemaV6.TurnUsageModel.cacheWriteTokens Var
@@ -209,7 +238,10 @@ ManifoldSchemaV6.TurnUsageModel.timestamp Var
 ManifoldSchemaV6.models Var
 ManifoldSchemaV6.versionIdentifier Var
 ManifoldSchemaV9 Enum
+ManifoldSchemaV9 conformances: Copyable,Escapable,SendableMetatype,VersionedSchema
 ManifoldSchemaV9.Agent Class
+ManifoldSchemaV9.Agent attrs: Final
+ManifoldSchemaV9.Agent conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV9.Agent.ID TypeAlias
 ManifoldSchemaV9.Agent.Root TypeAlias
 ManifoldSchemaV9.Agent.allowedToolNames Var
@@ -223,6 +255,8 @@ ManifoldSchemaV9.Agent.persistentBackingData Var
 ManifoldSchemaV9.Agent.schemaMetadata Var
 ManifoldSchemaV9.Agent.systemPrompt Var
 ManifoldSchemaV9.ChatMessage Class
+ManifoldSchemaV9.ChatMessage attrs: Final
+ManifoldSchemaV9.ChatMessage conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV9.ChatMessage.ID TypeAlias
 ManifoldSchemaV9.ChatMessage.Root TypeAlias
 ManifoldSchemaV9.ChatMessage.agentID Var
@@ -246,6 +280,8 @@ ManifoldSchemaV9.ChatMessage.schemaMetadata Var
 ManifoldSchemaV9.ChatMessage.sessionID Var
 ManifoldSchemaV9.ChatMessage.timestamp Var
 ManifoldSchemaV9.ChatSession Class
+ManifoldSchemaV9.ChatSession attrs: Final
+ManifoldSchemaV9.ChatSession conformances: Copyable,Equatable,Escapable,Hashable,Identifiable,Observable,PersistentModel,Sendable,SendableMetatype
 ManifoldSchemaV9.ChatSession.ID TypeAlias
 ManifoldSchemaV9.ChatSession.Root TypeAlias
 ManifoldSchemaV9.ChatSession.activeAgentID Var
@@ -278,12 +314,14 @@ ManifoldSchemaV9.ChatSession.updatedAt Var
 ManifoldSchemaV9.models Var
 ManifoldSchemaV9.versionIdentifier Var
 ModelContainerFactory Enum
+ModelContainerFactory conformances: Copyable,Escapable
 ModelContainerFactory.currentSchema Var
 ModelContainerFactory.defaultModelConfiguration() Func
 ModelContainerFactory.makeCloudKitContainer(containerIdentifier:) Func
 ModelContainerFactory.makeContainer(configurations:) Func
 ModelContainerFactory.makeInMemoryContainer() Func
 RAGConfiguration Struct
+RAGConfiguration conformances: Copyable,Escapable,Sendable,SendableMetatype
 RAGConfiguration.chunkOverlap Var
 RAGConfiguration.chunkSize Var
 RAGConfiguration.embeddingBackend Var
@@ -296,26 +334,36 @@ RAGConfiguration.similarityThreshold Var
 RAGConfiguration.topK Var
 RAGConfiguration.vectorStoreURL Var
 SettingsService Class
+SettingsService attrs: Final
+SettingsService conformances: Copyable,Escapable,Observable,Sendable,SendableMetatype
 SettingsService.effectiveRepeatPenalty(session:) Func
 SettingsService.effectiveTemperature(session:) Func
 SettingsService.effectiveTopP(session:) Func
 SwiftDataBenchmarkCache Class
+SwiftDataBenchmarkCache attrs: Custom,Final
+SwiftDataBenchmarkCache conformances: BenchmarkCache,Copyable,Escapable,Sendable,SendableMetatype
 SwiftDataBenchmarkCache.fetchAll() Func
 SwiftDataBenchmarkCache.init(modelContext:) Constructor
 SwiftDataBenchmarkCache.upsert(modelFileName:result:) Func
 SwiftDataDocumentStore Class
+SwiftDataDocumentStore attrs: Custom,Final
+SwiftDataDocumentStore conformances: Copyable,DocumentStore,Escapable,Sendable,SendableMetatype
 SwiftDataDocumentStore.deleteDocument(id:) Func
 SwiftDataDocumentStore.fetchDocument(id:) Func
 SwiftDataDocumentStore.fetchDocuments() Func
 SwiftDataDocumentStore.init(modelContext:) Constructor
 SwiftDataDocumentStore.insertDocument(_:) Func
 SwiftDataEndpointStore Class
+SwiftDataEndpointStore attrs: Custom,Final
+SwiftDataEndpointStore conformances: Copyable,EndpointStore,Escapable,Sendable,SendableMetatype
 SwiftDataEndpointStore.deleteEndpoint(_:) Func
 SwiftDataEndpointStore.fetchEndpoints() Func
 SwiftDataEndpointStore.init(modelContext:) Constructor
 SwiftDataEndpointStore.insertEndpoint(_:) Func
 SwiftDataEndpointStore.updateEndpoint(_:) Func
 SwiftDataPersistenceProvider Class
+SwiftDataPersistenceProvider attrs: Custom,Final
+SwiftDataPersistenceProvider conformances: Copyable,Escapable,MessageStore,Sendable,SendableMetatype,SessionStore,TransactionalMessageStore
 SwiftDataPersistenceProvider.addPostWriteHook(_:) Func
 SwiftDataPersistenceProvider.deleteAll() Func
 SwiftDataPersistenceProvider.deleteMessage(_:) Func
@@ -337,27 +385,36 @@ SwiftDataPersistenceProvider.touch(sessionID:date:) Func
 SwiftDataPersistenceProvider.updateMessage(_:) Func
 SwiftDataPersistenceProvider.updateSession(_:) Func
 SwiftDataPersonaStore Class
+SwiftDataPersonaStore attrs: Custom,Final
+SwiftDataPersonaStore conformances: Copyable,Escapable,PersonaStore,Sendable,SendableMetatype
 SwiftDataPersonaStore.deletePersona(_:) Func
 SwiftDataPersonaStore.fetchPersonas() Func
 SwiftDataPersonaStore.init(modelContext:) Constructor
 SwiftDataPersonaStore.insertPersona(_:) Func
 SwiftDataSamplerPresetStore Class
+SwiftDataSamplerPresetStore attrs: Custom,Final
+SwiftDataSamplerPresetStore conformances: Copyable,Escapable,SamplerPresetStore,Sendable,SendableMetatype
 SwiftDataSamplerPresetStore.deletePreset(_:) Func
 SwiftDataSamplerPresetStore.fetchPresets() Func
 SwiftDataSamplerPresetStore.init(modelContext:) Constructor
 SwiftDataSamplerPresetStore.insertPreset(_:) Func
 SwiftDataToolCallConformanceCache Class
+SwiftDataToolCallConformanceCache attrs: Custom,Final
+SwiftDataToolCallConformanceCache conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolCallConformanceCache
 SwiftDataToolCallConformanceCache.fetchAll() Func
 SwiftDataToolCallConformanceCache.get(_:) Func
 SwiftDataToolCallConformanceCache.init(modelContext:) Constructor
 SwiftDataToolCallConformanceCache.put(_:_:) Func
 SwiftDataUsageStore Class
+SwiftDataUsageStore attrs: Custom,Final
+SwiftDataUsageStore conformances: Copyable,Escapable,Sendable,SendableMetatype,UsageStore
 SwiftDataUsageStore.init(modelContext:) Constructor
 SwiftDataUsageStore.recentRecords(limit:) Func
 SwiftDataUsageStore.record(_:) Func
 SwiftDataUsageStore.summary(forEndpoint:sinceDays:) Func
 SwiftDataUsageStore.summary(sinceDays:) Func
 VectorStoreError Enum
+VectorStoreError conformances: Copyable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 VectorStoreError.errorDescription Var
 VectorStoreError.invalidFormat EnumElement
 VectorStoreError.truncatedData EnumElement

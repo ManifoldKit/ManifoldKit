@@ -122,8 +122,49 @@ final class PublicSurfaceBaselineTests: XCTestCase {
 
     // MARK: - Well-formedness
 
+    /// Marker text for the two isolation/Sendable-signal line kinds added
+    /// alongside the classic `<name> <declKind>` shape (see the "Isolation /
+    /// Sendable signal" section of `api-surface-extract.py`'s module
+    /// docstring). Neither ends in a `declKind` token, so they're validated
+    /// separately below rather than against `knownKinds`.
+    private static let conformancesMarker = " conformances: "
+    private static let attrsMarker = " attrs: "
+
+    /// A denylisted attribute (`api-surface-extract.py`'s `ATTR_DENYLIST`)
+    /// should never survive into a checked-in `attrs:` line — if one does,
+    /// either the filter regressed or the file was hand-edited.
+    private static let attrDenylist: Set<String> = [
+        "OriginallyDefinedIn", "TypeEraser", "EagerMove", "Frozen", "Preconcurrency",
+    ]
+
+    /// Validates a comma-joined value list (conformance or attribute names):
+    /// non-empty, each entry a plausible bare identifier, sorted, and
+    /// de-duplicated — exactly what the normalizer's `sorted(set(...))`
+    /// promises to produce.
+    private static func validateCommaList(_ value: Substring, moduleFile: String, lineIndex: Int, line: String) {
+        let entries = value.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        XCTAssertFalse(entries.contains(""), "\(moduleFile) line \(lineIndex + 1) has an empty entry in its comma list: \(line)")
+        var seen = Set<String>()
+        var previousEntry: String?
+        for entry in entries {
+            XCTAssertFalse(
+                seen.contains(entry),
+                "\(moduleFile) line \(lineIndex + 1) has a duplicate entry `\(entry)`: \(line)"
+            )
+            seen.insert(entry)
+            if let previousEntry {
+                XCTAssertLessThanOrEqual(
+                    previousEntry, entry,
+                    "\(moduleFile) line \(lineIndex + 1) is not sorted within its comma list (`\(previousEntry)` should sort before `\(entry)`): \(line)"
+                )
+            }
+            previousEntry = entry
+        }
+    }
+
     /// For each scoped module: the baseline file exists, is non-empty,
-    /// every line matches `<name> <knownKind>`, and the file is already
+    /// every line matches `<name> <knownKind>` (or one of the two
+    /// isolation/Sendable-signal shapes below), and the file is already
     /// sorted + de-duplicated (the normalizer's contract — a diff-stable
     /// baseline depends on this).
     func testEachModuleBaselineIsWellFormed() throws {
@@ -141,19 +182,32 @@ final class PublicSurfaceBaselineTests: XCTestCase {
             var previous: String?
             var seen = Set<String>()
             for (index, line) in lines.enumerated() {
-                // Shape: "<owner-or-owner.member> <declKind>" — split on the
-                // LAST space since owner/member text can itself contain
-                // spaces (e.g. printed generic constraints).
-                guard let lastSpaceIndex = line.range(of: " ", options: .backwards) else {
-                    XCTFail("\(module).txt line \(index + 1) has no ` <kind>` suffix: \(line)")
-                    continue
+                if let range = line.range(of: Self.conformancesMarker) {
+                    Self.validateCommaList(line[range.upperBound...], moduleFile: "\(module).txt", lineIndex: index, line: line)
+                } else if let range = line.range(of: Self.attrsMarker) {
+                    let value = line[range.upperBound...]
+                    Self.validateCommaList(value, moduleFile: "\(module).txt", lineIndex: index, line: line)
+                    for attr in value.split(separator: ",") {
+                        XCTAssertFalse(
+                            Self.attrDenylist.contains(String(attr)),
+                            "\(module).txt line \(index + 1) has a denylisted attribute `\(attr)` that should have been filtered: \(line)"
+                        )
+                    }
+                } else {
+                    // Shape: "<owner-or-owner.member> <declKind>" — split on
+                    // the LAST space since owner/member text can itself
+                    // contain spaces (e.g. printed generic constraints).
+                    guard let lastSpaceIndex = line.range(of: " ", options: .backwards) else {
+                        XCTFail("\(module).txt line \(index + 1) has no ` <kind>` suffix: \(line)")
+                        continue
+                    }
+                    let kind = String(line[lastSpaceIndex.upperBound...])
+                    XCTAssertTrue(
+                        Self.knownKinds.contains(kind),
+                        "\(module).txt line \(index + 1) has an unrecognized declKind `\(kind)`: \(line). "
+                            + "Either the digester/extractor emitted something new (update knownKinds) or the file was hand-edited."
+                    )
                 }
-                let kind = String(line[lastSpaceIndex.upperBound...])
-                XCTAssertTrue(
-                    Self.knownKinds.contains(kind),
-                    "\(module).txt line \(index + 1) has an unrecognized declKind `\(kind)`: \(line). "
-                        + "Either the digester/extractor emitted something new (update knownKinds) or the file was hand-edited."
-                )
 
                 XCTAssertFalse(
                     seen.contains(line),
@@ -171,6 +225,83 @@ final class PublicSurfaceBaselineTests: XCTestCase {
                 previous = line
             }
         }
+    }
+
+    // MARK: - Isolation/Sendable signal (Appendix A fixtures)
+
+    /// Runs the normalizer directly against a minimal ABIRoot JSON fixture
+    /// and returns its stdout lines, sorted (the normalizer's own contract).
+    /// Unlike `testLiveCheckAgainstCurrentTree_optIn`, this needs no package
+    /// build — just `python3` + the fixture file — so it's cheap enough to
+    /// run in the default gate.
+    private func runNormalizer(fixtureNamed name: String) throws -> [String] {
+        let normalizerURL = Self.repoRoot().appendingPathComponent("scripts/_lib/api-surface-extract.py")
+        let fixtureURL = Self.repoRoot().appendingPathComponent("Tests/APIFreezeTests/Fixtures/\(name).json")
+        guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
+            XCTFail("Missing fixture: \(fixtureURL.path)")
+            return []
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", normalizerURL.path, fixtureURL.path]
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+        process.waitUntilExit()
+
+        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        XCTAssertEqual(
+            process.terminationStatus, 0,
+            "api-surface-extract.py failed on \(name).json: \(String(data: errData, encoding: .utf8) ?? "")"
+        )
+
+        let out = String(data: outData, encoding: .utf8) ?? ""
+        return out.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    /// Appendix A's confirmed verdict (docs/RELEASE-1.0.md) was that a
+    /// `ScratchIsolationProbe` public struct produced the BYTE-IDENTICAL
+    /// normalized line (`ScratchIsolationProbe Struct`) whether it was
+    /// unisolated, `@MainActor`, or explicitly `: Sendable`. These three
+    /// fixtures reproduce that experiment's three probe states as minimal
+    /// ABIRoot JSON (rather than re-running the real digester, which needs a
+    /// full package build) and assert the FIXED normalizer now tells all
+    /// three apart.
+    func testIsolationSignal_threeProbeStatesProduceDistinctOutput() throws {
+        let plain = try runNormalizer(fixtureNamed: "isolation-probe-plain")
+        let mainActor = try runNormalizer(fixtureNamed: "isolation-probe-mainactor")
+        let sendableOnly = try runNormalizer(fixtureNamed: "isolation-probe-sendable")
+
+        // Pre-fix, these three sets were byte-identical (Appendix A's
+        // confirmed blind spot). Post-fix, all three must differ.
+        XCTAssertNotEqual(plain, mainActor, "plain and @MainActor fixtures produced identical output — the isolation blind spot has regressed.")
+        XCTAssertNotEqual(plain, sendableOnly, "plain and explicit-Sendable fixtures produced identical output — the isolation blind spot has regressed.")
+        XCTAssertNotEqual(mainActor, sendableOnly, "@MainActor and explicit-Sendable fixtures produced identical output — they should differ by the `attrs: Custom` line.")
+
+        XCTAssertEqual(plain, ["ScratchIsolationProbe Struct", "ScratchIsolationProbe.value Var"])
+        XCTAssertEqual(
+            mainActor,
+            [
+                "ScratchIsolationProbe Struct",
+                "ScratchIsolationProbe attrs: Custom",
+                "ScratchIsolationProbe conformances: Sendable,SendableMetatype",
+                "ScratchIsolationProbe.value Var",
+            ]
+        )
+        XCTAssertEqual(
+            sendableOnly,
+            [
+                "ScratchIsolationProbe Struct",
+                "ScratchIsolationProbe conformances: Sendable,SendableMetatype",
+                "ScratchIsolationProbe.value Var",
+            ]
+        )
     }
 
     // MARK: - Optional heavy check (opt-in only; not part of the default gate)
