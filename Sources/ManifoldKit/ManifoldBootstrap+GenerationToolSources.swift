@@ -51,7 +51,17 @@ extension ManifoldBootstrap {
         if webSearchRuntime != nil {
             sources.append(WebSearchToolSource(viewModel: viewModel))
         }
-        guard !sources.isEmpty else { return }
+        guard !sources.isEmpty else {
+            // `ManifoldKit.quickStart(...)` never passes imageGenerationService /
+            // videoGenerationService / webSearchRuntime to `ManifoldBootstrap.build`
+            // (see docs/plans/inert-code-audit-2026-07.md #41), so a bootstrap
+            // built via quickStart always lands here. Warn loudly instead of
+            // returning silently — a host that followed the documented
+            // `addGenerationToolSources(viewModel:)` recipe would otherwise see
+            // no tool calls and no signal explaining why.
+            Log.ui.warning("addGenerationToolSources: no generation surfaces wired — imageGenerationService, videoGenerationService, and webSearchRuntime are all nil on this ManifoldBootstrap, so no tool sources were registered. Pass one or more of these directly to ManifoldBootstrap.build(...) before calling addGenerationToolSources(viewModel:); ManifoldKit.quickStart(...) does not wire them (tracked in #1903).")
+            return
+        }
         await addToolSources(sources)
     }
 }

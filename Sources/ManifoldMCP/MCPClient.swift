@@ -95,6 +95,30 @@ public actor MCPClient {
             throw error
         }
 
+        // Mirror of the guard above for the opposite mismatch: the descriptor
+        // declares OAuth but the caller left `authorization:` at its default
+        // MCPNoAuthorization. Without this the connection sails through here
+        // and fails opaquely on the first 401 from the transport layer.
+        if case .oauth = descriptor.authorization, authorization is MCPNoAuthorization {
+            let error = MCPError.transportFailure(
+                "MCPServerDescriptor.authorization declares .oauth(...) but connect(_:authorization:) " +
+                "was called with the default MCPNoAuthorization. Construct an MCPOAuthAuthorization " +
+                "from the descriptor's authorization metadata (MCPAuthorizationDescriptor.OAuthDescriptor, " +
+                "i.e. descriptor.authorization's associated value) and pass it as the authorization: argument."
+            )
+            connectionStateContinuation.yield(.failed)
+            connectionEventContinuation.yield(.error(serverID: descriptor.id, error))
+            throw error
+        }
+
+        // Route this authorization's own event stream (authorizationRequired /
+        // scopeDowngraded, raised during token acquisition/refresh) into this
+        // client's connectionEvents — the continuation otherwise defaults to
+        // nil and those events are never observable by a host.
+        if let oauthAuthorization = authorization as? MCPOAuthAuthorization {
+            await oauthAuthorization.attach(eventContinuation: connectionEventContinuation)
+        }
+
         connectionStateContinuation.yield(.connecting)
         connectionEventContinuation.yield(.connecting(serverID: descriptor.id))
 

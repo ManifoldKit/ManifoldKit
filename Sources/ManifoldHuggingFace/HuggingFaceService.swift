@@ -129,11 +129,23 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
     public func downloadPlan(for model: DownloadableModel) async throws -> ModelDownloadPlan {
         switch model.modelType {
         case .gguf:
-            // Forward `expectedSHA256` (when set) so the validator can enforce
-            // the digest after download. For MLX snapshots, per-file checksums
-            // are out of scope for Phase 1 — those entries stay unverified.
-            let checksum = model.expectedSHA256.map {
-                ModelFileChecksum(algorithm: .sha256, hexDigest: $0)
+            // Forward `expectedSHA256` when the model already carries one
+            // (curated catalogue entries do). Otherwise resolve the LFS
+            // sha256 here, at download time, for this one file only — not at
+            // search time. A 40-result search can surface several hundred
+            // GGUF siblings; fanning out a HEAD request per file on every
+            // search gated result latency on downloads the user never makes
+            // and risked 429s (#2355 review). `downloadPlan(for:)` is called
+            // once, right before the download actually starts, so the cost
+            // here is exactly one file.
+            let checksum: ModelFileChecksum?
+            if let existing = model.expectedSHA256 {
+                checksum = ModelFileChecksum(algorithm: .sha256, hexDigest: existing)
+            } else if let repoIdentifier = Repo.ID(rawValue: model.repoID) {
+                let resolved = await resolveGGUFChecksum(repoID: repoIdentifier, fileName: model.fileName)
+                checksum = resolved.map { ModelFileChecksum(algorithm: .sha256, hexDigest: $0) }
+            } else {
+                checksum = nil
             }
             return .singleFile(url: downloadURL(for: model), expectedChecksum: checksum)
         case .mlx:
@@ -191,6 +203,18 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
         let repoID = model.id.rawValue
         var results: [DownloadableModel] = []
 
+        // expectedSHA256 deliberately stays nil here. The Hub model-detail
+        // request already asks for blob metadata (`getModel(...,
+        // filesMetadata: true)` → `blobs=true`), which the Hub API answers
+        // with a `siblings[].lfs.oid` sha256 per LFS file — but
+        // swift-huggingface's `Model.SiblingInfo` does not decode that field
+        // (only `rfilename`/`size`), so it is silently discarded before it
+        // ever reaches ManifoldKit. Recovering it via a `HubClient.getFile`
+        // HEAD request per GGUF file at *this* layer would fan out to
+        // hundreds of HEAD requests across a single search (up to `limit`
+        // repos × several quant variants each) for models the user never
+        // downloads — see `downloadPlan(for:)`, which resolves the digest
+        // once, for the single file actually being downloaded.
         let ggufFiles = siblings.filter { $0.relativeFilename.lowercased().hasSuffix(".gguf") }
         for file in ggufFiles {
             let sizeBytes = UInt64(file.size ?? 0)
@@ -209,6 +233,12 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             ))
         }
 
+        // Diffusion and MLX-snapshot entries below deliberately leave
+        // expectedSHA256 nil: `fileName` here names a whole package directory
+        // (many underlying files), not a single downloaded artifact, so there
+        // is no single sha256 that could describe it. Per-file verification
+        // for these package kinds is out of scope (mirrors the existing note
+        // on `downloadPlan(for:)` above).
         let diffusionFiles = diffusionPackageFiles(from: model)
         if !diffusionFiles.isEmpty {
             let repoName = model.id.name
@@ -244,6 +274,50 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
         }
 
         return results
+    }
+
+    /// Fetches the LFS content sha256 for a single GGUF file via one HEAD
+    /// request (`HubClient.getFile`), called from `downloadPlan(for:)` at
+    /// download time for the one file actually being downloaded — not from
+    /// `convertModelToDownloadables` at search time, which would fan out to
+    /// hundreds of HEAD requests per search (#2355 review). Best-effort: a
+    /// failed request, a non-LFS file, or an etag that doesn't look like a
+    /// sha256 hex digest (after normalization) is dropped rather than
+    /// surfaced as an error — `DownloadableModel.expectedSHA256` is
+    /// documented to skip verification when `nil`, so an unresolved checksum
+    /// degrades to "unverified" rather than blocking the download.
+    private func resolveGGUFChecksum(repoID: Repo.ID, fileName: String) async -> String? {
+        do {
+            let info = try await hubClient.getFile(at: fileName, in: repoID)
+            guard info.isLFS, let etag = info.etag else { return nil }
+            let normalized = Self.normalizedETag(etag)
+            guard Self.isSHA256Hex(normalized) else { return nil }
+            return normalized
+        } catch {
+            Log.network.warning("Failed to fetch LFS checksum for \(repoID.rawValue)/\(fileName): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Strips a weak-validator `W/` prefix and surrounding quotes from a raw
+    /// `ETag`. `HubClient.getFile`'s `File.etag` returns the header value
+    /// unprocessed (swift-huggingface's own etag normalization is internal,
+    /// used only for its cache bookkeeping and not exposed on `File`), so a
+    /// quoted (`"<sha>"`) or weak (`W/"<sha>"`) LFS etag would otherwise fail
+    /// the 64-hex check below and silently degrade to unverified.
+    private static func normalizedETag(_ raw: String) -> String {
+        var value = raw
+        if value.hasPrefix("W/") {
+            value = String(value.dropFirst(2))
+        }
+        if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
+            value = String(value.dropFirst().dropLast())
+        }
+        return value
+    }
+
+    private static func isSHA256Hex(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy(\.isHexDigit)
     }
 
     private func isDownloadableRepo(_ model: Model) -> Bool {

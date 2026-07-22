@@ -2,7 +2,8 @@
 
 Get a remote MCP server running in your `ToolRegistry` with explicit consent copy and tool boundaries.
 
-> Important: Enable the `MCP` trait in your package dependency first. See
+> Note: No trait is required — the `MCP` trait was retired in v0.48. Add the
+> `ManifoldMCP` product to your target's dependencies and import it. See
 > <doc:MCPGettingStarted> for the dependency snippet.
 
 ## 1) Create a descriptor
