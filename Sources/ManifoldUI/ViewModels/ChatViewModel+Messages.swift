@@ -228,6 +228,24 @@ extension ChatViewModel {
             return
         }
 
+        // No backend in this package can hear a `.audio` attachment today:
+        // `MessagePart.textContent` returns nil for it (ManifoldContract),
+        // `PromptRenderer.warnIfMultimodalPartsDropped` drops it with only a
+        // log, and `CloudMessageEncoder` has no `.audio` case. Sending it
+        // silently would show the user their voice note "sent" while the
+        // model never receives it. Fail loudly instead of dropping it on the
+        // floor; encoding audio for capable backends is tracked in #2353.
+        guard !attachments.contains(where: { if case .audio = $0 { return true } else { return false } }) else {
+            surfaceError(
+                InferenceError.inferenceFailure(
+                    "Voice messages can't be sent yet — no backend in this build can hear audio attachments. Remove the recording and send text instead."
+                ),
+                kind: .configuration,
+                context: "sending audio attachment"
+            )
+            return
+        }
+
         errorMessage = nil
         inputText = ""
         draftAttachments = []

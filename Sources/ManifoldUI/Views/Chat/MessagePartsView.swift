@@ -71,6 +71,16 @@ struct MessagePartsView: View {
         Self.activeProgress(in: viewModel.videoGenerationProgress, messageID: messageID)
     }
 
+    /// See ``activeImageGenerationProgress``; audio sibling. Audio's
+    /// placeholder follows the identical empty-`contentParts` → terminal-part
+    /// lifecycle as image/video (``ChatViewModel/handle(audioRuntimeEvent:)``),
+    /// it just went unwired when the 2026 UI refresh added the progress card
+    /// for the other two modalities — this is that missing third case, not a
+    /// new pattern.
+    private var activeAudioGenerationProgress: AudioGenerationProgress? {
+        Self.activeProgress(in: viewModel.audioGenerationProgress, messageID: messageID)
+    }
+
     /// Terminal (`isComplete == true`) image-generation entry for the hosting
     /// message, when its placeholder never received a `.generatedMedia` part
     /// (`parts.isEmpty` — gated in `body`, same as ``activeImageGenerationProgress``).
@@ -89,6 +99,11 @@ struct MessagePartsView: View {
     /// See ``terminalImageFailure``; video sibling.
     private var terminalVideoFailure: VideoGenerationProgress? {
         Self.terminalFailure(in: viewModel.videoGenerationProgress, messageID: messageID)
+    }
+
+    /// See ``terminalImageFailure``; audio sibling.
+    private var terminalAudioFailure: AudioGenerationProgress? {
+        Self.terminalFailure(in: viewModel.audioGenerationProgress, messageID: messageID)
     }
 
     /// Pure lookup extracted from ``activeImageGenerationProgress``/
@@ -167,6 +182,16 @@ struct MessagePartsView: View {
                         Task { [weak vm] in await vm?.cancelVideoGeneration(messageID: messageID) }
                     }
                 )
+            } else if let progress = activeAudioGenerationProgress {
+                let vm = viewModel
+                GeneratedMediaProgressCardView(
+                    prompt: progress.prompt,
+                    progress: .audio(fractionComplete: progress.fractionComplete),
+                    onCancel: {
+                        guard let messageID else { return }
+                        Task { [weak vm] in await vm?.cancelAudioGeneration(messageID: messageID) }
+                    }
+                )
             } else if let failure = terminalImageFailure {
                 // §4A: "missing media never shows a broken frame: it states
                 // its cause in the statusWarn voice" — this is the failed/
@@ -198,6 +223,8 @@ struct MessagePartsView: View {
                 missingMediaPlaceholder(caption: Self.failureCaption(kind: "Image", error: failure.error))
             } else if let failure = terminalVideoFailure {
                 missingMediaPlaceholder(caption: Self.failureCaption(kind: "Video", error: failure.error))
+            } else if let failure = terminalAudioFailure {
+                missingMediaPlaceholder(caption: Self.failureCaption(kind: "Audio", error: failure.error))
             }
         }
 
@@ -542,12 +569,13 @@ struct MessagePartsView: View {
 
 // MARK: - GenerationProgressLifecycle
 
-/// Common shape ``ImageGenerationProgress``/``VideoGenerationProgress``
-/// already carry — retroactively surfaced as a protocol (rather than editing
-/// either type, which live in `ChatViewModel+ImageGeneration.swift`/
-/// `ChatViewModel+VideoGeneration.swift`) purely so
+/// Common shape ``ImageGenerationProgress``/``VideoGenerationProgress``/
+/// ``AudioGenerationProgress`` already carry — retroactively surfaced as a
+/// protocol (rather than editing any of the three types, which live in
+/// `ChatViewModel+ImageGeneration.swift`/`ChatViewModel+VideoGeneration.swift`/
+/// `ChatViewModel+AudioGeneration.swift`) purely so
 /// ``MessagePartsView/activeProgress(in:messageID:)`` can be written once and
-/// shared by both modalities.
+/// shared by all three modalities.
 protocol GenerationProgressLifecycle {
     /// `true` once a terminal event (completed / failed / cancelled) has been
     /// observed for this generation.
@@ -560,3 +588,4 @@ protocol GenerationProgressLifecycle {
 
 extension ImageGenerationProgress: GenerationProgressLifecycle {}
 extension VideoGenerationProgress: GenerationProgressLifecycle {}
+extension AudioGenerationProgress: GenerationProgressLifecycle {}

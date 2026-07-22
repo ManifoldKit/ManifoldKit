@@ -59,6 +59,7 @@ public struct GenerativeContextMenuItems: View {
                         try await viewModel.generateSpeech(forText: text)
                     } catch {
                         Log.ui.warning("GenerativeContextMenuItems: speech generation failed: \(error)")
+                        viewModel.surfaceError(error, kind: .generation, context: "generating speech")
                     }
                 }
             } label: {
@@ -77,6 +78,7 @@ public struct GenerativeContextMenuItems: View {
                         )
                     } catch {
                         Log.ui.warning("GenerativeContextMenuItems: image generation failed: \(error)")
+                        viewModel.surfaceError(error, kind: .generation, context: "generating image")
                     }
                 }
             } label: {
@@ -95,6 +97,7 @@ public struct GenerativeContextMenuItems: View {
                         )
                     } catch {
                         Log.ui.warning("GenerativeContextMenuItems: video generation failed: \(error)")
+                        viewModel.surfaceError(error, kind: .generation, context: "generating video")
                     }
                 }
             } label: {
@@ -114,6 +117,7 @@ public struct GenerativeContextMenuItems: View {
                         )
                     } catch {
                         Log.ui.warning("GenerativeContextMenuItems: image remix failed: \(error)")
+                        viewModel.surfaceError(error, kind: .generation, context: "remixing image")
                     }
                 }
             } label: {
@@ -133,6 +137,7 @@ public struct GenerativeContextMenuItems: View {
                         )
                     } catch {
                         Log.ui.warning("GenerativeContextMenuItems: video animation failed: \(error)")
+                        viewModel.surfaceError(error, kind: .generation, context: "animating video")
                     }
                 }
             } label: {
