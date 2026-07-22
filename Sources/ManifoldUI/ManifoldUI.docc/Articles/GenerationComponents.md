@@ -99,21 +99,46 @@ Like the image/video tool sources, ``WebSearchToolSource`` is a thin forwarder w
 
 ## Registering tool sources
 
-When importing `ManifoldKit` (the umbrella module), use the one-liner convenience:
+> Important: `ManifoldKit.quickStart(...)` does **not** wire
+> `imageGenerationService`, `videoGenerationService`, or `webSearchRuntime` —
+> none of its overloads pass those parameters through to
+> `ManifoldBootstrap.build(...)` (tracked in #1903). If your bootstrap came
+> from `quickStart(...)`, calling `addGenerationToolSources(viewModel:)`
+> below registers zero tool sources; the call now logs a warning explaining
+> why instead of doing nothing silently. To use these tool sources, drop down
+> to `ManifoldBootstrap.build(...)` directly and pass the generation services
+> you want, as shown below.
+
+Call `ManifoldBootstrap.build(...)` with the generation services your app supports:
 
 ```swift,no-build
-// One call registers whichever generation services are wired in the bootstrap.
-// Sources for nil services are silently skipped.
-await kit.bootstrap.addGenerationToolSources(viewModel: kit.viewModel)
+let (progress, task) = ManifoldBootstrap.build(
+    configuration: configuration,
+    imageGenerationService: imageGenerationService,
+    videoGenerationService: videoGenerationService,
+    webSearchRuntime: webSearchRuntime,
+    makeModelContainer: makeModelContainer
+)
+for await _ in progress { /* drain milestones */ }
+let bootstrap = try await task.value
+```
+
+When importing `ManifoldKit` (the umbrella module), use the one-liner convenience against a bootstrap built this way:
+
+```swift,no-build
+// One call registers whichever generation services were passed to
+// ManifoldBootstrap.build(...) above. Sources for services that are still
+// nil are skipped (with a logged warning if none are wired at all).
+await bootstrap.addGenerationToolSources(viewModel: viewModel)
 ```
 
 For apps that import `ManifoldPersistenceSwiftData` directly (without the umbrella), use `addToolSources(_:)`:
 
 ```swift,no-build
-await kit.bootstrap.addToolSources([
-    ImageGenerationToolSource(viewModel: kit.viewModel),
-    VideoGenerationToolSource(viewModel: kit.viewModel),
-    WebSearchToolSource(viewModel: kit.viewModel)
+await bootstrap.addToolSources([
+    ImageGenerationToolSource(viewModel: viewModel),
+    VideoGenerationToolSource(viewModel: viewModel),
+    WebSearchToolSource(viewModel: viewModel)
 ])
 ```
 
@@ -124,10 +149,12 @@ Both calls replace the more verbose `conversationRuntime.updateSessionToolSource
 Each tool source requires its corresponding generation runtime to be wired into the bootstrap before installation:
 
 - ``ImageGenerationToolSource`` — requires an ``ImageGenerationRuntime`` wired via `ManifoldBootstrap.build(imageGenerationService:)`.
-- ``VideoGenerationToolSource`` — requires a ``VideoGenerationRuntime`` wired into ``ChatViewModel``.
-- ``WebSearchToolSource`` — requires a ``WebSearchRuntime`` (e.g. `DefaultWebSearchRuntime` from `ManifoldCloudCore`) wired via `ManifoldBootstrap(webSearchRuntime:)` or ``ChatViewModel/configure(webSearchRuntime:)``.
+- ``VideoGenerationToolSource`` — requires a ``VideoGenerationRuntime`` wired via `ManifoldBootstrap.build(videoGenerationService:)`.
+- ``WebSearchToolSource`` — requires a ``WebSearchRuntime`` (e.g. `DefaultWebSearchRuntime` from `ManifoldCloudCore`) wired via `ManifoldBootstrap.build(webSearchRuntime:)` or ``ChatViewModel/configure(webSearchRuntime:)``.
 
-`addGenerationToolSources(viewModel:)` silently skips sources whose corresponding service is absent, so it is safe to call unconditionally — no conditional check required at the call site.
+None of these three parameters are reachable through `ManifoldKit.quickStart(...)` today — only through `ManifoldBootstrap.build(...)` directly.
+
+`addGenerationToolSources(viewModel:)` silently skips sources whose corresponding service is absent, but logs a warning when it skips *all three* — that is the signal that no generation surfaces were wired on this bootstrap.
 
 ## Context Menu Items
 
