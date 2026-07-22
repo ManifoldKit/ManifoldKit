@@ -166,6 +166,18 @@ extension ChatViewModel {
             // this call's reply (#A4).
             throw SendMessageError.emptyInput
         }
+        guard !Self.containsUndeliverableAudioAttachment(draftAttachments) else {
+            // Same #A4 stale-record hazard as the emptyInput guard above, and
+            // it is NOT a hypothetical: a prior successful call leaves
+            // lastTurnState == .completed(record1); without this precheck,
+            // the inner sendMessage() call below hits its own audio guard
+            // (which returns early WITHOUT touching lastTurnState) and this
+            // method's `switch lastTurnState` then matches the stale
+            // .completed(record1) — returning the PREVIOUS turn's record as
+            // this call's reply instead of throwing. Caught in review of
+            // #2356; see ChatViewModelSendMessageErrorTests.
+            throw SendMessageError.runtime(Self.undeliverableAudioAttachmentError())
+        }
 
         inputText = text
         await sendMessage()
@@ -235,11 +247,16 @@ extension ChatViewModel {
         // silently would show the user their voice note "sent" while the
         // model never receives it. Fail loudly instead of dropping it on the
         // floor; encoding audio for capable backends is tracked in #2353.
-        guard !attachments.contains(where: { if case .audio = $0 { return true } else { return false } }) else {
+        //
+        // This guard protects the no-arg entry point (ChatInputBar's actual
+        // call path). It deliberately does NOT touch `lastTurnState` — the
+        // throwing `sendMessage(_:)` overload above has its OWN precheck for
+        // this same condition specifically so it never falls through to this
+        // early return and reads a stale `lastTurnState` (#A4 hazard fixed
+        // in review of #2356). Do not remove either guard.
+        guard !Self.containsUndeliverableAudioAttachment(attachments) else {
             surfaceError(
-                InferenceError.inferenceFailure(
-                    "Voice messages can't be sent yet — no backend in this build can hear audio attachments. Remove the recording and send text instead."
-                ),
+                Self.undeliverableAudioAttachmentError(),
                 kind: .configuration,
                 context: "sending audio attachment"
             )
@@ -563,6 +580,25 @@ extension ChatViewModel {
             thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
             thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
             loopDetectionEnabled: loopDetectionEnabled
+        )
+    }
+
+    // MARK: - Undeliverable audio attachment (shared by both sendMessage entry points)
+
+    /// `true` when `parts` contains a `.audio` `MessagePart` — the one
+    /// multimodal input shape no backend in this package can currently
+    /// encode. Shared by ``sendMessage(_:)``'s precheck and the no-arg
+    /// ``sendMessage()``'s inner guard so both throw/surface the identical
+    /// message instead of two copies drifting apart.
+    static func containsUndeliverableAudioAttachment(_ parts: [MessagePart]) -> Bool {
+        parts.contains(where: { if case .audio = $0 { return true } else { return false } })
+    }
+
+    /// The error both `.audio`-attachment guards surface. A single source of
+    /// truth for the copy — see ``containsUndeliverableAudioAttachment(_:)``.
+    static func undeliverableAudioAttachmentError() -> InferenceError {
+        .inferenceFailure(
+            "Voice messages can't be sent yet — no backend in this build can hear audio attachments. Remove the recording and send text instead."
         )
     }
 

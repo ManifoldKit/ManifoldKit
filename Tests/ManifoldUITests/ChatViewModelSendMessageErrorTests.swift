@@ -242,6 +242,47 @@ final class ChatViewModelSendMessageErrorTests: XCTestCase {
         }
     }
 
+    /// Regression for a stale-record leak caught in review of #2356: the
+    /// prior test above only exercises the audio guard while
+    /// `lastTurnState == .idle` (no turn has run yet). But a *successful*
+    /// prior call leaves `lastTurnState == .completed(record1)`
+    /// (`ChatGenerationCoordinator.swift`). Before this fix, the throwing
+    /// overload had no audio precheck of its own — it delegated to the
+    /// no-arg `sendMessage()`, whose audio guard returns early WITHOUT
+    /// touching `lastTurnState`, so the overload's `switch lastTurnState`
+    /// then matched the stale `.completed(record1)` and returned the
+    /// PREVIOUS turn's record as if it were the reply to the new,
+    /// audio-attached call — the exact #A4 deception this file's other
+    /// sabotage-verified test guards against for empty input.
+    func test_sendMessage_throwingOverload_withAudioAttachment_afterSuccessfulPriorTurn_throwsNotStaleRecord() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["Hi", " there"]
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        let firstReply = try await vm.sendMessage("hello")
+        XCTAssertEqual(firstReply.content, "Hi there", "Precondition: first turn completed normally, leaving lastTurnState == .completed(record1)")
+
+        vm.stageDraftAttachment(.audio(
+            url: URL(fileURLWithPath: "/tmp/voice-note.m4a"),
+            duration: 3.2,
+            waveform: nil
+        ))
+
+        do {
+            let result = try await vm.sendMessage("caption")
+            XCTFail("Expected a throw for the undeliverable audio attachment, but got the stale prior record back: \(result)")
+        } catch SendMessageError.runtime(let underlying) {
+            XCTAssertTrue(
+                underlying.localizedDescription.contains("audio") || underlying.localizedDescription.contains("Voice"),
+                "Underlying error should describe the undeliverable audio attachment, got: \(underlying.localizedDescription)"
+            )
+        } catch {
+            XCTFail("Expected .runtime, got \(error)")
+        }
+    }
+
     /// A text-only send alongside a *non*-audio attachment (image) must be
     /// unaffected by the new guard — only `.audio` aborts the send. Requires
     /// a vision-capable backend, otherwise a separate, pre-existing guard
