@@ -213,8 +213,6 @@ ManifoldModelCatalog/ManifoldConfiguration.swift:public enum CustomHostTrustPoli
 ManifoldModelCatalog/ManifoldConfiguration.swift:public enum NetworkPolicy: Sendable, Equatable {
 ManifoldModelCatalog/ManifoldConfiguration.swift:public enum NetworkPolicyError: Error, Sendable, Equatable {
 ManifoldModelCatalog/ManifoldKitError.swift:public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
-ManifoldModelCatalog/MediaGeneration.swift:public enum MediaGeneration<Output: Sendable> {
-ManifoldModelCatalog/MediaGeneration.swift:public enum MediaGenerationEvent<Preview: Sendable>: Sendable {
 ManifoldModelCatalog/ModelCapabilityProbe.swift:public enum ModelCapabilityProbe {
 ManifoldModelCatalog/ModelCapabilityProbe.swift:public enum ModelCapabilityProbeError: LocalizedError, Equatable {
 ManifoldModelCatalog/ModelCatalog.swift:public enum ModelSource: Codable, Hashable, Sendable {
