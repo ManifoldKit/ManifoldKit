@@ -71,7 +71,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = [msg(.user, words: 5), msg(.assistant, words: 5)]
         let out = try await TruncatingCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         XCTAssertEqual(out.map(\.id), history.map(\.id))
     }
 
@@ -81,7 +81,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await TruncatingCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
 
         XCTAssertLessThan(out.count, history.count, "expected eviction")
         XCTAssertEqual(out.last?.id, history.last?.id, "newest must survive")
@@ -103,7 +103,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await TruncatingCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
 
         XCTAssertEqual(out.last?.id, history.last?.id, "newest must survive even when load-bearing fills the budget")
         XCTAssertTrue(out.contains { $0.role == .system }, "load-bearing record retained")
@@ -116,7 +116,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await TruncatingCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
 
         XCTAssertTrue(out.contains { $0.role == .system }, "system prompt must survive")
         XCTAssertTrue(out.contains { if case .memory = $0.kind { return true }; return false },
@@ -130,7 +130,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory(turns: 20, words: 200)
         let out = try await TruncatingCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: tok, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: tok, isPinned: { _ in false }, generate: { _ in "" }).messages
         let usedWords = out.reduce(0) { $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tok) }
         XCTAssertLessThanOrEqual(usedWords, budget())
         XCTAssertEqual(out.last?.id, history.last?.id)
@@ -142,7 +142,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory()
         let out = try await ExtractiveCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
 
         XCTAssertLessThanOrEqual(tokens(out), budget())
         XCTAssertEqual(out.last?.id, history.last?.id)
@@ -159,7 +159,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = [msg(.user, words: 5_000)]  // alone but over budget
         let out = try await ExtractiveCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         XCTAssertEqual(out.count, 1)
     }
 
@@ -169,10 +169,10 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let withoutHead = try await ExtractiveCompressionStrategy(headBudgetFraction: 0.0).compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         let withHead = try await ExtractiveCompressionStrategy(headBudgetFraction: 0.30).compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
 
         // The head knob guarantees the oldest establishing message survives.
         XCTAssertTrue(withHead.contains { $0.id == oldestID }, "head budget must retain the oldest message")
@@ -188,7 +188,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             tailBudgetFraction: 0.40, headBudgetFraction: 0.60  // sums to 1.0 → clamped
         ).compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         XCTAssertLessThanOrEqual(tokens(out), budget(), "verbatim core must be clamped under budget")
         XCTAssertEqual(out.last?.id, history.last?.id, "newest always survives")
         XCTAssertFalse(out.isEmpty)
@@ -201,7 +201,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             tailBudgetFraction: 0.40, headBudgetFraction: 1.0
         ).compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         XCTAssertLessThanOrEqual(tokens(out), budget())
         XCTAssertEqual(out.last?.id, history.last?.id)
     }
@@ -213,7 +213,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         XCTAssertGreaterThan(tokens(history), budget())
         let out = try await ExtractiveCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         XCTAssertEqual(Set(out.map(\.id)), Set(history.map(\.id)),
                        "load-bearing records are never evicted even over budget")
     }
@@ -223,7 +223,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory(turns: 20, words: 200)
         let out = try await ExtractiveCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: tok, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: tok, isPinned: { _ in false }, generate: { _ in "" }).messages
         let usedWords = out.reduce(0) { $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tok) }
         XCTAssertLessThanOrEqual(usedWords, budget())
     }
@@ -234,7 +234,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory()
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: Self.echoGenerate).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: Self.echoGenerate).messages
 
         let first = try XCTUnwrap(out.first)
         XCTAssertEqual(first.role, .system)
@@ -253,7 +253,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory()
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in throw Boom() }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in throw Boom() }).messages
 
         // Fallback produces a reduced history with NO injected summary record.
         XCTAssertFalse(out.contains { if case .memory = $0.kind { return true }; return false })
@@ -265,7 +265,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory()
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "   " }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "   " }).messages
         XCTAssertFalse(out.contains { if case .memory = $0.kind { return true }; return false })
     }
 
@@ -275,7 +275,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory()
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: { _ in "" }).messages
         XCTAssertFalse(out.isEmpty)
         XCTAssertFalse(out.contains { if case .memory = $0.kind { return true }; return false },
                        "empty summariser must NOT inject a memory record")
@@ -291,7 +291,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         }
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: leaky).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: leaky).messages
         let summary = try XCTUnwrap(out.first)
         XCTAssertFalse(summary.content.contains("SECRET_LEAK"), "thinking must be stripped")
         XCTAssertFalse(summary.content.contains("<think>"))
@@ -327,7 +327,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             summarizerResponseBuffer: 64, summarizerInputWindow: 600
         ).compress(
             history: tagged, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
 
         let calls = await recorder.prompts
         XCTAssertGreaterThanOrEqual(calls.count, 2, "chunking should produce ≥2 generate calls (chunks + fold)")
@@ -360,7 +360,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             summarizerResponseBuffer: 64, summarizerInputWindow: 600
         ).compress(
             history: tagged, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
         // The summary record exists (top-level summarise succeeded on the fold).
         let summary = try XCTUnwrap(out.first)
         guard case .memory = summary.kind else { return XCTFail("expected memory summary despite chunk failure") }
@@ -377,7 +377,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let history = overflowingHistory(turns: 20, words: 120)
         let out = try await AnchoredCompressionStrategy(tailBudgetFraction: 0.95).compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: Self.echoGenerate).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: Self.echoGenerate).messages
         let summary = try XCTUnwrap(out.first)
         guard case .memory = summary.kind else { return XCTFail("expected floored memory summary") }
         XCTAssertFalse(summary.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -396,7 +396,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let task = Task { () -> StrategyCompressionResult in
             try await AnchoredCompressionStrategy().compress(
                 history: history, contextSize: ctx, reservedTokens: reserve,
-                tokenizer: nil, isPinned: { _ in false },
+                systemPrompt: nil, tokenizer: nil, isPinned: { _ in false },
                 generate: { _ in
                     // Yield so cancellation lands before/within summarise.
                     try await Task.sleep(nanoseconds: 50_000_000)
@@ -422,7 +422,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         }
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: oneField).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: oneField).messages
         let summary = try XCTUnwrap(out.first)
         guard case .memory = summary.kind else { return XCTFail("expected memory summary") }
         XCTAssertTrue(summary.content.contains("prose that should survive"),
@@ -442,10 +442,10 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         // Run twice: the first call warms the static cache, the second exercises it.
         let out1 = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
         let out2 = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: generate).messages
         let summary1 = try XCTUnwrap(out1.first)
         let summary2 = try XCTUnwrap(out2.first)
         XCTAssertEqual(summary1.content, summary2.content,
@@ -466,10 +466,10 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         }
         let out1 = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: leaky).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: leaky).messages
         let out2 = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in false }, generate: leaky).messages
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in false }, generate: leaky).messages
         let s1 = try XCTUnwrap(out1.first)
         let s2 = try XCTUnwrap(out2.first)
         XCTAssertEqual(s1.content, s2.content,
@@ -539,11 +539,11 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         let largeContext = 8_192
         let history = overflowingHistory(turns: 80, words: 120)
         let policy = DefaultCompressionPolicy.anchored(threshold: 0.85, contextSize: largeContext)
-        let out = try await policy.compress(history: history, sessionID: sessionID, generate: Self.echoGenerate)
+        let out = try await policy.compress(history: history, sessionID: sessionID, systemPrompt: nil, generate: Self.echoGenerate)
         XCTAssertTrue(out.contains { if case .memory = $0.kind { return true }; return false })
 
         // compressBeforeTurn shares the same path.
-        let preOut = try await policy.compressBeforeTurn(history: history, sessionID: sessionID, generate: Self.echoGenerate)
+        let preOut = try await policy.compressBeforeTurn(history: history, sessionID: sessionID, systemPrompt: nil, generate: Self.echoGenerate)
         XCTAssertEqual(preOut.first?.kind.rawStorage, out.first?.kind.rawStorage)
     }
 
@@ -554,7 +554,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         // 512-token simulator cap with the default 2048 reserve.
         let policy = DefaultCompressionPolicy.truncating(contextSize: 512)
         let history = overflowingHistory()
-        let out = try await policy.compress(history: history, sessionID: sessionID, generate: { _ in "" })
+        let out = try await policy.compress(history: history, sessionID: sessionID, systemPrompt: nil, generate: { _ in "" })
         XCTAssertEqual(out.map(\.id), history.map(\.id), "no usable budget → history unchanged")
     }
 
@@ -585,7 +585,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             threshold: 0.85, contextSize: largeContext,
             onOutcome: { capture.set($0) }
         )
-        _ = try await policy.compress(history: history, sessionID: sessionID, generate: Self.echoGenerate)
+        _ = try await policy.compress(history: history, sessionID: sessionID, systemPrompt: nil, generate: Self.echoGenerate)
         guard case .summarized(let tokens) = capture.outcome else {
             return XCTFail("expected .summarized outcome, got \(String(describing: capture.outcome))")
         }
@@ -604,6 +604,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         )
         _ = try await policy.compress(
             history: overflowingHistory(), sessionID: sessionID,
+            systemPrompt: nil,
             generate: { _ in throw Boom() }
         )
         XCTAssertEqual(capture.outcome, .fallbackUsed(reason: .summarizerThrew))
@@ -619,6 +620,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         )
         _ = try await policy.compress(
             history: overflowingHistory(), sessionID: sessionID,
+            systemPrompt: nil,
             generate: { _ in "   " }
         )
         XCTAssertEqual(capture.outcome, .fallbackUsed(reason: .emptySummary))
@@ -639,6 +641,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             )
             return try await policy.compress(
                 history: history, sessionID: sid,
+                systemPrompt: nil,
                 generate: { _ in
                     try await Task.sleep(nanoseconds: 50_000_000)
                     return "TOPIC: x\nKEY POINTS: a; b"
@@ -661,6 +664,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         )
         _ = try await policy.compress(
             history: overflowingHistory(), sessionID: sessionID,
+            systemPrompt: nil,
             generate: { _ in throw CancellationError() }
         )
         XCTAssertEqual(capture.outcome, .cancelled)
@@ -676,7 +680,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             contextSize: 512, onOutcome: { capture.set($0) }
         )
         let history = overflowingHistory()
-        let out = try await policy.compress(history: history, sessionID: sessionID, generate: { _ in "" })
+        let out = try await policy.compress(history: history, sessionID: sessionID, systemPrompt: nil, generate: { _ in "" })
         XCTAssertEqual(capture.outcome, .skippedInsufficientBudget)
         XCTAssertEqual(out.map(\.id), history.map(\.id), "history unchanged on skip")
     }
@@ -692,7 +696,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         )
         let history = (0..<10).map { _ in msg(.system, words: 200) }
         XCTAssertGreaterThan(tokens(history), budget(), "precondition: over budget")
-        _ = try await policy.compress(history: history, sessionID: sessionID, generate: Self.echoGenerate)
+        _ = try await policy.compress(history: history, sessionID: sessionID, systemPrompt: nil, generate: Self.echoGenerate)
         XCTAssertEqual(capture.outcome, .nothingToSummarize)
     }
 
@@ -705,7 +709,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             contextSize: contextSize, reservedTokens: reservedTokens,
             onOutcome: { truncatingCapture.set($0) }
         )
-        _ = try await truncatingPolicy.compress(history: overflowingHistory(), sessionID: sessionID, generate: { _ in "" })
+        _ = try await truncatingPolicy.compress(history: overflowingHistory(), sessionID: sessionID, systemPrompt: nil, generate: { _ in "" })
         XCTAssertEqual(truncatingCapture.outcome, .reduced(strategyName: "truncating"))
 
         let extractiveCapture = OutcomeCapture()
@@ -713,7 +717,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             contextSize: contextSize, reservedTokens: reservedTokens,
             onOutcome: { extractiveCapture.set($0) }
         )
-        _ = try await extractivePolicy.compress(history: overflowingHistory(), sessionID: sessionID, generate: { _ in "" })
+        _ = try await extractivePolicy.compress(history: overflowingHistory(), sessionID: sessionID, systemPrompt: nil, generate: { _ in "" })
         XCTAssertEqual(extractiveCapture.outcome, .reduced(strategyName: "extractive"))
     }
 
@@ -728,9 +732,131 @@ final class DefaultCompressionPolicyTests: XCTestCase {
             onOutcome: { capture.set($0) }
         )
         let smallHistory = [msg(.user, words: 5), msg(.assistant, words: 5)]
-        let out = try await policy.compress(history: smallHistory, sessionID: sessionID, generate: { _ in "" })
+        let out = try await policy.compress(history: smallHistory, sessionID: sessionID, systemPrompt: nil, generate: { _ in "" })
         XCTAssertEqual(capture.outcome, .notNeeded)
         XCTAssertEqual(out.map(\.id), smallHistory.map(\.id))
+    }
+
+    // MARK: - System-prompt budgeting (#1957)
+
+    /// Regression for #1957: before this fix, `compress` had no visibility
+    /// into the session's real system prompt, so the history budget was
+    /// `contextSize - reservedTokens` with `reservedTokens` folding in a
+    /// blind allowance for whatever the system prompt might cost. A real
+    /// system prompt bigger than that guess could push the ACTUAL wire
+    /// payload (system prompt + compressed history) over `contextSize` even
+    /// though `compress` reported success.
+    ///
+    /// This measures the real wire budget — with a real (non-chars/4)
+    /// tokenizer — end to end: passing the real `systemPrompt` into
+    /// `compress` must produce a compressed history that, together with the
+    /// system prompt, fits inside `contextSize - reservedTokens`.
+    func testCompressionBudgetsAgainstRealSystemPromptAndTokenizer() async throws {
+        let tokenizer = WordTokenizer()
+        // A substantial system prompt — the kind a multi-agent or tool-heavy
+        // app composes, sized well past a hand-wavy "allowance" and larger
+        // than the historical bare reservedTokens=512 default would cover.
+        let systemPrompt = Array(repeating: "instruction", count: 600).joined(separator: " ")
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt, tokenizer: tokenizer)
+        XCTAssertEqual(systemPromptTokens, 600, "precondition: WordTokenizer counts real words, not chars/4")
+
+        let policy = DefaultCompressionPolicy.truncating(
+            contextSize: contextSize, reservedTokens: reservedTokens, tokenizer: tokenizer
+        )
+
+        let history = overflowingHistory(turns: 30, words: 150)
+        let historyOnlyTokens = history.reduce(0) { $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer) }
+        XCTAssertGreaterThan(historyOnlyTokens, budget(), "precondition: history alone already overflows contextSize - reservedTokens")
+
+        let compressed = try await policy.compress(
+            history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: { _ in "" }
+        )
+
+        let compressedHistoryTokens = compressed.reduce(0) { $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer) }
+        let totalWireTokens = systemPromptTokens + compressedHistoryTokens
+
+        XCTAssertLessThanOrEqual(
+            totalWireTokens, contextSize - reservedTokens,
+            "post-compression prompt (real system prompt + compressed history), measured with the injected tokenizer, must fit the real budget"
+        )
+    }
+
+    /// Companion check: compressing WITHOUT `systemPrompt` sizes the budget
+    /// purely against `contextSize - reservedTokens`, so the resulting
+    /// history alone fits — but adding the SAME real system prompt back on
+    /// top can overflow `contextSize`. This is the exact failure mode #1957
+    /// fixes for callers that thread `systemPrompt` through; it demonstrates
+    /// why the parameter is load-bearing rather than cosmetic.
+    func testCompressionWithoutSystemPromptCanOverflowRealBudget() async throws {
+        let tokenizer = WordTokenizer()
+        let systemPrompt = Array(repeating: "instruction", count: 600).joined(separator: " ")
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt, tokenizer: tokenizer)
+
+        let policy = DefaultCompressionPolicy.truncating(
+            contextSize: contextSize, reservedTokens: reservedTokens, tokenizer: tokenizer
+        )
+        let history = overflowingHistory(turns: 30, words: 150)
+
+        let compressedIgnoringSystemPrompt = try await policy.compress(
+            history: history, sessionID: sessionID, systemPrompt: nil, generate: { _ in "" }
+        )
+        let historyTokens = compressedIgnoringSystemPrompt.reduce(0) {
+            $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer)
+        }
+
+        // History alone fits the (system-prompt-blind) budget...
+        XCTAssertLessThanOrEqual(historyTokens, budget())
+        // ...but the real system prompt on top overflows contextSize —
+        // exactly the seam #1957 closes for callers that pass `systemPrompt`.
+        XCTAssertGreaterThan(historyTokens + systemPromptTokens, budget())
+    }
+
+    /// Same wire-budget guarantee for the extractive strategy (#1957 review).
+    func testExtractiveBudgetsAgainstRealSystemPromptAndTokenizer() async throws {
+        let tokenizer = WordTokenizer()
+        let systemPrompt = Array(repeating: "instruction", count: 600).joined(separator: " ")
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt, tokenizer: tokenizer)
+        XCTAssertEqual(systemPromptTokens, 600)
+
+        let policy = DefaultCompressionPolicy.extractive(
+            contextSize: contextSize, reservedTokens: reservedTokens, tokenizer: tokenizer
+        )
+        let history = overflowingHistory(turns: 30, words: 150)
+        let compressed = try await policy.compress(
+            history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: { _ in "" }
+        )
+        let compressedHistoryTokens = compressed.reduce(0) {
+            $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer)
+        }
+        XCTAssertLessThanOrEqual(
+            systemPromptTokens + compressedHistoryTokens, contextSize - reservedTokens,
+            "extractive: post-compression wire payload must fit real budget"
+        )
+    }
+
+    /// Same wire-budget guarantee for the anchored strategy (#1957 review).
+    /// Uses a generate that yields a short structured brief so the path
+    /// summarises rather than only falling back.
+    func testAnchoredBudgetsAgainstRealSystemPromptAndTokenizer() async throws {
+        let tokenizer = WordTokenizer()
+        let systemPrompt = Array(repeating: "instruction", count: 600).joined(separator: " ")
+        let systemPromptTokens = ContextWindowManager.estimateTokenCount(systemPrompt, tokenizer: tokenizer)
+        XCTAssertEqual(systemPromptTokens, 600)
+
+        let policy = DefaultCompressionPolicy.anchored(
+            contextSize: contextSize, reservedTokens: reservedTokens, tokenizer: tokenizer
+        )
+        let history = overflowingHistory(turns: 30, words: 150)
+        let compressed = try await policy.compress(
+            history: history, sessionID: sessionID, systemPrompt: systemPrompt, generate: Self.echoGenerate
+        )
+        let compressedHistoryTokens = compressed.reduce(0) {
+            $0 + ContextWindowManager.estimateTokenCount($1, tokenizer: tokenizer)
+        }
+        XCTAssertLessThanOrEqual(
+            systemPromptTokens + compressedHistoryTokens, contextSize - reservedTokens,
+            "anchored: post-compression wire payload must fit real budget"
+        )
     }
 
     // MARK: - Pinning (#2204)
@@ -747,7 +873,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await TruncatingCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: { _ in "" }
+            systemPrompt: nil, tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: { _ in "" }
         ).messages
 
         XCTAssertTrue(out.contains { $0.id == pinnedID }, "pinned message must survive truncating compression")
@@ -769,7 +895,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await ExtractiveCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: { _ in "" }
+            systemPrompt: nil, tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: { _ in "" }
         ).messages
 
         XCTAssertTrue(out.contains { $0.id == pinnedID }, "pinned message must survive extractive compression")
@@ -787,7 +913,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await AnchoredCompressionStrategy(tailBudgetFraction: 0.05).compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: Self.echoGenerate
+            systemPrompt: nil, tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: Self.echoGenerate
         ).messages
 
         XCTAssertTrue(out.contains { $0.id == pinnedID }, "pinned message must survive even under tail-budget starvation")
@@ -801,7 +927,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
         XCTAssertGreaterThan(tokens(history), budget(), "precondition: over budget")
         let out = try await ExtractiveCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { _ in true }, generate: { _ in "" }
+            systemPrompt: nil, tokenizer: nil, isPinned: { _ in true }, generate: { _ in "" }
         ).messages
         XCTAssertEqual(Set(out.map(\.id)), Set(history.map(\.id)),
                        "all-pinned records are never evicted even over budget")
@@ -820,7 +946,7 @@ final class DefaultCompressionPolicyTests: XCTestCase {
 
         let out = try await AnchoredCompressionStrategy().compress(
             history: history, contextSize: contextSize, reservedTokens: reservedTokens,
-            tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: Self.echoGenerate
+            systemPrompt: nil, tokenizer: nil, isPinned: { $0.id == pinnedID }, generate: Self.echoGenerate
         ).messages
 
         guard let survivor = out.first(where: { $0.id == pinnedID }) else {

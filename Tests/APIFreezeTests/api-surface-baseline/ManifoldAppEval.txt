@@ -115,7 +115,7 @@ CheckpointScorer.id Var
 CheckpointScorer.score(_:) Func
 ContextWindowPreTurnCompressionPolicy Struct
 ContextWindowPreTurnCompressionPolicy conformances: Copyable,Escapable,PreTurnCompressionPolicy,Sendable,SendableMetatype
-ContextWindowPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
+ContextWindowPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:systemPrompt:generate:) Func
 ContextWindowPreTurnCompressionPolicy.contextWindow Var
 ContextWindowPreTurnCompressionPolicy.init(contextWindow:triggerFraction:messageCountFallback:) Constructor
 ContextWindowPreTurnCompressionPolicy.messageCountFallback Var
@@ -136,7 +136,7 @@ EventSubsequenceChecker.check(_:against:) Func
 FixedCountPreTurnCompressionPolicy Struct
 FixedCountPreTurnCompressionPolicy conformances: Copyable,Escapable,PreTurnCompressionPolicy,Sendable,SendableMetatype
 FixedCountPreTurnCompressionPolicy.compressAfterMessages Var
-FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
+FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:systemPrompt:generate:) Func
 FixedCountPreTurnCompressionPolicy.init(compressAfterMessages:summaryContent:) Constructor
 FixedCountPreTurnCompressionPolicy.shouldCompressBeforeTurn(messageCount:lastPromptTokens:) Func
 FixedCountPreTurnCompressionPolicy.summaryContent Var

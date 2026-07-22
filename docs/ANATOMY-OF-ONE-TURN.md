@@ -121,9 +121,11 @@ does five things in order, and the order is deliberate:
 1. Rejects oversized text against `ManifoldConfiguration.shared.maxUserMessageBytes`
    before any SwiftData work — cheap rejection beats an OOM during UTF-8
    encoding on a constrained device.
-2. Runs `compression.compressBeforeTurnIfNeeded(sessionID:)` — pre-turn
-   compression, so a just-submitted message always falls outside whatever
-   gets summarized. This only runs for `.send`, never for regenerate/edit/branch.
+  2. Runs `compression.compressBeforeTurnIfNeeded(sessionID:wireSystemPrompt:)`
+     — pre-turn compression, so a just-submitted message always falls outside
+     whatever gets summarized. Budgets against the turn's base wire system
+     prompt (`TurnConfig` / active agent), not merely `ChatSession.systemPrompt`
+     (#1957). Only runs for `.send`, never for regenerate/edit/branch.
 3. Builds the user `ChatMessage` (splicing text and attachment parts so the
    persisted record and the wire-visible structured history stay in sync)
    and persists it synchronously via `persistence.insertMessage(_:)`, then

@@ -440,3 +440,16 @@ API breakage: func CloudMessageEncoder.annotateCacheBreakpoints(plan:systemPromp
 API breakage: constructor BackgroundDownloadManager.init(storageService:sessionIdentifier:persistenceDirectory:tempScanDirectory:userDefaults:activityCenter:) has been removed
 API breakage: constructor HuggingFaceService.init(hubClient:activityCenter:) has been removed
 API breakage: func URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:) has been renamed to func ephemeral(hopCap:resourceTimeout:additionalDataDelegate:)
+API breakage: func CompressionPolicy.compress(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
+API breakage: func CompressionPolicy.compress(history:sessionID:generate:) has been renamed to func compress(history:sessionID:systemPrompt:generate:)
+API breakage: func PreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
+API breakage: func PreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has been renamed to func compressBeforeTurn(history:sessionID:systemPrompt:generate:)
+API breakage: func DefaultCompressionPolicy.compress(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
+API breakage: func DefaultCompressionPolicy.compress(history:sessionID:generate:) has been renamed to func compress(history:sessionID:systemPrompt:generate:)
+API breakage: func DefaultCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
+API breakage: func DefaultCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has been renamed to func compressBeforeTurn(history:sessionID:systemPrompt:generate:)
+API breakage: func ContextWindowPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
+API breakage: func ContextWindowPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has been renamed to func compressBeforeTurn(history:sessionID:systemPrompt:generate:)
+API breakage: func FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
+API breakage: func FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has been renamed to func compressBeforeTurn(history:sessionID:systemPrompt:generate:)
+API breakage: constructor TurnStreamFinalizer.FinalizeInput.init(sessionID:handle:assistantMessage:visibleText:hasToolContent:hasThinkingContent:usage:kind:turnContext:turnHookRegistry:outcomeCompletion:) has been removed

@@ -122,6 +122,7 @@ private struct SummaryReplacingPolicy: CompressionPolicy {
     func compress(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]
@@ -134,6 +135,7 @@ private struct SummaryReplacingPreTurnPolicy: PreTurnCompressionPolicy {
     func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID, kind: .memory("summary"))]

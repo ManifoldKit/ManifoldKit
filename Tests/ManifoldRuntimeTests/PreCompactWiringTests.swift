@@ -6,7 +6,7 @@ import ManifoldTestSupport
 
 /// Verifies the W2C `preCompact` callsite in
 /// ``ConversationTurnExecutor/runGenerationTurn`` fires the HookRegistry
-/// before ``CompressionPolicy/compress(history:sessionID:generate:)`` and
+/// before ``CompressionPolicy/compress(history:sessionID:systemPrompt:generate:)`` and
 /// honours the documented v1 contract: `block: true` from a preCompact
 /// hook **does not** block compression — it just logs a warning.
 @MainActor
@@ -95,6 +95,7 @@ final class PreCompactWiringTests: XCTestCase {
         func compress(
             history: [ChatMessage],
             sessionID: UUID,
+            systemPrompt: String?,
             generate: @Sendable ([ChatMessage]) async throws -> String
         ) async throws -> [ChatMessage] {
             await recorder.record("compress")

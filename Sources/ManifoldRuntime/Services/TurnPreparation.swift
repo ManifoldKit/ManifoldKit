@@ -272,10 +272,6 @@ package struct TurnPreparation: Sendable {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
             return sessionRecord.agents.first(where: { $0.id == activeID })
         }()
-        let agentSiblings: [AgentDefinition] = {
-            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return [] }
-            return sessionRecord.agents.filter { $0.id != activeID }
-        }()
 
         // Per-request handoff detector. Prefer the per-request channel on
         // `enqueueAsync` (closes the service-global race #1494); also install
@@ -338,18 +334,9 @@ package struct TurnPreparation: Sendable {
         // option (a)). Prior assistant messages keep their `agentID`
         // attribution — no history rewrite. The handoff-instructions block
         // is prepended so weak local models actually trigger transfers
-        // when they're appropriate (plan AI-review fix #2).
-        let basePrompt: String?
-        if let activeAgent {
-            let instructions = HandoffDetector.handoffInstructions(for: activeAgent, siblings: agentSiblings)
-            if instructions.isEmpty {
-                basePrompt = activeAgent.systemPrompt
-            } else {
-                basePrompt = "\(instructions)\n\n\(activeAgent.systemPrompt)"
-            }
-        } else {
-            basePrompt = config.systemPrompt
-        }
+        // when they're appropriate (plan AI-review fix #2). Shared with
+        // pre-turn compression budgeting via ``resolveBaseSystemPrompt``.
+        let basePrompt = Self.resolveBaseSystemPrompt(sessionRecord: sessionRecord, config: config)
         let composedSystemPrompt = Self.composeSystemPrompt(basePrompt, slots: mutableSlots)
 
         // kind.backendRole == nil means use record.role directly (.chat case);
@@ -419,6 +406,38 @@ package struct TurnPreparation: Sendable {
     }
 
     // MARK: System-prompt composition (package for direct unit tests)
+
+    /// Base system prompt the turn puts on the wire **before** prompt-slot /
+    /// RAG composition — multi-agent active agent (+ handoff instructions)
+    /// when present, otherwise ``TurnConfig/systemPrompt``. Shared by
+    /// generation preparation and pre-turn compression budgeting
+    /// (``ConversationTurnExecutor/runSendFlow``) so both budget against the
+    /// same base (#1957). Does **not** read `ChatSession.systemPrompt`; hosts
+    /// that store the prompt on the session must also put it on `TurnConfig`
+    /// (as `ChatViewModel` does via `effectiveSystemPrompt()`).
+    package static func resolveBaseSystemPrompt(
+        sessionRecord: ChatSession?,
+        config: TurnConfig
+    ) -> String? {
+        let activeAgent: AgentDefinition? = {
+            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
+            return sessionRecord.agents.first(where: { $0.id == activeID })
+        }()
+        let agentSiblings: [AgentDefinition] = {
+            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return [] }
+            return sessionRecord.agents.filter { $0.id != activeID }
+        }()
+        if let activeAgent {
+            let instructions = HandoffDetector.handoffInstructions(
+                for: activeAgent, siblings: agentSiblings
+            )
+            if instructions.isEmpty {
+                return activeAgent.systemPrompt
+            }
+            return "\(instructions)\n\n\(activeAgent.systemPrompt)"
+        }
+        return config.systemPrompt
+    }
 
     /// Joins the base system prompt with enabled non-empty prompt slots.
     package static func composeSystemPrompt(_ base: String?, slots: [PromptSlot]) -> String? {

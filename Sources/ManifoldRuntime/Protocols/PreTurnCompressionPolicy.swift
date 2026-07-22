@@ -8,12 +8,20 @@ import ManifoldInference
 /// ``shouldCompressBeforeTurn(messageCount:lastPromptTokens:)`` at the start
 /// of each `.send` turn, before the new user record is inserted into the store.
 /// When it returns `true`, the runtime calls
-/// ``compressBeforeTurn(history:sessionID:generate:)``, replaces the stored
+/// ``compressBeforeTurn(history:sessionID:systemPrompt:generate:)``, replaces the stored
 /// messages with the result, emits
 /// ``ConversationEvent/historyCompressed(sessionID:insertedRecords:)``, then
 /// calls ``postCompressBeforeTurn(sessionID:insertedRecords:)``, and *then*
 /// appends the new user message. The just-submitted user action is therefore
 /// always outside the compressed segment.
+///
+/// ## Migration — `systemPrompt` parameter (#1957, next release after 0.72.0)
+///
+/// `compressBeforeTurn` gained a `systemPrompt: String?` parameter, mirroring
+/// ``CompressionPolicy``'s post-turn seam — see that protocol's migration note
+/// for the full rationale (real wire-prompt budget sizing; `reservedTokens` is
+/// response headroom only — shrink it if you previously folded system tokens
+/// in, or you double-count; the tokenizer stays construction-injected).
 ///
 /// Pre-turn compression adds inference latency before the user's message
 /// appears in the UI — the `generate:` closure is called as part of turn
@@ -30,7 +38,7 @@ import ManifoldInference
 ///
 /// ## Error policy
 ///
-/// Failures from ``compressBeforeTurn(history:sessionID:generate:)`` — or an
+/// Failures from ``compressBeforeTurn(history:sessionID:systemPrompt:generate:)`` — or an
 /// empty return value — throw
 /// ``ConversationError/preTurnCompressionFailed(_:)`` to the caller of
 /// ``ConversationRuntime/processTurn(_:)``. Existing history is preserved when
@@ -49,6 +57,7 @@ import ManifoldInference
 ///     func compressBeforeTurn(
 ///         history: [ChatMessage],
 ///         sessionID: UUID,
+///         systemPrompt: String?,
 ///         generate: @Sendable ([ChatMessage]) async throws -> String
 ///     ) async throws -> [ChatMessage] {
 ///         let summary = try await generate(history)
@@ -89,11 +98,17 @@ public protocol PreTurnCompressionPolicy: Sendable {
     ///   - history: Current full message history, oldest-first, *without* the
     ///     user message being submitted this turn.
     ///   - sessionID: The session being compressed.
+    ///   - systemPrompt: The turn's base wire system prompt
+    ///     (``TurnConfig`` / active-agent + handoff instructions; slots are
+    ///     not yet assembled on the pre-turn seam), or `nil` when none is on
+    ///     the wire. Not part of `history` — size the budget against its real
+    ///     token cost rather than a static allowance (#1957).
     ///   - generate: Calls the inference backend; receives messages as a
     ///     mini-conversation and returns the model's accumulated text output.
     func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage]
 

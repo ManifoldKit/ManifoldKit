@@ -99,6 +99,7 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
         history: [ChatMessage],
         contextSize: Int,
         reservedTokens: Int,
+        systemPrompt: String?,
         tokenizer: (any TokenizerProvider)?,
         isPinned: @Sendable (ChatMessage) -> Bool,
         generate: @Sendable ([ChatMessage]) async throws -> String
@@ -107,7 +108,8 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
             return StrategyCompressionResult(messages: [], outcome: .notNeeded)
         }
 
-        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens)
+        let systemPromptTokens = estimateTokens(systemPrompt ?? "", tokenizer: tokenizer)
+        let budget = historyBudget(contextSize: contextSize, reservedTokens: reservedTokens, systemPromptTokens: systemPromptTokens)
         let tokens = history.map { estimateTokens($0, tokenizer: tokenizer) }
         let originalTokens = tokens.reduce(0, +)
         if originalTokens <= budget {
@@ -189,7 +191,8 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
             Log.inference.debug("[AnchoredCompression] summarisation failed: \(error); falling back to extractive")
             let fallbackResult = try await fallback.compress(
                 history: history, contextSize: contextSize,
-                reservedTokens: reservedTokens, tokenizer: tokenizer, isPinned: isPinned, generate: generate
+                reservedTokens: reservedTokens, systemPrompt: systemPrompt,
+                tokenizer: tokenizer, isPinned: isPinned, generate: generate
             )
             return StrategyCompressionResult(
                 messages: fallbackResult.messages,
@@ -200,7 +203,8 @@ struct AnchoredCompressionStrategy: CompressionStrategy {
         guard !summaryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             let fallbackResult = try await fallback.compress(
                 history: history, contextSize: contextSize,
-                reservedTokens: reservedTokens, tokenizer: tokenizer, isPinned: isPinned, generate: generate
+                reservedTokens: reservedTokens, systemPrompt: systemPrompt,
+                tokenizer: tokenizer, isPinned: isPinned, generate: generate
             )
             return StrategyCompressionResult(
                 messages: fallbackResult.messages,

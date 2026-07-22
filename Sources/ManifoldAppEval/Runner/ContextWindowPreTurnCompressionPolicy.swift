@@ -61,6 +61,7 @@ public struct ContextWindowPreTurnCompressionPolicy: PreTurnCompressionPolicy {
     public func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         // Deliberately does not call `generate` — see the type doc. The

@@ -47,6 +47,7 @@ public struct FixedCountPreTurnCompressionPolicy: PreTurnCompressionPolicy {
     public func compressBeforeTurn(
         history: [ChatMessage],
         sessionID: UUID,
+        systemPrompt: String?,
         generate: @Sendable ([ChatMessage]) async throws -> String
     ) async throws -> [ChatMessage] {
         // Return a single memory record instead of calling `generate` — the

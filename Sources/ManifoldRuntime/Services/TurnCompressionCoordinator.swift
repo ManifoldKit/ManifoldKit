@@ -1,20 +1,41 @@
 import Foundation
 import ManifoldInference
 
+/// Source of the system prompt threaded into compression budgeting (#1957).
+///
+/// The turn loop budgets against what is **actually on the wire**, which is
+/// often not `ChatSession.systemPrompt` — multi-agent active-agent prompts,
+/// handoff instructions, ``TurnConfig/systemPrompt``, and composed prompt
+/// slots can all differ from the session field. Callers that have resolved
+/// the wire prompt pass ``wire(_:)`` (including `.wire(nil)` for a deliberate
+/// empty prompt). ``unresolved`` keeps the session-store fallback for call
+/// sites that cannot supply a wire value.
+enum CompressionWireSystemPrompt: Sendable, Equatable {
+    /// The prompt the turn will send / just sent. Used as-is (including `nil`).
+    case wire(String?)
+    /// Wire prompt unavailable — coordinator may fall back to
+    /// `ChatSession.systemPrompt` when a session store is wired.
+    case unresolved
+}
+
 /// Per-turn compression coordination seam, extracted from
 /// ``ConversationTurnExecutor`` (#1725, step P3a). Owns the two
 /// compress-and-replace sequences plus the shared background-summarisation
 /// generate closure both paths drive:
 ///
-/// - **Pre-turn** — ``compressBeforeTurnIfNeeded(sessionID:)`` runs at the top
-///   of the send flow, BEFORE the user message is inserted, so the
-///   just-submitted action always falls outside the compressed segment.
+/// - **Pre-turn** — ``compressBeforeTurnIfNeeded(sessionID:wireSystemPrompt:)``
+///   runs at the top of the send flow, BEFORE the user message is inserted, so
+///   the just-submitted action always falls outside the compressed segment.
 ///   Failures throw to the caller: the host's ordering invariant depends on
 ///   compression completing first, so a pre-turn failure aborts the turn.
-/// - **Post-turn** — ``compressAfterTurnIfNeeded(sessionID:promptTokens:hookRegistry:)``
+/// - **Post-turn** — ``compressAfterTurnIfNeeded(sessionID:promptTokens:wireSystemPrompt:hookRegistry:)``
 ///   runs after the turn's terminal `streamFinished`, at the very end of the
 ///   generation path. Failures log and continue — the generation has already
 ///   succeeded and must not be retroactively failed by a compression error.
+///
+/// Both paths budget against the turn's **wire** system prompt (passed as
+/// ``CompressionWireSystemPrompt/wire(_:)`` from ``ConversationTurnExecutor``),
+/// not merely `ChatSession.systemPrompt` (#1957).
 ///
 /// Both paths preserve the event bracket the characterization goldens pin:
 /// `.compressionTriggered` (emitted after the policy resolves but before the
@@ -65,7 +86,18 @@ struct TurnCompressionCoordinator: Sendable {
     /// Failures throw to the caller — unlike post-turn compression which
     /// logs and continues, pre-turn failure aborts the turn because the
     /// host's ordering invariant depends on compression completing first.
-    func compressBeforeTurnIfNeeded(sessionID: UUID) async throws {
+    ///
+    /// - Parameter wireSystemPrompt: The system prompt the upcoming turn will
+    ///   actually put on the wire (``TurnConfig/systemPrompt``, multi-agent
+    ///   active-agent prompt + handoff instructions, or the composed prompt
+    ///   when available). Prefer this over `ChatSession.systemPrompt` — the
+    ///   session field is only a fallback when the wire prompt is unavailable
+    ///   (`wireSystemPrompt` is the `unresolved` sentinel / not supplied).
+    ///   Pass `.wire(nil)` when the turn deliberately has no system prompt.
+    func compressBeforeTurnIfNeeded(
+        sessionID: UUID,
+        wireSystemPrompt: CompressionWireSystemPrompt = .unresolved
+    ) async throws {
         guard let preTurnPolicy else { return }
         let existingHistory: [ChatMessage]
         do {
@@ -83,11 +115,13 @@ struct TurnCompressionCoordinator: Sendable {
         ) else { return }
 
         let generate = makeCompressionGenerateClosure()
+        let systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
         let compressed: [ChatMessage]
         do {
             compressed = try await preTurnPolicy.compressBeforeTurn(
                 history: existingHistory,
                 sessionID: sessionID,
+                systemPrompt: systemPrompt,
                 generate: generate
             )
         } catch {
@@ -131,9 +165,16 @@ struct TurnCompressionCoordinator: Sendable {
     /// to warrant compression. Skipped when no token usage is available
     /// (policy can't make a meaningful decision without promptTokens) or
     /// when the backend doesn't report a context size (contextSize == 0).
+    ///
+    /// - Parameter wireSystemPrompt: The system prompt the turn **just sent**
+    ///   on the wire (``ConversationTurnExecutor``'s `composedSystemPrompt`
+    ///   after agent resolution + slot composition). Prefer this over
+    ///   `ChatSession.systemPrompt` — session store is fallback only when
+    ///   the wire prompt is unavailable (``.unresolved``).
     func compressAfterTurnIfNeeded(
         sessionID: UUID,
         promptTokens: Int?,
+        wireSystemPrompt: CompressionWireSystemPrompt = .unresolved,
         hookRegistry: HookRegistry?
     ) async {
         guard let postTurnPolicy, let promptTokens else { return }
@@ -153,6 +194,7 @@ struct TurnCompressionCoordinator: Sendable {
         }
 
         let generate = makeCompressionGenerateClosure()
+        let systemPrompt = await resolveSystemPrompt(wireSystemPrompt, sessionID: sessionID)
 
         // preCompact hook: v1 is observational. The plan's hook
         // contract documents that preCompact CANNOT block compression
@@ -180,6 +222,7 @@ struct TurnCompressionCoordinator: Sendable {
             let compressed = try await postTurnPolicy.compress(
                 history: history,
                 sessionID: sessionID,
+                systemPrompt: systemPrompt,
                 generate: generate
             )
             // Guard against an empty result — deleting all messages
@@ -210,6 +253,27 @@ struct TurnCompressionCoordinator: Sendable {
             await postTurnPolicy.postCompress(sessionID: sessionID, insertedRecords: compressed)
         } catch {
             Log.inference.warning("CompressionPolicy.compress failed (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: System-prompt resolution (#1957)
+
+    /// Prefer the turn loop's wire prompt; fall back to `ChatSession.systemPrompt`
+    /// only when the caller could not resolve one (``.unresolved``). An explicit
+    /// ``CompressionWireSystemPrompt/wire(_:)`` value — including `.wire(nil)` —
+    /// is used as-is so a deliberate empty/missing wire prompt is not replaced
+    /// by a stale session field.
+    private func resolveSystemPrompt(
+        _ wireSystemPrompt: CompressionWireSystemPrompt,
+        sessionID: UUID
+    ) async -> String? {
+        switch wireSystemPrompt {
+        case .wire(let prompt):
+            return prompt
+        case .unresolved:
+            let sessionPrompt = await persistence.fetchSession(sessionID: sessionID)?.systemPrompt
+            guard let sessionPrompt, !sessionPrompt.isEmpty else { return nil }
+            return sessionPrompt
         }
     }
 

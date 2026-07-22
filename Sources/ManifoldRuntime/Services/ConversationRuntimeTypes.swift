@@ -155,7 +155,7 @@ public enum ConversationError: Error, Sendable {
     case contextAssembly(any Error)
 
     /// Pre-turn compression ran but
-    /// ``PreTurnCompressionPolicy/compressBeforeTurn(history:sessionID:generate:)``
+    /// ``PreTurnCompressionPolicy/compressBeforeTurn(history:sessionID:systemPrompt:generate:)``
     /// threw or returned an empty history. Existing history is preserved and
     /// the turn was not executed. The associated value is the underlying error.
     case preTurnCompressionFailed(any Error)

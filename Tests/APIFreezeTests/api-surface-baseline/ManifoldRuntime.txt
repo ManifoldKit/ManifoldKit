@@ -103,7 +103,7 @@ CompressionOutcome.skippedInsufficientBudget EnumElement
 CompressionOutcome.summarized EnumElement
 CompressionPolicy Protocol
 CompressionPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
-CompressionPolicy.compress(history:sessionID:generate:) Func
+CompressionPolicy.compress(history:sessionID:systemPrompt:generate:) Func
 CompressionPolicy.postCompress(sessionID:insertedRecords:) Func
 CompressionPolicy.shouldCompress(promptTokens:contextSize:contextUtilization:) Func
 CompressionReason Enum
@@ -302,8 +302,8 @@ ConversationTurnOutcome.streamHandle Var
 DefaultCompressionPolicy Struct
 DefaultCompressionPolicy conformances: CompressionPolicy,Copyable,Escapable,PreTurnCompressionPolicy,Sendable,SendableMetatype
 DefaultCompressionPolicy.anchored(threshold:contextSize:reservedTokens:summarizerInputWindow:summaryTemplate:tokenizer:isPinned:onOutcome:) Func
-DefaultCompressionPolicy.compress(history:sessionID:generate:) Func
-DefaultCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
+DefaultCompressionPolicy.compress(history:sessionID:systemPrompt:generate:) Func
+DefaultCompressionPolicy.compressBeforeTurn(history:sessionID:systemPrompt:generate:) Func
 DefaultCompressionPolicy.contextSize Var
 DefaultCompressionPolicy.defaultReservedTokens Var
 DefaultCompressionPolicy.extractive(threshold:headBudgetFraction:contextSize:reservedTokens:tokenizer:isPinned:onOutcome:) Func
@@ -587,7 +587,7 @@ PreToolUseHookAdapter conformances: Copyable,Escapable
 PreToolUseHookAdapter.make(registry:eventEmitter:) Func
 PreTurnCompressionPolicy Protocol
 PreTurnCompressionPolicy conformances: Copyable,Escapable,Sendable,SendableMetatype
-PreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) Func
+PreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:systemPrompt:generate:) Func
 PreTurnCompressionPolicy.postCompressBeforeTurn(sessionID:insertedRecords:) Func
 PreTurnCompressionPolicy.shouldCompressBeforeTurn(messageCount:lastPromptTokens:) Func
 PromptContextPipeline Class
