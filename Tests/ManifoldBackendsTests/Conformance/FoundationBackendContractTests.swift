@@ -70,34 +70,98 @@ final class FoundationBackendContractTests: XCTestCase,
 
     // removed: StructuredHistoryReceiver retired in #2312; Foundation replays via its SDK transcript, history threads via hints
 
+    // MARK: - Grammar fail-closed
+
+    /// FoundationBackend disclaims ``BackendCapabilities/supportsGrammarConstrainedSampling``
+    /// (Apple's FoundationModels SDK exposes no grammar surface), so a non-nil
+    /// `config.grammar` MUST throw ``InferenceError/unsupportedGrammar(reason:)``
+    /// rather than being silently dropped — the same contract every other backend
+    /// honours. This is the test that was missing when FoundationBackend ignored
+    /// `config.grammar` entirely.
+    ///
+    /// Unlike the cloud/Ollama suites, this does NOT use the shared
+    /// ``BackendContractChecks/assertGrammarFailClosedContract`` helper: that
+    /// helper calls `loadModel(...)`, and `FoundationBackend.loadModel` probes a
+    /// live Apple Intelligence session that CI/simulator lack. The grammar check
+    /// is placed before the model-loaded guard, so we assert it directly on an
+    /// unloaded backend — no session required.
+    ///
+    /// Sabotage-evidence: delete the `if config.grammar != nil, …` fail-closed
+    /// block at the top of `FoundationBackend.generate(...)`; `generate` then
+    /// throws `.inferenceFailure("No model loaded")` instead of
+    /// `.unsupportedGrammar`, and the `case .unsupportedGrammar` guard below trips.
+    @discardableResult
+    private func assertGrammarFailsClosed(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> Bool {
+        let backend = FoundationBackend()
+        var config = GenerationConfig()
+        config.grammar = "root ::= \"hello\""
+        var threwUnsupportedGrammar = false
+        XCTAssertThrowsError(
+            try backend.generate(prompt: "x", systemPrompt: nil, config: config),
+            "FoundationBackend must throw when given a grammar it cannot honour",
+            file: file, line: line
+        ) { error in
+            if case .unsupportedGrammar = error as? InferenceError {
+                threwUnsupportedGrammar = true
+            } else {
+                XCTFail(
+                    "Expected InferenceError.unsupportedGrammar; got \(String(describing: error))",
+                    file: file, line: line
+                )
+            }
+        }
+        return threwUnsupportedGrammar
+    }
+
+    func test_contract_grammarFailClosed() {
+        XCTAssertTrue(
+            assertGrammarFailsClosed(),
+            "FoundationBackend must fail closed on grammar-constrained sampling"
+        )
+    }
+
     // MARK: - Per-capability claims + meta-contract
 
-    /// All bootstrap claims and the meta-contract assertion are collapsed into
-    /// one method, threaded through one shared `capabilityClaimRegistry`
-    /// instance, so the registry is built and verified within a single test-case
-    /// lifetime. Historically necessary because the registry was process-global
-    /// (#1601); now the registry is instance-scoped (arch-plan 4.2) and this
-    /// suite is safe under `swift test --parallel` — the collapse remains as a
-    /// readable, self-contained shape, not a correctness requirement.
+    /// All bootstrap claims, the fail-closed grammar assertion, and the
+    /// meta-contract assertion are collapsed into one method, threaded through
+    /// one shared `capabilityClaimRegistry` instance, so the registry is built
+    /// and verified within a single test-case lifetime. The grammar assertion is
+    /// folded in (rather than left only in `test_contract_grammarFailClosed`)
+    /// because the meta-contract now requires a recorded claim for declared-false
+    /// fail-closed flags (`BackendContractChecks.failClosedContractFlags`) and
+    /// XCTest gives each method a fresh registry. The suite is safe under
+    /// `swift test --parallel` (instance-scoped registry, arch-plan 4.2).
     ///
     /// Full behavioural proofs for each flag:
     /// - `supportsToolCalling`: requires Apple Intelligence (live session); lives in the E2E tier.
-    /// - `supportsGuidedStructuredOutput`: requires a live session (GuidedGeneration round-trip).
+    /// - `supportsGrammarConstrainedSampling` (declared false): the fail-closed
+    ///   assertion above proves the disclaim; the claim is recorded here.
+    ///
+    /// (`supportsGuidedStructuredOutput` is no longer bootstrapped: it was
+    /// flipped to `false` because the `.guided` strategy is not wired
+    /// end-to-end — see #2354 and `FoundationBackend.capabilities`.)
     func test_contract_allCapabilityClaims() {
         // Reset first — harmless given a freshly-constructed registry, kept
         // for symmetry with suites that build up several scenarios in one
         // test method.
         BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: contractBackendName)
 
+        // Fail-closed grammar contract. Records the claim in this method's
+        // registry so the meta-contract's declared-false requirement is met.
+        _ = assertGrammarFailsClosed()
+        BackendContractChecks.recordCapabilityClaim(
+            capabilityClaimRegistry,
+            backend: contractBackendName,
+            flag: "supportsGrammarConstrainedSampling"
+        )
+
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             capabilityClaimRegistry,
             backendName: contractBackendName,
             flag: "supportsToolCalling"
-        )
-        BackendContractChecks.claimWithoutBehaviouralAssertion(
-            capabilityClaimRegistry,
-            backendName: contractBackendName,
-            flag: "supportsGuidedStructuredOutput"
         )
 
         BackendContractChecks.assertCapabilityMetaContract(

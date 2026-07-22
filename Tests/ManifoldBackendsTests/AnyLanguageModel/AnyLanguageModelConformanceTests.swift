@@ -38,10 +38,31 @@ final class AnyLanguageModelConformanceTests: XCTestCase {
 
     /// The bridge streams plain text only: it advertises the conservative
     /// capability floor (no tools / structured output / thinking) so the
-    /// capability router never routes those requests to it. The meta-contract
-    /// passes trivially because no tracked flag is declared `true`.
+    /// capability router never routes those requests to it. No tracked flag is
+    /// declared `true`, but `supportsGrammarConstrainedSampling` is a declared-
+    /// false fail-closed-contract flag, so the meta-contract requires a recorded
+    /// claim for it — proven here by asserting `generate()` rejects a grammar
+    /// (the bridge checks it before the model-loaded guard, so no load needed).
     func test_contract_capabilityMetaContract() {
         BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: backendName)
+
+        var grammarConfig = GenerationConfig()
+        grammarConfig.grammar = "root ::= \"hello\""
+        XCTAssertThrowsError(
+            try AnyLanguageModelBackend().generate(prompt: "x", systemPrompt: nil, config: grammarConfig),
+            "AnyLanguageModelBackend must fail closed on grammar-constrained sampling"
+        ) { error in
+            guard case .unsupportedGrammar = error as? InferenceError else {
+                XCTFail("expected InferenceError.unsupportedGrammar, got \(error)")
+                return
+            }
+        }
+        BackendContractChecks.recordCapabilityClaim(
+            capabilityClaimRegistry,
+            backend: backendName,
+            flag: "supportsGrammarConstrainedSampling"
+        )
+
         BackendContractChecks.assertCapabilityMetaContract(
             capabilityClaimRegistry,
             backendName: backendName,

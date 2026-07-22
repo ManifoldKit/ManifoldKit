@@ -33,7 +33,13 @@ final class OpenAIBackendConformanceTests: XCTestCase {
 
     // MARK: - Grammar fail-closed
 
-    func test_contract_grammarFailClosed() async throws {
+    /// Runs the fail-closed grammar contract, recording the claim in
+    /// `capabilityClaimRegistry`. Folded into `test_contract_allCapabilityClaims`
+    /// (below): the meta-contract's declared-false requirement
+    /// (`BackendContractChecks.failClosedContractFlags`) reads the same
+    /// instance-scoped registry, and XCTest hands each method a fresh instance —
+    /// so the claim must be recorded in the method that asserts the meta-contract.
+    private func assertGrammarFailsClosed() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [MockURLProtocol.self]
         let baseURL = URL(string: "http://openai-\(UUID().uuidString).test")!
@@ -65,12 +71,17 @@ final class OpenAIBackendConformanceTests: XCTestCase {
     /// lifetime. Historically necessary because the registry was process-global
     /// (#1601); now the registry is instance-scoped (arch-plan 4.2) and this
     /// suite is safe under `swift test --parallel` — the collapse remains as a
-    /// readable, self-contained shape, not a correctness requirement.
-    func test_contract_allCapabilityClaims() {
+    /// readable, self-contained shape, not a correctness requirement. The
+    /// grammar fail-closed assertion is folded in (see `assertGrammarFailsClosed`)
+    /// because the meta-contract now requires a recorded claim for declared-false
+    /// fail-closed flags.
+    func test_contract_allCapabilityClaims() async throws {
         // Reset first — harmless given a freshly-constructed registry, kept
         // for symmetry with suites that build up several scenarios in one
         // test method.
         BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: backendName)
+
+        try await assertGrammarFailsClosed()
 
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             capabilityClaimRegistry,

@@ -133,14 +133,21 @@ Reference adopters live alongside their target:
            assertUniversalBackendContract()
        }
 
+       // The grammar fail-closed assertion and the meta-contract assertion must
+       // run in the SAME test method, threaded through the same registry: the
+       // meta-contract requires a recorded claim for declared-false fail-closed
+       // flags (`BackendContractChecks.failClosedContractFlags`), and XCTest
+       // gives every method a fresh instance-scoped registry — so a grammar test
+       // in a separate method would not be visible to `assertCapabilityMetaContract`.
        @MainActor
-       func test_grammarFailClosed_throwsUnsupportedGrammar() async throws {
+       func test_contract_allCapabilityClaims() async throws {
+           BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: "YourBackend")
+
+           // Fail-closed families (record their claims through the registry).
            try await assertGrammarFailClosedContract()
-       }
 
-       // …other per-capability assertions…
+           // …other per-capability claim bootstraps / assertions…
 
-       func test_metaContract() {
            BackendContractChecks.assertCapabilityMetaContract(
                capabilityClaimRegistry,
                backendName: "YourBackend",
@@ -150,9 +157,9 @@ Reference adopters live alongside their target:
    }
    ```
 
-3. If the backend adopts an opt-in protocol, add the matching mixin (e.g. `GrammarFailClosedContractMixin`) and a concrete `test_…` method that calls its assertion helper. Protocol-extension methods are not XCTest-discoverable on their own. (Conversation history is no longer an opt-in receiver protocol — it threads per-call on `GenerationRuntimeHints.history` since #2312; assert history behaviour via the backend's request body or recorded hints.)
+3. If the backend adopts an opt-in protocol, add the matching mixin (e.g. `GrammarFailClosedContractMixin`) and call its assertion helper from a concrete `test_…` method. Protocol-extension methods are not XCTest-discoverable on their own. (Conversation history is no longer an opt-in receiver protocol — it threads per-call on `GenerationRuntimeHints.history` since #2312; assert history behaviour via the backend's request body or recorded hints.)
 4. Every `true` capability flag your backend declares must have at least one assertion family that records a claim against it (or call `claimWithoutBehaviouralAssertion(...)` as a temporary bootstrap — file the follow-up issue).
-5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
+5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family **inside the method that asserts the meta-contract** — a missing fail-closed test now turns the suite red (`unprovenFailClosedContracts`). A backend that cannot use the shared `assertGrammarFailClosedContract` helper (e.g. its `loadModel` needs a live session, like `FoundationBackend`) asserts the fail-closed behaviour directly and calls `recordCapabilityClaim(..., flag: "supportsGrammarConstrainedSampling")`.
 6. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.
 
 The full assertion shape is documented in `Sources/ManifoldBackendTestKit/BackendContractChecks.swift` — the contract checks and mixins ship as the `ManifoldBackendTestKit` product so companion backend packages (manifold-mlx / manifold-llama, #1749) run the same suite via `import ManifoldBackendTestKit` (no `@testable` access). Its DocC catalog documents the adoption walkthrough, the instance-scoped claims registry (arch-plan 4.2 — safe under `swift test --parallel`), and the non-vacuity expectation.

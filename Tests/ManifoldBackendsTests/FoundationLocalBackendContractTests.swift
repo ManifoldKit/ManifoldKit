@@ -44,7 +44,10 @@ final class FoundationLocalBackendContractTests: XCTestCase {
                 isRemote: false,
                 supportsVision: false,
                 streamsToolCallArguments: false,
-                supportsGuidedStructuredOutput: true
+                // Declared false: the `.guided` structured-output strategy is
+                // not wired end-to-end (#2354). Must match the backend's real
+                // capability literal.
+                supportsGuidedStructuredOutput: false
             ),
             requiresSlowTests: true,
             makeBackend: {

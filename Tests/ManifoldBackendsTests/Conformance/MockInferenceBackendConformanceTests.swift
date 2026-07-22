@@ -187,7 +187,9 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
     }
 
     /// `assertCapabilityMetaContract` itself must succeed when the registry
-    /// is correctly populated.
+    /// is correctly populated — including the fail-closed contract for the
+    /// declared-false `supportsGrammarConstrainedSampling` flag, whose claim
+    /// must be recorded (see `test_metaContract_failClosed_*` below for why).
     func test_metaContract_assertSucceedsWhenAllClaimed() {
         let caps = BackendCapabilities(supportsToolCalling: true)
         BackendContractChecks.claimWithoutBehaviouralAssertion(
@@ -195,10 +197,95 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
             backendName: backendName,
             flag: "supportsToolCalling"
         )
+        // The default `BackendCapabilities` has supportsGrammarConstrainedSampling
+        // == false, a fail-closed contract flag — the meta-contract now requires
+        // a recorded claim for it too, so record one here.
+        BackendContractChecks.recordCapabilityClaim(
+            capabilityClaimRegistry,
+            backend: backendName,
+            flag: "supportsGrammarConstrainedSampling"
+        )
         BackendContractChecks.assertCapabilityMetaContract(
             capabilityClaimRegistry,
             backendName: backendName,
             capabilities: caps
+        )
+    }
+
+    // MARK: - Fail-closed contract meta-audit (gap D)
+
+    /// A fail-closed-contract flag declared `false` with NO recorded claim must
+    /// surface via the detection function — this is what makes a *missing*
+    /// grammar fail-closed test turn a suite red (the root cause of the
+    /// FoundationBackend grammar gap: the old meta-contract only audited
+    /// declared-*true* flags, so a disclaimed-but-unproven flag passed cleanly).
+    ///
+    /// Sabotage-evidence (plants the violation and runs the shipped detection):
+    ///   S1: in `BackendContractChecks.unprovenFailClosedContracts`, change the
+    ///       `value == false` filter to `value == true`; this test fails because
+    ///       the false-declared flag no longer surfaces.
+    ///   S2: empty `failClosedContractFlags`; the flag never surfaces and this
+    ///       test fails.
+    func test_metaContract_failClosedFlagDeclaredFalseWithoutClaim_isReportedUnmet() {
+        // Default caps: supportsGrammarConstrainedSampling == false, no claim.
+        let caps = BackendCapabilities()
+        let unmet = BackendContractChecks.unprovenFailClosedContracts(
+            capabilityClaimRegistry,
+            backendName: backendName,
+            capabilities: caps
+        )
+        XCTAssertEqual(
+            unmet, ["supportsGrammarConstrainedSampling"],
+            "a declared-false fail-closed flag with no recorded claim must surface as unmet"
+        )
+    }
+
+    /// Recording the fail-closed claim clears the unmet bit — proves the
+    /// grammar fail-closed test (which records this claim) satisfies the
+    /// meta-contract.
+    func test_metaContract_failClosedFlagWithRecordedClaim_isCleared() {
+        let caps = BackendCapabilities()
+        BackendContractChecks.recordCapabilityClaim(
+            capabilityClaimRegistry,
+            backend: backendName,
+            flag: "supportsGrammarConstrainedSampling"
+        )
+        let unmet = BackendContractChecks.unprovenFailClosedContracts(
+            capabilityClaimRegistry,
+            backendName: backendName,
+            capabilities: caps
+        )
+        XCTAssertEqual(
+            unmet, [],
+            "a recorded fail-closed claim must satisfy the meta-contract for that flag"
+        )
+    }
+
+    /// `assertCapabilityMetaContract` must FAIL when a declared-false fail-closed
+    /// flag has no claim. Verified through the detection function (asserting the
+    /// XCTFail directly would fail this test), mirroring how the declared-true
+    /// path is self-tested above.
+    func test_metaContract_assertWouldFail_whenFailClosedClaimMissing() {
+        let caps = BackendCapabilities(supportsToolCalling: true)
+        BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
+            backendName: backendName,
+            flag: "supportsToolCalling"
+        )
+        // All declared-true flags are claimed, but the grammar fail-closed claim
+        // is deliberately absent — the meta-contract must still consider the
+        // backend non-compliant.
+        XCTAssertTrue(
+            BackendContractChecks.unprovenClaims(
+                capabilityClaimRegistry, backendName: backendName, capabilities: caps
+            ).isEmpty,
+            "precondition: no declared-true flag should be unproven in this scenario"
+        )
+        XCTAssertFalse(
+            BackendContractChecks.unprovenFailClosedContracts(
+                capabilityClaimRegistry, backendName: backendName, capabilities: caps
+            ).isEmpty,
+            "the missing grammar fail-closed claim must keep the meta-contract non-compliant"
         )
     }
 }

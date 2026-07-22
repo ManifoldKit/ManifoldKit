@@ -10,10 +10,12 @@ BackendContractChecks.assertCapabilityMetaContract(_:backendName:capabilities:fi
 BackendContractChecks.assertGrammarFailClosedContract(_:backendName:makingBackend:forbiddenRequestURL:file:line:) Func
 BackendContractChecks.capturedClaims(_:) Func
 BackendContractChecks.claimWithoutBehaviouralAssertion(_:backendName:flag:) Func
+BackendContractChecks.failClosedContractFlags Var
 BackendContractChecks.metaContractTrackedFlags Var
 BackendContractChecks.recordCapabilityClaim(_:backend:flag:) Func
 BackendContractChecks.resetCapabilityClaims(_:forBackend:) Func
 BackendContractChecks.unprovenClaims(_:backendName:capabilities:) Func
+BackendContractChecks.unprovenFailClosedContracts(_:backendName:capabilities:) Func
 BackendContractMixin Protocol
 BackendContractMixin attrs: Custom
 BackendContractMixin conformances: Copyable,Escapable

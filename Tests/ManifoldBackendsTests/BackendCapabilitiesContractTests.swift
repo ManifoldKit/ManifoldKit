@@ -145,12 +145,16 @@ final class BackendCapabilitiesContractTests: XCTestCase {
     }
 
     @available(iOS 26, macOS 26, *)
-    func test_foundationBackend_supportsGuidedStructuredOutput() {
+    func test_foundationBackend_disclaimsGuidedStructuredOutput() {
         let caps = FoundationBackend().capabilities
 
-        XCTAssertTrue(caps.supportsGuidedStructuredOutput,
-                      "FoundationBackend routes structured generation through FoundationModels GuidedGeneration.")
-        XCTAssertEqual(caps.preferredStructuredOutputSupport, .guidedGeneration)
+        // Declared false until the `.guided` strategy is wired end-to-end (#2354).
+        // The GuidedGeneration channel exists and powers tool calling, but the
+        // structured-output router never stages `.guided`, so structured output
+        // actually resolves to `.jsonPrompting` — the honest preferred tier.
+        XCTAssertFalse(caps.supportsGuidedStructuredOutput,
+                       "FoundationBackend must not advertise guided structured output while .guided is unwired (#2354).")
+        XCTAssertEqual(caps.preferredStructuredOutputSupport, .jsonPrompting)
     }
 
     @available(iOS 26, macOS 26, *)
