@@ -42,12 +42,16 @@ import ManifoldTestSupport
 ///    (or a per-mixin-required property — see ``BackendContractMixin``) owned by
 ///    the test case instance.
 /// 3. Add `test_contract_allInvariants()` calling the universal harness.
-/// 4. Add `test_contract_grammarFailClosed()` calling the false-claim family.
-/// 5. Add a single `test_contract_allCapabilityClaims()` that calls
+/// 4. Add a single `test_contract_allCapabilityClaims()` that calls
 ///    `BackendContractChecks.resetCapabilityClaims(registry, forBackend:)` at the
-///    top, then all `claimWithoutBehaviouralAssertion` calls, then
+///    top, then the fail-closed families (e.g. `assertGrammarFailClosedContract`)
+///    and all `claimWithoutBehaviouralAssertion` calls, then
 ///    `assertCapabilityMetaContract(...)` — all in one method body, passing the
-///    same `registry` instance throughout.
+///    same `registry` instance throughout. The fail-closed families MUST run in
+///    this method: ``assertCapabilityMetaContract(_:backendName:capabilities:file:line:)``
+///    now requires a recorded claim for declared-false ``failClosedContractFlags``,
+///    and XCTest gives each method a fresh instance-scoped registry, so a
+///    fail-closed test in a separate method would be invisible to the assertion.
 public enum BackendContractChecks {
 
     // MARK: - Original universal invariants (preserved verbatim)
