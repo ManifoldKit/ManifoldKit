@@ -88,6 +88,10 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
         return nil
     }
 
+    /// This test's entire purpose is to catch GenerationComponents.md going
+    /// stale — a missing Package.swift (repo layout changed) or a missing
+    /// doc article (moved/renamed) must fail loudly so the path constants
+    /// here get updated, not silently skip and report green.
     private static func locateRepoRoot() throws -> URL {
         let fileURL = URL(fileURLWithPath: #filePath)
         var dir = fileURL.deletingLastPathComponent()
@@ -100,7 +104,12 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
             if parent.path == dir.path { break }
             dir = parent
         }
-        throw XCTSkip("could not locate Package.swift starting from \(fileURL.path)")
+        XCTFail("could not locate Package.swift starting from \(fileURL.path) — the repo-root walk (12 levels) failed; if this test file moved, update the walk depth or the path here.")
+        throw NSError(
+            domain: "GenerationComponentsDocLivenessTest",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Package.swift not found starting from \(fileURL.path)"]
+        )
     }
 
     func test_generationComponentsDoc_doesNotClaimBareQuickStartRecipeWorks() throws {
@@ -109,7 +118,8 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
             "Sources/ManifoldUI/ManifoldUI.docc/Articles/GenerationComponents.md"
         )
         guard let body = try? String(contentsOf: docURL, encoding: .utf8) else {
-            throw XCTSkip("GenerationComponents.md not found at \(docURL.path)")
+            XCTFail("GenerationComponents.md not found at \(docURL.path) — if this article moved or was renamed, update the path here rather than letting this liveness check go quiet.")
+            return
         }
         if let violation = Self.bareQuickStartRecipeViolation(in: body) {
             XCTFail("GenerationComponents.md \(violation)")
