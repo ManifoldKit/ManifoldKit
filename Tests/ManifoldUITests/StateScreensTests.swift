@@ -135,6 +135,23 @@ final class StateScreensTests: XCTestCase {
         _ = try view.inspect().find(viewWithAccessibilityIdentifier: "generated-media-progress-video")
     }
 
+    /// Audio was the one modality the 2026 UI refresh (#2307) left out of
+    /// `GeneratedMediaProgressCardView.Progress` — see `MessagePartsView`'s
+    /// `activeAudioGenerationProgress` wiring (gap C of the UI-honesty audit,
+    /// #2356).
+    func test_generatedMediaProgressCard_audio_rendersPercentLabelAndInvokesCancel() throws {
+        var cancelled = false
+        let view = GeneratedMediaProgressCardView(
+            prompt: "read the summary aloud",
+            progress: .audio(fractionComplete: 0.65),
+            onCancel: { cancelled = true }
+        )
+        _ = try view.inspect().find(text: "65%")
+        _ = try view.inspect().find(viewWithAccessibilityIdentifier: "generated-media-progress-audio")
+        try view.inspect().find(viewWithAccessibilityIdentifier: "generated-media-progress-cancel").button().tap()
+        XCTAssertTrue(cancelled)
+    }
+
     // MARK: - EmptySessionSuggestionsView
 
     func test_emptySessionSuggestions_tappingChip_invokesOnSelectWithSuggestionText() throws {

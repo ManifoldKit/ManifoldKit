@@ -82,6 +82,8 @@ Run the app. `quickStart()` will compile, launch, and render a usable composer �
 
 **Microphone defense in depth.** ManifoldKit also hides the mic button automatically when `NSMicrophoneUsageDescription` is absent, so a forgotten key degrades to a no-op rather than a crash. You still need the key for the button to appear. The photo-library accessories are *not* gated on their key (PHPicker doesn't require it) — they appear whenever `showImageAttachment` is on and the backend supports vision.
 
+**No backend can hear the recording yet.** The mic button records a voice note and stages it as an attachment, but no backend in this package encodes `.audio` message parts for a model to consume — `ChatViewModel.sendMessage()` aborts the send and surfaces a configuration error rather than silently dropping it, so the user isn't left thinking their voice note was sent. Real audio-attachment encoding for capable backends is tracked in [#2353](https://github.com/ManifoldKit/ManifoldKit/issues/2353). This is unrelated to `ManifoldVoice`'s speech-to-text composer accessory, which transcribes to text before sending and works today.
+
 **Turning controls off entirely.** Set the matching `ManifoldConfiguration.Features` flag to `false` at startup — the control is removed from the view tree:
 
 ```swift,no-build

@@ -263,11 +263,19 @@ final class ModelAndSettingsControlTests: XCTestCase {
         )
     }
 
-    func test_generationSettings_hasPromptInspectorView() {
+    /// The "Debug" → Prompt Inspector row was removed (gap E of the
+    /// UI-honesty audit, #2356): it always passed
+    /// `PromptInspectorView(assembledPrompt: nil, ...)` because nothing in
+    /// the live turn path produces an `AssembledPrompt` — the sheet only
+    /// ever showed its empty state. See the seam comment on
+    /// `PromptInspectorView` for what real plumbing would need. This test
+    /// now asserts the entry point stays gone rather than reappearing
+    /// un-wired.
+    func test_generationSettings_hasNoPromptInspectorEntryPoint() {
         let dump = generationSettingsDump()
-        XCTAssertTrue(
+        XCTAssertFalse(
             dump.contains("PromptInspectorView"),
-            "Settings should contain the PromptInspectorView type reference"
+            "Settings should not reference PromptInspectorView until it is wired to a real AssembledPrompt"
         )
     }
 

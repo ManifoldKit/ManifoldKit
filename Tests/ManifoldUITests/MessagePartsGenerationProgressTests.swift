@@ -94,6 +94,49 @@ final class MessagePartsGenerationProgressTests: XCTestCase {
         XCTAssertNil(MessagePartsView.activeProgress(in: [id: settled], messageID: id))
     }
 
+    // MARK: - Audio sibling shares the same generic helper
+    //
+    // Audio's placeholder follows the identical empty-contentParts →
+    // terminal-`.generatedMedia`-part lifecycle as image/video
+    // (`ChatViewModel.handle(audioRuntimeEvent:)`), but was the one modality
+    // left unwired when the 2026 UI refresh (#2307) added
+    // `GeneratedMediaProgressCardView` for the other two — see
+    // `GenerationProgressLifecycle` conformance on `AudioGenerationProgress`
+    // in `MessagePartsView.swift`.
+
+    func test_activeProgress_worksForAudioProgressToo() {
+        let id = UUID()
+        let inFlight = AudioGenerationProgress(
+            messageID: id, prompt: "read the summary aloud", fractionComplete: 0.4, isComplete: false, error: nil
+        )
+        let settled = AudioGenerationProgress(
+            messageID: id, prompt: "read the summary aloud", fractionComplete: 1.0, isComplete: true, error: nil
+        )
+
+        XCTAssertNotNil(MessagePartsView.activeProgress(in: [id: inFlight], messageID: id))
+        XCTAssertNil(MessagePartsView.activeProgress(in: [id: settled], messageID: id))
+    }
+
+    func test_terminalFailure_audio_progressThenFailed_returnsEntryWithError() {
+        let id = UUID()
+        let failed = AudioGenerationProgress(
+            messageID: id, prompt: "read the summary aloud", fractionComplete: 0.7, isComplete: true, error: "voice unavailable"
+        )
+        let result = MessagePartsView.terminalFailure(in: [id: failed], messageID: id)
+        XCTAssertEqual(result?.error, "voice unavailable")
+        XCTAssertNil(MessagePartsView.activeProgress(in: [id: failed], messageID: id), "the progress card must stop rendering once terminal")
+    }
+
+    func test_terminalFailure_audio_progressThenCancelled_returnsEntryWithNilError() {
+        let id = UUID()
+        let cancelled = AudioGenerationProgress(
+            messageID: id, prompt: "read the summary aloud", fractionComplete: 0.7, isComplete: true, error: nil
+        )
+        let result = MessagePartsView.terminalFailure(in: [id: cancelled], messageID: id)
+        XCTAssertNotNil(result)
+        XCTAssertNil(result?.error)
+    }
+
     // MARK: - Failure lifecycle: progress → failed/cancelled → failure caption
 
     /// Lifecycle: progress → failed → failure card. Before this fix, a

@@ -20,7 +20,6 @@ public struct GenerationSettingsView<APIConfig: View>: View {
 
     @AppStorage("showAdvancedSettings") private var showAdvancedSettings = false
     @State private var isAPIConfigPresented = false
-    @State private var isPromptInspectorPresented = false
 
     /// Builder for the API configuration view shown from the "Manage Cloud APIs"
     /// row. Closure-injected so this view stays free of any back-edge to the
@@ -181,14 +180,11 @@ public struct GenerationSettingsView<APIConfig: View>: View {
                         }
                     }
 
-                    Section("Debug") {
-                        Button {
-                            isPromptInspectorPresented = true
-                        } label: {
-                            Label("Prompt Inspector", systemImage: "doc.text.magnifyingglass")
-                        }
-                        .accessibilityLabel("Open prompt inspector")
-                    }
+                    // No "Debug" / Prompt Inspector entry point here: it
+                    // hardcoded `PromptInspectorView(assembledPrompt: nil, ...)`,
+                    // so the sheet always rendered its empty state — see the
+                    // seam note on `PromptInspectorView` for what real
+                    // plumbing would need.
                 }
                 } // end features.showAdvancedSettings
             }
@@ -214,12 +210,6 @@ public struct GenerationSettingsView<APIConfig: View>: View {
             }
             .sheet(isPresented: $isAPIConfigPresented) {
                 apiConfigurationBuilder()
-            }
-            .sheet(isPresented: $isPromptInspectorPresented) {
-                PromptInspectorView(
-                    assembledPrompt: nil,
-                    contextSize: viewModel.contextMaxTokens
-                )
             }
         }
     }
