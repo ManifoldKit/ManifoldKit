@@ -488,6 +488,16 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
     /// the dialog string into this field and routes the structured value
     /// (from `ReturnsValue<T>`, when present) into ``content``.
     ///
+    /// > Caveat: The AppIntent dialog channel is **effectively dormant on
+    /// > current OS releases**. Extraction goes through public-API-only paths
+    /// > (`AppIntentToolExecutor.extractDialog`, PR #1385) that deliberately
+    /// > refuse to probe AppIntents framework internals; on iOS/macOS 26 the
+    /// > public surface does not yield the dialog text, so AppIntent-sourced
+    /// > results populate ``content`` and leave this field `nil` in practice.
+    /// > The field and its wire slot remain so the channel lights up
+    /// > automatically if a future SDK exposes the dialog via public API — but
+    /// > do not assume a non-`nil` value here today.
+    ///
     /// The field is encoded with `encodeIfPresent`, so the JSON for a
     /// non-dialog tool result is shape-identical to the pre-dialog wire
     /// format.

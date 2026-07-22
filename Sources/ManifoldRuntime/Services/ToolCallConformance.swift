@@ -140,58 +140,21 @@ public struct ToolCallConformance: Sendable, Codable, Equatable {
     }
 
     /// The lazy default for an unmeasured cell — `unknown`, no dialect, sourced
-    /// from the static template layer with zero samples. Returned by a cache for
-    /// a key it has never seen.
+    /// from the static template layer with zero samples.
     public static let unknownDefault = ToolCallConformance(
         capability: .unknown,
         source: .templateExpressible
     )
 }
 
-/// Storage-neutral port for persisting measured tool-call conformance verdicts.
-///
-/// Mirrors ``BenchmarkCache``'s shape: the port trafficks in the
-/// ``ToolCallConformance`` value type only — any backing `@Model` never escapes
-/// the impl. Keyed by ``ToolCallConformanceKey`` (`model × quant × backend`).
-///
-/// A missing key returns ``ToolCallConformance/unknownDefault`` rather than
-/// `nil`: conformance is lazy and `unknown` until measured, never a cold-start
-/// tax. The SwiftData-backed adapter (and its schema migration) is a separate
-/// follow-up — this surface ships with an in-memory adapter only.
-public protocol ToolCallConformanceCache: Sendable {
-
-    /// Returns the conformance verdict for the given cell, or
-    /// ``ToolCallConformance/unknownDefault`` if the cell has never been measured.
-    func get(_ key: ToolCallConformanceKey) async -> ToolCallConformance
-
-    /// Stores a verdict for the given cell, replacing any previous entry.
-    func put(_ key: ToolCallConformanceKey, _ conformance: ToolCallConformance) async
-
-    /// Returns every cached verdict keyed by cell.
-    func fetchAll() async -> [ToolCallConformanceKey: ToolCallConformance]
-}
-
-/// In-memory ``ToolCallConformanceCache`` — the write-path spike.
-///
-/// Proves the `get`/`put` round-trip before anyone wires a SwiftData adapter.
-/// An `actor` (not `@unchecked Sendable`) guards the dictionary.
-public actor InMemoryToolCallConformanceCache: ToolCallConformanceCache {
-
-    private var storage: [ToolCallConformanceKey: ToolCallConformance]
-
-    public init(seed: [ToolCallConformanceKey: ToolCallConformance] = [:]) {
-        self.storage = seed
-    }
-
-    public func get(_ key: ToolCallConformanceKey) async -> ToolCallConformance {
-        storage[key] ?? .unknownDefault
-    }
-
-    public func put(_ key: ToolCallConformanceKey, _ conformance: ToolCallConformance) async {
-        storage[key] = conformance
-    }
-
-    public func fetchAll() async -> [ToolCallConformanceKey: ToolCallConformance] {
-        storage
-    }
-}
+// The storage-neutral `ToolCallConformanceCache` port, its
+// `InMemoryToolCallConformanceCache` spike, and the SwiftData-backed adapter
+// were removed 2026-07-22 (issue #2128 inert-surface sweep): the read/write
+// path was never wired — no `ManifoldBootstrap.toolCallConformanceCache`
+// reader existed in-repo, and the 2026-07-22 eight-consumer screen (all apps
+// + manifold-eval + both companions) found zero external adopters. The value
+// types above (`ToolCallConformanceKey`/`ToolCallCapability`/
+// `ToolCallConformanceSource`/`ToolCallConformance`) are retained — they are
+// the dialect vocabulary the companion backends consume — and the
+// `ToolCallConformanceRecord` `@Model` + its V11 schema stay put to avoid a
+// lightweight-migration bump (see docs/MIGRATION-inert-surface-sweep-2026-07-22.md).

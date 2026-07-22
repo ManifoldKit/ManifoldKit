@@ -188,7 +188,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             ? 200_000
             : resolvedManifest.contextWindow)
         return BackendCapabilities(
-            supportedParameters: [.temperature, .topP],
+            supportedParameters: [.temperature, .topP, .topK],
             maxContextTokens: resolvedContext,
             requiresPromptTemplate: false,
             supportsSystemPrompt: true,
@@ -325,6 +325,12 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             "temperature": config.temperature,
             "top_p": config.topP
         ]
+        // Anthropic's Messages API accepts `top_k`. Encode it only when the
+        // caller set one — leaving it out keeps Anthropic on its own default,
+        // and matches the `.topK` entry in `capabilities.supportedParameters`.
+        if let topK = config.topK {
+            body["top_k"] = Int(topK)
+        }
         // User-settable stop sequences (#1944). Anthropic uses `stop_sequences`;
         // emit only when non-empty to preserve the prior payload shape for
         // callers that never set stops.

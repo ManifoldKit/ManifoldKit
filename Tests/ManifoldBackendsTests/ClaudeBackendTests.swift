@@ -41,6 +41,14 @@ final class ClaudeBackendTests: XCTestCase {
         XCTAssertTrue(caps.supportedParameters.contains(.topP))
     }
 
+    /// Anthropic's Messages API accepts `top_k`; the backend advertises it so
+    /// the UI/gates don't grey out the control. Pairs with the request-encoding
+    /// tests below.
+    func test_capabilities_supportsTopK() {
+        let backend = ClaudeBackend()
+        XCTAssertTrue(backend.capabilities.supportedParameters.contains(.topK))
+    }
+
     func test_capabilities_noRepeatPenalty() {
         let backend = ClaudeBackend()
         XCTAssertFalse(backend.capabilities.supportedParameters.contains(.repeatPenalty),
@@ -416,6 +424,28 @@ extension ClaudeBackendTests {
             "maxThinkingTokens=N>0 must send a `thinking` block")
         XCTAssertEqual(thinking["type"] as? String, "enabled")
         XCTAssertNotNil(thinking["budget_tokens"] as? Int)
+    }
+
+    /// `top_k` rides on the request body only when the caller set it.
+    ///
+    /// Sabotage check: remove the `if let topK = config.topK` block in
+    /// `ClaudeBackend.buildRequest`; the positive assertion below fails.
+    func test_topK_set_includesTopKInRequest() async throws {
+        let json = try await captureRequestJSON { cfg in
+            cfg.topK = 40
+        }
+        XCTAssertEqual(json["top_k"] as? Int, 40,
+            "config.topK must serialise to Anthropic's `top_k`")
+    }
+
+    /// `top_k` is omitted entirely when unset — Anthropic then uses its own
+    /// default rather than receiving a bogus 0.
+    func test_topK_unset_omitsTopKFromRequest() async throws {
+        let json = try await captureRequestJSON { cfg in
+            cfg.topK = nil
+        }
+        XCTAssertNil(json["top_k"],
+            "unset config.topK must not send a `top_k` field")
     }
 }
 

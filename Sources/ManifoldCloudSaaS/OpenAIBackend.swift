@@ -153,6 +153,15 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
             maxOutputTokens: 16_384,
             supportsStreaming: true,
             isRemote: true,
+            // Conservatively `false` (the default) even though
+            // `OpenAIStreamEventExtractor` DOES parse `reasoning`/reasoning-delta
+            // fields into `.thinkingToken` events: thinking is model-dependent
+            // (o1/o3/gpt-5-family emit it, gpt-4o does not) and there is no
+            // per-model gate here, so advertising `true` for a non-reasoning
+            // model would over-promise. The extractor still surfaces reasoning
+            // when a model happens to emit it; this bool only governs the
+            // capability advertisement.
+            supportsThinking: false,
             // Vision support is gated on the configured model name. OpenAI's
             // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
             // accept `image_url` content parts; older completions-only models

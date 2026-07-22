@@ -430,3 +430,10 @@ API breakage: enum MediaGeneration has been removed
 API breakage: typealias ImageGeneration has been removed
 API breakage: typealias VideoGeneration has been removed
 API breakage: typealias AudioGeneration has been removed
+API breakage: protocol ToolCallConformanceCache has been removed
+API breakage: class InMemoryToolCallConformanceCache has been removed
+API breakage: class SwiftDataToolCallConformanceCache has been removed
+API breakage: var ManifoldBootstrap.toolCallConformanceCache has been removed
+API breakage: struct CacheBreakpointPlan has been removed
+API breakage: func CloudMessageEncoder.encodeToolResults(_:) has been removed
+API breakage: func CloudMessageEncoder.annotateCacheBreakpoints(plan:systemPrompt:systemBlock:toolEntries:) has been removed

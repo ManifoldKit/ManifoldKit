@@ -20,6 +20,16 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
     /// instead of a hardcoded constant. Guarded by `lock`.
     private var outputByteLimitValue: Int = MCPToolExecutor.defaultOutputByteLimit
 
+    /// Preview/test seam only — **not the wired execution path**.
+    ///
+    /// This zero-dependency initializer builds an executor whose `callTool`
+    /// closure unconditionally throws ``MCPError/toolNotFound(_:)``, so invoking
+    /// the returned executor always fails at call time. It exists so a
+    /// `ToolDefinition` can be wrapped into a `ToolExecutor` for SwiftUI
+    /// previews, `ToolRegistry` shape tests, and schema round-trips without
+    /// standing up a live MCP transport. The real path is the internal
+    /// `init(definition:serverDisplayName:remoteToolName:requiresApproval:toolApprovalDidSucceed:callTool:)`,
+    /// which `MCPToolSource` uses to bind the executor to a live server call.
     public init(definition: ToolDefinition) {
         self.definition = definition
         self.remoteToolName = definition.name

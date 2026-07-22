@@ -501,13 +501,6 @@ ImportedConversation conformances: Copyable,Escapable,Sendable,SendableMetatype
 ImportedConversation.init(session:messages:) Constructor
 ImportedConversation.messages Var
 ImportedConversation.session Var
-InMemoryToolCallConformanceCache Class
-InMemoryToolCallConformanceCache conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype,ToolCallConformanceCache
-InMemoryToolCallConformanceCache.fetchAll() Func
-InMemoryToolCallConformanceCache.get(_:) Func
-InMemoryToolCallConformanceCache.init(seed:) Constructor
-InMemoryToolCallConformanceCache.put(_:_:) Func
-InMemoryToolCallConformanceCache.unownedExecutor Var
 JSONLExportFormat Struct
 JSONLExportFormat conformances: ConversationExportFormat,Copyable,Escapable,Sendable,SendableMetatype
 JSONLExportFormat.contentType Var
@@ -776,11 +769,6 @@ ToolCallConformance.recall Var
 ToolCallConformance.sampleCount Var
 ToolCallConformance.source Var
 ToolCallConformance.unknownDefault Var
-ToolCallConformanceCache Protocol
-ToolCallConformanceCache conformances: Copyable,Escapable,Sendable,SendableMetatype
-ToolCallConformanceCache.fetchAll() Func
-ToolCallConformanceCache.get(_:) Func
-ToolCallConformanceCache.put(_:_:) Func
 ToolCallConformanceKey Struct
 ToolCallConformanceKey conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 ToolCallConformanceKey.__derived_struct_equals(_:_:) Func

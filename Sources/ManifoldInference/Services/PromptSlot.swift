@@ -353,6 +353,10 @@ public struct ResolvedSlot: Identifiable, Sendable {
 }
 
 /// The output of ``PromptAssembler/assemble(slots:messages:systemPrompt:contextSize:responseBuffer:tokenizer:policy:)``.
+///
+/// Not produced on the live turn path (see ``PromptAssembler`` — the shipping
+/// loop renders via `PromptContextPipeline`/`PromptRenderer`). Retained as the
+/// data shape the Prompt Inspector seam (`PromptInspectorView`) consumes.
 public struct AssembledPrompt: Sendable {
     /// All resolved slots in their final order (position-sorted).
     public let orderedSlots: [ResolvedSlot]

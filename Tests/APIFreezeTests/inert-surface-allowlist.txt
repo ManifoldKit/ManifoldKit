@@ -1,0 +1,202 @@
+# inert-surface-allowlist.txt — companion to InertSurfaceAuditTest.
+#
+# Each line names ONE public type or top-level func that the inert-surface
+# audit flags (zero references in Sources/ outside its declaring file) and that
+# is deliberately KEPT rather than removed. Every entry MUST carry a
+# `# reason:` annotation — a documented decision, not a mute. Categories:
+#   - companion-consumed: referenced only by manifold-mlx / manifold-llama /
+#     manifold-eval (invisible to this repo's Sources/).
+#   - documented seam: a public seam whose intended in-repo reader is not built
+#     yet (the doc comment says so).
+#   - experimental / host-facing: surface a host app is expected to consume.
+#
+# The audit fails if an entry here is stale (its symbol gained a Sources/
+# reference or was deleted) — prune it then.
+#
+# Format: <SymbolName>  # reason: <one line>
+APIConfigurationView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+AgentInstructionContextProvider  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
+AnyLanguageModelBackend  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
+AppEvalHistoryLedger  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+AppEvalLedgerEntry  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+AppEvalMarkdownRenderer  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+AppEvalRunner  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+AppEvalStarterCorpus  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+AskManifoldHandler  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
+AskManifoldIntent  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
+AsyncSignal  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
+BackendBuildProfile  # reason: host-facing introspection — which backend families are compiled into this build; queried by hosts, not in-repo.
+BackendBuildTrait  # reason: host-facing introspection — compiled-backend trait descriptor; queried by hosts, not in-repo.
+BackendLoadOptions  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+BootstrapLoadingView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+CachingJudge  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+CancellationStyle  # reason: host-facing capability vocabulary — `BackendCapabilities.cancellationStyle` value enum read by hosts.
+CardMessageBubbleStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+CardToolInvocationStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+CatalogEntry  # reason: host-facing catalog value type — a `ModelCatalog` result row (sibling of the #2351-demoted ModelCatalog); consumed downstream, not in-repo.
+ChatExporter  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ChatExporterError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+ChatView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+ChatViewModelAudioError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+ChatViewModelImageError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+ChatViewModelVideoError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+ChatViewModelWebSearchError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+CheckpointOutcome  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+CloudProviderDescriptor  # reason: host-facing descriptor — cloud provider metadata consumed by hosts building endpoint pickers.
+CloudReranker  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ComposerStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
+ConnectedServicesView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+ContentFilteringDisclosure  # reason: host-facing model-selection disclosure enum; consumed downstream.
+ContextBudget  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ContextBudgetEntry  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ContextWindowPreTurnCompressionPolicy  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+ConversationExportError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+ConversationImportWriteError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+ConversationImporter  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+CuratedModelCapabilities  # reason: host-facing model-info value type — curated capability flags consumed downstream.
+DefaultWebSearchRuntime  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
+DetectorContract  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
+DiagnosticsDisclosure  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+DiagnosticsView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+DiscoverableAppIntent  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
+DocumentLibrarySheet  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+EmptyArgs  # reason: dev-tool (ManifoldTools) — tool-validation harness surface exercised by the manifold-tools CLI / tests.
+ExportButton  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+FallbackBackend  # reason: host-facing reliability wrapper — composed by hosts via `withFallbacks`; no in-repo constructor.
+FallbackExhaustedError  # reason: host-facing error — thrown when a FallbackBackend exhausts its chain; caught downstream.
+FeatureMatrix  # reason: host-facing introspection — the compiled-feature matrix API a host queries; no in-repo reader by design.
+FindingsMergeReport  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
+GGUFSignedManifest  # reason: companion/host-facing — GGUF signed-manifest value type consumed by the local-inference download path (manifold-llama) and host verifiers.
+GGUFSignedManifestSignatureVerifying  # reason: seam — GGUF signed-manifest verifier protocol; the only in-repo conformer is the fail-closed placeholder, real verifiers are host/companion-supplied.
+GGUFSignedManifestVerificationError  # reason: host-facing error — thrown by GGUF signed-manifest verification; caught downstream.
+GenSpanTree  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+GenerationEventTrace  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+GenerationParameter  # reason: host-facing capability vocabulary — `supportedParameters` element enum read by hosts to gate controls.
+GenerativeContextMenuItems  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+GlassComposerStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+GoldenExpectedCompression  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+GoldenExpectedContextSlots  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+GoldenExpectedToolCall  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+GoldenScriptedToolCall  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+GoldenTaskLoader  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+GrammarPhaseGate  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+HandoffSourceError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+HandoffToolSource  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
+HistoryShapingResult  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+IMessageMessageBubbleStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+IdentityHistoryProvider  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ImageModelLoadPlan  # reason: companion/host-facing — image-model load plan consumed by the image backends (manifold-mlx).
+ImageModelManagementSheet  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+IngestionIntent  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+IngestionPreset  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+InlineXMLToolCallMarkers  # reason: companion-consumed — a `LocalToolCallShape` witness for XML-delimited tool calls, used by the local backends.
+IntentEnumParameter  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
+JSONLImportError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+JSONLImportFormat  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+JudgeCacheKey  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+JudgedCheckpointScorer  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
+LinkPreviewMetadata  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+LlamaDRYSamplerOptions  # reason: companion-consumed — llama.cpp DRY sampler options constructed by manifold-llama's GenerationConfig wiring.
+LlamaMirostatV2SamplerOptions  # reason: companion-consumed — llama.cpp Mirostat-v2 sampler options constructed by manifold-llama.
+LlamaXTCSamplerOptions  # reason: companion-consumed — llama.cpp XTC sampler options constructed by manifold-llama.
+LocalModelDescriptor  # reason: host-facing descriptor — local model metadata consumed by hosts, not in-repo.
+LocalThinkingMarkerStrategy  # reason: companion-consumed — local thinking-marker strategy selected by the local backends.
+LocalToolCallShape  # reason: companion-consumed — local tool-call shape protocol; conformers live in the local backends (manifold-llama/mlx).
+MCPHostError  # reason: experimental (ManifoldMCPHost) — runtime-backed MCP server surface; host-consumed.
+MCPHostHTTPTransport  # reason: experimental (ManifoldMCPHost) — runtime-backed MCP server surface; host-consumed.
+MCPHostStdioTransport  # reason: experimental (ManifoldMCPHost) — runtime-backed MCP server surface; host-consumed.
+MCPNetworkPathObserver  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
+MCPOAuthRedirectListener  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
+MCPSessionLifecyclePolicy  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
+MCPTransportKind  # reason: experimental (ManifoldMCP) — MCP client seam; conformers/consumers are hosts or not-yet-built.
+ManifoldCapability  # reason: host-facing introspection — FeatureMatrix capability enum a host queries; no in-repo reader by design.
+ManifoldIntentConfiguration  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
+ManifoldMCPHost  # reason: experimental (ManifoldMCPHost) — runtime-backed MCP server surface; host-consumed.
+ManifoldThemeCategoricalTints  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ManifoldThemeShapeScale  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ManifoldThemeTypeScale  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ManifoldTrait  # reason: host-facing introspection — FeatureMatrix SwiftPM-trait descriptor a host queries; no in-repo reader by design.
+MediaKind  # reason: host-facing media vocabulary — `GeneratedMediaPayload.kind`; consumed downstream/re-exported.
+MessageBubbleStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
+MessageStatus  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+ModelCatalog  # reason: pending #2351 demotion — PR #2351 moves this actor to package; scope guard says #2128 must not touch it. Kept public until #2351 merges.
+ModelFileChecksumAlgorithm  # reason: host/companion-facing — download-plan checksum algorithm enum consumed by the download path.
+ModelImportError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+ModelLoadReadinessState  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+ModelManagementSheet  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+ModelSource  # reason: host-facing catalog value type — `CatalogEntry`'s source enum; consumed downstream, not in-repo.
+ModelSwitcher  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ModelSwitcherCapabilityGlyph  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ModelSwitcherFitVerdict  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ModelSwitcherRowView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+ModelSwitcherView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+MutatorRegistry  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
+NetworkActivity  # reason: pending #2351 demotion — part of the NetworkActivity/NetworkActivityCenter cluster PR #2351 moves to package; drops from the baseline once #2351 merges.
+NetworkActivityKind  # reason: pending #2351 demotion — NetworkActivity cluster (PR #2351); drops from the baseline once #2351 merges.
+NeuralAcceleratorAvailability  # reason: host-facing device query — ANE availability result; consumed by hosts choosing a backend.
+NeuralAcceleratorProbe  # reason: host-facing device query — ANE probe entry point; consumed by hosts, not in-repo.
+OTLPTraceSink  # reason: opt-in telemetry (ManifoldTelemetryOTLP) — host wires the sink into a backend's traceSink; no in-repo reader by design.
+OllamaErrorBodyDecoder  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+OversizeAction  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+PartialSnapshot  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+PassthroughReranker  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+PendingPayload  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+PlainComposerStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+PlainMessageBubbleStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+PlainSessionRowStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+PlainThinkingBlockStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+PlainToolInvocationStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+PrefillFootprintEstimator  # reason: companion/host-facing — prefill memory-footprint estimator used by the local load-plan path.
+PromptAssembler  # reason: documented seam — superseded by PromptContextPipeline/PromptRenderer on the live turn path; retained as the Prompt Inspector data-shape producer (see its header doc, #2128 item F).
+PromptSlotPosition  # reason: documented seam — part of the PromptAssembler/Prompt Inspector slot vocabulary, off the live turn path.
+QuietSessionRowStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+RAGError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+ReaskPolicy  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+RecordingTraceSink  # reason: host-facing library surface — public actor consumed downstream or via tests; no in-repo (Sources/) reference.
+RejectingGGUFSignedManifestSignatureVerifier  # reason: fail-closed placeholder — the default `GGUFSignedManifestSignatureVerifying` that rejects every signature until a real verifier is wired.
+RemoteServerConfigSheet  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+RenderConsistency  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+RenderedPrompt  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ResidencyState  # reason: companion/host advisory — model residency state surfaced by the residency-configurable backends.
+ResolvedBubbleChrome  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+ResolvedEntityBox  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
+RetrievalStrategy  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+RouterBackend  # reason: pending #2351 demotion — PR #2351 moves it to package; documented in ReliabilityWrappers.md. Kept public until #2351 merges.
+SamplingParameterSet  # reason: host-facing manifest option-set — declared model sampler params read downstream.
+ScenarioRegistry  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
+ScoreValue  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+ScoredModel  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+SearchResults  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+SeedModelError  # reason: host-facing error — thrown by `quickStart(seed:)`; caught downstream.
+SendMessageError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
+SessionListView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+SessionRowStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
+ShimmerThinkingBlockStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+SkillDispatchError  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
+SkillLoader  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
+SkillReferenceError  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
+SkillToolSource  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
+SpotlightIndexer  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+StandardBenchmarkRunner  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
+StorageManagementView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+StreamTermination  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+StructuredOutputEnvelopeError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+StructuredOutputReliabilityPolicy  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+SummarisationHook  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
+SummarisationPolicy  # reason: host/companion-facing protocol — conformers live downstream (hosts / companions); no in-repo external conformer.
+ThinkingBlockStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
+ThresholdSummarisationPolicy  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ToolApprovalPolicy  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
+ToolCallArgEncoding  # reason: companion-consumed — `ToolCallDialect` vocabulary; the companion backends set `BackendCapabilities.toolDialect` from it.
+ToolCallDialectFamily  # reason: companion-consumed — `ToolCallDialect` family enum set by the companion backends via `toolDialect`.
+ToolCallExtractability  # reason: companion-consumed — `ToolCallDialect` vocabulary set by the companion backends via `toolDialect`.
+ToolCallMarker  # reason: companion/host-facing — tool-call transform marker type; consumed by the local tool-call transform path.
+ToolInvocationStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
+VLModelDetector  # reason: dev-tool (ManifoldTools) — tool-validation harness surface exercised by the manifold-tools CLI / tests.
+VectorStoreError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+VisionInputButton  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+VoiceComposerAccessory  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+VoiceDraftMergeStrategy  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
+VoicePickerView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
+WebSearchRuntimeError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+withFallbacks  # reason: host-facing reliability wrapper — free function a host composes over backends (documented in ReliabilityWrappers.md); no in-repo caller.

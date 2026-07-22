@@ -2,46 +2,16 @@ import Foundation
 import os
 import ManifoldInference
 
-// MARK: - Cache breakpoint plan
-
-/// Describes the cache breakpoints a request body should receive before
-/// hitting the wire. Today only Anthropic Claude surfaces explicit
-/// `cache_control` markers; OpenAI Chat Completions, OpenAI Responses, and
-/// Ollama use prefix-stable caching server-side and therefore don't
-/// participate in this annotation step.
-///
-/// Phase 1b carrier; Phase 2 will move the policy decision to a
-/// `PromptCachePolicy` composed property on the adapter (see plan item 4
-/// from the AI-engineering review).
-public struct CacheBreakpointPlan: Sendable, Equatable {
-    /// Maximum number of explicit breakpoints permitted in the request.
-    /// Anthropic caps at 4; other providers ignore this field.
-    public var maxBreakpoints: Int
-    /// When `true`, attach `cache_control: { type: "ephemeral" }` to the
-    /// system prompt block. No-op for non-Claude providers.
-    public var cacheSystem: Bool
-    /// When `true`, attach `cache_control: { type: "ephemeral" }` to the
-    /// last tool definition. No-op for non-Claude providers.
-    public var cacheToolsTail: Bool
-
-    public init(maxBreakpoints: Int = 4, cacheSystem: Bool = false, cacheToolsTail: Bool = false) {
-        self.maxBreakpoints = maxBreakpoints
-        self.cacheSystem = cacheSystem
-        self.cacheToolsTail = cacheToolsTail
-    }
-}
-
 // MARK: - CloudMessageEncoder
 
 /// Provider-keyed message-encoding facade for cloud backends.
 ///
 /// Phase 1b/B of the cross-backend unification plan: collapses
 /// `ClaudeMessageEncoder` + `OllamaMessageEncoder` + the OpenAI inline
-/// encoding into one enum so the surface (`encodeMessages`, `encodeTools`,
-/// `encodeToolResults`, `annotateCacheBreakpoints`) is the same shape
-/// across every provider. Phase 2 will dissolve this enum behind the
-/// composed `CloudHTTPProviderAdapter` (each case becomes an adapter's
-/// `MessageEncoding` witness).
+/// encoding into one enum so the surface (`encodeMessages`, `encodeTools`)
+/// is the same shape across every provider. Phase 2 will dissolve this enum
+/// behind the composed `CloudHTTPProviderAdapter` (each case becomes an
+/// adapter's `MessageEncoding` witness).
 ///
 /// Each method returns Foundation primitive graphs (`[[String: Any]]`,
 /// `[Any]`) ready for `JSONSerialization.data(withJSONObject:)`. Callers
@@ -128,83 +98,6 @@ public enum CloudMessageEncoder: Sendable {
             return tools.map { Self.claudeEncodeToolDefinition($0, strict: strict) }
         case .ollama:
             return tools.map(Self.ollamaEncodeToolDefinition)
-        }
-    }
-
-    // MARK: encodeToolResults
-
-    /// Encodes a list of tool results (one per tool the model called) into
-    /// the provider's history shape. The result for `.claude` is a single
-    /// `user` turn carrying one or more `tool_result` content blocks;
-    /// `.openAI` / `.openAIResponses` / `.ollama` return one entry per
-    /// result. AI-engineering plan item 7 — explicit, not implicit.
-    public func encodeToolResults(_ results: [ToolResult]) -> [[String: Any]] {
-        guard !results.isEmpty else { return [] }
-        switch self {
-        case .openAI, .ollama:
-            // Chat Completions / Ollama: each result is a `{role: "tool", tool_call_id, content}` entry.
-            return results.map { result in
-                [
-                    "role": "tool",
-                    "tool_call_id": result.callId,
-                    "content": result.content,
-                ]
-            }
-        case .openAIResponses:
-            // Responses API: each result is a `function_call_output` item.
-            return results.map { result in
-                [
-                    "type": "function_call_output",
-                    "call_id": result.callId,
-                    "output": result.content,
-                ]
-            }
-        case .claude:
-            // Anthropic Messages: bundle every `tool_result` into one user turn.
-            let blocks: [[String: Any]] = results.map { result in
-                [
-                    "type": "tool_result",
-                    "tool_use_id": result.callId,
-                    "content": result.content,
-                ]
-            }
-            return [["role": "user", "content": blocks]]
-        }
-    }
-
-    // MARK: annotateCacheBreakpoints
-
-    /// Mutates `messages` / `tools` to add provider-specific cache markers.
-    /// No-op for OpenAI, OpenAI Responses, and Ollama. For Claude, attaches
-    /// `cache_control: { type: "ephemeral" }` to the last tool entry and/or
-    /// the system block per the plan, capped at `plan.maxBreakpoints`.
-    ///
-    /// `systemBlock` is the value the caller intends to set as the request
-    /// body's `system` field (Claude's wire shape). Passed `inout` so the
-    /// caller can substitute a content-block array when the plan asks for
-    /// system caching — the plain-string form has no slot for
-    /// `cache_control`.
-    public func annotateCacheBreakpoints(
-        plan: CacheBreakpointPlan,
-        systemPrompt: String?,
-        systemBlock: inout Any?,
-        toolEntries: inout [[String: Any]]
-    ) {
-        guard case .claude = self else { return }
-        var remaining = plan.maxBreakpoints
-        if plan.cacheSystem, remaining > 0, let systemPrompt, !systemPrompt.isEmpty {
-            systemBlock = [
-                [
-                    "type": "text",
-                    "text": systemPrompt,
-                    "cache_control": ["type": "ephemeral"],
-                ] as [String: Any]
-            ]
-            remaining -= 1
-        }
-        if plan.cacheToolsTail, remaining > 0, !toolEntries.isEmpty {
-            toolEntries[toolEntries.count - 1]["cache_control"] = ["type": "ephemeral"]
-            remaining -= 1
         }
     }
 
