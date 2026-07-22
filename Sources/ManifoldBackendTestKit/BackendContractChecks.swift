@@ -172,6 +172,7 @@ public enum BackendContractChecks {
         "supportsGrammarConstrainedSampling",
         "supportsThinking",
         "supportsVision",
+        "supportsAudioInput",
         "streamsToolCallArguments",
         "supportsParallelToolCalls",
         "supportsGuidedStructuredOutput",

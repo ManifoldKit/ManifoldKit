@@ -66,6 +66,41 @@ final class BackendCapabilityMatrixTests: XCTestCase {
         }, "vision-capable backends must receive image parts intact")
     }
 
+    func test_audioCapabilityMatrix_rejectsAudioWhenUnsupportedBeforeBackendGenerate() throws {
+        provider.backend.capabilities = capabilities(supportsAudioInput: false)
+
+        XCTAssertThrowsError(
+            try coordinator.generate(structuredMessages: [audioMessage()])
+        ) { error in
+            guard case InferenceError.inferenceFailure(let message) = error else {
+                XCTFail("expected InferenceError.inferenceFailure, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("supportsAudioInput"), message)
+        }
+
+        XCTAssertEqual(provider.backend.generateCallCount, 0,
+                       "unsupported audio must fail before backend.generate can flatten or drop them")
+        XCTAssertNil(provider.backend.lastReceivedStructuredHistory,
+                     "unsupported audio must not be installed on a backend that can't hear it")
+    }
+
+    func test_audioCapabilityMatrix_forwardsAudioWhenAdvertised() async throws {
+        provider.backend.capabilities = capabilities(supportsAudioInput: true)
+
+        let stream = try coordinator.generate(structuredMessages: [audioMessage()])
+        for try await _ in stream.events {}
+
+        XCTAssertEqual(provider.backend.generateCallCount, 1)
+        let history = try XCTUnwrap(provider.backend.lastReceivedStructuredHistory)
+        XCTAssertTrue(history.contains { message in
+            message.parts.contains { part in
+                if case .audio = part { return true }
+                return false
+            }
+        }, "audio-capable backends must receive audio parts intact")
+    }
+
     func test_toolCapabilityMatrix_rejectsToolsWhenUnsupportedBeforeBackendGenerate() throws {
         provider.backend.capabilities = capabilities(supportsToolCalling: false)
         let warnings = CapabilityWarningCapture()
@@ -196,7 +231,8 @@ final class BackendCapabilityMatrixTests: XCTestCase {
         supportsToolCalling: Bool = false,
         supportsNativeJSONMode: Bool = false,
         supportsThinking: Bool = false,
-        supportsVision: Bool = false
+        supportsVision: Bool = false,
+        supportsAudioInput: Bool = false
     ) -> BackendCapabilities {
         BackendCapabilities(
             supportedParameters: [.temperature],
@@ -209,7 +245,8 @@ final class BackendCapabilityMatrixTests: XCTestCase {
             cancellationStyle: .cooperative,
             supportsTokenCounting: false,
             supportsThinking: supportsThinking,
-            supportsVision: supportsVision
+            supportsVision: supportsVision,
+            supportsAudioInput: supportsAudioInput
         )
     }
 
@@ -219,6 +256,15 @@ final class BackendCapabilityMatrixTests: XCTestCase {
             parts: [
                 .text("describe this"),
                 .image(data: Data([0x89, 0x50, 0x4E, 0x47]), mimeType: "image/png")
+            ]
+        )
+    }
+
+    private func audioMessage() -> StructuredMessage {
+        StructuredMessage(
+            role: "user",
+            parts: [
+                .audio(url: URL(fileURLWithPath: "/tmp/recording.m4a"), duration: 3.2, waveform: nil)
             ]
         )
     }

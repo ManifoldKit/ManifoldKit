@@ -102,6 +102,17 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// image parts during flattening on text-only backends.
     public let supportsVision: Bool
 
+    /// If true, the backend can consume audio parts in ``StructuredMessage`` history.
+    ///
+    /// Mirrors ``supportsVision``: UI surfaces use this to gate audio-attachment
+    /// affordances, and the inference coordinator uses it to fail fast rather
+    /// than silently dropping audio parts during flattening on a backend that
+    /// can't hear them (#2353). Defaults to `false` — no backend in this
+    /// package sets it `true` yet; `CloudMessageEncoder` has no `.audio` wire
+    /// encoding today (tracked separately), so this flag currently only
+    /// governs the fail-closed guard, not a live encode path.
+    public let supportsAudioInput: Bool
+
     /// True when the backend emits ``GenerationEvent/toolCallStart(callId:name:)``
     /// and ``GenerationEvent/toolCallArgumentsDelta(callId:textDelta:)`` before
     /// each ``GenerationEvent/toolCall(_:)``. Cloud streaming backends set
@@ -259,6 +270,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsGrammarConstrainedSampling: Bool = false,
         supportsThinking: Bool = false,
         supportsVision: Bool = false,
+        supportsAudioInput: Bool = false,
         streamsToolCallArguments: Bool = false,
         supportsParallelToolCalls: Bool = false,
         supportsGuidedStructuredOutput: Bool = false,
@@ -285,6 +297,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.supportsGrammarConstrainedSampling = supportsGrammarConstrainedSampling
         self.supportsThinking = supportsThinking
         self.supportsVision = supportsVision
+        self.supportsAudioInput = supportsAudioInput
         self.streamsToolCallArguments = streamsToolCallArguments
         self.supportsParallelToolCalls = supportsParallelToolCalls
         self.supportsGuidedStructuredOutput = supportsGuidedStructuredOutput
@@ -331,6 +344,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         var supportsGrammarConstrainedSampling = first.supportsGrammarConstrainedSampling
         var supportsThinking = first.supportsThinking
         var supportsVision = first.supportsVision
+        var supportsAudioInput = first.supportsAudioInput
         var streamsToolCallArguments = first.streamsToolCallArguments
         var supportsParallelToolCalls = first.supportsParallelToolCalls
         var supportsGuidedStructuredOutput = first.supportsGuidedStructuredOutput
@@ -377,6 +391,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             supportsGrammarConstrainedSampling = supportsGrammarConstrainedSampling || c.supportsGrammarConstrainedSampling
             supportsThinking = supportsThinking || c.supportsThinking
             supportsVision = supportsVision || c.supportsVision
+            supportsAudioInput = supportsAudioInput || c.supportsAudioInput
             streamsToolCallArguments = streamsToolCallArguments || c.streamsToolCallArguments
             supportsParallelToolCalls = supportsParallelToolCalls || c.supportsParallelToolCalls
             supportsGuidedStructuredOutput = supportsGuidedStructuredOutput || c.supportsGuidedStructuredOutput
@@ -404,6 +419,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             supportsGrammarConstrainedSampling: supportsGrammarConstrainedSampling,
             supportsThinking: supportsThinking,
             supportsVision: supportsVision,
+            supportsAudioInput: supportsAudioInput,
             streamsToolCallArguments: streamsToolCallArguments,
             supportsParallelToolCalls: supportsParallelToolCalls,
             supportsGuidedStructuredOutput: supportsGuidedStructuredOutput,
@@ -468,6 +484,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsGrammarConstrainedSampling: Bool? = nil,
         supportsThinking: Bool? = nil,
         supportsVision: Bool? = nil,
+        supportsAudioInput: Bool? = nil,
         streamsToolCallArguments: Bool? = nil,
         supportsParallelToolCalls: Bool? = nil,
         supportsGuidedStructuredOutput: Bool? = nil,
@@ -495,6 +512,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
             supportsGrammarConstrainedSampling: supportsGrammarConstrainedSampling ?? self.supportsGrammarConstrainedSampling,
             supportsThinking: supportsThinking ?? self.supportsThinking,
             supportsVision: supportsVision ?? self.supportsVision,
+            supportsAudioInput: supportsAudioInput ?? self.supportsAudioInput,
             streamsToolCallArguments: streamsToolCallArguments ?? self.streamsToolCallArguments,
             supportsParallelToolCalls: supportsParallelToolCalls ?? self.supportsParallelToolCalls,
             supportsGuidedStructuredOutput: supportsGuidedStructuredOutput ?? self.supportsGuidedStructuredOutput,
@@ -524,6 +542,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case supportsGrammarConstrainedSampling
         case supportsThinking
         case supportsVision
+        case supportsAudioInput
         case streamsToolCallArguments
         case supportsParallelToolCalls
         case supportsGuidedStructuredOutput
@@ -556,6 +575,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsGrammarConstrainedSampling = (try c.decodeIfPresent(Bool.self, forKey: .supportsGrammarConstrainedSampling)) ?? false
         supportsThinking = (try c.decodeIfPresent(Bool.self, forKey: .supportsThinking)) ?? false
         supportsVision = (try c.decodeIfPresent(Bool.self, forKey: .supportsVision)) ?? false
+        supportsAudioInput = (try c.decodeIfPresent(Bool.self, forKey: .supportsAudioInput)) ?? false
         streamsToolCallArguments = (try c.decodeIfPresent(Bool.self, forKey: .streamsToolCallArguments)) ?? false
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
         supportsGuidedStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsGuidedStructuredOutput)) ?? false
@@ -585,6 +605,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(supportsGrammarConstrainedSampling, forKey: .supportsGrammarConstrainedSampling)
         try c.encode(supportsThinking, forKey: .supportsThinking)
         try c.encode(supportsVision, forKey: .supportsVision)
+        try c.encode(supportsAudioInput, forKey: .supportsAudioInput)
         try c.encode(streamsToolCallArguments, forKey: .streamsToolCallArguments)
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
         try c.encode(supportsGuidedStructuredOutput, forKey: .supportsGuidedStructuredOutput)

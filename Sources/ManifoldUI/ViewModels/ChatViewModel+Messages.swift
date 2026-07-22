@@ -166,7 +166,7 @@ extension ChatViewModel {
             // this call's reply (#A4).
             throw SendMessageError.emptyInput
         }
-        guard !Self.containsUndeliverableAudioAttachment(draftAttachments) else {
+        guard !Self.containsUndeliverableAudioAttachment(draftAttachments, backendCapabilities: backendCapabilities) else {
             // Same #A4 stale-record hazard as the emptyInput guard above, and
             // it is NOT a hypothetical: a prior successful call leaves
             // lastTurnState == .completed(record1); without this precheck,
@@ -240,13 +240,16 @@ extension ChatViewModel {
             return
         }
 
-        // No backend in this package can hear a `.audio` attachment today:
-        // `MessagePart.textContent` returns nil for it (ManifoldContract),
-        // `PromptRenderer.warnIfMultimodalPartsDropped` drops it with only a
-        // log, and `CloudMessageEncoder` has no `.audio` case. Sending it
-        // silently would show the user their voice note "sent" while the
-        // model never receives it. Fail loudly instead of dropping it on the
-        // floor; encoding audio for capable backends is tracked in #2353.
+        // Gated on BackendCapabilities.supportsAudioInput (#2353): no backend
+        // in this package claims it yet, so this still fails closed for every
+        // backend today. `MessagePart.textContent` returns nil for `.audio`
+        // (ManifoldContract), `PromptRenderer.warnIfMultimodalPartsDropped`
+        // drops it with only a log, and `CloudMessageEncoder` has no `.audio`
+        // case — a backend that hasn't claimed the capability truly cannot
+        // hear it. Sending it silently would show the user their voice note
+        // "sent" while the model never receives it. Fail loudly instead of
+        // dropping it on the floor; real encoding for capable backends is
+        // tracked separately in #2353.
         //
         // This guard protects the no-arg entry point (ChatInputBar's actual
         // call path). It deliberately does NOT touch `lastTurnState` — the
@@ -254,7 +257,7 @@ extension ChatViewModel {
         // this same condition specifically so it never falls through to this
         // early return and reads a stale `lastTurnState` (#A4 hazard fixed
         // in review of #2356). Do not remove either guard.
-        guard !Self.containsUndeliverableAudioAttachment(attachments) else {
+        guard !Self.containsUndeliverableAudioAttachment(attachments, backendCapabilities: backendCapabilities) else {
             surfaceError(
                 Self.undeliverableAudioAttachmentError(),
                 kind: .configuration,
@@ -585,17 +588,26 @@ extension ChatViewModel {
 
     // MARK: - Undeliverable audio attachment (shared by both sendMessage entry points)
 
-    /// `true` when `parts` contains a `.audio` `MessagePart` — the one
-    /// multimodal input shape no backend in this package can currently
-    /// encode. Shared by ``sendMessage(_:)``'s precheck and the no-arg
+    /// `true` when `parts` contains a `.audio` `MessagePart` AND the active
+    /// backend hasn't claimed ``BackendCapabilities/supportsAudioInput`` (#2353).
+    /// Capability-gated rather than an unconditional ban so a future
+    /// audio-capable backend can flip this open — mirrors the vision guard's
+    /// shape (`GenerationQueue`'s `containsImages`/`supportsVision` check).
+    /// Today no backend in this package sets `supportsAudioInput: true`, so
+    /// behavior is unchanged: every `.audio` attachment still fails closed.
+    /// Shared by ``sendMessage(_:)``'s precheck and the no-arg
     /// ``sendMessage()``'s inner guard so both throw/surface the identical
     /// message instead of two copies drifting apart.
-    static func containsUndeliverableAudioAttachment(_ parts: [MessagePart]) -> Bool {
-        parts.contains(where: { if case .audio = $0 { return true } else { return false } })
+    static func containsUndeliverableAudioAttachment(
+        _ parts: [MessagePart],
+        backendCapabilities: BackendCapabilities?
+    ) -> Bool {
+        guard backendCapabilities?.supportsAudioInput != true else { return false }
+        return parts.contains(where: { if case .audio = $0 { return true } else { return false } })
     }
 
     /// The error both `.audio`-attachment guards surface. A single source of
-    /// truth for the copy — see ``containsUndeliverableAudioAttachment(_:)``.
+    /// truth for the copy — see ``containsUndeliverableAudioAttachment(_:backendCapabilities:)``.
     static func undeliverableAudioAttachmentError() -> InferenceError {
         .inferenceFailure(
             "Voice messages can't be sent yet — no backend in this build can hear audio attachments. Remove the recording and send text instead."

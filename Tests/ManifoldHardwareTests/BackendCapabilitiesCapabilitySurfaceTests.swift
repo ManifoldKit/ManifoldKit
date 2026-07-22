@@ -44,6 +44,7 @@ final class BackendCapabilitiesFieldCompletenessTests: XCTestCase {
         "supportsGrammarConstrainedSampling",
         "supportsThinking",
         "supportsVision",
+        "supportsAudioInput",
         "streamsToolCallArguments",
         "supportsParallelToolCalls",
         "supportsGuidedStructuredOutput",

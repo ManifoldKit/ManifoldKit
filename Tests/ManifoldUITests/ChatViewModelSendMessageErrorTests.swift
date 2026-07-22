@@ -311,6 +311,47 @@ final class ChatViewModelSendMessageErrorTests: XCTestCase {
         XCTAssertNil(vm.activeError)
     }
 
+    /// #2353: the audio guard is capability-gated, not an unconditional ban —
+    /// a backend that DOES claim `supportsAudioInput` must be allowed through,
+    /// proving the guard is live (both directions), not just fail-closed by
+    /// hardcoding. No shipped backend sets this `true` today; this pins the
+    /// mechanism against a hypothetical future one so it doesn't silently
+    /// regress back into an unconditional ban.
+    func test_sendMessage_withAudioAttachment_sendsNormallyWhenBackendClaimsSupport() async throws {
+        let backend = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP, .repeatPenalty],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: false,
+            supportsStructuredOutput: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            supportsAudioInput: true
+        ))
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        vm.stageDraftAttachment(.audio(
+            url: URL(fileURLWithPath: "/tmp/voice-note.m4a"),
+            duration: 3.2,
+            waveform: nil
+        ))
+
+        let record = try await vm.sendMessage("caption")
+        XCTAssertEqual(record.content, "ok")
+        XCTAssertNil(vm.activeError)
+        let history = try XCTUnwrap(backend.lastReceivedStructuredHistory)
+        XCTAssertTrue(history.contains { message in
+            message.parts.contains { part in
+                if case .audio = part { return true }
+                return false
+            }
+        }, "an audio-capable backend must actually receive the audio part, not have it stripped upstream")
+    }
+
     // MARK: - Happy path returns the assistant record (no throw)
 
     func test_sendMessage_happyPath_returnsAssistantRecord() async throws {
