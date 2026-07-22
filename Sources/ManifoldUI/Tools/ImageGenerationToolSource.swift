@@ -56,6 +56,19 @@ public final class ImageGenerationToolSource: SessionToolSource {
         else {
             return ToolResult(callId: toolName, content: "Expected a non-empty \"prompt\" string.", errorKind: .invalidArguments)
         }
+        // Preflight the same condition `generateImage` throws
+        // `ChatViewModelImageError.notConfigured` for. Not-configured is a
+        // structural failure — no ImageGenerationRuntime is wired in this
+        // build — so it must surface as `.permanent`, distinct from the
+        // `.transient` runtime failures caught below (mirrors the #2356
+        // VideoGenerationToolSource fix).
+        guard await viewModel.imageRuntime != nil else {
+            return ToolResult(
+                callId: toolName,
+                content: "Image generation is not configured in this build. There is no image backend wired up, so this request cannot be started.",
+                errorKind: .permanent
+            )
+        }
         do {
             let messageID = try await viewModel.generateImage(prompt: prompt, config: ImageGenerationConfig())
             return ToolResult(callId: toolName, content: "Image generation started (id: \(messageID)). It will appear in the conversation shortly.")
