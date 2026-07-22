@@ -173,6 +173,25 @@ enum FoundationToolSchema {
         return try GenerationSchema(root: root, dependencies: dependencies)
     }
 
+    /// Builds a `GenerationSchema` for a plain guided structured-output target
+    /// (#2354) — no `(text|tool_call)` envelope union, since a guided request
+    /// has exactly one shape to fill. Reuses the same JSON-Schema →
+    /// `DynamicGenerationSchema` mapper the tool-calling envelope builds tool
+    /// argument schemas with (`mapJSONSchema` below); throws
+    /// ``FoundationToolSchemaError`` for the same unsupported-construct reasons
+    /// a tool's parameter schema would (`anyOf`/`oneOf`/`allOf`/`$ref`/nullable
+    /// unions/etc.) — the caller fails the round closed rather than silently
+    /// falling back, since (unlike tool calling's `.auto`) there is no
+    /// acceptable "just answer with text" degrade for a typed structured-output
+    /// request.
+    ///
+    /// Nested object properties are mapped inline (not via named references),
+    /// so the returned schema is self-contained — `dependencies: []`.
+    static func makeGuidedSchema(from schema: JSONSchemaValue, typeName: String) throws -> GenerationSchema {
+        let root = try mapJSONSchema(schema, name: typeName)
+        return try GenerationSchema(root: root, dependencies: [])
+    }
+
     /// A short instructions paragraph appended to the system prompt explaining
     /// the envelope contract. The structured-output channel guarantees the
     /// shape; this prose teaches the model when to choose each branch.

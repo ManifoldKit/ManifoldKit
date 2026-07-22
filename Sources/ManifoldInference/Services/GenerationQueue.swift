@@ -853,9 +853,10 @@ final class GenerationQueue {
                 }
                 hints.structuredOutput = nil
             case .guided:
-                // Foundation guided generation is deferred (#1915 follow-up).
-                // Keep the strategy intact for the guided-capable backend to
-                // pick up; no config lowering happens here yet.
+                // No config lowering needed here (#2354): `hints.structuredOutput`
+                // is already `.guided(type)` from staging, and that's exactly
+                // what the guided-capable backend (FoundationBackend) reads to
+                // build its native GuidedGeneration schema.
                 break
             }
         }
@@ -900,14 +901,18 @@ final class GenerationQueue {
     /// Reconstructs a ``StructuredOutputTarget`` from a strategy a caller staged
     /// on ``GenerationConfig/structuredOutput``.
     ///
-    /// `respond(_:to:)` stages only the JSON schema (as `.jsonSchema`). When the
-    /// active backend supports grammar-constrained sampling, the schema is
-    /// lowered to GBNF here so the router can upgrade to the strongest
+    /// `respond(_:to:)`/`structured(_:messages:)` stage `.guided(T.self)` (#2354)
+    /// so a guided-capable backend (Foundation) can receive the concrete type;
+    /// this function recovers the type's JSON Schema from its `SchemaProviding`
+    /// conformance so non-guided backends still get a full target — the same
+    /// grammar-lowering / jsonSchema fallback the `.jsonSchema` case below always
+    /// had. When the active backend supports grammar-constrained sampling, the
+    /// schema is lowered to GBNF here so the router can upgrade to the strongest
     /// mechanism. Doing the lowering inside the queue (rather than staging a
     /// grammar on `config.grammar`) keeps the caller's `config.grammar` slot
     /// untouched — a schema-only backend never sees a stray grammar it would
     /// reject. Returns `nil` for `.gbnf` (already a grammar, nothing to
-    /// re-route) and `.jsonPrompting` / `.guided` (no re-routable payload).
+    /// re-route) and `.jsonPrompting` (no re-routable payload).
     static func structuredOutputTarget(
         from strategy: StructuredOutputStrategy,
         capabilities: BackendCapabilities
@@ -922,7 +927,34 @@ final class GenerationQueue {
                 grammar = nil
             }
             return StructuredOutputTarget(gbnfGrammar: grammar, jsonSchema: schema)
-        case .gbnf, .jsonPrompting, .guided:
+        case .guided(let type):
+            // `respond`/`structured` only ever stage `.guided` for a concrete
+            // `T: SchemaProviding` (enforced by their generic constraints), so
+            // this cast is expected to succeed; falling back to a bare
+            // guided-only target (no jsonSchema/gbnfGrammar) rather than
+            // crashing is defensive against a hypothetical future caller that
+            // stages `.guided` without the conformance.
+            guard let provider = type as? any SchemaProviding.Type else {
+                return StructuredOutputTarget(guidedType: type)
+            }
+            let schemaValue = provider.jsonSchema
+            let schemaString: String?
+            do {
+                schemaString = try InferenceService.encodeSchema(schemaValue)
+            } catch {
+                Log.inference.warning(
+                    "StructuredOutputRouter: failed to encode \(String(describing: type))'s schema for the non-guided fallback path: \(String(describing: error), privacy: .public)"
+                )
+                schemaString = nil
+            }
+            let grammar: String?
+            if capabilities.supportsGrammarConstrainedSampling {
+                grammar = ToolGrammarBuilder().buildSchemaGrammar(for: schemaValue)
+            } else {
+                grammar = nil
+            }
+            return StructuredOutputTarget(gbnfGrammar: grammar, guidedType: type, jsonSchema: schemaString)
+        case .gbnf, .jsonPrompting:
             return nil
         }
     }

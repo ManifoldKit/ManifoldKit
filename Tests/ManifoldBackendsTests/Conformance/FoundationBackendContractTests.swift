@@ -137,12 +137,18 @@ final class FoundationBackendContractTests: XCTestCase,
     ///
     /// Full behavioural proofs for each flag:
     /// - `supportsToolCalling`: requires Apple Intelligence (live session); lives in the E2E tier.
+    /// - `supportsGuidedStructuredOutput` (#2354, re-flipped to `true`): requires
+    ///   Apple Intelligence (live session); real proof is
+    ///   `FoundationGuidedStructuredOutputE2ETests.test_respond_guidedRoundTrip_decodesIntoConcreteType_viaGuidedStrategy`
+    ///   — a genuine `respond<T>()` round-trip that decodes into a concrete
+    ///   type AND asserts the router actually selected `.guided` (not a
+    ///   silent fallback). This is deliberately NOT proven via
+    ///   `claimWithoutBehaviouralAssertion` alone with no test behind it
+    ///   anywhere — that gap (a capability claim with zero implementation and
+    ///   zero test) is exactly what let the original inert claim ship; see
+    ///   #2354 and #2357.
     /// - `supportsGrammarConstrainedSampling` (declared false): the fail-closed
     ///   assertion above proves the disclaim; the claim is recorded here.
-    ///
-    /// (`supportsGuidedStructuredOutput` is no longer bootstrapped: it was
-    /// flipped to `false` because the `.guided` strategy is not wired
-    /// end-to-end — see #2354 and `FoundationBackend.capabilities`.)
     func test_contract_allCapabilityClaims() {
         // Reset first — harmless given a freshly-constructed registry, kept
         // for symmetry with suites that build up several scenarios in one
@@ -162,6 +168,12 @@ final class FoundationBackendContractTests: XCTestCase,
             capabilityClaimRegistry,
             backendName: contractBackendName,
             flag: "supportsToolCalling"
+        )
+
+        BackendContractChecks.claimWithoutBehaviouralAssertion(
+            capabilityClaimRegistry,
+            backendName: contractBackendName,
+            flag: "supportsGuidedStructuredOutput"
         )
 
         BackendContractChecks.assertCapabilityMetaContract(

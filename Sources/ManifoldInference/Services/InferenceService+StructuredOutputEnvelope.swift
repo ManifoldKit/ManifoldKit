@@ -166,8 +166,10 @@ extension InferenceService {
     /// - Returns: `.success` with the decoded value, raw text, and strategy
     ///   used; `.failure` with the classified reliability error from the last
     ///   attempt.
-    /// - Throws: ``StructuredOutputError/schemaEncodingFailure(_:)`` when the
-    ///   schema cannot be encoded, or any non-reliability backend error.
+    /// - Throws: any non-reliability backend error. A schema-encoding failure
+    ///   for a non-guided backend degrades gracefully to `.jsonPrompting`
+    ///   (logged) rather than throwing — see
+    ///   ``GenerationQueue/structuredOutputTarget(from:capabilities:)``.
     public func structured<T: Decodable & Sendable & SchemaProviding>(
         _ type: T.Type,
         messages: [Message],
@@ -175,7 +177,6 @@ extension InferenceService {
         policy: StructuredOutputReliabilityPolicy = .init()
     ) async throws -> Result<StructuredOutput<T>, StructuredOutputEnvelopeError> {
         let schema = T.jsonSchema
-        let schemaString = try Self.encodeSchema(schema)
 
         let attemptBudget = policy.maxRetries + 1
         var lastFailure = StructuredOutputEnvelopeError.emptyOutput(attempts: 0)
@@ -194,7 +195,7 @@ extension InferenceService {
             do {
                 let (rawText, strategy) = try await runStructuredGeneration(
                     messages: messages,
-                    schemaString: schemaString,
+                    guidedType: type,
                     config: config,
                     stallTimeout: policy.stallTimeout
                 )
