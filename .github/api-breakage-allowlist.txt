@@ -437,3 +437,6 @@ API breakage: var ManifoldBootstrap.toolCallConformanceCache has been removed
 API breakage: struct CacheBreakpointPlan has been removed
 API breakage: func CloudMessageEncoder.encodeToolResults(_:) has been removed
 API breakage: func CloudMessageEncoder.annotateCacheBreakpoints(plan:systemPrompt:systemBlock:toolEntries:) has been removed
+API breakage: constructor BackgroundDownloadManager.init(storageService:sessionIdentifier:persistenceDirectory:tempScanDirectory:userDefaults:activityCenter:) has been removed
+API breakage: constructor HuggingFaceService.init(hubClient:activityCenter:) has been removed
+API breakage: func URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:) has been renamed to func ephemeral(hopCap:resourceTimeout:additionalDataDelegate:)

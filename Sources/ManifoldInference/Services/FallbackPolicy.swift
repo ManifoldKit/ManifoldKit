@@ -5,13 +5,13 @@ import Foundation
 ///
 /// The two routing axes in ManifoldKit are deliberately separate:
 ///
-/// - ``RouterBackend`` selects **one** child per request by *capability* and
+/// - `RouterBackend` selects **one** child per request by *capability* and
 ///   never retries across children (see its doc-comment). That is a
 ///   capability-select axis.
 /// - ``FallbackBackend`` (configured by this policy) advances across an ordered
 ///   list on *error*. That is an error-advance axis.
 ///
-/// They compose: a ``FallbackBackend`` whose children are ``RouterBackend``s is
+/// They compose: a ``FallbackBackend`` whose children are `RouterBackend`s is
 /// valid and routes on both axes.
 public struct FallbackPolicy: Sendable {
     /// Predicate deciding whether a given error from one backend should cause

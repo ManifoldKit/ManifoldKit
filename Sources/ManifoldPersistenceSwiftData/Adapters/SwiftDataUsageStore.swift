@@ -44,6 +44,18 @@ public final class SwiftDataUsageStore: UsageStore {
         try modelContext.save()
     }
 
+    /// The host-facing query surface for the live usage-recording write path.
+    ///
+    /// `TurnStreamFinalizer` (composed into the turn loop by
+    /// `ConversationTurnExecutor`) calls ``record(_:)`` on every completed
+    /// turn — the write side is genuinely live — but as of the 2026-07
+    /// inert-surface sweep (#2128) this package ships no in-repo reader of
+    /// the aggregated summary — no view, view model, or bootstrap wiring
+    /// calls `summary(sinceDays:)` anywhere in this repo. That is a
+    /// documentation and adoption gap, not dead code: a host that wants a
+    /// token-usage dashboard or cost estimate reads it back through this
+    /// method (or ``recentRecords(limit:)`` below) via the ``UsageStore``
+    /// port it's already wired up to receive.
     public func summary(sinceDays: Int) async throws -> UsageSummary {
         let cutoff = cutoffDate(sinceDays: sinceDays)
         let descriptor = FetchDescriptor<TurnUsageModel>(
@@ -62,6 +74,11 @@ public final class SwiftDataUsageStore: UsageStore {
         return aggregate(records)
     }
 
+    /// The host-facing query surface for the most recent raw ``TurnUsage``
+    /// rows, unaggregated — same "live write, no in-repo reader" situation as
+    /// ``summary(sinceDays:)`` above. Use this over `summary` when a host
+    /// wants a per-turn usage list (a cost ledger, an audit trail) rather
+    /// than a rolled-up total.
     public func recentRecords(limit: Int) async throws -> [TurnUsage] {
         var descriptor = FetchDescriptor<TurnUsageModel>(
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]

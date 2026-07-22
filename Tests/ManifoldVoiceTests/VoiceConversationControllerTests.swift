@@ -199,6 +199,48 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(synthesizer.stopCalls, 1)
     }
 
+    /// #2128 inert-surface sweep, part B: `onSpeechProgress` installed through
+    /// the controller must reach the underlying synthesizer's own
+    /// `SpeechProgressReporting.onSpeechProgress` — proving the forwarding
+    /// wire is live, not just a property that compiles.
+    func test_onSpeechProgress_installedThroughControllerReachesSynthesizer() {
+        let synthesizer = MockSpeechSynthesizer()
+        let controller = VoiceConversationController(
+            transcriber: MockSpeechTranscriber(),
+            synthesizer: synthesizer
+        )
+
+        var received: SpeechProgress?
+        controller.onSpeechProgress = { progress in received = progress }
+
+        // The handler must actually be installed on the concrete synthesizer,
+        // not just stored on the controller.
+        XCTAssertNotNil(synthesizer.onSpeechProgress)
+
+        let text = "read along"
+        let range = text.range(of: "along")!
+        let progress = SpeechProgress(utteranceID: UUID(), text: text, spokenRange: range)
+        synthesizer.emitProgress(progress)
+
+        XCTAssertEqual(received?.spokenText, "along")
+        XCTAssertEqual(controller.onSpeechProgress != nil, true)
+    }
+
+    /// A synthesizer that does not conform to `SpeechProgressReporting`
+    /// degrades to a no-op read/write rather than crashing — the documented
+    /// "engines without range reporting simply don't conform" contract.
+    func test_onSpeechProgress_noOpsForNonConformingSynthesizer() {
+        let synthesizer = NonReportingSpeechSynthesizer()
+        let controller = VoiceConversationController(
+            transcriber: MockSpeechTranscriber(),
+            synthesizer: synthesizer
+        )
+
+        XCTAssertNil(controller.onSpeechProgress)
+        controller.onSpeechProgress = { _ in XCTFail("should never be called") }
+        XCTAssertNil(controller.onSpeechProgress)
+    }
+
     /// Replace-mode regression: after a `stopSpeaking()` zeroes the counter, the
     /// cancelled predecessor's task resumes *after* a fresh enqueue restarts
     /// playback. Its teardown must not decrement the new generation's counter
@@ -322,13 +364,23 @@ private final class MockSpeechTranscriber: SpeechTranscribing {
 }
 
 @MainActor
-final class MockSpeechSynthesizer: SpeechSynthesizing {
+final class MockSpeechSynthesizer: SpeechSynthesizing, SpeechProgressReporting {
     var spokenTexts: [String] = []
     var spokenOptions: [SpeechOptions] = []
     var spokenEnqueueFlags: [Bool] = []
     var stopCalls = 0
     var shouldSuspend = false
     private var continuations: [CheckedContinuation<Void, Error>] = []
+
+    /// ``SpeechProgressReporting`` conformance — lets tests prove a handler
+    /// installed through ``VoiceConversationController/onSpeechProgress``
+    /// reaches the concrete synthesizer, mirroring `AppleSpeechSynthesizer`.
+    var onSpeechProgress: (@MainActor (SpeechProgress) -> Void)?
+
+    /// Test-only helper simulating a spoken-range delegate callback.
+    func emitProgress(_ progress: SpeechProgress) {
+        onSpeechProgress?(progress)
+    }
 
     func speak(_ text: String, options: SpeechOptions, enqueue: Bool) async throws {
         // Faithful to `AppleSpeechSynthesizer`: replace mode cancels whatever is
@@ -369,4 +421,13 @@ final class MockSpeechSynthesizer: SpeechSynthesizing {
             continuation.resume(throwing: CancellationError())
         }
     }
+}
+
+/// A minimal `SpeechSynthesizing` conformer that deliberately does NOT
+/// conform to `SpeechProgressReporting`, exercising
+/// ``VoiceConversationController/onSpeechProgress``'s no-op degrade path.
+@MainActor
+final class NonReportingSpeechSynthesizer: SpeechSynthesizing {
+    func speak(_ text: String, options: SpeechOptions, enqueue: Bool) async throws {}
+    func stopSpeaking() {}
 }

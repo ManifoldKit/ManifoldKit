@@ -1008,20 +1008,6 @@ RetryExhaustedError.lastError Var
 RetryStrategy Protocol
 RetryStrategy conformances: Copyable,Escapable,Sendable,SendableMetatype
 RetryStrategy.delay(for:attempt:totalDelayed:) Func
-RouterBackend Class
-RouterBackend attrs: Final
-RouterBackend conformances: Copyable,Escapable,InferenceBackend,Sendable,SendableMetatype
-RouterBackend.capabilities Var
-RouterBackend.children Var
-RouterBackend.generate(prompt:systemPrompt:config:hints:) Func
-RouterBackend.init(children:) Constructor
-RouterBackend.isGenerating Var
-RouterBackend.isModelLoaded Var
-RouterBackend.loadModel(from:plan:) Func
-RouterBackend.resetConversation() Func
-RouterBackend.selectBackend(for:) Func
-RouterBackend.stopGeneration() Func
-RouterBackend.unloadModel() Func
 SchemaProviding Protocol
 SchemaProviding conformances: Copyable,Escapable
 SchemaProviding.jsonSchema Var
@@ -1213,7 +1199,7 @@ URLSessionFactory conformances: Copyable,Escapable
 URLSessionFactory.background(identifier:hopCap:additionalDownloadDelegate:) Func
 URLSessionFactory.defaultRequestTimeout Var
 URLSessionFactory.defaultResourceTimeout Var
-URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:) Func
+URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:) Func
 VideoGenerationBackend Protocol
 VideoGenerationBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 VideoGenerationBackend.cancel() Func

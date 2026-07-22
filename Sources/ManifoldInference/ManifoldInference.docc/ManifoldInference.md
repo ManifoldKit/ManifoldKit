@@ -317,3 +317,14 @@ documentation for the high-level vs. direct-backend chooser.
 
 - <doc:LifecycleSignals>
 - ``ModelLoadCoordinator``
+
+### Reliability wrappers
+
+- <doc:ReliabilityWrappers>
+- ``FallbackBackend``
+- ``FallbackPolicy``
+- ``FallbackExhaustedError``
+- ``RetryStrategy``
+- ``ExponentialBackoffStrategy``
+- ``RetryExhaustedError``
+- ``withRetry(strategy:sleeper:operation:)``

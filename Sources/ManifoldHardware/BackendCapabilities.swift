@@ -302,8 +302,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// `maxAdvertisedToolCount`). Each exception is annotated at its merge
     /// line below.
     ///
-    /// Originally lifted from ``RouterBackend``'s inline merge so the composing
-    /// backends (``RouterBackend``, ``FallbackBackend``) share one
+    /// Originally lifted from `RouterBackend`'s inline merge so the composing
+    /// backends (`RouterBackend`, ``FallbackBackend``) share one
     /// implementation and cannot drift. Every stored field is merged explicitly
     /// below — `BackendCapabilitiesFieldCompletenessTests` (Mirror-based) fails
     /// if a future stored field isn't threaded through this function (and

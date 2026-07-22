@@ -37,6 +37,25 @@ public final class VoiceConversationController {
     /// listener is available (the production one requires a real microphone).
     @ObservationIgnored public var isBargeInEnabled: Bool
 
+    /// Installs (or reads) a spoken-range progress handler on the underlying
+    /// synthesizer, when it supports ``SpeechProgressReporting``.
+    ///
+    /// The controller holds its synthesizer as `any SpeechSynthesizing` — an
+    /// existential that erases any more specific capability the concrete
+    /// engine offers — so ``AppleSpeechSynthesizer/onSpeechProgress`` was
+    /// unreachable from a host that drives speech through this controller
+    /// rather than constructing `AppleSpeechSynthesizer` directly. This
+    /// property forwards get/set to the synthesizer's own
+    /// `SpeechProgressReporting.onSpeechProgress` when the concrete
+    /// synthesizer conforms, so read-along highlighting works the same way
+    /// whether a host talks to the synthesizer or the controller. `nil`
+    /// (the default) both when no handler is installed and when the
+    /// synthesizer doesn't support progress reporting at all.
+    public var onSpeechProgress: (@MainActor (SpeechProgress) -> Void)? {
+        get { (synthesizer as? any SpeechProgressReporting)?.onSpeechProgress }
+        set { (synthesizer as? any SpeechProgressReporting)?.onSpeechProgress = newValue }
+    }
+
     @ObservationIgnored private let transcriber: any SpeechTranscribing
     @ObservationIgnored private let synthesizer: any SpeechSynthesizing
     @ObservationIgnored private let voiceActivityDetector: any VoiceActivityDetector

@@ -7,7 +7,7 @@ BackgroundDownloadManager.checkDiskSpace(requiredBytes:) Func
 BackgroundDownloadManager.cleanupStaleTempFiles() Func
 BackgroundDownloadManager.hasActiveDownloads Var
 BackgroundDownloadManager.init() Constructor
-BackgroundDownloadManager.init(storageService:sessionIdentifier:persistenceDirectory:tempScanDirectory:userDefaults:activityCenter:) Constructor
+BackgroundDownloadManager.init(storageService:sessionIdentifier:persistenceDirectory:tempScanDirectory:userDefaults:) Constructor
 BackgroundDownloadManager.reconnectBackgroundSession() Func
 BackgroundDownloadManager.retryDownload(id:) Func
 BackgroundDownloadManager.sessionIdentifier Var
@@ -57,5 +57,5 @@ HuggingFaceService.downloadDiffusionModel(from:to:displayName:preferFP16:urlSess
 HuggingFaceService.downloadPlan(for:) Func
 HuggingFaceService.downloadURL(for:) Func
 HuggingFaceService.getModelFiles(repoID:) Func
-HuggingFaceService.init(hubClient:activityCenter:) Constructor
+HuggingFaceService.init(hubClient:) Constructor
 HuggingFaceService.searchModels(query:limit:) Func

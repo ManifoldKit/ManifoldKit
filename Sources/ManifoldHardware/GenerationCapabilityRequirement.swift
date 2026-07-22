@@ -2,7 +2,7 @@ import Foundation
 
 /// A capability a request requires of whichever backend serves it.
 ///
-/// Used by ``GenerationConfig/requiredCapabilities`` and ``RouterBackend``
+/// Used by ``GenerationConfig/requiredCapabilities`` and `RouterBackend`
 /// to fail fast when no wired backend can satisfy a request, and to dispatch
 /// the request to a child backend that can.
 ///

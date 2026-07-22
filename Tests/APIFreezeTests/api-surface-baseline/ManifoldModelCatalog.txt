@@ -441,16 +441,6 @@ ModelCapabilityProbeError.__derived_enum_equals(_:_:) Func
 ModelCapabilityProbeError.configNotFound EnumElement
 ModelCapabilityProbeError.errorDescription Var
 ModelCapabilityProbeError.invalidConfigJSON EnumElement
-ModelCatalog Class
-ModelCatalog conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
-ModelCatalog.catalog() Func
-ModelCatalog.enforceDiskBudget(_:) Func
-ModelCatalog.evict(_:deleteArtifact:) Func
-ModelCatalog.init(storage:fileManager:manifestURL:) Constructor
-ModelCatalog.manifestFileName Var
-ModelCatalog.record(_:) Func
-ModelCatalog.touch(_:at:) Func
-ModelCatalog.unownedExecutor Var
 ModelDiscoveryError Enum
 ModelDiscoveryError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 ModelDiscoveryError.__derived_enum_equals(_:_:) Func
