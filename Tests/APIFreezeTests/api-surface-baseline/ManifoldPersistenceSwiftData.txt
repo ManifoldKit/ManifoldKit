@@ -54,7 +54,6 @@ ManifoldBootstrap.personaStore Var
 ManifoldBootstrap.ragService Var
 ManifoldBootstrap.reapOrphanedKeychainItems(in:) Func
 ManifoldBootstrap.samplerPresetStore Var
-ManifoldBootstrap.toolCallConformanceCache Var
 ManifoldBootstrap.usageStore Var
 ManifoldBootstrap.videoGenerationRuntime Var
 ManifoldBootstrap.videoGenerationService Var
@@ -398,13 +397,6 @@ SwiftDataSamplerPresetStore.deletePreset(_:) Func
 SwiftDataSamplerPresetStore.fetchPresets() Func
 SwiftDataSamplerPresetStore.init(modelContext:) Constructor
 SwiftDataSamplerPresetStore.insertPreset(_:) Func
-SwiftDataToolCallConformanceCache Class
-SwiftDataToolCallConformanceCache attrs: Custom,Final
-SwiftDataToolCallConformanceCache conformances: Copyable,Escapable,Sendable,SendableMetatype,ToolCallConformanceCache
-SwiftDataToolCallConformanceCache.fetchAll() Func
-SwiftDataToolCallConformanceCache.get(_:) Func
-SwiftDataToolCallConformanceCache.init(modelContext:) Constructor
-SwiftDataToolCallConformanceCache.put(_:_:) Func
 SwiftDataUsageStore Class
 SwiftDataUsageStore attrs: Custom,Final
 SwiftDataUsageStore conformances: Copyable,Escapable,Sendable,SendableMetatype,UsageStore
