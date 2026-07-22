@@ -89,4 +89,65 @@ final class MockFuzzFactoryTests: XCTestCase {
         XCTAssertFalse(smoke.isEmpty, "smoke_seeds.json must exist and parse")
         XCTAssertGreaterThanOrEqual(smoke.count, 5, "smoke set should have at least a handful of prompts to exercise mutators")
     }
+
+    // MARK: - ManifoldKit#2344 floor-rate guard (single-turn twin)
+
+    /// A factory that reports a loaded handle but hands out a backend whose
+    /// `generate()` fails synchronously every call — same sabotage shape as
+    /// `SessionFuzzRunnerInertGuardTests`, applied to the single-turn runner
+    /// so `FuzzReport.isInert` is verified on both entry points that share it.
+    struct InstantlyFailingFactory: FuzzBackendFactory {
+        @MainActor
+        func makeHandle() async throws -> FuzzRunner.BackendHandle {
+            let backend = MockInferenceBackend() // isModelLoaded stays false
+            return FuzzRunner.BackendHandle(
+                backend: backend,
+                modelId: "mock-model",
+                modelURL: URL(string: "mock:mock-model")!,
+                backendName: "mock",
+                templateMarkers: nil
+            )
+        }
+    }
+
+    func test_everyIterationFailingInstantly_isReportedAsInert() async {
+        let outputDir = makeTempOutputDir()
+        defer { try? FileManager.default.removeItem(at: outputDir) }
+
+        let config = FuzzConfig(
+            backend: .mock,
+            iterations: 5,
+            seed: 1,
+            outputDir: outputDir,
+            quiet: true,
+            corpusSubset: .smoke
+        )
+        let runner = FuzzRunner(config: config, factory: InstantlyFailingFactory())
+        let report = await runner.run(reporter: TerminalReporter(quiet: true))
+
+        XCTAssertEqual(report.totalRuns, 5)
+        XCTAssertEqual(report.realCompletions, 0)
+        XCTAssertTrue(report.isInert, "a single-turn campaign where every iteration fails before generating must be flagged inert")
+    }
+
+    /// Healthy counterpart: the existing `LocalMockFuzzFactory` backend
+    /// (properly loaded) must NOT be flagged inert.
+    func test_healthyFactory_isNotInert() async {
+        let outputDir = makeTempOutputDir()
+        defer { try? FileManager.default.removeItem(at: outputDir) }
+
+        let config = FuzzConfig(
+            backend: .mock,
+            iterations: 3,
+            seed: 1,
+            outputDir: outputDir,
+            quiet: true,
+            corpusSubset: .smoke
+        )
+        let runner = FuzzRunner(config: config, factory: LocalMockFuzzFactory())
+        let report = await runner.run(reporter: TerminalReporter(quiet: true))
+
+        XCTAssertEqual(report.realCompletions, 3)
+        XCTAssertFalse(report.isInert)
+    }
 }
