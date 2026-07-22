@@ -50,11 +50,21 @@ public enum ManifoldSchemaV11: VersionedSchema {
     /// is stable across case-reordering. Metric doubles are nullable columns
     /// that decode to `nil` when absent, matching the value type.
     ///
-    /// The composite uniqueness constraint `(modelName, quant, backend)` is
-    /// enforced by the adapter's upsert logic (delete-then-insert), not by a
-    /// SwiftData `@Attribute(.unique)` triple — SwiftData V1 does not support
-    /// multi-column unique constraints. The adapter's predicate-and-delete
-    /// approach mirrors ``SwiftDataBenchmarkCache/upsert(modelFileName:result:)``.
+    /// The composite uniqueness constraint `(modelName, quant, backend)` was
+    /// enforced in application code (delete-then-insert), not by a SwiftData
+    /// `@Attribute(.unique)` triple — SwiftData V1 does not support
+    /// multi-column unique constraints.
+    ///
+    /// > Note: The `ToolCallConformanceCache` port and its
+    /// > `SwiftDataToolCallConformanceCache` adapter (the reader/writer of these
+    /// > rows) were removed 2026-07-22 (issue #2128 inert-surface sweep) — the
+    /// > path was never wired to a reader and had zero external adopters. This
+    /// > `@Model` and its V11 schema are **deliberately retained**: dropping a
+    /// > persisted model requires a new schema version + lightweight migration,
+    /// > a cost not worth paying for dead storage. Delete this type (and fold
+    /// > its removal into a migration) at the next schema revision. The
+    /// > value-type conversion helpers below still compile against the retained
+    /// > ``ManifoldRuntime/ToolCallConformance`` vocabulary.
     @Model
     public final class ToolCallConformanceRecord {
 

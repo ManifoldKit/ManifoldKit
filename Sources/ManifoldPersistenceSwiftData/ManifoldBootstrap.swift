@@ -176,12 +176,6 @@ public final class ManifoldBootstrap {
     /// Backed by ``Persona`` (``ManifoldSchemaV12``).
     public let personaStore: SwiftDataPersonaStore
     public let benchmarkCache: SwiftDataBenchmarkCache
-    /// Persists measured tool-call conformance verdicts keyed by
-    /// `(model × quant × backend)`. Host apps can read cached verdicts via
-    /// ``ManifoldRuntime/ToolCallConformanceCache`` to gate tool-calling UI
-    /// without re-running the soak. Backed by ``ToolCallConformanceRecord``
-    /// (``ManifoldSchemaV11``).
-    public let toolCallConformanceCache: SwiftDataToolCallConformanceCache
     public let endpointStore: SwiftDataEndpointStore
     /// Persists per-turn token counts for all cloud-backed sessions. Host apps
     /// can read aggregated totals via ``usageStore`` to surface cost dashboards.
@@ -368,7 +362,6 @@ public final class ManifoldBootstrap {
             self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
             self.personaStore = SwiftDataPersonaStore(modelContext: mainContext)
             self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
-            self.toolCallConformanceCache = SwiftDataToolCallConformanceCache(modelContext: mainContext)
             self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
             let resolvedUsageStore = SwiftDataUsageStore(modelContext: mainContext)
             self.usageStore = resolvedUsageStore
@@ -440,7 +433,6 @@ public final class ManifoldBootstrap {
         samplerPresetStore: SwiftDataSamplerPresetStore,
         personaStore: SwiftDataPersonaStore,
         benchmarkCache: SwiftDataBenchmarkCache,
-        toolCallConformanceCache: SwiftDataToolCallConformanceCache,
         endpointStore: SwiftDataEndpointStore,
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
@@ -461,7 +453,6 @@ public final class ManifoldBootstrap {
         self.samplerPresetStore = samplerPresetStore
         self.personaStore = personaStore
         self.benchmarkCache = benchmarkCache
-        self.toolCallConformanceCache = toolCallConformanceCache
         self.endpointStore = endpointStore
         self.usageStore = usageStore
         self.ragService = ragService
@@ -709,7 +700,6 @@ public final class ManifoldBootstrap {
                 let samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
                 let personaStore = SwiftDataPersonaStore(modelContext: mainContext)
                 let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
-                let toolCallConformanceCache = SwiftDataToolCallConformanceCache(modelContext: mainContext)
                 let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
                 let usageStore = SwiftDataUsageStore(modelContext: mainContext)
                 let ragService = makeRAGService(
@@ -731,7 +721,6 @@ public final class ManifoldBootstrap {
                     samplerPresetStore: samplerPresetStore,
                     personaStore: personaStore,
                     benchmarkCache: benchmarkCache,
-                    toolCallConformanceCache: toolCallConformanceCache,
                     endpointStore: endpointStore,
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
