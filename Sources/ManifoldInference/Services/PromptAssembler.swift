@@ -11,9 +11,10 @@ import Foundation
 /// > call `PromptAssembler`. It is **retained**, not dead: it is the data-shape
 /// > producer behind the Prompt Inspector seam (`AssembledPrompt` is
 /// > `PromptInspectorView`'s input), plus the slot-budgeting reference the
-/// > `ContributingPromptContext` DocC article documents. Both `PromptAssembler`
-/// > and `AssembledPrompt` are allowlisted in the inert-surface audit for this
-/// > reason; do not delete them without also retiring that seam.
+/// > `ContributingPromptContext` DocC article documents. `PromptAssembler` has
+/// > no in-code caller, so it is allowlisted in the inert-surface audit;
+/// > `AssembledPrompt` stays live through `PromptInspectorView`. Do not delete
+/// > either without also retiring that seam.
 ///
 /// The assembler follows this algorithm:
 /// 1. Calculate token cost of each enabled slot's content (capped by ``PromptSlot/tokenBudget``).
