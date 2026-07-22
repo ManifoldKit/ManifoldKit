@@ -89,12 +89,6 @@ public struct ContextIndicatorView: View {
                     .monospacedDigit()
                     .foregroundStyle(color)
             }
-
-            Divider()
-
-            Label("Open Prompt Inspector in Generation Settings for per-slot breakdown.", systemImage: "info.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding()
         .frame(minWidth: 240)

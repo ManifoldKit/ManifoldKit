@@ -181,6 +181,136 @@ final class ChatViewModelSendMessageErrorTests: XCTestCase {
         }
     }
 
+    // MARK: - .audio attachment (gap A of the UI-honesty audit, #2356)
+    //
+    // No backend in this package can encode a `.audio` MessagePart today
+    // (`MessagePart.textContent` is nil for it, `PromptRenderer` drops it
+    // with only a log, `CloudMessageEncoder` has no `.audio` case). Before
+    // this fix, `sendMessage()` cleared the draft and dispatched the turn
+    // anyway — the user saw their voice note "sent" while the model never
+    // received it. These tests pin the abort-and-surface behavior instead.
+
+    func test_sendMessage_withAudioAttachment_abortsAndSurfacesError() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        let audioPart = MessagePart.audio(
+            url: URL(fileURLWithPath: "/tmp/voice-note.m4a"),
+            duration: 3.2,
+            waveform: nil
+        )
+        vm.stageDraftAttachment(audioPart)
+        XCTAssertNil(vm.activeError, "Precondition: no error yet")
+
+        await vm.sendMessage()
+
+        XCTAssertNotNil(vm.activeError, "sendMessage() must surface an error instead of silently dropping the audio attachment")
+        XCTAssertEqual(vm.activeError?.kind, .configuration)
+        XCTAssertEqual(
+            vm.draftAttachments, [audioPart],
+            "The draft must NOT be cleared — an aborted send must leave the user's attachment in place, not silently discard it"
+        )
+    }
+
+    func test_sendMessage_throwingOverload_withAudioAttachment_throwsRuntimeError() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        vm.stageDraftAttachment(.audio(
+            url: URL(fileURLWithPath: "/tmp/voice-note.m4a"),
+            duration: 3.2,
+            waveform: nil
+        ))
+
+        do {
+            // Empty text with a staged attachment passes the emptyInput guard
+            // (text OR attachments non-empty) — the audio guard inside the
+            // inner sendMessage() must be what stops the turn.
+            _ = try await vm.sendMessage("")
+            XCTFail("Expected SendMessageError.runtime to be thrown for an undeliverable audio attachment")
+        } catch SendMessageError.runtime(let underlying) {
+            XCTAssertTrue(
+                underlying.localizedDescription.contains("audio") || underlying.localizedDescription.contains("Voice"),
+                "Underlying error should describe the undeliverable audio attachment, got: \(underlying.localizedDescription)"
+            )
+        } catch {
+            XCTFail("Expected .runtime, got \(error)")
+        }
+    }
+
+    /// Regression for a stale-record leak caught in review of #2356: the
+    /// prior test above only exercises the audio guard while
+    /// `lastTurnState == .idle` (no turn has run yet). But a *successful*
+    /// prior call leaves `lastTurnState == .completed(record1)`
+    /// (`ChatGenerationCoordinator.swift`). Before this fix, the throwing
+    /// overload had no audio precheck of its own — it delegated to the
+    /// no-arg `sendMessage()`, whose audio guard returns early WITHOUT
+    /// touching `lastTurnState`, so the overload's `switch lastTurnState`
+    /// then matched the stale `.completed(record1)` and returned the
+    /// PREVIOUS turn's record as if it were the reply to the new,
+    /// audio-attached call — the exact #A4 deception this file's other
+    /// sabotage-verified test guards against for empty input.
+    func test_sendMessage_throwingOverload_withAudioAttachment_afterSuccessfulPriorTurn_throwsNotStaleRecord() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["Hi", " there"]
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        let firstReply = try await vm.sendMessage("hello")
+        XCTAssertEqual(firstReply.content, "Hi there", "Precondition: first turn completed normally, leaving lastTurnState == .completed(record1)")
+
+        vm.stageDraftAttachment(.audio(
+            url: URL(fileURLWithPath: "/tmp/voice-note.m4a"),
+            duration: 3.2,
+            waveform: nil
+        ))
+
+        do {
+            let result = try await vm.sendMessage("caption")
+            XCTFail("Expected a throw for the undeliverable audio attachment, but got the stale prior record back: \(result)")
+        } catch SendMessageError.runtime(let underlying) {
+            XCTAssertTrue(
+                underlying.localizedDescription.contains("audio") || underlying.localizedDescription.contains("Voice"),
+                "Underlying error should describe the undeliverable audio attachment, got: \(underlying.localizedDescription)"
+            )
+        } catch {
+            XCTFail("Expected .runtime, got \(error)")
+        }
+    }
+
+    /// A text-only send alongside a *non*-audio attachment (image) must be
+    /// unaffected by the new guard — only `.audio` aborts the send. Requires
+    /// a vision-capable backend, otherwise a separate, pre-existing guard
+    /// (unrelated to this fix) rejects the image for a different reason.
+    func test_sendMessage_withImageAttachment_stillSendsNormally() async throws {
+        let backend = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP, .repeatPenalty],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: false,
+            supportsStructuredOutput: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            supportsVision: true
+        ))
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let vm = makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm)
+
+        vm.stageDraftAttachment(.image(data: Data([1, 2, 3, 4]), mimeType: "image/png"))
+
+        let record = try await vm.sendMessage("describe this")
+        XCTAssertEqual(record.content, "ok")
+        XCTAssertNil(vm.activeError)
+    }
+
     // MARK: - Happy path returns the assistant record (no throw)
 
     func test_sendMessage_happyPath_returnsAssistantRecord() async throws {

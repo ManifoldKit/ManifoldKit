@@ -1,26 +1,28 @@
 import SwiftUI
 
-/// In-transcript progress card for an in-flight image/video generation
+/// In-transcript progress card for an in-flight image/video/audio generation
 /// (`docs/UI-REFRESH-2026.md` §4A). Renders while
-/// ``ChatViewModel/imageGenerationProgress`` / ``ChatViewModel/videoGenerationProgress``
-/// report an incomplete entry for the hosting message; settles in place once
-/// the placeholder message's `contentParts` gain the terminal
-/// `.generatedMedia` part (``MessagePartsView`` stops rendering this card at
-/// that point and renders the settled media instead).
+/// ``ChatViewModel/imageGenerationProgress`` / ``ChatViewModel/videoGenerationProgress`` /
+/// ``ChatViewModel/audioGenerationProgress`` report an incomplete entry for
+/// the hosting message; settles in place once the placeholder message's
+/// `contentParts` gain the terminal `.generatedMedia` part
+/// (``MessagePartsView`` stops rendering this card at that point and renders
+/// the settled media instead).
 ///
 /// Shimmer title + step/fraction bar + blurred live preview (image only —
-/// video progress carries no intermediate frame) + cancel, same lifecycle
-/// grammar as ``ToolInvocationView``'s running state.
+/// video and audio progress carry no intermediate frame) + cancel, same
+/// lifecycle grammar as ``ToolInvocationView``'s running state.
 struct GeneratedMediaProgressCardView: View {
 
-    /// The two generation modalities that report progress today. Audio is a
-    /// one-shot artifact with no intermediate progress event, so it never
-    /// reaches this view (`ChatViewModel` has no `audioGenerationProgress`).
+    /// The three generation modalities that report progress today.
     enum Progress {
         /// `step`/`totalSteps` are `0` before the first progress event.
         case image(step: Int, totalSteps: Int, previewImage: Data?)
         /// `fractionComplete` is `0` while queued.
         case video(fractionComplete: Double)
+        /// `fractionComplete` is `0` while queued. Audio carries no
+        /// intermediate preview frame, same as video.
+        case audio(fractionComplete: Double)
     }
 
     @Environment(\.manifoldTheme) private var theme
@@ -70,6 +72,7 @@ struct GeneratedMediaProgressCardView: View {
         switch progress {
         case .image: "image"
         case .video: "video"
+        case .audio: "audio"
         }
     }
 
@@ -77,6 +80,7 @@ struct GeneratedMediaProgressCardView: View {
         switch progress {
         case .image: "photo.badge.clock"
         case .video: "video.badge.clock"
+        case .audio: "waveform"
         }
     }
 
@@ -84,6 +88,7 @@ struct GeneratedMediaProgressCardView: View {
         switch progress {
         case .image: "Generating image…"
         case .video: "Generating video…"
+        case .audio: "Generating audio…"
         }
     }
 
@@ -94,6 +99,8 @@ struct GeneratedMediaProgressCardView: View {
             return Double(step) / Double(totalSteps)
         case .video(let fractionComplete):
             return fractionComplete
+        case .audio(let fractionComplete):
+            return fractionComplete
         }
     }
 
@@ -103,6 +110,8 @@ struct GeneratedMediaProgressCardView: View {
             guard totalSteps > 0 else { return "Starting…" }
             return "Step \(step) of \(totalSteps)"
         case .video(let fractionComplete):
+            return "\(Int(fractionComplete * 100))%"
+        case .audio(let fractionComplete):
             return "\(Int(fractionComplete * 100))%"
         }
     }
@@ -149,6 +158,15 @@ struct GeneratedMediaProgressCardView: View {
     GeneratedMediaProgressCardView(
         prompt: "a drone shot over the ocean",
         progress: .video(fractionComplete: 0.42),
+        onCancel: {}
+    )
+    .padding()
+}
+
+#Preview("Audio") {
+    GeneratedMediaProgressCardView(
+        prompt: "Read the weekly summary aloud",
+        progress: .audio(fractionComplete: 0.65),
         onCancel: {}
     )
     .padding()

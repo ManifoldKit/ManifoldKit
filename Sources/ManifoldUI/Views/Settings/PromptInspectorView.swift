@@ -7,6 +7,24 @@ import ManifoldInference
 /// Shows a token budget bar at the top with colored segments for each slot,
 /// an expandable list of slots with content previews, and a summary footer.
 /// Designed for debugging and understanding how the prompt is assembled.
+///
+/// ## Seam: nothing in the live turn path produces an `AssembledPrompt`
+///
+/// `GenerationSettingsView` used to open this sheet from a "Debug" row, but
+/// always passed `assembledPrompt: nil` — so the sheet only ever showed
+/// ``noDataView``. That entry point was removed (gap E of the UI-honesty
+/// audit, #2356) rather than wired up, because ``PromptAssembler`` /
+/// ``AssembledPrompt`` (`ManifoldInference/Services/PromptAssembler.swift`,
+/// `PromptSlot.swift`) are exercised only by tests — the real turn path in
+/// `GenerationQueue` builds its prompt through `PromptRenderer` /
+/// `ContextWindowManager` / `TranscriptHealer` instead, a parallel
+/// abstraction that never produces an `AssembledPrompt` value. Lighting this
+/// view up for real needs `GenerationQueue` (or `InferenceService`) to
+/// additionally run `PromptAssembler.assemble(...)` per turn and retain the
+/// last result somewhere a host can read (e.g. a `package`/internal
+/// `lastAssembledPrompt` surfaced through `InferenceService` →
+/// `ChatViewModel`) — that's a change to the live inference path, not a
+/// plumbing-only fix, so it's out of scope here.
 package struct PromptInspectorView: View {
 
     @Environment(\.dismiss) private var dismiss

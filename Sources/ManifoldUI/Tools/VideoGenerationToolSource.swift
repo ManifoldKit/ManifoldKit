@@ -59,6 +59,19 @@ public final class VideoGenerationToolSource: SessionToolSource {
         else {
             return ToolResult(callId: toolName, content: "Expected a non-empty \"prompt\" string.", errorKind: .invalidArguments)
         }
+        // Preflight the same condition `generateVideo` throws
+        // `ChatViewModelVideoError.notConfigured` for. Without this check the
+        // model was told generation "started" even when no
+        // VideoGenerationRuntime is installed — the surface stays
+        // ahead-of-backend by design (#2349) but the tool result must not lie
+        // about that.
+        guard await viewModel.videoRuntime != nil else {
+            return ToolResult(
+                callId: toolName,
+                content: "Video generation is not configured in this build. There is no video backend wired up, so this request cannot be started.",
+                errorKind: .permanent
+            )
+        }
         // Fire-and-forget: video generation is long-running; resolve returns
         // immediately so the conversation turn is not blocked while the backend
         // processes the request. The generated video and progress updates surface
@@ -68,6 +81,7 @@ public final class VideoGenerationToolSource: SessionToolSource {
                 try await viewModel.generateVideo(prompt: prompt, config: VideoGenerationConfig(duration: 5))
             } catch {
                 Log.ui.warning("VideoGenerationToolSource: video generation failed: \(error)")
+                viewModel.surfaceError(error, kind: .generation, context: "generating video")
             }
         }
         return ToolResult(callId: toolName, content: "Video generation started. It will appear in approximately 30–60 seconds.")
