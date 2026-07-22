@@ -347,7 +347,7 @@ final class HuggingFaceServiceTests: XCTestCase {
 
     // MARK: - MLX Characterization
 
-    func test_convertModelToDownloadables_mlxRepo_returnsSingleDownloadableDirectory() async throws {
+    func test_convertModelToDownloadables_mlxRepo_returnsSingleDownloadableDirectory() throws {
         let repoID = "mlx-community/Gemma-3-4B-it-4bit"
         let detailedResponse = """
             {
@@ -362,10 +362,7 @@ final class HuggingFaceServiceTests: XCTestCase {
             }
             """
         let model = try decodeModel(from: detailedResponse)
-        // No GGUF siblings here, so convertModelToDownloadables's checksum
-        // lookup (ggufChecksums) short-circuits without any network call —
-        // safe to run against the real (unmocked) `service` from setUp().
-        let files = await service.convertModelToDownloadables(model)
+        let files = service.convertModelToDownloadables(model)
         let mlxModel = try XCTUnwrap(files.first)
 
         XCTAssertEqual(files.count, 1, "MLX repos should surface as one logical downloadable")
@@ -451,13 +448,94 @@ final class HuggingFaceServiceTests: XCTestCase {
     // `convertModelToDownloadables` previously always constructed GGUF
     // `DownloadableModel`s with `expectedSHA256: nil`, so `DownloadFileValidator.
     // validateChecksum` never enforced anything for searched/browsed models —
-    // only the small curated catalogue carried digests. The fix recovers the
-    // LFS sha256 via a HEAD request per GGUF file (`HubClient.getFile`, whose
-    // `File.etag` is the LFS sha256 for LFS-tracked files). This test proves
-    // both ends: the digest is populated from the Hub response, and the
-    // validator actually rejects a corrupted payload against that digest.
+    // only the small curated catalogue carried digests. The fix resolves the
+    // LFS sha256 (`HubClient.getFile`, whose `File.etag` is the LFS sha256
+    // for LFS-tracked files) lazily, in `downloadPlan(for:)`, for the single
+    // file actually being downloaded — never at search/browse time, which
+    // would fan out to a HEAD request per GGUF sibling across every search
+    // result (#2355 review round 2). The two tests below pin both halves of
+    // that contract: search must NOT trigger any `getFile` HEAD request, and
+    // `downloadPlan(for:)` must resolve + the validator must enforce it.
 
-    func test_getModelFiles_ggufFile_populatesExpectedSHA256FromHubHeadRequestAndValidatorRejectsCorruptedPayload() async throws {
+    /// `searchModels` must not issue any `HubClient.getFile` HEAD request —
+    /// those only fire from `downloadPlan(for:)`, at download time, for the
+    /// one file the user actually chose. Proven by asserting zero captured
+    /// requests hit the `resolve/main/<file>` path for our unique test host
+    /// (captured requests are a shared static list, so scoping by our
+    /// per-test hostname keeps this safe under `swift test --parallel`).
+    func test_searchModels_doesNotFetchGGUFChecksums() async throws {
+        let uniqueHost = "\(UUID().uuidString.lowercased()).huggingface.test"
+        let hostURL = URL(string: "https://\(uniqueHost)")!
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let hubClient = HubClient(session: session, host: hostURL, userAgent: "ManifoldKitTests/1.0", cache: nil)
+        let mockService = HuggingFaceService(hubClient: hubClient)
+
+        let repoID = "TestOrg/Test-GGUF-NoEagerChecksum"
+        let fileName = "model.Q4_K_M.gguf"
+        let listJSON = """
+            [
+                {
+                    "id": "\(repoID)",
+                    "downloads": 10,
+                    "pipeline_tag": "text-generation",
+                    "siblings": [
+                        { "rfilename": "\(fileName)", "size": 4100000 }
+                    ]
+                }
+            ]
+            """
+        let detailJSON = """
+            {
+                "id": "\(repoID)",
+                "downloads": 10,
+                "pipeline_tag": "text-generation",
+                "siblings": [
+                    { "rfilename": "\(fileName)", "size": 4100000 }
+                ]
+            }
+            """
+        let listURL = URL(string: "https://\(uniqueHost)/api/models")!
+        let detailURL = URL(string: "https://\(uniqueHost)/api/models/\(repoID)")!
+        MockURLProtocol.stub(
+            url: listURL,
+            response: .immediate(data: Data(listJSON.utf8), statusCode: 200, headers: ["Content-Type": "application/json"])
+        )
+        MockURLProtocol.stub(
+            url: detailURL,
+            response: .immediate(data: Data(detailJSON.utf8), statusCode: 200, headers: ["Content-Type": "application/json"])
+        )
+        // Deliberately NOT stubbing the resolve/main HEAD URL — if search
+        // reached for it, the request would fail (unsupportedURL) rather
+        // than silently succeed, but we also assert directly on captured
+        // requests below so the failure mode is unambiguous either way.
+        defer {
+            MockURLProtocol.unstub(url: listURL)
+            MockURLProtocol.unstub(url: detailURL)
+        }
+
+        let results = try await mockService.searchModels(query: "test")
+        let ggufModel = try XCTUnwrap(results.first { $0.modelType == .gguf })
+        XCTAssertNil(
+            ggufModel.expectedSHA256,
+            "Search results must not carry a resolved checksum — that only happens at download time"
+        )
+
+        let resolvePrefix = "https://\(uniqueHost)/\(repoID)/resolve/"
+        let headRequestsToResolve = MockURLProtocol.capturedRequests.filter {
+            $0.url?.absoluteString.hasPrefix(resolvePrefix) == true
+        }
+        XCTAssertTrue(
+            headRequestsToResolve.isEmpty,
+            "searchModels must not issue any HubClient.getFile HEAD request (resolve/main/<file>) — found \(headRequestsToResolve.count). Checksum resolution belongs in downloadPlan(for:), not the search path."
+        )
+    }
+
+    /// `downloadPlan(for:)` must resolve the LFS sha256 for the one GGUF
+    /// file being downloaded, and `DownloadFileValidator` must actually
+    /// enforce that digest end to end (not just carry it as inert metadata).
+    func test_downloadPlan_ggufFile_resolvesExpectedSHA256FromHubHeadRequestAndValidatorRejectsCorruptedPayload() async throws {
         // Unique per-test hostname — never MockURLProtocol.reset() across
         // suites (shared static registry; see makeMockService's doc comment
         // above and AGENTS.md's MockURLProtocol convention).
@@ -475,29 +553,9 @@ final class HuggingFaceServiceTests: XCTestCase {
         // Stands in for the Hub's LFS content sha256 (`X-Linked-Etag`).
         let realSHA256 = "85953ed999bda7fa3036729d437ca475b9e0090f5b2f4438ea4fe9a7d1469b30"
 
-        let detailJSON = """
-            {
-                "id": "\(repoID)",
-                "downloads": 10,
-                "pipeline_tag": "text-generation",
-                "siblings": [
-                    { "rfilename": "\(fileName)", "size": 4100000 }
-                ]
-            }
-            """
-        let detailURL = URL(string: "https://\(uniqueHost)/api/models/\(repoID)")!
-        MockURLProtocol.stub(
-            url: detailURL,
-            response: .immediate(
-                data: Data(detailJSON.utf8),
-                statusCode: 200,
-                headers: ["Content-Type": "application/json"]
-            )
-        )
-
         // HubClient.getFile HEADs <host>/<repoID>/resolve/main/<fileName>.
         // X-Linked-Size marks the response as LFS; X-Linked-Etag carries the
-        // sha256 that HuggingFaceService must thread into expectedSHA256.
+        // sha256 that downloadPlan(for:) must thread into the plan's checksum.
         let resolveURL = URL(string: "https://\(uniqueHost)/\(repoID)/resolve/main/\(fileName)")!
         MockURLProtocol.stub(
             url: resolveURL,
@@ -510,20 +568,26 @@ final class HuggingFaceServiceTests: XCTestCase {
                 ]
             )
         )
-        defer {
-            MockURLProtocol.unstub(url: detailURL)
-            MockURLProtocol.unstub(url: resolveURL)
-        }
+        defer { MockURLProtocol.unstub(url: resolveURL) }
 
-        let downloadables = try await mockService.getModelFiles(repoID: repoID)
-        let ggufModel = try XCTUnwrap(
-            downloadables.first { $0.modelType == .gguf },
-            "Expected a GGUF DownloadableModel from the stubbed repo"
+        // No expectedSHA256 here — this is what a search/browse result looks
+        // like today (see test_searchModels_doesNotFetchGGUFChecksums above).
+        let model = DownloadableModel(
+            repoID: repoID,
+            fileName: fileName,
+            displayName: "Test GGUF",
+            modelType: .gguf,
+            sizeBytes: 4_100_000
         )
+
+        let plan = try await mockService.downloadPlan(for: model)
+        guard case .singleFile(_, let checksum) = plan else {
+            return XCTFail("Expected .singleFile plan for GGUF model, got: \(plan)")
+        }
         XCTAssertEqual(
-            ggufModel.expectedSHA256,
+            checksum?.hexDigest,
             realSHA256,
-            "convertModelToDownloadables must populate expectedSHA256 from the Hub HEAD response's LFS etag"
+            "downloadPlan(for:) must resolve expectedSHA256 from the Hub HEAD response's LFS etag when the model doesn't already carry one"
         )
 
         // End-to-end: the validator must actually enforce this digest, not
@@ -533,7 +597,6 @@ final class HuggingFaceServiceTests: XCTestCase {
         try Data("this-is-not-the-real-gguf-content".utf8).write(to: corruptedFileURL)
         defer { try? FileManager.default.removeItem(at: corruptedFileURL) }
 
-        let checksum = ModelFileChecksum(algorithm: .sha256, hexDigest: realSHA256)
         XCTAssertThrowsError(
             try DownloadFileValidator().validateChecksum(at: corruptedFileURL, expectedChecksum: checksum),
             "Validator must reject a payload whose bytes don't match expectedSHA256"
@@ -554,6 +617,61 @@ final class HuggingFaceServiceTests: XCTestCase {
         )
         XCTAssertNoThrow(
             try DownloadFileValidator().validateChecksum(at: corruptedFileURL, expectedChecksum: matchingChecksum)
+        )
+    }
+
+    /// `HubClient.getFile`'s `File.etag` returns the raw header value
+    /// unprocessed — swift-huggingface's own etag normalization (stripping
+    /// a weak-validator `W/` prefix and surrounding quotes) is internal to
+    /// its cache bookkeeping and not exposed on `File`. A quoted LFS etag
+    /// (`"<sha>"`, the common real-world shape) must still resolve into
+    /// `expectedSHA256` rather than silently failing the 64-hex check and
+    /// degrading to unverified.
+    func test_downloadPlan_ggufFile_normalizesQuotedETag() async throws {
+        let uniqueHost = "\(UUID().uuidString.lowercased()).huggingface.test"
+        let hostURL = URL(string: "https://\(uniqueHost)")!
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let hubClient = HubClient(session: session, host: hostURL, userAgent: "ManifoldKitTests/1.0", cache: nil)
+        let mockService = HuggingFaceService(hubClient: hubClient)
+
+        let repoID = "TestOrg/Test-GGUF-QuotedETag"
+        let fileName = "model.Q4_K_M.gguf"
+        let realSHA256 = "85953ed999bda7fa3036729d437ca475b9e0090f5b2f4438ea4fe9a7d1469b30"
+
+        let resolveURL = URL(string: "https://\(uniqueHost)/\(repoID)/resolve/main/\(fileName)")!
+        MockURLProtocol.stub(
+            url: resolveURL,
+            response: .immediate(
+                data: Data(),
+                statusCode: 200,
+                headers: [
+                    // Quoted, per RFC 7232 §2.3 — the shape real HTTP servers
+                    // (including the Hub) actually send.
+                    "X-Linked-Etag": "\"\(realSHA256)\"",
+                    "X-Linked-Size": "4100000",
+                ]
+            )
+        )
+        defer { MockURLProtocol.unstub(url: resolveURL) }
+
+        let model = DownloadableModel(
+            repoID: repoID,
+            fileName: fileName,
+            displayName: "Test GGUF",
+            modelType: .gguf,
+            sizeBytes: 4_100_000
+        )
+
+        let plan = try await mockService.downloadPlan(for: model)
+        guard case .singleFile(_, let checksum) = plan else {
+            return XCTFail("Expected .singleFile plan for GGUF model, got: \(plan)")
+        }
+        XCTAssertEqual(
+            checksum?.hexDigest,
+            realSHA256,
+            "A quoted LFS etag must be normalized (quotes stripped) before the 64-hex check, not silently dropped"
         )
     }
 
