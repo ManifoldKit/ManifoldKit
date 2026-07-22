@@ -119,7 +119,6 @@ ManifoldTrait  # reason: host-facing introspection — FeatureMatrix SwiftPM-tra
 MediaKind  # reason: host-facing media vocabulary — `GeneratedMediaPayload.kind`; consumed downstream/re-exported.
 MessageBubbleStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
 MessageStatus  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
-ModelCatalog  # reason: pending #2351 demotion — PR #2351 moves this actor to package; scope guard says #2128 must not touch it. Kept public until #2351 merges.
 ModelFileChecksumAlgorithm  # reason: host/companion-facing — download-plan checksum algorithm enum consumed by the download path.
 ModelImportError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
 ModelLoadReadinessState  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
@@ -131,8 +130,6 @@ ModelSwitcherFitVerdict  # reason: host-facing UI surface (style / theme / compo
 ModelSwitcherRowView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 ModelSwitcherView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 MutatorRegistry  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
-NetworkActivity  # reason: pending #2351 demotion — part of the NetworkActivity/NetworkActivityCenter cluster PR #2351 moves to package; drops from the baseline once #2351 merges.
-NetworkActivityKind  # reason: pending #2351 demotion — NetworkActivity cluster (PR #2351); drops from the baseline once #2351 merges.
 NeuralAcceleratorAvailability  # reason: host-facing device query — ANE availability result; consumed by hosts choosing a backend.
 NeuralAcceleratorProbe  # reason: host-facing device query — ANE probe entry point; consumed by hosts, not in-repo.
 OTLPTraceSink  # reason: opt-in telemetry (ManifoldTelemetryOTLP) — host wires the sink into a backend's traceSink; no in-repo reader by design.
@@ -161,7 +158,6 @@ ResidencyState  # reason: companion/host advisory — model residency state surf
 ResolvedBubbleChrome  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 ResolvedEntityBox  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
 RetrievalStrategy  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
-RouterBackend  # reason: pending #2351 demotion — PR #2351 moves it to package; documented in ReliabilityWrappers.md. Kept public until #2351 merges.
 SamplingParameterSet  # reason: host-facing manifest option-set — declared model sampler params read downstream.
 ScenarioRegistry  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
 ScoreValue  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
