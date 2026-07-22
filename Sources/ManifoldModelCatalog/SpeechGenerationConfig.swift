@@ -10,8 +10,9 @@ import Foundation
 ///
 /// One-shot only — this produces a single audio artifact persisted as a
 /// ``GeneratedMediaPayload`` with ``MediaKind/audio``. Realtime/duplex speech
-/// is out of scope. No backend conformance ships in core; this is the
-/// modality's config surface only.
+/// is out of scope. Core ships a live consumer: `AppleTTSBackend`
+/// (`ManifoldInference`) takes this config on its synthesis path and honours
+/// `voice`, `rate`, `pitch`, and `outputDirectory` (via `AVSpeechUtterance`).
 public struct SpeechGenerationConfig: Sendable, Codable, Equatable, Hashable {
 
     /// The text to synthesise into speech.

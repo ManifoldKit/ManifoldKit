@@ -292,19 +292,30 @@ public protocol TokenCountingBackend: AnyObject {
 /// can neither observe nor cancel, and over-blocking whenever the Swift await
 /// returns early.
 ///
-/// ## What adopting this protocol buys the host
+/// ## What adopting this protocol would buy a host
 ///
-/// - ``isModelLoadInFlight`` lets the host **observe** whether a native load is
-///   still mutating the backend, rather than inferring it from the (possibly
+/// > Important: This protocol is a **planned seam, not yet live**. Neither
+/// > half is wired today: no host code branches on it (`ModelLifecycleCoordinator`
+/// > has zero `as? CancellableModelLoading` call sites), and no backend — core
+/// > or companion — conforms to it yet. The intended conformer is the
+/// > manifold-llama `LlamaBackend` native unwind, and the intended reader is
+/// > the host lifecycle coordinator; both are future work. Until then every
+/// > host stays on the coarse-latch fallback below. The members are described
+/// > in the present tense to specify the *contract a conformer must honor*, not
+/// > to claim the wiring exists. Allowlisted in the inert-surface audit.
+///
+/// - ``isModelLoadInFlight`` would let a host **observe** whether a native load
+///   is still mutating the backend, rather than inferring it from the (possibly
 ///   already-resumed) `loadModel` await.
-/// - ``cancelModelLoad()`` lets the host **request** that an in-flight load
+/// - ``cancelModelLoad()`` would let a host **request** that an in-flight load
 ///   unwind — best-effort and cooperative (see below).
-/// - ``awaitModelLoadSettled()`` lets the host **latch precisely**: await the
+/// - ``awaitModelLoadSettled()`` would let a host **latch precisely**: await the
 ///   true completion of any in-flight native load before it tears the backend
 ///   down or issues the next load/decode, instead of guessing with a timer.
 ///
 /// Backends that do not adopt this protocol leave hosts on the coarse-latch
-/// fallback — correct, just conservative.
+/// fallback — correct, just conservative. That is the status quo for **every**
+/// backend right now.
 ///
 /// ## Best-effort cancellation
 ///

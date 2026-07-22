@@ -5,6 +5,16 @@ import Foundation
 
 /// Assembles prompt slots and conversation history into a context-budgeted prompt.
 ///
+/// > Not on the live turn path. The shipping send/regenerate loop budgets and
+/// > renders context through `PromptContextPipeline` (ManifoldRuntime) and
+/// > `PromptRenderer`, not this type — `GenerationQueue`/turn preparation never
+/// > call `PromptAssembler`. It is **retained**, not dead: it is the data-shape
+/// > producer behind the Prompt Inspector seam (`AssembledPrompt` is
+/// > `PromptInspectorView`'s input), plus the slot-budgeting reference the
+/// > `ContributingPromptContext` DocC article documents. Both `PromptAssembler`
+/// > and `AssembledPrompt` are allowlisted in the inert-surface audit for this
+/// > reason; do not delete them without also retiring that seam.
+///
 /// The assembler follows this algorithm:
 /// 1. Calculate token cost of each enabled slot's content (capped by ``PromptSlot/tokenBudget``).
 /// 2. Sort slots by ``PromptSlotPosition/sortIndex(messageCount:)``.

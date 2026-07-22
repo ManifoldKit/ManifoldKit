@@ -361,6 +361,11 @@ func _performSeedDownload(
 
     let state: DownloadState
     do {
+        // Seed downloads deliberately use `.singleFile` directly and skip
+        // `downloadPlan(for:)`'s checksum resolution: a QuickStartSeed is a
+        // developer-specified, trusted model baked into the app, not a
+        // user-chosen catalog entry, so there is no untrusted manifest to
+        // verify against here.
         state = try await downloadManager.startDownload(
             model,
             plan: .singleFile(url: downloadURL)

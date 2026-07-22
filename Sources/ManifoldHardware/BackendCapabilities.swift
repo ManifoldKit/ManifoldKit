@@ -174,9 +174,13 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// rendered string. This is the case for cloud chat-completion / messages
     /// backends (Anthropic, OpenAI, Ollama, any SSE cloud backend).
     ///
-    /// Consumers read this to honestly label a captured rendered prompt as full
-    /// vs partial. Defaults to `false` — a backend that does not opt in is
-    /// conservatively assumed to render only a partial prompt.
+    /// Intended to let a consumer honestly label a captured rendered prompt as
+    /// full vs partial — but no in-tree reader exists yet: every backend sets
+    /// this field and nothing in this package reads it back (the Prompt
+    /// Inspector surface reads `.promptRendered` events directly, not this
+    /// flag). Kept as a producer-side capability seam; allowlisted in the
+    /// inert-surface audit. Defaults to `false` — a backend that does not opt
+    /// in is conservatively assumed to render only a partial prompt.
     public let rendersFullPrompt: Bool
 
     /// Hard cap on the number of tools that may be advertised to this backend
@@ -199,13 +203,15 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// describe *how* this (model × backend × renderer) emits tool calls on the
     /// wire. `nil` when unknown or unsupported.
     ///
-    /// This is the capability seam from `docs/plans/tool-call-conformance.md`:
-    /// backends already pick a dialect internally (e.g. llama.cpp's per-family
-    /// markers) and used to discard it at the capability boundary. They may now
-    /// surface it here instead. `supportsToolCalling` stays the headline yes/no
-    /// bool, but — because genuine tool-calling is a measured property of a
-    /// (model × quant × backend) — it may be computed conditionally rather than
-    /// hardcoded once a backend wires this seam through.
+    /// This is the capability seam from `docs/plans/tool-call-conformance.md`.
+    /// **Producers live in the companion backends**: manifold-mlx and
+    /// manifold-llama set it from the loaded model's family (their renderers
+    /// already pick a per-family dialect internally). **Core defines the seam
+    /// but has no reader today** — the intended consumer is the #2005
+    /// tool-calling recommendation UI, which is not yet built, so every core
+    /// backend leaves this `nil` and nothing in this package reads it. Kept
+    /// public (and allowlisted in the inert-surface audit) because it is a
+    /// companion-set field, not dead code.
     ///
     /// Additive and optional: a backend that does not opt in leaves this `nil`,
     /// and the existing `supportsToolCalling` bool is unchanged.
