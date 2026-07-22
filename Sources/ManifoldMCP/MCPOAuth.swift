@@ -62,6 +62,17 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         _ = clock
     }
 
+    /// Wiring point for `MCPClient.connect(_:authorization:)`: connects this
+    /// authorization's event stream to the client's `connectionEventContinuation`
+    /// so `.authorizationRequired` / `.scopeDowngraded` events (raised during
+    /// token acquisition/refresh, see `performAuthorizationCodeFlow` and
+    /// `OAuthTokenExchange.exchangeRefreshToken`) reach `MCPClient.connectionEvents`
+    /// instead of being dropped. `eventContinuation` otherwise defaults to `nil`
+    /// and nothing connects it post-init.
+    func attach(eventContinuation continuation: AsyncStream<MCPConnectionEvent>.Continuation) {
+        self.eventContinuation = continuation
+    }
+
     public func authorizationHeader(for requestURL: URL) async throws -> String? {
         try await MCPSSRFPolicy.validateOAuthRequestURL(requestURL, label: "oauth request")
         guard OAuthSecurity.isSameOrigin(lhs: requestURL, rhs: resourceURL) else {
