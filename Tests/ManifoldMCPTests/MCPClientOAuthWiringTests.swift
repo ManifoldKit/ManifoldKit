@@ -148,6 +148,76 @@ final class MCPClientOAuthWiringTests: XCTestCase {
             "MCPClient.connectionEvents instead of being silently dropped."
         )
     }
+
+    /// `attach(eventContinuation:)` must be non-destructive: a caller that
+    /// already wired its own `eventContinuation` at construction time (to
+    /// observe this authorization directly, independent of any `MCPClient`)
+    /// must keep receiving events on that stream — `connect()` must not
+    /// silently reroute it to the client's own stream.
+    func test_connectDoesNotOverwriteCallerSuppliedEventContinuation() async throws {
+        let serverID = UUID()
+        let blockedEndpoint = URL(string: "https://169.254.169.254/mcp")!
+        let oauthDescriptor = makeOAuthDescriptor()
+
+        let (callerStream, callerContinuation) = AsyncStream<MCPConnectionEvent>.makeStream()
+
+        let authorization = MCPOAuthAuthorization(
+            descriptor: oauthDescriptor,
+            serverID: serverID,
+            resourceURL: blockedEndpoint,
+            redirectListener: RedirectListenerStub { url in
+                XCTFail("Redirect listener must not be invoked — connect() should fail at the SSRF guard before token acquisition even starts")
+                return url
+            },
+            tokenStore: .inMemory(),
+            eventContinuation: callerContinuation
+        )
+
+        let descriptor = MCPServerDescriptor(
+            id: serverID,
+            displayName: "Blocked OAuth Server (pre-attached)",
+            transport: .streamableHTTP(endpoint: blockedEndpoint, headers: [:]),
+            authorization: .oauth(oauthDescriptor),
+            dataDisclosure: "test"
+        )
+        let client = MCPClient()
+
+        do {
+            _ = try await client.connect(descriptor, authorization: authorization)
+            XCTFail("Expected SSRF rejection for the link-local endpoint")
+        } catch let error as MCPError {
+            guard case .ssrfBlocked = error else {
+                XCTFail("Expected .ssrfBlocked, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // Probe: yield through whatever continuation attach() left in place
+        // and confirm it still lands on the CALLER's own stream, not some
+        // client-owned stream that silently replaced it.
+        guard let currentContinuation = await authorization.eventContinuation else {
+            XCTFail("eventContinuation must remain non-nil after connect()")
+            return
+        }
+        let probe = MCPConnectionEvent.toolsChanged(serverID: serverID, addedNames: ["probe"], removedNames: [])
+        currentContinuation.yield(probe)
+        callerContinuation.finish()
+
+        var receivedProbeOnCallerStream = false
+        for await event in callerStream {
+            if case .toolsChanged(let sid, let added, _) = event, sid == serverID, added == ["probe"] {
+                receivedProbeOnCallerStream = true
+            }
+        }
+        XCTAssertTrue(
+            receivedProbeOnCallerStream,
+            "attach(eventContinuation:) must be non-destructive: a caller-supplied eventContinuation set at " +
+            "construction time must keep receiving events after MCPClient.connect(_:authorization:) runs — " +
+            "MCPClient's stream is canonical only when the caller hasn't already wired its own."
+        )
+    }
 }
 
 private actor RedirectListenerStub: MCPOAuthRedirectListener {
