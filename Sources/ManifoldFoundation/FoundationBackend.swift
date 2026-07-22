@@ -161,7 +161,18 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // partially-decoded structure but we do not surface name/argument
         // deltas as separate events (parity with MLXBackend's inline parser).
         streamsToolCallArguments: false,
-        supportsGuidedStructuredOutput: true,
+        // Declared FALSE despite the GuidedGeneration channel existing: the
+        // `.guided` structured-output strategy is not wired end-to-end. The
+        // InferenceService structured-output paths always stage `.jsonSchema`
+        // and `GenerationQueue.structuredOutputTarget(from:capabilities:)`
+        // returns nil for `.guided`, so a `true` here advertised the strongest
+        // tier while structured output actually resolved to `.jsonPrompting` —
+        // a capability claim with no live path behind it. Tracked by #2354:
+        // implement `.guided` end-to-end, then flip this back to `true` WITH a
+        // behavioural test that proves the guided round-trip. Tool calling is
+        // unaffected — it drives GuidedGeneration directly via `makeEnvelope`,
+        // not through the structured-output strategy router.
+        supportsGuidedStructuredOutput: false,
         // `requiresPromptTemplate` is `false`: the FoundationModels SDK applies
         // its own chat template internally and we hand it the conversation as a
         // structured `Transcript`/`Prompt`, never a single templated string.
@@ -416,6 +427,21 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         config: GenerationConfig,
         hints: GenerationRuntimeHints
     ) throws -> GenerationStream {
+        // Fail closed on grammar-constrained sampling. Apple's FoundationModels
+        // SDK exposes no GBNF/grammar surface, so a non-nil grammar cannot be
+        // honoured — silently dropping it would turn a guaranteed-valid
+        // expectation into an unchecked one (see the InferenceBackend contract
+        // on `GenerationConfig.grammar`). Mirrors the central SSECloudBackend
+        // check and AnyLanguageModelBackend's manual one. Checked before the
+        // model-loaded guard so a misconfigured request fails fast regardless of
+        // load state, and gated on the capability flag so a future SDK that adds
+        // grammar support relaxes this automatically when the flag flips true.
+        if config.grammar != nil, !capabilities.supportsGrammarConstrainedSampling {
+            throw InferenceError.unsupportedGrammar(
+                reason: "FoundationBackend does not support grammar-constrained sampling."
+            )
+        }
+
         // Prior-turn image parts arrive per-call on `hints.history` (#2312).
         // `LanguageModelSession` replays the *text* of prior turns from its own
         // internal transcript, so this is purely the multimodal seam — a
@@ -425,22 +451,54 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // Tool calling is synthesized via GuidedGeneration. The structured
         // schema is built up-front so a build failure (an unsupported
         // JSON-Schema construct in a registered tool) trips before we mutate
-        // any session state — we fall back to plain generation in that case.
+        // any session state.
+        //
+        // ToolChoice forcing: `.required` and `.tool(name:)` are honoured by
+        // restricting the envelope schema — `.required` drops the plain-text arm
+        // so the model must pick a tool; `.tool(name:)` restricts the tool arms
+        // to just the named tool. A forcing request we cannot honour (unknown
+        // named tool, or a forced tool whose parameter schema won't build) fails
+        // closed rather than silently downgrading to model-decides — matching
+        // the grammar contract above. `.auto` still degrades to text-only when a
+        // tool schema won't build, since text is an acceptable answer there.
         let toolEnvelope: GenerationSchema?
         let toolsForRound: [ToolDefinition]
         let useToolPath = !config.tools.isEmpty && config.toolChoice != .none
         if useToolPath {
+            let selection: FoundationToolSchema.ToolSelection
             do {
-                toolEnvelope = try FoundationToolSchema.makeEnvelope(tools: config.tools)
-                toolsForRound = config.tools
+                selection = try FoundationToolSchema.resolveToolSelection(
+                    tools: config.tools,
+                    toolChoice: config.toolChoice
+                )
+            } catch {
+                // Only an unsatisfiable forcing request (e.g. `.tool(name:)`
+                // naming a tool absent from the list) throws here. Fail closed:
+                // answering with free text would ignore the caller's demand.
+                throw InferenceError.inferenceFailure(
+                    "FoundationBackend cannot honour the requested toolChoice: \(String(describing: error))"
+                )
+            }
+
+            do {
+                toolEnvelope = try FoundationToolSchema.makeEnvelope(selection: selection)
+                toolsForRound = selection.tools
             } catch {
                 // Most `Error`s do not carry a meaningful `localizedDescription`
                 // unless they conform to `LocalizedError`. `String(describing:)`
                 // preserves the keyword/type detail the schema builder embeds
                 // in `FoundationToolSchemaError.description`.
-                Self.logger.warning("FoundationBackend tool schema build failed; falling back to text-only: \(String(describing: error), privacy: .public)")
-                toolEnvelope = nil
-                toolsForRound = []
+                if config.toolChoice == .auto {
+                    Self.logger.warning("FoundationBackend tool schema build failed; falling back to text-only: \(String(describing: error), privacy: .public)")
+                    toolEnvelope = nil
+                    toolsForRound = []
+                } else {
+                    // A forced round cannot degrade to text — that would ignore
+                    // `.required` / `.tool(name:)`. Fail closed.
+                    throw InferenceError.inferenceFailure(
+                        "FoundationBackend cannot honour the requested toolChoice because a forced tool's parameter schema is unsupported: \(String(describing: error))"
+                    )
+                }
             }
         } else {
             toolEnvelope = nil

@@ -202,10 +202,58 @@ public enum BackendContractChecks {
         return unproven.sorted()
     }
 
-    /// Asserts that every declared-true tracked flag for `backendName` has at
-    /// least one recorded claim in `registry`. Call this at the end of
+    /// Boolean capability flags that carry a **fail-closed contract** when
+    /// declared `false`: the backend must actively reject the corresponding
+    /// request rather than silently ignore it, and a behavioural assertion must
+    /// prove it does.
+    ///
+    /// Unlike ``metaContractTrackedFlags`` — which requires a claim only when a
+    /// flag is declared *true* — these require a registered claim when the flag
+    /// is declared *false* too. A `false` declaration is itself a promise (fail
+    /// closed), and an unproven `false` declaration is exactly how a backend can
+    /// silently drop the constraint: FoundationBackend disclaimed
+    /// `supportsGrammarConstrainedSampling` yet never read `config.grammar`, and
+    /// because the old meta-contract only audited true flags, the missing
+    /// fail-closed test passed `test_contract_allCapabilityClaims()` cleanly.
+    public static let failClosedContractFlags: Set<String> = [
+        "supportsGrammarConstrainedSampling"
+    ]
+
+    /// Returns the fail-closed-contract flags that `backendName` declares
+    /// `false` but has NO recorded claim for in `registry`. An empty result
+    /// means every fail-closed obligation has a behavioural assertion behind it.
+    ///
+    /// This is the false-side counterpart to ``unprovenClaims(_:backendName:capabilities:)``
+    /// and the detection function the meta-contract runs; it is unit-tested
+    /// directly (planted-violation style) in the harness self-tests.
+    public static func unprovenFailClosedContracts(
+        _ registry: ClaimRegistry,
+        backendName: String,
+        capabilities: BackendCapabilities
+    ) -> [String] {
+        let claimSet = capturedClaims(registry)
+        var unproven: [String] = []
+        let mirror = Mirror(reflecting: capabilities)
+        for child in mirror.children {
+            guard let label = child.label,
+                  failClosedContractFlags.contains(label),
+                  let value = child.value as? Bool,
+                  value == false
+            else { continue }
+            if !claimSet.contains("\(backendName)::\(label)") {
+                unproven.append(label)
+            }
+        }
+        return unproven.sorted()
+    }
+
+    /// Asserts that every declared-true tracked flag AND every declared-false
+    /// fail-closed-contract flag for `backendName` has at least one recorded
+    /// claim in `registry`. Call this at the end of
     /// `test_contract_allCapabilityClaims()`, after all
-    /// `claimWithoutBehaviouralAssertion` calls for the backend.
+    /// `claimWithoutBehaviouralAssertion` calls and the fail-closed assertion
+    /// families (e.g. ``assertGrammarFailClosedContract(_:backendName:makingBackend:forbiddenRequestURL:file:line:)``)
+    /// for the backend — all threaded through the same `registry` instance.
     public static func assertCapabilityMetaContract(
         _ registry: ClaimRegistry,
         backendName: String,
@@ -222,6 +270,25 @@ public enum BackendContractChecks {
             Either add an assertion that proves the capability (and registers a
             claim via BackendContractChecks.recordCapabilityClaim), or flip the
             declared flag to `false` and add a fail-closed assertion.
+            """,
+            file: file, line: line
+        )
+
+        let unprovenFailClosed = unprovenFailClosedContracts(
+            registry, backendName: backendName, capabilities: capabilities
+        )
+        XCTAssertTrue(
+            unprovenFailClosed.isEmpty,
+            """
+            Backend \(backendName) declares the following fail-closed-contract flags
+            as `false` but no behavioural assertion claimed them: \(unprovenFailClosed).
+            A `false` declaration is a promise to fail closed — e.g.
+            supportsGrammarConstrainedSampling == false MUST throw
+            InferenceError.unsupportedGrammar when GenerationConfig.grammar is non-nil.
+            Run the matching fail-closed family (e.g. assertGrammarFailClosedContract)
+            in this test so the claim is recorded through the same registry; without
+            it a missing fail-closed test lets the backend silently drop the
+            constraint (the FoundationBackend grammar gap, issue #2354-adjacent).
             """,
             file: file, line: line
         )
