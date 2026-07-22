@@ -27,16 +27,87 @@ import ManifoldContract
 @available(iOS 26, macOS 26, *)
 enum FoundationToolSchema {
 
-    /// Returns a `GenerationSchema` for the tool-aware envelope. Throws if any
-    /// tool's parameters block fails to map onto a `DynamicGenerationSchema` —
-    /// caller falls back to plain (untooled) generation in that case.
-    static func makeEnvelope(tools: [ToolDefinition]) throws -> GenerationSchema {
+    /// The set of tool arms an envelope should offer plus whether the plain
+    /// text arm is permitted — the shape of the schema after applying a
+    /// ``ToolChoice``.
+    ///
+    /// - `tools`: the tools the model may invoke this round. For a `.tool(name:)`
+    ///   request this is exactly the named tool; for `.auto`/`.required` it is
+    ///   the full request list.
+    /// - `includeTextBranch`: whether the model may answer with plain text
+    ///   instead of a tool. `false` for `.required` and `.tool(name:)` — that is
+    ///   what makes the forcing bite: with no text arm in the schema, the
+    ///   GuidedGeneration channel cannot emit a plain-text envelope, so the
+    ///   model must select a tool.
+    struct ToolSelection {
+        let tools: [ToolDefinition]
+        let includeTextBranch: Bool
+    }
+
+    /// Thrown when a ``ToolChoice`` cannot be honoured against the request's
+    /// tool list. Currently only `.tool(name:)` naming a tool that is not in
+    /// the request produces this — the caller fails the generation closed
+    /// rather than silently downgrading to model-decides.
+    enum ToolChoiceResolutionError: Error, CustomStringConvertible {
+        case forcedToolNotRegistered(String)
+
+        var description: String {
+            switch self {
+            case .forcedToolNotRegistered(let name):
+                return "FoundationToolSchema: toolChoice forced tool '\(name)' is not present in the request's tool list."
+            }
+        }
+    }
+
+    /// Resolves a ``ToolChoice`` into the concrete envelope shape.
+    ///
+    /// Pure decision logic — no `GenerationSchema` construction — so it is unit
+    /// testable without a live Apple Intelligence session.
+    ///
+    /// - `.auto`: every tool, plus the plain-text arm (model decides).
+    /// - `.required`: every tool, no text arm (model must pick a tool).
+    /// - `.tool(name:)`: only the named tool, no text arm (model must call it).
+    ///   Throws ``ToolChoiceResolutionError/forcedToolNotRegistered(_:)`` if the
+    ///   name is absent — an unsatisfiable request the caller fails closed on.
+    /// - `.none`: never reaches here (the caller takes the untooled path first);
+    ///   treated as `.auto` defensively.
+    static func resolveToolSelection(
+        tools: [ToolDefinition],
+        toolChoice: ToolChoice
+    ) throws -> ToolSelection {
+        switch toolChoice {
+        case .auto, .none:
+            return ToolSelection(tools: tools, includeTextBranch: true)
+        case .required:
+            return ToolSelection(tools: tools, includeTextBranch: false)
+        case .tool(let name):
+            guard let match = tools.first(where: { $0.name == name }) else {
+                throw ToolChoiceResolutionError.forcedToolNotRegistered(name)
+            }
+            return ToolSelection(tools: [match], includeTextBranch: false)
+        }
+    }
+
+    /// Returns a `GenerationSchema` for the tool-aware envelope, honouring the
+    /// caller's ``ToolChoice`` (defaults to `.auto`). Throws if any tool's
+    /// parameters block fails to map onto a `DynamicGenerationSchema` — the
+    /// caller decides whether that is recoverable (auto → text-only fallback)
+    /// or fatal (a forcing request that cannot silently degrade).
+    static func makeEnvelope(
+        tools: [ToolDefinition],
+        toolChoice: ToolChoice = .auto
+    ) throws -> GenerationSchema {
+        try makeEnvelope(selection: resolveToolSelection(tools: tools, toolChoice: toolChoice))
+    }
+
+    /// Builds the envelope schema for an already-resolved ``ToolSelection``.
+    static func makeEnvelope(selection: ToolSelection) throws -> GenerationSchema {
         // Per-tool argument schemas live as named dependencies so the root
         // anyOf can reference them by name.
         var dependencies: [DynamicGenerationSchema] = []
         var toolCallChoices: [DynamicGenerationSchema] = []
 
-        for tool in tools {
+        for tool in selection.tools {
             let argsSchemaName = "Args_\(tool.name)"
             let argsSchema = try mapJSONSchema(tool.parameters, name: argsSchemaName)
             dependencies.append(argsSchema)
@@ -68,25 +139,35 @@ enum FoundationToolSchema {
             toolCallChoices.append(toolCall)
         }
 
-        let textBranch = DynamicGenerationSchema(
-            name: "TextReply",
-            description: "Plain text response to the user.",
-            properties: [
-                .init(
-                    name: "kind",
-                    schema: DynamicGenerationSchema(name: "TextKind", anyOf: ["text"])
-                ),
-                .init(
-                    name: "text",
-                    schema: DynamicGenerationSchema(type: String.self)
-                ),
-            ]
-        )
+        // The text arm is included only when the ToolChoice allows a plain-text
+        // answer (`.auto`). Dropping it is exactly how `.required` / `.tool`
+        // force a tool: GuidedGeneration can only emit shapes present in the
+        // schema, so with no text arm the model must produce a tool_call.
+        let branches: [DynamicGenerationSchema]
+        if selection.includeTextBranch {
+            let textBranch = DynamicGenerationSchema(
+                name: "TextReply",
+                description: "Plain text response to the user.",
+                properties: [
+                    .init(
+                        name: "kind",
+                        schema: DynamicGenerationSchema(name: "TextKind", anyOf: ["text"])
+                    ),
+                    .init(
+                        name: "text",
+                        schema: DynamicGenerationSchema(type: String.self)
+                    ),
+                ]
+            )
+            branches = [textBranch] + toolCallChoices
+        } else {
+            branches = toolCallChoices
+        }
 
         let root = DynamicGenerationSchema(
             name: "Envelope",
             description: "Either a text reply or a tool invocation.",
-            anyOf: [textBranch] + toolCallChoices
+            anyOf: branches
         )
 
         return try GenerationSchema(root: root, dependencies: dependencies)

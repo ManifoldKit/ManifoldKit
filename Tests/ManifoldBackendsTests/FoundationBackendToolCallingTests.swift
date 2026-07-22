@@ -209,6 +209,81 @@ final class FoundationBackendToolCallingTests: XCTestCase {
         XCTAssertTrue(copy.contains("bravo"), "instructions must mention 'bravo', got: \(copy)")
     }
 
+    // MARK: - ToolChoice forcing (#2357 — gap C)
+
+    private func simpleTool(_ name: String) -> ToolDefinition {
+        ToolDefinition(
+            name: name,
+            description: "desc-\(name)",
+            parameters: .object([
+                "type": .string("object"),
+                "properties": .object(["x": .object(["type": .string("string")])]),
+            ])
+        )
+    }
+
+    /// `.auto` offers every tool plus the plain-text arm — the model decides.
+    func test_resolveToolSelection_auto_includesAllToolsAndTextArm() throws {
+        let tools = [simpleTool("a"), simpleTool("b")]
+        let selection = try FoundationToolSchema.resolveToolSelection(tools: tools, toolChoice: .auto)
+        XCTAssertEqual(selection.tools.map(\.name), ["a", "b"])
+        XCTAssertTrue(selection.includeTextBranch, ".auto must permit the plain-text arm")
+    }
+
+    /// `.required` keeps every tool but drops the text arm — with no text branch
+    /// in the schema the GuidedGeneration channel cannot emit a plain-text
+    /// envelope, so the model is forced to pick a tool.
+    func test_resolveToolSelection_required_dropsTextArm() throws {
+        let tools = [simpleTool("a"), simpleTool("b")]
+        let selection = try FoundationToolSchema.resolveToolSelection(tools: tools, toolChoice: .required)
+        XCTAssertEqual(selection.tools.map(\.name), ["a", "b"])
+        XCTAssertFalse(selection.includeTextBranch, ".required must exclude the plain-text arm")
+    }
+
+    /// `.tool(name:)` restricts the schema to only the named tool AND drops the
+    /// text arm, so the model must call exactly that tool.
+    func test_resolveToolSelection_tool_restrictsToNamedToolAndDropsText() throws {
+        let tools = [simpleTool("a"), simpleTool("b"), simpleTool("c")]
+        let selection = try FoundationToolSchema.resolveToolSelection(tools: tools, toolChoice: .tool(name: "b"))
+        XCTAssertEqual(selection.tools.map(\.name), ["b"], "only the named tool may be selectable")
+        XCTAssertFalse(selection.includeTextBranch, ".tool(name:) must exclude the plain-text arm")
+    }
+
+    /// `.tool(name:)` naming a tool absent from the request is unsatisfiable and
+    /// must throw — the backend fails the round closed rather than silently
+    /// downgrading to model-decides.
+    func test_resolveToolSelection_tool_unknownName_throws() {
+        let tools = [simpleTool("a"), simpleTool("b")]
+        XCTAssertThrowsError(
+            try FoundationToolSchema.resolveToolSelection(tools: tools, toolChoice: .tool(name: "missing"))
+        ) { error in
+            guard case FoundationToolSchema.ToolChoiceResolutionError.forcedToolNotRegistered(let name) = error else {
+                XCTFail("expected .forcedToolNotRegistered, got \(error)")
+                return
+            }
+            XCTAssertEqual(name, "missing")
+        }
+    }
+
+    /// The envelope must build for a forced (`.required`) selection with no
+    /// text arm — the restricted schema is still a valid `GenerationSchema`.
+    func test_makeEnvelope_required_buildsWithoutTextArm() throws {
+        let selection = try FoundationToolSchema.resolveToolSelection(
+            tools: [simpleTool("a"), simpleTool("b")],
+            toolChoice: .required
+        )
+        XCTAssertNoThrow(try FoundationToolSchema.makeEnvelope(selection: selection))
+    }
+
+    /// The envelope must build for a single forced tool (`.tool(name:)`).
+    func test_makeEnvelope_forcedTool_buildsForNamedTool() throws {
+        let selection = try FoundationToolSchema.resolveToolSelection(
+            tools: [simpleTool("a"), simpleTool("b")],
+            toolChoice: .tool(name: "a")
+        )
+        XCTAssertNoThrow(try FoundationToolSchema.makeEnvelope(selection: selection))
+    }
+
     /// Decoding a `tool_call` envelope must surface the tool name and a JSON
     /// arguments string the orchestrator can hand back to a tool executor.
     ///

@@ -56,15 +56,18 @@ final class MyBackendConformanceTests: XCTestCase,
         assertUniversalBackendContract()
     }
 
-    func test_contract_grammarFailClosed() async throws {
-        try await assertGrammarFailClosedContract()
-    }
-
-    // Named test_z_… so XCTest's alphabetical in-class ordering runs it after
-    // the claim-recording tests in this class.
-    func test_z_contract_allCapabilityClaims() {
+    // The fail-closed families and the meta-contract assertion run in one
+    // method, threaded through the same registry. `assertCapabilityMetaContract`
+    // now requires a recorded claim for declared-false fail-closed flags
+    // (`BackendContractChecks.failClosedContractFlags`, e.g.
+    // `supportsGrammarConstrainedSampling`), and XCTest gives each method a fresh
+    // instance-scoped registry — so a grammar test in a separate method would be
+    // invisible here and a missing fail-closed test would slip through.
+    func test_contract_allCapabilityClaims() async throws {
         BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: contractBackendName)
-        // …claimWithoutBehaviouralAssertion / real assertion families…
+        // Fail-closed families first (they record their claims via the registry).
+        try await assertGrammarFailClosedContract()
+        // …claimWithoutBehaviouralAssertion / real true-claim assertion families…
         BackendContractChecks.assertCapabilityMetaContract(
             capabilityClaimRegistry,
             backendName: contractBackendName,

@@ -30,7 +30,14 @@ final class OllamaBackendConformanceTests: XCTestCase {
 
     // MARK: - Grammar fail-closed
 
-    func test_contract_grammarFailClosed() async throws {
+    /// Runs the fail-closed grammar contract, recording the claim in
+    /// `capabilityClaimRegistry`. Folded into `test_contract_allCapabilityClaims`
+    /// (below) rather than kept as a standalone method: the meta-contract's
+    /// declared-false requirement (`BackendContractChecks.failClosedContractFlags`)
+    /// reads the same instance-scoped registry, and XCTest hands each method a
+    /// fresh instance — so the claim must be recorded in the method that asserts
+    /// the meta-contract, or a removed grammar test would pass unnoticed.
+    private func assertGrammarFailsClosed() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [MockURLProtocol.self]
         let baseURL = URL(string: "http://localhost/ollama-\(UUID().uuidString)")!
@@ -61,18 +68,21 @@ final class OllamaBackendConformanceTests: XCTestCase {
 
     // MARK: - Per-capability claims + meta-contract
 
-    /// All bootstrap claims and the meta-contract assertion are collapsed into
-    /// one method, threaded through one shared `capabilityClaimRegistry`
-    /// instance, so the registry is built and verified within a single test-case
-    /// lifetime. Historically necessary because the registry was process-global
-    /// (#1601); now the registry is instance-scoped (arch-plan 4.2) and this
-    /// suite is safe under `swift test --parallel` — the collapse remains as a
-    /// readable, self-contained shape, not a correctness requirement.
-    func test_contract_allCapabilityClaims() {
+    /// All bootstrap claims, the fail-closed grammar assertion, and the
+    /// meta-contract assertion are collapsed into one method, threaded through
+    /// one shared `capabilityClaimRegistry` instance, so the registry is built
+    /// and verified within a single test-case lifetime. The grammar assertion is
+    /// folded in (rather than a separate method) because the meta-contract now
+    /// requires a recorded claim for declared-false fail-closed flags — see
+    /// `assertGrammarFailsClosed` above. The suite is safe under
+    /// `swift test --parallel` (instance-scoped registry, arch-plan 4.2).
+    func test_contract_allCapabilityClaims() async throws {
         // Reset first — harmless given a freshly-constructed registry, kept
         // for symmetry with suites that build up several scenarios in one
         // test method.
         BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: backendName)
+
+        try await assertGrammarFailsClosed()
 
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             capabilityClaimRegistry,

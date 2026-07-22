@@ -111,11 +111,14 @@ final class FoundationBackendE2EConformanceTests: XCTestCase {
         )
     }
 
-    func test_capabilities_supportsGuidedStructuredOutput_isTrue() throws {
+    func test_capabilities_disclaimsGuidedStructuredOutput() throws {
         try requireAvailability()
-        XCTAssertTrue(
+        // Declared false until the `.guided` strategy is wired end-to-end (#2354):
+        // structured output currently resolves to `.jsonPrompting`, so advertising
+        // guided would be an inert capability claim.
+        XCTAssertFalse(
             FoundationBackend().capabilities.supportsGuidedStructuredOutput,
-            "FoundationBackend must declare supportsGuidedStructuredOutput = true"
+            "FoundationBackend must declare supportsGuidedStructuredOutput = false until .guided is wired (#2354)"
         )
     }
 }

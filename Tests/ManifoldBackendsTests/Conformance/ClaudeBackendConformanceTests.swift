@@ -34,7 +34,13 @@ final class ClaudeBackendConformanceTests: XCTestCase {
 
     // MARK: - Grammar fail-closed
 
-    func test_contract_grammarFailClosed() async throws {
+    /// Runs the fail-closed grammar contract, recording the claim in
+    /// `capabilityClaimRegistry`. Folded into `test_contract_allCapabilityClaims`
+    /// (below): the meta-contract's declared-false requirement
+    /// (`BackendContractChecks.failClosedContractFlags`) reads the same
+    /// instance-scoped registry, and XCTest hands each method a fresh instance —
+    /// so the claim must be recorded in the method that asserts the meta-contract.
+    private func assertGrammarFailsClosed() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [MockURLProtocol.self]
         let baseURL = URL(string: "http://claude-\(UUID().uuidString).test")!
@@ -73,12 +79,17 @@ final class ClaudeBackendConformanceTests: XCTestCase {
     /// Default model `claude-sonnet-4-20250514` is a 4-class extended-thinking
     /// model. The behavioural assertion that proves Claude emits `.thinkingToken`
     /// events lives in `ClaudeThinkingErrorPathTests` / `CloudThinkingTokenTests`;
-    /// this claim records the meta-contract obligation.
-    func test_contract_allCapabilityClaims() {
+    /// this claim records the meta-contract obligation. The grammar fail-closed
+    /// assertion is folded in (see `assertGrammarFailsClosed`) because the
+    /// meta-contract now requires a recorded claim for declared-false fail-closed
+    /// flags.
+    func test_contract_allCapabilityClaims() async throws {
         // Reset first — harmless given a freshly-constructed registry, kept
         // for symmetry with suites that build up several scenarios in one
         // test method.
         BackendContractChecks.resetCapabilityClaims(capabilityClaimRegistry, forBackend: backendName)
+
+        try await assertGrammarFailsClosed()
 
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             capabilityClaimRegistry,
