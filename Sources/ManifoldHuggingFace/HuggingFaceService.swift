@@ -78,10 +78,10 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
                                 filesMetadata: true
                             )
                         }
-                        return self.convertModelToDownloadables(detailed)
+                        return await self.convertModelToDownloadables(detailed)
                     } catch {
                         Log.network.warning("Failed to fetch details for \(model.id): \(error)")
-                        return self.convertModelToDownloadables(model)
+                        return await self.convertModelToDownloadables(model)
                     }
                 }
             }
@@ -121,7 +121,7 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             throw HuggingFaceError.modelNotFound(repoID: repoID)
         }
 
-        let downloadables = convertModelToDownloadables(model)
+        let downloadables = await convertModelToDownloadables(model)
         Log.network.info("Found \(downloadables.count) downloadable files in \(repoID)")
         return downloadables
     }
@@ -185,13 +185,23 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
         return url
     }
 
-    internal func convertModelToDownloadables(_ model: Model) -> [DownloadableModel] {
+    internal func convertModelToDownloadables(_ model: Model) async -> [DownloadableModel] {
         guard let siblings = model.siblings else { return [] }
 
         let repoID = model.id.rawValue
         var results: [DownloadableModel] = []
 
         let ggufFiles = siblings.filter { $0.relativeFilename.lowercased().hasSuffix(".gguf") }
+        // The Hub model-detail request already asks for blob metadata
+        // (`getModel(..., filesMetadata: true)` → `blobs=true`), which the Hub
+        // API answers with a `siblings[].lfs.oid` sha256 per LFS file — but
+        // swift-huggingface's `Model.SiblingInfo` does not decode that field
+        // (only `rfilename`/`size`), so it is silently discarded before it
+        // ever reaches ManifoldKit. Recover it via `HubClient.getFile`, whose
+        // `File.etag` is documented (`LocalDownloadFileMetadata.etag`) to be
+        // the LFS sha256 for LFS-tracked files. One HEAD request per GGUF
+        // file, run concurrently; best-effort — see `ggufChecksums(repoID:files:)`.
+        let checksums = await ggufChecksums(repoID: model.id, files: ggufFiles)
         for file in ggufFiles {
             let sizeBytes = UInt64(file.size ?? 0)
             let fileName = file.relativeFilename
@@ -205,10 +215,17 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
                 downloads: model.downloads,
                 isCurated: false,
                 promptTemplate: nil,
-                description: nil
+                description: nil,
+                expectedSHA256: checksums[fileName]
             ))
         }
 
+        // Diffusion and MLX-snapshot entries below deliberately leave
+        // expectedSHA256 nil: `fileName` here names a whole package directory
+        // (many underlying files), not a single downloaded artifact, so there
+        // is no single sha256 that could describe it. Per-file verification
+        // for these package kinds is out of scope (mirrors the existing note
+        // on `downloadPlan(for:)` above).
         let diffusionFiles = diffusionPackageFiles(from: model)
         if !diffusionFiles.isEmpty {
             let repoName = model.id.name
@@ -244,6 +261,44 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
         }
 
         return results
+    }
+
+    /// Fetches the LFS content sha256 for each GGUF sibling via one HEAD
+    /// request per file (`HubClient.getFile`). Runs the HEAD requests
+    /// concurrently. Best-effort: a failed request, a non-LFS file, or an
+    /// `etag` that doesn't look like a sha256 hex digest is dropped rather
+    /// than surfaced as an error — `DownloadableModel.expectedSHA256` is
+    /// documented to skip verification when `nil`, so an unresolved checksum
+    /// degrades to "unverified" rather than blocking the search/listing.
+    private func ggufChecksums(repoID: Repo.ID, files: [Model.SiblingInfo]) async -> [String: String] {
+        guard !files.isEmpty else { return [:] }
+        var results: [String: String] = [:]
+        await withTaskGroup(of: (String, String?).self) { group in
+            for file in files {
+                group.addTask {
+                    do {
+                        let info = try await self.hubClient.getFile(at: file.relativeFilename, in: repoID)
+                        guard info.isLFS, let etag = info.etag, Self.isSHA256Hex(etag) else {
+                            return (file.relativeFilename, nil)
+                        }
+                        return (file.relativeFilename, etag)
+                    } catch {
+                        Log.network.warning("Failed to fetch LFS checksum for \(repoID.rawValue)/\(file.relativeFilename): \(error.localizedDescription)")
+                        return (file.relativeFilename, nil)
+                    }
+                }
+            }
+            for await (fileName, checksum) in group {
+                if let checksum {
+                    results[fileName] = checksum
+                }
+            }
+        }
+        return results
+    }
+
+    private static func isSHA256Hex(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy(\.isHexDigit)
     }
 
     private func isDownloadableRepo(_ model: Model) -> Bool {
