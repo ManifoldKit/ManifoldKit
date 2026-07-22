@@ -178,9 +178,11 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// full vs partial — but no in-tree reader exists yet: every backend sets
     /// this field and nothing in this package reads it back (the Prompt
     /// Inspector surface reads `.promptRendered` events directly, not this
-    /// flag). Kept as a producer-side capability seam; allowlisted in the
-    /// inert-surface audit. Defaults to `false` — a backend that does not opt
-    /// in is conservatively assumed to render only a partial prompt.
+    /// flag). Kept as a producer-side capability seam. (It is a struct field, so
+    /// the inert-surface audit — which scans types and top-level funcs, not
+    /// members — does not track it directly.) Defaults to `false` — a backend
+    /// that does not opt in is conservatively assumed to render only a partial
+    /// prompt.
     public let rendersFullPrompt: Bool
 
     /// Hard cap on the number of tools that may be advertised to this backend
@@ -210,8 +212,11 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// but has no reader today** — the intended consumer is the #2005
     /// tool-calling recommendation UI, which is not yet built, so every core
     /// backend leaves this `nil` and nothing in this package reads it. Kept
-    /// public (and allowlisted in the inert-surface audit) because it is a
-    /// companion-set field, not dead code.
+    /// public because it is a companion-set field, not dead code. (The field
+    /// itself is a struct member, outside the inert-surface audit's type +
+    /// top-level-func scope; its `ToolCallDialect` vocabulary *types* —
+    /// `ToolCallDialectFamily`, `ToolCallArgEncoding`, `ToolCallExtractability` —
+    /// are the ones the audit tracks, allowlisted as companion-consumed.)
     ///
     /// Additive and optional: a backend that does not opt in leaves this `nil`,
     /// and the existing `supportsToolCalling` bool is unchanged.

@@ -296,13 +296,16 @@ public protocol TokenCountingBackend: AnyObject {
 ///
 /// > Important: This protocol is a **planned seam, not yet live**. Neither
 /// > half is wired today: no host code branches on it (`ModelLifecycleCoordinator`
-/// > has zero `as? CancellableModelLoading` call sites), and no backend — core
-/// > or companion — conforms to it yet. The intended conformer is the
+/// > has zero `as? CancellableModelLoading` call sites), and the only conformer
+/// > is `MockCancellableLoadBackend` in `ManifoldTestSupport` — no *production*
+/// > backend, core or companion, adopts it. The intended real conformer is the
 /// > manifold-llama `LlamaBackend` native unwind, and the intended reader is
 /// > the host lifecycle coordinator; both are future work. Until then every
 /// > host stays on the coarse-latch fallback below. The members are described
 /// > in the present tense to specify the *contract a conformer must honor*, not
-/// > to claim the wiring exists. Allowlisted in the inert-surface audit.
+/// > to claim the wiring exists. The test-support mock keeps this protocol
+/// > referenced, so the inert-surface audit does not flag it (and it needs no
+/// > allowlist entry) even though no live path exercises it.
 ///
 /// - ``isModelLoadInFlight`` would let a host **observe** whether a native load
 ///   is still mutating the backend, rather than inferring it from the (possibly
