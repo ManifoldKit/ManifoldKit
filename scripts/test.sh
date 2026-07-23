@@ -376,7 +376,16 @@ if [[ -n "$PROFILE" ]]; then
         done
 
         # Invocation 1: XCTest filters, --parallel — matching ci.yml's
-        # "XCTest suites (…, parallel)" step exactly.
+        # "XCTest suites (…, parallel)" step's parallel execution. (Not
+        # flag-identical: CI wraps in ci-test-with-watchdog.sh and omits
+        # the Macros trait this profile adds; both deliberate.)
+        #
+        # Counting caveat: the parallel runner does not reliably emit
+        # per-case "Test Case '…' skipped" lines, so XCTSkip results fold
+        # into the streaming passed count — invocation 1's "0 skipped" is
+        # a parallel-reporting artifact, not a skip audit. CI's identical
+        # batch has the same property; TestSuiteSilentSkipAuditTest is
+        # the skip tripwire, not this summary.
         #
         # This invocation historically omitted `--parallel` as a
         # conservative default while CI ran the same batch WITH it, so
