@@ -183,19 +183,19 @@ extension InferenceService {
     ///     already set is overwritten with the schema derived from `T`.
     /// - Returns: The decoded value, the raw model text, and the strategy used.
     /// - Throws: ``StructuredOutputError/decodeFailure(rawText:underlying:)`` when
-    ///   the produced text does not decode into `T`;
-    ///   ``StructuredOutputError/schemaEncodingFailure(_:)`` when the schema
-    ///   cannot be encoded; or any generation error from the backend.
+    ///   the produced text does not decode into `T`; or any generation error
+    ///   from the backend. A schema-encoding failure for a non-guided backend
+    ///   degrades gracefully to `.jsonPrompting` (logged) rather than throwing
+    ///   — see ``GenerationQueue/structuredOutputTarget(from:capabilities:)``.
     public func respond<T: Decodable & Sendable & SchemaProviding>(
         _ type: T.Type,
         to prompt: String,
         config: GenerationConfig = .init()
     ) async throws -> StructuredOutput<T> {
         let schema = T.jsonSchema
-        let schemaString = try Self.encodeSchema(schema)
         let (rawText, strategy) = try await runStructuredGeneration(
             messages: [.user(prompt)],
-            schemaString: schemaString,
+            guidedType: type,
             config: config
         )
         return try await Self.decodeAndValidate(
@@ -229,9 +229,11 @@ extension InferenceService {
     ///   - reask: The retry budget. `maxAttempts: 1` disables reask.
     /// - Returns: The decoded, schema-valid value, raw text, and strategy.
     /// - Throws: ``StructuredOutputError/reaskBudgetExhausted(lastError:attempts:)``
-    ///   when the budget is exhausted without a valid response;
-    ///   ``StructuredOutputError/schemaEncodingFailure(_:)`` when the schema
-    ///   cannot be encoded; or any generation error from the backend.
+    ///   when the budget is exhausted without a valid response; or any
+    ///   generation error from the backend. A schema-encoding failure for a
+    ///   non-guided backend degrades gracefully to `.jsonPrompting` (logged)
+    ///   rather than throwing — see
+    ///   ``GenerationQueue/structuredOutputTarget(from:capabilities:)``.
     public func respond<T: Decodable & Sendable & SchemaProviding>(
         _ type: T.Type,
         to prompt: String,
@@ -239,7 +241,6 @@ extension InferenceService {
         reask: ReaskPolicy = .init()
     ) async throws -> StructuredOutput<T> {
         let schema = T.jsonSchema
-        let schemaString = try Self.encodeSchema(schema)
 
         // The conversation grows across attempts: it starts with the user
         // prompt and, on each failure, gains the model's (bad) output plus a
@@ -252,7 +253,7 @@ extension InferenceService {
         for attempt in 1...attemptBudget {
             let (rawText, strategy) = try await runStructuredGeneration(
                 messages: messages,
-                schemaString: schemaString,
+                guidedType: type,
                 config: config
             )
 
@@ -343,16 +344,18 @@ extension InferenceService {
     /// covers the tests.
     func runStructuredGeneration(
         messages: [Message],
-        schemaString: String,
+        guidedType: any Decodable.Type,
         config: GenerationConfig,
         stallTimeout: Duration? = nil
     ) async throws -> (rawText: String, strategy: StructuredOutputStrategy) {
-        // Stage the schema on config. The queue's router wiring (#1915) reads
-        // `structuredOutput`, lowers the schema to GBNF when the active backend
-        // supports grammar-constrained sampling, and selects the strongest
-        // mechanism — leaving `config.grammar` untouched for schema-only
-        // backends so they never see a grammar they'd reject.
-        let hints = GenerationRuntimeHints(structuredOutput: .jsonSchema(schemaString))
+        // Stage `.guided(T.self)` (#2354) rather than a bare JSON-Schema string
+        // — the concrete type is what a guided-capable backend (Foundation)
+        // needs to build native GuidedGeneration. The queue's router wiring
+        // (#1915/#2354) recovers the type's schema via its `SchemaProviding`
+        // conformance for every OTHER backend (grammar-lowering, jsonSchema, or
+        // jsonPrompting), so this single staged value serves every tier — see
+        // `GenerationQueue.structuredOutputTarget(from:capabilities:)`.
+        let hints = GenerationRuntimeHints(structuredOutput: .guided(guidedType))
 
         let (token, queueStream) = try enqueue(messages: messages, config: config, hints: hints)
 

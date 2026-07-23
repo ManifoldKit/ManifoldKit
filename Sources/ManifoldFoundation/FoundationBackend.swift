@@ -161,18 +161,16 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // partially-decoded structure but we do not surface name/argument
         // deltas as separate events (parity with MLXBackend's inline parser).
         streamsToolCallArguments: false,
-        // Declared FALSE despite the GuidedGeneration channel existing: the
-        // `.guided` structured-output strategy is not wired end-to-end. The
-        // InferenceService structured-output paths always stage `.jsonSchema`
-        // and `GenerationQueue.structuredOutputTarget(from:capabilities:)`
-        // returns nil for `.guided`, so a `true` here advertised the strongest
-        // tier while structured output actually resolved to `.jsonPrompting` —
-        // a capability claim with no live path behind it. Tracked by #2354:
-        // implement `.guided` end-to-end, then flip this back to `true` WITH a
-        // behavioural test that proves the guided round-trip. Tool calling is
-        // unaffected — it drives GuidedGeneration directly via `makeEnvelope`,
-        // not through the structured-output strategy router.
-        supportsGuidedStructuredOutput: false,
+        // #2354: `.guided` is now wired end-to-end. `respond`/`structured` stage
+        // `.guided(T.self)`; `GenerationQueue.structuredOutputTarget(from:capabilities:)`
+        // builds a full target from it; and `generate()` below reads
+        // `hints.structuredOutput` and drives native GuidedGeneration via
+        // `FoundationToolSchema.mapJSONSchema` (the same JSON-Schema →
+        // `DynamicGenerationSchema` mapper the tool-calling path already used).
+        // Behavioral proof: `test_guidedStructuredOutput_...` in the Foundation
+        // conformance suite decodes a real guided round-trip into a concrete type
+        // — not `claimWithoutBehaviouralAssertion`.
+        supportsGuidedStructuredOutput: true,
         // `requiresPromptTemplate` is `false`: the FoundationModels SDK applies
         // its own chat template internally and we hand it the conversation as a
         // structured `Transcript`/`Prompt`, never a single templated string.
@@ -505,6 +503,46 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             toolsForRound = []
         }
 
+        // Guided structured output (#2354). Mutually exclusive with the tool
+        // path above — a request carrying both `config.tools` and a guided
+        // `hints.structuredOutput` target is a caller error the tool path
+        // already wins by construction (tool calling never routes through
+        // `hints.structuredOutput`), so guided lowering only applies when the
+        // tool path didn't already claim the round.
+        //
+        // Built up-front, like the tool envelope, so an unsupported JSON-Schema
+        // construct in the target type fails before any session state mutates.
+        // Unlike the tool path's `.auto`-only fallback, there is no "acceptable
+        // downgrade" here: the caller explicitly asked for `T` back, so a schema
+        // that won't build fails closed rather than silently degrading to text
+        // the caller's `decodeAndValidate` would then fail to parse anyway with
+        // a far more confusing error.
+        let guidedSchema: GenerationSchema?
+        if toolEnvelope == nil, case .guided(let guidedType)? = hints.structuredOutput {
+            // `respond`/`structured` (ManifoldInference) only ever stage
+            // `.guided` for a concrete `T: SchemaProviding` — the generic
+            // constraint guarantees this cast succeeds for every real caller.
+            // Failing closed rather than crashing is defensive against a
+            // hypothetical future caller staging `.guided` without it.
+            guard let provider = guidedType as? any SchemaProviding.Type else {
+                throw InferenceError.inferenceFailure(
+                    "FoundationBackend cannot honour guided structured output for \(String(describing: guidedType)): the type does not conform to SchemaProviding."
+                )
+            }
+            do {
+                guidedSchema = try FoundationToolSchema.makeGuidedSchema(
+                    from: provider.jsonSchema,
+                    typeName: String(describing: guidedType)
+                )
+            } catch {
+                throw InferenceError.inferenceFailure(
+                    "FoundationBackend cannot honour guided structured output for \(String(describing: guidedType)): \(String(describing: error))"
+                )
+            }
+        } else {
+            guidedSchema = nil
+        }
+
         // The tool envelope contract is taught to the model via instructions.
         // `LanguageModelSession(instructions:)` bakes the prompt into the
         // session; we therefore need a session whose instructions reflect
@@ -634,6 +672,16 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         session: activeSession,
                         prompt: prompt,
                         schema: toolEnvelope,
+                        options: options,
+                        continuation: continuation,
+                        generationStream: generationStream,
+                        metricTracker: capturedMetricSink != nil ? metricTracker : nil
+                    )
+                } else if let guidedSchema {
+                    result = try await runGuidedStructuredStream(
+                        session: activeSession,
+                        prompt: prompt,
+                        schema: guidedSchema,
                         options: options,
                         continuation: continuation,
                         generationStream: generationStream,
@@ -866,6 +914,54 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         }
 
         return StreamResult(streamExhausted: streamExhausted, eventsEmitted: eventsEmitted)
+    }
+
+    /// Guided structured-output streaming path (#2354). Drives generation
+    /// against the caller's target-type schema directly — no `(text|tool_call)`
+    /// envelope union, since a guided request has exactly one shape to fill.
+    ///
+    /// Whole-call emission only, matching `streamsToolCallArguments: false`
+    /// above: progressively emitting `.jsonString` deltas of a partially-decoded
+    /// arbitrary object is not the same safe operation as streaming a single
+    /// string field (the tool envelope's `text` branch) — a partial snapshot's
+    /// serialization can restructure as sibling fields resolve, not just grow
+    /// by suffix. `respond`/`structured` only need the complete text to decode
+    /// `T` from, so correctness (not streaming granularity) is what matters
+    /// here; the whole JSON is yielded as one `.token` once the stream drains.
+    private func runGuidedStructuredStream(
+        session: LanguageModelSession,
+        prompt: String,
+        schema: GenerationSchema,
+        options: GenerationOptions,
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
+        generationStream: GenerationStream,
+        metricTracker: GenerationMetricTracker?
+    ) async throws -> StreamResult {
+        let responseStream = session.streamResponse(
+            to: prompt,
+            schema: schema,
+            includeSchemaInPrompt: true,
+            options: options
+        )
+
+        var finalRaw: GeneratedContent?
+        var streamExhausted = true
+        for try await snapshot in responseStream {
+            if Task.isCancelled {
+                streamExhausted = false
+                break
+            }
+            finalRaw = snapshot.rawContent
+            metricTracker?.recordToken()
+        }
+
+        guard streamExhausted, let finalRaw else {
+            return StreamResult(streamExhausted: streamExhausted, eventsEmitted: 0)
+        }
+
+        await MainActor.run { generationStream.setPhase(.streaming) }
+        continuation.yield(.token(finalRaw.jsonString))
+        return StreamResult(streamExhausted: streamExhausted, eventsEmitted: 1)
     }
 
     // MARK: - Conversation Reset
