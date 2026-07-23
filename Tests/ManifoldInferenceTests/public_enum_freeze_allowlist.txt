@@ -224,8 +224,6 @@ ManifoldModelCatalog/OperationalError.swift:public enum OperationalError: Locali
 ManifoldModelCatalog/SSEStreamLimits.swift:public enum SSEStreamError: Error, Equatable, Sendable {
 ManifoldModelCatalog/VideoGenerationConfig.swift:public enum AspectRatio {
 ManifoldModelCatalog/VideoGenerationEvent.swift:public enum VideoGenerationEvent: Sendable, Codable {
-ManifoldNetworking/NetworkActivityCenter.swift:public enum NetworkActivity: Sendable, Equatable {
-ManifoldNetworking/NetworkActivityCenter.swift:public enum NetworkActivityKind: Sendable, Equatable {
 ManifoldOllama/OllamaBackends.swift:public enum OllamaBackends: BackendRegistrar {
 ManifoldPersistenceSwiftData/Adapters/FlatFileVectorStore.swift:public enum VectorStoreError: LocalizedError {
 ManifoldPersistenceSwiftData/ModelContainerFactory.swift:public enum ModelContainerFactory {
