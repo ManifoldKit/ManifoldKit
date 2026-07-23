@@ -81,4 +81,14 @@ enum GenerationHistoryInstaller {
             }
         }
     }
+
+    /// Mirrors ``containsImages(_:)`` for `.audio` parts (#2353).
+    static func containsAudio(_ messages: [StructuredMessage]) -> Bool {
+        messages.contains { message in
+            message.parts.contains { part in
+                if case .audio = part { return true }
+                return false
+            }
+        }
+    }
 }

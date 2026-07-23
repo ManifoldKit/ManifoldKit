@@ -545,6 +545,15 @@ final class GenerationQueue {
                 "Image attachments require a backend whose capabilities.supportsVision is true. Select a vision-capable backend before sending image parts."
             )
         }
+        // Mirrors the vision guard above (#2353): fail loud rather than let
+        // .audio parts reach a backend that can't hear them and silently drop
+        // out during flattening (GenerationHistoryInstaller's text projection
+        // has no `.audio` case — it discards them like `.thinking`/`.image`).
+        if GenerationHistoryInstaller.containsAudio(messages), !backend.capabilities.supportsAudioInput {
+            throw InferenceError.inferenceFailure(
+                "Audio attachments require a backend whose capabilities.supportsAudioInput is true. Select an audio-capable backend before sending audio parts."
+            )
+        }
         // Exact-count pre-flight: backends that conform to TokenCountingBackend
         // expose the real tokenizer. Use it to verify the assembled prompt fits
         // inside the context window before committing to the C-level decode.

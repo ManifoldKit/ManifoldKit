@@ -51,6 +51,7 @@ public final class MockInferenceBackend: InferenceBackend, @unchecked Sendable {
                 supportsGrammarConstrainedSampling: caps.supportsGrammarConstrainedSampling,
                 supportsThinking: caps.supportsThinking,
                 supportsVision: caps.supportsVision,
+                supportsAudioInput: caps.supportsAudioInput,
                 streamsToolCallArguments: caps.streamsToolCallArguments,
                 supportsParallelToolCalls: caps.supportsParallelToolCalls,
                 supportsGuidedStructuredOutput: caps.supportsGuidedStructuredOutput,
