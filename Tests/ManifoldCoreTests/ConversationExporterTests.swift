@@ -66,7 +66,24 @@ final class ConversationExporterTests: XCTestCase {
 
         let onDisk = try Data(contentsOf: file.url)
         let direct = try format.export(session: session, messages: messages)
-        XCTAssertEqual(onDisk, direct)
+
+        // The export footer embeds a wall-clock "*Exported: <now>*"
+        // line, so two exports that straddle a clock boundary differ in
+        // that line alone — a race this test lost on parallel CI (equal
+        // length, different bytes). Compare with the volatile line
+        // normalized, and assert both sides actually carry exactly one
+        // such line so the normalization can't mask a missing header.
+        func normalized(_ data: Data) throws -> (stable: [String], exportedLines: Int) {
+            let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+            let lines = text.components(separatedBy: "\n")
+            let volatile = lines.filter { $0.hasPrefix("*Exported: ") }
+            return (lines.filter { !$0.hasPrefix("*Exported: ") }, volatile.count)
+        }
+        let disk = try normalized(onDisk)
+        let mem = try normalized(direct)
+        XCTAssertEqual(disk.stable, mem.stable)
+        XCTAssertEqual(disk.exportedLines, 1)
+        XCTAssertEqual(mem.exportedLines, 1)
     }
 
     func test_export_returnsContentTypeFromFormat() throws {
