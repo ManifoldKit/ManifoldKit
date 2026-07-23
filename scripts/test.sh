@@ -375,25 +375,25 @@ if [[ -n "$PROFILE" ]]; then
             XCTEST_FILTER_ARGS+=(--filter "$f")
         done
 
-        # Invocation 1: XCTest filters.
+        # Invocation 1: XCTest filters, --parallel — matching ci.yml's
+        # "XCTest suites (…, parallel)" step exactly.
         #
-        # We deliberately do NOT pass `--parallel` or `--num-workers` here.
-        # swift-test's implicit scheduling without the flag is the baseline
-        # that's passed historically; keep it. (Historically explicit
-        # `--parallel` also surfaced process-global state races in
-        # `BackendContractChecks` — each per-backend conformance suite's
-        # `test_z_contract_metaContract` read a shared claims registry, and
-        # interleaving backend test classes left it partial when meta-contract
-        # ran: 4395/0/57 pass under implicit scheduling vs 4445/7/0 with
-        # explicit --parallel, measured locally. The capability-claims
-        # registry is now instance-scoped per test case (arch-plan item 4.2),
-        # so that specific hazard is gone — see ManifoldBackendTestKit's DocC
-        # catalog. `--parallel` stays off here as a conservative default.)
+        # This invocation historically omitted `--parallel` as a
+        # conservative default while CI ran the same batch WITH it, so
+        # parallel-only races (SwiftData teardown, process-global state)
+        # passed the local gate and failed CI — #2329 is the canonical
+        # bite. The one known hazard behind the conservatism is gone: the
+        # capability-claims registry is instance-scoped per test case
+        # (arch-plan item 4.2; see ManifoldBackendTestKit's DocC catalog).
+        # The local gate must fail where CI fails — keep the flags aligned
+        # with ci.yml, and if a parallel-only race appears here, fix the
+        # test's isolation, don't remove the flag.
         set +e
         "$SCRIPT_PATH" \
             "${XCTEST_FILTER_ARGS[@]}" \
             ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
+            --parallel \
             ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
         RC1=$?
         set -e
