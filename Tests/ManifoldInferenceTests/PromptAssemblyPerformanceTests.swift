@@ -31,6 +31,14 @@ final class PromptAssemblyPerformanceTests: XCTestCase {
 
     func testPerf_assemble_200messages_noSlots() {
         let messages = makeMessages(count: 200)
+        PerfBudget.assert(.milliseconds(500)) {
+            _ = PromptAssembler.assemble(
+                slots: [],
+                messages: messages,
+                systemPrompt: Self.systemPrompt,
+                contextSize: 4096
+            )
+        }
         measure {
             _ = PromptAssembler.assemble(
                 slots: [],
@@ -46,6 +54,14 @@ final class PromptAssemblyPerformanceTests: XCTestCase {
     func testPerf_assemble_200messages_5slots() {
         let messages = makeMessages(count: 200)
         let slots = makeSlots(count: 5)
+        PerfBudget.assert(.milliseconds(500)) {
+            _ = PromptAssembler.assemble(
+                slots: slots,
+                messages: messages,
+                systemPrompt: Self.systemPrompt,
+                contextSize: 4096
+            )
+        }
         measure {
             _ = PromptAssembler.assemble(
                 slots: slots,

@@ -14,12 +14,17 @@ import Foundation
 /// config.protocolClasses = [MockURLProtocol.self]
 /// let session = URLSession(configuration: config)
 ///
-/// MockURLProtocol.reset()
+/// // Stub state is PROCESS-WIDE. Use a unique per-suite host so stubs
+/// // never collide with other suites under `swift test --parallel`,
+/// // and clean up with `unstub(url:)` — never `reset()` — in teardown.
+/// let url = URL(string: "https://host-\(UUID().uuidString).test/api")!
 /// MockURLProtocol.stub(
-///     url: someURL,
+///     url: url,
 ///     response: .sse(chunks: [...], statusCode: 200)
 /// )
+/// // tearDown: MockURLProtocol.unstub(url: url)
 /// ```
+/// `MockURLProtocolIsolationAuditTest` enforces both rules across `Tests/`.
 public final class MockURLProtocol: URLProtocol {
 
     // MARK: - Stub Configuration

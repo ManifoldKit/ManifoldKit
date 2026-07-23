@@ -4,15 +4,34 @@ import XCTest
 import ManifoldTestSupport
 
 final class MCPStreamableHTTPTransportTests: XCTestCase {
+    /// Unique per-test-instance host so stubs never collide with other
+    /// suites under `swift test --parallel` (AGENTS.md MockURLProtocol
+    /// isolation rule — never `reset()` across suites).
+    private let endpoint = URL(string: "https://mcp-\(UUID().uuidString.lowercased()).test/mcp")!
+
+    override func setUp() {
+        super.setUp()
+        // The unique .test host has no real DNS entry; resolve it to a
+        // public IP so the SSRF policy admits it. The DNS-rebinding test
+        // overrides this with a private-IP resolution for its own host.
+        MCPSSRFPolicy._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
     override func tearDown() {
-        MockURLProtocol.reset()
+        MockURLProtocol.unstub(url: endpoint)
         MCPSSRFPolicy._resolverForTesting = nil
         MCPURLSessionFactory.networkDisabled = false
         super.tearDown()
     }
 
+    /// Requests this suite captured for its own unique host — the global
+    /// `capturedRequests` list is process-wide and may contain entries
+    /// from concurrently running suites.
+    private var ownCapturedRequests: [URLRequest] {
+        MockURLProtocol.capturedRequests.filter { $0.url?.host == endpoint.host }
+    }
+
     func test_startDispatchesSSEPayloadsAsIncomingMessages() async throws {
-        let endpoint = URL(string: "https://example.com/mcp")!
         let sse = Data(
             """
             event: message
@@ -42,7 +61,6 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
     }
 
     func test_sendPostsJSONAndYieldsResponseBody() async throws {
-        let endpoint = URL(string: "https://example.com/mcp")!
         let response = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}".utf8)
         MockURLProtocol.stub(url: endpoint, response: .immediate(data: response, statusCode: 200, headers: ["Content-Type": "application/json"]))
 
@@ -61,8 +79,7 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
         let first = try await iterator.next()
         XCTAssertEqual(first, response)
 
-        let requests = MockURLProtocol.capturedRequests
-        let post = try XCTUnwrap(requests.first(where: { $0.httpMethod == "POST" }))
+        let post = try XCTUnwrap(ownCapturedRequests.first(where: { $0.httpMethod == "POST" }))
         XCTAssertEqual(post.value(forHTTPHeaderField: "Content-Type"), "application/json")
         XCTAssertEqual(post.value(forHTTPHeaderField: "X-Client"), "Manifold")
         XCTAssertEqual(post.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
@@ -72,7 +89,6 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
     }
 
     func test_startRetriesOnceAfterUnauthorized() async throws {
-        let endpoint = URL(string: "https://example.com/mcp")!
         let sse = Data(
             """
             event: message
@@ -107,7 +123,6 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
     }
 
     func test_sendRetriesOnceAfterUnauthorized() async throws {
-        let endpoint = URL(string: "https://example.com/mcp")!
         let response = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}".utf8)
         MockURLProtocol.stubSequence(url: endpoint, responses: [
             .immediate(data: Data("expired".utf8), statusCode: 401),
@@ -136,9 +151,9 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
     }
 
     func test_sendBlocksDNSRebindingDestinationBeforeRequest() async {
-        let endpoint = URL(string: "https://example.com/mcp")!
+        let blockedHost = endpoint.host
         MCPSSRFPolicy._resolverForTesting = { host in
-            host == "example.com" ? ["10.0.0.7"] : ["93.184.216.34"]
+            host == blockedHost ? ["10.0.0.7"] : ["93.184.216.34"]
         }
 
         let transport = MCPStreamableHTTPTransport(configuration: .init(
@@ -157,16 +172,16 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
                 XCTFail("Expected ssrfBlocked, got \(error)")
                 return
             }
-            XCTAssertEqual(blockedURL.host, "example.com")
+            XCTAssertEqual(blockedURL.host, endpoint.host)
         }
-        XCTAssertTrue(MockURLProtocol.capturedRequests.isEmpty)
+        XCTAssertTrue(ownCapturedRequests.isEmpty)
     }
 
     func test_startFailsWhenDefaultSessionBoundaryHasNetworkDisabled() async {
         MCPURLSessionFactory.networkDisabled = true
 
         let transport = MCPStreamableHTTPTransport(configuration: .init(
-            endpoint: URL(string: "https://example.com/mcp")!,
+            endpoint: endpoint,
             headers: [:],
             authorization: MCPNoAuthorization(),
             sseLimits: .default,
@@ -185,7 +200,6 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
 
     func test_injectedSessionBypassesDefaultSessionBoundary() async throws {
         MCPURLSessionFactory.networkDisabled = true
-        let endpoint = URL(string: "https://example.com/mcp")!
         let response = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}".utf8)
         MockURLProtocol.stub(url: endpoint, response: .immediate(data: response, statusCode: 200, headers: ["Content-Type": "application/json"]))
 

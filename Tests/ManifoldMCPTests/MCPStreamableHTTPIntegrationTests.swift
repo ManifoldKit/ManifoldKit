@@ -7,10 +7,21 @@ import ManifoldTestSupport
 /// Integration tests for the streamable-HTTP MCP transport using MockURLProtocol.
 /// These tests exercise the full session/transport stack without a real server.
 final class MCPStreamableHTTPIntegrationTests: XCTestCase {
-    private let endpoint = URL(string: "https://example.com/mcp/e2e")!
+    /// Unique per-test-instance host so stubs never collide with other
+    /// suites under `swift test --parallel` (AGENTS.md MockURLProtocol
+    /// isolation rule — never `reset()` across suites).
+    private let endpoint = URL(string: "https://mcp-\(UUID().uuidString.lowercased()).test/mcp/e2e")!
+
+    override func setUp() {
+        super.setUp()
+        // The unique .test host has no real DNS entry; resolve it to a
+        // public IP so the SSRF policy admits it.
+        MCPSSRFPolicy._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     override func tearDown() {
-        MockURLProtocol.reset()
+        MockURLProtocol.unstub(url: endpoint)
+        MCPSSRFPolicy._resolverForTesting = nil
         super.tearDown()
     }
 
