@@ -19,6 +19,11 @@ import Darwin
 ///    URLs with `UUID(` somewhere in the file — fixed hostnames collide
 ///    across suites that stub the same host.
 ///
+/// Known limitation: rule 2 is a file-level heuristic — a file that stubs
+/// a fixed hostname while using `UUID(` for something unrelated passes.
+/// Line-level URL analysis isn't worth the false-positive surface; the
+/// review loop owns that residual.
+///
 /// Both rules skip comment lines (the convention is widely *cited* in
 /// comments) and honor a per-file burn-down allowlist for the two legacy
 /// OAuth/hardening suites whose ~200 semantic hostname literals
