@@ -21,6 +21,10 @@ import Darwin
 ///    (the sourced-library case, which has no `set` line at all).
 /// 2. **`set +e` must re-arm.** Every `set +e` needs a subsequent `set -e`
 ///    in the same file (the capture-exit-code idiom), or an annotation.
+///    Known limitation: the check is file-global, not scope-aware — a
+///    `set +e` in one function "re-armed" only by a `set -e` in a later,
+///    unrelated function passes. All current sites pair locally; keep it
+///    that way.
 /// 3. **`|| true` / `|| :` must be justified.** Approved three ways:
 ///    - a `fail-open-ok: <reason>` marker on the line or within the three
 ///      lines above it;
@@ -132,7 +136,7 @@ final class ScriptFailOpenAuditTest: XCTestCase {
         set +e
         run-thing
         rc=$?
-        set -e
+        set -eo pipefail
         exit $rc
         """.write(to: tmp.appendingPathComponent("clean.sh"), atomically: true, encoding: .utf8)
 
@@ -252,9 +256,12 @@ final class ScriptFailOpenAuditTest: XCTestCase {
 
             // Rule 2: set +e must be re-armed later in the file.
             if trimmed.range(of: #"^set \+e\b"#, options: .regularExpression) != nil {
+                // The re-arm may fold other flags into the cluster
+                // (`set -e`, `set -eo pipefail`, `set -Eeuo pipefail`) —
+                // accept any leading dash-cluster containing `e`.
                 let rearmed = lines[(index + 1)...].contains {
                     $0.trimmingCharacters(in: .whitespaces)
-                        .range(of: #"^set -e\b"#, options: .regularExpression) != nil
+                        .range(of: #"^set -[A-Za-z]*e"#, options: .regularExpression) != nil
                 }
                 if !rearmed, !Self.isAnnotated(lines: lines, index: index) {
                     offences.append(Offence(
