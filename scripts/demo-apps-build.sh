@@ -24,7 +24,7 @@
 #   scripts/demo-apps-build.sh
 #   scripts/demo-apps-build.sh --destination 'platform=iOS Simulator,id=<ID>'
 
-set -uo pipefail   # NOT -e: we want to run all configs and report every failure
+set -uo pipefail   # fail-open-ok: NOT -e — we want to run all configs and report every failure
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ADVANCED_DIR="$REPO_ROOT/Example"

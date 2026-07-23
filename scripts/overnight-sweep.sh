@@ -24,7 +24,7 @@
 # USAGE
 #   scripts/overnight-sweep.sh                 # all lanes, current checkouts
 #   LANES=core,llama scripts/overnight-sweep.sh
-set -uo pipefail
+set -uo pipefail  # fail-open-ok: NOT -e — the sweep must reach its summary even when lanes fail
 
 CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPANIONS_DIR="${COMPANIONS_DIR:-$HOME/Repos}"

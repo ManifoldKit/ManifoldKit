@@ -53,7 +53,7 @@
 # Requires: gh (authenticated). Bash 3.2 compatible — CI runners ship 3.2, so
 # no associative arrays.
 
-set -uo pipefail   # NOT -e: check every companion and report all failures
+set -uo pipefail   # fail-open-ok: NOT -e — check every companion and report all failures
 
 COMPANIONS="manifold-mlx manifold-llama"
 WORKFLOW="canary.yml"
@@ -232,7 +232,7 @@ if [ -n "$head_sha" ]; then
     # an arbitrary one could yield an EARLIER deadline and let a stale canary
     # pass, so take the max explicitly.
     merged_at=$(gh api "repos/ManifoldKit/ManifoldKit/commits/${head_sha}/pulls" \
-                   --jq '[.[] | select(.merged_at != null) | .merged_at] | max // empty' 2>/dev/null || true)
+                   --jq '[.[] | select(.merged_at != null) | .merged_at] | max // empty' 2>/dev/null || true)  # fail-open-ok: API-failure garbage is caught by the two-stage validation below
 fi
 
 # TWO STAGES ON PURPOSE — do not collapse these into one.

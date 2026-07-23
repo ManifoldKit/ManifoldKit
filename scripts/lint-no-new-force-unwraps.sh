@@ -197,7 +197,7 @@ VIOLATIONS=$(find "$SOURCES_DIR" -name "*.swift" "${FIND_EXCLUDES[@]}" -print0 \
     | grep -v ' != ' \
     | grep -v '"[^"]*!"' \
     | grep -v "'\!'" \
-    || true)
+    || true)  # fail-open-ok: zero violations → grep exits 1 → empty list is the pass case below
 
 if [ -n "$VIOLATIONS" ]; then
     echo "Force-unwraps found in production Sources/ (outside reviewed allowlist):"

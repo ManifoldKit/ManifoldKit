@@ -289,7 +289,7 @@ resolve_treeish() {
         return
     fi
     local snapshot
-    snapshot="$(cd "${REPO_ROOT}" && git stash create 2>/dev/null || true)"
+    snapshot="$(cd "${REPO_ROOT}" && git stash create 2>/dev/null || true)"  # fail-open-ok: nothing stash-able → empty → falls back to HEAD below
     if [[ -n "${snapshot}" ]]; then
         printf '%s' "${snapshot}"
     else

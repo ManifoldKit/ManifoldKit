@@ -36,7 +36,7 @@
 # falls back to FULL. The CI step treats any hard failure as FULL too. Selective
 # narrowing must never be able to SKIP a suite that should have run.
 
-set -uo pipefail
+set -uo pipefail  # fail-open-ok: NOT -e — the resolver must fail open to FULL, never die mid-decision
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRAPH_FILE="${MANIFOLD_GRAPH_FILE:-$SCRIPT_DIR/affected-suites-graph.json}"

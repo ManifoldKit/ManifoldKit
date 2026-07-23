@@ -11,6 +11,27 @@ Derived by reading each script's header comment plus `git grep -l '<script>' .gi
   before every push (see the repo `CLAUDE.md` "Pre-push checklist").
 - **Manual / operational** — run by hand, ad hoc, when a maintainer needs it. Never wired into CI.
 
+## Conventions (audit-enforced)
+
+`ScriptFailOpenAuditTest` (in `ManifoldCoreTests`) scans every `*.sh` here for
+fail-open idioms — machinery whose failure mode is silence must not swallow the
+errors it exists to surface, because fail-open code cannot go red and a green
+run is indistinguishable from an inert one:
+
+- **`set -euo pipefail`**, somewhere in the file. Deviating on purpose
+  (report-all-failures sweeps, sourced libraries)? Put
+  `# fail-open-ok: <reason>` on the `set` line, or — when there is no `set`
+  line at all — on a comment line in the first 80 lines.
+- **`set +e`** must be re-armed with `set -e` (the capture-`$?` idiom).
+- **`|| true` / `|| :`** is allowed only when the discarded status belongs to a
+  tolerant command (`grep`, `kill`, `rm`, `comm`, `head`, … — see the audit's
+  `tolerantCommands`) or the line carries / sits within three lines below a
+  `# fail-open-ok: <reason>` marker. There is **no** idiom escape for masked
+  `swift build|test|run` / `xcodebuild` — a swallowed build failure silently
+  benchmarks a stale binary.
+- A bare `fail-open-ok:` with no reason is itself flagged — the reason is the
+  point.
+
 ## Cold-start conformance / import gates
 
 The six `cold-start-*.sh` entry points are thin wrappers around the parametric

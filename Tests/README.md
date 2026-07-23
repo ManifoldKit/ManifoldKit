@@ -177,6 +177,16 @@ New behaviour assertions ship with an inline `// Sabotage-evidence:` block recor
 
 This proves the assertion (a) exercises a real production code path, (b) is value-sensitive, and (c) gates correctly on the relevant capability. Strip the M1/M2 mutations before commit; the evidence text stays.
 
+## Degraded paths are reported, not absorbed
+
+Tests covering degraded paths — empty input, missing file, failed subprocess,
+zero results — must assert the condition is **reported**: a thrown error, a
+non-zero exit, or a counted total the test asserts on. A log line alone does
+not qualify (nothing downstream reads it — the `| tail` exit-code-mask
+incident would have passed a "logged" bar). Corollary: write the assertion a
+no-op cannot satisfy; a test that passes when the code path does nothing is
+not coverage, and "0 skipped" is part of the expected outcome, not noise.
+
 ## Special cases
 
 - **MCP E2E**: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — gated by env var (the target compiles unconditionally since the MCP trait was retired in v0.48). The `everything-server` smoke has hung in past runs; filter to the streamable subset.

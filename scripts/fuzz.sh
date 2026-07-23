@@ -51,7 +51,7 @@ for arg in "$@"; do
             echo ""
             echo "Forwarding to: swift run fuzz-chat -h"
             echo "─────────────────────────────────────────────────────────────"
-            swift run fuzz-chat -h || true
+            swift run fuzz-chat -h || true  # fail-open-ok: help forwarding — the wrapper usage above already printed even if the build fails
             exit 0
             ;;
         *) FORWARDED_ARGS+=("$arg") ;;
