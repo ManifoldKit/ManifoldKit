@@ -53,7 +53,9 @@ not a rule.**
    `Tests/README.md`.)*
 6. **Errors are visible.** No `try?` in production code; `do`/`catch` and
    log. `fatalError`/`assertionFailure` only for programmer errors with no
-   recovery path. *(`SilentCatchAuditTest`, force-unwrap lint.)*
+   recovery path — and the same standard holds for shell tooling: no
+   fail-open swallows in `scripts/`. *(`SilentCatchAuditTest`, force-unwrap
+   lint, `ScriptFailOpenAuditTest`.)*
 7. **Swift concurrency, done properly.** `@Observable` + `@MainActor`, no
    Combine, no `Task.detached` in `@MainActor` classes, and never
    `@unchecked Sendable` as a race fix — fix the isolation boundary.
@@ -842,6 +844,8 @@ Never use `assertionFailure`/`fatalError` for conditions that have fallback logi
 
 `try?` is banned in production code. `SilentCatchAuditTest` (in `ManifoldInferenceTests`) fails CI if `try?` appears in error-propagation paths. Use `do/catch` with `Log.*` so the error is visible. Optional decoding at trust boundaries is the only legitimate exception.
 
+Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `ManifoldCoreTests`) flags fail-open idioms in `scripts/` — a missing `set -euo pipefail` header, `set +e` never re-armed, and `|| true` swallows outside a small tolerant-command idiom set (`grep`, `kill`, `rm`, …), with **no** idiom escape for masked load-bearing producers (`swift build|test|run`, `xcodebuild`). A genuine tolerance carries `# fail-open-ok: <reason>` on or just above the line; a bare marker with no reason is itself flagged.
+
 ## Commit style
 
 Conventional Commits. Release Please reads these for version bumps.
@@ -974,7 +978,21 @@ Every **non-trivial** PR goes through an adversarial review-and-fix loop **on a 
 4. **Local gate — the FULL affected test targets, not `--filter <featureSuite>`.** Cross-cutting audits (`TestSuiteSilentSkipAuditTest`, `SilentCatchAuditTest`, schema/codegen/snapshot guards) live *outside* feature suites, so a filtered run goes green while CI goes red (exactly how #2064's `try? XCTUnwrap` reached CI). Run the affected target(s) whole, plus the audit suites by name. For added test files, `grep -rnE 'try\? (XCTUnwrap|XCTSkip)' Tests/` must come back clean.
 5. **Mark ready** (`gh pr ready`) **only when review-clean and the local gate is green** — that flip is what triggers CI.
 
-**Non-trivial** = touches **2+ files** OR adds/changes **behavior or logic**. Trivial single-file mechanical edits (typo, version bump, comment/doc-only, pure rename) skip the loop and go straight to a normal PR. When in doubt, run the loop.
+**Guards ship with a demonstrated red.** A PR that adds or edits a **CI
+gate** — a workflow job, required
+check, canary, scheduled guard, or lint — includes in its body (a) a link to a
+red run or checked-in fixture proving the gate fires on the defect it exists to
+catch, and (b) confirmation the check actually **blocks** (required-check or
+merge-queue-enforced): red-but-not-blocking is how the api-digester reds were
+sailed past (#2274, #2287), and "first run green" proves nothing for fail-open
+machinery — a green run is indistinguishable from an inert one. In-suite audits
+satisfy this structurally via Principle 4's in-file `test_sabotage_*` +
+`AuditSabotageCoverageAuditTest`; shell tooling via `ScriptFailOpenAuditTest`;
+workflow-level gates have no in-`swift test` tripwire, so the reviewer asks for
+the evidence — a named review question alongside step 2's "is this actually
+live?".
+
+**Non-trivial** = touches **2+ files** OR adds/changes **behavior or logic**. Trivial single-file mechanical edits (typo, version bump, comment/doc-only, pure rename) skip the loop and go straight to a normal PR. Edits to CI workflows, `release-please-config.json`, or `Package.swift` are **never trivial**, whatever the line count — automation inputs have compounding blast radius. When in doubt, run the loop.
 
 ## Issue & PR hygiene
 

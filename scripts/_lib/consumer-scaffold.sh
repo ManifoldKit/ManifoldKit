@@ -16,6 +16,7 @@
 # It deliberately does not set `set -euo pipefail` itself — that is the
 # sourcing script's call, and a library flipping shell options behind its
 # caller's back is a classic footgun.
+# fail-open-ok: sourced library — set(1) flags are the sourcing gate's call (see above)
 #
 # Bash 3.2 compatible (CI runners ship Bash 3.2 — no `declare -A`, no
 # `mapfile`, no `${var,,}`). Test under `/bin/bash`, not your dev shell.

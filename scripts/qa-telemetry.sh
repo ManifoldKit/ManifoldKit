@@ -143,7 +143,7 @@ pr_run_ids="$(printf '%s' "$runs" | jq -r \
                  and ((.conclusion // "") == "success" or (.conclusion // "") == "failure")))
     | .[:$limit]
     | .[].databaseId // empty
-  ' 2>/dev/null || true)"
+  ' 2>/dev/null || true)"  # fail-open-ok: best-effort telemetry — an empty run list reports as n/a below
 
 sel_started="$(date -u +%s)"
 if [ -n "$pr_run_ids" ]; then

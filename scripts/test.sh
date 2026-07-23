@@ -532,7 +532,7 @@ xctest_suites_started=$(grep "^Test Suite '" "$OUTPUT_FILE" \
     | grep -v "^Test Suite 'All tests'" \
     | grep -v "\.xctest'" \
     | sed "s/^Test Suite '//; s/' started at .*//" \
-    || true)
+    || true)  # fail-open-ok: no suites started → empty → crash detection reports 0 below
 
 # Find XCTest suites that started but did not complete.
 xctest_crashed_suites=""
@@ -569,7 +569,7 @@ st_skipped=$(awk '/^↩ Test .* skipped after / && $0 !~ /^↩ Test run / { coun
 # Swift Testing suites: "◇ Suite "Name" started." vs "✔ Suite "Name" passed after N seconds."
 st_suites_started=$(grep '^◇ Suite "' "$OUTPUT_FILE" \
     | sed 's/^◇ Suite "//; s/" started\.//' \
-    || true)
+    || true)  # fail-open-ok: a run with no Swift Testing suites is a valid outcome
 
 st_crashed_suites=""
 st_crashed_count=0

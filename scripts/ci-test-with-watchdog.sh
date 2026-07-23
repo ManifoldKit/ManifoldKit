@@ -63,7 +63,7 @@
 # wrapper exits 124 (matches `timeout(1)` convention) so CI can distinguish
 # "test failed" (1/2/3) from "wrapper killed a hung process" (124).
 
-set -uo pipefail
+set -uo pipefail  # fail-open-ok: NOT -e — the watchdog must survive probe hiccups to kill and report the wedged run
 
 STALL_SECONDS="${STALL_SECONDS:-180}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -170,7 +170,7 @@ append_process_snapshot() {
         echo ""
         echo "### descendant process tree"
         local descendants
-        descendants=$(collect_descendant_pids "$TEST_PID" || true)
+        descendants=$(collect_descendant_pids "$TEST_PID" || true)  # fail-open-ok: diagnostics capture — a vanished process tree is itself the signal
         if [[ -n "$descendants" ]]; then
             while read -r pid; do
                 [[ -z "$pid" ]] && continue
@@ -183,7 +183,7 @@ append_process_snapshot() {
         echo "### matching test processes"
         ps -axo pid=,ppid=,pgid=,stat=,etime=,command= 2>/dev/null \
             | awk '/swift-test|xctest|swift-testing|swift test/ && $0 !~ /awk/ { print }' \
-            || true
+            || true  # fail-open-ok: diagnostics capture — zero matching processes is a valid outcome
         echo ""
     } >> "$WATCHDOG_DIAGNOSTICS_FILE"
 }

@@ -84,6 +84,7 @@ fi
 # Ensures module interfaces are cached before the parallel xcrun swift test
 # compilations start. No-op on subsequent runs.
 log "Warming up build artifacts (xcrun swift build)…"
+# fail-open-ok: warm-up only — a real build failure resurfaces in the checked per-path builds below
 xcrun swift build 2>&1 | { grep -E "Build complete|^error:" || true; } | head -3 || true
 
 # ── Backend detection ─────────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ if curl -sf "${OLLAMA_URL}/api/tags" > /dev/null 2>&1; then
     if [[ -z "$OLLAMA_MODEL" ]]; then
         OLLAMA_MODEL=$(curl -sf "${OLLAMA_URL}/api/tags" | \
             python3 -c "import json,sys; ms=json.load(sys.stdin)['models']; \
-            print(ms[0]['name'] if ms else '')" 2>/dev/null || true)
+            print(ms[0]['name'] if ms else '')" 2>/dev/null || true)  # fail-open-ok: model auto-pick — empty falls through to OLLAMA_AVAILABLE=0 below
     fi
     [[ -n "$OLLAMA_MODEL" ]] || OLLAMA_AVAILABLE=0
 fi
@@ -160,7 +161,15 @@ run_server_bench() {
     local server_bin=".build/arm64-apple-macosx/debug/ManifoldServer"
 
     log "Building ManifoldServer (traits: $traits)…"
-    xcrun swift build --traits "$traits" --product ManifoldServer 2>&1 | tail -1 || true
+    # No swallow here: a masked build failure would silently benchmark a stale
+    # (or absent) $server_bin and corrupt the results table.
+    local build_out
+    if ! build_out=$(xcrun swift build --traits "$traits" --product ManifoldServer 2>&1); then
+        echo "$build_out" | tail -20 >&2
+        log "ERROR: ManifoldServer build failed — skipping $label"
+        return
+    fi
+    echo "$build_out" | tail -1
 
     log "Starting ManifoldServer on port $BENCH_SERVER_PORT (backend=$backend_flag)…"
     local log_file="/tmp/manifold-bench-server-$$.log"

@@ -133,7 +133,7 @@ rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift "$OUT_DIR"/quickst
       "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip \
       "$OUT_DIR"/quickstart-rag-*.skip "$OUT_DIR"/why-*.skip \
       "$OUT_DIR"/swiftui-multi-session-*.skip "$OUT_DIR"/recipes-*.skip \
-      "$OUT_DIR"/docc-*.skip 2>/dev/null || true
+      "$OUT_DIR"/docc-*.skip 2>/dev/null || true  # fail-open-ok: best-effort cleanup of prior outputs — globs may match nothing
 
 total=0
 total_skipped=0

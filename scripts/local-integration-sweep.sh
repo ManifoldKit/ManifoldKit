@@ -42,7 +42,7 @@
 #   - The script never fails the whole sweep on one lane; it records per-lane
 #     status and always writes the report.
 
-set -uo pipefail
+set -uo pipefail  # fail-open-ok: NOT -e — run every lane and report all failures in the summary
 
 # ----- config ---------------------------------------------------------------
 COMPANIONS_DIR="${COMPANIONS_DIR:-$HOME/Repos}"
@@ -278,12 +278,13 @@ if have_lane core; then
       if [ -n "${MATRIX_MODELS:-}" ]; then MATRIX_MODEL_ARGS="--model ${MATRIX_MODELS}"; fi
       # A non-zero exit means some scenarios failed — that is data, not a script
       # error; score the transcript regardless (word-split MODEL_ARGS on purpose).
+      # fail-open-ok: scenario failures are data, scored from the transcript below
       ( cd "$CORE_DIR" && "$TOOL_BIN" --backend ollama --scenario all --output "$TRANSCRIPT" ${MATRIX_MODEL_ARGS} ) \
         >"$MATRIX_DIR/run.log" 2>&1 || true
       if [ -s "$TRANSCRIPT" ]; then
         "$TOOL_BIN" score "$TRANSCRIPT" --emit-records "$RECORDS" \
           --renderer ollama-server --core-commit "$CORE_COMMIT" \
-          >/dev/null 2>"$MATRIX_DIR/score.log" || true
+          >/dev/null 2>"$MATRIX_DIR/score.log" || true  # fail-open-ok: scorer failures land in score.log and surface via SUMMARY_LANES below
         if [ -s "$RECORDS" ]; then
           if "$TOOL_BIN" matrix "$RECORDS" --out "$MATRIX_MD" 2>>"$MATRIX_DIR/score.log"; then
             SUMMARY_LANES="${SUMMARY_LANES}matrix: rendered -> $(basename "$MATRIX_MD")\n"
