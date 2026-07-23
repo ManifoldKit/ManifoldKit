@@ -453,3 +453,24 @@ API breakage: func ContextWindowPreTurnCompressionPolicy.compressBeforeTurn(hist
 API breakage: func FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has parameter 2 type change from ([ManifoldInference.ChatMessage]) async throws -> Swift.String to Swift.String?
 API breakage: func FixedCountPreTurnCompressionPolicy.compressBeforeTurn(history:sessionID:generate:) has been renamed to func compressBeforeTurn(history:sessionID:systemPrompt:generate:)
 API breakage: constructor TurnStreamFinalizer.FinalizeInput.init(sessionID:handle:assistantMessage:visibleText:hasToolContent:hasThinkingContent:usage:kind:turnContext:turnHookRegistry:outcomeCompletion:) has been removed
+API breakage: enum CloudMessageEncoder has been changed to a struct
+API breakage: enumelement CloudMessageEncoder.openAI is now static
+API breakage: enumelement CloudMessageEncoder.openAI has declared type change from (ManifoldCloudCore.CloudMessageEncoder.Type) -> ManifoldCloudCore.CloudMessageEncoder to ManifoldCloudCore.CloudMessageEncoder
+API breakage: enumelement CloudMessageEncoder.openAIResponses is now static
+API breakage: enumelement CloudMessageEncoder.openAIResponses has declared type change from (ManifoldCloudCore.CloudMessageEncoder.Type) -> ManifoldCloudCore.CloudMessageEncoder to ManifoldCloudCore.CloudMessageEncoder
+API breakage: enumelement CloudMessageEncoder.claude is now static
+API breakage: enumelement CloudMessageEncoder.claude has declared type change from (ManifoldCloudCore.CloudMessageEncoder.Type) -> ManifoldCloudCore.CloudMessageEncoder to ManifoldCloudCore.CloudMessageEncoder
+API breakage: enumelement CloudMessageEncoder.ollama is now static
+API breakage: enumelement CloudMessageEncoder.ollama has declared type change from (ManifoldCloudCore.CloudMessageEncoder.Type) -> ManifoldCloudCore.CloudMessageEncoder to ManifoldCloudCore.CloudMessageEncoder
+API breakage: func CloudMessageEncoder.hash(into:) has been removed
+API breakage: var CloudMessageEncoder.hashValue has been removed
+API breakage: enum CloudPayloadHandler.Provider has been changed to a struct
+API breakage: enumelement CloudPayloadHandler.Provider.openAI is now static
+API breakage: enumelement CloudPayloadHandler.Provider.openAI has declared type change from (ManifoldCloudCore.CloudPayloadHandler.Provider.Type) -> ManifoldCloudCore.CloudPayloadHandler.Provider to ManifoldCloudCore.CloudPayloadHandler.Provider
+API breakage: enumelement CloudPayloadHandler.Provider.openAIResponses is now static
+API breakage: enumelement CloudPayloadHandler.Provider.openAIResponses has declared type change from (ManifoldCloudCore.CloudPayloadHandler.Provider.Type) -> ManifoldCloudCore.CloudPayloadHandler.Provider to ManifoldCloudCore.CloudPayloadHandler.Provider
+API breakage: enumelement CloudPayloadHandler.Provider.claude is now static
+API breakage: enumelement CloudPayloadHandler.Provider.claude has declared type change from (ManifoldCloudCore.CloudPayloadHandler.Provider.Type) -> ManifoldCloudCore.CloudPayloadHandler.Provider to ManifoldCloudCore.CloudPayloadHandler.Provider
+API breakage: enumelement CloudPayloadHandler.Provider.ollama is now static
+API breakage: enumelement CloudPayloadHandler.Provider.ollama has declared type change from (ManifoldCloudCore.CloudPayloadHandler.Provider.Type) -> ManifoldCloudCore.CloudPayloadHandler.Provider to ManifoldCloudCore.CloudPayloadHandler.Provider
+API breakage: constructor CloudPayloadHandler.Provider.init(rawValue:) has return type change from ManifoldCloudCore.CloudPayloadHandler.Provider? to ManifoldCloudCore.CloudPayloadHandler.Provider

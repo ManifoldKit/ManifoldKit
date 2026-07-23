@@ -281,6 +281,8 @@ struct MessagePartsView: View {
                 key = nextKey(for: "audio", in: &ordinals)
             case .generatedMedia(let media):
                 key = nextKey(for: "generatedMedia:\(media.kind.rawValue)", in: &ordinals)
+            @unknown default:
+                key = nextKey(for: "unknown", in: &ordinals)
             }
             return KeyedPart(key: key, part: part)
         }
@@ -355,6 +357,12 @@ struct MessagePartsView: View {
 
         case .generatedMedia(let media):
             generatedMediaView(media)
+
+        @unknown default:
+            // An unrecognised future part kind: degrade to an empty view
+            // rather than crash — mirrors ToolInvocationView's mixed-content
+            // fallback for a part this build doesn't know how to render.
+            EmptyView()
         }
     }
 

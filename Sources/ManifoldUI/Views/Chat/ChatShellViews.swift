@@ -301,7 +301,15 @@ struct ChatErrorRecoveryBanner<APIConfig: View>: View {
             .buttonStyle(.borderless)
             .font(.callout.bold())
             .accessibilityIdentifier("chat-model-management-button")
-        case .dismissOnly, .none:
+        case .dismissOnly:
+            EmptyView()
+
+        case .none:
+            EmptyView()
+
+        @unknown default:
+            // An unrecognised future recovery action: degrade to no button
+            // rather than silently rendering the wrong CTA.
             EmptyView()
         }
     }

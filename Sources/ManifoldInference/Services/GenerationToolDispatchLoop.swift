@@ -835,6 +835,11 @@ struct GenerationToolDispatchLoop {
 
             case .completed(let result):
                 terminalResult = result
+
+            @unknown default:
+                // An unrecognised future event kind carries no result to
+                // capture; ignore and keep waiting for `.completed`.
+                break
             }
         }
 

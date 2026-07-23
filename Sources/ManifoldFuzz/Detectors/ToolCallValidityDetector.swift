@@ -179,5 +179,6 @@ public func encodeToolChoice(_ choice: ToolChoice) -> String {
     case .none: return "none"
     case .required: return "required"
     case .tool(let name): return "tool:\(name)"
+    @unknown default: return "unknown"
     }
 }

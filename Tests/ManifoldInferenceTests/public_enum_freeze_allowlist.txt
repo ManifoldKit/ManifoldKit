@@ -1,0 +1,365 @@
+# PublicEnumFreezeAuditTest — path-based allowlist.
+#
+# This is the "assessed but deliberately unannotated yet" set, not a
+# clearance list. #2208 seeded it with every public enum that existed in
+# Sources/ before this audit landed — those enums were NOT individually
+# reviewed for open-vs-closed vocabulary; they were bulk-allowlisted so the
+# audit could go green on day one without a mass freeze-doc-comment sweep.
+#
+# A PR that touches one of these enums for another reason should take the
+# opportunity to add a "Vocabulary freeze (1.0)" or "Vocabulary growth
+# (1.x)" doc-comment block (see GenerationEvent.swift / ToolTypes.swift's
+# ToolResultPart for the canonical wording) and remove the corresponding
+# line here, rather than leaving both the marker gap and the allowlist entry.
+#
+# Format: relative/path/from/Sources.swift:trimmed declaration line.
+# Blank lines and #-prefixed lines are ignored.
+ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift:public enum AnyLanguageModelBridgeCapabilities {
+ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift:public enum AnyLanguageModelBridgeError: LocalizedError, Sendable {
+ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift:public enum AnyLanguageModelURLResolver {
+ManifoldAppEval/Judge/CachingJudge.swift:public enum JudgeCacheKey {
+ManifoldAppEval/Report/AppEvalHistoryLedger.swift:public enum AppEvalHistoryLedger {
+ManifoldAppEval/Report/AppEvalHistoryLedger.swift:public enum LedgerError: Error, CustomStringConvertible {
+ManifoldAppEval/Report/AppEvalMarkdownRenderer.swift:public enum AppEvalMarkdownRenderer {
+ManifoldAppEval/Report/AppEvalVerdict.swift:public enum AppEvalVerdict: Sendable, Equatable {
+ManifoldAppEval/Runner/AppEvalStarterCorpus.swift:public enum AppEvalStarterCorpus {
+ManifoldAppEval/Runner/EventSubsequenceChecker.swift:public enum EventSubsequenceChecker {
+ManifoldAppEval/Runner/RuntimeScenario.swift:public enum Action: Sendable {
+ManifoldAppEval/Runner/RuntimeScenarioRunner.swift:public enum RunMode {
+ManifoldAppEval/Runner/RuntimeScenarioRunner.swift:public enum RunModeKind: Sendable { case scripted, live }
+ManifoldAppEval/Runner/RuntimeScenarioRunner.swift:public enum RuntimeScenarioRunner {
+ManifoldAppEval/Runner/ScriptedGenerationBackend.swift:public enum ScriptedEvent: Sendable {
+ManifoldAppEval/Schema/GoldenTaskFixture.swift:public enum Kind: String, Codable, Sendable {
+ManifoldAppEval/Schema/GoldenTaskLoader.swift:public enum GoldenTaskLoader {
+ManifoldAppEval/Schema/GoldenTaskLoader.swift:public enum LoadError: Error, CustomStringConvertible {
+ManifoldAppEval/Schema/GoldenTaskMapper.swift:public enum GoldenTaskMapper {
+ManifoldAppEval/Schema/GoldenTaskMapper.swift:public enum MapError: Error, CustomStringConvertible {
+ManifoldAppEval/Schema/JSONValue.swift:public enum JSONValue: Sendable, Equatable {
+ManifoldAppEval/Scoring/AppEvalRunner.swift:public enum AppEvalRunner {
+ManifoldAppEval/Scoring/BuiltInCheckpointScorers.swift:public enum BuiltInCheckpointAssertion: String, Sendable, CaseIterable {
+ManifoldAppEval/Scoring/BuiltInCheckpointScorers.swift:public enum BuiltInCheckpointScorers {
+ManifoldAppEval/Scoring/BuiltInCheckpointScorers.swift:public enum Scope: Sendable {
+ManifoldAppEval/Scoring/GoldenTaskRunner.swift:public enum GoldenTaskRunner {
+ManifoldAppEval/Scoring/GoldenTaskRunner.swift:public enum PrefixError: Error, CustomStringConvertible {
+ManifoldAppEval/Scoring/GoldenTaskRunner.swift:public enum ScorerRegistrationError: Error, CustomStringConvertible {
+ManifoldAppIntents/DiscoverableAppIntent.swift:public enum AppIntentApprovalPolicy: Sendable {
+ManifoldBackendTestKit/BackendContractChecks.swift:public enum BackendContractChecks {
+ManifoldBackendTestKit/FixtureComparator.swift:public enum CompareMode {
+ManifoldBackendTestKit/LocalBackendContractRunner.swift:public enum LocalBackendContractRunner {
+ManifoldBackendTestKit/LocalDriverCoverageChecks.swift:public enum LocalDriverCoverageChecks {
+ManifoldCloudCore/CloudErrorSanitizer.swift:public enum CloudErrorSanitizer {
+ManifoldCloudCore/DNSRebindingGuard.swift:public enum DNSRebindingGuard {
+ManifoldCloudCore/ParsedFrame.swift:public enum JSONValue: Sendable, Hashable {
+ManifoldCloudCore/PromptCachePolicy.swift:public enum PromptCachePolicy: Sendable {
+ManifoldCloudCore/StreamFinalizer.swift:public enum StreamTermination: Sendable, Equatable {
+ManifoldCloudCore/URLSessionProvider.swift:public enum URLSessionProvider {
+ManifoldCloudSaaS/CloudSaaSBackends.swift:public enum CloudSaaSBackends: BackendRegistrar {
+ManifoldContract/Agent.swift:public enum HandoffDetectionResult: Sendable, Equatable {
+ManifoldContract/BackendVisionCapability.swift:public enum BackendVisionCapability {
+ManifoldContract/EmbeddingBackend.swift:public enum EmbeddingError: LocalizedError {
+ManifoldContract/GenerationEvent.swift:public enum Reason: Sendable, Equatable {
+ManifoldContract/GenerationRuntimeHints.swift:public enum PromptRenderingMode: Sendable, Equatable {
+ManifoldContract/GenerationStream.swift:public enum Phase: Sendable, Equatable {
+ManifoldContract/LocalInferenceAdapter.swift:public enum LocalThinkingMarkerStrategy: Sendable, Equatable {
+ManifoldContract/StreamTransform.swift:public enum Stage: Sendable {
+ManifoldFoundation/FoundationAvailabilityReason.swift:public enum FoundationAvailability {
+ManifoldFoundation/FoundationAvailabilityReason.swift:public enum FoundationAvailabilityReason: Sendable {
+ManifoldFoundation/FoundationBackends.swift:public enum FoundationBackends: BackendRegistrar {
+ManifoldFuzz/Corpus.swift:public enum Corpus {
+ManifoldFuzz/Corpus.swift:public enum Subset: String, Sendable {
+ManifoldFuzz/Detectors/Detector.swift:public enum DetectorRegistry {
+ManifoldFuzz/Detectors/SessionDetector.swift:public enum SessionDetectorRegistry {
+ManifoldFuzz/Finding.swift:public enum Severity: String, Codable, Sendable, Comparable {
+ManifoldFuzz/FuzzConfig.swift:public enum BackendChoice: String, Sendable, CaseIterable {
+ManifoldFuzz/HarnessMetadata.swift:public enum HarnessMetadata {
+ManifoldFuzz/Mutators/Mutator.swift:public enum MutatorChain {
+ManifoldFuzz/Mutators/Mutator.swift:public enum MutatorRegistry {
+ManifoldFuzz/ParallelFuzzWorkers.swift:public enum ParallelFuzzWorkerPlanError: Error, Equatable, Sendable {
+ManifoldFuzz/ParallelFuzzWorkers.swift:public enum ParallelFuzzWorkerPlanner {
+ManifoldFuzz/Replay/Replayer.swift:public enum Failure: Error, Equatable, Sendable {
+ManifoldFuzz/Replay/Replayer.swift:public enum Outcome: Sendable, Equatable {
+ManifoldFuzz/Replay/Shrinker.swift:public enum Failure: Error, Sendable {
+ManifoldFuzz/Replay/Shrinker.swift:public enum TerminationReason: String, Sendable {
+ManifoldFuzz/RunRecord.swift:public enum SchemaError: Error, Equatable, Sendable {
+ManifoldFuzz/Scenarios/FuzzScenario.swift:public enum ScenarioRegistry {
+ManifoldFuzz/SessionScript.swift:public enum Step: Codable, Sendable, Equatable {
+ManifoldFuzz/SessionScriptRunner.swift:public enum TimelineEvent: String, Sendable {
+ManifoldFuzz/Sink/FindingsIndex.swift:public enum FindingsArtifactRenderer {
+ManifoldFuzz/Sink/FindingsIndex.swift:public enum FindingsIndexCodec {
+ManifoldFuzz/Sink/FindingsMerger.swift:public enum FindingsMerger {
+ManifoldFuzz/SyntheticToolset.swift:public enum SyntheticToolset {
+ManifoldHardware/APIProvider.swift:public enum APIProvider: String, Codable, CaseIterable, Identifiable, Sendable {
+ManifoldHardware/AppMemoryUsage.swift:public enum AppMemoryUsage {
+ManifoldHardware/AppleSiliconBandwidth.swift:public enum AppleSiliconBandwidth {
+ManifoldHardware/BackendCapabilities.swift:public enum CancellationStyle: String, Sendable, Equatable, Codable {
+ManifoldHardware/BackendCapabilities.swift:public enum GenerationParameter: String, CaseIterable, Sendable, Codable {
+ManifoldHardware/CompiledBackends.swift:public enum BackendBuildProfile: String, CaseIterable, Codable, Sendable {
+ManifoldHardware/CompiledBackends.swift:public enum BackendBuildTrait: String, CaseIterable, Codable, Hashable, Sendable {
+ManifoldHardware/DeviceCapabilityService.swift:public enum ModelSizeRecommendation: String, CaseIterable, Sendable {
+ManifoldHardware/DownloadedModelPackageManifest.swift:public enum ModelPackageKind: String, Codable, Hashable, Sendable {
+ManifoldHardware/GGUFKVCacheEstimator.swift:public enum GGUFKVCacheEstimator {
+ManifoldHardware/GGUFSignedManifest.swift:public enum GGUFSignedManifestVerificationError: LocalizedError, Equatable {
+ManifoldHardware/GenerationCapabilityRequirement.swift:public enum GenerationCapabilityRequirement: Sendable, Hashable, Codable {
+ManifoldHardware/ImageModelFormat.swift:public enum ImageModelFormat: String, Codable, Hashable, Sendable, CaseIterable {
+ManifoldHardware/LoadDenyPolicy.swift:public enum LoadDenyPolicy: Sendable {
+ManifoldHardware/MemoryPressureEvent.swift:public enum MemoryPressureEvent: Sendable, Equatable {
+ManifoldHardware/MemoryPressureEvent.swift:public enum UnloadReason: Sendable, Equatable {
+ManifoldHardware/MemoryPressureHandler.swift:public enum MemoryPressureLevel: String, Sendable {
+ManifoldHardware/MemoryStrategy.swift:public enum MemoryStrategy: String, Sendable, Equatable, Codable {
+ManifoldHardware/ModelCapabilityTier.swift:public enum ModelCapabilityTier: Int, Comparable, Codable, Sendable {
+ManifoldHardware/ModelCompatibility.swift:public enum ModelCompatibilityResult: Sendable, Equatable {
+ManifoldHardware/ModelFitScore.swift:public enum FitQuality: Sendable, Equatable, CaseIterable {
+ManifoldHardware/ModelFitScore.swift:public enum ModelUseCase: String, Codable, Sendable, CaseIterable {
+ManifoldHardware/ModelFitScore.swift:public enum SpeedClass: Sendable, Equatable, CaseIterable {
+ManifoldHardware/ModelLoadPlan.swift:public enum Reason: Sendable, Equatable {
+ManifoldHardware/ModelLoadPlan.swift:public enum Verdict: Sendable, Equatable {
+ManifoldHardware/ModelSelectionProfile.swift:public enum ContentFilteringDisclosure: Sendable, Equatable, Codable {
+ManifoldHardware/ModelSelectionProfile.swift:public enum ModelSelectionCandidate: Sendable {
+ManifoldHardware/ModelSelectionProfile.swift:public enum ResidencyState: Sendable, Equatable {
+ManifoldHardware/NeuralAcceleratorAvailability.swift:public enum NeuralAcceleratorAvailability: Sendable {
+ManifoldHardware/NeuralAcceleratorAvailability.swift:public enum NeuralAcceleratorProbe: Sendable {
+ManifoldHardware/PrecisionVariant.swift:public enum PrecisionVariant: String, Codable, Hashable, Sendable, CaseIterable {
+ManifoldHardware/PromptTemplate.swift:public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
+ManifoldHardware/StructuredOutputStrategy.swift:public enum StructuredOutputRouter {
+ManifoldHardware/StructuredOutputStrategy.swift:public enum StructuredOutputStrategy: @unchecked Sendable, Equatable {
+ManifoldHardware/StructuredOutputStrategy.swift:public enum StructuredOutputSupport: String, CaseIterable, Sendable, Codable, Equatable {
+ManifoldHardware/ToolCallDialect.swift:public enum ToolCallArgEncoding: String, Codable, Sendable {
+ManifoldHardware/ToolCallDialect.swift:public enum ToolCallDialectFamily: String, Codable, Sendable, CaseIterable {
+ManifoldHardware/ToolCallDialect.swift:public enum ToolCallExtractability: String, Codable, Sendable {
+ManifoldHardware/ToolTypes.swift:public indirect enum JSONSchemaValue: Sendable, Codable, Equatable, Hashable {
+ManifoldHuggingFace/DownloadFileValidator+Diffusion.swift:public enum DiffusionFileRole: Sendable {
+ManifoldInference/Eval/Score.swift:public enum ScoreValue: Sendable, Equatable {
+ManifoldInference/Metrics/GenSpan.swift:public enum AttributeValue: Sendable, Hashable {
+ManifoldInference/Metrics/GenSpan.swift:public enum GenAIAttributeKeys {
+ManifoldInference/Metrics/GenSpan.swift:public enum SpanKind: Sendable, Hashable {
+ManifoldInference/Metrics/GenSpan.swift:public enum SpanStatus: Sendable, Hashable {
+ManifoldInference/Metrics/GenSpanTree.swift:public enum GenSpanTree {
+ManifoldInference/Models/ActivityPhaseStateMachine.swift:public enum TransitionResult: Sendable, Equatable {
+ManifoldInference/Models/BackendActivityPhase.swift:public enum BackendActivityPhase: Sendable, Equatable {
+ManifoldInference/Models/BackendLoadOptions.swift:public enum KVCacheQuantization: String, Sendable, Codable, CaseIterable {
+ManifoldInference/Models/ConversationRecords.swift:public enum MessageStatus: String, Codable, Hashable, Sendable {
+ManifoldInference/Models/GenerationTypes.swift:public enum GenerationPriority: Int, Comparable, Sendable {
+ManifoldInference/Models/InboundPayload.swift:public enum Source: Sendable {
+ManifoldInference/Models/MessageKind.swift:public enum MessageKind: Hashable, Sendable {
+ManifoldInference/Models/MessageRole.swift:public enum MessageRole: String, Codable, Sendable {
+ManifoldInference/Models/ToolOutputPolicy.swift:public enum OversizeAction: Sendable {
+ManifoldInference/Networking/URLSessionFactory.swift:public enum URLSessionFactory {
+ManifoldInference/Services/AppleTTSBackend.swift:public enum BackendError: Error, Equatable, Sendable {
+ManifoldInference/Services/AudioGenerationService.swift:public enum AudioGenerationServiceError: Error, Equatable, Sendable {
+ManifoldInference/Services/AudioGenerationService.swift:public enum State: Sendable, Equatable {
+ManifoldInference/Services/ContextWindowManager.swift:public enum ContextWindowManager {
+ManifoldInference/Services/ExecutorState.swift:public enum ExecutorState: Sendable, Equatable {
+ManifoldInference/Services/GenerationEventKind.swift:public enum GenerationEventKind: String, Codable, Sendable, CaseIterable {
+ManifoldInference/Services/GenerationStreamConsumer.swift:public enum StreamAction: Equatable, Sendable {
+ManifoldInference/Services/ImageGenerationService.swift:public enum ImageGenerationServiceError: Error, Equatable, Sendable {
+ManifoldInference/Services/ImageGenerationService.swift:public enum State: Sendable, Equatable {
+ManifoldInference/Services/InferenceService+StructuredOutput.swift:public enum StructuredOutputError: Error, Sendable {
+ManifoldInference/Services/InferenceService+StructuredOutputEnvelope.swift:public enum StructuredOutputEnvelopeError: Error, Sendable {
+ManifoldInference/Services/InferenceService.swift:public enum GenerationRoute: Sendable {
+ManifoldInference/Services/InferenceService.swift:public enum ModelLoadReadinessState: Equatable, Sendable {
+ManifoldInference/Services/ModelLoadCoordinator.swift:public enum LoadIntent: Sendable {
+ManifoldInference/Services/ModelLoadStatus.swift:public enum ModelLoadStatus: Sendable, Equatable {
+ManifoldInference/Services/ModelSelection.swift:public enum ModelSelectionGroup: String, Sendable, CaseIterable, Identifiable {
+ManifoldInference/Services/ModelSelection.swift:public enum ModelSelectionSortOrder: String, CaseIterable, Identifiable, Sendable {
+ManifoldInference/Services/PreToolUseHook.swift:public enum PreToolUseOutcome: Sendable, Equatable {
+ManifoldInference/Services/PromptAssembler.swift:public enum PromptAssembler {
+ManifoldInference/Services/PromptSlot.swift:public enum PromptSlotPosition: Hashable, Sendable {
+ManifoldInference/Services/PromptSlot.swift:public enum PromptSlotRole: Hashable, Sendable {
+ManifoldInference/Services/RenderConsistencyChecker.swift:public enum RenderConsistencyChecker {
+ManifoldInference/Services/RenderConsistencyChecker.swift:public enum Status: Sendable, Equatable {
+ManifoldInference/Services/RepetitionDetector.swift:public enum RepetitionDetector {
+ManifoldInference/Services/SettingsService.swift:public enum AppearanceMode: String, CaseIterable, Identifiable {
+ManifoldInference/Services/ToolApprovalGate.swift:public enum ToolApprovalDecision: Sendable, Equatable {
+ManifoldInference/Services/ToolGrammarBuilder.swift:public enum Mode: Sendable, Equatable {
+ManifoldInference/Services/ToolSystemPromptBuilder.swift:public enum Style: Sendable, Equatable, Hashable {
+ManifoldInference/Services/TranscriptHealer.swift:public enum TranscriptHealer {
+ManifoldInference/Services/VideoGenerationService.swift:public enum State: Sendable, Equatable {
+ManifoldInference/Services/VideoGenerationService.swift:public enum VideoGenerationServiceError: Error, Equatable, Sendable {
+ManifoldInference/Services/VoiceDescriptor.swift:public enum Quality: Int, Sendable, Codable, Hashable, Comparable, CaseIterable {
+ManifoldInference/Utilities/MarkdownRendering.swift:public enum Block: Equatable, Sendable {
+ManifoldInference/Utilities/MarkdownRendering.swift:public enum MarkdownRendering {
+ManifoldKit/FeatureMatrix.swift:public enum FeatureMatrix {
+ManifoldKit/FeatureMatrix.swift:public enum ManifoldCapability: String, CaseIterable, Sendable {
+ManifoldKit/QuickStart.swift:public enum ManifoldKit {
+ManifoldKit/QuickStartSeed.swift:public enum SeedModelError: Error, LocalizedError, Sendable {
+ManifoldMCP/MCPCatalog.swift:public enum MCPCatalog {
+ManifoldMCP/MCPTypes.swift:public enum AuthRetryDecision: Sendable {
+ManifoldMCP/MCPTypes.swift:public enum MCPApprovalPolicy: Sendable, Equatable, Hashable, Codable {
+ManifoldMCP/MCPTypes.swift:public enum MCPAuthorizationDescriptor: Sendable, Equatable, Hashable, Codable {
+ManifoldMCP/MCPTypes.swift:public enum MCPConnectionEvent: Sendable {
+ManifoldMCP/MCPTypes.swift:public enum MCPConnectionState: Sendable, Equatable {
+ManifoldMCP/MCPTypes.swift:public enum MCPDisconnectReason: Sendable, Equatable, Hashable, Codable {
+ManifoldMCP/MCPTypes.swift:public enum MCPError: Error, Sendable, Equatable {
+ManifoldMCP/MCPTypes.swift:public enum MCPLifecycleEvent: Sendable, Equatable, Hashable {
+ManifoldMCP/MCPTypes.swift:public enum MCPNetworkPathStatus: Sendable, Equatable, Hashable {
+ManifoldMCP/MCPTypes.swift:public enum MCPSessionLifecyclePolicy: Sendable, Equatable, Hashable {
+ManifoldMCP/MCPTypes.swift:public enum MCPTransportKind: Sendable, Equatable, Hashable, Codable {
+ManifoldMCP/MCPTypes.swift:public enum Mode: String, Sendable, Equatable, Hashable, Codable {
+ManifoldMCPHost/MCPHostServer.swift:public enum MCPHostError: Error, LocalizedError, Sendable {
+ManifoldMCPHost/MCPHostStdioTransport.swift:public enum MCPHostTransportError: Error, LocalizedError, Sendable {
+ManifoldModelCatalog/APIEndpointRecord.swift:public enum CodingKeys: String, CodingKey {
+ManifoldModelCatalog/AudioGenerationEvent.swift:public enum AudioGenerationEvent: Sendable {
+ManifoldModelCatalog/ChatTemplateToolDescriptor.swift:public enum ArgEncoding: String, Sendable, Equatable, Hashable, Codable {
+ManifoldModelCatalog/ChatTemplateToolDescriptor.swift:public enum Extractability: String, Sendable, Equatable, Hashable, Codable {
+ManifoldModelCatalog/CloudBackendError.swift:public enum CloudBackendError: LocalizedError, CategorizedError {
+ManifoldModelCatalog/CloudModelManifestTable.swift:public enum CloudModelManifestTable {
+ManifoldModelCatalog/DownloadState.swift:public enum DownloadStatus: Sendable {
+ManifoldModelCatalog/GeneratedMediaPayload.swift:public enum MediaKind: String, Sendable, Codable, Hashable, CaseIterable {
+ManifoldModelCatalog/HuggingFaceError.swift:public enum HuggingFaceError: LocalizedError {
+ManifoldModelCatalog/ImageGenerationEvent.swift:public enum ImageGenerationEvent: Sendable {
+ManifoldModelCatalog/ImageModelLoadPlan.swift:public enum Reason: Sendable, Equatable {
+ManifoldModelCatalog/Logging.swift:public enum Log {
+ManifoldModelCatalog/ManifoldConfiguration.swift:public enum CustomHostTrustPolicy: Sendable, Equatable {
+ManifoldModelCatalog/ManifoldConfiguration.swift:public enum NetworkPolicy: Sendable, Equatable {
+ManifoldModelCatalog/ManifoldConfiguration.swift:public enum NetworkPolicyError: Error, Sendable, Equatable {
+ManifoldModelCatalog/ManifoldKitError.swift:public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
+ManifoldModelCatalog/ModelCapabilityProbe.swift:public enum ModelCapabilityProbe {
+ManifoldModelCatalog/ModelCapabilityProbe.swift:public enum ModelCapabilityProbeError: LocalizedError, Equatable {
+ManifoldModelCatalog/ModelCatalog.swift:public enum ModelSource: Codable, Hashable, Sendable {
+ManifoldModelCatalog/ModelDiscoveryError.swift:public enum ModelDiscoveryError: LocalizedError, Equatable, Sendable {
+ManifoldModelCatalog/ModelDownloadPlan.swift:public enum ModelDownloadPlan: Sendable, Hashable {
+ManifoldModelCatalog/ModelDownloadPlan.swift:public enum ModelFileChecksumAlgorithm: String, Sendable, Hashable, Codable {
+ManifoldModelCatalog/ModelManifest.swift:public enum ProducerKind: String, Sendable, Equatable, Codable {
+ManifoldModelCatalog/OperationalError.swift:public enum OperationalError: LocalizedError, Sendable, Equatable {
+ManifoldModelCatalog/SSEStreamLimits.swift:public enum SSEStreamError: Error, Equatable, Sendable {
+ManifoldModelCatalog/VideoGenerationConfig.swift:public enum AspectRatio {
+ManifoldModelCatalog/VideoGenerationEvent.swift:public enum VideoGenerationEvent: Sendable, Codable {
+ManifoldOllama/OllamaBackends.swift:public enum OllamaBackends: BackendRegistrar {
+ManifoldPersistenceSwiftData/Adapters/FlatFileVectorStore.swift:public enum VectorStoreError: LocalizedError {
+ManifoldPersistenceSwiftData/ModelContainerFactory.swift:public enum ModelContainerFactory {
+ManifoldPersistenceSwiftData/Schema/ManifoldMigrationPlan.swift:public enum ManifoldMigrationPlan: SchemaMigrationPlan {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV11.swift:public enum ManifoldSchemaV11: VersionedSchema {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV12.swift:public enum ManifoldSchemaV12: VersionedSchema {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV4.swift:public enum ManifoldSchemaV4: VersionedSchema {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV5.swift:public enum ManifoldSchemaV5: VersionedSchema {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV6.swift:public enum ManifoldSchemaV6: VersionedSchema {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV9.swift:public enum ManifoldSchemaV9: VersionedSchema {
+ManifoldPersistenceTestSupport/GlassBoxDemoRAG.swift:public enum GlassBoxDemoRAG {
+ManifoldPersistenceTestSupport/InMemoryPersistenceHarness.swift:public enum InMemoryPersistenceHarness {
+ManifoldRuntime/Models/APIEndpointValidationReason.swift:public enum APIEndpointValidationReason: Error, Equatable, Sendable {
+ManifoldRuntime/Models/ChatIntentAction.swift:public enum ChatIntentAction: Sendable, Codable, Equatable {
+ManifoldRuntime/Models/ConversationEventKind.swift:public enum ConversationEventKind: String, Codable, Sendable, CaseIterable {
+ManifoldRuntime/Models/RuntimeBootstrapMilestone.swift:public enum RuntimeBootstrapMilestone: Sendable, Hashable, CaseIterable, CustomStringConvertible {
+ManifoldRuntime/Protocols/DocumentParser.swift:public enum DocumentParserError: LocalizedError {
+ManifoldRuntime/Protocols/HistoryProvider.swift:public enum HistoryInsertionPosition: Sendable {
+ManifoldRuntime/Protocols/HistoryShaper.swift:public enum Kind: String, Sendable, Hashable {
+ManifoldRuntime/Protocols/MessageStore.swift:public enum MessageStoreMutation: Sendable, Equatable {
+ManifoldRuntime/Protocols/SessionStore.swift:public enum ChatPersistenceError: Error, LocalizedError, Sendable, Equatable {
+ManifoldRuntime/Services/AudioRuntimeEvent.swift:public enum AudioRuntimeEvent: Sendable, Equatable {
+ManifoldRuntime/Services/ChatExportService.swift:public enum ChatExportService {
+ManifoldRuntime/Services/ChatExportService.swift:public enum ExportFormat: String, CaseIterable, Identifiable {
+ManifoldRuntime/Services/Compression/CompressionOutcome.swift:public enum CompressionOutcome: Sendable, Equatable {
+ManifoldRuntime/Services/Compression/CompressionOutcome.swift:public enum FallbackReason: Sendable, Equatable {
+ManifoldRuntime/Services/ConversationEvent.swift:public enum ConversationEvent: Sendable {
+ManifoldRuntime/Services/ConversationExporter.swift:public enum ConversationExportError: Error, Equatable {
+ManifoldRuntime/Services/ConversationExporter.swift:public enum ConversationExporter {
+ManifoldRuntime/Services/ConversationImporter.swift:public enum ConversationImportWriteError: Error, LocalizedError, Sendable {
+ManifoldRuntime/Services/ConversationRuntime+TurnInput.swift:public enum TurnKind: Sendable, Codable {
+ManifoldRuntime/Services/ConversationRuntimeTypes.swift:public enum CompressionReason: Sendable, Hashable {
+ManifoldRuntime/Services/ConversationRuntimeTypes.swift:public enum ConversationError: Error, Sendable {
+ManifoldRuntime/Services/ConversationRuntimeTypes.swift:public enum FinishReason: Sendable, Hashable {
+ManifoldRuntime/Services/ConversationTurnHandle.swift:public enum Classification: Sendable, Hashable {
+ManifoldRuntime/Services/EndpointStore.swift:public enum EndpointStoreError: Error, LocalizedError, Sendable, Equatable {
+ManifoldRuntime/Services/HandoffDetector.swift:public enum HandoffDetector {
+ManifoldRuntime/Services/HandoffToolSource.swift:public enum HandoffSourceError: Error, Equatable, Sendable {
+ManifoldRuntime/Services/Hooks/HookEvent.swift:public enum HookEvent: String, Sendable, Equatable, CaseIterable {
+ManifoldRuntime/Services/Hooks/PreToolUseHookAdapter.swift:public enum PreToolUseHookAdapter {
+ManifoldRuntime/Services/Hooks/ToolApprovalPolicy.swift:public enum ToolApprovalHook {
+ManifoldRuntime/Services/Hooks/ToolApprovalPolicy.swift:public enum ToolApprovalPolicy: Sendable, Equatable {
+ManifoldRuntime/Services/ImageRuntimeEvent.swift:public enum ImageRuntimeEvent: Sendable, Equatable {
+ManifoldRuntime/Services/JSONLImportFormat.swift:public enum JSONLImportError: Error, LocalizedError, Sendable, Equatable {
+ManifoldRuntime/Services/PersonaStore.swift:public enum PersonaStoreError: Error, LocalizedError, Sendable, Equatable {
+ManifoldRuntime/Services/RAGService.swift:public enum RAGError: LocalizedError {
+ManifoldRuntime/Services/RAGService.swift:public enum RetrievalStrategy: Sendable {
+ManifoldRuntime/Services/SamplerPresetStore.swift:public enum SamplerPresetStoreError: Error, LocalizedError, Sendable, Equatable {
+ManifoldRuntime/Services/SessionListService.swift:public enum SessionListEvent: Sendable {
+ManifoldRuntime/Services/ToolCallConformance.swift:public enum ToolCallCapability: String, Codable, Sendable {
+ManifoldRuntime/Services/ToolCallConformance.swift:public enum ToolCallConformanceSource: String, Codable, Sendable {
+ManifoldRuntime/Services/VideoRuntimeEvent.swift:public enum VideoRuntimeEvent: Sendable, Equatable {
+ManifoldSecrets/KeychainService.swift:public enum KeychainError: Error, Equatable, Sendable, LocalizedError {
+ManifoldSecrets/KeychainService.swift:public enum KeychainService {
+ManifoldSecrets/SecureEnclaveKeyManager.swift:public enum SecureEnclaveError: Error, Equatable, Sendable, LocalizedError {
+ManifoldServer/ManifoldServer.swift:public enum ManifoldServer {
+ManifoldSkills/SkillReferenceResolver.swift:public enum SkillReferenceError: Error, Equatable, Sendable {
+ManifoldSkills/SkillToolSource.swift:public enum SkillDispatchError: Error, Equatable, Sendable {
+ManifoldTestSupport/ChaosBackend.swift:public enum FailureMode: Sendable, Equatable {
+ManifoldTestSupport/HardwareRequirements.swift:public enum HardwareRequirements {
+ManifoldTestSupport/ImageFixtures.swift:public enum ImageFixtures {
+ManifoldTestSupport/MockInferenceBackend.swift:public enum ScriptedToolCallDelta: Sendable {
+ManifoldTestSupport/MockURLProtocol.swift:public enum StubbedResponse: @unchecked Sendable {
+ManifoldTestSupport/RAGEval/RAGEvalCorpus.swift:public enum RAGEvalCorpus {
+ManifoldTestSupport/RAGEval/RAGEvaluator.swift:public enum RAGEvalError: LocalizedError {
+ManifoldTestSupport/RAGEval/RAGEvaluator.swift:public enum RAGEvaluator {
+ManifoldTestSupport/SampleDocumentCorpus.swift:public enum SampleDocumentCorpus {
+ManifoldTools/BFCL/ASTMatcher.swift:public enum ASTMatcher {
+ManifoldTools/BFCL/ASTMatcher.swift:public enum Failure: Equatable, Sendable, CustomStringConvertible {
+ManifoldTools/BFCL/BFCLCaseLoader.swift:public enum BFCLCaseLoader {
+ManifoldTools/BFCL/BFCLCaseLoader.swift:public enum LoadError: Error, CustomStringConvertible {
+ManifoldTools/CLI/ScenarioCLIHarness.swift:public enum FilterError: Error, CustomStringConvertible {
+ManifoldTools/CLI/ScenarioCLIHarness.swift:public enum ParseOutcome {
+ManifoldTools/CLI/ScenarioCLIHarness.swift:public enum ScenarioCLIHarness {
+ManifoldTools/ConformanceRecord.swift:public enum CellStatus: Codable, Sendable, Equatable {
+ManifoldTools/ConformanceRecord.swift:public enum FailureClass: String, Codable, Sendable {
+ManifoldTools/ConformanceScorer.swift:public enum ConformanceScorer {
+ManifoldTools/ConformanceScorer.swift:public enum ScoringError: Error, CustomStringConvertible {
+ManifoldTools/ConformanceScorer.swift:public enum Verdict: String, Codable, Sendable {
+ManifoldTools/MatrixRenderer.swift:public enum MatrixRenderer {
+ManifoldTools/ReferenceTools/CalcTool.swift:public enum CalcTool {
+ManifoldTools/ReferenceTools/DecoyTools.swift:public enum DecoyTools {
+ManifoldTools/ReferenceTools/HttpGetFixtureTool.swift:public enum HttpGetFixtureTool {
+ManifoldTools/ReferenceTools/ListDirTool.swift:public enum ListDirTool {
+ManifoldTools/ReferenceTools/NowTool.swift:public enum NowTool {
+ManifoldTools/ReferenceTools/ReadFileTool.swift:public enum ReadFileTool {
+ManifoldTools/ReferenceTools/SampleRepoSearchTool.swift:public enum SampleRepoSearchTool {
+ManifoldTools/ReferenceTools/SandboxResolver.swift:public enum SandboxResolver {
+ManifoldTools/ReferenceTools/ToolFixtures.swift:public enum ToolFixtures {
+ManifoldTools/Scenarios/Scenario.swift:public enum AssertionEvaluator {
+ManifoldTools/Scenarios/ScenarioLoader.swift:public enum LoadError: Error, CustomStringConvertible {
+ManifoldTools/Scenarios/ScenarioLoader.swift:public enum ScenarioLoader {
+ManifoldTools/ScriptedBackend.swift:public enum Turn: Sendable {
+ManifoldTools/TranscriptLogger.swift:public enum Event {
+ManifoldTools/VLModelDetector.swift:public enum VLModelDetector {
+ManifoldUI/Utilities/ChatExporter.swift:public enum ChatExporter {
+ManifoldUI/Utilities/ChatExporter.swift:public enum ChatExporterError: Error, Equatable {
+ManifoldUI/Utilities/SpotlightIndexer.swift:public enum SpotlightIndexer {
+ManifoldUI/ViewModels/ArchitectViewModel.swift:public enum ArchitectEventCategory: Sendable, Equatable {
+ManifoldUI/ViewModels/ChatScrollToMessageRequest.swift:public enum ChatMessageScrollAnchor: Sendable, Hashable {
+ManifoldUI/ViewModels/ChatViewModel+AudioGeneration.swift:public enum ChatViewModelAudioError: Error, LocalizedError, Equatable {
+ManifoldUI/ViewModels/ChatViewModel+ImageGeneration.swift:public enum ChatViewModelImageError: Error, LocalizedError, Equatable {
+ManifoldUI/ViewModels/ChatViewModel+IngestPendingPayload.swift:public enum IngestionIntent: Sendable {
+ManifoldUI/ViewModels/ChatViewModel+IngestPendingPayload.swift:public enum PendingPayload: Sendable {
+ManifoldUI/ViewModels/ChatViewModel+Messages.swift:public enum SendMessageError: Error, Sendable {
+ManifoldUI/ViewModels/ChatViewModel+VideoGeneration.swift:public enum ChatViewModelVideoError: Error, LocalizedError, Equatable {
+ManifoldUI/ViewModels/ChatViewModel+WebSearch.swift:public enum ChatViewModelWebSearchError: Error, LocalizedError, Equatable {
+ManifoldUI/ViewModels/ChatViewModel.swift:public enum ModelLoadState {
+ManifoldUI/ViewModels/ChatViewModel.swift:public enum TurnState {
+ManifoldUI/ViewModels/SessionManagerViewModel.swift:public enum SessionSearchScope: String, CaseIterable, Hashable, Sendable {
+ManifoldUI/ViewModels/UIToolApprovalGate.swift:public enum Policy: Sendable, CaseIterable {
+ManifoldUI/Views/Chat/InlineCitationRenderer.swift:public enum InlineCitationRenderer {
+ManifoldUI/Views/Chat/InlineCitationRenderer.swift:public enum Segment: Equatable, Sendable {
+ManifoldUI/Views/Chat/ToolInvocationView.swift:public enum State: Sendable, Equatable {
+ManifoldUIModelManagement/Catalogs/DiffusionModelCatalog.swift:public enum DiffusionModelCatalog {
+ManifoldUIModelManagement/ViewModels/ModelManagementViewModel.swift:public enum ModelImportError: LocalizedError, Equatable {
+ManifoldUIModelManagement/ViewModels/ModelManagementViewModel.swift:public enum SortMode: String, CaseIterable, Sendable {
+ManifoldUIModelManagement/Views/Models/ModelManagementSheet.swift:public enum Tab: String, CaseIterable {
+ManifoldVoice/Views/VoiceComposerAccessory.swift:public enum VoiceDraftMergeStrategy: Sendable {
+ManifoldVoice/VoiceActivityDetector.swift:public enum VoiceActivity: Sendable, Equatable {
+ManifoldVoice/VoiceTypes.swift:public enum VoiceAuthorizationStatus: Sendable, Equatable {
+ManifoldVoice/VoiceTypes.swift:public enum VoiceCaptureState: Equatable {
+ManifoldVoice/VoiceTypes.swift:public enum VoiceError: LocalizedError, Equatable {
+ManifoldVoice/VoiceTypes.swift:public enum VoiceRecoveryAffordance: Sendable, Equatable {
+#
+# Public enums that landed on main after the #2208 sweep was authored (MCP
+# sampling #1925, the #2307 UI-refresh theming + model-switcher surface, schema
+# V13). Same "unassessed, not cleared" status as the block above — a PR
+# touching one should add the marker and drop its line here.
+ManifoldMCP/MCPSampling.swift:public enum Role: String, Sendable, Equatable {
+ManifoldMCP/MCPSampling.swift:public enum Content: Sendable, Equatable {
+ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV13.swift:public enum ManifoldSchemaV13: VersionedSchema {
+ManifoldUI/Theming/ThinkingBlockStyle.swift:public enum ThinkingBlockState: Sendable, Equatable {
+ManifoldUI/Theming/ComposerStyle.swift:public enum ComposerPhase: Sendable, Equatable {
+ManifoldUI/Theming/ToolInvocationStyle.swift:public enum ToolInvocationLifecycleState: Sendable, Equatable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcherEntry: Identifiable, Sendable, Equatable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcherCapabilityGlyph: String, Sendable, CaseIterable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcherFitVerdict: Sendable, Equatable {
+ManifoldUIModelManagement/Views/Models/ModelSwitcher.swift:public enum ModelSwitcher {

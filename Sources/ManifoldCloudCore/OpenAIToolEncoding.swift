@@ -61,8 +61,6 @@ package enum OpenAIToolEncoding {
     /// nested function-selection object.
     package static func applyToolChoice(_ choice: ToolChoice, into body: inout [String: Any]) {
         switch choice {
-        case .auto:
-            break
         case .none:
             body["tool_choice"] = "none"
         case .required:
@@ -72,6 +70,12 @@ package enum OpenAIToolEncoding {
                 "type": "function",
                 "function": ["name": name],
             ]
+        case .auto:
+            // Omit the field and let the server apply its default behaviour.
+            break
+        @unknown default:
+            // Any unknown future ToolChoice mode: same permissive fallback.
+            break
         }
     }
 

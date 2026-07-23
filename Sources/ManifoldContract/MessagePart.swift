@@ -18,6 +18,16 @@ import Foundation
 /// (see `ManifoldSchemaV4`), so such rows decode correctly as their actual
 /// cases. The `.text` fallback remains as a safety net for genuinely
 /// malformed JSON until V5.
+///
+/// ## Vocabulary freeze (1.0)
+///
+/// **The `MessagePart` vocabulary is frozen as of the 1.0 release.** The set
+/// of cases is the stable cross-module contract every backend/persistence
+/// adapter produces and every UI/context-budgeting consumer switches over;
+/// adding a case is source-breaking for exhaustive `switch` statements, so new
+/// cases land only in a major (`feat!:`) release. Public-facing / cross-module
+/// consumers should add an `@unknown default:` arm to stay resilient to a
+/// future major (see #2208).
 public enum MessagePart: Hashable, Sendable {
     case text(String)
     /// Raw image bytes the *user* uploaded as input to a multimodal model.

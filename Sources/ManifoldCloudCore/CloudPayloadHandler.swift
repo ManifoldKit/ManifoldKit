@@ -26,11 +26,32 @@ public struct CloudPayloadHandler: Sendable, SSEPayloadHandler {
     /// Identity of the wire format this handler parses. Stands in for the
     /// retired enum cases so factory extensions (e.g.
     /// `makeClaudeStreamConsumer()`) can still discriminate providers.
-    public enum Provider: String, Sendable, Hashable {
-        case openAI
-        case openAIResponses
-        case claude
-        case ollama
+    ///
+    /// Extensible struct following the ``BackendName`` (`Notification.Name` /
+    /// `URLResourceKey`) pattern rather than a closed `enum` — see
+    /// `BackendName.swift` for the full rationale. Consumers compare by
+    /// equality (`guard provider == .ollama`) rather than exhaustive switch,
+    /// so this conversion carries no call-site migration beyond adding a
+    /// `default:` arm to any future switch.
+    public struct Provider: RawRepresentable, Sendable, Hashable, CustomStringConvertible {
+        public let rawValue: String
+
+        public init(rawValue: String) {
+            self.rawValue = rawValue
+        }
+
+        public var description: String { rawValue }
+
+        public static let openAI = Provider(rawValue: "openAI")
+        public static let openAIResponses = Provider(rawValue: "openAIResponses")
+        public static let claude = Provider(rawValue: "claude")
+        public static let ollama = Provider(rawValue: "ollama")
+
+        /// The complete set of providers shipped with ManifoldKit. A new
+        /// provider family would add an entry here; third-party providers
+        /// are fully supported via `Provider(rawValue:)` without one.
+        public static let wellKnown: [Provider] = [.openAI, .openAIResponses, .claude, .ollama]
+        public static let allCases: [Provider] = wellKnown
     }
 
     public let provider: Provider

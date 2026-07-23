@@ -112,6 +112,11 @@ public enum ContextWindowManager {
         case .toolResult(let result):
             let payload = [result.content, result.dialog].compactMap { $0 }.joined(separator: " ")
             return estimateTokenCount(payload, tokenizer: tokenizer)
+        @unknown default:
+            // An unrecognised future part kind: use the same fixed estimate
+            // as the other non-text media cases above rather than 0, which
+            // would silently under-budget the context window.
+            return generatedMediaPartTokenEstimate
         }
     }
 

@@ -78,6 +78,15 @@ public final class DefaultWebSearchRuntime: WebSearchRuntime {
 /// Errors surfaced by ``DefaultWebSearchRuntime``. The web-search tool maps
 /// these onto a ``ToolResult`` with the appropriate `errorKind` so the model
 /// receives a readable failure rather than an opaque trap.
+///
+/// ## Vocabulary freeze (1.0)
+///
+/// **The `WebSearchRuntimeError` vocabulary is frozen as of the 1.0
+/// release.** The two cases above are the complete, stable set; adding a
+/// case is source-breaking for exhaustive `switch` statements, so new cases
+/// land only in a major (`feat!:`) release. Cross-module consumers should
+/// add an `@unknown default:` arm to stay resilient to a future major (see
+/// #2208).
 public enum WebSearchRuntimeError: Error, LocalizedError, Equatable {
 
     /// The configured base URL could not be composed into a valid endpoint URL.
