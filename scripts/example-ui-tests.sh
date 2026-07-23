@@ -137,10 +137,39 @@ echo "Derived data: $DERIVED_DATA_PATH"
 echo "Destination:  $DESTINATION"
 echo "Command:      xcodebuild -project $PROJECT -scheme $SCHEME -derivedDataPath $DERIVED_DATA_PATH $COMMAND ${EXTRA_ARGS[*]+"${EXTRA_ARGS[*]}"}"
 
-xcodebuild \
-    -project "$PROJECT" \
-    -scheme "$SCHEME" \
-    -derivedDataPath "$DERIVED_DATA_PATH" \
-    -destination "$DESTINATION" \
-    "$COMMAND" \
-    "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+# Xcode's SPM workspace integration intermittently aborts during package
+# resolution with an uncaught NSInvalidArgumentException ("count of array (15)
+# differs from count of index set (14)", inside IDESPMWorkspaceDelegate) — the
+# process dies with Abort trap: 6 before a single file compiles, so it says
+# nothing about the Example app's own code. It hit every weekly smoke run from
+# 2026-05-18 through 2026-07-20 (#2341), turning a permanently-red lane into
+# pure noise. scripts/demo-apps-build.sh already retries once on this exact
+# signature; mirror it here. A real build or test failure does NOT match the
+# signature and still fails on the first attempt, without a retry.
+XCODEBUILD_FLAKE_SIGNATURE="NSInvalidArgumentException"
+RUN_LOG="$(mktemp -t example-ui-tests)"
+trap 'rm -f "$RUN_LOG"' EXIT
+
+attempt_xcodebuild() {
+    xcodebuild \
+        -project "$PROJECT" \
+        -scheme "$SCHEME" \
+        -derivedDataPath "$DERIVED_DATA_PATH" \
+        -destination "$DESTINATION" \
+        "$COMMAND" \
+        "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}" 2>&1 | tee "$RUN_LOG"
+    return "${PIPESTATUS[0]}"
+}
+
+if attempt_xcodebuild; then
+    exit 0
+fi
+
+if grep -q "$XCODEBUILD_FLAKE_SIGNATURE" "$RUN_LOG"; then
+    echo ">> xcodebuild crashed during package resolution (flaky) — retrying once..." >&2
+    if attempt_xcodebuild; then
+        exit 0
+    fi
+fi
+
+exit 1
