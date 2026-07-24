@@ -19,6 +19,34 @@ scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/
 
 The helper auto-selects an available simulator destination. If you need to pin one manually, inspect `xcrun simctl list devices available` and pass `--destination 'platform=iOS Simulator,id=<SIMULATOR_ID>'`.
 
+### Visual walkthrough (screenshot evidence for a design pass)
+
+`AdvancedUITests/VisualWalkthroughUITests` drives the demo through the surfaces the 2026 UI refresh restyled — empty state, model switcher, tool-invocation cards, scroll-under-glass, composer, bubble-style presets — and writes a numbered screenshot story for a human comparison against the drawn spec (`docs/design/ui-refresh-2026.html`). Run it by hand whenever the chat surface changes; it is not part of any CI lane:
+
+```bash
+scripts/example-ui-tests.sh test -only-testing:AdvancedUITests/VisualWalkthroughUITests
+```
+
+Screenshots go to `/private/tmp/manifoldkit-ui-walkthrough` (also attached to the result bundle), and the path is printed at the start of each test. `/private/tmp` is periodically cleared by the system, so copy out anything worth keeping — or point the run somewhere durable:
+
+```bash
+TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR="$HOME/Desktop/walkthrough" \
+  scripts/example-ui-tests.sh test -only-testing:AdvancedUITests/VisualWalkthroughUITests
+```
+
+Two things about that variable. It must be an **environment assignment before the command**, not a trailing `xcodebuild` argument — in argument position it is read as a build setting and never reaches the runner (the frames then quietly go to the default directory). And the path must be **absolute**: `~` is not expanded there, so use `$HOME`. A relative value fails the run rather than silently writing into the simulator's container.
+
+The suite's finale, `testDefineRealOllamaEndpointAndSendLiveMessage`, is **opt-in and not hermetic**: it launches without `--uitesting` (real backends, real SwiftData store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and persists an endpoint into the demo's real store. It skips with an explanatory message unless you opt in on the same command line:
+
+```bash
+TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 scripts/example-ui-tests.sh test \
+  -only-testing:AdvancedUITests/VisualWalkthroughUITests/testDefineRealOllamaEndpointAndSendLiveMessage
+```
+
+Known gap (2026-07-25): on a simulator destination the finale drives the whole flow correctly — endpoint created and Ready, selected in the switcher, turn started — but no reply arrives and it fails on its final assertion. The request never reaches the server: a host round-trip immediately afterwards still paid the full cold model load. That narrows it to "never arrived" without identifying a cause — the turn may never have dispatched, or a cleartext `http://localhost` call may have been refused (the demo declares no `NSAppTransportSecurity` exception, though an ATS refusal returns -1022 immediately rather than leaving a 90-second spinner, which argues against it). Unresolved, and deliberately not softened into an assertion that passes without a reply.
+
+(The sibling real-model E2E in `ModelManagementUITests` gates on a `~/.manifoldkit_real_e2e` sentinel file instead. That works because it is documented for a macOS destination, where `HOME` is your home directory; under this suite's default simulator destination `HOME` is the simulator's container, so a sentinel you touched on the host would never be seen.)
+
 ### What This Demonstrates
 
 - Configuring `ManifoldConfiguration` at startup
