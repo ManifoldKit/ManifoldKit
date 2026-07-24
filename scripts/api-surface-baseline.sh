@@ -73,15 +73,21 @@
 # the nightly api-check step (nightly-slow-tests.yml, `swift package
 # diagnose-api-breaking-changes`) covers, so the two gates track the same
 # modules and neither silently drifts ahead of the other. Keep
-# DEFAULT_MODULES in sync with Package.swift's `products:` array (and with
-# PublicSurfaceBaselineTests.swift's `expectedModules`) when a product is
-# added, removed, or renamed. Executables (fuzz-chat, manifold-tools, the
+# DEFAULT_MODULES in sync with Package.swift's `products:` array when a
+# product is added, removed, or renamed — no longer a hand-checked invariant:
+# `PublicSurfaceBaselineTests.testScriptDefaultModulesMatchManifest` derives
+# the expected set from the manifest (minus the documented exclusions — see
+# `ManifoldServerKit` below, held in that test's `baselineScopeExclusions`)
+# and fails if this list disagrees, naming the offending module in either
+# direction. (That test's former hand-kept `expectedModules` array is gone —
+# it is derived now, so there is nothing to update on that side.)
+# Executables (fuzz-chat, manifold-tools, the
 # `ManifoldServer` CLI product → ManifoldServerCLI target, see Package.swift's
 # product comments) and the ManifoldMacrosPlugin build plugin aren't
 # `.library()` products and have no digestible module interface — out of
 # scope by construction, not an exclusion.
 #
-# `ManifoldServerKit` (Package.swift:136, module name `ManifoldServer` — NOT
+# `ManifoldServerKit` (Package.swift:142, module name `ManifoldServer` — NOT
 # the executable product of the same simple name above) IS a `.library()`
 # product, and does NOT belong in the "out of scope by construction" bucket
 # above — it shipped a real public seam (`ServerBackendProvider`,
