@@ -1,8 +1,49 @@
 #if Server
 @testable import ManifoldServer
 import ArgumentParser
+import Foundation
 import ManifoldInference
 import XCTest
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
+
+/// Redirects the process's `stderr` file descriptor to a pipe for the
+/// duration of `body`, returning everything written to it. Used to make the
+/// `--allow-anonymous` boot-warning duplication (fixed in this PR) provable:
+/// `ValidationError`/`fputs` write straight to the real `stderr`, so there is
+/// no in-process hook to intercept short of a fd swap.
+private func captureStandardError(_ body: () throws -> Void) rethrows -> String {
+    fflush(stderr)
+    let originalStderrFD = dup(STDERR_FILENO)
+    let pipe = Pipe()
+    dup2(pipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
+
+    // Restoring must happen BEFORE we read the pipe: while STDERR_FILENO still
+    // references the pipe's write end, the pipe never reaches EOF and
+    // `readToEnd()` blocks forever. `dup2`-ing the saved fd back over
+    // STDERR_FILENO drops that reference; closing `fileHandleForWriting` drops
+    // the other one. Idempotent so the `defer` safety net (which fires if
+    // `body()` throws) can't double-close.
+    var restored = false
+    func restoreStderr() {
+        guard !restored else { return }
+        restored = true
+        fflush(stderr)
+        dup2(originalStderrFD, STDERR_FILENO)
+        close(originalStderrFD)
+        try? pipe.fileHandleForWriting.close()
+    }
+    defer { restoreStderr() }
+
+    try body()
+
+    restoreStderr()
+    let data = (try? pipe.fileHandleForReading.readToEnd()) ?? nil
+    return data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+}
 
 final class ManifoldServerCLITests: XCTestCase {
     func testParsesServerOptionsAndBuildsConfiguration() throws {
@@ -132,6 +173,38 @@ final class ManifoldServerCLITests: XCTestCase {
                 "got \(error)"
             )
         }
+    }
+
+    /// #2312-adjacent: ArgumentParser invokes `ServerCommandOptions.validate()`
+    /// once automatically while decoding the parsed `@OptionGroup` (see
+    /// `OptionGroup.init(from:)`), before `run()` is ever reached. A prior
+    /// version of `ManifoldServerCommand.run()` called `options.validate()`
+    /// again explicitly, which duplicated the --allow-anonymous security
+    /// warning on every boot. This exercises the full boot sequence (parse +
+    /// `buildApp()`, the non-network prefix of `run()`) and asserts the
+    /// warning fires exactly once.
+    func testAllowAnonymousWarningPrintsExactlyOnceDuringBoot() throws {
+        // Boot with `--backend ollama` (URL-validated, never connected at build
+        // time) rather than the default `foundation` backend: Foundation Models
+        // require macOS 26 / iOS 26, so on the n-1 CI runner (macOS 15)
+        // buildApp() would throw "Apple Foundation Models require iOS 26 /
+        // macOS 26 or later" before the --allow-anonymous warning path runs.
+        // Ollama is always compiled in with no OS floor, so it exercises the
+        // same boot sequence on every runner.
+        let output = try captureStandardError {
+            let parsed = try ManifoldServerCommand.parseAsRoot(["--allow-anonymous", "--backend", "ollama"])
+            guard let command = parsed as? ManifoldServerCommand else {
+                XCTFail("expected ManifoldServerCommand, got \(type(of: parsed))")
+                return
+            }
+            _ = try command.buildApp()
+        }
+
+        let marker = "warning: ManifoldServer started with --allow-anonymous"
+        let warningCount = output.components(separatedBy: marker).count - 1
+        // SABOTAGE: change `1` to `2` to verify this test catches a
+        // reintroduced double-validate() call.
+        XCTAssertEqual(warningCount, 1, "expected the --allow-anonymous warning exactly once, got \(warningCount) in stderr: \(output)")
     }
 
     func testLoopbackBindHostClassifier() {

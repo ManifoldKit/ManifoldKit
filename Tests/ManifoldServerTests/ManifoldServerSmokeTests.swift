@@ -220,7 +220,7 @@ final class ManifoldServerSmokeTests: XCTestCase {
             adapter: FixedChatAdapter(content: "one two")
         )
         try await server.makeApplication().test(.router) { client in
-            let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: []))
+            let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))
             try await client.execute(uri: "/v1/chat/completions", method: .post, body: body)
             try await client.execute(uri: "/metrics", method: .get) { response in
                 let text = String(buffer: response.body)
@@ -241,8 +241,8 @@ final class ManifoldServerSmokeTests: XCTestCase {
         let app = server.makeApplication()
 
         try await app.test(.router) { client in
-            let firstBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: []))
-            let secondBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: []))
+            let firstBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))
+            let secondBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))
             async let first: Void = client.execute(uri: "/v1/chat/completions", method: .post, body: firstBody) { _ in () }
             async let second: Void = client.execute(uri: "/v1/chat/completions", method: .post, body: secondBody) { _ in () }
             _ = try await (first, second)
@@ -263,8 +263,8 @@ final class ManifoldServerSmokeTests: XCTestCase {
         let app = server.makeApplication()
 
         try await app.test(.router) { client in
-            let firstBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [], stream: true))
-            let secondBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [], stream: true))
+            let firstBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")], stream: true))
+            let secondBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")], stream: true))
             async let first: Void = client.execute(uri: "/v1/chat/completions", method: .post, body: firstBody) { _ in () }
             async let second: Void = client.execute(uri: "/v1/chat/completions", method: .post, body: secondBody) { _ in () }
             _ = try await (first, second)
@@ -282,7 +282,7 @@ final class ManifoldServerSmokeTests: XCTestCase {
         let app = server.makeApplication()
 
         try await app.test(.router) { client in
-            let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [], stream: true))
+            let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")], stream: true))
             try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
                 XCTAssertEqual(response.status, .ok)
                 // SABOTAGE: change Content-Type assertion to "text/plain" to verify SSE type is set
@@ -324,7 +324,7 @@ final class ManifoldServerSmokeTests: XCTestCase {
         try await app.test(.router) { client in
             let body = try requestBody(ChatCompletionRequest(
                 model: "tiny",
-                messages: [],
+                messages: [.init(role: "user", content: "hi")],
                 stream: true,
                 streamOptions: ChatCompletionStreamOptions(includeUsage: true)
             ))
@@ -352,10 +352,10 @@ final class ManifoldServerSmokeTests: XCTestCase {
 
         try await app.test(.router) { client in
             let requests = [
-                ChatCompletionRequest(model: "tiny", messages: [], stream: true),
+                ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")], stream: true),
                 ChatCompletionRequest(
                     model: "tiny",
-                    messages: [],
+                    messages: [.init(role: "user", content: "hi")],
                     stream: true,
                     streamOptions: ChatCompletionStreamOptions(includeUsage: false)
                 )
@@ -429,6 +429,35 @@ final class ManifoldServerSmokeTests: XCTestCase {
                 XCTAssertEqual(envelope.error.param, "tools")
                 XCTAssertEqual(envelope.error.code, "unsupported_capability")
                 XCTAssertTrue(envelope.error.message.contains("tool calling"))
+            }
+        }
+    }
+
+    func testEmptyMessagesArrayReturns400InsteadOfGenerating() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let request = ChatCompletionRequest(model: "tiny", messages: [])
+            let body = try requestBody(request)
+
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                // SABOTAGE: change status assertion to .ok to verify this test catches regressions
+                XCTAssertEqual(response.status, .badRequest)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Empty-messages errors must be JSON"
+                )
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
+                )
+                XCTAssertEqual(envelope.error.type, "invalid_request_error")
+                XCTAssertEqual(envelope.error.param, "messages")
+                XCTAssertTrue(envelope.error.message.contains("at least one item"))
             }
         }
     }

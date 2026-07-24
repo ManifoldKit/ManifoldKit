@@ -574,6 +574,16 @@ internal struct ServerApp: Sendable {
         let capabilities = backend.capabilities
         let unsupportedCode = "unsupported_capability"
 
+        // An empty `messages` array has nothing to prompt from — generating
+        // anyway burns tokens on a hallucinated reply instead of surfacing
+        // the malformed request (matches OpenAI's 400 for this shape).
+        if request.messages.isEmpty {
+            throw ServerError.invalidRequest(
+                message: "'messages' must contain at least one item.",
+                param: "messages"
+            )
+        }
+
         if request.messages.contains(where: { $0.role == .system || $0.role == .developer }),
            !capabilities.supportsSystemPrompt {
             throw ServerError.invalidRequest(
