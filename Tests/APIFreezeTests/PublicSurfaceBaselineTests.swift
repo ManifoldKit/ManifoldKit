@@ -72,10 +72,24 @@ final class PublicSurfaceBaselineTests: XCTestCase {
     /// `PackageTraitGateAuditTest` takes over this manifest, and for the same
     /// reason: the manifest is not importable from a test target, and its
     /// product declarations are uniform enough that a regex is honest here.
+    ///
+    /// `//` line comments are stripped first. This manifest's prose really does
+    /// discuss products — there is a `.library()` mention inside a comment today
+    /// — so without stripping, a future comment that happened to include
+    /// `name: "Foo"` would invent a product and demand a baseline for it. That
+    /// failure is loud rather than silent, but it is still a wrong answer from
+    /// a gate whose whole purpose is not to give wrong answers.
     static func libraryProductNames(inManifestAt url: URL) throws -> Set<String> {
         let manifest = try String(contentsOf: url, encoding: .utf8)
+        let code = manifest
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> Substring in
+                guard let commentStart = line.range(of: "//") else { return line }
+                return line[line.startIndex..<commentStart.lowerBound]
+            }
+            .joined(separator: "\n")
         return Set(
-            manifest
+            code
                 .matches(of: try Regex(#"\.library\(\s*name:\s*"([A-Za-z0-9_]+)""#))
                 .map { String($0[1].substring ?? "") }
                 .filter { !$0.isEmpty }
@@ -290,6 +304,9 @@ final class PublicSurfaceBaselineTests: XCTestCase {
                     targets: ["ManifoldGamma"]
                 ),
                 .executable(name: "some-tool", targets: ["some-tool"]),
+                // Prose really does discuss products in this manifest, e.g.
+                // .library(name: "ManifoldCommented", targets: ["x"]) — which
+                // must NOT be picked up as a real product.
             ]
         )
         """#.write(to: manifestURL, atomically: true, encoding: .utf8)
@@ -297,7 +314,14 @@ final class PublicSurfaceBaselineTests: XCTestCase {
         let parsed = try Self.libraryProductNames(inManifestAt: manifestURL)
         XCTAssertEqual(
             parsed, ["ManifoldAlpha", "ManifoldBeta", "ManifoldGamma"],
-            "The derivation must find every .library product (including the multi-line form) and no .executable"
+            """
+            The derivation must find every .library product (including the multi-line form), \
+            and must exclude both .executable products and any .library mentioned inside a comment.
+            """
+        )
+        XCTAssertFalse(
+            parsed.contains("ManifoldCommented"),
+            "A .library(name:) inside a `//` comment must not be treated as a declared product."
         )
 
         // A script that has drifted: missing Gamma, and scoping a module the
