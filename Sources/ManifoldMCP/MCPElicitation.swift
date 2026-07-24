@@ -57,6 +57,17 @@ public struct MCPElicitationRequest: Sendable, Equatable {
 /// note on `MCPClientConfiguration.elicitationHandler`.
 public struct MCPElicitationResult: Sendable, Equatable {
     /// MCP spec action vocabulary for `elicitation/create` responses.
+    ///
+    /// ## Vocabulary freeze (1.0)
+    ///
+    /// **The `Action` vocabulary is frozen to the MCP `elicitation/create`
+    /// spec (2025-06-18): `accept`, `decline`, `cancel` are the complete set.**
+    /// This value is produced by the host and encoded *outbound* (never decoded
+    /// off the wire), so there is no unknown-case to tolerate — a new action
+    /// could arrive only via a future MCP spec revision and would land in a
+    /// major (`feat!:`) release. Exhaustive `switch`es over it are safe today;
+    /// cross-module consumers should still add an `@unknown default:` arm to
+    /// stay resilient to a future major (see #2208).
     public enum Action: String, Sendable, Equatable {
         /// The user filled the form and submitted it — `content` carries their answer.
         case accept
