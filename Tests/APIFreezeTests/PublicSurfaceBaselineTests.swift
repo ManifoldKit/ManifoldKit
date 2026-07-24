@@ -73,20 +73,26 @@ final class PublicSurfaceBaselineTests: XCTestCase {
     /// reason: the manifest is not importable from a test target, and its
     /// product declarations are uniform enough that a regex is honest here.
     ///
-    /// `//` line comments are stripped first. This manifest's prose really does
-    /// discuss products — there is a `.library()` mention inside a comment today
-    /// — so without stripping, a future comment that happened to include
-    /// `name: "Foo"` would invent a product and demand a baseline for it. That
-    /// failure is loud rather than silent, but it is still a wrong answer from
-    /// a gate whose whole purpose is not to give wrong answers.
+    /// Whole-line `//` comments are dropped first. This is prophylactic, not a
+    /// bug fix: the manifest's prose does discuss products (there is a
+    /// `.library()` mention in a comment at Package.swift:953), but that one
+    /// carries no `name:` so the regex never matched it — stripping changes
+    /// today's result set by exactly zero elements. It guards the *future*
+    /// comment that includes `name: "Foo"`, which would otherwise invent a
+    /// product and demand a baseline for it.
+    ///
+    /// Only whole-line comments are dropped, deliberately. Cutting each line at
+    /// its first `//` would also truncate string literals — there are 10 such
+    /// lines in this manifest today, every one a `.package(url: "https://…")`.
+    /// None carries a `.library(name:`, so that would be harmless right now,
+    /// but "harmless right now" is how a parser acquires a latent bug. Every
+    /// genuine comment in this manifest is a whole-line comment (verified: zero
+    /// trailing code comments), so this form is both safer and sufficient.
     static func libraryProductNames(inManifestAt url: URL) throws -> Set<String> {
         let manifest = try String(contentsOf: url, encoding: .utf8)
         let code = manifest
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> Substring in
-                guard let commentStart = line.range(of: "//") else { return line }
-                return line[line.startIndex..<commentStart.lowerBound]
-            }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
         return Set(
             code
@@ -213,11 +219,6 @@ final class PublicSurfaceBaselineTests: XCTestCase {
     /// is the correct, intentional state, not baseline rot.
     private static let expectedEmptyModules: Set<String> = ["ManifoldNetworking"]
 
-    /// For each scoped module: the baseline file exists, is non-empty
-    /// (unless listed in ``expectedEmptyModules``), every line matches
-    /// `<name> <knownKind>` (or one of the two isolation/Sendable-signal
-    /// shapes below), and the file is already sorted + de-duplicated (the
-    /// normalizer's contract — a diff-stable baseline depends on this).
     // MARK: - Manifest ↔ script module-scope agreement
 
     /// The generator script's `DEFAULT_MODULES` must equal the set derived from
@@ -279,6 +280,23 @@ final class PublicSurfaceBaselineTests: XCTestCase {
         XCTAssertTrue(
             stale.isEmpty,
             "baselineScopeExclusions names product(s) absent from Package.swift: \(stale.sorted()). Remove the stale entries."
+        )
+
+        // Pin the set. Deriving the module list closed one hand-maintained
+        // sync point and opened one hand-maintained escape hatch: a module
+        // whose baseline is inconvenient could be silenced by adding it here,
+        // and every other check would stay green (the staleness check above
+        // only asks that the name be a real product, and the count floor
+        // tolerates the set shrinking). Widening coverage-suppression should
+        // never be a quiet one-line diff — this makes it a deliberate,
+        // reviewer-visible test change.
+        XCTAssertEqual(
+            Self.baselineScopeExclusions, ["ManifoldServerKit"],
+            """
+            baselineScopeExclusions changed. Each entry REMOVES a module from API-surface \
+            drift detection, so adding one narrows the gate — justify it in the PR body with \
+            the reason that module cannot be covered, not merely why it is inconvenient.
+            """
         )
     }
 
@@ -357,6 +375,11 @@ final class PublicSurfaceBaselineTests: XCTestCase {
         )
     }
 
+    /// For each scoped module: the baseline file exists, is non-empty
+    /// (unless listed in ``expectedEmptyModules``), every line matches
+    /// `<name> <knownKind>` (or one of the two isolation/Sendable-signal
+    /// shapes below), and the file is already sorted + de-duplicated (the
+    /// normalizer's contract — a diff-stable baseline depends on this).
     func testEachModuleBaselineIsWellFormed() throws {
         let modules = try Self.expectedModules()
 
