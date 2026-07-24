@@ -30,19 +30,17 @@ scripts/example-ui-tests.sh test -only-testing:AdvancedUITests/VisualWalkthrough
 Screenshots go to `/private/tmp/manifoldkit-ui-walkthrough` (also attached to the result bundle), and the path is printed at the start of each test. `/private/tmp` is periodically cleared by the system, so copy out anything worth keeping — or point the run somewhere durable:
 
 ```bash
-scripts/example-ui-tests.sh test \
-  -only-testing:AdvancedUITests/VisualWalkthroughUITests \
-  TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR="$HOME/Desktop/walkthrough"
+TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR="$HOME/Desktop/walkthrough" \
+  scripts/example-ui-tests.sh test -only-testing:AdvancedUITests/VisualWalkthroughUITests
 ```
 
-Two things about that argument: the `TEST_RUNNER_` prefix is what carries a value into the XCUITest runner process (`xcodebuild test` does not propagate plain shell environment variables into it), and the path must be **absolute** — `~` is not expanded inside an `xcodebuild` argument by zsh, so use `$HOME`. A relative value fails the run rather than silently writing into the simulator's container.
+Two things about that variable. It must be an **environment assignment before the command**, not a trailing `xcodebuild` argument — in argument position it is read as a build setting and never reaches the runner (the frames then quietly go to the default directory). And the path must be **absolute**: `~` is not expanded there, so use `$HOME`. A relative value fails the run rather than silently writing into the simulator's container.
 
 The suite's finale, `testDefineRealOllamaEndpointAndSendLiveMessage`, is **opt-in and not hermetic**: it launches without `--uitesting` (real backends, real SwiftData store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and persists an endpoint into the demo's real store. It skips with an explanatory message unless you opt in on the same command line:
 
 ```bash
-scripts/example-ui-tests.sh test \
-  -only-testing:AdvancedUITests/VisualWalkthroughUITests \
-  TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1
+TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 scripts/example-ui-tests.sh test \
+  -only-testing:AdvancedUITests/VisualWalkthroughUITests/testDefineRealOllamaEndpointAndSendLiveMessage
 ```
 
 (The sibling real-model E2E in `ModelManagementUITests` gates on a `~/.manifoldkit_real_e2e` sentinel file instead. That works because it is documented for a macOS destination, where `HOME` is your home directory; under this suite's default simulator destination `HOME` is the simulator's container, so a sentinel you touched on the host would never be seen.)

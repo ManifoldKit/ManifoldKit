@@ -40,14 +40,24 @@ final class VisualWalkthroughUITests: XCTestCase {
         print("[walkthrough] screenshots → \(walkthroughOutputDirectory.path)")
     }
 
-    /// Reads an override passed to `xcodebuild` as `TEST_RUNNER_<name>=…`.
+    /// Reads an override exported into `xcodebuild`'s **environment** as
+    /// `TEST_RUNNER_<name>`:
     ///
-    /// That prefix is how a value reaches the XCUITest runner process — a plain
-    /// shell env var does not propagate into it (the reason
-    /// `ModelManagementUITests.skipUnlessRealModelE2EEnabled()` uses a file
-    /// instead). Xcode strips the prefix before injecting, but the prefixed
-    /// form is also accepted so a mis-set variable still lands somewhere
-    /// visible rather than silently doing nothing.
+    /// ```
+    /// TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR=/tmp/frames scripts/example-ui-tests.sh test …
+    /// ```
+    ///
+    /// That prefix is how a value reaches the XCUITest runner process; an
+    /// unprefixed shell variable does not propagate into it, which is why
+    /// `ModelManagementUITests.skipUnlessRealModelE2EEnabled()` reaches for a
+    /// file instead. It has to be an environment assignment — passing
+    /// `TEST_RUNNER_FOO=bar` as a trailing *argument* to `xcodebuild` is taken
+    /// as a build setting and never arrives (verified: the frames went to the
+    /// default directory).
+    ///
+    /// Xcode strips the prefix before injecting, so the unprefixed name is what
+    /// the runner actually sees; both keys are accepted so a mis-set variable
+    /// still lands somewhere visible rather than doing nothing.
     private func runnerOverride(_ name: String) -> String? {
         let env = ProcessInfo.processInfo.environment
         for key in [name, "TEST_RUNNER_\(name)"] {
@@ -65,10 +75,10 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// days — copy out anything worth keeping, or point the override somewhere
     /// durable.
     ///
-    /// A relative override is rejected rather than resolved: `~/Desktop/x` from
-    /// a zsh command line arrives unexpanded, and quietly creating a `~`
-    /// directory inside the runner's container is precisely how a human ends up
-    /// staring at an empty folder.
+    /// A relative override is rejected rather than resolved: a quoted
+    /// `"~/Desktop/x"` arrives unexpanded, and quietly creating a `~` directory
+    /// inside the runner's container is precisely how a human ends up staring
+    /// at an empty folder.
     private var walkthroughOutputDirectory: URL {
         guard let override = runnerOverride("MANIFOLD_WALKTHROUGH_DIR") else {
             return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
@@ -76,7 +86,7 @@ final class VisualWalkthroughUITests: XCTestCase {
         guard override.hasPrefix("/") else {
             XCTFail("""
                 MANIFOLD_WALKTHROUGH_DIR must be an absolute path; got "\(override)". \
-                A shell will not expand ~ inside an xcodebuild argument — use $HOME/….
+                A quoted ~ is never expanded on its way to the runner — use $HOME/….
                 """)
             return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
         }
@@ -319,12 +329,13 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
-    /// Opt in on the `xcodebuild` command line:
+    /// Opt in with an environment assignment on the run command (see
+    /// ``runnerOverride(_:)`` — an argument-position `TEST_RUNNER_…=…` does not
+    /// reach the runner):
     ///
     /// ```
-    /// scripts/example-ui-tests.sh test \
-    ///   -only-testing:AdvancedUITests/VisualWalkthroughUITests \
-    ///   TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1
+    /// TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 scripts/example-ui-tests.sh test \
+    ///   -only-testing:AdvancedUITests/VisualWalkthroughUITests/testDefineRealOllamaEndpointAndSendLiveMessage
     /// ```
     ///
     /// Deliberately *not* the sentinel-file shape
