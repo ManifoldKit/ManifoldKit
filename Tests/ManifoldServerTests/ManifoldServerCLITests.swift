@@ -21,16 +21,26 @@ private func captureStandardError(_ body: () throws -> Void) rethrows -> String 
     let pipe = Pipe()
     dup2(pipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
 
-    defer {
+    // Restoring must happen BEFORE we read the pipe: while STDERR_FILENO still
+    // references the pipe's write end, the pipe never reaches EOF and
+    // `readToEnd()` blocks forever. `dup2`-ing the saved fd back over
+    // STDERR_FILENO drops that reference; closing `fileHandleForWriting` drops
+    // the other one. Idempotent so the `defer` safety net (which fires if
+    // `body()` throws) can't double-close.
+    var restored = false
+    func restoreStderr() {
+        guard !restored else { return }
+        restored = true
         fflush(stderr)
         dup2(originalStderrFD, STDERR_FILENO)
         close(originalStderrFD)
+        try? pipe.fileHandleForWriting.close()
     }
+    defer { restoreStderr() }
 
     try body()
 
-    fflush(stderr)
-    try? pipe.fileHandleForWriting.close()
+    restoreStderr()
     let data = (try? pipe.fileHandleForReading.readToEnd()) ?? nil
     return data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
 }
