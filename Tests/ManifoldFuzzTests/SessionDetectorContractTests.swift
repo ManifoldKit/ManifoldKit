@@ -207,17 +207,20 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
     private let detector = CancellationRaceDetector()
 
     /// Positive: turn 1 streams several tokens; a stop fires; turn 2's raw
-    /// contains one of turn 1's post-stop tokens verbatim — a leak.
+    /// contains a long contiguous run of turn 1's post-stop tail verbatim —
+    /// a genuine leak, not an incidental shared word.
     func test_positive_postStopTokenLeakFires() {
+        let leakedTail = "the ancient lighthouse cast a long green shadow across the entire harbor at midnight"
         let turn1 = SessionFixture.record(
-            raw: "begin middlephrase end",
+            raw: "begin " + leakedTail,
             events: [
                 (0.0, "token", "begin "),
-                (0.5, "token", "middlephrase "),
-                (0.9, "token", "end"),
+                (0.5, "token", leakedTail),
             ]
         )
-        let turn2 = SessionFixture.record(raw: "completely new response with middlephrase in it")
+        let turn2 = SessionFixture.record(
+            raw: "Sure, here is something new: " + leakedTail + " and then the story continues."
+        )
         let capture = SessionFixture.capture(id: "race-pos", turns: [turn1, turn2], stopAfterIndex: 0)
         let findings = detector.inspect([capture])
         XCTAssertFalse(findings.isEmpty)
@@ -235,18 +238,21 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         XCTAssertTrue(findings.isEmpty)
     }
 
-    /// Boundary: stop exists, turn-1 has exactly one post-first-event token,
-    /// and that token (`raceword`) appears in turn 2. Ten inspections return
+    /// Boundary: the shared run between turn 1's post-stop tail and turn 2's
+    /// raw is exactly `minResidueChars` long (24). The guard is
+    /// `>= minResidueChars` so it MUST fire; ten inspections must return
     /// identical findings.
-    func test_boundary_deterministicAtSinglePostStopToken() {
+    func test_boundary_deterministicAtThreshold() {
+        let boundary = "abcdefghijklmnopqrstuvwx" // 24 chars
+        precondition(boundary.count == 24)
         let turn1 = SessionFixture.record(
-            raw: "hello raceword",
+            raw: "hello zzz" + boundary + "qqq",
             events: [
                 (0.0, "token", "hello "),
-                (0.4, "token", "raceword"),
+                (0.4, "token", "zzz" + boundary + "qqq"),
             ]
         )
-        let turn2 = SessionFixture.record(raw: "a new answer with raceword embedded")
+        let turn2 = SessionFixture.record(raw: "www" + boundary + "yyy")
         let capture = SessionFixture.capture(id: "race-boundary", turns: [turn1, turn2], stopAfterIndex: 0)
 
         let first = detector.inspect([capture])
@@ -274,6 +280,36 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         )
         let capture = SessionFixture.capture(id: "race-adv", turns: [turn1, turn2], stopAfterIndex: nil)
         XCTAssertTrue(detector.inspect([capture]).isEmpty)
+    }
+
+    /// Adversarial / the #2361 regression: a stop DOES fire between two
+    /// verbose, unrelated turns that legitimately share ordinary function
+    /// words ("which", "where", "capital") the way any two long-form
+    /// generations will. The pre-fix detector matched on any single
+    /// mid-stream token >= 6 chars and fired on these; this is the exact
+    /// shape that made #2361 a false positive. Must NOT fire.
+    func test_adversarial_commonFunctionWordsAcrossVerboseTurnsDoNotFire() {
+        let turn1Rest = "solar system is a fascinating place, which includes eight planets, several dwarf "
+            + "planets, and countless smaller bodies, all of which orbit the Sun in different regions, "
+            + "some of which are close to the star and others which lie far out where sunlight is scarce "
+            + "and where temperatures plunge, a place where icy comets originate. Mercury, the closest "
+            + "planet, has a surface which resembles our Moon, while Jupiter, which is the largest planet, "
+            + "dominates the outer system where its gravity shapes the orbits of countless smaller worlds."
+        let turn1 = SessionFixture.record(
+            raw: "The " + turn1Rest,
+            events: [
+                (0.0, "token", "The "),
+                (0.5, "token", turn1Rest),
+            ]
+        )
+        let turn2 = SessionFixture.record(
+            raw: "The sum of 2 and 2 is 4, which is a basic arithmetic fact taught early in school, "
+                + "and it is one of the first equations which children learn, similar to how they learn the "
+                + "capital of a country or where a river originates. Just as Paris is the capital of France, "
+                + "4 is simply the answer here, a fact which holds regardless of where or when you ask it."
+        )
+        let capture = SessionFixture.capture(id: "race-2361", turns: [turn1, turn2], stopAfterIndex: 0)
+        SessionContractAsserter.assertEmpty(detector.inspect([capture]), detectorId: detector.id)
     }
 }
 
