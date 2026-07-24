@@ -86,6 +86,7 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// `"~/Desktop/x"` arrives unexpanded, and quietly creating a `~` directory
     /// inside the runner's container is precisely how a human ends up staring
     /// at an empty folder.
+    ///
     /// Resolved once per test in `setUpWithError` — the rejection below is a
     /// side effect, and a computed property would re-fire it on every capture.
     private func resolveOutputDirectory() -> URL {
@@ -342,17 +343,24 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
-    /// **Known gap on a simulator destination** (2026-07-25): every step up to
-    /// and including sending passes — the endpoint is created and reports
-    /// Ready, the switcher selects it, the turn starts — but no reply arrives
-    /// and the transcript sits on the typing indicator until the timeout. The
-    /// request does not reach the server: a host round-trip taken straight
-    /// afterwards still paid the ~21 s cold model load, which a request that
-    /// had arrived would have avoided. The demo declares no
-    /// `NSAppTransportSecurity` exception, so a cleartext `http://localhost`
-    /// call from the sandboxed simulator app is the first suspect. Unresolved;
-    /// the assertion is deliberately left strict rather than softened into
-    /// something that passes without a reply.
+    /// **Known gap on a simulator destination** (2026-07-25), stated as what
+    /// was observed rather than as a diagnosis: every step up to and including
+    /// sending passes — the endpoint is created and reports Ready, the switcher
+    /// selects it, the turn starts — but no reply arrives and the transcript
+    /// sits on the typing indicator until the timeout. The request does not
+    /// reach the server: a host round-trip taken straight afterwards still paid
+    /// the ~21 s cold model load, which a request that had arrived would have
+    /// avoided.
+    ///
+    /// That narrows it to "never arrived", not to a cause. Two candidates, both
+    /// unconfirmed: the turn never dispatched a request at all, or a cleartext
+    /// `http://localhost` call was refused (the demo declares no
+    /// `NSAppTransportSecurity` exception). The silent 90 s spinner argues
+    /// *against* the transport story — an ATS refusal returns -1022 in
+    /// milliseconds and would surface through `ErrorBannerView` — so this needs
+    /// `NetworkActivity` (`ManifoldNetworking`) or a `simctl log stream` to
+    /// separate them. The assertion is deliberately left strict rather than
+    /// softened into something that passes without a reply.
     ///
     /// Opt in with an environment assignment on the run command (see
     /// ``runnerOverride(_:)`` — an argument-position `TEST_RUNNER_…=…` does not
@@ -391,10 +399,14 @@ final class VisualWalkthroughUITests: XCTestCase {
         // settings button lives in the toolbar overflow, so it is not directly
         // present either. The chat navigation bar is the thing that reliably
         // marks "the chat surface is up".
-        XCTAssertTrue(
-            waitForElement(app.navigationBars["Chat"], timeout: 20),
-            "Chat surface should come up in the live (non-scripted) launch"
-        )
+        #if os(macOS)
+        // No iOS-style navigation bar on macOS; the settings button sits in the
+        // window toolbar rather than an overflow, so it is a usable signal there.
+        let chatSurfaceUp = waitForElement(app.buttons["chat-settings-button"], timeout: 20)
+        #else
+        let chatSurfaceUp = waitForElement(app.navigationBars["Chat"], timeout: 20)
+        #endif
+        XCTAssertTrue(chatSurfaceUp, "Chat surface should come up in the live (non-scripted) launch")
 
         guard navigateToAPIConfigurationLive(app: app) else {
             dumpHierarchy(app, named: "12-endpoint-nav-failed-hierarchy")
@@ -523,23 +535,37 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// Settings each need their own Done — and a fixed two taps is not enough
     /// (observed: the run ended with Cloud APIs still up, the chip still in the
     /// hierarchy underneath it, and the failure reading as a chip regression).
-    /// Presence of either sheet's title is the condition, not a tap count.
+    /// The condition is both halves: neither settings title present *and* the
+    /// chat navigation bar back — absence alone would also be satisfied by an
+    /// alert or a stray popover covering the chat, which is the same class of
+    /// bug in a new costume.
     private func returnToChatSurface(app: XCUIApplication) -> Bool {
-        func settingsSheetVisible() -> Bool {
-            app.staticTexts["Cloud APIs"].exists || app.staticTexts["Generation Settings"].exists
+        func chatIsFrontMost() -> Bool {
+            !app.staticTexts["Cloud APIs"].exists
+                && !app.staticTexts["Generation Settings"].exists
+                && app.navigationBars["Chat"].exists
         }
 
         for _ in 0..<4 {
-            guard settingsSheetVisible() else { return true }
+            guard !chatIsFrontMost() else { return true }
+            // `.firstMatch` matters: with Cloud APIs stacked over Generation
+            // Settings there are two Done buttons, and an ambiguous element
+            // raises on attribute access instead of tapping. The swipe fallback
+            // is local rather than `dismissSheet(app:)` for the same reason —
+            // that shared helper subscripts `Done` without disambiguating.
             let doneButton = app.buttons["Done"].firstMatch
             if doneButton.waitForExistence(timeout: 2), doneButton.isHittable {
                 doneButton.tap()
             } else {
-                dismissSheet(app: app)
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+                    .press(
+                        forDuration: 0.05,
+                        thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+                    )
             }
             Thread.sleep(forTimeInterval: uiSettle)
         }
-        return !settingsSheetVisible()
+        return chatIsFrontMost()
     }
 
     /// The switcher is a sheet on iOS and a popover on macOS; prefer an
