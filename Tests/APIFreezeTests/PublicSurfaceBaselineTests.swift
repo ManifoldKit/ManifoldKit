@@ -33,42 +33,64 @@ import XCTest
 @MainActor
 final class PublicSurfaceBaselineTests: XCTestCase {
 
-    /// The module list `scripts/api-surface-baseline.sh` scopes to by
-    /// default: every `.library(...)` product in Package.swift (see the
-    /// script's "Module scope" header section). Kept in sync by hand —
-    /// update here, in the script's `DEFAULT_MODULES`, and in
-    /// Package.swift's `products:` array together.
-    private static let expectedModules = [
-        "ManifoldKit",
-        "ManifoldInference",
-        "ManifoldContract",
-        "ManifoldNetworking",
-        "ManifoldSecrets",
-        "ManifoldHardware",
-        "ManifoldModelCatalog",
-        "ManifoldMCP",
-        "ManifoldMCPHost",
-        "ManifoldRuntime",
-        "ManifoldPersistenceSwiftData",
-        "ManifoldCloudCore",
-        "ManifoldFoundation",
-        "ManifoldOllama",
-        "ManifoldCloudSaaS",
-        "ManifoldAnyLanguageModel",
-        "ManifoldUI",
-        "ManifoldUIModelManagement",
-        "ManifoldHuggingFace",
-        "ManifoldVoice",
-        "ManifoldFuzz",
-        "ManifoldTestSupport",
-        "ManifoldPersistenceTestSupport",
-        "ManifoldBackendTestKit",
-        "ManifoldTools",
-        "ManifoldAppIntents",
-        "ManifoldSkills",
-        "ManifoldTelemetryOTLP",
-        "ManifoldAppEval",
-    ]
+    /// `.library(...)` products deliberately outside the baseline's scope,
+    /// each with the reason it cannot simply be added.
+    ///
+    /// - `ManifoldServerKit`: a real public seam (`ServerBackendProvider`,
+    ///   `ManifoldServer.serve(configuration:backendProvider:)`, #2242), but
+    ///   `swift package diagnose-api-breaking-changes` builds the dumped target
+    ///   in an internal scratch checkout and cannot resolve it — a confirmed
+    ///   SwiftPM tool limitation, not a scoping choice. See #2245 item 4 and
+    ///   the "Module scope" header in `scripts/api-surface-baseline.sh`.
+    ///
+    /// An entry here is a claim that the module CANNOT be covered. Removing a
+    /// module from coverage for any other reason means deleting its
+    /// `.library(...)` product, which the derivation below picks up on its own.
+    private static let baselineScopeExclusions: Set<String> = ["ManifoldServerKit"]
+
+    /// The module list `scripts/api-surface-baseline.sh` scopes to by default:
+    /// every `.library(...)` product in Package.swift, minus
+    /// ``baselineScopeExclusions``.
+    ///
+    /// **Derived from the manifest, not hand-maintained.** This used to be a
+    /// literal array kept in sync by hand across three places (here, the
+    /// script's `DEFAULT_MODULES`, and Package.swift's `products:`), with
+    /// nothing checking them against each other. Adding a `.library(...)` and
+    /// forgetting the other two silently left the new module unscoped: no
+    /// baseline generated, no baseline checked, and a real public-surface
+    /// removal in it shipping undetected. Deriving here removes one sync point
+    /// outright; ``testScriptDefaultModulesMatchManifest()`` covers the other.
+    private static func expectedModules() throws -> [String] {
+        try libraryProductNames(inManifestAt: repoRoot().appendingPathComponent("Package.swift"))
+            .filter { !baselineScopeExclusions.contains($0) }
+            .sorted()
+    }
+
+    /// Extracts every `.library(name: "X"` product name from a Package.swift.
+    ///
+    /// Syntactic line-scan rather than an AST parse — the same approach
+    /// `PackageTraitGateAuditTest` takes over this manifest, and for the same
+    /// reason: the manifest is not importable from a test target, and its
+    /// product declarations are uniform enough that a regex is honest here.
+    static func libraryProductNames(inManifestAt url: URL) throws -> Set<String> {
+        let manifest = try String(contentsOf: url, encoding: .utf8)
+        return Set(
+            manifest
+                .matches(of: try Regex(#"\.library\(\s*name:\s*"([A-Za-z0-9_]+)""#))
+                .map { String($0[1].substring ?? "") }
+                .filter { !$0.isEmpty }
+        )
+    }
+
+    /// Extracts the space-separated `DEFAULT_MODULES="..."` assignment from
+    /// `scripts/api-surface-baseline.sh`.
+    static func scriptDefaultModules(atScriptPath url: URL) throws -> Set<String> {
+        let script = try String(contentsOf: url, encoding: .utf8)
+        guard let match = script.firstMatch(of: try Regex(#"(?m)^DEFAULT_MODULES="([^"]*)""#)),
+              let value = match[1].substring
+        else { return [] }
+        return Set(value.split(separator: " ").map(String.init))
+    }
 
     /// Every `declKind` the normalizer (`scripts/_lib/api-surface-extract.py`)
     /// is known to emit, observed across the current baselines. A new kind
@@ -182,8 +204,125 @@ final class PublicSurfaceBaselineTests: XCTestCase {
     /// `<name> <knownKind>` (or one of the two isolation/Sendable-signal
     /// shapes below), and the file is already sorted + de-duplicated (the
     /// normalizer's contract — a diff-stable baseline depends on this).
+    // MARK: - Manifest ↔ script module-scope agreement
+
+    /// The generator script's `DEFAULT_MODULES` must equal the set derived from
+    /// Package.swift's `.library(...)` products, minus the documented
+    /// ``baselineScopeExclusions``.
+    ///
+    /// This is the second of the two former hand-sync points (the first —
+    /// `expectedModules` — is now derived outright). Nothing previously checked
+    /// them against each other: the script's own header says "Keep
+    /// DEFAULT_MODULES in sync with Package.swift's `products:` array (and with
+    /// PublicSurfaceBaselineTests.swift's `expectedModules`)", which is a
+    /// hand-maintained invariant with no tripwire. A product added to the
+    /// manifest but not to the script is never dumped, never diffed, and its
+    /// public surface can be removed without the gate noticing.
+    func testScriptDefaultModulesMatchManifest() throws {
+        let manifestModules = try Self.libraryProductNames(
+            inManifestAt: Self.repoRoot().appendingPathComponent("Package.swift")
+        ).subtracting(Self.baselineScopeExclusions)
+
+        let scriptModules = try Self.scriptDefaultModules(
+            atScriptPath: Self.repoRoot().appendingPathComponent("scripts/api-surface-baseline.sh")
+        )
+
+        XCTAssertFalse(
+            scriptModules.isEmpty,
+            "Parsed no DEFAULT_MODULES from scripts/api-surface-baseline.sh — the assignment moved or changed shape, so this check is inert."
+        )
+
+        let missingFromScript = manifestModules.subtracting(scriptModules)
+        let extraInScript = scriptModules.subtracting(manifestModules)
+
+        XCTAssertTrue(
+            missingFromScript.isEmpty,
+            """
+            Package.swift declares .library product(s) that scripts/api-surface-baseline.sh does not scope, \
+            so they get no API-surface baseline and no drift check:
+              \(missingFromScript.sorted().joined(separator: "\n  "))
+            Add them to DEFAULT_MODULES, or add them to baselineScopeExclusions with the reason they cannot be covered.
+            """
+        )
+        XCTAssertTrue(
+            extraInScript.isEmpty,
+            """
+            scripts/api-surface-baseline.sh scopes module(s) that are not .library products in Package.swift \
+            (renamed or removed?):
+              \(extraInScript.sorted().joined(separator: "\n  "))
+            """
+        )
+    }
+
+    /// Every exclusion must name a product that actually exists — otherwise a
+    /// rename silently widens coverage back open while the entry looks
+    /// deliberate.
+    func testExclusionsReferenceRealProducts() throws {
+        let manifestModules = try Self.libraryProductNames(
+            inManifestAt: Self.repoRoot().appendingPathComponent("Package.swift")
+        )
+        let stale = Self.baselineScopeExclusions.subtracting(manifestModules)
+        XCTAssertTrue(
+            stale.isEmpty,
+            "baselineScopeExclusions names product(s) absent from Package.swift: \(stale.sorted()). Remove the stale entries."
+        )
+    }
+
+    // MARK: - Sabotage (exercises the real derivation functions)
+
+    /// Plants a manifest and a script with a known disagreement and asserts the
+    /// REAL parsers used above detect it. Without this, the derivation could
+    /// silently return an empty set — an inert check that passes forever.
+    func test_sabotage_derivationDetectsManifestScriptDrift() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("expected-modules-sabotage-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let manifestURL = tmp.appendingPathComponent("Package.swift")
+        try #"""
+        let package = Package(
+            products: [
+                .library(name: "ManifoldAlpha", targets: ["ManifoldAlpha"]),
+                .library(name: "ManifoldBeta", targets: ["ManifoldBeta"]),
+                .library(
+                    name: "ManifoldGamma",
+                    targets: ["ManifoldGamma"]
+                ),
+                .executable(name: "some-tool", targets: ["some-tool"]),
+            ]
+        )
+        """#.write(to: manifestURL, atomically: true, encoding: .utf8)
+
+        let parsed = try Self.libraryProductNames(inManifestAt: manifestURL)
+        XCTAssertEqual(
+            parsed, ["ManifoldAlpha", "ManifoldBeta", "ManifoldGamma"],
+            "The derivation must find every .library product (including the multi-line form) and no .executable"
+        )
+
+        // A script that has drifted: missing Gamma, and scoping a module the
+        // manifest no longer declares.
+        let scriptURL = tmp.appendingPathComponent("api-surface-baseline.sh")
+        try #"""
+        #!/usr/bin/env bash
+        DEFAULT_MODULES="ManifoldAlpha ManifoldBeta ManifoldDeleted"
+        """#.write(to: scriptURL, atomically: true, encoding: .utf8)
+
+        let scriptModules = try Self.scriptDefaultModules(atScriptPath: scriptURL)
+        XCTAssertEqual(scriptModules, ["ManifoldAlpha", "ManifoldBeta", "ManifoldDeleted"])
+
+        XCTAssertEqual(
+            parsed.subtracting(scriptModules), ["ManifoldGamma"],
+            "A manifest product absent from DEFAULT_MODULES must surface as missing-from-script"
+        )
+        XCTAssertEqual(
+            scriptModules.subtracting(parsed), ["ManifoldDeleted"],
+            "A DEFAULT_MODULES entry with no matching product must surface as extra-in-script"
+        )
+    }
+
     func testEachModuleBaselineIsWellFormed() throws {
-        for module in Self.expectedModules {
+        for module in try Self.expectedModules() {
             let fileURL = Self.baselineDir().appendingPathComponent("\(module).txt")
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
                 XCTFail("Missing baseline for \(module): \(fileURL.path)")
