@@ -27,11 +27,18 @@ import XCTest
 /// each test) *and* as `XCTAttachment`s in the result bundle.
 final class VisualWalkthroughUITests: XCTestCase {
 
+    /// Where frames are written. See ``resolveOutputDirectory()``.
+    private var walkthroughOutputDirectory = URL(
+        fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough",
+        isDirectory: true
+    )
+
     /// A missed capture point must not abort the story — partial evidence for
     /// the remaining surfaces beats stopping at the first gap. Failures are
     /// still recorded (and still fail the test), they just don't halt it.
     override func setUpWithError() throws {
         continueAfterFailure = true
+        walkthroughOutputDirectory = resolveOutputDirectory()
         try FileManager.default.createDirectory(
             at: walkthroughOutputDirectory,
             withIntermediateDirectories: true
@@ -79,25 +86,28 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// `"~/Desktop/x"` arrives unexpanded, and quietly creating a `~` directory
     /// inside the runner's container is precisely how a human ends up staring
     /// at an empty folder.
-    private var walkthroughOutputDirectory: URL {
-        guard let override = runnerOverride("MANIFOLD_WALKTHROUGH_DIR") else {
-            return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
-        }
+    /// Resolved once per test in `setUpWithError` — the rejection below is a
+    /// side effect, and a computed property would re-fire it on every capture.
+    private func resolveOutputDirectory() -> URL {
+        let fallback = URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
+        guard let override = runnerOverride("MANIFOLD_WALKTHROUGH_DIR") else { return fallback }
         guard override.hasPrefix("/") else {
             XCTFail("""
                 MANIFOLD_WALKTHROUGH_DIR must be an absolute path; got "\(override)". \
                 A quoted ~ is never expanded on its way to the runner — use $HOME/….
                 """)
-            return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
+            return fallback
         }
         return URL(fileURLWithPath: override, isDirectory: true)
     }
 
-    /// How long a SwiftUI sheet/menu transition needs to finish (~0.3 s in
-    /// practice). Applied *before* every capture — screenshotting mid-transition
-    /// yields a half-drawn frame that reads as a rendering bug in the visual
-    /// pass — and after a dismissal, before the next interaction is attempted.
-    private let uiSettle: TimeInterval = 0.5
+    /// How long a SwiftUI transition needs to finish. Menus settle in ~0.25 s,
+    /// but a modal sheet takes ~0.5 s and `waitForExistence` returns the moment
+    /// the element exists — which can be at the *start* of the presentation,
+    /// catching the switcher mid-slide. Applied before every capture (a
+    /// half-drawn frame reads as a rendering bug in the visual pass) and after a
+    /// dismissal, before the next interaction is attempted.
+    private let uiSettle: TimeInterval = 0.8
 
     /// Mirrors `DemoScenarioUITests.launchDemoApp(scenario:)` (private there,
     /// not shared via `UITestHelpers`) so this suite can pick a scripted
@@ -200,7 +210,7 @@ final class VisualWalkthroughUITests: XCTestCase {
         dismissSwitcher(app: app)
     }
 
-    // MARK: - Populated transcript, tool cards, scroll, composer, classic preset
+    // MARK: - Populated transcript, tool cards, scroll, composer, bubble presets
     //
     // One test rather than five: each stage depends on the transcript state the
     // previous one produced, and re-launching per stage would cost a
@@ -211,7 +221,7 @@ final class VisualWalkthroughUITests: XCTestCase {
     // (`DemoScenarioUITests` scenarioExpectations[3]) — the richest single
     // transcript for a card/bubble visual pass.
 
-    func testTranscriptToolCardsComposerAndClassicPreset() throws {
+    func testTranscriptToolCardsComposerAndBubblePresets() throws {
         let app = launchDemoApp(scenario: "invalid-args-recover")
         openChatDetailIfNeeded(app: app)
         XCTAssertTrue(waitForChatInputReady(app: app, timeout: 30))
@@ -225,6 +235,9 @@ final class VisualWalkthroughUITests: XCTestCase {
             capture("03-transcript-timeout-state")
         }
         XCTAssertTrue(bubbleAppeared, "Scripted invalid-args-recover answer should render")
+        // Without this the timeout path writes the same broken frame twice,
+        // the second time labelled "populated".
+        guard bubbleAppeared else { return }
 
         capture("03-populated-transcript-bubbles")
 
@@ -470,15 +483,17 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// documentation for why the sibling suite's file-based precedent does not
     /// transplant.
     private func skipUnlessLiveWalkthroughEnabled() throws {
-        if let ci = ProcessInfo.processInfo.environment["CI"], !ci.isEmpty {
-            throw XCTSkip("Live walkthrough skipped in CI — needs a local Ollama serving llama3.1:8b")
-        }
-
+        // No CI guard: an unprefixed `CI` variable cannot reach the runner
+        // process (the same fact this gate is built around), so checking it
+        // would only look like protection. The flag below is off unless
+        // somebody passes it deliberately, which is the real guard.
         guard let flag = runnerOverride("MANIFOLD_WALKTHROUGH_LIVE"), flag != "0" else {
             throw XCTSkip("""
-                Live walkthrough opt-in: pass TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 to \
-                xcodebuild to run it. Requires Ollama serving llama3.1:8b at localhost:11434, \
-                launches without --uitesting, and persists an endpoint into the real demo store.
+                Live walkthrough opt-in: set TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 in the \
+                environment BEFORE the run command (in xcodebuild argument position it is read \
+                as a build setting and never arrives). Requires Ollama serving llama3.1:8b at \
+                localhost:11434, launches without --uitesting, and persists an endpoint into \
+                the real demo store.
                 """)
         }
     }
