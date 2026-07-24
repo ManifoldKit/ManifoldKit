@@ -90,17 +90,23 @@ final class SessionFuzzRunnerInertGuardTests: XCTestCase {
         let factory = SabotageableFactory(healthy: false)
         let runner = SessionFuzzRunner(config: config, factory: factory, scripts: [kvReuseShapedScript()])
 
-        let start = ContinuousClock.now
         let report = await runner.run(reporter: TerminalReporter(quiet: true))
-        let elapsed = start.duration(to: ContinuousClock.now)
 
         XCTAssertEqual(report.totalRuns, 5, "iteration budget should still be honored even though every turn fails")
         XCTAssertEqual(report.realCompletions, 0, "not one of the 30 turns should have reached phase==\"done\"")
         XCTAssertTrue(report.isInert, "a campaign with runs > 0 and realCompletions == 0 must be flagged inert")
-        XCTAssertLessThan(
-            elapsed, .seconds(2),
-            "precondition: this sabotage must reproduce the 'impossibly fast' symptom, not accidentally do real work"
-        )
+        // A wall-clock "must finish in <2s" precondition used to live here, to
+        // confirm the sabotage actually reproduces the 'impossibly fast'
+        // symptom rather than accidentally doing real (slow) generation. It
+        // was removed (#2367) after reproducing it as a false failure under
+        // CI-representative machine load — `SessionFuzzRunner.run()` hops to
+        // `@MainActor` once per iteration (`runScript`'s `MainActor.run`),
+        // and that hop's scheduling latency, not the sabotage's own work,
+        // is what blew the budget. The check was also redundant with the
+        // assertion above: if the sabotage had accidentally triggered real
+        // generation, `realCompletions` would be > 0 and that assertion would
+        // already fail — there is no case this wall-clock check caught that
+        // the functional assertions above did not.
     }
 
     // MARK: - Healthy counterpart: same script, working backend, NOT inert
