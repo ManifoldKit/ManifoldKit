@@ -1,11 +1,14 @@
 import XCTest
 
 /// Visual walkthrough of the 2026 UI refresh (#2307): drives the Advanced demo
-/// through the surfaces the refresh restyled — empty state, model switcher,
-/// tool-invocation cards, scroll-under-glass, composer, and the classic-theme
-/// restore path — asserting each one is reachable and writing a numbered
-/// screenshot story for a human visual pass against the Rev 7 mockups
+/// through surfaces the refresh restyled — empty state, model switcher,
+/// tool-invocation cards, scroll-under-glass, composer, and the demo's
+/// bubble-style presets — asserting each one is reachable and writing a
+/// numbered screenshot story for a human visual pass against the Rev 7 mockups
 /// (`docs/design/ui-refresh-2026.html`).
+///
+/// Not exhaustive: session rows, the thinking block, and the state screens have
+/// no coverage here yet.
 ///
 /// **Why this is a committed suite and not a scratch script.** Its first run
 /// found the model-switcher chip unreachable on compact-width toolbars — three
@@ -24,10 +27,6 @@ import XCTest
 /// each test) *and* as `XCTAttachment`s in the result bundle.
 final class VisualWalkthroughUITests: XCTestCase {
 
-    /// Sentinel enabling the live-Ollama finale. See
-    /// ``testDefineRealOllamaEndpointAndSendLiveMessage()``.
-    private static let liveSentinelName = ".manifoldkit_ui_walkthrough_live"
-
     /// A missed capture point must not abort the story — partial evidence for
     /// the remaining surfaces beats stopping at the first gap. Failures are
     /// still recorded (and still fail the test), they just don't halt it.
@@ -41,32 +40,53 @@ final class VisualWalkthroughUITests: XCTestCase {
         print("[walkthrough] screenshots → \(walkthroughOutputDirectory.path)")
     }
 
-    /// Resolution order: `MANIFOLD_WALKTHROUGH_DIR`, then the same name with
-    /// Xcode's `TEST_RUNNER_` prefix (the only way to reach the runner process
-    /// on a simulator destination — plain shell env vars are not propagated,
-    /// see `ModelManagementUITests.skipUnlessRealModelE2EEnabled()`), then a
-    /// fixed temp path.
+    /// Reads an override passed to `xcodebuild` as `TEST_RUNNER_<name>=…`.
+    ///
+    /// That prefix is how a value reaches the XCUITest runner process — a plain
+    /// shell env var does not propagate into it (the reason
+    /// `ModelManagementUITests.skipUnlessRealModelE2EEnabled()` uses a file
+    /// instead). Xcode strips the prefix before injecting, but the prefixed
+    /// form is also accepted so a mis-set variable still lands somewhere
+    /// visible rather than silently doing nothing.
+    private func runnerOverride(_ name: String) -> String? {
+        let env = ProcessInfo.processInfo.environment
+        for key in [name, "TEST_RUNNER_\(name)"] {
+            if let value = env[key], !value.isEmpty { return value }
+        }
+        return nil
+    }
+
+    /// Overridable with `TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR=/abs/path`.
     ///
     /// The default is deliberately absolute rather than `HOME`-relative: under
     /// a simulator destination `HOME` is the simulator's container, while an
     /// absolute path resolves on the host where the human can open it. It is
     /// also under `/private/tmp`, which the system reaper clears after a few
-    /// days — copy out anything worth keeping, or point
-    /// `MANIFOLD_WALKTHROUGH_DIR` somewhere durable.
+    /// days — copy out anything worth keeping, or point the override somewhere
+    /// durable.
+    ///
+    /// A relative override is rejected rather than resolved: `~/Desktop/x` from
+    /// a zsh command line arrives unexpanded, and quietly creating a `~`
+    /// directory inside the runner's container is precisely how a human ends up
+    /// staring at an empty folder.
     private var walkthroughOutputDirectory: URL {
-        let env = ProcessInfo.processInfo.environment
-        for key in ["MANIFOLD_WALKTHROUGH_DIR", "TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR"] {
-            if let path = env[key], !path.isEmpty {
-                return URL(fileURLWithPath: path, isDirectory: true)
-            }
+        guard let override = runnerOverride("MANIFOLD_WALKTHROUGH_DIR") else {
+            return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
         }
-        return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
+        guard override.hasPrefix("/") else {
+            XCTFail("""
+                MANIFOLD_WALKTHROUGH_DIR must be an absolute path; got "\(override)". \
+                A shell will not expand ~ inside an xcodebuild argument — use $HOME/….
+                """)
+            return URL(fileURLWithPath: "/private/tmp/manifoldkit-ui-walkthrough", isDirectory: true)
+        }
+        return URL(fileURLWithPath: override, isDirectory: true)
     }
 
-    /// Settle time after an interaction before capturing. SwiftUI sheet and
-    /// toolbar transitions run ~0.3 s; capturing inside one yields a half-drawn
+    /// Settle time applied *before* each capture. SwiftUI sheet and toolbar
+    /// transitions run ~0.3 s; screenshotting inside one yields a half-drawn
     /// frame that reads as a rendering bug in the visual pass.
-    private let settleAfterInteraction: TimeInterval = 0.4
+    private let settleBeforeCapture: TimeInterval = 0.5
 
     /// Mirrors `DemoScenarioUITests.launchDemoApp(scenario:)` (private there,
     /// not shared via `UITestHelpers`) so this suite can pick a scripted
@@ -89,6 +109,7 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// write is the point — the bundle is discarded on the next run, and the
     /// whole purpose of this suite is a set of images that outlive it.
     private func capture(_ name: String) {
+        Thread.sleep(forTimeInterval: settleBeforeCapture)
         let screenshot = XCUIScreen.main.screenshot()
         let url = walkthroughOutputDirectory
             .appendingPathComponent(name)
@@ -99,7 +120,24 @@ final class VisualWalkthroughUITests: XCTestCase {
             XCTFail("Failed to write screenshot \(name): \(error)")
         }
         captureScreenshot(name: name)
-        Thread.sleep(forTimeInterval: settleAfterInteraction)
+    }
+
+    /// Scrolls the transcript back through its history.
+    ///
+    /// `app.swipeDown()` fails on macOS with "Unable to find hit point for
+    /// Application" — the app root has no hit-testable area — so the gesture is
+    /// driven through a coordinate drag on the frontmost window there, mirroring
+    /// `UITestHelpers.scrollToElement(_:app:maxSwipes:)`.
+    private func scrollTranscriptBack(app: XCUIApplication) {
+        #if os(macOS)
+        let target = app.windows.firstMatch.exists ? app.windows.firstMatch : app
+        let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        let end = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        #else
+        app.swipeDown()
+        app.swipeDown()
+        #endif
     }
 
     /// Dumps the accessibility hierarchy next to the screenshots when an
@@ -197,34 +235,32 @@ final class VisualWalkthroughUITests: XCTestCase {
 
         // Scroll-under-glass: the refresh runs the transcript edge-to-edge
         // beneath the composer, so content must be visibly behind the glass.
-        app.swipeDown()
-        app.swipeDown()
-        capture("05-scrolled-up-under-glass")
-
-        let scrollToBottom = app.buttons["Scroll to latest message"]
-        if scrollToBottom.waitForExistence(timeout: 3) {
-            capture("06-scroll-to-bottom-control")
-            if scrollToBottom.isHittable {
-                scrollToBottom.tap()
-                capture("07-returned-to-bottom")
-            }
-        } else {
-            XCTFail("Scroll to latest message control not found after scrolling up")
-        }
+        //
+        // The scroll-to-bottom control is deliberately NOT exercised here: it
+        // shows only while a turn is streaming *and* the user has scrolled away
+        // (`ChatHistoryView.showsScrollToBottomControl`), which a replayed
+        // scripted transcript is never in. Asserting it on an idle transcript
+        // asserts a control the design says must be absent.
+        scrollTranscriptBack(app: app)
+        capture("05-scrolled-back-under-glass")
 
         let messageInput = app.textFields["Message input"]
         if messageInput.waitForExistence(timeout: 5), messageInput.isEnabled, messageInput.isHittable {
             messageInput.tap()
-            capture("08-composer-focused")
+            capture("06-composer-focused")
 
             messageInput.typeText("What was the tip percentage again?")
-            capture("09-composer-typed-text")
+            capture("07-composer-typed-text")
 
             let sendButton = app.buttons["Send message"]
             if sendButton.waitForExistence(timeout: 3), sendButton.isEnabled {
                 sendButton.tap()
                 Thread.sleep(forTimeInterval: 1.5)
-                capture("10-after-send")
+                // `invalid-args-recover` scripts exactly three turns, so this
+                // fourth send runs off the end of the script and the frame is
+                // *expected* to show the turn-ended-without-a-message banner —
+                // it is the error-state capture, not a bug in the capture.
+                capture("08-after-send-past-scripted-turns")
             } else {
                 XCTFail("Send button not enabled after typing")
             }
@@ -232,31 +268,39 @@ final class VisualWalkthroughUITests: XCTestCase {
             XCTFail("Message input not enabled/hittable under the scripted backend")
         }
 
-        // The classic preset over the same transcript is the side-by-side that
-        // makes the default-appearance change legible.
-        let appearanceMenu = app.descendants(matching: .any)["demo-appearance-menu"]
-        guard appearanceMenu.waitForExistence(timeout: 5), appearanceMenu.isHittable else {
-            dumpHierarchy(app, named: "11-appearance-menu-missing-hierarchy")
-            XCTFail("demo-appearance-menu not found/hittable")
+        // A second bubble style over the same transcript is the side-by-side
+        // that makes the styling seam legible. Note this is `.iMessage`, a
+        // bubble style — the demo has no `.classicManifoldTheme()` option, so
+        // the pre-refresh appearance is NOT what these frames show.
+        //
+        // #2325 moved the appearance menu to `.secondaryAction`, i.e. into the
+        // toolbar overflow on compact width, so it must be reached through
+        // `tapToolbarButton` (which traverses "More") rather than looked up
+        // directly in the bar.
+        guard tapToolbarButton("Appearance", app: app) else {
+            dumpHierarchy(app, named: "09-appearance-menu-unreachable-hierarchy")
+            XCTFail("Appearance menu unreachable, in the toolbar or its overflow")
             return
         }
+        capture("09-appearance-menu-open")
 
-        appearanceMenu.tap()
-        capture("11-appearance-menu-open")
-
-        let classicOption = app.buttons["iMessage"]
-        guard classicOption.waitForExistence(timeout: 2), classicOption.isHittable else {
-            XCTFail("iMessage (classic) appearance option not found")
+        let iMessageOption = app.buttons["iMessage"]
+        guard iMessageOption.waitForExistence(timeout: 2), iMessageOption.isHittable else {
+            dumpHierarchy(app, named: "10-imessage-option-missing-hierarchy")
+            XCTFail("iMessage bubble-style option not found in the appearance menu")
             return
         }
-        classicOption.tap()
-        capture("12-classic-theme-same-transcript")
+        iMessageOption.tap()
+        capture("10-imessage-bubble-style-same-transcript")
 
-        appearanceMenu.tap()
+        guard tapToolbarButton("Appearance", app: app) else {
+            XCTFail("Appearance menu unreachable when restoring the standard style")
+            return
+        }
         let standardOption = app.buttons["Standard"]
         if standardOption.waitForExistence(timeout: 2), standardOption.isHittable {
             standardOption.tap()
-            capture("13-restored-standard-theme")
+            capture("11-restored-standard-bubble-style")
         } else {
             XCTFail("Standard appearance option not found when restoring")
         }
@@ -274,13 +318,20 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
-    /// Enable it the way this target already gates its real-model E2E — a
-    /// sentinel file, not an env var, because `xcodebuild test` does not
-    /// propagate shell env vars into the XCUITest runner process:
+    /// Opt in on the `xcodebuild` command line:
     ///
     /// ```
-    /// touch ~/.manifoldkit_ui_walkthrough_live
+    /// scripts/example-ui-tests.sh test \
+    ///   -only-testing:AdvancedUITests/VisualWalkthroughUITests \
+    ///   TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1
     /// ```
+    ///
+    /// Deliberately *not* the sentinel-file shape
+    /// `ModelManagementUITests.skipUnlessRealModelE2EEnabled()` uses: that
+    /// suite's documented destination is macOS, where `HOME` is the host's
+    /// home. Under this suite's default iPhone-simulator destination `HOME` is
+    /// the simulator's data container, so a host-created sentinel is invisible
+    /// and the gate could never be opened.
     func testDefineRealOllamaEndpointAndSendLiveMessage() throws {
         try skipUnlessLiveWalkthroughEnabled()
 
@@ -299,13 +350,13 @@ final class VisualWalkthroughUITests: XCTestCase {
         )
 
         guard navigateToAPIConfigurationLive(app: app) else {
-            dumpHierarchy(app, named: "18-endpoint-nav-failed-hierarchy")
-            capture("18-endpoint-nav-failed")
+            dumpHierarchy(app, named: "12-endpoint-nav-failed-hierarchy")
+            capture("12-endpoint-nav-failed")
             XCTFail("Could not reach the Cloud APIs / Add Endpoint flow")
             return
         }
 
-        capture("18-add-endpoint-editor-open")
+        capture("12-add-endpoint-editor-open")
 
         // `APIEndpointEditorView` uses a default `Picker`, which renders inside
         // a Form as a disclosure row labeled "Provider".
@@ -328,7 +379,7 @@ final class VisualWalkthroughUITests: XCTestCase {
             return
         }
         ollamaOption.tap()
-        capture("19-provider-set-to-ollama")
+        capture("13-provider-set-to-ollama")
 
         // Display Name: overwrite the provider-seeded default so the switcher
         // row below is identifiable. Server URL should already be
@@ -338,7 +389,7 @@ final class VisualWalkthroughUITests: XCTestCase {
         setTextFieldValue(app.textFields["Display Name"], to: "Local Ollama")
         setTextFieldValue(app.textFields["Server URL"], to: "http://localhost:11434")
         setTextFieldValue(app.textFields["Model Name"], to: "llama3.1:8b")
-        capture("19b-endpoint-fields-filled")
+        capture("14-endpoint-fields-filled")
 
         let saveButton = app.buttons["Save"]
         guard saveButton.waitForExistence(timeout: 3), saveButton.isEnabled else {
@@ -356,11 +407,11 @@ final class VisualWalkthroughUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: settleAfterInteraction)
             }
         }
-        capture("19c-back-to-chat-after-save")
+        capture("15-back-to-chat-after-save")
 
         let switcherChip = app.descendants(matching: .any)["chat-model-switcher-chip"]
         guard switcherChip.waitForExistence(timeout: 5), switcherChip.isHittable else {
-            dumpHierarchy(app, named: "21-switcher-chip-unreachable-live-hierarchy")
+            dumpHierarchy(app, named: "16-switcher-chip-unreachable-live-hierarchy")
             XCTFail("chat-model-switcher-chip unreachable in the live launch too (#2325 regression)")
             return
         }
@@ -369,12 +420,12 @@ final class VisualWalkthroughUITests: XCTestCase {
         let endpointRow = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS[c] 'Local Ollama'")).firstMatch
         guard endpointRow.waitForExistence(timeout: 5), endpointRow.isHittable else {
-            capture("21-switcher-endpoint-MISSING")
+            capture("16-switcher-endpoint-MISSING")
             XCTFail("Local Ollama row not found in the model switcher")
             return
         }
         endpointRow.tap()
-        capture("21-switcher-endpoint-selected")
+        capture("16-switcher-endpoint-selected")
         dismissSwitcher(app: app)
 
         let replied = sendPromptAndAwaitResponse(
@@ -383,31 +434,29 @@ final class VisualWalkthroughUITests: XCTestCase {
             responseTimeout: 90
         )
         if !replied {
-            dumpHierarchy(app, named: "20-no-live-reply-hierarchy")
+            dumpHierarchy(app, named: "17-no-live-reply-hierarchy")
         }
-        capture("20-real-ollama-reply")
+        capture("17-real-ollama-reply")
         XCTAssertTrue(replied, "Expected a real streamed reply from the local Ollama endpoint")
     }
 
     // MARK: - Helpers
 
-    /// Mirrors `ModelManagementUITests.skipUnlessRealModelE2EEnabled()`: a
-    /// sentinel file rather than an env var, because `xcodebuild test` does not
-    /// propagate shell env vars into the XCUITest runner — an env gate would
-    /// silently skip everywhere.
+    /// Opt-in gate for the non-hermetic finale. Uses the runner-env channel
+    /// rather than a sentinel file because the sentinel would have to live in
+    /// the *simulator's* container to be visible here — see the method's
+    /// documentation for why the sibling suite's file-based precedent does not
+    /// transplant.
     private func skipUnlessLiveWalkthroughEnabled() throws {
-        let env = ProcessInfo.processInfo.environment
-        if let ci = env["CI"], !ci.isEmpty {
+        if let ci = ProcessInfo.processInfo.environment["CI"], !ci.isEmpty {
             throw XCTSkip("Live walkthrough skipped in CI — needs a local Ollama serving llama3.1:8b")
         }
 
-        let home = env["HOME"] ?? NSHomeDirectory()
-        let sentinel = (home as NSString).appendingPathComponent(Self.liveSentinelName)
-        guard FileManager.default.fileExists(atPath: sentinel) else {
+        guard let flag = runnerOverride("MANIFOLD_WALKTHROUGH_LIVE"), flag != "0" else {
             throw XCTSkip("""
-                Live walkthrough opt-in: touch ~/\(Self.liveSentinelName) to run it. \
-                Requires Ollama serving llama3.1:8b at localhost:11434, launches without \
-                --uitesting, and persists an endpoint into the real demo store.
+                Live walkthrough opt-in: pass TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 to \
+                xcodebuild to run it. Requires Ollama serving llama3.1:8b at localhost:11434, \
+                launches without --uitesting, and persists an endpoint into the real demo store.
                 """)
         }
     }
