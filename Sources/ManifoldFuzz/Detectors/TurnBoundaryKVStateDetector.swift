@@ -17,9 +17,12 @@ public struct TurnBoundaryKVStateDetector: SessionDetector {
     /// Minimum length (in Swift `Character`s) of the longest-common shared
     /// substring between turn N-1 and turn N for the detector to fire. Must
     /// exceed the longest common adversarial phrase ("the answer is ").
+    /// Shared with `CancellationRaceDetector` via
+    /// `LongestCommonSubstring.defaultMinChars` — see that type's doc
+    /// comment for why the two must not drift apart.
     public let minResidueChars: Int
 
-    public init(minResidueChars: Int = 24) {
+    public init(minResidueChars: Int = LongestCommonSubstring.defaultMinChars) {
         self.minResidueChars = minResidueChars
     }
 
@@ -32,7 +35,7 @@ public struct TurnBoundaryKVStateDetector: SessionDetector {
                 let prev = records[i - 1].raw
                 let curr = records[i].raw
                 guard !prev.isEmpty, !curr.isEmpty else { continue }
-                if let residue = longestCommonSubstring(prev, curr),
+                if let residue = LongestCommonSubstring.compute(prev, curr),
                    residue.count >= minResidueChars {
                     findings.append(.init(
                         detectorId: id,
@@ -45,39 +48,5 @@ public struct TurnBoundaryKVStateDetector: SessionDetector {
             }
         }
         return findings
-    }
-
-    /// Longest common contiguous substring. Classic O(n·m) DP on Character
-    /// arrays. Inputs are small (per-turn raw strings are bounded by the
-    /// configured `maxOutputTokens` → roughly 64–512 tokens), so an O(n·m)
-    /// table is safe.
-    func longestCommonSubstring(_ a: String, _ b: String) -> String? {
-        let ac = Array(a)
-        let bc = Array(b)
-        let n = ac.count
-        let m = bc.count
-        if n == 0 || m == 0 { return nil }
-        var prevRow = [Int](repeating: 0, count: m + 1)
-        var currRow = [Int](repeating: 0, count: m + 1)
-        var best = 0
-        var bestEnd = 0 // exclusive end index in `ac`
-        for i in 1...n {
-            for j in 1...m {
-                if ac[i - 1] == bc[j - 1] {
-                    currRow[j] = prevRow[j - 1] + 1
-                    if currRow[j] > best {
-                        best = currRow[j]
-                        bestEnd = i
-                    }
-                } else {
-                    currRow[j] = 0
-                }
-            }
-            swap(&prevRow, &currRow)
-            for k in 0..<currRow.count { currRow[k] = 0 }
-        }
-        if best == 0 { return nil }
-        let start = bestEnd - best
-        return String(ac[start..<bestEnd])
     }
 }

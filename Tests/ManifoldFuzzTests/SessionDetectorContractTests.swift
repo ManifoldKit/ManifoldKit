@@ -206,10 +206,13 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
 
     private let detector = CancellationRaceDetector()
 
-    /// Positive: turn 1 streams several tokens; a stop fires; turn 2's raw
-    /// contains a long contiguous run of turn 1's post-stop tail verbatim —
-    /// a genuine leak, not an incidental shared word.
-    func test_positive_postStopTokenLeakFires() {
+    /// Positive: turn 1 streams several tokens; a `.stop` step follows
+    /// (per this detector's contract, `.stop` always lands after turn 1 has
+    /// already finished — see `CancellationRaceDetector`'s doc comment);
+    /// turn 2's raw contains a long contiguous run of turn 1's mid-stream
+    /// tail verbatim — a genuine residue leak, not an incidental shared
+    /// word.
+    func test_positive_midStreamTailLeakFires() {
         let leakedTail = "the ancient lighthouse cast a long green shadow across the entire harbor at midnight"
         let turn1 = SessionFixture.record(
             raw: "begin " + leakedTail,
@@ -226,6 +229,44 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         XCTAssertFalse(findings.isEmpty)
     }
 
+    /// Positive, realistic multi-token shape: every OTHER fixture in this
+    /// file gives turn 1 exactly one post-first-event token, so
+    /// `midStreamTail`'s `.joined()` over the filtered token array is never
+    /// actually exercised with >= 2 elements anywhere else here — a
+    /// regression to `.first ?? ""` (take only the first post-first-event
+    /// token instead of concatenating all of them) would leave every other
+    /// test in this class green while silencing the detector against any
+    /// production stream, where individual tokens are typically 2-8 raw
+    /// characters and essentially never reach `minResidueChars` (24) alone.
+    ///
+    /// This fixture emits turn 1's tail as 17 realistic 3-6-char token
+    /// events (mimicking real subword streaming) that only form a 75-char
+    /// leaked run once concatenated in order; no single token comes close
+    /// to 24 chars. Verified by sabotage: swapping `.joined()` for
+    /// `.first ?? ""` in `CancellationRaceDetector.inspectOneCapture` turns
+    /// this test red while every other test in this file stays green.
+    func test_positive_multiTokenStreamOnlyLeaksWhenConcatenated() {
+        let leakedTail = "the quantum flux capacitor overloaded during the final calibration sequence"
+        precondition(leakedTail.count == 75)
+        let tailChunks = [
+            "the", " qua", "ntum ", "flux c", "apa", "cito", "r ove", "rloade",
+            "d d", "urin", "g the", " final", " ca", "libr", "ation", " seque", "nce",
+        ]
+        precondition(tailChunks.joined() == leakedTail)
+        precondition(tailChunks.allSatisfy { (1...6).contains($0.count) })
+
+        var events: [(Double, String, String?)] = [(0.0, "token", "begin ")]
+        for (i, chunk) in tailChunks.enumerated() {
+            events.append((0.1 + Double(i) * 0.05, "token", chunk))
+        }
+        let turn1 = SessionFixture.record(raw: "begin " + leakedTail, events: events)
+        let turn2 = SessionFixture.record(
+            raw: "Unrelated opener. " + leakedTail + " Unrelated closer."
+        )
+        let capture = SessionFixture.capture(id: "race-multitoken", turns: [turn1, turn2], stopAfterIndex: 0)
+        SessionContractAsserter.assertNonEmpty(detector.inspect([capture]), detectorId: detector.id)
+    }
+
     /// Negative: no stop step, turns are clean.
     func test_negative_noStopMeansNoFiring() {
         let turn1 = SessionFixture.record(
@@ -238,8 +279,8 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         XCTAssertTrue(findings.isEmpty)
     }
 
-    /// Boundary: the shared run between turn 1's post-stop tail and turn 2's
-    /// raw is exactly `minResidueChars` long (24). The guard is
+    /// Boundary: the shared run between turn 1's mid-stream tail and turn
+    /// 2's raw is exactly `minResidueChars` long (24). The guard is
     /// `>= minResidueChars` so it MUST fire; ten inspections must return
     /// identical findings.
     func test_boundary_deterministicAtThreshold() {
@@ -282,12 +323,14 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
         XCTAssertTrue(detector.inspect([capture]).isEmpty)
     }
 
-    /// Adversarial / the #2361 regression: a stop DOES fire between two
-    /// verbose, unrelated turns that legitimately share ordinary function
-    /// words ("which", "where", "capital") the way any two long-form
-    /// generations will. The pre-fix detector matched on any single
-    /// mid-stream token >= 6 chars and fired on these; this is the exact
-    /// shape that made #2361 a false positive. Must NOT fire.
+    /// Adversarial / the #2361 regression: a `.stop` step exists somewhere
+    /// in the capture (per this detector's contract it never overlaps turn
+    /// 1's — already-completed — stream; see the type's doc comment)
+    /// between two verbose, unrelated turns that legitimately share
+    /// ordinary function words ("which", "where", "capital") the way any
+    /// two long-form generations will. The pre-fix detector matched on any
+    /// single mid-stream token >= 6 chars and fired on these; this is the
+    /// exact shape that made #2361 a false positive. Must NOT fire.
     func test_adversarial_commonFunctionWordsAcrossVerboseTurnsDoNotFire() {
         let turn1Rest = "solar system is a fascinating place, which includes eight planets, several dwarf "
             + "planets, and countless smaller bodies, all of which orbit the Sun in different regions, "
@@ -309,6 +352,30 @@ final class CancellationRaceDetectorContractTests: XCTestCase {
                 + "4 is simply the answer here, a fact which holds regardless of where or when you ask it."
         )
         let capture = SessionFixture.capture(id: "race-2361", turns: [turn1, turn2], stopAfterIndex: 0)
+        SessionContractAsserter.assertEmpty(detector.inspect([capture]), detectorId: detector.id)
+    }
+
+    /// Adversarial / the ACTUAL #2361 finding (not the verbose-narrator case
+    /// above, which is a related but distinct FP mechanism): the `'
+    /// capital'` finding that was originally reported came from
+    /// `edit-then-regenerate.json` — "What is the capital of France?" /
+    /// stop / edit to "...Germany?" / regenerate — where the shared word
+    /// comes from the assistant echoing the *user's own prompt* back on
+    /// both turns ("The capital of France is Paris." → "The capital of
+    /// Germany is Berlin."), not from two independent long-form
+    /// completions. Verified LCS between turn 1's mid-stream tail
+    /// ("capital of France is Paris.") and turn 2's raw is 11 chars
+    /// ("capital of "), comfortably below the 24-char gate. Must NOT fire.
+    func test_adversarial_echoedUserPromptAcrossEditRegenerateDoesNotFire() {
+        let turn1 = SessionFixture.record(
+            raw: "The capital of France is Paris.",
+            events: [
+                (0.0, "token", "The "),
+                (0.3, "token", "capital of France is Paris."),
+            ]
+        )
+        let turn2 = SessionFixture.record(raw: "The capital of Germany is Berlin.")
+        let capture = SessionFixture.capture(id: "race-2361-actual", turns: [turn1, turn2], stopAfterIndex: 0)
         SessionContractAsserter.assertEmpty(detector.inspect([capture]), detectorId: detector.id)
     }
 }

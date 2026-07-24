@@ -268,6 +268,9 @@ LengthStretchMutator conformances: Copyable,Escapable,Mutator,Sendable,SendableM
 LengthStretchMutator.id Var
 LengthStretchMutator.init() Constructor
 LengthStretchMutator.mutate(_:rng:) Func
+LongestCommonSubstring Enum
+LongestCommonSubstring conformances: Copyable,Escapable
+LongestCommonSubstring.defaultMinChars Var
 LoopingDetector Struct
 LoopingDetector conformances: Copyable,Detector,Escapable,Sendable,SendableMetatype
 LoopingDetector.humanName Var
