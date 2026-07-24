@@ -180,6 +180,8 @@ Table-stakes capabilities that ship today (verified in source):
 
 **Dev-tool products** — `ManifoldTools`, `ManifoldTestSupport`, `ManifoldPersistenceTestSupport`, and `ManifoldBackendTestKit` — are semver-exempt and may break in any minor release. Each provides published APIs for real external consumers (eval repo, companion packages, local apps) and every break receives a migration note, but they are not bound to the core stability promise: they are developer tooling, and linking one means accepting the looser promise. See [docs/API-DESIGN.md § 7](docs/API-DESIGN.md#7-semver-exempt-products) for the complete policy and consumer list.
 
+**Maturity tiers.** Not every product carries the same stability promise. [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) is the normative page assigning every published product — Core guarantee, Supported first-party integration, Experimental, or Labs — so you know what you can build on today vs. what may move under you.
+
 ## Beyond chat
 
 The same backend, model-management, persistence, and download infrastructure that powers the chat UI is reusable for non-chat consumers. The framing is "chat-first" because that's the most complete reference integration, but the public surface explicitly supports:

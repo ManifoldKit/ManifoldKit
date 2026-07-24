@@ -129,7 +129,7 @@ broken cadence, not on baseline drift). Per **Policy 5** below, performance is
 **not a versioned property** of 1.0: a perf regression is a bug to fix, never a
 breaking change requiring a major.
 
-### Semver-exempt products (unchanged by 1.0)
+### Semver-exempt and Experimental products (unchanged by 1.0)
 
 Four developer-tooling products stay outside the semver promise even after 1.0,
 exactly as documented in [`API-DESIGN.md` § 7](API-DESIGN.md):
@@ -138,6 +138,17 @@ exactly as documented in [`API-DESIGN.md` § 7](API-DESIGN.md):
 a migration note. 1.0 does not change their status; this section exists so the
 exemption is visible from the freeze document, not only from the API design
 page.
+
+The seven zero-adopter Experimental products
+([`API-DESIGN.md` § 7b](API-DESIGN.md#7b-experimental-products-declared-2026-07-13-v1-rationalisation-plan-phase-c)
+— `ManifoldMCP`, `ManifoldMCPHost`, `ManifoldSkills`, `ManifoldAppIntents`,
+`ManifoldAnyLanguageModel`, `ManifoldTelemetryOTLP`, `ManifoldAppEval`) are
+outside the freeze for the same reason, until each graduates on a real
+adopter. **This "1.0 release criteria" section covers what freezes; it does
+not enumerate what doesn't** — [`docs/PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md)
+is the complete, audit-enforced tier assignment for every published product,
+this section's two exempt groups included, and is the page to check before
+assuming a product is covered by the 1.0 promise.
 
 ---
 
