@@ -443,6 +443,18 @@ public extension SessionScript.Step {
         case .delete: return "delete"
         }
     }
+
+    /// `true` for the two step kinds that actually drive an `InferenceService.enqueue`
+    /// call (and therefore must produce a ``SessionCapture/StepResult/record``).
+    /// `.stop`/`.edit`/`.delete` legitimately carry a `nil` record — this
+    /// distinguishes that from the anomaly a `.send`/`.regenerate` step with a
+    /// `nil` record would represent (see `SessionFuzzRunner`'s `missingRecordCount`).
+    var isTurnStep: Bool {
+        switch self {
+        case .send, .regenerate: return true
+        case .stop, .edit, .delete: return false
+        }
+    }
 }
 
 /// The output of ``SessionScriptRunner/execute(_:)``. Composes a sequence of

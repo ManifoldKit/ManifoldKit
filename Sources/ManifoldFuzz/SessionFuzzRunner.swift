@@ -57,7 +57,7 @@ public actor SessionFuzzRunner {
     public func run(reporter: TerminalReporter) async -> FuzzReport {
         guard !scripts.isEmpty else {
             await reporter.error("No session scripts available — Resources/session_scripts/*.json missing?")
-            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:])
+            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:], realCompletions: 0)
         }
 
         let singleDetectors = DetectorRegistry.resolve(config.detectorFilter)
@@ -71,7 +71,7 @@ public actor SessionFuzzRunner {
             primeHandle = try await factory.makeHandle()
         } catch {
             await reporter.error("Backend factory failed: \(error)")
-            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:])
+            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:], realCompletions: 0)
         }
         await reporter.preflight(backend: primeHandle.backendName, model: primeHandle.modelId, detectors: detectorIds)
 
@@ -86,6 +86,17 @@ public actor SessionFuzzRunner {
         var totalFindings = 0
         var perDetector: [String: Int] = [:]
         var pendingHandle: FuzzRunner.BackendHandle? = primeHandle
+        // Campaign-wide integrity counters (ManifoldKit#2344's floor-rate
+        // guard). `executedTurnSteps` is every `.send`/`.regenerate` step the
+        // script called for; `missingRecordCount` is how many of those never
+        // even produced a `RunRecord` (the exact silent-skip failure mode the
+        // issue found — should be impossible, but a regression here must be
+        // loud, not swallowed by the `guard let record = step.record else {
+        // continue }` below). `realCompletions` is how many reached
+        // `phase == "done"`, i.e. an actual generation against the backend.
+        var executedTurnSteps = 0
+        var missingRecordCount = 0
+        var realCompletions = 0
 
         // Each "iteration" = one full session-script execution. We loop the
         // whole corpus until the time/iteration budget is spent, mirroring
@@ -118,7 +129,12 @@ public actor SessionFuzzRunner {
             // Per-step single-turn detectors.
             var iterationFindings: [Finding] = []
             for step in capture.steps {
-                guard let record = step.record else { continue }
+                if step.step.isTurnStep { executedTurnSteps += 1 }
+                guard let record = step.record else {
+                    if step.step.isTurnStep { missingRecordCount += 1 }
+                    continue
+                }
+                if record.phase == "done" { realCompletions += 1 }
                 for d in singleDetectors {
                     iterationFindings.append(contentsOf: d.inspect(record))
                 }
@@ -154,8 +170,19 @@ public actor SessionFuzzRunner {
             totalRuns: iter,
             findings: snapshot.findings,
             dedupedCount: snapshot.findings.count,
-            perDetectorFlagRate: perDetectorRate
+            perDetectorFlagRate: perDetectorRate,
+            realCompletions: realCompletions
         )
+        if report.isInert {
+            await reporter.error(
+                "session-scripts campaign ran \(iter) iteration(s) covering \(executedTurnSteps) "
+                + "send/regenerate step(s), of which \(missingRecordCount) never produced a "
+                + "RunRecord at all, and NOT ONE of the rest reached a real completion "
+                + "(RunRecord.phase == \"done\"). A clean \"findings=0\" report from this run is "
+                + "not evidence of stability; it is evidence the rig never drove the backend. "
+                + "See ManifoldKit#2344."
+            )
+        }
         await reporter.finalSummary(report: report)
         return report
     }

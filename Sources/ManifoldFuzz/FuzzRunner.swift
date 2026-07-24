@@ -68,7 +68,7 @@ public actor FuzzRunner {
     public func run(reporter: TerminalReporter) async -> FuzzReport {
         guard !corpus.isEmpty else {
             await reporter.error("No corpus entries available — Resources/corpus/seeds.json missing?")
-            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:])
+            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:], realCompletions: 0)
         }
 
         // Prime the factory once before the loop. The first handle double-duties
@@ -80,7 +80,7 @@ public actor FuzzRunner {
             primeHandle = try await factory.makeHandle()
         } catch {
             await reporter.error("Backend factory failed: \(error)")
-            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:])
+            return FuzzReport(totalRuns: 0, findings: [], dedupedCount: 0, perDetectorFlagRate: [:], realCompletions: 0)
         }
 
         let detectors = DetectorRegistry.resolve(config.detectorFilter)
@@ -96,6 +96,9 @@ public actor FuzzRunner {
         var iter = 0
         var totalFindings = 0
         var perDetector: [String: Int] = [:]
+        // Every completed iteration whose `RunRecord.phase == "done"` — feeds
+        // `FuzzReport.isInert` (ManifoldKit#2344's floor-rate guard).
+        var realCompletions = 0
         // Reuse `primeHandle` on the first iteration so single-model campaigns
         // pay the factory once; rotating factories hand back a new model from
         // iteration 2 onward. This is the minimum change needed to let option
@@ -140,6 +143,8 @@ public actor FuzzRunner {
             )
             await reporter.iterationEnd()
 
+            if record.phase == "done" { realCompletions += 1 }
+
             var iterationFindings: [Finding] = []
             for detector in detectors {
                 let f = detector.inspect(record)
@@ -166,8 +171,17 @@ public actor FuzzRunner {
             totalRuns: iter,
             findings: snapshot.findings,
             dedupedCount: snapshot.findings.count,
-            perDetectorFlagRate: perDetectorRate
+            perDetectorFlagRate: perDetectorRate,
+            realCompletions: realCompletions
         )
+        if report.isInert {
+            await reporter.error(
+                "campaign ran \(iter) iteration(s) but NOT ONE reached a real completion "
+                + "(RunRecord.phase == \"done\") — every turn failed, timed out, or never "
+                + "generated. A clean \"findings=0\" report from this run is not evidence of "
+                + "stability; it is evidence the rig never drove the backend. See ManifoldKit#2344."
+            )
+        }
         await reporter.finalSummary(report: report)
         return report
     }
@@ -346,6 +360,37 @@ public struct FuzzReport: Sendable {
     public let findings: [Finding]
     public let dedupedCount: Int
     public let perDetectorFlagRate: [String: Double]
+    /// Count of turns across the whole campaign whose `RunRecord.phase == "done"`
+    /// — i.e. a generation that actually ran to completion against the backend,
+    /// as opposed to one that failed, timed out, or (session-scripts mode) never
+    /// produced a record at all. See ``isInert``.
+    public let realCompletions: Int
+
+    public init(
+        totalRuns: Int,
+        findings: [Finding],
+        dedupedCount: Int,
+        perDetectorFlagRate: [String: Double],
+        realCompletions: Int
+    ) {
+        self.totalRuns = totalRuns
+        self.findings = findings
+        self.dedupedCount = dedupedCount
+        self.perDetectorFlagRate = perDetectorFlagRate
+        self.realCompletions = realCompletions
+    }
+
+    /// `true` when the campaign ran at least one iteration but not a single
+    /// turn reached a real completion. A clean `findings=0` report is only
+    /// meaningful evidence of stability if the campaign actually drove
+    /// generations — `runs=9626 findings=0` from a rig that silently no-oped
+    /// every turn is evidence of nothing (ManifoldKit#2344). Zero real
+    /// completions across an entire campaign is never a legitimate outcome:
+    /// even the fastest, most boring backend produces *some* non-empty
+    /// `"done"` completion on a benign prompt.
+    public var isInert: Bool {
+        totalRuns > 0 && realCompletions == 0
+    }
 }
 
 private extension Duration {

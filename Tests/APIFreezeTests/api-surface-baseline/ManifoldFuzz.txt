@@ -220,7 +220,10 @@ FuzzReport Struct
 FuzzReport conformances: Copyable,Escapable,Sendable,SendableMetatype
 FuzzReport.dedupedCount Var
 FuzzReport.findings Var
+FuzzReport.init(totalRuns:findings:dedupedCount:perDetectorFlagRate:realCompletions:) Constructor
+FuzzReport.isInert Var
 FuzzReport.perDetectorFlagRate Var
+FuzzReport.realCompletions Var
 FuzzReport.totalRuns Var
 FuzzRunner Class
 FuzzRunner conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
@@ -589,6 +592,7 @@ SessionScript.Step.delete EnumElement
 SessionScript.Step.edit EnumElement
 SessionScript.Step.encode(to:) Func
 SessionScript.Step.init(from:) Constructor
+SessionScript.Step.isTurnStep Var
 SessionScript.Step.opName Var
 SessionScript.Step.regenerate EnumElement
 SessionScript.Step.send EnumElement

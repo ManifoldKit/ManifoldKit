@@ -316,17 +316,27 @@ struct FuzzChatCLI {
         )
 
         let reporter = TerminalReporter(quiet: quiet)
+        let report: FuzzReport
         if sessionScripts {
             let runner = SessionFuzzRunner(config: config, factory: factory)
-            _ = await runner.run(reporter: reporter)
+            report = await runner.run(reporter: reporter)
         } else {
             let runner = FuzzRunner(config: config, factory: factory)
-            _ = await runner.run(reporter: reporter)
+            report = await runner.run(reporter: reporter)
         }
         // Ordered backend teardown before process exit. The default implementation
         // is a no-op; LlamaFuzzFactory overrides this to await unloadAndWait(),
         // preventing the SIGABRT from ggml-metal resource-set teardown (#391).
         await factory.teardown()
+        // A campaign that drove zero real completions must never exit 0 — a
+        // clean "findings=0" from an inert rig reads as a strong all-clear and
+        // is actually evidence of nothing (ManifoldKit#2344). `reporter.error`
+        // already printed the diagnostic; this is what makes it load-bearing
+        // for anything scripting fuzz-chat (CI, an overnight cron) rather than
+        // a message a human has to be watching the terminal to notice.
+        if report.isInert {
+            exit(1)
+        }
     }
 
     struct CampaignOptions {
