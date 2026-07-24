@@ -272,7 +272,7 @@ final class PublicSurfaceBaselineTests: XCTestCase {
     /// Every exclusion must name a product that actually exists — otherwise a
     /// rename silently widens coverage back open while the entry looks
     /// deliberate.
-    func testExclusionsReferenceRealProducts() throws {
+    func testExclusionsAreRealAndPinned() throws {
         let manifestModules = try Self.libraryProductNames(
             inManifestAt: Self.repoRoot().appendingPathComponent("Package.swift")
         )
@@ -325,21 +325,38 @@ final class PublicSurfaceBaselineTests: XCTestCase {
                 // Prose really does discuss products in this manifest, e.g.
                 // .library(name: "ManifoldCommented", targets: ["x"]) — which
                 // must NOT be picked up as a real product.
+                .package(url: "https://example.com/x"), .library(name: "ManifoldInline", targets: ["x"]),
             ]
         )
         """#.write(to: manifestURL, atomically: true, encoding: .utf8)
 
         let parsed = try Self.libraryProductNames(inManifestAt: manifestURL)
         XCTAssertEqual(
-            parsed, ["ManifoldAlpha", "ManifoldBeta", "ManifoldGamma"],
+            parsed, ["ManifoldAlpha", "ManifoldBeta", "ManifoldGamma", "ManifoldInline"],
             """
-            The derivation must find every .library product (including the multi-line form), \
-            and must exclude both .executable products and any .library mentioned inside a comment.
+            The derivation must find every .library product (including the multi-line form and one \
+            sharing a line with a URL literal), and must exclude both .executable products and any \
+            .library mentioned inside a whole-line comment.
             """
         )
         XCTAssertFalse(
             parsed.contains("ManifoldCommented"),
             "A .library(name:) inside a `//` comment must not be treated as a declared product."
+        )
+        // Discriminates whole-line stripping from the earlier first-`//`-cut.
+        // Both forms pass every other case in this fixture, so without this the
+        // parser could silently regress to cutting at the first `//` — which
+        // would truncate any line carrying a URL literal and drop a REAL
+        // product from the derived set, narrowing the gate silently. That is
+        // the failure direction this whole test exists to prevent, so the
+        // property needs its own demonstrated red rather than being asserted
+        // only in a doc comment.
+        XCTAssertTrue(
+            parsed.contains("ManifoldInline"),
+            """
+            A `//` inside a string literal must not truncate the line. Cutting at the first `//` \
+            would drop this real product silently — over-reporting is loud, under-reporting is not.
+            """
         )
 
         // A script that has drifted: missing Gamma, and scoping a module the
@@ -354,8 +371,8 @@ final class PublicSurfaceBaselineTests: XCTestCase {
         XCTAssertEqual(scriptModules, ["ManifoldAlpha", "ManifoldBeta", "ManifoldDeleted"])
 
         XCTAssertEqual(
-            parsed.subtracting(scriptModules), ["ManifoldGamma"],
-            "A manifest product absent from DEFAULT_MODULES must surface as missing-from-script"
+            parsed.subtracting(scriptModules), ["ManifoldGamma", "ManifoldInline"],
+            "Manifest products absent from DEFAULT_MODULES must surface as missing-from-script"
         )
         XCTAssertEqual(
             scriptModules.subtracting(parsed), ["ManifoldDeleted"],
