@@ -18,8 +18,8 @@ import ManifoldTestSupport
 /// terminal `done:true` chunk) — these are shipped as-if captured from a
 /// live Ollama server so the test pins the full wire-format contract.
 ///
-/// Skipped until Agent D's tool-call parser lands in main — see
-/// ``OllamaAdversarialJSONTests`` for the coordination notes.
+/// Asserts (does not skip on) `supportsToolCalling` — see
+/// ``OllamaAdversarialJSONTests`` for why.
 final class OllamaToolCallLiveReplayTests: XCTestCase {
 
     override func setUp() {
@@ -139,9 +139,8 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
         XCTAssertTrue(names.contains("inline-answer-no-tool"))
     }
 
-    /// Fixture `inline-answer-no-tool.sse` exercises the content-only path
-    /// that is already wired today. This specific scenario runs
-    /// independently of Agent D's work.
+    /// Fixture `inline-answer-no-tool.sse` exercises the content-only path,
+    /// which does not depend on tool-call emission at all.
     func test_inlineAnswer_noTool_producesTokensAndUsage() async throws {
         guard let dir = captureDirectory() else {
             XCTFail("no pinned Ollama version directory found")
@@ -163,11 +162,11 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
         XCTAssertEqual(usage.first?.1, 7)
     }
 
-    /// Full corpus walker — gated on Agent D's parser landing.
+    /// Full corpus walker — requires tool-call emission to be wired.
     func test_allLiveFixtures_matchExpectedJSONL() async throws {
-        try XCTSkipUnless(
+        XCTAssertTrue(
             ollamaToolCallingIsWired,
-            "Tool-call-bearing fixtures require Agent D's parser. Un-skips after merge."
+            "OllamaBackend no longer reports supportsToolCalling — this replay would otherwise pass by not running."
         )
 
         for sseURL in liveFixtures() {

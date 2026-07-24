@@ -129,9 +129,8 @@ final class GenerationQueue {
     private static let thermalRecheckInterval: Duration = .seconds(2)
 
     /// Optional registry used to dispatch model-emitted ``ToolCall`` events.
-    ///
-    /// Stored here in wave 1 so the queue's init surface is stable for
-    /// downstream wiring; the actual dispatch site lands in wave 2 Agent D.
+    /// Handed to ``GenerationToolDispatchLoop`` at the dispatch site below;
+    /// `nil` means the queue forwards tool calls to the caller untouched.
     let toolRegistry: ToolRegistry?
 
     /// Gate consulted before dispatching every ``ToolCall`` through
@@ -165,11 +164,10 @@ final class GenerationQueue {
     // MARK: - Test Seam
 
     /// Lock-guarded backing storage for the four test-injection hooks below.
-    /// The previous bare `nonisolated(unsafe) static var`s raced when real
-    /// generation warned/logged on one thread while a test set/reset a hook
-    /// from another (issue #2094). Mirrors `CloudImageEncoding._encodeHook`,
-    /// which fixed the identical class of bug for this same
-    /// `toolDispatchLogHook` — that fix was never backported here until now.
+    /// These must stay lock-guarded: a bare `nonisolated(unsafe) static var`
+    /// races when real generation warns/logs on one thread while a test
+    /// sets/resets a hook from another (issue #2094). Same shape as
+    /// `CloudImageEncoding._encodeHook`.
     nonisolated private static let _jsonModeUnsupportedWarningHookStorage =
         OSAllocatedUnfairLock<(@Sendable (String, String) -> Void)?>(initialState: nil)
     nonisolated private static let _toolsUnsupportedWarningHookStorage =

@@ -25,19 +25,15 @@ import ManifoldTestSupport
 /// `@Test` would be brittle; a fixture corpus makes the drift *observable*
 /// in Git — new shapes get added as files, not code churn.
 ///
-/// ## Coordination with Agent D's parser
+/// ## Tool-call emission must stay wired
 ///
-/// As of this PR's creation, Agent D is wiring the tool-call emission path
-/// in ``OllamaBackend/parseResponseStream(bytes:config:continuation:)`` in
-/// parallel. Tests are gated by
-/// ``ollamaToolCallingIsWired`` so they run as XCTSkip until Agent D's PR
-/// merges and the capability flag flips to `true`. After rebase, the skip
-/// evaporates and the corpus runs against the real parser.
-///
-/// The gating choice is deliberately lightweight: a single probe
-/// (`OllamaBackend().capabilities.supportsToolCalling`) rather than an
-/// `#if` condition, so the PR-merge sequence is "D lands → capability
-/// flips → these tests go green" without a follow-up patch.
+/// The corpus is meaningless unless `OllamaBackend` actually emits tool
+/// calls, so each test asserts ``ollamaToolCallingIsWired`` rather than
+/// skipping on it. These were originally written ahead of that parser work
+/// and skipped until the capability flag flipped; the flag has been `true`
+/// since, and an `XCTSkipUnless` left in place would silently retire the
+/// whole corpus the day the capability regressed — green, empty, and
+/// indistinguishable from passing.
 final class OllamaAdversarialJSONTests: XCTestCase {
 
     override func setUp() {
@@ -50,11 +46,8 @@ final class OllamaAdversarialJSONTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Probe for whether tool-call emission is wired yet.
-    ///
-    /// When Agent D's PR merges this flips to `true` and all tests in this
-    /// file become active. Until then they XCTSkip with a note pointing to
-    /// the coordination context.
+    /// Whether the backend still claims tool-call emission. Asserted, not
+    /// skipped on: a corpus that stops running is not a passing corpus.
     private var ollamaToolCallingIsWired: Bool {
         OllamaBackend().capabilities.supportsToolCalling
     }
@@ -103,8 +96,8 @@ final class OllamaAdversarialJSONTests: XCTestCase {
     /// returns the emitted events.
     ///
     /// Uses the public `generate(...)` path so tests exercise the same
-    /// stack that real consumers use. If Agent D's parser changes the
-    /// entry-point name, only this helper needs updating.
+    /// stack that real consumers use. If the parser entry point is renamed,
+    /// only this helper needs updating.
     private func replayFixture(_ fixtureLine: String) async throws -> [GenerationEvent] {
         let (backend, chatURL) = makeConfiguredBackend()
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
@@ -129,9 +122,9 @@ final class OllamaAdversarialJSONTests: XCTestCase {
     // MARK: - Corpus walker
 
     func test_adversarialCorpus_matchesExpectedOutcomes() async throws {
-        try XCTSkipUnless(
+        XCTAssertTrue(
             ollamaToolCallingIsWired,
-            "Ollama tool-call emission is wired by Agent D's PR. This test un-skips once that PR merges and `supportsToolCalling` flips to true."
+            "OllamaBackend no longer reports supportsToolCalling — this corpus would otherwise pass by not running."
         )
 
         let fm = FileManager.default
@@ -203,9 +196,9 @@ final class OllamaAdversarialJSONTests: XCTestCase {
     /// the re-serialisation path fails only this test (not the entire corpus
     /// walker).
     func test_arguments_as_object_gets_restringified() async throws {
-        try XCTSkipUnless(
+        XCTAssertTrue(
             ollamaToolCallingIsWired,
-            "Pending Agent D's parser landing."
+            "OllamaBackend no longer reports supportsToolCalling — this corpus would otherwise pass by not running."
         )
 
         let dir = corpusDirectory()
