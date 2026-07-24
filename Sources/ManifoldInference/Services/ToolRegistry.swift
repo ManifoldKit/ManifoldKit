@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - JSONSchemaValidating (wave 2 hook)
+// MARK: - JSONSchemaValidating
 
 /// Validates a parsed JSON argument payload against a ``JSONSchemaValue``
 /// schema.
@@ -37,8 +37,9 @@ public protocol JSONSchemaValidating: Sendable {
 ///   differs from registration)
 /// - JSON parsing of the raw ``ToolCall/arguments`` string into
 ///   ``JSONSchemaValue``
-/// - optional schema validation (wave 2 wires an injected
-///   ``JSONSchemaValidating`` implementation)
+/// - schema validation against the executor's declared parameters, via the
+///   injected ``JSONSchemaValidating`` (``GenerationToolDispatchLoop``
+///   installs a default ``JSONSchemaValidator`` when none is set)
 /// - stamping ``ToolResult/callId`` from the incoming call
 /// - classifying lookup / parse / throw failures into
 ///   ``ToolResult/ErrorKind`` values
@@ -440,7 +441,7 @@ public protocol JSONSchemaValidating: Sendable {
             dispatchArguments = parsedArguments
         }
 
-        // 4. Optional schema validation (wave 2 wiring).
+        // 4. Schema validation against the executor's declared parameters.
         if let activeValidator,
            let message = activeValidator.validateAgainst(executor.definition.parameters, value: dispatchArguments) {
             complete(ToolResult(
