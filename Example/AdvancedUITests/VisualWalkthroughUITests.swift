@@ -83,10 +83,11 @@ final class VisualWalkthroughUITests: XCTestCase {
         return URL(fileURLWithPath: override, isDirectory: true)
     }
 
-    /// Settle time applied *before* each capture. SwiftUI sheet and toolbar
-    /// transitions run ~0.3 s; screenshotting inside one yields a half-drawn
-    /// frame that reads as a rendering bug in the visual pass.
-    private let settleBeforeCapture: TimeInterval = 0.5
+    /// How long a SwiftUI sheet/menu transition needs to finish (~0.3 s in
+    /// practice). Applied *before* every capture — screenshotting mid-transition
+    /// yields a half-drawn frame that reads as a rendering bug in the visual
+    /// pass — and after a dismissal, before the next interaction is attempted.
+    private let uiSettle: TimeInterval = 0.5
 
     /// Mirrors `DemoScenarioUITests.launchDemoApp(scenario:)` (private there,
     /// not shared via `UITestHelpers`) so this suite can pick a scripted
@@ -109,7 +110,7 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// write is the point — the bundle is discarded on the next run, and the
     /// whole purpose of this suite is a set of images that outlive it.
     private func capture(_ name: String) {
-        Thread.sleep(forTimeInterval: settleBeforeCapture)
+        Thread.sleep(forTimeInterval: uiSettle)
         let screenshot = XCUIScreen.main.screenshot()
         let url = walkthroughOutputDirectory
             .appendingPathComponent(name)
@@ -404,7 +405,7 @@ final class VisualWalkthroughUITests: XCTestCase {
             let doneButton = app.buttons["Done"].firstMatch
             if doneButton.waitForExistence(timeout: 2), doneButton.isHittable {
                 doneButton.tap()
-                Thread.sleep(forTimeInterval: settleAfterInteraction)
+                Thread.sleep(forTimeInterval: uiSettle)
             }
         }
         capture("15-back-to-chat-after-save")
@@ -470,7 +471,7 @@ final class VisualWalkthroughUITests: XCTestCase {
         } else {
             dismissSheet(app: app)
         }
-        Thread.sleep(forTimeInterval: settleAfterInteraction)
+        Thread.sleep(forTimeInterval: uiSettle)
     }
 
     /// Mirrors `CloudAPIUITests.navigateToAPIConfiguration()` but tolerates a
