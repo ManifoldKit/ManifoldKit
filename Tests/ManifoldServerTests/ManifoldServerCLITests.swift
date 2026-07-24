@@ -184,8 +184,15 @@ final class ManifoldServerCLITests: XCTestCase {
     /// `buildApp()`, the non-network prefix of `run()`) and asserts the
     /// warning fires exactly once.
     func testAllowAnonymousWarningPrintsExactlyOnceDuringBoot() throws {
+        // Boot with `--backend ollama` (URL-validated, never connected at build
+        // time) rather than the default `foundation` backend: Foundation Models
+        // require macOS 26 / iOS 26, so on the n-1 CI runner (macOS 15)
+        // buildApp() would throw "Apple Foundation Models require iOS 26 /
+        // macOS 26 or later" before the --allow-anonymous warning path runs.
+        // Ollama is always compiled in with no OS floor, so it exercises the
+        // same boot sequence on every runner.
         let output = try captureStandardError {
-            let parsed = try ManifoldServerCommand.parseAsRoot(["--allow-anonymous"])
+            let parsed = try ManifoldServerCommand.parseAsRoot(["--allow-anonymous", "--backend", "ollama"])
             guard let command = parsed as? ManifoldServerCommand else {
                 XCTFail("expected ManifoldServerCommand, got \(type(of: parsed))")
                 return
