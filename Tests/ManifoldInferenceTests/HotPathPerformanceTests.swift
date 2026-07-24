@@ -28,6 +28,14 @@ final class HotPathPerformanceTests: XCTestCase {
         }
         let systemPrompt = "You are a helpful assistant that provides detailed answers."
 
+        PerfBudget.assert(.milliseconds(500)) {
+            _ = ContextWindowManager.trimMessages(
+                messages,
+                systemPrompt: systemPrompt,
+                maxTokens: 4096,
+                responseBuffer: 512
+            )
+        }
         measure {
             _ = ContextWindowManager.trimMessages(
                 messages,
@@ -48,6 +56,21 @@ final class HotPathPerformanceTests: XCTestCase {
         }
         ssePayload += "data: [DONE]\n\n"
         let sseData = Array(ssePayload.utf8)
+
+        func parseOnce() async throws {
+            let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
+                for byte in sseData {
+                    continuation.yield(byte)
+                }
+                continuation.finish()
+            }
+            let stream = SSEStreamParser.parse(bytes: byteStream)
+            for try await _ in stream {}
+        }
+
+        try await PerfBudget.assertAsync(.seconds(2)) {
+            try await parseOnce()
+        }
 
         measure {
             let expectation = self.expectation(description: "stream")
@@ -127,6 +150,9 @@ final class HotPathPerformanceTests: XCTestCase {
             try createMlxDirectory(named: "perf-mlx-\(i)")
         }
 
+        PerfBudget.assert(.seconds(2)) {
+            _ = service.discoverModels()
+        }
         measure {
             _ = service.discoverModels()
         }
@@ -139,6 +165,7 @@ final class HotPathPerformanceTests: XCTestCase {
         let longInput = String(repeating: paragraph, count: 2000)
         let tokenizer = HeuristicTokenizer()
 
+        PerfBudget.assert(.milliseconds(500)) { _ = tokenizer.tokenCount(longInput) }
         measure {
             _ = tokenizer.tokenCount(longInput)
         }
@@ -148,6 +175,7 @@ final class HotPathPerformanceTests: XCTestCase {
         let longInput = String(repeating: "abcdefghij", count: 10_000)
         let tokenizer = HeuristicTokenizer()
 
+        PerfBudget.assert(.milliseconds(500)) { _ = tokenizer.tokenCount(longInput) }
         measure {
             _ = tokenizer.tokenCount(longInput)
         }

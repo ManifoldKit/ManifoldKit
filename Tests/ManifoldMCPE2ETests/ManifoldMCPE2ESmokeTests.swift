@@ -5,7 +5,10 @@ import ManifoldInference
 import ManifoldTestSupport
 
 final class ManifoldMCPE2ESmokeTests: XCTestCase {
-    private let endpoint = URL(string: "https://example.com/mcp/e2e")!
+    /// Unique per-test-instance host so stubs never collide with other
+    /// suites under `swift test --parallel` (AGENTS.md MockURLProtocol
+    /// isolation rule — never `reset()` across suites).
+    private let endpoint = URL(string: "https://mcp-\(UUID().uuidString.lowercased()).test/mcp/e2e")!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -13,10 +16,14 @@ final class ManifoldMCPE2ESmokeTests: XCTestCase {
             ProcessInfo.processInfo.environment["RUN_MCP_E2E"] == "1",
             "Set RUN_MCP_E2E=1 to run MCP E2E smoke tests."
         )
+        // The unique .test host has no real DNS entry; resolve it to a
+        // public IP so the SSRF policy admits it.
+        MCPSSRFPolicy._resolverForTesting = { _ in ["93.184.216.34"] }
     }
 
     override func tearDown() {
-        MockURLProtocol.reset()
+        MockURLProtocol.unstub(url: endpoint)
+        MCPSSRFPolicy._resolverForTesting = nil
         super.tearDown()
     }
 

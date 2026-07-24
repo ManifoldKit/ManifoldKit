@@ -11,6 +11,7 @@ final class TokenizationPerformanceTests: XCTestCase {
     func testPerf_tokenCount_100chars() {
         let text = String(repeating: "a", count: 100)
         let tokenizer = HeuristicTokenizer()
+        PerfBudget.assert(.milliseconds(500)) { _ = tokenizer.tokenCount(text) }
         measure {
             _ = tokenizer.tokenCount(text)
         }
@@ -21,6 +22,7 @@ final class TokenizationPerformanceTests: XCTestCase {
     func testPerf_tokenCount_1000chars() {
         let text = String(repeating: "a", count: 1_000)
         let tokenizer = HeuristicTokenizer()
+        PerfBudget.assert(.milliseconds(500)) { _ = tokenizer.tokenCount(text) }
         measure {
             _ = tokenizer.tokenCount(text)
         }
@@ -31,6 +33,7 @@ final class TokenizationPerformanceTests: XCTestCase {
     func testPerf_tokenCount_10000chars() {
         let text = String(repeating: "a", count: 10_000)
         let tokenizer = HeuristicTokenizer()
+        PerfBudget.assert(.milliseconds(500)) { _ = tokenizer.tokenCount(text) }
         measure {
             _ = tokenizer.tokenCount(text)
         }
@@ -41,6 +44,7 @@ final class TokenizationPerformanceTests: XCTestCase {
     func testPerf_tokenCount_100000chars() {
         let text = String(repeating: "a", count: 100_000)
         let tokenizer = HeuristicTokenizer()
+        PerfBudget.assert(.milliseconds(500)) { _ = tokenizer.tokenCount(text) }
         measure {
             _ = tokenizer.tokenCount(text)
         }

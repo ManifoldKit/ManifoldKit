@@ -20,6 +20,14 @@ final class ContextWindowPerformanceTests: XCTestCase {
 
     func testPerf_trimMessages_100messages() {
         let messages = makeMessages(count: 100)
+        PerfBudget.assert(.milliseconds(500)) {
+            _ = ContextWindowManager.trimMessages(
+                messages,
+                systemPrompt: Self.systemPrompt,
+                maxTokens: 4096,
+                responseBuffer: 512
+            )
+        }
         measure {
             _ = ContextWindowManager.trimMessages(
                 messages,
@@ -34,6 +42,14 @@ final class ContextWindowPerformanceTests: XCTestCase {
 
     func testPerf_trimMessages_500messages() {
         let messages = makeMessages(count: 500)
+        PerfBudget.assert(.milliseconds(500)) {
+            _ = ContextWindowManager.trimMessages(
+                messages,
+                systemPrompt: Self.systemPrompt,
+                maxTokens: 4096,
+                responseBuffer: 512
+            )
+        }
         measure {
             _ = ContextWindowManager.trimMessages(
                 messages,
@@ -48,6 +64,14 @@ final class ContextWindowPerformanceTests: XCTestCase {
 
     func testPerf_trimMessages_1000messages() {
         let messages = makeMessages(count: 1_000)
+        PerfBudget.assert(.milliseconds(500)) {
+            _ = ContextWindowManager.trimMessages(
+                messages,
+                systemPrompt: Self.systemPrompt,
+                maxTokens: 4096,
+                responseBuffer: 512
+            )
+        }
         measure {
             _ = ContextWindowManager.trimMessages(
                 messages,
