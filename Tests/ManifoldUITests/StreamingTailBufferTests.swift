@@ -190,11 +190,16 @@ final class StreamingTailBufferTests: XCTestCase {
     ///
     /// Sabotage-evidence:
     ///   M1: drop the `last.id == messageID` check and return the tail's text
-    ///       unconditionally → the buffer keys onto "later" and the streamed
-    ///       text is appended to the wrong message → both assertions fail.
+    ///       unconditionally → the buffer re-keys onto "later" and the streamed
+    ///       message becomes ["latertwo"] → the FIRST assertion fails. The
+    ///       second still passes: `mutateMessage` targets by id, so the tail
+    ///       message itself is never written. (Verified: observed failure is
+    ///       ["latertwo"] vs ["onetwo"].)
     ///   M2: remove the scan fallback (return nil when the tail doesn't match)
-    ///       → the second delta opens a fresh run, giving ["one", "two"]
-    ///       instead of ["onetwo"] → first assertion fails.
+    ///       → the buffer resets to "" and `writeTrailingText` REPLACES the
+    ///       trailing .text run rather than appending a new one, so the run
+    ///       becomes ["two"] — the earlier text is clobbered outright, a worse
+    ///       failure than a split run → first assertion fails.
     func test_streamingTokens_intoNonTailMessage_usesScanFallback() async {
         let box = MessageBox()
         let sessionID = UUID()

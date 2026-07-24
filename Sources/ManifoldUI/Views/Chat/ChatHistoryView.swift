@@ -338,9 +338,17 @@ enum ChatHistoryHandoffResolver {
     /// messages were attributed. Both cases already yield nil from `chip`'s own
     /// resolution guard, which is why the local argument is the durable one.
     ///
+    /// The two clauses are not the same kind of guard. `agents.count > 1` is a
+    /// pure early-out — removing it deoptimises but preserves behaviour.
+    /// `messageCount > 1` is **load-bearing for correctness**: `boundaries`
+    /// forms `1..<messages.count`, and an empty transcript would make that
+    /// `1..<0`, which traps. An empty transcript reaching here from `body` is
+    /// entirely reachable, so removing that clause crashes rather than slows.
+    ///
     /// Split out of ``boundaries(messages:session:)`` so the early-out is
-    /// directly assertable: it is output-equivalent by construction, so no
-    /// black-box test of `boundaries` can tell whether it is present.
+    /// directly assertable: the `agents` half is output-equivalent by
+    /// construction, so no black-box test of `boundaries` can tell whether it
+    /// is present.
     @MainActor
     static func canProduceHandoffs(_ session: ChatSession?, messageCount: Int) -> Bool {
         guard let session else { return false }
