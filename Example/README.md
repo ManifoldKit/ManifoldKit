@@ -19,6 +19,30 @@ scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/
 
 The helper auto-selects an available simulator destination. If you need to pin one manually, inspect `xcrun simctl list devices available` and pass `--destination 'platform=iOS Simulator,id=<SIMULATOR_ID>'`.
 
+### Visual walkthrough (screenshot evidence for a design pass)
+
+`AdvancedUITests/VisualWalkthroughUITests` drives the demo through every surface the 2026 UI refresh restyled and writes a numbered screenshot story, for a human comparison against the drawn spec (`docs/design/ui-refresh-2026.html`). Run it by hand whenever the chat surface changes — it is not part of any CI lane:
+
+```bash
+scripts/example-ui-tests.sh test -only-testing:AdvancedUITests/VisualWalkthroughUITests
+```
+
+Screenshots go to `/private/tmp/manifoldkit-ui-walkthrough` (also attached to the result bundle), and the path is printed at the start of each test. `/private/tmp` is periodically cleared by the system, so copy out anything worth keeping — or point the run somewhere durable:
+
+```bash
+scripts/example-ui-tests.sh test \
+  -only-testing:AdvancedUITests/VisualWalkthroughUITests \
+  TEST_RUNNER_MANIFOLD_WALKTHROUGH_DIR=~/Desktop/walkthrough
+```
+
+The `TEST_RUNNER_` prefix is required on a simulator destination — `xcodebuild test` does not propagate plain shell environment variables into the XCUITest runner process.
+
+The suite's finale, `testDefineRealOllamaEndpointAndSendLiveMessage`, is **opt-in and not hermetic**: it launches without `--uitesting` (real backends, real SwiftData store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and persists an endpoint into the demo's real store. It skips with an explanatory message unless you opt in, matching how this target gates its real-model E2E:
+
+```bash
+touch ~/.manifoldkit_ui_walkthrough_live
+```
+
 ### What This Demonstrates
 
 - Configuring `ManifoldConfiguration` at startup
