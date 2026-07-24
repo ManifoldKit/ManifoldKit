@@ -348,16 +348,26 @@ final class VisualWalkthroughUITests: XCTestCase {
         try skipUnlessLiveWalkthroughEnabled()
 
         let app = XCUIApplication()
-        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
+        // `showAdvancedSettings` is an @AppStorage toggle
+        // (`GenerationSettingsView.swift:21`) that `--uitesting` seeds and this
+        // launch does not — leaving "Manage Cloud APIs" collapsed inside the
+        // disclosure and the endpoint flow unreachable. Seed it through the
+        // UserDefaults argument domain instead of tapping a disclosure whose
+        // expanded state we would then have to trust.
+        app.launchArguments += [
+            "-ApplePersistenceIgnoreState", "YES",
+            "-showAdvancedSettings", "YES",
+        ]
         app.launch()
 
         openChatDetailIfNeeded(app: app)
-        // Without `--uitesting` no model is auto-loaded, so the input stays
-        // disabled until a backend is selected below — gate on the toolbar
-        // being up instead.
+        // Without `--uitesting` no model is auto-loaded, so the composer stays
+        // disabled until a backend is selected below — and on compact width the
+        // settings button lives in the toolbar overflow, so it is not directly
+        // present either. The chat navigation bar is the thing that reliably
+        // marks "the chat surface is up".
         XCTAssertTrue(
-            waitForElement(app.buttons["chat-settings-button"], timeout: 15)
-                || waitForElement(app.staticTexts["No Model Selected"], timeout: 5),
+            waitForElement(app.navigationBars["Chat"], timeout: 20),
             "Chat surface should come up in the live (non-scripted) launch"
         )
 
@@ -503,10 +513,16 @@ final class VisualWalkthroughUITests: XCTestCase {
         let manageAPIs = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == 'Manage Cloud APIs'")).firstMatch
 
-        let advancedDisclosure = advancedSettingsDisclosure(app: app)
-        if !manageAPIs.exists, waitForElement(advancedDisclosure, timeout: 3) {
-            _ = toggleDisclosure(advancedDisclosure)
-            _ = manageAPIs.waitForExistence(timeout: 3)
+        // The launch argument above should have the disclosure open already;
+        // this is the fallback for a run that somehow starts collapsed. Scroll
+        // first — the row sits at the bottom of the settings form.
+        if !manageAPIs.exists {
+            let advancedDisclosure = advancedSettingsDisclosure(app: app)
+            _ = scrollToElement(advancedDisclosure, app: app)
+            if waitForElement(advancedDisclosure, timeout: 3) {
+                _ = toggleDisclosure(advancedDisclosure)
+                _ = manageAPIs.waitForExistence(timeout: 3)
+            }
         }
 
         guard scrollToElement(manageAPIs, app: app), waitForElement(manageAPIs, timeout: 2) else {
