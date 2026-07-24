@@ -267,7 +267,13 @@ public actor MCPClient {
     /// shared across every session (#2284 review, blocker 1). `serverID` always
     /// comes from the descriptor used to `connect(_:)`, never from server-controlled
     /// wire data, so a malicious server cannot spoof another server's identity.
-    private func makeServerRequestHandler(
+    /// `internal` (not `private`) so a test can drive the real closure `connect()`
+    /// wires — mirroring the `elicitationEnabled(for:configuration:)` seam above.
+    /// `MCPElicitationTests.test_makeServerRequestHandlerAutoDeclinesUnsupportedSchema`
+    /// calls this directly to prove the `isSupportedSchema` auto-decline guard is
+    /// live: deleting that guard (forwarding an unsupported schema to the host form
+    /// renderer, the exact shape #1926 resolved to prevent) fails that test.
+    internal func makeServerRequestHandler(
         for descriptor: MCPServerDescriptor,
         samplingEnabled: Bool,
         elicitationEnabled: Bool

@@ -409,6 +409,96 @@ final class MCPElicitationTests: XCTestCase {
         await session.close()
     }
 
+    // MARK: - Schema validation (#2284 review must-fix 1)
+
+    /// `isSupportedSchema` is the #1926 headline safety behavior — it is what stops an
+    /// arbitrarily-nested or non-primitive `requestedSchema` from ever reaching the
+    /// host's form renderer. Before this test it had ZERO coverage (referenced only from
+    /// production), so the reviewer's sabotage — flipping the function body to `return
+    /// true` — left the whole suite green. This test fails under that sabotage.
+    func test_isSupportedSchemaAcceptsFlatPrimitivesRejectsEverythingElse() {
+        // Accepts: a flat object of the four spec-permitted primitive types.
+        XCTAssertTrue(MCPElicitationRequest.isSupportedSchema(.object([
+            "type": .string("object"),
+            "properties": .object([
+                "name": .object(["type": .string("string")]),
+                "age": .object(["type": .string("integer")]),
+                "score": .object(["type": .string("number")]),
+                "active": .object(["type": .string("boolean")]),
+            ]),
+        ])))
+        // Accepts: an object with no `properties` key at all (an empty flat form).
+        XCTAssertTrue(MCPElicitationRequest.isSupportedSchema(.object(["type": .string("object")])))
+
+        // Rejects: the schema isn't even an object.
+        XCTAssertFalse(MCPElicitationRequest.isSupportedSchema(.string("object")))
+        // Rejects: missing the top-level `type: "object"`.
+        XCTAssertFalse(MCPElicitationRequest.isSupportedSchema(.object(["properties": .object([:])])))
+        // Rejects: a nested object property (the shape #1926 auto-declines).
+        XCTAssertFalse(MCPElicitationRequest.isSupportedSchema(.object([
+            "type": .string("object"),
+            "properties": .object(["nested": .object(["type": .string("object")])]),
+        ])))
+        // Rejects: an array-typed property.
+        XCTAssertFalse(MCPElicitationRequest.isSupportedSchema(.object([
+            "type": .string("object"),
+            "properties": .object(["tags": .object(["type": .string("array")])]),
+        ])))
+        // Rejects: a property whose schema isn't an object (so it has no `type`).
+        XCTAssertFalse(MCPElicitationRequest.isSupportedSchema(.object([
+            "type": .string("object"),
+            "properties": .object(["bad": .string("nope")]),
+        ])))
+    }
+
+    /// Drives the REAL request-handler closure `MCPClient.connect()` wires (via the
+    /// now-`internal` `makeServerRequestHandler`, mirroring the `elicitationEnabled`
+    /// seam) — proving the `isSupportedSchema` guard is LIVE, not just correct in
+    /// isolation. An unsupported (nested) schema must be auto-declined WITHOUT ever
+    /// invoking the host handler. Sabotage: deleting the `guard isSupportedSchema…
+    /// else { return .decline }` line from `makeServerRequestHandler` forwards the
+    /// nested schema to `elicitationHandler`, tripping its `XCTFail` and flipping the
+    /// asserted action from `decline` to `accept`.
+    func test_makeServerRequestHandlerAutoDeclinesUnsupportedSchema() async {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Trusted Server",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test",
+            allowsElicitation: true
+        )
+        let configuration = MCPClientConfiguration(
+            elicitationHandler: { _ in
+                XCTFail("host handler must never be invoked for an unsupported schema — it must be auto-declined first")
+                return MCPElicitationResult(action: .accept)
+            }
+        )
+        let client = MCPClient(configuration: configuration)
+        guard let handler = await client.makeServerRequestHandler(
+            for: descriptor,
+            samplingEnabled: false,
+            elicitationEnabled: true
+        ) else {
+            XCTFail("expected a live server-request handler when elicitation is enabled")
+            return
+        }
+
+        let unsupportedSchema: JSONSchemaValue = .object([
+            "message": .string("Fill in the nested form"),
+            "requestedSchema": .object([
+                "type": .string("object"),
+                "properties": .object(["nested": .object(["type": .string("object")])]),
+            ]),
+        ])
+        let result = await handler("elicitation/create", unsupportedSchema)
+
+        guard case .success(let payload) = result, case .object(let object) = payload else {
+            XCTFail("expected a successful auto-decline result, got \(result)")
+            return
+        }
+        XCTAssertEqual(object["action"], .string("decline"), "an unsupported schema must be auto-declined")
+        XCTAssertNil(object["content"], "a decline carries no content")
+    }
+
     // MARK: - Test support
 
     private func makeSession(
