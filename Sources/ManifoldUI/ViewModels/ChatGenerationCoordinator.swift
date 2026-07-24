@@ -135,11 +135,16 @@ final class ChatGenerationCoordinator {
     private var streamingThinkingIDs: Set<UUID> = []
 
     /// Accumulator for the in-flight assistant message's trailing visible-text
-    /// run. why: appending each token delta straight into the message's last
-    /// `.text` part did `existing + batch` — an O(N) string copy per batch and
-    /// O(N²) over the turn. Instead we `append` to this buffer (amortized O(1))
-    /// and write the whole buffer into the message. `contentParts` stays
-    /// authoritative — the buffer is purely a copy-avoidance cache.
+    /// run. Keeps the running text in one place so the streaming path has a
+    /// single authority for "what is the current trailing run"; `contentParts`
+    /// stays the source of truth that views read.
+    ///
+    /// NOT a copy-avoidance cache, despite what this comment used to claim.
+    /// The buffer shares storage with the message part after each write, so
+    /// appending to it copies the accumulated string exactly as the previous
+    /// `existing + batch` did — same O(L) per delta, same O(D·L) per turn.
+    /// See ``appendStreamingDelta(_:to:)`` for the measurements and for why
+    /// that is deliberately left alone.
     @ObservationIgnored
     private var streamingTailBuffer: String = ""
 
@@ -330,9 +335,14 @@ final class ChatGenerationCoordinator {
     /// into the message below, the buffer's storage is shared with the message,
     /// so the *next* `append` is no longer uniquely referenced and
     /// copy-on-write copies the whole accumulated string — one O(L) copy per
-    /// delta, O(D·L) over a turn. That is about half the work of the
-    /// `existing + batch` concat it replaced (which copied twice), but it is
-    /// the same asymptotic class, not a win over it.
+    /// delta, O(D·L) over a turn.
+    ///
+    /// That is the same work as the `existing + batch` concat it replaced, not
+    /// less: `String.+` also performs exactly one O(L) copy (it appends into a
+    /// copy that shares storage with the stored part; the element assignment
+    /// moves a pointer). Measured at 600 / 5,000 / 20,000 deltas the two shapes
+    /// are within 1–6% of each other. The buffer's real benefit is structural —
+    /// it keeps the trailing text run in one place — not asymptotic.
     ///
     /// Left this way deliberately: at realistic sizes (a few KB of reply,
     /// deltas batched to ~30/sec) the copy is a few hundred KB/s of memcpy,
@@ -340,6 +350,10 @@ final class ChatGenerationCoordinator {
     /// in a reference type, i.e. changing `ChatMessage.contentParts` — public
     /// API — to buy back nothing measurable. Revisit only with a profile that
     /// puts this on the flame graph.
+    ///
+    /// (The `trailingText != streamingTailBuffer` compare below is O(1), not
+    /// O(L): in the steady state both sides are the same storage object and
+    /// `String`'s comparison takes its identity fast path.)
     ///
     /// The buffer is keyed to a single trailing text run. If a non-text part
     /// (tool result, thinking) has started a NEW trailing text run since the

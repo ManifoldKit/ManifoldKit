@@ -179,6 +179,53 @@ final class StreamingTailBufferTests: XCTestCase {
 
         XCTAssertFalse(vm.mutateMessage(id: UUID()) { $0.content = "nope" })
     }
+
+    // MARK: - Streaming into a non-tail message (scan fallback)
+
+    /// `currentTrailingTextRun` checks the tail before falling back to a scan.
+    /// Every other streaming test in this file keeps exactly one message in the
+    /// box, so the tail fast path is always taken and the fallback never runs.
+    /// Here a second message sits *after* the streaming one, so the accumulator
+    /// must resolve its target by scanning.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: drop the `last.id == messageID` check and return the tail's text
+    ///       unconditionally → the buffer keys onto "later" and the streamed
+    ///       text is appended to the wrong message → both assertions fail.
+    ///   M2: remove the scan fallback (return nil when the tail doesn't match)
+    ///       → the second delta opens a fresh run, giving ["one", "two"]
+    ///       instead of ["onetwo"] → first assertion fails.
+    func test_streamingTokens_intoNonTailMessage_usesScanFallback() async {
+        let box = MessageBox()
+        let sessionID = UUID()
+        let coord = makeCoordinator(box: box, sessionID: sessionID)
+
+        let msgID = UUID()
+        await coord.handle(runtimeEvent: .streamStarted(messageID: msgID))
+        coord.activeConversationMessageID = msgID
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "one"))
+
+        // Park a later message AFTER the streaming one so it is no longer the
+        // tail — from here both the tail lookup and `mutateMessage` must scan.
+        let tailID = UUID()
+        box.messages.append(
+            ChatMessage(id: tailID, role: .user, content: "later", sessionID: sessionID)
+        )
+
+        await coord.handle(runtimeEvent: .tokenEmitted(messageID: msgID, delta: "two"))
+
+        let streamed = box.messages.first(where: { $0.id == msgID })!
+        XCTAssertEqual(
+            trailingTextParts(streamed), ["onetwo"],
+            "Deltas must keep accumulating into one run on the streaming message even when it is not the tail"
+        )
+
+        let tail = box.messages.first(where: { $0.id == tailID })!
+        XCTAssertEqual(
+            trailingTextParts(tail), ["later"],
+            "No streamed text may leak into the message that now occupies the tail"
+        )
+    }
 }
 
 /// Minimal in-memory MessageStore so these coordinator unit tests don't depend

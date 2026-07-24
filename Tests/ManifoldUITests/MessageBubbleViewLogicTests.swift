@@ -510,8 +510,16 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     /// This asserts the predicate directly because the early-out is
     /// output-equivalent by construction — `boundaries` returns `[:]` for a
     /// single-agent session with or without it, so no black-box test of
-    /// `boundaries` can detect whether the early-out is present. Testing the
-    /// predicate is what makes this non-vacuous.
+    /// `boundaries` can detect whether the early-out is present at all.
+    ///
+    /// Scope of what this actually buys, stated plainly: the predicate is
+    /// `messageCount > 1 && agents.count > 1`, so asserting its truth table is
+    /// partly a restatement of its implementation. It pins that the early-out
+    /// EXISTS and that its boundary cases are the intended ones; it cannot
+    /// catch the failure mode that would reach users, which is the predicate
+    /// drifting out of agreement with ``ChatHistoryHandoffResolver/chip(at:messages:session:)``.
+    /// That agreement is covered by `test_handoffBoundaries_earlyOutPreservesSemantics`
+    /// (and by the multi-agent `test_handoffBoundaries_matchPerIndexChipResolution`).
     ///
     /// Sabotage-evidence:
     ///   M1: drop `session.agents.count > 1` → the single-agent cases return
@@ -595,6 +603,37 @@ final class MessageBubbleViewLogicTests: XCTestCase {
         )
         XCTAssertTrue(
             ChatHistoryHandoffResolver.boundaries(messages: unattributed, session: twoAgents).isEmpty
+        )
+
+        // The case the early-out newly short-circuits: adjacent messages DO
+        // carry two distinct agentIDs, but only one agent is in the session, so
+        // `chip` bails at *agent resolution* rather than at the distinctness
+        // check. Nil today via that resolution guard, and nil via the early-out
+        // — they must agree. This is the fixture that goes red the day `chip`'s
+        // resolution is loosened (e.g. synthesising a placeholder agent for an
+        // unresolvable id), which is precisely when the early-out would begin
+        // eating chips that would otherwise render.
+        let alternatingUnresolvable = (0..<8).map { index in
+            ManifoldInference.ChatMessage(
+                role: .assistant,
+                content: "m\(index)",
+                sessionID: sessionID,
+                agentID: index.isMultiple(of: 2) ? a.id : b.id
+            )
+        }
+        for index in alternatingUnresolvable.indices {
+            XCTAssertNil(
+                ChatHistoryHandoffResolver.chip(
+                    at: index, messages: alternatingUnresolvable, session: singleAgent
+                ),
+                "Unresolvable agentID must yield no chip at index \(index) — if this fails, the early-out is no longer exact."
+            )
+        }
+        XCTAssertTrue(
+            ChatHistoryHandoffResolver.boundaries(
+                messages: alternatingUnresolvable, session: singleAgent
+            ).isEmpty,
+            "Early-out and per-index resolution must agree for unresolvable agentIDs."
         )
     }
 
