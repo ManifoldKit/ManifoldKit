@@ -1,13 +1,19 @@
 # Production readiness by capability
 
 **Audience:** consumer, contributor
-**Status:** normative — states what is true today, dated 2026-07-25.
+**Status:** living
+
+Normative — states what is true today, dated 2026-07-25.
 
 This page is the single source of truth for ManifoldKit's maturity signal.
 Every published SwiftPM product — every `.library` and every executable in
 [`Package.swift`](../Package.swift) — is assigned to exactly one of four
-tiers below. It replaces the scattered `Experimental¹` footnotes that used to
-be the only signal (still threaded through [`AGENTS.md`](../AGENTS.md),
+tiers below. Coverage is **audit-enforced (exhaustive + non-overlapping) for
+every `.library` product**; the 3 executables are assigned by the same page
+but are not independently machine-checked — see
+[Derivation & governance](#derivation--governance) for the exact scope. It
+replaces the scattered `Experimental¹` footnotes that used to be the only
+signal (still threaded through [`AGENTS.md`](../AGENTS.md),
 [`README.md`](../README.md), and [`docs/API-DESIGN.md`](API-DESIGN.md) §§ 7–7b) —
 those now point back here instead of carrying independent judgment calls.
 
@@ -53,6 +59,16 @@ stability promise, because "no real adopter has been built against it yet"
 (§ 7b's bar) is a fact about the ecosystem, not the code.
 
 ## Tier 1 — Core guarantees
+
+> **One exception inside this tier.** `ManifoldKit` is Tier 1, but the
+> umbrella product it ships re-exports `ManifoldSkills` — which is Tier 3
+> (Experimental), listed below. A plain `import ManifoldKit` therefore hands
+> a consumer Experimental surface (`invoke_skill`, `SKILL.md` discovery)
+> alongside the Core guarantee, with no signal at the import site that the
+> two halves carry different promises. Treat any symbol that originates in
+> `ManifoldSkills` as Tier 3 regardless of which product you imported it
+> through. See [Open questions](#open-questions) — this is flagged, not
+> resolved; do not re-tier either product to make the inconsistency go away.
 
 <!-- TIER-MANIFEST:core-guarantees -->
 - `ManifoldKit`
@@ -103,7 +119,7 @@ stability promise, because "no real adopter has been built against it yet"
 | `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors. | Linked and exercised by the Advanced example app (release-time demo-app gate); real production surface, not experimental. |
 | `ManifoldHuggingFace` | Hub search/browse/background downloads. Compiles unconditionally. | Feeds the model-management UI and the `quickStart` seed path; demo-app-gated. |
 | `ManifoldVoice` | Speech I/O adapters, voice composer accessory. | Explicitly confirmed stable-tier in `API-DESIGN.md` § 7b: "a shipping first-party app pins and imports it, verified 2026-07-13" — the one product whose Tier 2 status is externally verified by the same adopter bar that keeps its siblings in Tier 3. |
-| `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic. | Deliberately **excluded** from `API-DESIGN.md` § 7's semver-exemption list despite being developer tooling — the `Package.swift` product comment says the exemption was considered and rejected: "This re-widens the api-digester gate's product surface deliberately." Its real cross-package consumer (`manifold-mlx`'s `fuzz-mlx` driver) is load-bearing, not a test-target-only import. |
+| `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic. | Not on `API-DESIGN.md` § 7's five-product semver-exemption roster, even though it looks like adjacent developer tooling — that roster is a curated, named list, not a blanket rule for anything test/fuzz-shaped. Its `Package.swift` product comment explains why it was published as a real `.library` in the first place: `manifold-mlx`'s `fuzz-mlx` driver needs to `import ManifoldFuzz` cross-package (a load-bearing dependency, not a test-target-only import), and doing so "re-widens the api-digester gate's product surface" — i.e. it is tracked by the same public-surface baseline as every other non-exempt product, the same gating `ManifoldFoundation`/`ManifoldOllama`/`ManifoldCloudSaaS` get. |
 | `ManifoldServerKit` (module `ManifoldServer`) | Embeddable OpenAI-compatible server library — `ManifoldServer.serve(configuration:backendProvider:)`. | A real public seam shipped in #2242, not test/dev tooling; absent from § 7's exemption list. **Caveat:** its api-digester coverage is structurally broken by a SwiftPM tooling limitation (traits don't reach the scratch-checkout build the digester dumps), not a scoping choice — see [Open questions](#open-questions). |
 
 **Executables in this tier:** `ManifoldServer` (the `Server`-trait-gated
@@ -113,24 +129,23 @@ OpenAI-compatible HTTP server CLI — pairs with `ManifoldServerKit` above) and
 
 ## Tier 3 — Experimental
 
-Two distinct reasons land a product here — both cash out to the same
+Two distinct reasons land a product in this tier — both cash out to the same
 promise (no stable compatibility guarantee, migration-noted on break), so
-they share a tier, but the "why" differs and is worth keeping visible:
+they share the tier number, but the "why" differs enough that this page
+keeps them under **separate sub-labels rather than one "Experimental"
+heading** — `API-DESIGN.md` § 7 is explicit that its four developer-tooling
+products are "not internal use only" and have real external consumers, so
+filing them under a plain "Experimental" label would contradict the section
+that already owns that distinction. See sub-tiers 3a and 3b below.
 
-**Zero-adopter experimental** (`API-DESIGN.md` § 7b roster, declared
-2026-07-13): a product graduates only when a shipping app or companion pins
-it **and** imports it from non-test code — verified by grep, not
-documentation or intent. Each carries a graduate-or-delete decision point at
-1.0 + 2 minors or its named milestone.
+### 3a. Zero-adopter experimental
 
-**Semver-exempt developer tooling** (`API-DESIGN.md` § 7, unchanged by 1.0
-per `docs/RELEASE-1.0.md` § "Semver-exempt products"): real external
-consumers exist (companion packages, `manifold-eval`, the `manifold-tools`
-CLI), but the products are developer tooling, not app-facing capability —
-linking one means accepting the same looser promise as an Experimental
-product, without the zero-adopter reason behind it.
+`API-DESIGN.md` § 7b roster, declared 2026-07-13: a product graduates only
+when a shipping app or companion pins it **and** imports it from non-test
+code — verified by grep, not documentation or intent. Each carries a
+graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
 
-<!-- TIER-MANIFEST:experimental -->
+<!-- TIER-MANIFEST:experimental-zero-adopter -->
 - `ManifoldMCP`
 - `ManifoldMCPHost`
 - `ManifoldAppIntents`
@@ -138,6 +153,29 @@ product, without the zero-adopter reason behind it.
 - `ManifoldAnyLanguageModel`
 - `ManifoldTelemetryOTLP`
 - `ManifoldAppEval`
+<!-- /TIER-MANIFEST -->
+
+| Product | Role | Reason |
+|---|---|---|
+| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge. | Zero-adopter — "the best-documented module of the set" per § 7b, still experimental because no consumer app has been built and tested against it. |
+| `ManifoldMCPHost` | Runtime-backed MCP server boundary exposing sessions/messages/RAG/send-message as MCP tools. | Zero-adopter; depends on the still-experimental `ManifoldMCP`. |
+| `ManifoldAppIntents` | AppIntent ↔ `ToolDefinition` bridge. | Zero-adopter. |
+| `ManifoldSkills` | Claude-Code-compatible `SKILL.md` discovery + `invoke_skill` dispatcher (macOS-only). | Zero-adopter. **Note:** re-exported by the Tier-1 `ManifoldKit` umbrella — see the Tier 1 callout above and [Open questions](#open-questions). |
+| `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter). | Zero-adopter **and** § 7 dependency-coupled: its surface can only ever be as stable as the external, pre-1.0 `AnyLanguageModel` package it wraps. |
+| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. | Zero-adopter. |
+| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1). | Zero-adopter. |
+
+### 3b. Semver-exempt developer tooling
+
+`API-DESIGN.md` § 7, unchanged by 1.0 per `docs/RELEASE-1.0.md` §
+"Semver-exempt and Experimental products": real external consumers exist
+(companion packages, `manifold-eval`, the `manifold-tools` CLI) — these are
+**not** zero-adopter, and § 7 is explicit that "not internal use only" is
+the point. They land here because they are developer tooling, not
+app-facing capability, and linking one means accepting the same looser
+compatibility promise as 3a, for a different reason.
+
+<!-- TIER-MANIFEST:experimental-semver-exempt-tooling -->
 - `ManifoldTestSupport`
 - `ManifoldPersistenceTestSupport`
 - `ManifoldBackendTestKit`
@@ -146,20 +184,13 @@ product, without the zero-adopter reason behind it.
 
 | Product | Role | Reason |
 |---|---|---|
-| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge. | Zero-adopter — "the best-documented module of the set" per § 7b, still experimental because no consumer app has been built and tested against it. |
-| `ManifoldMCPHost` | Runtime-backed MCP server boundary exposing sessions/messages/RAG/send-message as MCP tools. | Zero-adopter; depends on the still-experimental `ManifoldMCP`. |
-| `ManifoldAppIntents` | AppIntent ↔ `ToolDefinition` bridge. | Zero-adopter. |
-| `ManifoldSkills` | Claude-Code-compatible `SKILL.md` discovery + `invoke_skill` dispatcher (macOS-only). | Zero-adopter. **Note:** re-exported by the Tier-1 `ManifoldKit` umbrella — see [Open questions](#open-questions). |
-| `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter). | Zero-adopter **and** § 7 dependency-coupled: its surface can only ever be as stable as the external, pre-1.0 `AnyLanguageModel` package it wraps. |
-| `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. | Zero-adopter. |
-| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1). | Zero-adopter. |
 | `ManifoldTestSupport` | Shared mocks/fakes (`MockInferenceBackend`, `CharTokenizer`). | Semver-exempt tooling; real consumers: a surveyed first-party app (test-target import), `manifold-mlx`, `manifold-llama`. |
 | `ManifoldPersistenceTestSupport` | Persistence-dependent test mocks (`GlassBoxDemoRAG`, `InMemoryPersistenceHarness`, `makeInMemoryContainer()`). | Semver-exempt tooling; split from `ManifoldTestSupport` in the 4.4 arch-plan wave. |
 | `ManifoldBackendTestKit` | Backend contract-check machinery, published for companion conformance suites. | Semver-exempt tooling; real consumers: `manifold-mlx`, `manifold-llama`. Links XCTest. |
 | `ManifoldTools` | End-to-end tool-call evaluation/conformance harness and BFCL scoring library. | Semver-exempt tooling; real consumers: the in-repo `manifold-tools` CLI and `manifold-eval`. |
 
-**Executables in this tier:** `manifold-tools` (the CLI for `ManifoldTools`,
-which is itself semver-exempt tooling above).
+**Executables in Tier 3 (3b):** `manifold-tools` (the CLI for
+`ManifoldTools`, which is itself semver-exempt tooling above).
 
 ## Tier 4 — Labs
 
@@ -215,7 +246,10 @@ settle — flagged rather than silently resolved:
   table row) in the same PR. The audit fails loudly if you forget the
   `TIER-MANIFEST` half.
 - **Cross-references:** `AGENTS.md`'s `Experimental¹` footnote points here.
-  `README.md`'s "Dev-tool products" paragraph points here. `docs/RELEASE-1.0.md`
-  § "Semver-exempt products" and the 1.0 DoD
-  ([issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211))
-  point here for the complete tier picture, not just the semver-exempt slice.
+  `README.md`'s "Dev-tool products" paragraph points here. `docs/API-DESIGN.md`
+  §§ 7 and 7b point here for where their rosters land in the tier picture.
+  `docs/RELEASE-1.0.md` § "Semver-exempt and Experimental products" — the
+  document [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211)
+  ruled on — points here for the complete tier picture, not just the freeze
+  exemptions; [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211)
+  itself carries a comment linking this page for the same reason.

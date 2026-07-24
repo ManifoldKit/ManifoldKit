@@ -146,8 +146,9 @@ The seven zero-adopter Experimental products
 outside the freeze for the same reason, until each graduates on a real
 adopter. **This "1.0 release criteria" section covers what freezes; it does
 not enumerate what doesn't** — [`docs/PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md)
-is the complete, audit-enforced tier assignment for every published product,
-this section's two exempt groups included, and is the page to check before
+is the complete tier assignment (audit-enforced for every `.library`
+product) for every published product, this section's two exempt groups
+included, and is the page to check before
 assuming a product is covered by the 1.0 promise.
 
 ---

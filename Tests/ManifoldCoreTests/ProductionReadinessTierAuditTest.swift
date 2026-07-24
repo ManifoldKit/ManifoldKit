@@ -37,6 +37,15 @@ import XCTest
 /// text) — ``tierCoverageViolations(manifest:doc:)`` — so the in-file
 /// sabotage tests exercise the exact function the audit runs. Mirrors
 /// `PackageTraitGateAuditTest`'s manifest-driven, function-under-test shape.
+///
+/// The real audit test also carries a floor assert (more than 20 extracted
+/// `.library` products) so a regex regression in `extractLibraryProducts`
+/// can't silently turn this into a vacuously green audit — mirrors
+/// `AuditSabotageCoverageAuditTest`'s guard on its own input set. And
+/// `extractTierMembership` counts **block occurrences**, not distinct tier
+/// IDs, so two separate `TIER-MANIFEST` blocks that happen to share one ID
+/// still register as a double-listing — see
+/// `test_sabotage_detectsDoubleTieredProductWithSameTierID`.
 final class ProductionReadinessTierAuditTest: XCTestCase {
 
     private static let tierMarkerStart = "<!-- TIER-MANIFEST:"
@@ -45,6 +54,19 @@ final class ProductionReadinessTierAuditTest: XCTestCase {
     func test_everyLibraryProductIsTieredExactlyOnce() throws {
         let manifest = try Self.readManifest()
         let doc = try Self.readReadinessDoc()
+
+        // Floor assert: `tierCoverageViolations` only iterates the products
+        // `extractLibraryProducts` finds, so if that regex ever silently
+        // stopped matching (a Package.swift reformat, a typo in the
+        // pattern), the loop would run zero times and this test would pass
+        // while enforcing nothing — a vacuously green audit. Mirrors
+        // `AuditSabotageCoverageAuditTest.swift:53`'s guard on its own
+        // input set.
+        let libraryProductCount = Self.extractLibraryProducts(manifest: manifest).count
+        XCTAssertGreaterThan(
+            libraryProductCount, 20,
+            "Expected more than 20 .library products in Package.swift — got \(libraryProductCount). If this regressed, extractLibraryProducts's regex probably stopped matching, not that the package really shrank that far."
+        )
 
         let violations = Self.tierCoverageViolations(manifest: manifest, doc: doc)
 
@@ -88,8 +110,8 @@ final class ProductionReadinessTierAuditTest: XCTestCase {
     }
 
     /// Plants a doc where the same product is listed under two different
-    /// `TIER-MANIFEST` blocks, and asserts the REAL detection function
-    /// flags the overlap.
+    /// `TIER-MANIFEST` blocks (distinct tier IDs), and asserts the REAL
+    /// detection function flags the overlap.
     func test_sabotage_detectsDoubleTieredProduct() {
         let manifest = #".library(name: "ManifoldInference", targets: ["ManifoldInference"]),"#
         let doc = """
@@ -109,6 +131,33 @@ final class ProductionReadinessTierAuditTest: XCTestCase {
         )
     }
 
+    /// Plants a doc where the same product is listed under two SEPARATE
+    /// `TIER-MANIFEST` blocks that happen to share the SAME tier ID (a
+    /// pathological but real case: `extractTierMembership` used to key
+    /// membership by a `Set<String>` of tier IDs, so two same-ID blocks
+    /// listing one product collapsed to a single membership entry and the
+    /// duplicate silently passed). Asserts the REAL detection function still
+    /// flags it — this is what distinguishes "count distinct blocks" from
+    /// "count distinct IDs".
+    func test_sabotage_detectsDoubleTieredProductWithSameTierID() {
+        let manifest = #".library(name: "ManifoldInference", targets: ["ManifoldInference"]),"#
+        let doc = """
+            <!-- TIER-MANIFEST:core-guarantees -->
+            - `ManifoldInference`
+            <!-- /TIER-MANIFEST -->
+            <!-- TIER-MANIFEST:core-guarantees -->
+            - `ManifoldInference`
+            <!-- /TIER-MANIFEST -->
+            """
+
+        let violations = Self.tierCoverageViolations(manifest: manifest, doc: doc)
+
+        XCTAssertTrue(
+            violations.contains { $0.contains("ManifoldInference") && $0.contains("more than one tier") },
+            "A product listed in two same-ID TIER-MANIFEST blocks must still be flagged (block count, not distinct-ID count); got \(violations)"
+        )
+    }
+
     // MARK: - Detection
 
     /// Both the audit and the sabotage tests call this. Returns one
@@ -121,11 +170,11 @@ final class ProductionReadinessTierAuditTest: XCTestCase {
 
         var violations: [String] = []
         for product in libraryProducts.sorted() {
-            let tiers = tierMembership[product] ?? []
-            if tiers.isEmpty {
+            let tierOccurrences = tierMembership[product] ?? []
+            if tierOccurrences.isEmpty {
                 violations.append("`\(product)` is a .library product in Package.swift but appears in no tier (no TIER-MANIFEST block lists it)")
-            } else if tiers.count > 1 {
-                violations.append("`\(product)` appears in more than one tier: \(tiers.sorted().joined(separator: ", "))")
+            } else if tierOccurrences.count > 1 {
+                violations.append("`\(product)` appears in more than one tier: \(tierOccurrences.joined(separator: ", "))")
             }
         }
         return violations
@@ -146,14 +195,24 @@ final class ProductionReadinessTierAuditTest: XCTestCase {
         return found
     }
 
-    /// Returns product name -> the set of tier IDs it's listed under,
-    /// parsed from `<!-- TIER-MANIFEST:<id> --> ... <!-- /TIER-MANIFEST -->`
-    /// blocks. Only `- \`Name\`` bullet lines inside a block count — prose
-    /// or table cells outside the markers are ignored, so a rationale
-    /// paragraph mentioning another product's name in backticks can't be
-    /// mistaken for a tier assignment.
-    static func extractTierMembership(doc: String) -> [String: Set<String>] {
-        var membership: [String: Set<String>] = [:]
+    /// Returns product name -> one entry per `TIER-MANIFEST` **block** it's
+    /// listed under (the tier ID, possibly repeated), parsed from
+    /// `<!-- TIER-MANIFEST:<id> --> ... <!-- /TIER-MANIFEST -->` blocks.
+    /// Only `- \`Name\`` bullet lines inside a block count — prose or table
+    /// cells outside the markers are ignored, so a rationale paragraph
+    /// mentioning another product's name in backticks can't be mistaken for
+    /// a tier assignment.
+    ///
+    /// Deliberately an **array keyed by block occurrence, not a
+    /// `Set<String>` of tier IDs**: two separate blocks that happen to share
+    /// the same tier ID (a doc-authoring slip, distinct from the normal case
+    /// of distinct IDs) must still count as two occurrences, or a
+    /// double-listed product silently collapses to one membership entry and
+    /// the overlap check never fires. Within a single block, a product is
+    /// deduped to at most one occurrence — repeating the same bullet twice
+    /// in one block isn't a cross-tier conflict.
+    static func extractTierMembership(doc: String) -> [String: [String]] {
+        var membership: [String: [String]] = [:]
         var searchStart = doc.startIndex
 
         while let startRange = doc.range(of: tierMarkerStart, range: searchStart..<doc.endIndex) {
@@ -163,13 +222,17 @@ final class ProductionReadinessTierAuditTest: XCTestCase {
             guard let endRange = doc.range(of: tierMarkerEnd, range: idEndRange.upperBound..<doc.endIndex) else { break }
             let block = doc[idEndRange.upperBound..<endRange.lowerBound]
 
+            var productsInThisBlock: Set<String> = []
             for rawLine in block.components(separatedBy: "\n") {
                 let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
                 guard trimmed.hasPrefix("- `") else { continue }
                 let afterOpenBacktick = trimmed.dropFirst(3)
                 guard let closeBacktick = afterOpenBacktick.firstIndex(of: "`") else { continue }
                 let name = String(afterOpenBacktick[..<closeBacktick])
-                membership[name, default: []].insert(tierID)
+                productsInThisBlock.insert(name)
+            }
+            for name in productsInThisBlock {
+                membership[name, default: []].append(tierID)
             }
 
             searchStart = endRange.upperBound
