@@ -76,12 +76,21 @@ struct ChatHistoryView: View {
 
                         // why: iterate `messages` directly (ChatMessage is
                         // Identifiable) instead of materializing a fresh
-                        // `enumerated()` tuple array on every body eval — that array
-                        // was an O(N) allocation per streaming batch (~30/sec). The
-                        // only index consumer was the handoff chip, which needs the
-                        // PREVIOUS message; we precompute the handoff boundaries in
-                        // one O(N) pass keyed by message id so no per-row scan is
-                        // reintroduced.
+                        // `enumerated()` tuple array — rows then carry no index,
+                        // so the handoff chip (which needs the PREVIOUS message)
+                        // resolves its boundaries up front, keyed by message id,
+                        // rather than re-scanning per row.
+                        //
+                        // Cost: this runs on every body eval, not once per turn.
+                        // `boundaries` early-outs unless the session actually
+                        // has 2+ agents, so the single-agent case — effectively
+                        // every session that never uses multi-agent handoff —
+                        // pays a constant-time check instead of walking the
+                        // whole transcript. (The empty return allocates nothing
+                        // either way: an empty Dictionary literal is a shared
+                        // singleton. What the early-out saves is the O(N) loop
+                        // and its per-index ChatMessage copies and ARC traffic.)
+                        // Keep that early-out intact if this call moves.
                         let handoffBoundaries = ChatHistoryHandoffResolver.boundaries(
                             messages: viewModel.messages,
                             session: viewModel.activeSession
@@ -311,6 +320,41 @@ enum ChatHistoryBranchOriginResolver {
 
 enum ChatHistoryHandoffResolver {
 
+    /// `true` when this (session, message-count) pair could produce at least
+    /// one chip — the early-out for ``boundaries(messages:session:)``.
+    ///
+    /// Exact, not a heuristic, and the argument is *local*:
+    /// ``chip(at:messages:session:)`` resolves both of its agents against the
+    /// same `session.agents` array this predicate counts (see its
+    /// `agents.first(where:)` pair), and needs two *distinct* ids to match. An
+    /// array with fewer than two entries cannot satisfy that, so skipping the
+    /// scan can never suppress a chip the loop would have produced.
+    ///
+    /// Deliberately does NOT rest on where `agentID`s come from. Today they are
+    /// only ever minted from `session.agents` (`TurnPreparation`'s active-agent
+    /// lookup, `TurnStreamFinalizer`'s handoff target), but `ChatMessage`'s
+    /// public initialisers accept an arbitrary `agentID:`, so a host can mint
+    /// an id that resolves against nothing — as can deleting an agent after its
+    /// messages were attributed. Both cases already yield nil from `chip`'s own
+    /// resolution guard, which is why the local argument is the durable one.
+    ///
+    /// The two clauses are not the same kind of guard. `agents.count > 1` is a
+    /// pure early-out — removing it deoptimises but preserves behaviour.
+    /// `messageCount > 1` is **load-bearing for correctness**: `boundaries`
+    /// forms `1..<messages.count`, and an empty transcript would make that
+    /// `1..<0`, which traps. An empty transcript reaching here from `body` is
+    /// entirely reachable, so removing that clause crashes rather than slows.
+    ///
+    /// Split out of ``boundaries(messages:session:)`` so the early-out is
+    /// directly assertable: the `agents` half is output-equivalent by
+    /// construction, so no black-box test of `boundaries` can tell whether it
+    /// is present.
+    @MainActor
+    static func canProduceHandoffs(_ session: ChatSession?, messageCount: Int) -> Bool {
+        guard let session else { return false }
+        return messageCount > 1 && session.agents.count > 1
+    }
+
     /// Computes, in a single O(N) pass, the handoff chip to render *above* each
     /// message — keyed by the message's id.
     ///
@@ -319,12 +363,16 @@ enum ChatHistoryHandoffResolver {
     /// directly (rather than `enumerated()`) means rows no longer carry their
     /// index, so we resolve every boundary up front. Output is byte-for-byte
     /// equivalent to calling ``chip(at:messages:session:)`` for each index.
+    ///
+    /// Guarded by ``canProduceHandoffs(_:messageCount:)`` because the caller is
+    /// a SwiftUI `body` — this runs on every eval, and without the early-out
+    /// every single-agent session walked the whole transcript to return empty.
     @MainActor
     static func boundaries(
         messages: [ChatMessage],
         session: ChatSession?
     ) -> [UUID: HandoffChipView] {
-        guard let session, messages.count > 1 else { return [:] }
+        guard let session, canProduceHandoffs(session, messageCount: messages.count) else { return [:] }
         var result: [UUID: HandoffChipView] = [:]
         for index in 1..<messages.count {
             if let chip = chip(at: index, messages: messages, session: session) {
