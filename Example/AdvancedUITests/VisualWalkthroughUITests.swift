@@ -393,13 +393,17 @@ final class VisualWalkthroughUITests: XCTestCase {
 
         capture("12-add-endpoint-editor-open")
 
-        // `APIEndpointEditorView` uses a default `Picker`, which renders inside
-        // a Form as a disclosure row labeled "Provider".
+        // `APIEndpointEditorView` uses a default `Picker`, which renders in a
+        // Form as a menu row. Its accessibility label carries the current
+        // selection too ("Provider, OpenAI"), so an exact `buttons["Provider"]`
+        // subscript misses — and a `descendants` CONTAINS match would happily
+        // return the inert "Provider" *section header* instead, tap nothing,
+        // and leave the failure looking like a missing menu option.
         let providerRow = app.buttons["Provider"].exists
             ? app.buttons["Provider"]
-            : app.descendants(matching: .any)
-                .matching(NSPredicate(format: "label CONTAINS[c] 'Provider'")).firstMatch
+            : app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Provider'")).firstMatch
         guard providerRow.waitForExistence(timeout: 3), providerRow.isHittable else {
+            dumpHierarchy(app, named: "13-provider-row-missing-hierarchy")
             XCTFail("Provider picker row not found/hittable")
             return
         }
@@ -410,7 +414,9 @@ final class VisualWalkthroughUITests: XCTestCase {
             : app.descendants(matching: .any)
                 .matching(NSPredicate(format: "label == 'Ollama'")).firstMatch
         guard ollamaOption.waitForExistence(timeout: 3), ollamaOption.isHittable else {
-            XCTFail("Ollama provider option not found in picker")
+            dumpHierarchy(app, named: "13-provider-options-hierarchy")
+            capture("13-provider-options-MISSING")
+            XCTFail("Ollama provider option not found in the picker")
             return
         }
         ollamaOption.tap()
@@ -433,21 +439,21 @@ final class VisualWalkthroughUITests: XCTestCase {
         }
         saveButton.tap()
 
-        // The editor sheet dismisses on save; the Cloud APIs and Generation
-        // Settings sheets (stacked on iOS) each need an explicit Done.
-        for _ in 0..<2 {
-            let doneButton = app.buttons["Done"].firstMatch
-            if doneButton.waitForExistence(timeout: 2), doneButton.isHittable {
-                doneButton.tap()
-                Thread.sleep(forTimeInterval: uiSettle)
-            }
+        guard returnToChatSurface(app: app) else {
+            dumpHierarchy(app, named: "15-settings-sheets-stuck-hierarchy")
+            capture("15-settings-sheets-stuck")
+            XCTFail("Could not dismiss the settings sheets back to the chat surface")
+            return
         }
         capture("15-back-to-chat-after-save")
 
+        // Only meaningful once the chat surface is genuinely front-most: the
+        // chip stays in the hierarchy while a sheet covers it, so checking it
+        // under a stuck sheet would blame #2325 for a stuck sheet.
         let switcherChip = app.descendants(matching: .any)["chat-model-switcher-chip"]
         guard switcherChip.waitForExistence(timeout: 5), switcherChip.isHittable else {
             dumpHierarchy(app, named: "16-switcher-chip-unreachable-live-hierarchy")
-            XCTFail("chat-model-switcher-chip unreachable in the live launch too (#2325 regression)")
+            XCTFail("chat-model-switcher-chip unreachable on a front-most chat surface (#2325 regression)")
             return
         }
         switcherChip.tap()
@@ -496,6 +502,32 @@ final class VisualWalkthroughUITests: XCTestCase {
                 the real demo store.
                 """)
         }
+    }
+
+    /// Dismisses the stacked settings sheets until the chat surface is
+    /// front-most again.
+    ///
+    /// Saving the endpoint closes the editor, but Cloud APIs and Generation
+    /// Settings each need their own Done — and a fixed two taps is not enough
+    /// (observed: the run ended with Cloud APIs still up, the chip still in the
+    /// hierarchy underneath it, and the failure reading as a chip regression).
+    /// Presence of either sheet's title is the condition, not a tap count.
+    private func returnToChatSurface(app: XCUIApplication) -> Bool {
+        func settingsSheetVisible() -> Bool {
+            app.staticTexts["Cloud APIs"].exists || app.staticTexts["Generation Settings"].exists
+        }
+
+        for _ in 0..<4 {
+            guard settingsSheetVisible() else { return true }
+            let doneButton = app.buttons["Done"].firstMatch
+            if doneButton.waitForExistence(timeout: 2), doneButton.isHittable {
+                doneButton.tap()
+            } else {
+                dismissSheet(app: app)
+            }
+            Thread.sleep(forTimeInterval: uiSettle)
+        }
+        return !settingsSheetVisible()
     }
 
     /// The switcher is a sheet on iOS and a popover on macOS; prefer an

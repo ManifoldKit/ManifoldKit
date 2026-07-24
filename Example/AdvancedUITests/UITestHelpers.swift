@@ -291,6 +291,14 @@ extension XCTestCase {
         switch label {
         case "Generation settings":
             identifierCandidates = [app.buttons["chat-settings-button"]]
+        case "Appearance":
+            // The demo's appearance `Menu` carries an identifier but its label
+            // is only reachable if iOS nests the menu in the overflow. If a
+            // future OS flattens it, the `Picker("Appearance", …)` label
+            // becomes a section header and the staticTexts fallback below would
+            // tap that inert header and report success. Matching the identifier
+            // first works both in-bar and inside an open overflow menu.
+            identifierCandidates = [app.descendants(matching: .any)["demo-appearance-menu"]]
         default:
             identifierCandidates = []
         }
