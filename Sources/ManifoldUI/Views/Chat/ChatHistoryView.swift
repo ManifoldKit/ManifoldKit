@@ -76,12 +76,19 @@ struct ChatHistoryView: View {
 
                         // why: iterate `messages` directly (ChatMessage is
                         // Identifiable) instead of materializing a fresh
-                        // `enumerated()` tuple array on every body eval — that array
-                        // was an O(N) allocation per streaming batch (~30/sec). The
-                        // only index consumer was the handoff chip, which needs the
-                        // PREVIOUS message; we precompute the handoff boundaries in
-                        // one O(N) pass keyed by message id so no per-row scan is
-                        // reintroduced.
+                        // `enumerated()` tuple array — rows then carry no index,
+                        // so the handoff chip (which needs the PREVIOUS message)
+                        // resolves its boundaries up front, keyed by message id,
+                        // rather than re-scanning per row.
+                        //
+                        // Cost: this runs on every body eval, not once per turn.
+                        // `boundaries` early-outs to a shared empty dictionary
+                        // unless the session actually has 2+ agents, so the
+                        // single-agent case — effectively every session that
+                        // never uses multi-agent handoff — pays a constant-time
+                        // check here, not an O(N) pass plus a dictionary
+                        // allocation. Keep that early-out intact if this call
+                        // moves.
                         let handoffBoundaries = ChatHistoryHandoffResolver.boundaries(
                             messages: viewModel.messages,
                             session: viewModel.activeSession
@@ -319,12 +326,36 @@ enum ChatHistoryHandoffResolver {
     /// directly (rather than `enumerated()`) means rows no longer carry their
     /// index, so we resolve every boundary up front. Output is byte-for-byte
     /// equivalent to calling ``chip(at:messages:session:)`` for each index.
+    ///
+    /// The `agents.count > 1` guard is not an optimisation heuristic — it is
+    /// exact. ``chip(at:messages:session:)`` only returns non-nil when two
+    /// *distinct* `agentID`s both resolve against `session.agents`, which a
+    /// session with fewer than two agents can never satisfy. Without it, the
+    /// caller (a SwiftUI `body`, so: very hot) allocated a dictionary and
+    /// walked every message on every eval only to return empty for every
+    /// session that doesn't use multi-agent handoff.
+    /// `true` when this (session, message-count) pair could produce at least one
+    /// chip. Exact, not a heuristic: ``chip(at:messages:session:)`` returns
+    /// non-nil only when two *distinct* `agentID`s both resolve against
+    /// `session.agents`, so fewer than two messages or fewer than two agents
+    /// makes a chip impossible.
+    ///
+    /// Split out of ``boundaries(messages:session:)`` so the early-out is
+    /// directly assertable — the early-out is output-equivalent by
+    /// construction, so no black-box test of `boundaries` can tell whether it
+    /// is present.
+    @MainActor
+    static func canProduceHandoffs(_ session: ChatSession?, messageCount: Int) -> Bool {
+        guard let session else { return false }
+        return messageCount > 1 && session.agents.count > 1
+    }
+
     @MainActor
     static func boundaries(
         messages: [ChatMessage],
         session: ChatSession?
     ) -> [UUID: HandoffChipView] {
-        guard let session, messages.count > 1 else { return [:] }
+        guard let session, canProduceHandoffs(session, messageCount: messages.count) else { return [:] }
         var result: [UUID: HandoffChipView] = [:]
         for index in 1..<messages.count {
             if let chip = chip(at: index, messages: messages, session: session) {

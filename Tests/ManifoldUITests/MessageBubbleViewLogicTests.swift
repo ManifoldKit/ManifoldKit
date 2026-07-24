@@ -503,6 +503,101 @@ final class MessageBubbleViewLogicTests: XCTestCase {
         XCTAssertNotNil(boundaries[messages[4].id])
     }
 
+    /// The `boundaries` early-out predicate is EXACT, not a heuristic: a chip
+    /// needs two distinct agentIDs both resolving against `session.agents`, so
+    /// <2 agents or <2 messages can never produce one.
+    ///
+    /// This asserts the predicate directly because the early-out is
+    /// output-equivalent by construction — `boundaries` returns `[:]` for a
+    /// single-agent session with or without it, so no black-box test of
+    /// `boundaries` can detect whether the early-out is present. Testing the
+    /// predicate is what makes this non-vacuous.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: drop `session.agents.count > 1` → the single-agent cases return
+    ///       true → first two assertions fail.
+    ///   M2: drop `messageCount > 1` → the 0/1-message cases return true → fails.
+    ///   M3: tighten to `agents.count > 2` → the 2-agent case returns false →
+    ///       last assertion fails (guard must not suppress real handoffs).
+    @MainActor
+    func test_handoffBoundaries_earlyOutPredicateIsExact() {
+        let (a, b) = agentPair()
+
+        let singleAgent = ManifoldInference.ChatSession(id: sessionID, agents: [a])
+        XCTAssertFalse(
+            ChatHistoryHandoffResolver.canProduceHandoffs(singleAgent, messageCount: 50),
+            "A single-agent session can never produce a chip, however many messages."
+        )
+        let noAgents = ManifoldInference.ChatSession(id: sessionID, agents: [])
+        XCTAssertFalse(
+            ChatHistoryHandoffResolver.canProduceHandoffs(noAgents, messageCount: 50),
+            "An agent-less session can never produce a chip."
+        )
+
+        let twoAgents = ManifoldInference.ChatSession(id: sessionID, agents: [a, b])
+        XCTAssertFalse(
+            ChatHistoryHandoffResolver.canProduceHandoffs(twoAgents, messageCount: 1),
+            "A single message has no adjacency, so no transition is possible."
+        )
+        XCTAssertFalse(
+            ChatHistoryHandoffResolver.canProduceHandoffs(nil, messageCount: 50),
+            "No session means no agents to resolve against."
+        )
+
+        // The guard must NOT suppress the case handoffs actually occur in.
+        XCTAssertTrue(
+            ChatHistoryHandoffResolver.canProduceHandoffs(twoAgents, messageCount: 2),
+            "Two agents and two messages is exactly the case a chip can occur in."
+        )
+    }
+
+    /// The early-out must be semantics-preserving: for a single-agent session,
+    /// `boundaries` agrees with per-index `chip(at:)` resolution (both empty),
+    /// and for a multi-agent session whose messages carry no `agentID` it is
+    /// still empty — i.e. the guard neither invents nor suppresses chips.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: make the early-out return a non-empty dict → count assertions fail.
+    ///   M2: apply the early-out when `agents.count > 1` (inverted) → the
+    ///       multi-agent transition test above loses its chips and fails.
+    @MainActor
+    func test_handoffBoundaries_earlyOutPreservesSemantics() {
+        let (a, b) = agentPair()
+
+        let singleAgent = ManifoldInference.ChatSession(id: sessionID, agents: [a])
+        let sameAgentMessages = (0..<8).map { index in
+            ManifoldInference.ChatMessage(
+                role: .assistant, content: "m\(index)", sessionID: sessionID, agentID: a.id
+            )
+        }
+        let singleAgentBoundaries = ChatHistoryHandoffResolver.boundaries(
+            messages: sameAgentMessages, session: singleAgent
+        )
+        XCTAssertTrue(singleAgentBoundaries.isEmpty)
+        for index in sameAgentMessages.indices {
+            XCTAssertNil(
+                ChatHistoryHandoffResolver.chip(at: index, messages: sameAgentMessages, session: singleAgent),
+                "Per-index resolution must agree with the early-out at index \(index)."
+            )
+        }
+
+        // Two agents present, but no message attributes to one: the early-out
+        // does NOT fire (predicate is true), and the loop still finds nothing.
+        let twoAgents = ManifoldInference.ChatSession(id: sessionID, agents: [a, b])
+        let unattributed = (0..<8).map { index in
+            ManifoldInference.ChatMessage(
+                role: .assistant, content: "m\(index)", sessionID: sessionID, agentID: nil
+            )
+        }
+        XCTAssertTrue(
+            ChatHistoryHandoffResolver.canProduceHandoffs(twoAgents, messageCount: unattributed.count),
+            "The early-out must not fire just because messages lack agentIDs."
+        )
+        XCTAssertTrue(
+            ChatHistoryHandoffResolver.boundaries(messages: unattributed, session: twoAgents).isEmpty
+        )
+    }
+
     /// Snapshot the natural arrival ordering of `.tokenEmitted`-style events
     /// vs `.agentHandoff` for a single turn. The chip in our renderer is
     /// derived from the persisted sequence — but the *event* stream must

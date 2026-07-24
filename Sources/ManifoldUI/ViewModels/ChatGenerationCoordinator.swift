@@ -322,9 +322,24 @@ final class ChatGenerationCoordinator {
         }
     }
 
-    /// Streaming-path text append. Accumulates into ``streamingTailBuffer``
-    /// (amortized O(1)) and writes the whole buffer into the message's trailing
-    /// `.text` run, killing the O(N²) per-batch string concat.
+    /// Streaming-path text append. Accumulates into ``streamingTailBuffer`` and
+    /// writes the whole buffer into the message's trailing `.text` run.
+    ///
+    /// Cost, stated honestly: this is **not** an amortized-O(1) append, and an
+    /// earlier version of this comment claimed it was. Once `whole` is stored
+    /// into the message below, the buffer's storage is shared with the message,
+    /// so the *next* `append` is no longer uniquely referenced and
+    /// copy-on-write copies the whole accumulated string — one O(L) copy per
+    /// delta, O(D·L) over a turn. That is about half the work of the
+    /// `existing + batch` concat it replaced (which copied twice), but it is
+    /// the same asymptotic class, not a win over it.
+    ///
+    /// Left this way deliberately: at realistic sizes (a few KB of reply,
+    /// deltas batched to ~30/sec) the copy is a few hundred KB/s of memcpy,
+    /// which does not register. Eliminating it means holding the streaming tail
+    /// in a reference type, i.e. changing `ChatMessage.contentParts` — public
+    /// API — to buy back nothing measurable. Revisit only with a profile that
+    /// puts this on the flame graph.
     ///
     /// The buffer is keyed to a single trailing text run. If a non-text part
     /// (tool result, thinking) has started a NEW trailing text run since the
@@ -349,8 +364,22 @@ final class ChatGenerationCoordinator {
 
     /// Returns the text of the current trailing `.text` run of the message, or
     /// `nil` when the message has no parts / does not end in a text run.
+    ///
+    /// Tail-first, mirroring `ChatViewModel.mutateMessage`: this is called once
+    /// per streamed delta, and the message being streamed is the last one in
+    /// all but the reshaping cases (branch / edit / cancel), so the O(N) scan is
+    /// the fallback rather than the default. The tail id is re-validated on
+    /// every call — no cached index — so a reshaped tail still resolves
+    /// correctly via the scan.
     private func currentTrailingTextRun(of messageID: UUID) -> String? {
-        guard let msg = currentMessages().first(where: { $0.id == messageID }) else { return nil }
+        let messages = currentMessages()
+        let match: ChatMessage?
+        if let last = messages.last, last.id == messageID {
+            match = last
+        } else {
+            match = messages.first(where: { $0.id == messageID })
+        }
+        guard let msg = match else { return nil }
         guard case .text(let existing)? = msg.contentParts.last else { return nil }
         return existing
     }
