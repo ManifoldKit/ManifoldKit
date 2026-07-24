@@ -85,7 +85,8 @@ MCPClient.sources() Func
 MCPClient.unownedExecutor Var
 MCPClientConfiguration Struct
 MCPClientConfiguration conformances: Copyable,Escapable,Sendable,SendableMetatype
-MCPClientConfiguration.init(sseStreamLimits:requestTimeout:maxConcurrentRequestsPerSession:maxMessageBytes:maxJSONNestingDepth:keychain:lifecyclePolicy:networkPathObserver:lifecycleObserver:samplingHandler:) Constructor
+MCPClientConfiguration.elicitationHandler Var
+MCPClientConfiguration.init(sseStreamLimits:requestTimeout:maxConcurrentRequestsPerSession:maxMessageBytes:maxJSONNestingDepth:keychain:lifecyclePolicy:networkPathObserver:lifecycleObserver:samplingHandler:elicitationHandler:) Constructor
 MCPClientConfiguration.keychain Var
 MCPClientConfiguration.lifecycleObserver Var
 MCPClientConfiguration.lifecyclePolicy Var
@@ -128,6 +129,27 @@ MCPDisconnectReason.networkUnavailable EnumElement
 MCPDisconnectReason.requested EnumElement
 MCPDisconnectReason.transportClosed EnumElement
 MCPDisconnectReason.unauthorized EnumElement
+MCPElicitationRequest Struct
+MCPElicitationRequest conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
+MCPElicitationRequest.__derived_struct_equals(_:_:) Func
+MCPElicitationRequest.init(serverID:message:requestedSchema:) Constructor
+MCPElicitationRequest.message Var
+MCPElicitationRequest.requestedSchema Var
+MCPElicitationRequest.serverID Var
+MCPElicitationResult Struct
+MCPElicitationResult conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
+MCPElicitationResult.Action Enum
+MCPElicitationResult.Action conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
+MCPElicitationResult.Action.RawValue TypeAlias
+MCPElicitationResult.Action.accept EnumElement
+MCPElicitationResult.Action.cancel EnumElement
+MCPElicitationResult.Action.decline EnumElement
+MCPElicitationResult.Action.init(rawValue:) Constructor
+MCPElicitationResult.Action.rawValue Var
+MCPElicitationResult.__derived_struct_equals(_:_:) Func
+MCPElicitationResult.action Var
+MCPElicitationResult.content Var
+MCPElicitationResult.init(action:content:) Constructor
 MCPError Enum
 MCPError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
 MCPError.__derived_enum_equals(_:_:) Func
@@ -261,10 +283,11 @@ MCPSamplingRequest.ModelPreferences.init(hintNames:costPriority:speedPriority:in
 MCPSamplingRequest.ModelPreferences.intelligencePriority Var
 MCPSamplingRequest.ModelPreferences.speedPriority Var
 MCPSamplingRequest.__derived_struct_equals(_:_:) Func
-MCPSamplingRequest.init(messages:modelPreferences:systemPrompt:maxTokens:temperature:stopSequences:) Constructor
+MCPSamplingRequest.init(serverID:messages:modelPreferences:systemPrompt:maxTokens:temperature:stopSequences:) Constructor
 MCPSamplingRequest.maxTokens Var
 MCPSamplingRequest.messages Var
 MCPSamplingRequest.modelPreferences Var
+MCPSamplingRequest.serverID Var
 MCPSamplingRequest.stopSequences Var
 MCPSamplingRequest.systemPrompt Var
 MCPSamplingRequest.temperature Var
@@ -279,6 +302,7 @@ MCPSamplingResult.stopReason Var
 MCPServerDescriptor Struct
 MCPServerDescriptor conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 MCPServerDescriptor.__derived_struct_equals(_:_:) Func
+MCPServerDescriptor.allowsElicitation Var
 MCPServerDescriptor.allowsSTDIOTransport Var
 MCPServerDescriptor.allowsSampling Var
 MCPServerDescriptor.approvalPolicy Var
@@ -290,7 +314,7 @@ MCPServerDescriptor.hash(into:) Func
 MCPServerDescriptor.hashValue Var
 MCPServerDescriptor.id Var
 MCPServerDescriptor.init(from:) Constructor
-MCPServerDescriptor.init(id:displayName:transport:authorization:toolNamespace:resourceURL:initializationTimeout:requestTimeout:dataDisclosure:toolFilter:approvalPolicy:allowsSTDIOTransport:isUnauthenticatedUnsafe:allowsSampling:) Constructor
+MCPServerDescriptor.init(id:displayName:transport:authorization:toolNamespace:resourceURL:initializationTimeout:requestTimeout:dataDisclosure:toolFilter:approvalPolicy:allowsSTDIOTransport:isUnauthenticatedUnsafe:allowsSampling:allowsElicitation:) Constructor
 MCPServerDescriptor.initializationTimeout Var
 MCPServerDescriptor.isUnauthenticatedUnsafe Var
 MCPServerDescriptor.requestTimeout Var

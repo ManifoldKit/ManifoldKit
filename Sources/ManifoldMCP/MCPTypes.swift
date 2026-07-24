@@ -37,7 +37,27 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     /// `MCPClientConfiguration.samplingHandler` is set; otherwise every
     /// `sampling/createMessage` request gets a JSON-RPC "method not found" error and
     /// is never executed.
-    public var allowsSampling: Bool
+    ///
+    /// `MCPServerDescriptor` is `Codable`, and a stored property's inline default does
+    /// NOT make the compiler-synthesized `init(from:)` tolerate a missing key — Swift
+    /// still hard-requires the key there. Decode tolerance for a persisted pre-#1925
+    /// JSON blob missing this field comes from the custom `init(from:)` below (which
+    /// uses `decodeIfPresent(...) ?? false`), not from this `= false`. The inline
+    /// default here only covers memberwise construction. See #2284 review.
+    public var allowsSampling: Bool = false
+
+    /// Opt-in for this server to issue `elicitation/create` requests asking the user
+    /// for structured input. Default `false` — mirrors `allowsSampling`'s per-server
+    /// opt-in rationale: a server can prompt the user on demand once this is `true`,
+    /// so treat it the same way. Elicitation is only served when this is `true` AND
+    /// `MCPClientConfiguration.elicitationHandler` is set; otherwise every
+    /// `elicitation/create` request gets a JSON-RPC "method not found" error and is
+    /// never executed.
+    ///
+    /// See the note on `allowsSampling` above — decode tolerance for a persisted blob
+    /// missing this key comes from the custom `init(from:)` below, not from this
+    /// property-level default.
+    public var allowsElicitation: Bool = false
 
     public init(
         id: UUID = UUID(),
@@ -53,7 +73,8 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         approvalPolicy: MCPApprovalPolicy = .perCall,
         allowsSTDIOTransport: Bool = false,
         isUnauthenticatedUnsafe: Bool = false,
-        allowsSampling: Bool = false
+        allowsSampling: Bool = false,
+        allowsElicitation: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -69,6 +90,38 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         self.allowsSTDIOTransport = allowsSTDIOTransport
         self.isUnauthenticatedUnsafe = isUnauthenticatedUnsafe
         self.allowsSampling = allowsSampling
+        self.allowsElicitation = allowsElicitation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, transport, authorization, toolNamespace, resourceURL
+        case initializationTimeout, requestTimeout, dataDisclosure, toolFilter, approvalPolicy
+        case allowsSTDIOTransport, isUnauthenticatedUnsafe, allowsSampling, allowsElicitation
+    }
+
+    /// Hand-written to tolerate persisted JSON that predates `allowsSampling`
+    /// (#1925/#2274) and/or `allowsElicitation` (#1926) — both decode via
+    /// `decodeIfPresent(...) ?? false` rather than a hard-requiring `decode(...)`, so
+    /// an older on-disk blob missing either key still decodes instead of throwing
+    /// `DecodingError.keyNotFound`. `encode(to:)` stays compiler-synthesized (it needs
+    /// no such tolerance) since providing only `init(from:)` here does not disable it.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        transport = try container.decode(MCPTransportKind.self, forKey: .transport)
+        authorization = try container.decode(MCPAuthorizationDescriptor.self, forKey: .authorization)
+        toolNamespace = try container.decodeIfPresent(String.self, forKey: .toolNamespace)
+        resourceURL = try container.decodeIfPresent(URL.self, forKey: .resourceURL)
+        initializationTimeout = try container.decode(Duration.self, forKey: .initializationTimeout)
+        requestTimeout = try container.decodeIfPresent(Duration.self, forKey: .requestTimeout)
+        dataDisclosure = try container.decode(String.self, forKey: .dataDisclosure)
+        toolFilter = try container.decode(MCPToolFilter.self, forKey: .toolFilter)
+        approvalPolicy = try container.decode(MCPApprovalPolicy.self, forKey: .approvalPolicy)
+        allowsSTDIOTransport = try container.decode(Bool.self, forKey: .allowsSTDIOTransport)
+        isUnauthenticatedUnsafe = try container.decode(Bool.self, forKey: .isUnauthenticatedUnsafe)
+        allowsSampling = try container.decodeIfPresent(Bool.self, forKey: .allowsSampling) ?? false
+        allowsElicitation = try container.decodeIfPresent(Bool.self, forKey: .allowsElicitation) ?? false
     }
 }
 
@@ -191,7 +244,10 @@ public struct MCPClientConfiguration: Sendable {
     ///
     /// **Security requirement**: the host is responsible for user approval/consent
     /// and for rate-limiting or budgeting the inference spend this closure triggers.
-    /// `ManifoldMCP` does not gate calls into this closure beyond the per-server
+    /// This closure is shared across every connected server, so `MCPSamplingRequest.serverID`
+    /// (stamped by `MCPClient` from the connecting `MCPServerDescriptor.id`) is what
+    /// lets a per-server approval/budget gate exist at all. `ManifoldMCP` does not
+    /// gate calls into this closure beyond the per-server
     /// `MCPServerDescriptor.allowsSampling` opt-in — an app that sets this without its
     /// own approval and budget logic lets any connected, sampling-enabled MCP server
     /// spend inference budget on demand, with no consent prompt and no cap.
@@ -200,6 +256,32 @@ public struct MCPClientConfiguration: Sendable {
     /// `allowsSampling`; every `sampling/createMessage` request gets a JSON-RPC
     /// "method not found" error.
     public var samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)?
+
+    /// Injected seam for server-initiated `elicitation/create` requests — the server
+    /// asks the user for structured input (a flat object of primitive-typed fields
+    /// per the MCP spec) via a client-rendered form. `ManifoldMCP` is UI-free: it
+    /// parses the request off the wire and hands it to this closure; the host app
+    /// owns presenting the form and mapping the user's answer back to
+    /// `MCPElicitationResult`. Note: this seam is UI-agnostic on purpose — the
+    /// schema-driven SwiftUI form itself is a separate, later addition (tracked as a
+    /// fast-follow), not part of `ManifoldMCP`.
+    ///
+    /// **Security requirement**: unlike sampling, this does not spend inference
+    /// budget, but the returned content still flows to an untrusted server — the
+    /// host's UI must make clear which server is asking and why, and must always
+    /// offer `.decline`/`.cancel` as first-class options rather than only "submit".
+    /// This closure is shared across every connected server, so `MCPElicitationRequest.serverID`
+    /// (stamped by `MCPClient` from the connecting `MCPServerDescriptor.id`, never
+    /// from server-controlled wire data) is the identity signal the host keys its UI
+    /// on — without rendering it, a low-trust server can send a prompt
+    /// indistinguishable from a trusted one (see #2284 review, blocker 1).
+    /// `ManifoldMCP` does not gate calls into this closure beyond the per-server
+    /// `MCPServerDescriptor.allowsElicitation` opt-in.
+    ///
+    /// `nil` (the default) means no server can use elicitation regardless of
+    /// `allowsElicitation`; every `elicitation/create` request gets a JSON-RPC
+    /// "method not found" error.
+    public var elicitationHandler: (@Sendable (MCPElicitationRequest) async throws -> MCPElicitationResult)?
 
     public init(
         sseStreamLimits: SSEStreamLimits = ManifoldConfiguration.shared.sseStreamLimits,
@@ -211,7 +293,8 @@ public struct MCPClientConfiguration: Sendable {
         lifecyclePolicy: MCPSessionLifecyclePolicy = .cancelOnBackground,
         networkPathObserver: (any MCPNetworkPathObserver)? = nil,
         lifecycleObserver: (any MCPLifecycleEventObserver)? = MCPNotificationLifecycleEventObserver.platformMemoryWarnings(),
-        samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)? = nil
+        samplingHandler: (@Sendable (MCPSamplingRequest) async throws -> MCPSamplingResult)? = nil,
+        elicitationHandler: (@Sendable (MCPElicitationRequest) async throws -> MCPElicitationResult)? = nil
     ) {
         self.sseStreamLimits = sseStreamLimits
         self.requestTimeout = requestTimeout
@@ -223,6 +306,7 @@ public struct MCPClientConfiguration: Sendable {
         self.networkPathObserver = networkPathObserver
         self.lifecycleObserver = lifecycleObserver
         self.samplingHandler = samplingHandler
+        self.elicitationHandler = elicitationHandler
     }
 }
 
