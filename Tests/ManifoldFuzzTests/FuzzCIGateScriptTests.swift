@@ -1,8 +1,9 @@
 import XCTest
 
 /// Integration test for `scripts/fuzz-ci-gate.sh`. The gate is the enforcement
-/// point for the PR-tier fuzz job; its correctness matters as much as the
-/// harness itself. Covers the three branches from the task brief:
+/// point for the weekly fuzz job (`.github/workflows/fuzz-weekly.yml`, #2367);
+/// its correctness matters as much as the harness itself. Covers the three
+/// branches from the task brief:
 ///   1. finding present + matching unexpired allowlist entry → exit 0
 ///   2. finding present + empty allowlist              → exit 1
 ///   3. allowlist entry past `expires`                 → exit 1

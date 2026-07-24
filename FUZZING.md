@@ -383,9 +383,9 @@ family. The fuzzer earns its keep during that work (see #487 cluster, the April
 and consider temporarily re-introducing a daily workflow until the new backend
 matures.
 
-The `scripts/fuzz-ci-gate.sh` script and `.github/fuzz-allowlist.json` are still
-on disk — they were used by the retired PR-tier gate and can be re-wired into a
-future workflow if needed.
+The `scripts/fuzz-ci-gate.sh` script and `.github/fuzz-allowlist.json` were
+originally wired into the retired PR-tier gate; #2367 (2026-07) re-wired the
+script into the weekly tier below, so it is no longer dormant.
 
 ### Weekly tier — `.github/workflows/fuzz-weekly.yml`
 
@@ -393,7 +393,7 @@ future workflow if needed.
 - **Runner:** `[self-hosted, macos, arm64]`.
 - **Budget:** 30 wall-clock minutes.
 - **Backend:** `--backend ollama --model all` — rotates through every installed Ollama model per iteration. This is the explicit sibling-coverage sweep; bugs that only fire on a non-default model surface here.
-- **Gate:** none. The job is report-only: the `INDEX.md` is echoed to the job log and the full findings tree is uploaded to `fuzz-weekly-findings-<run-id>`.
+- **Gate:** `scripts/fuzz-ci-gate.sh tmp/fuzz/index.json` against `.github/fuzz-allowlist.json` — a finding not covered by an unexpired allowlist entry fails the job. The `INDEX.md` is echoed to the job log and the full findings tree is uploaded to `fuzz-weekly-findings-<run-id>` regardless of gate outcome, so a red run still leaves the artifact to triage from.
 
 ### Self-hosted runner requirements
 

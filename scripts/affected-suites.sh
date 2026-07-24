@@ -61,6 +61,7 @@ TEST_JOB_SUITES=(
   ManifoldVoiceTests
   ManifoldSkillsTests
   ManifoldToolsTests
+  ManifoldFuzzTests
   ManifoldInferenceTests
   ManifoldNetworkingTests
   ManifoldTurnLoopCharacterizationTests
