@@ -342,6 +342,18 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
+    /// **Known gap on a simulator destination** (2026-07-25): every step up to
+    /// and including sending passes — the endpoint is created and reports
+    /// Ready, the switcher selects it, the turn starts — but no reply arrives
+    /// and the transcript sits on the typing indicator until the timeout. The
+    /// request does not reach the server: a host round-trip taken straight
+    /// afterwards still paid the ~21 s cold model load, which a request that
+    /// had arrived would have avoided. The demo declares no
+    /// `NSAppTransportSecurity` exception, so a cleartext `http://localhost`
+    /// call from the sandboxed simulator app is the first suspect. Unresolved;
+    /// the assertion is deliberately left strict rather than softened into
+    /// something that passes without a reply.
+    ///
     /// Opt in with an environment assignment on the run command (see
     /// ``runnerOverride(_:)`` — an argument-position `TEST_RUNNER_…=…` does not
     /// reach the runner):

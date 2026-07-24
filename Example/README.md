@@ -43,6 +43,8 @@ TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 scripts/example-ui-tests.sh test \
   -only-testing:AdvancedUITests/VisualWalkthroughUITests/testDefineRealOllamaEndpointAndSendLiveMessage
 ```
 
+Known gap (2026-07-25): on a simulator destination the finale drives the whole flow correctly — endpoint created and Ready, selected in the switcher, turn started — but no reply arrives and it fails on its final assertion. The request never reaches the server (a host round-trip immediately afterwards still paid the full cold model load), and the demo declares no `NSAppTransportSecurity` exception, so a cleartext `http://localhost` call from the sandboxed simulator app is the first suspect. Unresolved.
+
 (The sibling real-model E2E in `ModelManagementUITests` gates on a `~/.manifoldkit_real_e2e` sentinel file instead. That works because it is documented for a macOS destination, where `HOME` is your home directory; under this suite's default simulator destination `HOME` is the simulator's container, so a sentinel you touched on the host would never be seen.)
 
 ### What This Demonstrates
