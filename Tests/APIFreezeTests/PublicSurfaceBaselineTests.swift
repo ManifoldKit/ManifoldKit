@@ -343,10 +343,41 @@ final class PublicSurfaceBaselineTests: XCTestCase {
             scriptModules.subtracting(parsed), ["ManifoldDeleted"],
             "A DEFAULT_MODULES entry with no matching product must surface as extra-in-script"
         )
+
+        // The derivation must return EMPTY for a manifest it cannot parse,
+        // rather than something plausible-looking. This is what makes the
+        // count floor in `testEachModuleBaselineIsWellFormed` meaningful: an
+        // unparseable manifest has to collapse to 0 so the floor trips, not
+        // degrade quietly to a partial list.
+        let unparseableURL = tmp.appendingPathComponent("Unparseable.swift")
+        try "let package = Package(products: [])".write(to: unparseableURL, atomically: true, encoding: .utf8)
+        XCTAssertTrue(
+            try Self.libraryProductNames(inManifestAt: unparseableURL).isEmpty,
+            "A manifest with no .library products must derive an empty set, so the count floor trips."
+        )
     }
 
     func testEachModuleBaselineIsWellFormed() throws {
-        for module in try Self.expectedModules() {
+        let modules = try Self.expectedModules()
+
+        // Floor. Deriving the list from the manifest removed a drift risk but
+        // introduced an inertness one the hardcoded array never had: if the
+        // parse breaks (manifest reformatted, file moved, regex outgrown),
+        // `expectedModules()` returns [], this loop body never runs, and the
+        // test passes having checked nothing — green and inert, which is
+        // exactly what a baseline gate must never be. The package has ~30
+        // library products; dropping below 20 means the parse broke, not that
+        // ten products were deliberately deleted.
+        XCTAssertGreaterThan(
+            modules.count, 20,
+            """
+            Derived only \(modules.count) module(s) from Package.swift — the manifest parse has broken, \
+            and every per-module check below would silently pass by not running. \
+            Fix the derivation rather than lowering this floor.
+            """
+        )
+
+        for module in modules {
             let fileURL = Self.baselineDir().appendingPathComponent("\(module).txt")
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
                 XCTFail("Missing baseline for \(module): \(fileURL.path)")
