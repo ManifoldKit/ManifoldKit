@@ -58,7 +58,7 @@
 
 ## DX checklist
 
-- [ ] Did this change a public API a user might write in their README? If yes, updated the README snippet.
+- [ ] Did this change or REMOVE a public API? If yes, `grep -rn '<SymbolName>' README.md AGENTS.md docs/ Sources/**/*.docc/` and updated every doc that names it — not just the README. (A removal with a stale doc is how `docs/QUICKSTART-VOICE.md` advertised the deleted wake-word subsystem for five weeks; `DocClaimsAuditTest` now fails on it, but the grep is faster than a CI round-trip.)
 - [ ] Did this add or change a trait, backend, or capability? If yes, updated `Sources/ManifoldKit/FeatureMatrix.swift` (when present).
 - [ ] Is this a breaking change for an existing consumer? If yes, added a migration note to `CHANGELOG.md` or `docs/`.
 - [ ] Did this change the `quickStart()` path or `MinimalExample`? If yes, the example still compiles and runs end-to-end.

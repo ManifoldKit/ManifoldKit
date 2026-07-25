@@ -22,7 +22,7 @@ token — you observe both through the event stream.
 
 Full walkthrough: [`QUICKSTART-TOOLS.md`](QUICKSTART-TOOLS.md).
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 // 1. Define argument + result types.
@@ -90,7 +90,8 @@ with no per-turn code.
 Full walkthrough: [`QUICKSTART-RAG.md`](QUICKSTART-RAG.md).
 Tuning knobs: [`RAG-TUNING.md`](RAG-TUNING.md).
 
-```swift,no-build
+```swift
+import Foundation   // Bundle
 import ManifoldKit
 
 // RAG requires the manual bootstrap path (quickStart() has no RAG parameter).
@@ -132,7 +133,7 @@ then load it — without standing up a `ChatViewModel`.
 
 Full walkthrough: [`QUICKSTART-MODEL-SELECTION.md`](QUICKSTART-MODEL-SELECTION.md).
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 @MainActor
@@ -193,7 +194,7 @@ string yourself.
 > the turn. The typed-instance ergonomics are tracked in
 > [#1915](https://github.com/ManifoldKit/ManifoldKit/issues/1915).
 
-```swift,no-build
+```swift,no-build:fragment; builds on identifiers defined in earlier blocks
 import ManifoldKit
 
 struct Sentiment: Decodable {
@@ -241,7 +242,7 @@ print(result.label, result.confidence)
 
 **Other strategies:**
 
-```swift,no-build
+```swift,no-build:fragment; builds on identifiers defined in earlier blocks
 // GBNF grammar (llama.cpp-class backends):
 hints.structuredOutput = .gbnf(#"root ::= "yes" | "no""#)
 

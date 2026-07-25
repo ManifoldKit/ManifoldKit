@@ -30,7 +30,7 @@ not a rule.**
    keep compiling, upgrade paths are written down. AI assistants are
    first-class readers — their common mistakes against this API are documented
    and corrected. *(Cold-start gates, doc-snippet compile gate,
-   `AgentsMdAuditTest`.)*
+   `AgentsMdAuditTest`, `DocClaimsAuditTest`, `DocsAudienceStatusAuditTest`.)*
 2. **Dependencies flow one way.** UI → Runtime → Inference → Contract →
    leaves. Backends plug into the Contract kernel; the kernel never depends on
    the engine; UI never imports a backend. A cycle is a regression no matter
@@ -136,7 +136,7 @@ conversation runtime, and the model container in the right order. Because it
 is `async`, wire it from a `.task { }` on the launch view — **not** from
 `App.init()`, which is synchronous and would deadlock:
 
-```swift
+```swift,no-build:defines the app entry point; `ContentView` is defined in the next block, so this one cannot compile in isolation
 import SwiftUI
 import SwiftData
 import ManifoldKit
@@ -278,7 +278,7 @@ open while you wire the real app.
 The user-facing API is **`vm.sendMessage(_:)`** (NOT `vm.send(_:)` — that name
 does not exist on `ChatViewModel`):
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 let reply = try await vm.sendMessage("hi")
 print(reply.content)
 ```
@@ -287,7 +287,7 @@ For scripted drivers / integration tests, `sendMessage(_:)` returns the
 completed `ChatMessage`. Polling `vm.lastTurnState` after the awaited call
 inspects the same outcome:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 await vm.sendMessage()                  // uses vm.inputText + draftAttachments
 switch vm.lastTurnState {
 case .completed(let record): /* use record */
@@ -310,7 +310,7 @@ via `BackendName(rawValue:)` without breaking every downstream exhaustive
 `switch`. Six well-known identifiers ship as `public static let` constants.
 Compare via the typed accessor — never against raw string literals:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 import ManifoldKit   // re-exports ManifoldInference
 
 if vm.activeBackendName == BackendName.foundation.rawValue {
@@ -337,7 +337,7 @@ available as `.allCases` for source compatibility with the pre-#1742 enum):
 0.18 strings, so apps reading already-persisted backend names off disk migrate
 in place:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 if let backend = BackendName.parse(persisted) {
     // 0.18 "Apple" and 0.19 "foundation" both map to .foundation here.
 }
@@ -376,7 +376,7 @@ built-in per-kind view — the finer-grained sibling of `.chatMessageRenderer(_:
 **The built-in styles are the new look; `.classic` restores the pre-refresh
 appearance in one call:**
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 ChatView(showModelManagement: $show)
     .classicManifoldTheme()
 ```
@@ -400,7 +400,7 @@ never the reverse), so the seam is closure-injected exactly like
 Register an executor with `ToolRegistry`, then thread the registry's
 `definitions` into `GenerationConfig.tools`:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 let registry = ToolRegistry()
 registry.register(MyWeatherTool())
 
@@ -427,7 +427,7 @@ on every consumer:
 )
 ```
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 @ToolSchema
 struct WeatherArguments: Decodable, Sendable {
     /// City name
@@ -446,7 +446,7 @@ let tool = ToolDefinition(
 Without `--traits Macros`, declare the parameter schema by hand. `JSONSchemaValue`
 is a recursive enum (`.string`, `.number`, `.bool`, `.null`, `.array`, `.object`):
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 let tool = ToolDefinition(
     name: "get_weather",
     description: "Returns weather for a city.",
@@ -471,7 +471,7 @@ per request. Curate per call. Cloud backends handle 20+ tools fine.
 Cloud endpoints (OpenAI, Claude, Ollama, LM Studio, custom) flow through
 `APIEndpointRecord` values. The 5-step canonical flow:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 import ManifoldInference
 
 // 1. Build the record.
@@ -856,6 +856,75 @@ Never use `assertionFailure`/`fatalError` for conditions that have fallback logi
 `try?` is banned in production code. `SilentCatchAuditTest` (in `ManifoldInferenceTests`) fails CI if `try?` appears in error-propagation paths. Use `do/catch` with `Log.*` so the error is visible. Optional decoding at trust boundaries is the only legitimate exception.
 
 Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `ManifoldCoreTests`) flags fail-open idioms in `scripts/` — a missing `set -euo pipefail` header, `set +e` never re-armed, and `|| true` swallows outside a small tolerant-command idiom set (`grep`, `kill`, `rm`, …), with **no** idiom escape for masked load-bearing producers (`swift build|test|run`, `xcodebuild`). A genuine tolerance carries `# fail-open-ok: <reason>` on or just above the line; a bare marker with no reason is itself flagged.
+
+## Documentation gates
+
+Docs are held to the same tripwire standard as code (Principle 4). Three layers,
+each with a different failure mode:
+
+| Layer | Authoritative audit | Catches | Blocks a merge? |
+|---|---|---|---|
+| **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — required `test`, mirrored on docs-only PRs by `scripts/lint-docs-headers.sh` under required `lint` |
+| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same shape, mirrored by `scripts/lint-doc-claims.sh` |
+| **Snippets** | `scripts/extract-snippets.sh` + `-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
+
+**Why each doc-driven audit needs a `lint` mirror.** `ci.yml`'s macOS `test` job
+is paths-filtered and excludes `docs/**`, and `scripts/affected-suites.sh` keeps
+the affected-suite set empty for docs-only diffs — so a docs-only PR never runs
+these audits on the PR head; the CI Required Test Shim reports `test` green in
+their place. `merge_group` has no paths filter, so the first failure lands
+*inside the queue* and poisons the batch (#2306 took #2212 down six times).
+`lint` is ubuntu, required, and has no `pull_request` paths filter, so a mirror
+there catches it on the PR run. **A new markdown-driven audit ships with a
+`lint` mirror, or it does not block on the PRs that can break it.**
+
+> **The snippet gate is advisory, not blocking.** `main`'s required contexts are
+> `test`, `lint`, `api-digester-check`; `readme-snippets` is not among them and
+> has no `merge_group` trigger, so a red run does **not** stop
+> `gh pr merge --squash --auto`. Treat a red `readme-snippets` as a stop anyway
+> — this is the same red-but-not-blocking shape that let the api-digester reds
+> through (#2274, #2287). Promoting it to required is not a one-line change: a
+> required check with no `merge_group` trigger never reports to the queue and
+> blocks it permanently (the failure mode documented under "Companion release
+> PRs" above), so the trigger must be added first.
+
+Rules when editing docs:
+
+- **Removing a public API means updating every doc that names it**, not just the
+  README. `DocClaimsAuditTest`'s symbol check is the tripwire; the PR template
+  carries the grep. This exists because PR #2007 deleted `ManifoldVoice`'s
+  wake-word subsystem and `docs/QUICKSTART-VOICE.md` advertised it for five more
+  weeks — see [docs/MIGRATION-wake-word-removed.md](docs/MIGRATION-wake-word-removed.md).
+- **Snippet coverage is derived, not enumerated.** Every `README.md`,
+  `AGENTS.md`, and `docs/*.md` is swept unless it is in
+  `SNIPPET_GATE_OPT_OUT` in `scripts/extract-snippets.sh`, with a reason. Adding
+  a doc does not require registering it anywhere; excluding one is a reviewable
+  line. Do not reintroduce a filename list — the old one grew reactively eight
+  times and still missed `AGENTS.md`, and a second copy of it (`INPUTS=()`) sat
+  dead in the same file for months.
+- **`no-build` carries a reason**: ```` ```swift,no-build:<why> ````. A bare tag
+  is rejected, exactly as `ScriptFailOpenAuditTest` rejects a bare `|| true` —
+  same hazard (a free, invisible opt-out), same remedy. Pre-existing bare tags
+  live in `BARE_NO_BUILD_GRANDFATHERED`, a debt register that only shrinks;
+  triage a doc, then delete its line. **A doc with no compiling block at all
+  fails the gate** — it would otherwise cost a full macOS run per edit and
+  verify nothing.
+- **A doc's snippets compile as published.** The harness deliberately injects no
+  imports: if a reader must paste an `import` the snippet omits, the snippet is
+  wrong. Prefer making a block self-contained over tagging it.
+
+### When an RCA's primary fix is declined, record the decision
+
+`scripts/dx-walkthrough/runs/2026-05-23_v0.33.0/01-chat-cli/ROOT_CAUSES.md`
+identified `no-build` overloading as a root cause, offered a structural fix
+(split the tag) and an *"Or simpler:"* heading lint, and warned the cheap option
+*"[does] nothing for the next snippet that's tagged `no-build` because someone
+didn't want to wrestle with the gate."* The cheap option shipped; the predicted
+recurrence landed four weeks later and went unnoticed for five more.
+
+So: declining an RCA's leading prescription is a legitimate call, but it is a
+**decision to record** — in the PR body, with what will catch the recurrence
+instead. The cheaper variant always looks sufficient on the day.
 
 ## Commit style
 

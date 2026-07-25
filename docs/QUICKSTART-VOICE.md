@@ -20,7 +20,7 @@ chat-agnostic primitive that anything can drive.
 No trait required — the former `Voice` trait was retired in v0.48. In your
 consumer `Package.swift`:
 
-```swift,no-build
+```swift,no-build:Package.swift dependencies fragment — pasted into the reader's own manifest
 dependencies: [
     .package(
         url: "https://github.com/ManifoldKit/ManifoldKit.git",
@@ -64,7 +64,7 @@ targets: [
 your app uses — an image-gen prompt, a search bar, a notes field. The
 controller does not know or care that ManifoldKit ships a chat UI.
 
-```swift,no-build
+```swift
 import SwiftUI
 import ManifoldVoice
 
@@ -122,7 +122,9 @@ That's the whole standalone STT integration. No `ChatViewModel`, no
 The same controller speaks arbitrary strings — useful for read-aloud features
 in any app:
 
-```swift,no-build
+```swift
+import ManifoldVoice
+
 let voice = VoiceConversationController()
 voice.togglePlayback(for: "Generation complete. Tap to view the result.")
 
@@ -141,7 +143,9 @@ The Apple-backed transcriber is the default, but ``SpeechTranscribing`` is
 just a protocol — wire in a local Whisper, an HTTP STT endpoint, or a
 deterministic test fake:
 
-```swift,no-build
+```swift
+import ManifoldVoice
+
 final class FakeTranscriber: SpeechTranscribing {
     @MainActor func requestAuthorization() async -> VoiceAuthorizationStatus { .authorized }
     @MainActor func startTranscribing(
