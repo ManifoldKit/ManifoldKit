@@ -327,7 +327,12 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 'lts/*'
+          # Pinned to a major, not 'lts/*' — the setup-node action is
+          # SHA-pinned but a floating alias here would let a future Node LTS
+          # that breaks release-please red unrelated PRs on this required
+          # check with no warning. 24 is current LTS as of this pin; bump
+          # deliberately alongside a verification run, not silently.
+          node-version: '24'
 
       - name: changelog-parser-check (per-PR) — this PR's own commits parse cleanly
         if: always() && github.event_name == 'pull_request'
@@ -344,7 +349,13 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin "${{ github.base_ref }}"
           base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
-          bash scripts/changelog-parser-check.sh "$base_sha" HEAD
+          # --per-pr: zero releasable commits in THIS PR's own range is
+          # normal (a release-please PR is one hidden `chore(main): release`
+          # commit, a Dependabot PR is `chore(deps): bump …`, a WIP branch
+          # can be all non-conventional commits) -- see check.mjs's own
+          # header comment for the full reasoning. Without this flag the
+          # whole-range run below still fails closed on zero matches.
+          bash scripts/changelog-parser-check.sh --per-pr "$base_sha" HEAD
 
       - name: changelog-parser-check — skip whole-range run for non-Release-Please PRs
         if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--branches--')

@@ -4,7 +4,7 @@
   "description": "Pinned dependency for scripts/changelog-parser-check.sh (#2380) -- re-runs release-please's own conventional-commit parser over every releasable commit and reds on any commit release-please itself would silently drop.",
   "type": "module",
   "dependencies": {
-    "release-please": "16.18.0"
+    "release-please": "17.6.0"
   },
   "overridesNote": "Each override pins a transitive dep of release-please to its GitHub-advisory first_patched_version (dependency-review, a required check, reds on anything less). None are reachable from what this tool calls -- it only runs parseConventionalCommits(), never an Octokit/network path -- but a future advisory in release-please's tree will still red an unrelated PR here until these are refreshed; that's the fix when it happens, not a real vulnerability in this tool.",
   "overrides": {

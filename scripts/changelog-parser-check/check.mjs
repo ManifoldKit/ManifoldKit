@@ -22,15 +22,40 @@
 // the operator's own Prisma-rewrite commits -- the git history the parser
 // sees doesn't change just because the changelog prose does.
 //
-// Usage: node check.mjs [BASE_TAG] [HEAD_REF]
+// Usage: node check.mjs [--per-pr] [BASE_TAG] [HEAD_REF]
+//   --per-pr  Changes the meaning of "zero releasable commits matched" from
+//             a hard failure to an expected, visible pass. Without this
+//             flag (the whole-range/release-branch mode), matching zero
+//             releasable commits means the header regex or visible-types
+//             list broke, since a real release always ships at least one.
+//             WITH this flag (per-PR mode), zero is completely normal and
+//             common -- e.g. a release-please PR is just one `chore(main):
+//             release X` commit (chore is hidden), a Dependabot PR is
+//             `chore(deps): bump …` (also hidden), or a branch is entirely
+//             non-conventional WIP commits (AGENTS.md § Commit style
+//             explicitly permits that pre-squash). Treating that as a red
+//             would make the per-PR check block every release PR and every
+//             Dependabot PR outright -- exactly the workflow it exists to
+//             protect. The whole-range run remains the authoritative sweep
+//             regardless of this flag; per-PR is preventive on top of it,
+//             not a replacement for it, so relaxing this one guard in this
+//             one mode does not reopen a vacuous-pass hole for the #2380
+//             defect itself.
 //   BASE_TAG  defaults to the previous version found in the repo's
 //             CHANGELOG.md's second `## [x.y.z]` header, prefixed with "v"
 //             (same convention scripts/changelog-coverage-check.sh uses).
+//             Running with this default against a historical commit will
+//             permanently red on an already-published defect (e.g. the
+//             bare default today derives v0.73.0, whose range still
+//             contains f95f6428) -- that's expected for a human poking at
+//             it by hand; it self-heals at the next real release, and CI
+//             never invokes this script without an explicit range.
 //   HEAD_REF  defaults to HEAD.
 //
-// Exit 0 = every releasable commit in range parses. Exit 1 = at least one
-// doesn't (or the range/config couldn't be resolved -- never silently
-// short-circuits to a zero-commit "pass").
+// Exit 0 = every releasable commit in range parses (or, in --per-pr mode,
+// there were none to check). Exit 1 = at least one doesn't, or the
+// range/config couldn't be resolved -- never silently short-circuits to a
+// zero-commit "pass" in whole-range mode.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -54,8 +79,20 @@ function git(args) {
 const changelogPath = path.join(repoRoot, 'CHANGELOG.md');
 const configPath = path.join(repoRoot, 'release-please-config.json');
 
-let baseTag = process.argv[2];
-const headRef = process.argv[3] || 'HEAD';
+const rawArgs = process.argv.slice(2);
+const perPrIndex = rawArgs.indexOf('--per-pr');
+const perPr = perPrIndex !== -1;
+const positional = perPr ? [...rawArgs.slice(0, perPrIndex), ...rawArgs.slice(perPrIndex + 1)] : rawArgs;
+
+// An explicitly-passed empty string ("$base_sha" expanding to nothing, a
+// caller-side bug) must fail loudly rather than silently fall through to
+// the CHANGELOG-derived default and check the wrong, much wider range.
+if (positional.length > 0 && positional[0] === '') {
+  fail('BASE_TAG was passed as an empty string -- refusing to silently widen to the CHANGELOG-derived default');
+}
+
+let baseTag = positional[0];
+const headRef = positional[1] || 'HEAD';
 
 if (!baseTag) {
   const changelog = readFileSync(changelogPath, 'utf8');
@@ -136,6 +173,20 @@ for (const line of log.split('\n')) {
 }
 
 if (checked === 0) {
+  if (perPr) {
+    // Normal and common in per-PR mode -- a release-please PR is one
+    // hidden-type `chore(main): release X` commit, a Dependabot PR is
+    // `chore(deps): bump …` (also hidden), and AGENTS.md § Commit style
+    // explicitly permits non-conventional WIP commits pre-squash. None of
+    // that is the #2380 defect; there is simply nothing releasable here
+    // for the parser to have a verdict on. The whole-range run (no
+    // --per-pr) remains the authoritative sweep and keeps the strict
+    // zero-means-broken guard below.
+    console.log(
+      `changelog-parser-check: no releasable commits in ${baseTag}..${headRef} -- nothing to parse in this PR.`
+    );
+    process.exit(0);
+  }
   fail(
     `matched 0 releasable commits in ${baseTag}..${headRef} -- the header regex or visible-types list is likely broken, not that nothing shipped`
   );

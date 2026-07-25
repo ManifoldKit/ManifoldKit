@@ -17,13 +17,21 @@
 # release-please branch never execute under this repo's current Actions
 # settings; runs by a human actor do).
 #
-# Usage:  scripts/changelog-parser-check.sh [BASE_TAG] [HEAD_REF]
-#         (both optional — see check.mjs's own header for the defaults)
+# Usage:  scripts/changelog-parser-check.sh [--per-pr] [BASE_TAG] [HEAD_REF]
+#         (all optional — see check.mjs's own header for the defaults and
+#         what --per-pr changes). Run with NO arguments today, this reds
+#         unfixably on a historical commit: BASE_TAG defaults to v0.73.0
+#         (derived from CHANGELOG.md's second header), and that range still
+#         contains f95f6428, the already-published #2375 defect. That's
+#         expected for a human poking at the bare form by hand — it
+#         self-heals at the next real release, and CI never invokes this
+#         script without an explicit range (see lint.yml).
 #
-# Exit 0 = every releasable commit in range parses cleanly. Exit 1 = at
-# least one doesn't, or the npm install itself failed — an install failure
-# is a hard failure here, never a silent skip, so a broken/unreachable
-# registry can't turn this into inert machinery that looks like a gate.
+# Exit 0 = every releasable commit in range parses cleanly (or, with
+# --per-pr, there were none to check). Exit 1 = at least one doesn't, or the
+# npm install itself failed — an install failure is a hard failure here,
+# never a silent skip, so a broken/unreachable registry can't turn this
+# into inert machinery that looks like a gate.
 #
 # Bash 3.2 compatible (CI runners ship Bash 3.2 — no `declare -A`, no
 # `${var^^}`).
