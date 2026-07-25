@@ -1,0 +1,84 @@
+name: Example UI build check
+
+# #2377: nothing in the per-PR gate compiled Example/AdvancedUITests (or the
+# Example/Advanced sources those tests drive) — only example-ui-smoke.yml did,
+# and that workflow is weekly + workflow_dispatch only, so a compile break
+# could sit on `main` for up to a week before a scheduled run caught it and
+# opened an issue. This happened for real once already: #2371 added 652 lines
+# to AdvancedUITests, a rename during review left two references to a deleted
+# property, and the only reason it was caught before merge was that the
+# author happened to run `xcodebuild build-for-testing` locally. `swift
+# test`/`swift build` never touch this target — the Example app is an Xcode
+# project, not a SwiftPM target — so ci.yml's per-PR gate is structurally
+# blind to it.
+#
+# This workflow runs the real `xcodebuild build-for-testing` (not the full UI
+# test suite — that stays a scheduled/on-demand cost in example-ui-smoke.yml;
+# a simulator boot + full run is minutes, not seconds) per PR, but ONLY when
+# `Example/**` (or the script/config that drives the build) changed, via the
+# `paths:` filter below — so the added wall-clock lands on the handful of PRs
+# that actually touch the demo app, not on every PR (per AGENTS.md "Issue &
+# PR hygiene": CI cost here is latency from the org-wide macOS concurrency
+# cap, not billed minutes — this repo is public). Same shape as
+# build-modes.yml's per-PR `saas` leg: self-contained draft/path gating, no
+# shared `changes` job dependency.
+#
+# NOT currently a required branch-protection check (only `test`, `lint`, and
+# `api-digester-check` are — see `gh api repos/ManifoldKit/ManifoldKit/branches/main/protection`).
+# Adding it there needs a repo-settings change (and, per
+# ci-required-test-shim.yml's precedent, a companion shim job reporting the
+# same context on PRs this `paths:` filter excludes, so non-Example PRs don't
+# get stuck on a check that never runs) — left for a follow-up decision
+# rather than bundled into this fix.
+
+on:
+  pull_request:
+    # `ready_for_review` required — mirrors build-modes.yml/ci.yml: a draft
+    # must not trigger this (drafts are a zero-CI staging area; see
+    # CLAUDE.md §"Draft-PR review loop"). Marking ready is the one trigger.
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths:
+      - "Example/Advanced/**"
+      - "Example/AdvancedUITests/**"
+      - "Example/Advanced.xcodeproj/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - "scripts/example-ui-tests.sh"
+      # Per CI path-filter self-validation rule: an edit to this workflow's
+      # own config must re-trigger it.
+      - ".github/workflows/example-ui-build-check.yml"
+  workflow_dispatch:
+
+# Collapse a PR's superseded in-flight runs on force-push, mirroring ci.yml's
+# pull_request keying.
+concurrency:
+  group: example-ui-build-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-for-testing:
+    # Draft PRs skip this build — CI runs once the PR is marked ready (see
+    # the header comment above). `workflow_dispatch` has no PR context so the
+    # clause short-circuits true there.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: macos-15
+    # xcodebuild's SPM workspace resolution + a from-scratch `build-for-testing`
+    # of the Advanced scheme (app + UI test bundle) is a few minutes on a cold
+    # cache; sized with slack above that, matching build-modes.yml's budget.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Build Example app + UI tests
+        run: scripts/example-ui-tests.sh build-for-testing

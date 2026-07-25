@@ -209,6 +209,21 @@ public struct ChatMessage: Identifiable, Hashable, Sendable {
         contentParts.contains(where: { $0.thinkingContent != nil })
     }
 
+    /// True if the message carries a `.toolCall` or `.toolResult` content
+    /// part — a turn can complete with real, persistable content (a tool
+    /// invocation, a handoff) while producing no visible text and no
+    /// thinking. Used alongside ``hasVisibleContent``/``hasThinkingContent``
+    /// wherever "did this turn produce anything worth completing" is the
+    /// question, not "did it produce visible text" (#2378 — a handoff-only
+    /// turn has neither text nor thinking, only the transfer call).
+    package var hasToolContent: Bool {
+        contentParts.contains { part in
+            if case .toolCall = part { return true }
+            if case .toolResult = part { return true }
+            return false
+        }
+    }
+
     public init(
         id: UUID = UUID(),
         role: MessageRole,

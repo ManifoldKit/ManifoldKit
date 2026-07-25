@@ -264,11 +264,7 @@ package struct TurnStreamFinalizer: Sendable {
         // parts, even if no visible text tokens arrived. Used below so all
         // three terminal paths (error, cancellation, normal) persist tool-only
         // turns rather than silently dropping them.
-        let hasToolContent = assistantMessage.contentParts.contains { part in
-            if case .toolCall = part { return true }
-            if case .toolResult = part { return true }
-            return false
-        }
+        let hasToolContent = assistantMessage.hasToolContent
 
         // True when the model emitted reasoning/thinking content this turn,
         // even with no visible text and no tool calls. Without this, a
