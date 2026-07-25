@@ -1039,9 +1039,12 @@ not a surprise discovered by the post-release fan-out.
 parser hard-fails on a squashed body whenever an identifier is immediately followed by nested
 parentheses (e.g. Swift code like `exit(FuzzReport.exitCode(for: report))`) and the failure is
 logged only at debug level, so the entire PR — not just the offending paragraph — vanishes with
-no visible warning. `scripts/changelog-coverage-check.sh` cross-checks the newest section against
-every non-hidden-type commit since the previous tag and is wired into `lint.yml`'s required check
-on the release-please branch; a red there means a commit is missing and must be added by hand.
+no visible warning. `scripts/changelog-coverage-check.sh` cross-checks CHANGELOG.md's newest
+section against every non-hidden-type commit since the previous tag, but only while that section
+still holds Release Please's own generated bullets (`lint.yml`'s release-please-branch job, gated
+to the PR's `opened` event and any `synchronize` actually pushed by `github-actions[bot]`) — never
+against the hand-rewritten Highlights, which is allowed to omit bullets editorially. A red means
+Release Please's own generator dropped a commit it saw; add the entry by hand during the rewrite.
 
 **Capability-field release-notes discipline:** a release that adds a new `BackendCapabilities`
 field ships a one-line CHANGELOG callout — "new capability field `X`, default `Y` — backends

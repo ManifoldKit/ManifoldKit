@@ -265,51 +265,81 @@ jobs:
         run: bash scripts/changelog-lint.sh CHANGELOG.md
 
       # ── changelog-coverage-check ─────────────────────────────────────────
-      - name: changelog-coverage-check — skip for non-Release-Please PRs
-        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--branches--')
+      # What this enforces (policy call, 2026-07-25): "release-please must
+      # not silently drop a releasable commit from the notes IT GENERATES."
+      # Not "every releasable commit must appear in the final published
+      # notes" — the Prisma-style hand rewrite is allowed to omit bullets
+      # editorially (measuring against the human-rewritten 0.72.0/0.73.0
+      # notes produced 12-of-33 and 3-of-18 "reds" that were never actual
+      # violations of anything). So this only ever runs against CHANGELOG.md
+      # while it still holds release-please's own generated bullets — i.e.
+      # on the PR's `opened` event, and on any `synchronize` PUSHED BY
+      # release-please itself (a regeneration, which happens whenever a
+      # feat:/fix: merges to main while this PR is open — AGENTS.md
+      # § Release workflow). A `synchronize` pushed by a human (the rewrite,
+      # or a later fixup of it) is deliberately NOT checked — at that point
+      # CHANGELOG.md holds edited prose, not generated bullets, and this
+      # gate has no opinion on it.
+      #
+      # Verified empirically (both worked the same way): for both the
+      # 0.73.0 and 0.74.0 release PRs, `gh api .../actions/runs?branch=
+      # release-please--branches--main` shows every `synchronize` run's
+      # `triggering_actor.login` as either `github-actions[bot]` (a
+      # regeneration) or `roryford` (a human amend) — never ambiguous, so
+      # `github.actor` reliably distinguishes them.
+      #
+      # This does NOT catch #2379-style staleness (a commit landing on main
+      # after the branch's last touch, before the queue merges it) — an
+      # earlier draft of this gate tried to close that gap with a
+      # merge_group-triggered re-check, but that check would necessarily run
+      # against the FINAL (human-rewritten) CHANGELOG.md, i.e. exactly the
+      # "must appear in the final notes" comparison this policy call
+      # rejected — reinstating it would resurrect the same false-positive
+      # floods. Confirmed #2379 itself would not have been caught by a
+      # synchronize-based check either way: it touched only
+      # `Example/AdvancedUITests/...` and `Example/README.md`, neither of
+      # which matches release-please.yml's own push-trigger `paths` filter
+      # (`Sources/**`, `CHANGELOG.md`, `version.txt`,
+      # `.release-please-manifest.json`), so release-please never
+      # regenerated in response to it — there is no event this gate could
+      # hook to see it. That gap is accepted, not solved, under this policy.
+      - name: changelog-coverage-check — skip (not a fresh release-please generation)
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          !(startsWith(github.head_ref, 'release-please--branches--') && (github.event.action == 'opened' || github.actor == 'github-actions[bot]'))
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          ACTOR: ${{ github.actor }}
+          EVENT_ACTION: ${{ github.event.action }}
         run: |
-          echo "Non-Release-Please PR; changelog coverage validation is not required."
+          case "$HEAD_REF" in
+            release-please--branches--*)
+              echo "Release-Please PR, but this push wasn't a release-please regeneration (actor: $ACTOR, action: $EVENT_ACTION)."
+              echo "CHANGELOG.md may hold hand-rewritten prose now, which this check has no opinion on — see the run step's header comment."
+              ;;
+            *)
+              echo "Non-Release-Please PR; changelog coverage validation is not required."
+              ;;
+          esac
           echo "Passing changelog-coverage-check to provide the required check context."
 
       - name: changelog-coverage-check — every releasable commit is mentioned
-        # Also fires on merge_group, not just pull_request: a commit can land
-        # on main between release-please generating this PR and the queue
-        # actually merging it (#2379 did — 21 minutes after the last `lint`
-        # verdict on #2352's head, before that PR merged), so a PR-event-only
-        # check's verdict can be stale by the time of publish. This is the
-        # same "staleness is commit-relative, not wall-clock" lesson this
-        # file's sibling companion-canary gate already learned (AGENTS.md
-        # § Companion pin-bump releases). github.head_ref is empty on
-        # merge_group (GitHub substitutes a synthetic gh-readonly-queue/...
-        # ref), so branch-name detection can't distinguish a release merge
-        # from any other queued PR at the `if:` level — the run step below
-        # does that detection itself, from commit history.
-        if: always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')))
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          startsWith(github.head_ref, 'release-please--branches--') && (github.event.action == 'opened' || github.actor == 'github-actions[bot]')
         # #2380: release-please's commit parser can hard-fail on a squashed
         # commit body (an identifier immediately followed by nested
         # parentheses — common in this repo's Swift-snippet-heavy commit
         # bodies) and silently drop the WHOLE commit from the generated
-        # changelog, logged only at debug level. This cross-checks the
-        # human-rewritten CHANGELOG.md's newest section against every
-        # non-hidden-type commit merged since the previous release tag — see
+        # changelog, logged only at debug level. This cross-checks
+        # CHANGELOG.md's newest section — release-please's own generated
+        # bullets, per the `if:` guard above — against every non-hidden-type
+        # commit merged since the previous release tag. See
         # scripts/changelog-coverage-check.sh for the full rationale and the
         # BASE_TAG/HEAD_REF auto-derivation this relies on here (both default
-        # correctly on a release-please branch: BASE_TAG from the CHANGELOG's
-        # second `## [x.y.z]` header, HEAD_REF from the checked-out HEAD).
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "merge_group" ]; then
-            # The release-please branch's own head commit is always
-            # "chore(main): release X" — fetch-depth:0 keeps it visible a
-            # few commits back under the queue's synthetic merge commit.
-            if ! git log -10 --format=%s | grep -qE '^chore\(main\): release '; then
-              echo "merge_group run for a non-release PR; changelog coverage validation is not required."
-              echo "Passing changelog-coverage-check to provide the required check context."
-              exit 0
-            fi
-            echo "merge_group run detected as a release-please merge (a chore(main): release commit is in recent history) — re-validating against fresh HEAD so commits landed after the release PR was generated are covered."
-          fi
-          bash scripts/changelog-coverage-check.sh CHANGELOG.md
+        # correctly here: BASE_TAG from the CHANGELOG's second
+        # `## [x.y.z]` header, HEAD_REF from the checked-out HEAD).
+        run: bash scripts/changelog-coverage-check.sh CHANGELOG.md
 
       # ── commitlint (PR title) ─────────────────────────────────────────────
       - name: commitlint — validate PR title
