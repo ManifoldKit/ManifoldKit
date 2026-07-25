@@ -55,6 +55,35 @@ if [ ! -f "${CHECK_DIR}/package-lock.json" ]; then
   exit 1
 fi
 
+# Every invocation shares one CHECK_DIR/node_modules, and every invocation
+# re-runs `npm ci` against it (below). Two concurrent invocations racing on
+# the same directory corrupt each other's install rather than failing
+# cleanly — reproduced live: this repo's own test suite spawns this script
+# from multiple XCTest methods, and under `swift test --parallel` (which
+# CI always uses) that raced and produced truncated/interleaved npm output
+# instead of either script's real result. `mkdir` is atomic on every
+# platform this runs on (Linux CI, macOS CI, local dev) with no extra
+# binary required, unlike `flock(1)` (not present on macOS by default) —
+# a portable mutex, not a workaround for one caller.
+LOCK_DIR="${CHECK_DIR}/.install.lock"
+lock_acquired=false
+for _ in $(seq 1 300); do
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    lock_acquired=true
+    break
+  fi
+  sleep 0.2
+done
+if [ "$lock_acquired" != true ]; then
+  echo "::error::changelog-parser-check: could not acquire the install lock at ${LOCK_DIR} after 60s — a concurrent invocation may be stuck; remove that directory by hand if it's stale"
+  exit 1
+fi
+# Lock cleanup on exit — a failed rmdir (lock dir already gone,
+# permissions) doesn't affect the check's own pass/fail verdict above; a
+# genuinely stuck lock is caught by the NEXT invocation's 60s timeout, not
+# silently.
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT  # fail-open-ok: cleanup-on-exit, not a correctness path
+
 # `npm ci` is not wrapped in any tolerance — a failed install (registry
 # unreachable, lockfile drift) must fail this check loudly, not silently
 # skip past the parser it exists to run.

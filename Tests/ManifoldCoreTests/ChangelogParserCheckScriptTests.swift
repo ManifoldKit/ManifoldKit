@@ -44,7 +44,24 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         return true
     }
 
+    // scripts/changelog-parser-check.sh always re-runs `npm ci` against the
+    // one shared scripts/changelog-parser-check/ directory on every
+    // invocation (by design — see that script's header). Under
+    // `swift test --parallel`, XCTest can run this file's methods
+    // concurrently, and two `npm ci` processes writing node_modules/ in the
+    // same directory at once corrupt each other's install — this is exactly
+    // the shape of "local gate skips --parallel; CI runs it and reds on a
+    // race the local run never sees" (reproduced live once: all three tests
+    // failed together on the first real CI run of this file, each getting a
+    // truncated/interleaved npm-warning-only output instead of the script's
+    // real stdout). A process-wide lock serializes this file's script
+    // invocations regardless of how the runner schedules the test methods.
+    private static let scriptInvocationLock = NSLock()
+
     private func run(root: URL, args: [String]) throws -> (status: Int32, output: String) {
+        Self.scriptInvocationLock.lock()
+        defer { Self.scriptInvocationLock.unlock() }
+
         let script = root.appendingPathComponent("scripts/changelog-parser-check.sh")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
