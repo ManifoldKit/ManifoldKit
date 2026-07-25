@@ -58,6 +58,12 @@ on:
       - "Package.resolved"
       - "scripts/check-readme.sh"
       - "scripts/extract-snippets.sh"
+      # The ratchet's budget file. Listed for the same reason as the scripts
+      # themselves: without it, a PR editing ONLY the TSV (bumping every count,
+      # or deleting rows) runs no gate and nothing validates the change, then a
+      # follow-up PR lands skips "within budget". Same self-validation rule the
+      # cold-start filter states verbatim.
+      - "scripts/snippet-skip-baseline.tsv"
       - "scripts/extract-snippets-test.sh"
       - ".github/workflows/readme-snippets.yml"
 

@@ -866,7 +866,8 @@ each with a different failure mode:
 |---|---|---|---|
 | **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — required `test`, mirrored on docs-only PRs by `scripts/lint-docs-headers.sh` under required `lint` |
 | **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same shape, mirrored by `scripts/lint-doc-claims.sh` |
-| **Snippets** | `scripts/extract-snippets.sh` + `-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
+| **Snippets — policy** | `scripts/extract-snippets.sh` | a bare `no-build`, a doc where every block is skipped, a skip-budget change | **yes** — `snippet-policy-lint` under required `lint` |
+| **Snippets — compile** | `scripts/extract-snippets-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
 
 **Why each doc-driven audit needs a `lint` mirror.** `ci.yml`'s macOS `test` job
 is paths-filtered and excludes `docs/**`, and `scripts/affected-suites.sh` keeps
@@ -878,15 +879,43 @@ their place. `merge_group` has no paths filter, so the first failure lands
 there catches it on the PR run. **A new markdown-driven audit ships with a
 `lint` mirror, or it does not block on the PRs that can break it.**
 
-> **The snippet gate is advisory, not blocking.** `main`'s required contexts are
-> `test`, `lint`, `api-digester-check`; `readme-snippets` is not among them and
-> has no `merge_group` trigger, so a red run does **not** stop
-> `gh pr merge --squash --auto`. Treat a red `readme-snippets` as a stop anyway
-> — this is the same red-but-not-blocking shape that let the api-digester reds
-> through (#2274, #2287). Promoting it to required is not a one-line change: a
-> required check with no `merge_group` trigger never reports to the queue and
-> blocks it permanently (the failure mode documented under "Companion release
-> PRs" above), so the trigger must be added first.
+The same gap existed for **shell scripts**: `ci.yml`'s paths were an allowlist of
+~12 named scripts, so most `scripts/*.sh` edits never triggered CI, and
+`affected-suites.sh` resolved a scripts-only diff to `NONE` — meaning
+`ScriptFailOpenAuditTest`, which scans all of `scripts/`, first ran in the merge
+queue. `ci.yml` now globs `scripts/**.sh` (kept in lockstep with
+`ci-required-test-shim.yml`'s `paths-ignore` — the `shim-drift` lint step
+enforces that) and the resolver force-includes `ManifoldCoreTests` for any
+`scripts/*.sh` change.
+
+**The rule: a suite that reads or executes a file must be selected when that file
+changes.** Two enforcement shapes, both in `affected-suites.sh`:
+
+- *Scans a whole directory* → a blanket rule. `ScriptFailOpenAuditTest` scans all
+  of `scripts/`, so any `scripts/*.sh` edit selects `ManifoldCoreTests`.
+- *Executes one specific script* → an explicit `case` mapping, alongside the
+  existing `api-surface-baseline.sh` → `APIFreezeTests` entry:
+  `fuzz-ci-gate.sh` → `ManifoldFuzzTests`, `check-readme.sh` →
+  `ManifoldInferenceTests`.
+
+That second list is **hand-kept and has no tripwire** — nothing detects a new
+script-executing test that forgets its mapping. If you add one, add the mapping
+in the same PR; if that keeps being forgotten, the fix is an audit that greps
+`Tests/` for `scripts/` invocations and asserts each has an entry.
+
+> **The snippet COMPILE is advisory; the policy checks are not.** Extraction is
+> pure text, so `scripts/extract-snippets.sh` — the `no-build:<reason>`
+> requirement, the per-doc ">=1 compiled block" assertion and the skip ratchet —
+> runs as `snippet-policy-lint` in the required `lint` job, where it blocks. Only
+> the *compile* (`extract-snippets-test.sh`, which needs macOS + Swift) remains in
+> `readme-snippets`, which is **not** a required context and has no `merge_group`
+> trigger: a red there does **not** stop `gh pr merge --squash --auto`. Treat one
+> as a stop anyway — that is the red-but-not-blocking shape that let the
+> api-digester reds through (#2274, #2287). Making the compile blocking too means
+> adding a `merge_group` trigger to `readme-snippets.yml` first, because a
+> required check that never reports to the queue stalls it permanently (the
+> failure mode documented under "Companion release PRs" above). `lint` already
+> has that trigger, which is why the policy half could be promoted without one.
 
 Rules when editing docs:
 
@@ -904,11 +933,15 @@ Rules when editing docs:
   dead in the same file for months.
 - **`no-build` carries a reason**: ```` ```swift,no-build:<why> ````. A bare tag
   is rejected, exactly as `ScriptFailOpenAuditTest` rejects a bare `|| true` —
-  same hazard (a free, invisible opt-out), same remedy. Pre-existing bare tags
-  live in `BARE_NO_BUILD_GRANDFATHERED`, a debt register that only shrinks;
-  triage a doc, then delete its line. **A doc with no compiling block at all
-  fails the gate** — it would otherwise cost a full macOS run per edit and
-  verify nothing.
+  same hazard (a free, invisible opt-out), same remedy. Legacy bare tags are
+  budgeted per-doc by **`scripts/snippet-skip-baseline.tsv`**: a **ratchet**, so a
+  doc may keep the skips it had and never gain one. A genuinely new fragment
+  requires bumping its count — that bump is a reviewable line, which is exactly
+  the visibility a bare tag never had. Regenerate with
+  `scripts/extract-snippets.sh --update-baseline`, and say in the PR why any count
+  went up. **A doc with no compiling block at all fails the gate** (once its bare
+  count reaches 0) — it would otherwise cost a full macOS run per edit and verify
+  nothing.
 - **A doc's snippets compile as published.** The harness deliberately injects no
   imports: if a reader must paste an `import` the snippet omits, the snippet is
   wrong. Prefer making a block self-contained over tagging it.

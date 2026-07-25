@@ -262,6 +262,26 @@ for p in "${CHANGED[@]}"; do
       log "changed: $p → target APIFreezeTests (surface-baseline tooling)"
       continue
       ;;
+    # Same shape, same reason: these suites EXECUTE the script named, so an edit
+    # to it must run them rather than discovering the break in the merge queue.
+    # (The blanket scripts/*.sh rule further down selects ManifoldCoreTests for
+    # ScriptFailOpenAuditTest, which scans every script; these two are about
+    # suites that run one specific script end to end.)
+    # NOTE on cost: ManifoldFuzzTests has no xcscheme, so ci-selective-test.sh
+    # routes it to a full swift-test bundle compile — the shape the force-include
+    # block below explicitly forbids for blanket use (#2290). Accepted here only
+    # because it is bounded to edits of this one script, which are rare, and the
+    # alternative is FuzzCIGateScriptTests first failing inside the merge queue.
+    scripts/fuzz-ci-gate.sh)
+      changed_targets_add "ManifoldFuzzTests"
+      log "changed: $p → target ManifoldFuzzTests (FuzzCIGateScriptTests runs it)"
+      continue
+      ;;
+    scripts/check-readme.sh)
+      changed_targets_add "ManifoldInferenceTests"
+      log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest runs it)"
+      continue
+      ;;
   esac
   # Only Sources/ and Tests/ paths can map to a target. Anything else (docs,
   # READMEs, …) cannot affect compiled test outcomes and is ignored.
@@ -285,7 +305,23 @@ for p in "${CHANGED[@]}"; do
   log "changed: $p → target $best"
 done
 
-if [[ -z "$CHANGED_TARGETS" ]]; then
+# A shell-script change must still run ManifoldCoreTests, because
+# ScriptFailOpenAuditTest lives there and scans ALL of scripts/ — so a
+# scripts-only diff was editing the very files an audit guards while selecting
+# nothing to run it. Checked BEFORE the NONE early-exit below, which is what
+# a scripts-only diff hits (no script path maps to a build target).
+#
+# Not theoretical: PR #2385 changed two shell scripts, ci.yml never triggered
+# (its paths are an allowlist of ~12 named scripts, not scripts/**), the CI
+# Required Test Shim reported `test` green in 4s, and the audit's first real
+# execution was the merge queue's full run — where a failure would have poisoned
+# the batch of up to 5 PRs (the #2306 / #2212 shape).
+if printf '%s\n' "${CHANGED[@]}" | grep -qE '^scripts/.*\.sh$'; then
+  affected_add "ManifoldCoreTests"
+  log "force-include ManifoldCoreTests: scripts/*.sh changed (ScriptFailOpenAuditTest scans scripts/)"
+fi
+
+if [[ -z "$CHANGED_TARGETS" && -z "$AFFECTED" ]]; then
   log "no changed path maps to a target → NONE"
   emit NONE
 fi
@@ -381,7 +417,7 @@ fi
 # was rejected in #2290: it can make a narrow PR slower than mode=full).
 #
 # Only when we already selected something (code/test change). NONE stays NONE
-# for docs/scripts-only diffs.
+# for docs-only diffs.
 if [[ -n "$CHANGED_SOURCES" || -n "$DIRECT_SUITES" ]]; then
   affected_add "ManifoldCoreTests"
   affected_add "ManifoldInferenceTests"

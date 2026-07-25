@@ -69,6 +69,7 @@ on:
       - ".github/actions/setup-swift-ci/**"
       - "scripts/api-digester-targets.sh"
       - "scripts/api-digester-targets.txt"
+      - "scripts/**.sh"
       # ↑↑↑ MUST stay identical to ci.yml's pull_request `paths:` ↑↑↑
 
 permissions:
