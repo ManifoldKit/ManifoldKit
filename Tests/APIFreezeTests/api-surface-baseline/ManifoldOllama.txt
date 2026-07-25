@@ -22,6 +22,7 @@ OllamaBackend.buildRequest(prompt:systemPrompt:config:hints:) Func
 OllamaBackend.capabilities Var
 OllamaBackend.checkStatusCode(_:bytes:) Func
 OllamaBackend.defaultRequestIdleTimeout Var
+OllamaBackend.defaultStreamIdleTimeout Var
 OllamaBackend.init(defaultModelName:urlSession:payloadHandler:) Constructor
 OllamaBackend.init(urlSession:) Constructor
 OllamaBackend.isThinkingModel Var

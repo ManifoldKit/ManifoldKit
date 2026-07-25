@@ -406,4 +406,212 @@ final class OllamaBackendToolCallingTests: XCTestCase {
             "no .token event must fire from the same line after cancellation interrupts processToolCalls"
         )
     }
+
+    // MARK: - #2376: tool-continuation stall must terminate, not hang forever
+
+    /// `OllamaBackend` must ship a non-nil default `streamIdleTimeout` so a
+    /// stalled generation — the tool-continuation request that never
+    /// produces a byte, observed in #2376 — has an application-level bound
+    /// that Ollama's own code surfaces (`InferenceError.idleTimeout`),
+    /// rather than relying solely on whichever transport-level `URLSession`
+    /// timeout happens to fire first. Before the fix this property was left
+    /// `nil` (the `SSECloudBackend` default), disabling `GenerationStream`'s
+    /// idle-timeout gate entirely.
+    ///
+    /// Also pins the exact default value — `defaultStreamIdleTimeout` drift
+    /// (e.g. to something close to `defaultRequestIdleTimeout`) would pass
+    /// the "strictly tighter" check below without this.
+    ///
+    /// Sabotage check: comment out the `streamIdleTimeout = ...` assignment
+    /// in `OllamaBackend.init` — this assertion fails because the property
+    /// reads `nil` again.
+    func test_defaultStreamIdleTimeout_isNonNilAndBounded() {
+        let backend = OllamaBackend()
+        let timeout = backend.streamIdleTimeout
+        XCTAssertNotNil(timeout, "#2376: a stalled Ollama generation must have a bounded application-level timeout, not rely solely on transport-level URLSession timeouts")
+        XCTAssertEqual(timeout, .seconds(300), "pins the shipped default — see OllamaBackend.defaultStreamIdleTimeout")
+        if let timeout {
+            XCTAssertLessThan(
+                timeout,
+                .seconds(OllamaBackend.defaultRequestIdleTimeout),
+                "streamIdleTimeout must be strictly tighter than requestIdleTimeout to give a meaningfully earlier, visible failure"
+            )
+        }
+    }
+
+    /// End-to-end tool round trip: turn 1 gets a tool call, the (synthesised)
+    /// tool result is threaded into turn 2's history exactly as
+    /// `GenerationToolDispatchLoop` would, and turn 2's connection stalls
+    /// (never delivers a single byte) — modelling the exact silent hang from
+    /// #2376's observed log trace. With a bounded `streamIdleTimeout` the
+    /// second `generate()` call must throw `InferenceError.idleTimeout`
+    /// well before the stub's artificial delay elapses, rather than hang.
+    ///
+    /// Sabotage check performed manually: setting
+    /// `backend.streamIdleTimeout = nil` right after construction (reverting
+    /// to the pre-fix default) makes this test hang until the harness's own
+    /// timeout kills it — confirmed by running with a 2s stub delay and a
+    /// `nil` override, which never completes within the 10s per-test guard
+    /// below and has to be killed. Restoring the override makes it pass in
+    /// well under 1s.
+    func test_toolContinuation_stalledSecondTurn_terminatesWithVisibleError() async throws {
+        let (backend, chatURL) = makeBackend()
+        try await loadBackend(backend)
+
+        // Tight enough that the test runs fast; long enough to be
+        // meaningfully distinguishable from immediate delivery.
+        backend.streamIdleTimeout = .milliseconds(300)
+
+        // Turn 1: the model calls `fakeRateLimited`.
+        let turn1Chunks: [Data] = [
+            ndjsonLine(#"""
+            {"model":"llama3.2","message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"fakeRateLimited","arguments":"{}"}}]},"done":false}
+            """#),
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":10,"eval_count":5}"#),
+        ]
+        MockURLProtocol.stubSequence(url: chatURL, responses: [
+            .sse(chunks: turn1Chunks, statusCode: 200),
+            // Turn 2: connection "opens" (no error) but never delivers a
+            // byte within the test's lifetime — the exact shape of #2376's
+            // silent stall. `firstByteDelay` is deliberately far longer than
+            // `streamIdleTimeout` above so a pass proves the *timeout* fired,
+            // not that the stub happened to resolve fast.
+            .delayedFirstByte(
+                data: ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"ok"},"done":true}"#),
+                firstByteDelay: 5.0,
+                statusCode: 200
+            ),
+        ])
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let toolConfig = GenerationConfig(tools: [
+            ToolDefinition(name: "fakeRateLimited", description: "test", parameters: .object([:])),
+        ])
+
+        // Turn 1.
+        let stream1 = try backend.generate(prompt: "go", systemPrompt: nil, config: toolConfig)
+        let events1 = try await drain(stream1)
+        let call = try XCTUnwrap(events1.compactMap { event -> ToolCall? in
+            if case .toolCall(let c) = event { return c }
+            return nil
+        }.first)
+
+        // Thread the call + a synthesised result into history exactly as
+        // `GenerationToolDispatchLoop.runLoop` does (#2312/#1909).
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", content: "go"),
+            StructuredMessage(role: "assistant", parts: [.toolCall(call)]),
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: call.id, content: "{\"ok\":true}", errorKind: nil)),
+            ]),
+        ]
+
+        // Turn 2 — this is the request that stalls.
+        let start = ContinuousClock.now
+        let stream2 = try backend.generate(
+            prompt: "",
+            systemPrompt: nil,
+            config: toolConfig,
+            hints: GenerationRuntimeHints(history: history)
+        )
+
+        do {
+            _ = try await drain(stream2)
+            XCTFail("expected InferenceError.idleTimeout — the stalled turn must not complete silently")
+        } catch let error as InferenceError {
+            guard case .idleTimeout = error else {
+                XCTFail("expected .idleTimeout, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("expected InferenceError.idleTimeout, got \(type(of: error)): \(error)")
+        }
+
+        let elapsed = ContinuousClock.now - start
+        XCTAssertLessThan(
+            elapsed,
+            .seconds(2),
+            "the timeout must fire on its own bound, well before the stub's 5s artificial stall — a value close to 5s would mean the stub resolved instead of the timeout firing"
+        )
+    }
+
+    /// Pins the exact wire shape of a tool-continuation follow-up request:
+    /// the assistant turn carries `tool_calls`, and the tool-result turn
+    /// carries `role: "tool"` + `tool_call_id`. #2376's investigation ruled
+    /// out a malformed follow-up body as the cause of the observed stall (by
+    /// replaying this exact shape against a live Ollama server by hand), but
+    /// that evidence is not itself committed anywhere — this test is the
+    /// durable, in-repo version of that check, so a future regression in the
+    /// tool-aware history encoding (`CloudMessageEncoder.ollama`) is caught
+    /// even though the stall's root cause remains open.
+    ///
+    /// Sabotage check: change `ollamaEncodeToolAwareEntry` (in
+    /// `CloudMessageEncoder.swift`) to omit `tool_call_id` — this test fails
+    /// on the `tool_call_id` assertion below.
+    func test_toolContinuation_followUpRequestBody_hasExpectedToolAwareShape() async throws {
+        let (backend, chatURL) = makeBackend()
+        try await loadBackend(backend)
+
+        MockURLProtocol.stub(
+            url: chatURL,
+            response: .sse(chunks: [
+                ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"done"},"done":true}"#),
+            ], statusCode: 200)
+        )
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let call = ToolCall(id: "call_1", toolName: "fakeRateLimited", arguments: "{}")
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", content: "go"),
+            StructuredMessage(role: "assistant", parts: [.toolCall(call)]),
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: call.id, content: "{\"ok\":true}", errorKind: nil)),
+            ]),
+        ]
+
+        let stream = try backend.generate(
+            prompt: "",
+            systemPrompt: nil,
+            config: GenerationConfig(tools: [
+                ToolDefinition(name: "fakeRateLimited", description: "test", parameters: .object([:])),
+            ]),
+            hints: GenerationRuntimeHints(history: history)
+        )
+        _ = try await drain(stream)
+
+        let request = try XCTUnwrap(MockURLProtocol.capturedRequests.last(where: { $0.url == chatURL }))
+        // URLSession's async `bytes(for:)` path (used by SSEGenerationTaskRunner)
+        // converts `httpBody` → `httpBodyStream` during transmission — read
+        // whichever is populated (mirrors ClaudeBackendTests's pattern).
+        let bodyData: Data
+        if let direct = request.httpBody {
+            bodyData = direct
+        } else if let stream = request.httpBodyStream {
+            var collected = Data()
+            stream.open()
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
+            defer { buffer.deallocate() }
+            while stream.hasBytesAvailable {
+                let read = stream.read(buffer, maxLength: 4096)
+                if read > 0 { collected.append(buffer, count: read) }
+            }
+            stream.close()
+            bodyData = collected
+        } else {
+            XCTFail("captured request has no body")
+            return
+        }
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+
+        let assistantEntry = try XCTUnwrap(messages.first { ($0["role"] as? String) == "assistant" && $0["tool_calls"] != nil })
+        let toolCalls = try XCTUnwrap(assistantEntry["tool_calls"] as? [[String: Any]])
+        XCTAssertEqual(toolCalls.count, 1)
+        let toolCallFunction = try XCTUnwrap(toolCalls.first?["function"] as? [String: Any])
+        XCTAssertEqual(toolCallFunction["name"] as? String, "fakeRateLimited")
+
+        let toolResultEntry = try XCTUnwrap(messages.first { ($0["role"] as? String) == "tool" })
+        XCTAssertEqual(toolResultEntry["tool_call_id"] as? String, "call_1", "tool result must carry tool_call_id so Ollama can pair it with the originating call")
+        XCTAssertEqual(toolResultEntry["content"] as? String, "{\"ok\":true}")
+    }
 }
