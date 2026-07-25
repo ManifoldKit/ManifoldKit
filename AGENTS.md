@@ -915,8 +915,10 @@ in the same PR; if that keeps being forgotten, the fix is an audit that greps
 >
 > **Making the compile blocking is now one step: add `readme-snippets` to
 > `main`'s required contexts.** The prerequisite — a `merge_group` trigger, so the
-> check reports on the queue instead of stalling it forever (the failure mode
-> under "Companion release PRs" above) — landed in #2391. Do it **promptly**
+> check reports on the queue rather than being assumed failed after the ruleset's
+> `check_response_timeout_minutes` (60) and having its batch ejected — landed in
+> #2391. ("Stalls forever" is the folklore; it is an hour per batch, repeatedly,
+> which is bad enough.) Do it **promptly**
 > rather than leaving it: the trigger already costs a ~14-min `macos-15` job on
 > every queued batch, and until the context is required the queue does not wait on
 > it and the result is discarded, so the interim state pays full price for no gate

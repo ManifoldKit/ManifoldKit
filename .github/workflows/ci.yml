@@ -154,6 +154,11 @@ jobs:
     # loop"). Every heavy job `needs: [changes]`, so skipping this gate cascades
     # the skip to the whole workflow. The `event_name != 'pull_request'` clause
     # keeps push-to-main runs unconditional (no PR context there).
+    # NOTE: the "a bare `…draft == false` skips on non-PR events" rationale
+    # (#2065) was MEASURED FALSE — null coerces to false, so the bare form
+    # runs. The compound form below is still correct and worth keeping as
+    # explicitness; only the stated reason was wrong. See
+    # .github/workflows/readme-snippets.yml for the experiment.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # Backstop against an org-wide macOS-slot stall: an untimed hung job would

@@ -92,6 +92,11 @@ jobs:
     # Draft PRs skip this 10×-billed build — CI runs once the PR is marked
     # ready. The `event_name != 'pull_request'` clause keeps the nightly
     # `schedule` and `workflow_dispatch` runs unconditional.
+    # NOTE: the "a bare `…draft == false` skips on non-PR events" rationale
+    # (#2065) was MEASURED FALSE — null coerces to false, so the bare form
+    # runs. The compound form below is still correct and worth keeping as
+    # explicitness; only the stated reason was wrong. See
+    # .github/workflows/readme-snippets.yml for the experiment.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-15
     timeout-minutes: 35

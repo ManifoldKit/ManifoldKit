@@ -67,12 +67,23 @@ on:
       - "scripts/extract-snippets-test.sh"
       - ".github/workflows/readme-snippets.yml"
 
-  # Merge queue. Required for this workflow to EVER become a required check:
-  # a required context that never reports on the queue's `merge_group` branch
-  # stalls the queue permanently (the failure mode documented in AGENTS.md under
-  # "Companion release PRs"). Adding the trigger is therefore the prerequisite
-  # step, and it is safe on its own — an extra green check run on the queue —
-  # so it can land before the branch-protection change rather than with it.
+  # Merge queue. Required for this workflow to EVER become a required check: a
+  # required context that never reports on the queue's `merge_group` branch is
+  # assumed failed after `check_response_timeout_minutes` (60, per main's ruleset)
+  # and the entry is ejected — so every batch stalls an hour and its PRs are
+  # kicked out, repeatedly. Self-clearing rather than permanent, but self-inflicted
+  # and awful; AGENTS.md's "stalls it forever" wording overstates it the same way.
+  #
+  # Beyond enabling the toggle, this run is worth having on its own merits: the
+  # `paths:` filter above lists Sources/ManifoldKit/** and Sources/ManifoldUI/**,
+  # but the snippets `import ManifoldKit`, whose umbrella target also depends on
+  # ManifoldInference, ManifoldRuntime and ManifoldPersistenceSwiftData — none of
+  # which appear in that filter. A public rename in Inference or Runtime therefore
+  # breaks a published snippet and does NOT trigger this workflow on the PR at
+  # all; today only nightly-slow-tests.yml's `doc-gates` catches it, post-merge,
+  # within 24h. The unconditional queue run is the only pre-merge coverage for
+  # that hole. (The PR-level filter under-covering the umbrella's real dependency
+  # surface is a pre-existing gap worth its own issue, not this PR's job.)
   #
   # merge_group carries no paths filter, so this runs on EVERY queued batch
   # regardless of the `paths:` above — including batches that touch no docs. That
@@ -113,7 +124,10 @@ jobs:
     # FALSE on a non-PR event and skips the job. Measured, it does not — an absent
     # property yields null, GitHub coerces null and false alike to 0, so
     # `null == false` is TRUE and the bare form RUNS. A throwaway push-triggered
-    # workflow with both forms was dispatched to settle it: both jobs ran.
+    # workflow with both forms was dispatched to settle it: both jobs ran. That
+    # was measured on a `push` event; a merge_group payload likewise carries no
+    # `pull_request` key, so the same coercion applies there — an inference, and
+    # this PR's own queue run is the confirming observation.
     #
     # No run in this repo could ever have falsified the claim, because every
     # workflow with a non-PR trigger already used the compound form. Keep the
@@ -125,7 +139,17 @@ jobs:
     # min) can stall the whole org queue if this job hangs (#2099 CI review).
     # 45 (not 30): recent real runs hit ~14 min and this job's duration grows
     # with the snippet count, so keep >3x headroom.
-    timeout-minutes: 45
+    # 25, not 45. Once `readme-snippets` is a required context the binding
+    # constraint stops being this job's own runtime and becomes the queue's
+    # `check_response_timeout_minutes` (60): the whole checks_requested →
+    # conclusion window must fit inside it. At 45 that left ~15 min for the job to
+    # even acquire a macOS runner — while this change simultaneously adds a second
+    # macOS job per batch to an org-wide pool of ~5. Under a burst, a job that sits
+    # pending >15 min and then runs perfectly normally would have its queue entry
+    # ejected: a spurious failure indistinguishable from a flake. Real runs are
+    # ~14 min, so 25 keeps ~1.8x headroom on the job and guarantees >=35 min of
+    # queueing slack. The old 45 was chosen when nothing waited on the total.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
