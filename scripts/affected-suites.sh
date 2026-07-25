@@ -285,7 +285,23 @@ for p in "${CHANGED[@]}"; do
   log "changed: $p → target $best"
 done
 
-if [[ -z "$CHANGED_TARGETS" ]]; then
+# A shell-script change must still run ManifoldCoreTests, because
+# ScriptFailOpenAuditTest lives there and scans ALL of scripts/ — so a
+# scripts-only diff was editing the very files an audit guards while selecting
+# nothing to run it. Checked BEFORE the NONE early-exit below, which is what
+# a scripts-only diff hits (no script path maps to a build target).
+#
+# Not theoretical: PR #2385 changed two shell scripts, ci.yml never triggered
+# (its paths are an allowlist of ~12 named scripts, not scripts/**), the CI
+# Required Test Shim reported `test` green in 4s, and the audit's first real
+# execution was the merge queue's full run — where a failure would have poisoned
+# the batch of up to 5 PRs (the #2306 / #2212 shape).
+if printf '%s\n' "${CHANGED[@]}" | grep -qE '^scripts/.*\.sh$'; then
+  affected_add "ManifoldCoreTests"
+  log "force-include ManifoldCoreTests: scripts/*.sh changed (ScriptFailOpenAuditTest scans scripts/)"
+fi
+
+if [[ -z "$CHANGED_TARGETS" && -z "$AFFECTED" ]]; then
   log "no changed path maps to a target → NONE"
   emit NONE
 fi
@@ -381,7 +397,7 @@ fi
 # was rejected in #2290: it can make a narrow PR slower than mode=full).
 #
 # Only when we already selected something (code/test change). NONE stays NONE
-# for docs/scripts-only diffs.
+# for docs-only diffs.
 if [[ -n "$CHANGED_SOURCES" || -n "$DIRECT_SUITES" ]]; then
   affected_add "ManifoldCoreTests"
   affected_add "ManifoldInferenceTests"

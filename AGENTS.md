@@ -878,6 +878,15 @@ their place. `merge_group` has no paths filter, so the first failure lands
 there catches it on the PR run. **A new markdown-driven audit ships with a
 `lint` mirror, or it does not block on the PRs that can break it.**
 
+The same gap existed for **shell scripts**: `ci.yml`'s paths were an allowlist of
+~12 named scripts, so most `scripts/*.sh` edits never triggered CI, and
+`affected-suites.sh` resolved a scripts-only diff to `NONE` — meaning
+`ScriptFailOpenAuditTest`, which scans all of `scripts/`, first ran in the merge
+queue. `ci.yml` now globs `scripts/**.sh` and the resolver force-includes
+`ManifoldCoreTests` for any `scripts/*.sh` change. **General rule: if an audit
+scans a directory, a change anywhere in that directory must select the suite the
+audit lives in.**
+
 > **The snippet gate is advisory, not blocking.** `main`'s required contexts are
 > `test`, `lint`, `api-digester-check`; `readme-snippets` is not among them and
 > has no `merge_group` trigger, so a red run does **not** stop
@@ -904,11 +913,15 @@ Rules when editing docs:
   dead in the same file for months.
 - **`no-build` carries a reason**: ```` ```swift,no-build:<why> ````. A bare tag
   is rejected, exactly as `ScriptFailOpenAuditTest` rejects a bare `|| true` —
-  same hazard (a free, invisible opt-out), same remedy. Pre-existing bare tags
-  live in `BARE_NO_BUILD_GRANDFATHERED`, a debt register that only shrinks;
-  triage a doc, then delete its line. **A doc with no compiling block at all
-  fails the gate** — it would otherwise cost a full macOS run per edit and
-  verify nothing.
+  same hazard (a free, invisible opt-out), same remedy. Legacy bare tags are
+  budgeted per-doc by **`scripts/snippet-skip-baseline.tsv`**: a **ratchet**, so a
+  doc may keep the skips it had and never gain one. A genuinely new fragment
+  requires bumping its count — that bump is a reviewable line, which is exactly
+  the visibility a bare tag never had. Regenerate with
+  `scripts/extract-snippets.sh --update-baseline`, and say in the PR why any count
+  went up. **A doc with no compiling block at all fails the gate** (once its bare
+  count reaches 0) — it would otherwise cost a full macOS run per edit and verify
+  nothing.
 - **A doc's snippets compile as published.** The harness deliberately injects no
   imports: if a reader must paste an `import` the snippet omits, the snippet is
   wrong. Prefer making a block self-contained over tagging it.

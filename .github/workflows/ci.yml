@@ -42,6 +42,15 @@ on:
       # to the list or loader re-triggers the digester gate.
       - "scripts/api-digester-targets.sh"
       - "scripts/api-digester-targets.txt"
+      # Every shell script, not just the ~12 named above. ScriptFailOpenAuditTest
+      # (ManifoldCoreTests) scans ALL of scripts/, so a change to any script is a
+      # change to something an audit guards — but the named allowlist meant most
+      # script edits never triggered this workflow at all. PR #2385 changed two
+      # shell scripts and got `test` reported green in 4s by the CI Required Test
+      # Shim; the audit first ran in the merge queue, where a failure poisons the
+      # batch (#2306 / #2212). affected-suites.sh keeps the cost bounded — a
+      # scripts-only diff selects ManifoldCoreTests alone, not a full run.
+      - "scripts/**.sh"
   pull_request:
     # `ready_for_review` is REQUIRED here: the default pull_request activity
     # types omit it, so without it a draft→ready transition would fire no event
@@ -82,6 +91,15 @@ on:
       # to the list or loader re-triggers the digester gate.
       - "scripts/api-digester-targets.sh"
       - "scripts/api-digester-targets.txt"
+      # Every shell script, not just the ~12 named above. ScriptFailOpenAuditTest
+      # (ManifoldCoreTests) scans ALL of scripts/, so a change to any script is a
+      # change to something an audit guards — but the named allowlist meant most
+      # script edits never triggered this workflow at all. PR #2385 changed two
+      # shell scripts and got `test` reported green in 4s by the CI Required Test
+      # Shim; the audit first ran in the merge queue, where a failure poisons the
+      # batch (#2306 / #2212). affected-suites.sh keeps the cost bounded — a
+      # scripts-only diff selects ManifoldCoreTests alone, not a full run.
+      - "scripts/**.sh"
   # Merge queue: when a PR is queued, GitHub builds a temp branch
   # (main + earlier-queued PRs + this PR) and dispatches `merge_group`. The
   # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.

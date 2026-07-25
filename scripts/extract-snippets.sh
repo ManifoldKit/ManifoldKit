@@ -27,9 +27,10 @@
 # Skip / include policy:
 #   - ```swift,no-build:<reason> records a `.skip` marker instead of a
 #     `.swift` file. The reason is MANDATORY — a bare `no-build` is rejected
-#     outside BARE_NO_BUILD_GRANDFATHERED, mirroring ScriptFailOpenAuditTest's
-#     `# fail-open-ok: <reason>` rule. Use it for genuinely partial snippets;
-#     the Hello World MUST never carry it.
+#     mirroring ScriptFailOpenAuditTest's `# fail-open-ok: <reason>` rule. Use
+#     it for genuinely partial snippets; the Hello World MUST never carry it.
+#     Legacy bare tags are budgeted per-doc by scripts/snippet-skip-baseline.tsv
+#     (a ratchet: a doc may keep what it had, never gain one).
 #   - A doc that has been triaged (not grandfathered) must compile at least
 #     one block. A doc where everything is skipped costs a full macOS run per
 #     edit and verifies nothing.
@@ -61,6 +62,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # (extract-snippets-test.sh), so this default only affects manual runs.
 OUT_DIR="${TMPDIR:-/tmp}/manifoldkit-snippets-$$"
 VERBOSE=0
+UPDATE_BASELINE=0
 
 usage() {
     cat <<EOF
@@ -82,6 +84,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verbose)
             VERBOSE=1
+            shift
+            ;;
+        --update-baseline)
+            UPDATE_BASELINE=1
             shift
             ;;
         -h|--help)
@@ -205,57 +211,47 @@ is_opted_out() {
     return 1
 }
 
-# ── Bare-`no-build` debt register ────────────────────────────────────────
+# ── Bare-`no-build` ratchet ───────────────────────────────────────────────
 #
-# Docs listed here may still carry a bare ```swift,no-build. Everywhere else a
-# reason is mandatory (see the skip-policy block below).
+# A bare ```swift,no-build (no reason) is legacy debt. Rather than a register of
+# FILES that may contain them — which grants the file, not the blocks, so a
+# listed doc could accrue unlimited new bare tags, and which exempted every DocC
+# article wholesale — the budget is a committed per-doc COUNT. A doc may keep the
+# bare tags it had; it may not gain one. Removing them is the unit of progress.
 #
-# This is a DEBT REGISTER, not a config knob: it exists only because
-# retrofitting reasons onto ~150 pre-existing blocks would mean inventing
-# justifications for tags someone else wrote years of commits ago, and a
-# fabricated reason is worse than an honest "untriaged". Triage a doc — decide
-# per block whether it compiles or genuinely cannot, dropping or annotating the
-# tag — then DELETE its line here. The list only shrinks.
+# Both adversarial reviews of #2385 called this strictly better than the
+# register: it closes the two holes the register left (new DocC articles, new
+# blocks in listed files) without needing anyone to triage first. It was declined
+# there for diff size, with the decline recorded in-tree; this is that follow-up.
 #
-# Scope, stated precisely — the loose version of this claim is wrong:
+# The baseline lives in scripts/snippet-skip-baseline.tsv, one row per doc:
+#   <repo-relative path>\t<bare no-build count>\t<total skipped count>
 #
-#   - A new `docs/*.md` or root-level `*.md` IS reason-required from birth.
-#   - A new **DocC article** is NOT: the `Sources/*.docc/*` match below is
-#     wholesale, so a brand-new article can ship a bare tag.
-#   - A **new block in one of the 9 listed files** is NOT: the register grants
-#     the file, not the blocks that existed when it was written.
-#
-# So this register bounds the backlog for new *documents* only; it does not
-# stop the two holes above. The strictly better mechanism is a count-based
-# ratchet — commit today's per-doc skip counts, fail when any count increases —
-# which closes both without needing anyone to triage first. It was declined for
-# this PR to keep the diff reviewable, and that decline is recorded here rather
-# than left implicit, per the "record the declined RCA prescription" rule in
-# AGENTS.md § Documentation gates. Whoever drains this register should replace
-# it with the ratchet rather than shrinking it to zero by hand.
-BARE_NO_BUILD_GRANDFATHERED=(
-    "README.md"
-    "docs/QUICKSTART.md"
-    "docs/QUICKSTART-CLI.md"
-    "docs/QUICKSTART-RAG.md"
-    "docs/QUICKSTART-BRING-YOUR-OWN-UI.md"
-    "docs/QUICKSTART-APPINTENTS.md"
-    "docs/SWIFTUI-MULTI-SESSION.md"
-    "docs/WHY-MANIFOLDKIT.md"
-)
+# A legitimate new fragment DOES require bumping a count — that is the design.
+# The bump is a reviewable line in the diff, which is exactly the visibility the
+# invisible bare tag never had. Regenerate with:
+#   scripts/extract-snippets.sh --update-baseline
+BASELINE_FILE="$REPO_ROOT/scripts/snippet-skip-baseline.tsv"
 
-# allows_bare_no_build <repo-relative-path>
-# DocC catalog articles are grandfathered wholesale for now — 107 of the 176
-# skipped blocks live there, and triaging them is its own pass.
-allows_bare_no_build() {
-    local needle="$1" entry
-    case "$needle" in
-        Sources/*.docc/*) return 0 ;;
-    esac
-    for entry in "${BARE_NO_BUILD_GRANDFATHERED[@]}"; do
-        [[ "$entry" == "$needle" ]] && return 0
-    done
-    return 1
+# baseline_field <path> <column 2|3> — the recorded count, or 0 if unlisted.
+baseline_field() {
+    local needle="$1" col="$2"
+    [[ -f "$BASELINE_FILE" ]] || { printf '0'; return; }
+    awk -F'\t' -v n="$needle" -v c="$col" '$1 == n { print $c; found=1 } END { if (!found) print 0 }' \
+        "$BASELINE_FILE" | head -1
+}
+
+# docc_slug_for <Sources/<Module>/<Module>.docc/...> — `docc-<module>-<file>`,
+# both lowercased. Shared by extraction and the ratchet so the two cannot
+# disagree about which output files belong to which article.
+docc_slug_for() {
+    local docc_rel="$1" module_path module_name file_base
+    module_path="${docc_rel%%.docc/*}"
+    module_name="${module_path##*/}"
+    file_base="$(basename "$docc_rel" .md)"
+    printf 'docc-%s-%s' \
+        "$(printf '%s' "$module_name" | tr '[:upper:]' '[:lower:]')" \
+        "$(printf '%s' "$file_base" | tr '[:upper:]' '[:lower:]')"
 }
 
 # slug_for <repo-relative-path> — lowercased basename without the extension.
@@ -386,12 +382,10 @@ extract_one() {
                         skip_reason="no-build: ${no_build_reason}"
                         ;;
                     *no-build*)
-                        if allows_bare_no_build "$rel_path"; then
-                            skip_reason="explicit-no-build-tag (untriaged; reason not yet required for this doc)"
-                        else
-                            echo "::error file=${rel_path},line=$((cur_start - 1))::bare \`swift,no-build\` is no longer accepted in this doc — add a reason: \`\`\`swift,no-build:<why this cannot compile>. If it CAN compile, drop the tag and let the gate prove it." >&2
-                            exit 2
-                        fi
+                        # Counted, not rejected here: the per-doc ratchet below
+                        # decides, so legacy debt survives while a NEW bare tag
+                        # in any doc — including a brand-new DocC article — fails.
+                        skip_reason="explicit-no-build-tag (bare; counted against the ratchet)"
                         ;;
                 esac
 
@@ -491,14 +485,7 @@ for docc_rel in "${docc_files[@]}"; do
     # module name. Example:
     #   Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md
     #     module = ManifoldUI, file = BuildingAChatUI
-    module_path="${docc_rel%%.docc/*}"          # Sources/ManifoldUI/ManifoldUI
-    module_name="${module_path##*/}"            # ManifoldUI
-    file_base="$(basename "$docc_rel" .md)"     # BuildingAChatUI
-    # Lowercase for the slug (BSD tr).
-    module_lc=$(printf '%s' "$module_name" | tr '[:upper:]' '[:lower:]')
-    file_lc=$(printf '%s' "$file_base" | tr '[:upper:]' '[:lower:]')
-    slug="docc-${module_lc}-${file_lc}"
-    extract_one "$docc_rel" "$slug"
+    extract_one "$docc_rel" "$(docc_slug_for "$docc_rel")"
 done
 
 echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(s) into ${OUT_DIR}"
@@ -520,7 +507,11 @@ echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(
 coverage_failures=0
 for doc_rel in "${gated_docs[@]}"; do
     is_opted_out "$doc_rel" && continue
-    allows_bare_no_build "$doc_rel" && continue
+    # Exempt docs that still carry legacy bare tags — they are untriaged by
+    # definition. Data-driven now, rather than a second hand-kept list: as the
+    # ratchet drains a doc's bare count to 0, this assertion starts applying to
+    # it automatically.
+    [[ "$(baseline_field "$doc_rel" 2)" != "0" ]] && continue
     doc_slug="$(slug_for "$doc_rel")"
     # `find`, not `ls`: a no-match glob makes `ls` exit non-zero, and under
     # `set -euo pipefail` that aborts the script before this check can report —
@@ -540,7 +531,61 @@ for doc_rel in "${gated_docs[@]}"; do
         coverage_failures=$((coverage_failures + 1))
     fi
 done
-if [[ $coverage_failures -gt 0 ]]; then
+# --update-baseline records current state; enforcing against a baseline that does
+# not exist yet is the chicken-and-egg that made the first run unable to bootstrap
+# (with no baseline every doc reads as fully triaged, so the coverage assertion
+# fired before the file could be written).
+if [[ $coverage_failures -gt 0 && $UPDATE_BASELINE -eq 0 ]]; then
+    exit 2
+fi
+
+# ── Ratchet: per-doc skip counts may fall, never rise ─────────────────────
+#
+# Counts are derived from the emitted .skip files rather than threaded through
+# the extraction loop: each one records its own `# Skip reason:` line, so the
+# output is the single source of truth and cannot drift from what was written.
+ratchet_rows=""
+ratchet_failures=0
+for doc_rel in "${gated_docs[@]}" "${docc_files[@]}"; do
+    is_opted_out "$doc_rel" && continue
+    doc_slug="$(slug_for "$doc_rel")"
+    case "$doc_rel" in
+        Sources/*) doc_slug="$(docc_slug_for "$doc_rel")" ;;
+    esac
+
+    total_skips=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip" | wc -l | tr -d ' ')
+    bare_skips=0
+    for skip_file in $(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip"); do
+        if grep -q '^# Skip reason: explicit-no-build-tag (bare' "$skip_file"; then
+            bare_skips=$((bare_skips + 1))
+        fi
+    done
+
+    ratchet_rows="${ratchet_rows}${doc_rel}	${bare_skips}	${total_skips}
+"
+
+    baseline_bare=$(baseline_field "$doc_rel" 2)
+    baseline_total=$(baseline_field "$doc_rel" 3)
+    if [[ "$bare_skips" -gt "$baseline_bare" ]]; then
+        echo "::error file=${doc_rel}::bare \`swift,no-build\` count rose ${baseline_bare} → ${bare_skips}. A bare tag has no reason attached, so nothing records why the block cannot compile. Add \`no-build:<why>\`, or make the block compile. (If this is genuinely new legacy debt, bump the count in scripts/snippet-skip-baseline.tsv and say why in the PR.)" >&2
+        ratchet_failures=$((ratchet_failures + 1))
+    elif [[ "$total_skips" -gt "$baseline_total" ]]; then
+        echo "::error file=${doc_rel}::skipped-block count rose ${baseline_total} → ${total_skips}. Prefer making the new block compile; if it genuinely cannot, bump the count in scripts/snippet-skip-baseline.tsv so the increase is visible in review." >&2
+        ratchet_failures=$((ratchet_failures + 1))
+    fi
+done
+
+if [[ $UPDATE_BASELINE -eq 1 ]]; then
+    {
+        printf '# Per-doc snippet-skip budget — see the ratchet section of extract-snippets.sh.\n'
+        printf '# path\tbare-no-build\ttotal-skipped\n'
+        printf '%s' "$ratchet_rows" | LC_ALL=C sort
+    } > "$BASELINE_FILE"
+    echo "Wrote baseline: $BASELINE_FILE"
+    exit 0
+fi
+
+if [[ $ratchet_failures -gt 0 ]]; then
     exit 2
 fi
 
