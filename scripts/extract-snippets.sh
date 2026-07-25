@@ -481,13 +481,23 @@ extract_one() {
 # No `2>/dev/null` on the find: a masked producer here would yield an empty
 # sweep and a green run off the remaining inputs — the zero-match-parse shape
 # this PR is otherwise arguing against.
+# Each sweep is captured by ASSIGNMENT, then iterated, rather than read from a
+# `< <(…)` process substitution. A process-substitution producer's exit status is
+# unobservable — not by `set -e`, not by `pipefail` — so a `find` that failed
+# partway (permission or IO error after emitting some paths) would silently
+# narrow what this gate checks and the run would still exit 0. The comment below
+# used to anticipate only the stderr-masking half of that; no amount of unmasked
+# stderr makes an ignored status visible. In assignment position a failing
+# producer kills the script.
 gated_docs=()
+root_md_sweep="$(cd "$REPO_ROOT" && find . -maxdepth 1 -type f -name '*.md' | sed 's|^\./||' | LC_ALL=C sort)"
 while IFS= read -r doc_rel; do
     [[ -n "$doc_rel" ]] && gated_docs+=("$doc_rel")
-done < <(cd "$REPO_ROOT" && find . -maxdepth 1 -type f -name '*.md' | sed 's|^\./||' | LC_ALL=C sort)
+done <<<"$root_md_sweep"
+docs_md_sweep="$(cd "$REPO_ROOT" && find docs -maxdepth 1 -type f -name '*.md' | LC_ALL=C sort)"
 while IFS= read -r doc_rel; do
     [[ -n "$doc_rel" ]] && gated_docs+=("$doc_rel")
-done < <(cd "$REPO_ROOT" && find docs -maxdepth 1 -type f -name '*.md' | LC_ALL=C sort)
+done <<<"$docs_md_sweep"
 
 for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"}; do
     is_opted_out "$doc_rel" && continue
@@ -500,9 +510,14 @@ done
 # per-article. `find` is used for portability — BSD find on macOS supports
 # `-path` with shell globbing.
 docc_files=()
+# Assignment, not a process substitution — see the note above. The `2>/dev/null`
+# that used to be here is gone too: this sweep feeds 57 of the 74 baseline rows,
+# and it was the one site where the error was masked AND the status unobservable,
+# i.e. both halves of the shape this file argues against.
+docc_sweep="$(cd "$REPO_ROOT" && find Sources -type f -name '*.md' -path '*/*.docc/*' | LC_ALL=C sort)"
 while IFS= read -r path; do
     [[ -n "$path" ]] && docc_files+=("$path")
-done < <(cd "$REPO_ROOT" && find Sources -type f -name '*.md' -path '*/*.docc/*' 2>/dev/null | LC_ALL=C sort)
+done <<<"$docc_sweep"
 
 for docc_rel in ${docc_files[@]+"${docc_files[@]}"}; do
     # Derive module name from the .docc directory: Sources/<Module>/<Module>.docc/...
@@ -592,13 +607,20 @@ for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"} ${docc_files[@]+"${docc_files
     # and the bare arm degraded to "found nothing" instead of erroring. CI's
     # OUT_DIR has no spaces, so that was latent — but a detection path that
     # silently reads zero is exactly what this whole gate exists to prevent.
+    # Assignment, not a process substitution. This site was only *accidentally*
+    # safe: the identical `find` runs in an assignment two lines up, so under
+    # `pipefail` a failing find already killed the script before reaching here —
+    # protection that existed purely as an artifact of statement order, and that
+    # swapping those two lines would have silently removed, re-opening the
+    # read-zero fail-open fixed above by a different route.
     bare_skips=0
+    bare_skip_files="$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip")"
     while IFS= read -r skip_file; do
         [[ -n "$skip_file" ]] || continue
         if grep -q '^# Skip reason: explicit-no-build-tag (bare' "$skip_file"; then
             bare_skips=$((bare_skips + 1))
         fi
-    done < <(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip")
+    done <<<"$bare_skip_files"
 
     ratchet_rows="${ratchet_rows}${doc_rel}	${bare_skips}	${total_skips}
 "
