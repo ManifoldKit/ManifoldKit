@@ -47,6 +47,7 @@ on:
       #   known-issue-lint    → Sources/**, Tests/**
       #   docs-header-lint    → docs/*.md, scripts/lint-docs-headers.sh
       #   doc-claims-lint     → *.md, docs/**, Sources/**/*.docc/**, scripts/lint-doc-claims.sh
+      #   snippet-policy-lint → *.md, docs/**, Sources/**/*.docc/**, scripts/extract-snippets.sh, scripts/snippet-skip-baseline.tsv
       #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
       #   availability-audit  → Sources/**, scripts/audit-availability.sh
       #   secret-scan         → Sources/**, Tests/**, .github/workflows/**
@@ -70,6 +71,8 @@ on:
       - "scripts/audit-availability.sh"
       - "scripts/lint-docs-headers.sh"
       - "scripts/lint-doc-claims.sh"
+      - "scripts/extract-snippets.sh"
+      - "scripts/snippet-skip-baseline.tsv"
   # Merge queue: `lint` is a required check, so it MUST report on the queue's
   # `merge_group` branch or the queue stalls. The content-check steps (actionlint,
   # pin-audit, known-issue, availability, readme) run; PR-only steps (commitlint,
@@ -379,6 +382,24 @@ jobs:
       - name: "doc-claims-lint — verify doc links, anchors, index coverage"
         if: always()
         run: bash scripts/lint-doc-claims.sh
+
+      # ── snippet-policy-lint ───────────────────────────────────────────────
+      # extract-snippets.sh enforces three policies that need no compiler:
+      # the `no-build:<reason>` requirement, the per-doc ">=1 compiled block"
+      # assertion, and the skip-count ratchet. Extraction is pure awk/sed text
+      # work — no Swift, no macOS — so it can run here.
+      #
+      # It has to run here, because its only other host is `readme-snippets`,
+      # which is NOT a required check: a red there does not stop
+      # `gh pr merge --auto`. Enforcing policy solely from an advisory workflow
+      # is the red-but-not-blocking shape that let the api-digester reds through
+      # (#2274, #2287) — so the text-only half is promoted to required `lint`
+      # and only the actual snippet COMPILE stays in readme-snippets.
+      #
+      # No duplication: this runs the same script, not a mirror of it.
+      - name: "snippet-policy-lint — no-build reasons, per-doc coverage, skip ratchet"
+        if: always()
+        run: bash scripts/extract-snippets.sh --out "${RUNNER_TEMP:-/tmp}/snippet-policy-lint"
 
       # ── availability-audit ────────────────────────────────────────────────
       # Flags @available / #available annotations that exceed the Package.swift
