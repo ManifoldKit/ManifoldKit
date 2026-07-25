@@ -438,18 +438,27 @@ public enum HardwareRequirements {
         minimumModelSize: Int64 = 50 * 1024 * 1024,
         maximumModelSize: Int64? = nil
     ) -> URL? {
-        let (candidates, _) = discoverGGUFModelCandidates(
+        let (candidates, diagnostics) = discoverGGUFModelCandidates(
             in: searchDirs,
             fileManager: fileManager,
             minimumModelSize: minimumModelSize,
             maximumModelSize: maximumModelSize
         )
-        return selectGGUFModel(
+        let selected = selectGGUFModel(
             from: candidates,
             environmentKey: "LLAMA_TEST_MODEL",
             nameContains: substring,
             environment: environment
         )
+        // When discovery found .gguf files that all failed validation, surface
+        // that on stderr so logs distinguish "no models on disk" from "found
+        // files but none loadable" (#2384). Quiet when the tree is simply empty
+        // (the common XCTSkip path). Callers that want a typed message should
+        // use ``discoverGGUFModelsWithDiagnostics`` directly.
+        if selected == nil, diagnostics.rejectedGGUFFileCount > 0 {
+            fputs("HardwareRequirements.findGGUFModel: \(diagnostics.skipMessage)\n", stderr)
+        }
+        return selected
     }
 
     /// Maximum directory depth below each search root for GGUF file discovery.
@@ -601,19 +610,16 @@ public enum HardwareRequirements {
         }
     }
 
-    /// Directories that look like cache / download sidecar trees — never descend.
+    /// Directory names that are never model trees — never descend.
     ///
-    /// Hidden directories are already excluded by `.skipsHiddenFiles` on the
-    /// directory listing; this catches non-hidden cache names and Hugging Face
-    /// download sidecars that can contain `.gguf.lock` / `.metadata` junk.
+    /// Hidden directories (including `.cache`) are already excluded by
+    /// `.skipsHiddenFiles`. Keep this list tight: bare names like
+    /// `huggingface` or `downloads` are legitimate family roots for some
+    /// layouts (`Models/huggingface/<org>/<model>/`), so excluding them
+    /// would reintroduce silent skips (#2384 review).
     private static let discoveryExcludedDirectoryNames: Set<String> = [
-        "cache",
+        // Ollama / blob-store content — not chat GGUF layouts.
         "blobs",
-        "tmp",
-        "temp",
-        "download",
-        "downloads",
-        "huggingface",
     ]
 
     private static func shouldDescendIntoDiscoveryDirectory(
@@ -628,6 +634,14 @@ public enum HardwareRequirements {
         let name = url.lastPathComponent
         if name.hasPrefix(".") { return false }
         if discoveryExcludedDirectoryNames.contains(name.lowercased()) { return false }
+        // Hugging Face download sidecars: `…/huggingface/download/…` holds
+        // partial blobs / lock files, not loadable model roots.
+        if name.lowercased() == "download" || name.lowercased() == "downloads" {
+            let parent = url.deletingLastPathComponent().lastPathComponent.lowercased()
+            if parent == "huggingface" || parent == ".cache" || parent == "cache" {
+                return false
+            }
+        }
         return true
     }
 

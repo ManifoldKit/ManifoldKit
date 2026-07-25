@@ -75,20 +75,27 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, flat.standardizedFileURL.path)
     }
 
-    func test_discoverGGUFModels_skipsCacheSidecarTrees() {
-        // Hugging Face download sidecars under a cache dir must not be selected
-        // even when they end in `.gguf` (locks/metadata junk).
+    func test_discoverGGUFModels_skipsHuggingFaceDownloadSidecars_butNotFamilyRoots() {
+        // Hugging Face download sidecars under …/huggingface/download/ must not
+        // be selected. A legitimate family root named `huggingface` must still
+        // be discovered (review finding: bare-name exclusion was too broad).
         _ = createGGUFFile(".cache/huggingface/download/junk.gguf")
-        // Non-hidden "cache" / "huggingface" names are also excluded.
         _ = createGGUFFile("cache/huggingface/download/also-junk.gguf")
+        let underHFFamily = createGGUFFile("huggingface/Qwen/Qwen2.5-7B/model.gguf")
         let real = createGGUFFile("gguf/real-model/model.gguf")
 
         let models = HardwareRequirements.discoverGGUFModels(
             in: [tempDirectory],
             minimumModelSize: 1
         )
+        let paths = Set(models.map(\.standardizedFileURL.path))
 
-        XCTAssertEqual(models.map(\.standardizedFileURL.path), [real.standardizedFileURL.path])
+        XCTAssertTrue(paths.contains(real.standardizedFileURL.path))
+        XCTAssertTrue(
+            paths.contains(underHFFamily.standardizedFileURL.path),
+            "Models under a family root named 'huggingface' must remain discoverable"
+        )
+        XCTAssertFalse(paths.contains { $0.contains("/download/") })
     }
 
     func test_discoverGGUFModelsWithDiagnostics_distinguishesRejectedFromEmpty() {
