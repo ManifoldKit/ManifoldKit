@@ -314,11 +314,13 @@ final class DocClaimsAuditTest: XCTestCase {
         # Target
         ## Planted Heading
         ### B1. Network ↔ device
+        ### `planted_snake` escape hatch
         """.write(to: docsDir.appendingPathComponent("TARGET.md"), atomically: true, encoding: .utf8)
         try """
         Good: [a](TARGET.md#planted-heading).
         Double-hyphen slug: [b](TARGET.md#b1-network--device).
-        Bad: [c](TARGET.md#no-such-heading).
+        Underscore kept: [c](TARGET.md#planted_snake-escape-hatch).
+        Bad: [d](TARGET.md#no-such-heading).
         """.write(to: docsDir.appendingPathComponent("planted.md"), atomically: true, encoding: .utf8)
 
         let violations = try Self.auditAnchors(repoRoot: tmp)
@@ -336,6 +338,15 @@ final class DocClaimsAuditTest: XCTestCase {
             A heading slug with a double hyphen (from a removed non-word \
             character between two spaces) must resolve — a whitespace-collapsing \
             slugger reports this as broken. Got \(violations)
+            """
+        )
+        XCTAssertFalse(
+            violations.contains { $0.contains("planted_snake") },
+            """
+            An intra-word underscore must survive slugging — GitHub keeps it. \
+            A slugger that strips `_` along with the code ticks turns \
+            `os_log` into `oslog` and wrongly flags every link to such a \
+            heading. Got \(violations)
             """
         )
     }
@@ -449,10 +460,18 @@ final class DocClaimsAuditTest: XCTestCase {
         for line in content.components(separatedBy: .newlines) {
             guard let heading = matches(of: #"^#{1,6}\s+(.*)$"#, in: line).first else { continue }
             // Strip inline formatting GitHub drops before slugging: link
-            // syntax (keeping the label), code ticks, bold/italic markers.
+            // syntax (keeping the label), code ticks, bold/italic asterisks.
+            //
+            // Underscores are deliberately NOT stripped. GitHub slugs the
+            // *rendered* text, so `_emphasis_` would lose its underscores —
+            // but an intra-word underscore is kept, and this repo's headings
+            // carry plenty of those (`os_log`, `@_exported`, `prefill_progress`)
+            // and no underscore-emphasis at all. Stripping `_` would slug
+            // `` `os_log` content escape `` to `oslog-…` and wrongly flag any
+            // link to it.
             var text = heading
             text = replacing(#"\[([^\]]*)\]\([^)]*\)"#, with: "$1", in: text)
-            text = replacing("[`*_]", with: "", in: text)
+            text = replacing("[`*]", with: "", in: text)
             anchors.insert(githubSlug(text))
         }
         return anchors
