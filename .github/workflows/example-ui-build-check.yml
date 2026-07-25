@@ -29,7 +29,19 @@ name: Example UI build check
 # ci-required-test-shim.yml's precedent, a companion shim job reporting the
 # same context on PRs this `paths:` filter excludes, so non-Example PRs don't
 # get stuck on a check that never runs) — left for a follow-up decision
-# rather than bundled into this fix.
+# rather than bundled into this fix. #2377 stays open pending that decision.
+#
+# KNOWN RESIDUAL GAP: `paths:` below covers the Example app's own sources
+# plus the dependency graph, but not core `Sources/**`. A rename of a public
+# symbol in e.g. `Sources/ManifoldUI` that `Example/Advanced` consumes would
+# break this build without triggering it — `swift test`/`swift build` don't
+# touch the Example app either, so nothing would catch it per-PR (only the
+# weekly example-ui-smoke.yml, the exact blind spot #2377 exists to close).
+# Deliberately not widened to `Sources/**` here: that would make this job
+# fire on nearly every source PR (on top of ci.yml's own ~8-min per-PR
+# macOS run), which is the wall-clock-proportionality tradeoff #2377's body
+# explicitly asks to weigh. Left as a documented gap / follow-up decision,
+# not silently accepted.
 
 on:
   pull_request:

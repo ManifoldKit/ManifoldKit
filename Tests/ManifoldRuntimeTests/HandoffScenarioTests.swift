@@ -193,8 +193,7 @@ final class HandoffScenarioTests: XCTestCase {
     /// only mutated session state and emitted `.agentHandoff`; the assistant
     /// message never gained a content part, so `TurnStreamFinalizer`
     /// classified the turn `.empty` and discarded it — losing the only
-    /// visible trace of the agent switch and leaving `HandoffChipView`
-    /// without a "from" message to compare against on the next turn.
+    /// visible trace of the agent switch.
     func test_handoffOnlyTurn_persistsAssistantMessage_notDroppedAsEmpty() async throws {
         let fx = try await makeFixture()
         fx.mock.tokensToYield = []
@@ -226,9 +225,11 @@ final class HandoffScenarioTests: XCTestCase {
         }
         XCTAssertEqual(toolResults.count, 1, "a synthesized result should pair with the call so the UI doesn't render a stuck 'running' spinner")
         XCTAssertNil(toolResults.first?.errorKind, "the handoff succeeded — the synthesized result must not read as a failure")
+        XCTAssertEqual(toolResults.first?.callId, "tc-handoff", "the result must pair with the SAME call id — a regression synthesizing a fresh id would pass the assertions above while breaking UI pairing and causing TranscriptHealer to inject a second .cancelled result on next load")
         // Sabotage-evidence: M1 revert the `.recordHandoff` fix (don't append content parts) → assistantMessages.count == 0.
         // Sabotage-evidence: M2 append only `.toolCall`, no `.toolResult` → toolResults.count == 0.
         // Sabotage-evidence: M3 mark the synthesized result as a failure (non-nil errorKind) → errorKind assertion fails.
+        // Sabotage-evidence: M4 synthesize a fresh callId instead of reusing the call's → callId assertion fails.
     }
 
     /// The agent count soft cap is informational — exceeding it still

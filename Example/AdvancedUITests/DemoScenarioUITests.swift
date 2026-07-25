@@ -173,13 +173,15 @@ final class DemoScenarioUITests: XCTestCase {
     }
 
     func test_handoffResearchWrite_launchArg_rendersTransferToWriterAndScriptedAnswer() {
-        // The loud-failure contract on `expectedHandoffs` is encoded as a
-        // completedTools assertion here: if the scripted `transfer_to_writer`
+        // The loud-failure contract this test enforces is encoded as a
+        // completedTools assertion: if the scripted `transfer_to_writer`
         // tool-call does not render in the bubble, the wait below fails with
-        // a clear message. That maps the plan's "demo fails LOUDLY if no
-        // handoff fires" requirement onto the XCUITest harness without
-        // needing live LLM execution. The answer assertion covers the
-        // runner's automatic follow-up turn (see `DemoScenario.handoffFollowUpPrompt`).
+        // a clear message — the demo fails LOUDLY if no handoff fires,
+        // without needing live LLM execution. (Not driven by
+        // `DemoScenario.expectedHandoffs` — that field is declared but never
+        // read by any live code path; this test's own assertions are the
+        // actual contract.) The answer assertion covers the runner's
+        // automatic follow-up turn (see `DemoScenario.handoffFollowUpPrompt`).
         assertLaunchArgScenario(scenarioExpectations[8])
     }
 

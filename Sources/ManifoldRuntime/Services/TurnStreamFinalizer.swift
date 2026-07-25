@@ -641,28 +641,41 @@ package struct TurnStreamFinalizer: Sendable {
                         // terminal-kind classification below sees no visible
                         // text/tool/thinking content, and the whole turn is
                         // dropped as `.empty` — silently discarding the
-                        // agent switch's only visible trace and starving
-                        // `HandoffChipView`'s adjacency lookup of a "from"
-                        // message. A synthesized success `ToolResult` keeps
-                        // the tool-invocation UI in its `.completed` state
-                        // instead of stuck `.running` (no result will ever
-                        // arrive through the normal dispatch path).
+                        // agent switch's only visible trace. A synthesized
+                        // success `ToolResult` keeps the tool-invocation UI
+                        // in its `.completed` state instead of stuck
+                        // `.running` (no result will ever arrive through the
+                        // normal dispatch path) — appending only the call
+                        // would instead make `TranscriptHealer` inject an
+                        // `errorKind: .cancelled` "interrupted before
+                        // completion" result on next load, misreporting a
+                        // handoff that actually succeeded as a failed one.
                         // Mirror the `.dispatchToolCall` / `.appendToolResult`
                         // shape exactly (content parts + matching events) so
                         // the live-streaming UI (`ChatGenerationCoordinator`'s
                         // `.toolCallRequested`/`.toolCallCompleted` handlers)
                         // renders the handoff the same way it renders any
                         // other tool call, not just after a reload.
-                        assistantMessage.contentParts.append(.toolCall(handoff.sourceCall))
-                        events.emit(.toolCallRequested(handoff.sourceCall))
-                        let targetName = current.agents.first(where: { $0.id == handoff.targetAgentID })?.name
-                            ?? "the next agent"
-                        let result = ToolResult(
-                            callId: handoff.sourceCall.id,
-                            content: "Handed off to \(targetName)."
-                        )
-                        assistantMessage.contentParts.append(.toolResult(result))
-                        events.emit(.toolCallCompleted(result.callId, result))
+                        //
+                        // `sourceCall` is nil only for an `AgentHandoff` built
+                        // through the 2-argument source-compat initializer
+                        // (see `Agent.swift`) — `HandoffDetector.classify`,
+                        // the sole production producer, always supplies it.
+                        // Without it there is nothing to persist, so this
+                        // turn falls back to the pre-#2378 behaviour (agent
+                        // swap only).
+                        if let sourceCall = handoff.sourceCall {
+                            assistantMessage.contentParts.append(.toolCall(sourceCall))
+                            events.emit(.toolCallRequested(sourceCall))
+                            let targetName = current.agents.first(where: { $0.id == handoff.targetAgentID })?.name
+                                ?? "the next agent"
+                            let result = ToolResult(
+                                callId: sourceCall.id,
+                                content: "Handed off to \(targetName)."
+                            )
+                            assistantMessage.contentParts.append(.toolResult(result))
+                            events.emit(.toolCallCompleted(result.callId, result))
+                        }
                     } else {
                         Log.inference.warning(
                             "ConversationTurnExecutor: received handoff event but session record was unavailable; agent swap dropped"

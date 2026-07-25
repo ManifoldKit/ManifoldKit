@@ -21,7 +21,7 @@ This is **not** a multi-agent peer system. Agents are sequential and turn-scoped
 | Piece | Lives in | Role |
 |---|---|---|
 | ``ManifoldInference/AgentDefinition`` | `ManifoldInference` | Value type: `id`, `name`, `systemPrompt`, `description`, `allowedToolNames`. |
-| ``ManifoldInference/AgentHandoff`` | `ManifoldInference` | The detected transfer intent: `targetAgentID` + optional `payload`. |
+| ``ManifoldInference/AgentHandoff`` | `ManifoldInference` | The detected transfer intent: `targetAgentID`, optional `payload`, and the triggering `sourceCall` (the `transfer_to_<name>` `ToolCall` itself — `nil` only via the source-compat 2-argument initializer). |
 | ``ManifoldInference/HandoffDetectionResult`` | `ManifoldInference` | `regular(ToolCall)` vs `handoff(AgentHandoff)`. |
 | ``HandoffToolSource`` | `ManifoldRuntime` | ``SessionToolSource`` that synthesises one `transfer_to_<name>` tool per non-active agent. |
 | ``ManifoldInference/ChatSession/agents`` | `ManifoldInference` | The session's agent registry — a `[AgentDefinition]` snapshot of the SwiftData rows. |
@@ -72,6 +72,7 @@ On each turn:
 3. The executor prepends a synthesised **Handoff instructions** block to the active agent's system prompt listing the sibling agents and when to transfer. Without this, weak/local models never trigger handoffs.
 4. If the model emits a `transfer_to_<other>` tool call, the dispatch loop intercepts it (it never reaches ``HandoffToolSource/resolve(toolName:arguments:session:)`` — reaching `resolve` indicates missing detector wiring and throws ``HandoffSourceError/handoffMustBeInterceptedUpstream(_:)``).
 5. The runtime updates `session.activeAgentID`, injects a synthetic system-role **boundary message** into the next turn's `structuredHistory` (`"[Handoff from researcher to writer] payload: …"`), and emits ``ConversationEvent/agentHandoff(from:to:)``.
+6. The turn's assistant message persists the `transfer_to_<name>` call plus a synthesized success `ToolResult` ("Handed off to \<name\>.") — a handoff still needs to be a visible *turn* the transcript, export, and UI can see, not a silent state mutation (#2378). This means the payload appears twice on the wire for the receiving turn: once in the call's `arguments` and again in the boundary message above — a known, accepted duplication, not a bug. One caveat: the three built-in chat export formats filter on `hasVisibleContent`, so the handoff turn (no visible text) is currently omitted from exports even though it now persists.
 
 ## Per-message attribution
 
