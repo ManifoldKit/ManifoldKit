@@ -416,12 +416,24 @@ final class DocClaimsAuditTest: XCTestCase {
         ## Planted Heading
         ### B1. Network ↔ device
         ### `planted_snake` escape hatch
+        ## Solo
+
+        ```bash
+        # Fenced Not A Heading
+        ```
+
+        ~~~text
+        # Tilde Fenced Not A Heading
+        ~~~
         """.write(to: docsDir.appendingPathComponent("TARGET.md"), atomically: true, encoding: .utf8)
         try """
         Good: [a](TARGET.md#planted-heading).
         Double-hyphen slug: [b](TARGET.md#b1-network--device).
         Underscore kept: [c](TARGET.md#planted_snake-escape-hatch).
         Bad: [d](TARGET.md#no-such-heading).
+        Fenced: [e](TARGET.md#fenced-not-a-heading).
+        Tilde-fenced: [f](TARGET.md#tilde-fenced-not-a-heading).
+        Bogus dup suffix: [g](TARGET.md#solo-3).
         """.write(to: docsDir.appendingPathComponent("planted.md"), atomically: true, encoding: .utf8)
 
         let violations = try Self.auditAnchors(repoRoot: tmp)
@@ -441,6 +453,27 @@ final class DocClaimsAuditTest: XCTestCase {
             slugger reports this as broken. Got \(violations)
             """
         )
+        // Fence-awareness. Without it, `# Fenced Not A Heading` inside a
+        // ```bash block becomes a real anchor and these links resolve here
+        // while 404ing on GitHub. Measured on this repo: 44 heading-shaped
+        // lines live inside fenced blocks. Reverting the fence tracking must
+        // turn these two red.
+        XCTAssertTrue(
+            violations.contains { $0.contains("fenced-not-a-heading") },
+            "A heading-shaped line inside a ``` fence is not an anchor — a link to it must be flagged; got \(violations)"
+        )
+        XCTAssertTrue(
+            violations.contains { $0.contains("tilde-fenced-not-a-heading") },
+            "Same for ~~~ fences; got \(violations)"
+        )
+        // Duplicate-heading suffixes. GitHub only mints `-N` when a heading
+        // actually repeats, so `#solo-3` against a single `## Solo` 404s.
+        // Accepting any `-\d+$` unconditionally (the pre-fix behaviour) makes
+        // this pass.
+        XCTAssertTrue(
+            violations.contains { $0.contains("solo-3") },
+            "`#solo-3` against a single `## Solo` must be flagged; got \(violations)"
+        )
         XCTAssertFalse(
             violations.contains { $0.contains("planted_snake") },
             """
@@ -449,6 +482,112 @@ final class DocClaimsAuditTest: XCTestCase {
             `os_log` into `oslog` and wrongly flags every link to such a \
             heading. Got \(violations)
             """
+        )
+    }
+
+    /// The symbol index must not accept a name that survives only inside a
+    /// comment or a string literal.
+    ///
+    /// Without this, one `// Foo was removed in vX` line keeps `Foo` valid
+    /// forever — and the repo was in exactly that state: `DefaultBackends`
+    /// (retired) survived as a token in 9 files and `StructuredHistoryReceiver`
+    /// (removed) in 1, all doc comments, so a doc claiming either existed
+    /// passed. Removals that leave a "this used to be X" comment are precisely
+    /// the removals whose docs go stale, so the blind spot pointed the same
+    /// direction as the failure mode.
+    func test_sabotage_sourceIndexIgnoresCommentAndStringTokens() throws {
+        let tmp = try Self.makeTempRoot("doc-claims-comment-residue")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let sourcesDir = tmp.appendingPathComponent("Sources/ManifoldPlanted", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourcesDir, withIntermediateDirectories: true)
+        try """
+        // PlantedInLineComment was removed in v9.9.9 — historical note only.
+        /* PlantedInBlockComment also removed. */
+        public struct PlantedRealDecl {
+            let label = "PlantedInStringLiteral"
+            let raw = #"say "PlantedInRawString" now"#
+        }
+        """.write(to: sourcesDir.appendingPathComponent("Planted.swift"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.createDirectory(
+            at: tmp.appendingPathComponent("docs"), withIntermediateDirectories: true
+        )
+        try """
+        Ships ``PlantedInLineComment``, ``PlantedInBlockComment``,
+        ``PlantedInStringLiteral``, ``PlantedInRawString`` and ``PlantedRealDecl``.
+        """.write(to: tmp.appendingPathComponent("docs/planted.md"), atomically: true, encoding: .utf8)
+
+        let violations = try Self.auditSymbolReferences(repoRoot: tmp)
+        for ghost in ["PlantedInLineComment", "PlantedInBlockComment", "PlantedInStringLiteral", "PlantedInRawString"] {
+            XCTAssertTrue(
+                violations.contains { $0.contains(ghost) },
+                "`\(ghost)` exists only in a comment or string literal and must be flagged; got \(violations)"
+            )
+        }
+        XCTAssertFalse(
+            violations.contains { $0.contains("PlantedRealDecl") },
+            "A real declaration must still resolve; got \(violations)"
+        )
+    }
+
+    /// A DocC `Extensions/Foo.md` file must NOT vouch for the symbol `Foo`.
+    ///
+    /// Indexing symbol-extension filenames is circular validation: it answers
+    /// "does `Foo` exist?" with "yes, a doc file is named after it", so
+    /// deleting the type while leaving its extension file behind keeps every
+    /// doc claiming ``Foo`` green. Article names (non-`Extensions/`) are a
+    /// legitimate link target and must still resolve.
+    func test_sabotage_docCExtensionFilenameDoesNotVouchForSymbol() throws {
+        let tmp = try Self.makeTempRoot("doc-claims-extension-residue")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let catalog = tmp.appendingPathComponent("Sources/ManifoldPlanted/ManifoldPlanted.docc", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: catalog.appendingPathComponent("Extensions"), withIntermediateDirectories: true
+        )
+        try "# ``PlantedDeletedType``".write(
+            to: catalog.appendingPathComponent("Extensions/PlantedDeletedType.md"),
+            atomically: true, encoding: .utf8
+        )
+        try "# Planted Article".write(
+            to: catalog.appendingPathComponent("PlantedArticle.md"), atomically: true, encoding: .utf8
+        )
+        try "public struct PlantedAnchorDecl {}".write(
+            to: tmp.appendingPathComponent("Sources/ManifoldPlanted/Planted.swift"),
+            atomically: true, encoding: .utf8
+        )
+
+        try FileManager.default.createDirectory(
+            at: tmp.appendingPathComponent("docs"), withIntermediateDirectories: true
+        )
+        try "See ``PlantedDeletedType`` and ``PlantedArticle``."
+            .write(to: tmp.appendingPathComponent("docs/planted.md"), atomically: true, encoding: .utf8)
+
+        let violations = try Self.auditSymbolReferences(repoRoot: tmp)
+        XCTAssertTrue(
+            violations.contains { $0.contains("PlantedDeletedType") },
+            "An Extensions/ filename must not vouch for its own symbol; got \(violations)"
+        )
+        XCTAssertFalse(
+            violations.contains { $0.contains("PlantedArticle") },
+            "A DocC article name is a legitimate link target and must resolve; got \(violations)"
+        )
+    }
+
+    /// An unreadable `docs/` must make ``auditIndexCoverage(repoRoot:)`` throw.
+    ///
+    /// It returned `[]` before — "no orphans" from a directory it never read,
+    /// the sibling of the symbol-index fail-open and green in exactly the same
+    /// way.
+    func test_sabotage_auditIndexCoverageThrowsOnUnreadableDocs() throws {
+        let tmp = try Self.makeTempRoot("doc-claims-docs-unreadable")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // No docs/ directory at all — the same observable state as unreadable.
+        XCTAssertThrowsError(
+            try Self.auditIndexCoverage(repoRoot: tmp),
+            "An absent/unreadable docs/ must throw, not report zero orphans"
         )
     }
 
@@ -542,6 +681,22 @@ final class DocClaimsAuditTest: XCTestCase {
             at: sourcesDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
         ) {
             for case let url as URL in articleEnumerator where url.pathExtension == "md" {
+                // DocC catalogs only, and NOT `Extensions/` — the exclusion is
+                // the whole point. An `Extensions/Foo.md` file is the
+                // documentation *for* the symbol `Foo`, so indexing its
+                // basename makes the audit answer "does `Foo` exist?" with
+                // "yes, because a doc file is named after it". That is circular,
+                // and it is the same half-done-removal shape this audit exists
+                // to catch with the halves swapped: delete the type, leave the
+                // extension file, and every doc claiming ``Foo`` still passes.
+                // `ChatViewModel` and `InferenceService` — two of the most
+                // referenced types in the corpus — were vouched for this way.
+                //
+                // Restricting to `.docc` also drops 13 non-catalog files
+                // (fixture READMEs, ATTRIBUTION) whose basenames were becoming
+                // valid "symbols" (`photosynthesis`, `chlorophyll`, `backend-a`).
+                let path = url.path
+                guard path.contains(".docc/"), !path.contains(".docc/Extensions/") else { continue }
                 tokens.insert(url.deletingPathExtension().lastPathComponent)  // article name
             }
         }
@@ -562,9 +717,19 @@ final class DocClaimsAuditTest: XCTestCase {
     /// whose docs go stale, so the blind spot lined up precisely with the
     /// failure mode.
     ///
-    /// Approximate but conservative in the safe direction: over-stripping can
-    /// only cause a false positive (a loud, fixable failure), never a silent
-    /// pass.
+    /// Handles line/block comments (nested), `"…"` with escapes, `"""…"""`,
+    /// and raw strings (`#"…"#`, `##"…"##`). Raw strings matter for
+    /// correctness, not completeness: an embedded quote inside `#"…"#` used to
+    /// end string state early, so a dead symbol after it re-entered the index —
+    /// an **under**-strip, which is a silent pass, the one direction this
+    /// function must never fail in. (Zero such literals exist in `Sources/`
+    /// today; it was guarded before it could bite.)
+    ///
+    /// Known and deliberate: string *interpolation* is over-stripped, so
+    /// `"\(RealType.name)"` does not contribute `RealType`. That is the safe
+    /// direction — a false positive is loud and fixable — and harmless in
+    /// practice because the index is a union over ~700 files, where any live
+    /// type is declared somewhere outside a string.
     static func strippingCommentsAndStringLiterals(_ source: String) -> String {
         var out = ""
         out.reserveCapacity(source.count)
@@ -574,6 +739,7 @@ final class DocClaimsAuditTest: XCTestCase {
         var inLineComment = false
         var inString = false
         var inMultilineString = false
+        var rawStringHashes = 0   // >0 while inside #"…"# / ##"…"##
 
         while iterator < source.endIndex {
             let remaining = source[iterator...]
@@ -594,6 +760,17 @@ final class DocClaimsAuditTest: XCTestCase {
                 if source[iterator] == "\n" { out.append("\n") }
                 iterator = source.index(after: iterator); continue
             }
+            if rawStringHashes > 0 {
+                // Terminates on `"` followed by exactly the opening hash count.
+                if source[iterator] == "\"" {
+                    let closer = "\"" + String(repeating: "#", count: rawStringHashes)
+                    if remaining.hasPrefix(closer) {
+                        rawStringHashes = 0
+                        iterator = source.index(iterator, offsetBy: closer.count); continue
+                    }
+                }
+                iterator = source.index(after: iterator); continue
+            }
             if inMultilineString {
                 if remaining.hasPrefix("\"\"\"") {
                     inMultilineString = false
@@ -611,6 +788,18 @@ final class DocClaimsAuditTest: XCTestCase {
                 iterator = source.index(after: iterator); continue
             }
 
+            if source[iterator] == "#" {
+                // Count hashes; `#"` (any number) opens a raw string.
+                var hashes = 0
+                var probe = iterator
+                while probe < source.endIndex, source[probe] == "#" {
+                    hashes += 1; probe = source.index(after: probe)
+                }
+                if probe < source.endIndex, source[probe] == "\"" {
+                    rawStringHashes = hashes
+                    iterator = source.index(after: probe); continue
+                }
+            }
             if remaining.hasPrefix("//") { inLineComment = true; iterator = source.index(iterator, offsetBy: 2); continue }
             if remaining.hasPrefix("/*") { blockDepth = 1; iterator = source.index(iterator, offsetBy: 2); continue }
             if remaining.hasPrefix("\"\"\"") { inMultilineString = true; iterator = source.index(iterator, offsetBy: 3); continue }

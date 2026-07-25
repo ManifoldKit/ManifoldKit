@@ -32,11 +32,20 @@
 # exists at the cost of the drift risk.
 #
 # ── DRIFT GUARD ────────────────────────────────────────────────────────────
-# Tests/ManifoldCoreTests/DocClaimsAuditTest.swift is AUTHORITATIVE. If the two
-# ever disagree, the Swift audit is right and this script is stale. Both run on
-# a normal source PR, so disagreement surfaces as one passing and the other
-# failing rather than as silence. When you change a rule in the Swift audit,
-# change it here in the same commit.
+# Tests/ManifoldCoreTests/DocClaimsAuditTest.swift is AUTHORITATIVE for the
+# RULES. Both run on a normal source PR, so a rule disagreement surfaces as one
+# passing and the other failing rather than as silence. When you change a rule
+# in the Swift audit, change it here in the same commit.
+#
+# Two known CORPUS divergences where this script is deliberately STRICTER — if
+# it fails and the Swift audit passes, check these before assuming the script is
+# stale:
+#   1. Hidden paths. Swift's enumerator passes `.skipsHiddenFiles`; python's
+#      os.walk does not, so a doc under `docs/.something/` is checked here only.
+#   2. A link target that is a *directory* named `foo.md`. Swift uses
+#      `fileExists` (true for directories); python uses `os.path.isfile`.
+# Both are contrived, neither occurs in the repo today, and stricter is the
+# right direction — but "the Swift audit is right" would send you the wrong way.
 #
 # Exit codes: 0 clean; 1 violations found or corpus not located.
 #
@@ -116,6 +125,18 @@ def local_md(target):
 files = corpus()
 if len(files) < 90:
     print(f"::error::Only {len(files)} Markdown files found — corpus did not resolve; every check below would vacuously pass")
+    sys.exit(1)
+
+# Per-directory floor, mirroring the Swift audit's. docs/ supplies 71 of the 151
+# corpus files, so the aggregate floor above stops catching a vanished docs/ once
+# the DocC catalogs grow past ~80 files. All three checks below read docs/
+# specifically, so assert on it directly rather than inferring it from the total.
+docs_top = [
+    n for n in os.listdir(os.path.join(repo, "docs"))
+    if n.endswith(".md") and os.path.isfile(os.path.join(repo, "docs", n))
+]
+if len(docs_top) < 40:
+    print(f"::error::Only {len(docs_top)} docs/*.md found — the link, anchor and orphan checks would vacuously pass")
     sys.exit(1)
 
 violations = []
