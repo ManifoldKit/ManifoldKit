@@ -16,9 +16,13 @@ name: Fuzz (weekly rotation)
 # Requires a self-hosted runner labelled `[self-hosted, macos, arm64]`
 # with Ollama installed and at least one model pulled. See FUZZING.md § CI tiers.
 
-# Schedule disabled: no `[self-hosted, macos, arm64]` runner is registered, so
-# scheduled runs queue for 24h and auto-cancel. Re-enable the cron once a
-# self-hosted Apple-Silicon runner is available (see FUZZING.md § CI tiers).
+# No `schedule:` trigger exists yet — only workflow_dispatch below. A prior
+# cron was removed because no `[self-hosted, macos, arm64]` runner is
+# registered (a scheduled run against a nonexistent runner queues for 24h and
+# auto-cancels). Provisioning a runner is necessary but not sufficient to make
+# this run automatically: someone must also add a `schedule:` block back, not
+# just "re-enable" one — there is nothing here to re-enable. See FUZZING.md
+# § CI tiers.
 on:
   workflow_dispatch:
 

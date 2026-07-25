@@ -6,7 +6,9 @@
 #
 # Exit codes:
 #   0   — no findings, or every finding is covered by an unexpired allowlist entry.
-#   1   — one or more findings are not covered, or an allowlist entry has expired.
+#   1   — one or more findings are not covered, an allowlist entry has expired,
+#         or index.json is missing (a campaign that never wrote one never ran —
+#         see the missing-index branch below).
 #   2   — usage / input-parse error.
 #
 # The allowlist JSON shape is:
@@ -27,11 +29,17 @@ if [[ -z "$INDEX_PATH" ]]; then
 fi
 
 if [[ ! -f "$INDEX_PATH" ]]; then
-    # No index file means the campaign never wrote any findings — vacuously pass.
-    # The fuzz runner writes index.json on every run (including empty), so this
-    # branch only fires if the run crashed before producing any output.
-    echo "fuzz-ci-gate: no index.json at $INDEX_PATH — treating as zero findings." >&2
-    exit 0
+    # A real campaign ALWAYS writes index.json — FindingsSink.flush() rewrites
+    # it on every run, including a clean run with zero findings. So a missing
+    # index.json is not "no findings", it is positive evidence the campaign
+    # never actually ran: the backend factory can throw before a single
+    # iteration executes (e.g. Ollama down / no models pulled), the fuzz CLI
+    # still exits 0 in that case (0 runs means isInert is false, so nothing
+    # forces a nonzero exit — see ManifoldKit#2367), and a report-then-gate
+    # step chain that treats "nothing to report" as "nothing wrong" would
+    # rubber-stamp a fuzz job that fuzzed nothing. Fail loud instead.
+    echo "fuzz-ci-gate: no index.json at $INDEX_PATH — the campaign did not run (or crashed before writing any output). This is not a clean result; investigate the run that should have produced it." >&2
+    exit 1
 fi
 
 if [[ ! -f "$ALLOWLIST_PATH" ]]; then
