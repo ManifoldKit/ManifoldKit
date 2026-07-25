@@ -37,12 +37,12 @@ on:
       # and docs/*.md (minus its reasoned opt-out list), so this filter is a
       # superset rather than a hand-kept echo of it. The previous filter globbed
       # docs/QUICKSTART*.md while the extractor used an explicit list missing
-      # QUICKSTART-IMAGE-GEN.md — so editing that file triggered this ~14-min
+      # QUICKSTART-IMAGE-GEN.md — so editing that file triggered this
       # job and compiled nothing from it. A superset can over-trigger; it can
       # never silently under-cover.
       # Scoped to exactly what extract-snippets.sh sweeps: root-level *.md and
       # docs/*.md (maxdepth 1). Deliberately NOT docs/**/*.md — that would
-      # trigger this ~14-min job for docs/plans/*.md, which the extractor does
+      # trigger this job for docs/plans/*.md, which the extractor does
       # not read, reinstating the QUICKSTART-IMAGE-GEN defect (job runs, checks
       # nothing) at a different scope.
       - "*.md"
@@ -78,19 +78,30 @@ on:
   # `paths:` filter above lists Sources/ManifoldKit/** and Sources/ManifoldUI/**,
   # but the snippets `import ManifoldKit`, whose umbrella target also depends on
   # ManifoldInference, ManifoldRuntime and ManifoldPersistenceSwiftData — none of
-  # which appear in that filter. A public rename in Inference or Runtime therefore
-  # breaks a published snippet and does NOT trigger this workflow on the PR at
-  # all; today only nightly-slow-tests.yml's `doc-gates` catches it, post-merge,
-  # within 24h. The unconditional queue run is the only pre-merge coverage for
-  # that hole. (The PR-level filter under-covering the umbrella's real dependency
+  # which appear in that filter. So a public rename in Inference or Runtime can
+  # break a published snippet without triggering this workflow on the PR — not
+  # always, but in the case that matters: an author who also updated the DocC
+  # articles matches `Sources/**/*.docc/**/*.md` and does trigger it, so the gap
+  # is precisely the DRIFT case, the author who forgot the docs. `test` does not
+  # close it (the repo's own Sources/Tests are updated in the same PR, so it is
+  # green; it does not compile docs) and `api-digester-check` flags the rename
+  # itself, not the stale snippet. Today only nightly-slow-tests.yml's `doc-gates`
+  # catches that, post-merge, within 24h. The unconditional queue run is the only
+  # pre-merge coverage for the snippet still compiling. (The PR-level filter under-covering the umbrella's real dependency
   # surface is a pre-existing gap worth its own issue, not this PR's job.)
   #
   # merge_group carries no paths filter, so this runs on EVERY queued batch
   # regardless of the `paths:` above — including batches that touch no docs. That
   # is deliberate and matches ci.yml:88 ("the queue branch is the real pre-merge
-  # state, so we always validate it"), but it is not free: this is a ~14-min
-  # macos-15 job, and macOS runners are org-capped at ~5 concurrent, so each batch
-  # now holds a second macOS slot alongside ci.yml's required `test`.
+  # state, so we always validate it"), but it is not free: each batch now holds a
+  # second macos-15 slot alongside ci.yml's required `test`, against an org-wide
+  # cap of ~5 concurrent. The job itself is short — MEASURED at 3-4 min across
+  # recent runs, not the "~14 min" this file claimed until now; that figure was
+  # already stale when written in #2183, because #1870 had cut this gate from
+  # ~17 min to ~2.5 min (AGENTS.md records exactly that). Expect the merge_group
+  # run to sit at the slower end: caches saved under a `gh-readonly-queue/...` ref
+  # die with the batch (ci.yml:370-380), so every batch takes the restore-keys
+  # partial hit.
   #
   # That cost only buys something once `readme-snippets` is actually required —
   # until then the queue does not wait on it and the result is discarded. So the
@@ -137,8 +148,6 @@ jobs:
     runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
     # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
     # min) can stall the whole org queue if this job hangs (#2099 CI review).
-    # 45 (not 30): recent real runs hit ~14 min and this job's duration grows
-    # with the snippet count, so keep >3x headroom.
     # 25, not 45. Once `readme-snippets` is a required context the binding
     # constraint stops being this job's own runtime and becomes the queue's
     # `check_response_timeout_minutes` (60): the whole checks_requested →
@@ -146,9 +155,10 @@ jobs:
     # even acquire a macOS runner — while this change simultaneously adds a second
     # macOS job per batch to an org-wide pool of ~5. Under a burst, a job that sits
     # pending >15 min and then runs perfectly normally would have its queue entry
-    # ejected: a spurious failure indistinguishable from a flake. Real runs are
-    # ~14 min, so 25 keeps ~1.8x headroom on the job and guarantees >=35 min of
-    # queueing slack. The old 45 was chosen when nothing waited on the total.
+    # ejected: a spurious failure indistinguishable from a flake. Measured runs
+    # are 3-4 min, so 25 keeps ~7x headroom on the job and guarantees >=35 min of
+    # queueing slack (~56 min typical). The old 45 was chosen when nothing waited
+    # on the total, and justified with a "~14 min" figure that was already stale.
     timeout-minutes: 25
 
     steps:

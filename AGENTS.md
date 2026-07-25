@@ -919,10 +919,11 @@ in the same PR; if that keeps being forgotten, the fix is an audit that greps
 > `check_response_timeout_minutes` (60) and having its batch ejected — landed in
 > #2391. ("Stalls forever" is the folklore; it is an hour per batch, repeatedly,
 > which is bad enough.) Do it **promptly**
-> rather than leaving it: the trigger already costs a ~14-min `macos-15` job on
-> every queued batch, and until the context is required the queue does not wait on
-> it and the result is discarded, so the interim state pays full price for no gate
-> and can surface a red check on an already-merged commit. Confirm the check is
+> rather than leaving it: the trigger already spends a second `macos-15` slot on
+> every queued batch (the job itself is short — measured 3–4 min), and until the
+> context is required the queue does not wait on it and the result is discarded,
+> so the interim state pays for a gate it does not get and can surface a red check
+> on an already-merged commit. Confirm the check is
 > observed reporting on a real `merge_group` run before flipping it.
 
 Rules when editing docs:
