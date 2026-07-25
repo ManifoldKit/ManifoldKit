@@ -111,6 +111,98 @@ final class ModelInfoCapabilityFlagsTests: XCTestCase {
         XCTAssertTrue(model.supportsMultilingual)
     }
 
+    // MARK: - #2348: detectedContextLength from config.json (MLX has no GGUF header)
+
+    /// The regression this guards: before #2348, MLX `ModelInfo`s never got
+    /// `detectedContextLength` populated from anywhere, so
+    /// `ModelLoadCoordinator` silently fell back to the hardcoded 8192 ceiling
+    /// for every MLX model regardless of the real trained context or a user's
+    /// session override. `max_position_embeddings` in `config.json` is the
+    /// only on-disk signal MLX snapshots carry for this.
+    func testDetectCapabilities_withConfig_populatesContextLengthAboveDefaultCeiling() throws {
+        let dir = try makeFixtureDirectory()
+        try #"""
+        {
+            "model_type": "llama",
+            "max_position_embeddings": 131072
+        }
+        """#.write(to: dir.appendingPathComponent("config.json"), atomically: true, encoding: .utf8)
+
+        var model = makeModel()
+        XCTAssertNil(model.detectedContextLength, "precondition: model starts with no detected context")
+        model.detectCapabilities(fromModelDirectory: dir)
+        XCTAssertEqual(
+            model.detectedContextLength, 131_072,
+            "MLX config.json's max_position_embeddings must populate detectedContextLength, not stay hardcoded at 8192"
+        )
+    }
+
+    /// `config.json` present but silent on context length (e.g. an
+    /// embedding-only model, or a stripped config) must leave
+    /// `detectedContextLength` untouched rather than asserting a wrong value —
+    /// `ModelLoadCoordinator`'s `?? 8_192` fallback is the correct behavior here.
+    func testDetectCapabilities_configWithoutContextLength_leavesDetectedContextLengthNil() throws {
+        let dir = try makeFixtureDirectory()
+        try #"""
+        {
+            "model_type": "llama"
+        }
+        """#.write(to: dir.appendingPathComponent("config.json"), atomically: true, encoding: .utf8)
+
+        var model = makeModel()
+        model.detectCapabilities(fromModelDirectory: dir)
+        XCTAssertNil(model.detectedContextLength, "no context-length key in config.json → fall back to today's nil behavior, don't fabricate a value")
+    }
+
+    /// Review finding (#2372 MK-1): a `config.json` that declares a bogus
+    /// `"max_position_embeddings": 0` must not flow through as a detected
+    /// value. Without this guard, `0` reaches `ModelLoadCoordinator`'s
+    /// `min(override, detected)` and `ModelLoadPlan.compute`'s
+    /// `max(1, effective)` as a silent 1-token context plan — mirrors the
+    /// non-positive guard `ModelFitScorer+ModelInfo.swift` and manifold-mlx's
+    /// own `positiveInt` already apply to this exact field.
+    func testDetectCapabilities_zeroContextLength_leavesDetectedContextLengthNil() throws {
+        let dir = try makeFixtureDirectory()
+        try #"""
+        {
+            "model_type": "llama",
+            "max_position_embeddings": 0
+        }
+        """#.write(to: dir.appendingPathComponent("config.json"), atomically: true, encoding: .utf8)
+
+        var model = makeModel()
+        model.detectCapabilities(fromModelDirectory: dir)
+        XCTAssertNil(model.detectedContextLength, "a non-positive max_position_embeddings must not become a detected context length")
+    }
+
+    /// Mirrors `testDetectCapabilities_GGUFNoConfig_doesNotThrowAndStaysFalse`
+    /// for the context-length field specifically: an absent `config.json`
+    /// (single-file GGUF layout) must not throw and must leave
+    /// `detectedContextLength` as whatever the caller already set (GGUF's own
+    /// header-derived value), never clobbered by the MLX-only probe path.
+    func testDetectCapabilities_GGUFNoConfig_leavesExistingDetectedContextLengthIntact() throws {
+        let dir = try makeFixtureDirectory()
+        var model = makeModel()
+        model.detectedContextLength = 4_096 // as if already set from the GGUF header
+        model.detectCapabilities(fromModelDirectory: dir)
+        XCTAssertEqual(model.detectedContextLength, 4_096, "configNotFound must not clobber an existing GGUF-header-derived context length")
+    }
+
+    /// Malformed `config.json` (not a JSON object) must be reported via the
+    /// existing warning-log path — not silently absorbed — and must not crash
+    /// or fabricate a context length.
+    func testDetectCapabilities_malformedConfig_doesNotCrashAndLeavesContextLengthNil() throws {
+        let dir = try makeFixtureDirectory()
+        try "not a json object".write(to: dir.appendingPathComponent("config.json"), atomically: true, encoding: .utf8)
+
+        var model = makeModel()
+        // Must not throw — detectCapabilities is `try`-free at the call site by design.
+        model.detectCapabilities(fromModelDirectory: dir)
+        XCTAssertNil(model.detectedContextLength)
+        XCTAssertNil(model.detectedSupportsCode)
+        XCTAssertNil(model.detectedSupportsMultilingual)
+    }
+
     // MARK: - Cloud reasoning detection
 
     func testDetectCloudReasoning_anthropicThinkingFamily() {

@@ -109,6 +109,22 @@ public enum ModelCapabilityProbe {
         // under `text_config` and only expose `max_position_embeddings`
         // there. Fall back to that nested key before giving up so the
         // probe surfaces a context length for the common multimodal case.
+        //
+        // KNOWN DIVERGENCE (#2372 MK-2): this prefers the *top-level* key
+        // over `text_config`. manifold-mlx's own config.json reader —
+        // `MLXModelProbe.extractContextWindow` — prefers the *nested*
+        // `text_config.max_position_embeddings` first, falling back to the
+        // top-level key. For a config.json that declares both keys with
+        // different values, this probe (feeding `ModelInfo.detectedContextLength`,
+        // which now drives `ModelLoadCoordinator`'s requested-context clamp)
+        // and manifold-mlx's own probe (feeding `MLXBackend`'s advertised
+        // `maxContextTokens` / the #2348 pair's trained-context warning
+        // ceiling) could disagree on the same model. As of this comment, none
+        // of the locally-available MLX snapshots carry both keys, so there is
+        // no confirmed real-world trigger — this is a documented latent
+        // inconsistency, not a fix. Do not flip either precedence without
+        // reconciling both readers together; a one-sided change would make
+        // the divergence worse, not better.
         let textConfig = config["text_config"] as? [String: Any]
         let contextLength = (config["max_position_embeddings"] as? Int)
             ?? (config["n_ctx"] as? Int)

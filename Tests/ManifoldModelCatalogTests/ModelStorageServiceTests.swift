@@ -60,13 +60,22 @@ final class ModelStorageServiceTests: XCTestCase {
 
     /// Creates a temporary MLX directory with config.json inside the models directory.
     /// Returns the directory URL. The directory is tracked for tearDown cleanup.
+    ///
+    /// - Parameter configJSON: Raw `config.json` contents. Defaults to an empty
+    ///   object; pass a real payload (e.g. one declaring `max_position_embeddings`)
+    ///   to exercise `ModelCapabilityProbe`-backed detection through the real
+    ///   `discoverModels()` path (#2372 MK-4).
     @discardableResult
-    private func createMlxDirectory(named prefix: String = "mlx-model", weightsSize: Int = 2048) throws -> URL {
+    private func createMlxDirectory(
+        named prefix: String = "mlx-model",
+        weightsSize: Int = 2048,
+        configJSON: String = "{}"
+    ) throws -> URL {
         let dirName = "\(prefix)-\(UUID().uuidString)"
         let url = service.modelsDirectory.appendingPathComponent(dirName)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 
-        let configData = Data("{}".utf8)
+        let configData = Data(configJSON.utf8)
         try configData.write(to: url.appendingPathComponent("config.json"))
 
         let weightsData = Data(repeating: 0xBB, count: weightsSize)
@@ -243,6 +252,29 @@ final class ModelStorageServiceTests: XCTestCase {
 
         XCTAssertNotNil(match, "Should discover the MLX directory")
         XCTAssertEqual(match?.modelType, .mlx)
+    }
+
+    /// #2372 MK-4 (review): the anti-inertness argument for that PR rests on
+    /// `ModelStorageService.discoverModels()` — the real production path that
+    /// scans MLX directories, not just the lower-level `detectCapabilities`
+    /// unit tests in `ModelInfoCapabilityFlagsTests`. This exercises the full
+    /// chain end to end: a real `config.json` on disk → `discoverModels()` →
+    /// `detectedContextLength` on the returned `ModelInfo`.
+    func test_discoverModels_mlxDirectory_populatesDetectedContextLengthFromConfig() throws {
+        let mlxURL = try createMlxDirectory(configJSON: #"""
+        {
+            "model_type": "llama",
+            "max_position_embeddings": 131072
+        }
+        """#)
+
+        let models = service.discoverModels()
+        let match = models.first { $0.fileName == mlxURL.lastPathComponent }
+
+        XCTAssertEqual(
+            match?.detectedContextLength, 131_072,
+            "discoverModels() must populate detectedContextLength from config.json's max_position_embeddings for real MLX directory scans, not just in the detectCapabilities unit tests"
+        )
     }
 
     func test_discoverModels_ignoresNonModelFiles() throws {

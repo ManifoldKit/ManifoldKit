@@ -162,8 +162,26 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         if let reasoning = caps.supportsReasoning { curatedSupportsReasoning = reasoning }
     }
 
-    /// Populates the detected code/multilingual layers from a HF/MLX model
-    /// directory using ``ModelCapabilityProbe``.
+    /// Populates the detected code/multilingual/context-length layers from a
+    /// HF/MLX model directory using ``ModelCapabilityProbe``.
+    ///
+    /// **Context length (#2348):** unlike GGUF — whose ``detectedContextLength``
+    /// comes from the GGUF header (``init(ggufURL:)``,
+    /// ``init(huggingFaceRepoID:fileName:sizeBytes:localURL:modelType:)``) —
+    /// MLX models have no header to read; `config.json`'s
+    /// `max_position_embeddings` (or nested `text_config` equivalent, per
+    /// ``ModelCapabilityProbe``) is the only on-disk signal of the model's real
+    /// trained context. Before this, MLX `ModelInfo`s left ``detectedContextLength``
+    /// `nil` and every MLX load silently fell back to the conservative 8192
+    /// ceiling in `ModelLoadCoordinator`, regardless of a user's context-size
+    /// override. Only set when the probe reports a *positive* value — a
+    /// directory whose `config.json` omits the key (or, per review, declares
+    /// a bogus `0`) keeps today's nil-fallback behavior rather than asserting
+    /// a wrong number. A `0` would otherwise flow through
+    /// `ModelLoadCoordinator`'s `min(override, detected)` and
+    /// `ModelLoadPlan.compute`'s `max(1, effective)` as a silent 1-token
+    /// context plan — the same non-positive guard `ModelFitScorer+ModelInfo.swift`
+    /// and manifold-mlx's own `positiveInt` already apply to this exact field.
     ///
     /// **GGUF limit:** single-file GGUF models have no sibling `config.json`,
     /// so the probe throws ``ModelCapabilityProbeError/configNotFound``. That is
@@ -177,6 +195,9 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
             let caps = try ModelCapabilityProbe.probe(modelDirectory: directory)
             detectedSupportsCode = caps.supportsCodeGeneration
             detectedSupportsMultilingual = caps.supportsMultilingual
+            if let contextLength = caps.contextLength, contextLength > 0 {
+                detectedContextLength = contextLength
+            }
         } catch ModelCapabilityProbeError.configNotFound {
             // Expected for GGUF single files and snapshots that strip config.json.
             // No signal → leave detected layers nil so resolution falls to
