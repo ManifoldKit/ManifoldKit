@@ -62,17 +62,34 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         Self.scriptInvocationLock.lock()
         defer { Self.scriptInvocationLock.unlock() }
 
+        // Output goes to a temp FILE, not a Pipe. A Pipe read via
+        // `readDataToEndOfFile()` before `waitUntilExit()` is fine in
+        // isolation, but under the real CI run (hundreds of other Process
+        // instances spawned concurrently across the full parallel test
+        // suite, not just this file's own three methods) it reproducibly
+        // truncated output at the same point every time -- captured output
+        // ending mid-way through npm's own startup warnings, before either
+        // npm or node had written anything else. A temp file has no pipe
+        // buffer to race against; reading it after `waitUntilExit()`
+        // returns is unconditionally safe.
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("changelog-parser-check-test-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: outURL.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: outURL) }
+        let outHandle = try FileHandle(forWritingTo: outURL)
+        defer { try? outHandle.close() }
+
         let script = root.appendingPathComponent("scripts/changelog-parser-check.sh")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [script.path] + args
         process.currentDirectoryURL = root
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        process.standardOutput = outHandle
+        process.standardError = outHandle
         try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
+
+        let data = (try? Data(contentsOf: outURL)) ?? Data()
         let output = String(data: data, encoding: .utf8) ?? ""
         return (process.terminationStatus, output)
     }
