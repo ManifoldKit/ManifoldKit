@@ -132,12 +132,16 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    runnable snippet for new/changed public APIs). Validate locally with:
 
    ```bash
-   bash scripts/changelog-lint.sh CHANGELOG.md   # must exit 0
+   bash scripts/changelog-lint.sh CHANGELOG.md            # must exit 0
+   bash scripts/changelog-coverage-check.sh CHANGELOG.md  # must exit 0
    ```
 
-   Then `git commit --amend` and **force-push** the branch. This is the same
-   check CI runs in `.github/workflows/lint.yml`; running it locally avoids a
-   red CI round-trip.
+   Then `git commit --amend` and **force-push** the branch. These are the same
+   checks CI runs in `.github/workflows/lint.yml`; running them locally avoids
+   a red CI round-trip. `changelog-coverage-check.sh` catches release-please
+   silently dropping a whole commit from the generated changelog (#2380) —
+   a red here means a merged PR's number doesn't appear anywhere in the
+   newest section; add it by hand before force-pushing.
 
 3. **Enqueue the release PR.** ManifoldKit `main` **requires the merge
    queue**, so a direct `gh api -X PUT .../pulls/<N>/merge` returns HTTP 405

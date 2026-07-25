@@ -272,7 +272,19 @@ jobs:
           echo "Passing changelog-coverage-check to provide the required check context."
 
       - name: changelog-coverage-check — every releasable commit is mentioned
-        if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')
+        # Also fires on merge_group, not just pull_request: a commit can land
+        # on main between release-please generating this PR and the queue
+        # actually merging it (#2379 did — 21 minutes after the last `lint`
+        # verdict on #2352's head, before that PR merged), so a PR-event-only
+        # check's verdict can be stale by the time of publish. This is the
+        # same "staleness is commit-relative, not wall-clock" lesson this
+        # file's sibling companion-canary gate already learned (AGENTS.md
+        # § Companion pin-bump releases). github.head_ref is empty on
+        # merge_group (GitHub substitutes a synthetic gh-readonly-queue/...
+        # ref), so branch-name detection can't distinguish a release merge
+        # from any other queued PR at the `if:` level — the run step below
+        # does that detection itself, from commit history.
+        if: always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')))
         # #2380: release-please's commit parser can hard-fail on a squashed
         # commit body (an identifier immediately followed by nested
         # parentheses — common in this repo's Swift-snippet-heavy commit
@@ -284,7 +296,20 @@ jobs:
         # BASE_TAG/HEAD_REF auto-derivation this relies on here (both default
         # correctly on a release-please branch: BASE_TAG from the CHANGELOG's
         # second `## [x.y.z]` header, HEAD_REF from the checked-out HEAD).
-        run: bash scripts/changelog-coverage-check.sh CHANGELOG.md
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            # The release-please branch's own head commit is always
+            # "chore(main): release X" — fetch-depth:0 keeps it visible a
+            # few commits back under the queue's synthetic merge commit.
+            if ! git log -10 --format=%s | grep -qE '^chore\(main\): release '; then
+              echo "merge_group run for a non-release PR; changelog coverage validation is not required."
+              echo "Passing changelog-coverage-check to provide the required check context."
+              exit 0
+            fi
+            echo "merge_group run detected as a release-please merge (a chore(main): release commit is in recent history) — re-validating against fresh HEAD so commits landed after the release PR was generated are covered."
+          fi
+          bash scripts/changelog-coverage-check.sh CHANGELOG.md
 
       # ── commitlint (PR title) ─────────────────────────────────────────────
       - name: commitlint — validate PR title

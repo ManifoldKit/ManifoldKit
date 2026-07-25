@@ -109,7 +109,15 @@ if [ -z "$commit_log" ]; then
   exit 1
 fi
 
+# Does the newest changelog section mention PR/issue number $1? Anchored so
+# a short number can't false-match as a substring of a longer one (e.g. a
+# naive `grep -qF "#237"` is satisfied by the unrelated "#2375").
+changelog_mentions() {
+  printf '%s' "$newest_section" | grep -qE "#${1}([^0-9]|\$)"
+}
+
 missing=""
+missing_count=0
 checked=0
 
 while IFS= read -r subject; do
@@ -128,31 +136,56 @@ while IFS= read -r subject; do
   done
   [ "$is_visible" = false ] && continue
 
-  # GitHub squash-merge appends " (#NNNN)" for the merged PR, but a subject
-  # can carry MORE than one number — e.g. "feat(ui)!: the 2026 UI refresh
-  # ... (#2307) (#2324)" where #2307 is the umbrella tracking issue this
-  # team's Prisma-style rewrite deliberately cites instead of the individual
-  # squashed PR number #2324 (established, legitimate convention — see
-  # AGENTS.md's "Highlights" entries, which routinely cite the tracked issue
-  # over the implementing PR). Accept a match against ANY number in the
-  # subject, not just the last, so that convention doesn't read as a drop.
-  pr_numbers="$(printf '%s' "$subject" | grep -oE '#[0-9]+' | tr -d '#')"
+  # Extract every #NNNN in the subject, in order. GitHub squash-merge always
+  # appends " (#NNNN)" for the merged PR as the LAST one — but a subject can
+  # carry an earlier number too, e.g. "feat(ui)!: the 2026 UI refresh ...
+  # (#2307) (#2324)", where #2307 is the umbrella tracking issue this team's
+  # Prisma-style rewrite sometimes cites instead of the individual squashed
+  # PR number #2324 (see AGENTS.md's "Highlights" entries).
+  #
+  # Deliberately NOT `grep -oE '#[0-9]+'`: grep exits 1 on zero matches, and
+  # under `set -o pipefail` that status propagates through the trailing
+  # `tr`/pipeline and (with `errexit`) kills the whole script — silently,
+  # with no output — on the ordinary case of a subject with no #NNNN at all.
+  # Confirmed: running this script with no arguments against this branch's
+  # own commits died exactly this way before this fix (one of this branch's
+  # own commit subjects has no #NNNN, since it isn't merged yet). awk always
+  # exits 0, matched or not, so it can't have this failure mode.
+  pr_numbers="$(printf '%s\n' "$subject" | awk '{ n=split($0,a,"#"); for (i=2;i<=n;i++) if (match(a[i],/^[0-9]+/)) print substr(a[i],RSTART,RLENGTH) }')"
   [ -z "$pr_numbers" ] && continue
 
   checked=$((checked + 1))
 
-  found=false
+  # Check the actual PR number (the last one) FIRST — accepting a match on
+  # any earlier number as an unconditional pass would let a genuinely
+  # dropped PR hide behind an unrelated issue number quoted in its own
+  # subject (e.g. "...does NOT close #2353) (#2359)" — #2353 being mentioned
+  # elsewhere in the section says nothing about whether #2359 itself is).
+  # An earlier number is accepted only as a fallback, and ONLY with a loud,
+  # visible warning naming which number actually matched — never silently.
+  primary_pr="$(printf '%s\n' "$pr_numbers" | tail -n1)"
+
+  if changelog_mentions "$primary_pr"; then
+    continue
+  fi
+
+  fallback_pr=""
   for n in $pr_numbers; do
-    if printf '%s' "$newest_section" | grep -qF "#${n}"; then
-      found=true
+    [ "$n" = "$primary_pr" ] && continue
+    if changelog_mentions "$n"; then
+      fallback_pr="$n"
       break
     fi
   done
-  if [ "$found" = false ]; then
-    primary_pr="$(printf '%s' "$pr_numbers" | tail -n1)"
-    missing="${missing}  #${primary_pr}: ${subject}
-"
+
+  if [ -n "$fallback_pr" ]; then
+    echo "::warning::changelog-coverage-check: #${primary_pr} is not itself mentioned in ${CHANGELOG}; it matched only via #${fallback_pr}, cited elsewhere in its own subject (umbrella-issue convention). Verify #${primary_pr}'s actual content is represented: ${subject}"
+    continue
   fi
+
+  missing="${missing}  #${primary_pr}: ${subject}
+"
+  missing_count=$((missing_count + 1))
 done <<EOF
 $commit_log
 EOF
@@ -163,9 +196,13 @@ if [ "$checked" -eq 0 ]; then
 fi
 
 if [ -n "$missing" ]; then
-  echo "::error::changelog-coverage-check: ${CHANGELOG}'s newest section is missing ${checked}-commit-checked PR(s) merged in ${BASE_TAG}..${HEAD_REF}:"
-  echo "::error::"
-  printf '%s' "$missing"
+  echo "::error::changelog-coverage-check: ${CHANGELOG}'s newest section is missing entries for ${missing_count} of ${checked} releasable commit(s) merged in ${BASE_TAG}..${HEAD_REF}:"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    echo "::error::${line}"
+  done <<EOF2
+$missing
+EOF2
   echo ""
   echo "This is the #2380 failure class: release-please's commit parser can silently"
   echo "drop an entire commit (see AGENTS.md § Release workflow). Add the missing"
