@@ -558,13 +558,33 @@ final class TurnLoopCharacterizationTests: XCTestCase {
 
         let records = try await persistenceStack.provider.fetchMessages(for: handoffSessionID)
 
-        // The assistant message must be attributed to the Writer (the active
-        // agent after the swap). Pin it directly so a regeneration that drops
-        // attribution can't mask itself behind a re-recorded golden.
-        let assistant = try XCTUnwrap(records.first(where: { $0.role == .assistant }),
+        // Two assistant messages now persist (#2378): turn 1's handoff-only
+        // message (Researcher, carrying the transfer_to_Writer call/result —
+        // previously silently dropped as "empty", which is exactly the bug
+        // #2378 fixed) and turn 2's prose (Writer). `.first` would find
+        // turn 1's — pin the LAST assistant message, which is turn 2's, so
+        // this assertion is unambiguous about which turn it's checking
+        // rather than accidentally depending on turn 1 staying droppable.
+        let assistant = try XCTUnwrap(records.last(where: { $0.role == .assistant }),
                                       "expected a persisted assistant message")
         XCTAssertEqual(assistant.agentID, writer.id,
                        "assistant message should carry the post-handoff Writer agentID")
+
+        // Turn 1's handoff-only message must also persist, attributed to
+        // Researcher, carrying the transfer call — this is the #2378 fix
+        // itself (HandoffScenarioTests.test_handoffOnlyTurn_… covers the
+        // narrower unit; this asserts it end-to-end through the same
+        // characterization harness the snapshot below pins).
+        let handoffTurnMessage = try XCTUnwrap(
+            records.first(where: { $0.role == .assistant && $0.agentID == researcher.id }),
+            "expected the handoff-only turn to persist, attributed to Researcher"
+        )
+        let handoffToolCalls = handoffTurnMessage.contentParts.compactMap { part -> ToolCall? in
+            if case .toolCall(let call) = part { return call }
+            return nil
+        }
+        XCTAssertEqual(handoffToolCalls.map(\.toolName), ["transfer_to_Writer"],
+                       "the handoff-only turn should carry the transfer call, not be empty")
 
         var c = EventTraceCanonicalizer()
         assertSnapshot(

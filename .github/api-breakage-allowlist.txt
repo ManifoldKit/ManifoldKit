@@ -483,3 +483,4 @@ API breakage: constructor MCPServerDescriptor.init(id:displayName:transport:auth
 API breakage: constructor MCPClientConfiguration.init(sseStreamLimits:requestTimeout:maxConcurrentRequestsPerSession:maxMessageBytes:maxJSONNestingDepth:keychain:lifecyclePolicy:networkPathObserver:lifecycleObserver:samplingHandler:) has been removed
 API breakage: constructor CancellationRaceDetector.init(minTokenChars:) has been removed
 API breakage: var CancellationRaceDetector.minTokenChars has been removed
+API breakage: constructor AgentHandoff.init(targetAgentID:payload:) has been removed
