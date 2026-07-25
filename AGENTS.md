@@ -115,7 +115,9 @@ Specialised modules stay opt-in and are imported by name when you need them:
 
 ¹ Experimental — may break in any minor, always migration-noted; graduates on first
 real adopter (a shipping app or companion that pins and imports it). See
-docs/API-DESIGN.md § 7b.
+docs/API-DESIGN.md § 7b. For the complete maturity picture across every
+published product (not just the Experimental ones), see
+[docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md).
 
 Contributors changing ManifoldKit internals can still import the individual products
 (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the backend
@@ -604,6 +606,13 @@ ManifoldKit is Swift-concurrency-native. The rules:
 
 No target in this repo has heavy ML dependencies — the MLX and llama.cpp families live in companion packages since v0.48 (see "Companion packages" below).
 
+The tables below describe what each target/product *does*. For the
+orthogonal question of what stability promise it carries — Core guarantee,
+Supported first-party integration, Experimental, or Labs — see
+[docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md), the single
+normative source for that signal (issue #2337). The `Experimental¹` markers
+below point back to it.
+
 ### Core / leaf modules (no SwiftData)
 
 | Target | Role |
@@ -670,7 +679,9 @@ No target in this repo has heavy ML dependencies — the MLX and llama.cpp famil
 
 ¹ Experimental — may break in any minor, always migration-noted; graduates on first
 real adopter (a shipping app or companion that pins and imports it). See
-docs/API-DESIGN.md § 7b.
+docs/API-DESIGN.md § 7b. For the complete maturity picture across every
+published product (not just the Experimental ones), see
+[docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md).
 
 ### Test support targets
 

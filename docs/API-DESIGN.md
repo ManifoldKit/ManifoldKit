@@ -198,6 +198,12 @@ seams instead of the type system enforcing it universally.
 
 ## 7. Semver-exempt products
 
+> For where each of these products lands in the four-tier maturity picture
+> (Core / Supported / Experimental / Labs) alongside every other published
+> product, see [`docs/PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md).
+> This section stays the source of truth for *why* they're exempt; that page
+> is the source of truth for the assignment itself.
+
 Five products **may break in any minor release, always migration-noted.** This is
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
@@ -250,6 +256,11 @@ The fifth is exempt for a different reason — a leaked *dependency* type, not d
   AnyLanguageModel's, not ManifoldKit's release cadence (#2209).
 
 ## 7b. Experimental products (declared 2026-07-13, v1-rationalisation plan Phase C)
+
+> This roster feeds directly into [`docs/PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md)'s
+> Tier 3 (Experimental) — that page is the single normative page assigning
+> *every* published product to a maturity tier; this section remains the
+> source of truth for the adopter bar and graduation policy behind it.
 
 Products with **zero real adopters** do not enter the 1.0 stability promise. They may
 break in any minor, always migration-noted — pre-1.0 rules (§4) continue to apply to
