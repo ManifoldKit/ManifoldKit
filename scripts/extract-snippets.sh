@@ -464,7 +464,7 @@ while IFS= read -r doc_rel; do
     [[ -n "$doc_rel" ]] && gated_docs+=("$doc_rel")
 done < <(cd "$REPO_ROOT" && find docs -maxdepth 1 -type f -name '*.md' | LC_ALL=C sort)
 
-for doc_rel in "${gated_docs[@]}"; do
+for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"}; do
     is_opted_out "$doc_rel" && continue
     extract_one "$doc_rel" "$(slug_for "$doc_rel")"
 done
@@ -479,7 +479,7 @@ while IFS= read -r path; do
     [[ -n "$path" ]] && docc_files+=("$path")
 done < <(cd "$REPO_ROOT" && find Sources -type f -name '*.md' -path '*/*.docc/*' 2>/dev/null | LC_ALL=C sort)
 
-for docc_rel in "${docc_files[@]}"; do
+for docc_rel in ${docc_files[@]+"${docc_files[@]}"}; do
     # Derive module name from the .docc directory: Sources/<Module>/<Module>.docc/...
     # Take everything up to ".docc" then strip the last path component to get the
     # module name. Example:
@@ -505,7 +505,7 @@ echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(
 # zero, which is the next tranche of this work, not a reason to weaken the rule
 # where it already holds.
 coverage_failures=0
-for doc_rel in "${gated_docs[@]}"; do
+for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"}; do
     is_opted_out "$doc_rel" && continue
     # Exempt docs that still carry legacy bare tags — they are untriaged by
     # definition. Data-driven now, rather than a second hand-kept list: as the
@@ -546,7 +546,7 @@ fi
 # output is the single source of truth and cannot drift from what was written.
 ratchet_rows=""
 ratchet_failures=0
-for doc_rel in "${gated_docs[@]}" "${docc_files[@]}"; do
+for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"} ${docc_files[@]+"${docc_files[@]}"}; do
     is_opted_out "$doc_rel" && continue
     doc_slug="$(slug_for "$doc_rel")"
     case "$doc_rel" in
