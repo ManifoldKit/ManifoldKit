@@ -5,6 +5,9 @@ name: Lint
 #
 #   - actionlint                    (was actionlint.yml)
 #   - changelog-lint                (was changelog-lint.yml)
+#   - changelog-coverage-check      (scripts/changelog-coverage-check.sh —
+#                                     #2380: catches a release-please parse
+#                                     failure silently dropping a whole PR)
 #   - commitlint                    (was commitlint.yml — Lint PR Title)
 #   - known-issue-lint              (was known-issue-lint.yml)
 #   - docs-header-lint              (scripts/lint-docs-headers.sh — cheap mirror
@@ -260,6 +263,28 @@ jobs:
         # the full rationale on the two bullet patterns and the prose-evidence
         # regex.
         run: bash scripts/changelog-lint.sh CHANGELOG.md
+
+      # ── changelog-coverage-check ─────────────────────────────────────────
+      - name: changelog-coverage-check — skip for non-Release-Please PRs
+        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--branches--')
+        run: |
+          echo "Non-Release-Please PR; changelog coverage validation is not required."
+          echo "Passing changelog-coverage-check to provide the required check context."
+
+      - name: changelog-coverage-check — every releasable commit is mentioned
+        if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')
+        # #2380: release-please's commit parser can hard-fail on a squashed
+        # commit body (an identifier immediately followed by nested
+        # parentheses — common in this repo's Swift-snippet-heavy commit
+        # bodies) and silently drop the WHOLE commit from the generated
+        # changelog, logged only at debug level. This cross-checks the
+        # human-rewritten CHANGELOG.md's newest section against every
+        # non-hidden-type commit merged since the previous release tag — see
+        # scripts/changelog-coverage-check.sh for the full rationale and the
+        # BASE_TAG/HEAD_REF auto-derivation this relies on here (both default
+        # correctly on a release-please branch: BASE_TAG from the CHANGELOG's
+        # second `## [x.y.z]` header, HEAD_REF from the checked-out HEAD).
+        run: bash scripts/changelog-coverage-check.sh CHANGELOG.md
 
       # ── commitlint (PR title) ─────────────────────────────────────────────
       - name: commitlint — validate PR title
