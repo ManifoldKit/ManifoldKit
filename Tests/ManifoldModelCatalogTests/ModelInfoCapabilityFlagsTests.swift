@@ -154,6 +154,27 @@ final class ModelInfoCapabilityFlagsTests: XCTestCase {
         XCTAssertNil(model.detectedContextLength, "no context-length key in config.json → fall back to today's nil behavior, don't fabricate a value")
     }
 
+    /// Review finding (#2372 MK-1): a `config.json` that declares a bogus
+    /// `"max_position_embeddings": 0` must not flow through as a detected
+    /// value. Without this guard, `0` reaches `ModelLoadCoordinator`'s
+    /// `min(override, detected)` and `ModelLoadPlan.compute`'s
+    /// `max(1, effective)` as a silent 1-token context plan — mirrors the
+    /// non-positive guard `ModelFitScorer+ModelInfo.swift` and manifold-mlx's
+    /// own `positiveInt` already apply to this exact field.
+    func testDetectCapabilities_zeroContextLength_leavesDetectedContextLengthNil() throws {
+        let dir = try makeFixtureDirectory()
+        try #"""
+        {
+            "model_type": "llama",
+            "max_position_embeddings": 0
+        }
+        """#.write(to: dir.appendingPathComponent("config.json"), atomically: true, encoding: .utf8)
+
+        var model = makeModel()
+        model.detectCapabilities(fromModelDirectory: dir)
+        XCTAssertNil(model.detectedContextLength, "a non-positive max_position_embeddings must not become a detected context length")
+    }
+
     /// Mirrors `testDetectCapabilities_GGUFNoConfig_doesNotThrowAndStaysFalse`
     /// for the context-length field specifically: an absent `config.json`
     /// (single-file GGUF layout) must not throw and must leave

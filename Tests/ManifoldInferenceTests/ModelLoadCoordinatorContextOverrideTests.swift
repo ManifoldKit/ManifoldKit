@@ -97,14 +97,17 @@ final class ModelLoadCoordinatorContextOverrideTests: XCTestCase {
         )
     }
 
-    /// The #2348 regression: before MLX `ModelInfo`s carried a real
-    /// `detectedContextLength` (populated from `config.json`'s
-    /// `max_position_embeddings`, see `ModelInfoCapabilityFlagsTests`), this
-    /// path's `detected` fell back to the hardcoded 8192 for every MLX model,
-    /// silently re-imposing the ceiling regardless of a session override. This
-    /// test simulates the now-correctly-populated `detectedContextLength` and
-    /// asserts the override survives `min(override, detected)` for `.mlx`
-    /// exactly as it already does for `.foundation`.
+    /// Coordinator-layer coverage for the `.mlx` `.resident` branch of
+    /// `min(override, detected)`, mirroring the existing `.foundation`
+    /// coverage above — NOT the #2348 regression guard itself. This test
+    /// hand-constructs a `ModelInfo` with `detectedContextLength` already
+    /// set, so it only proves the coordinator's clamp logic is
+    /// modelType-agnostic; it would stay green even if the production wiring
+    /// that actually *populates* `detectedContextLength` for MLX were
+    /// deleted. The real #2348 regression guard is
+    /// `ModelInfoCapabilityFlagsTests.testDetectCapabilities_withConfig_populatesContextLengthAboveDefaultCeiling`,
+    /// which exercises the probe → `detectCapabilities` production path this
+    /// test assumes already ran.
     func test_mlx_override_raisesRequestedContextAboveConservativeDefaultCeiling() async {
         let mock = MockInferenceBackend()
         let coordinator = makeService(mock: mock).modelLoadCoordinator

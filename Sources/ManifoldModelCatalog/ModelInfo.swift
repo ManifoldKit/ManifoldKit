@@ -174,9 +174,14 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     /// trained context. Before this, MLX `ModelInfo`s left ``detectedContextLength``
     /// `nil` and every MLX load silently fell back to the conservative 8192
     /// ceiling in `ModelLoadCoordinator`, regardless of a user's context-size
-    /// override. Only set when the probe reports a value — a directory whose
-    /// `config.json` omits the key keeps today's nil-fallback behavior rather
-    /// than asserting a wrong number.
+    /// override. Only set when the probe reports a *positive* value — a
+    /// directory whose `config.json` omits the key (or, per review, declares
+    /// a bogus `0`) keeps today's nil-fallback behavior rather than asserting
+    /// a wrong number. A `0` would otherwise flow through
+    /// `ModelLoadCoordinator`'s `min(override, detected)` and
+    /// `ModelLoadPlan.compute`'s `max(1, effective)` as a silent 1-token
+    /// context plan — the same non-positive guard `ModelFitScorer+ModelInfo.swift`
+    /// and manifold-mlx's own `positiveInt` already apply to this exact field.
     ///
     /// **GGUF limit:** single-file GGUF models have no sibling `config.json`,
     /// so the probe throws ``ModelCapabilityProbeError/configNotFound``. That is
@@ -190,7 +195,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
             let caps = try ModelCapabilityProbe.probe(modelDirectory: directory)
             detectedSupportsCode = caps.supportsCodeGeneration
             detectedSupportsMultilingual = caps.supportsMultilingual
-            if let contextLength = caps.contextLength {
+            if let contextLength = caps.contextLength, contextLength > 0 {
                 detectedContextLength = contextLength
             }
         } catch ModelCapabilityProbeError.configNotFound {
