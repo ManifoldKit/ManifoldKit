@@ -391,6 +391,27 @@ public struct FuzzReport: Sendable {
     public var isInert: Bool {
         totalRuns > 0 && realCompletions == 0
     }
+
+    /// The process exit code a CLI driving a campaign to completion should
+    /// use. `isInert` deliberately excludes `totalRuns == 0` (see its own doc
+    /// comment — "ran but did nothing" and "never ran" are distinct failure
+    /// classes, #2344 vs #2367), so a caller that checks `isInert` alone
+    /// exits 0 on a campaign that never started (backend factory threw
+    /// before the first iteration). This is the union both classes actually
+    /// need, kept in one place — extracted as a pure function (ManifoldKit
+    /// #2367 review) specifically so it can be unit-tested exhaustively
+    /// without spawning the `fuzz-chat` process.
+    ///
+    /// `package`, not `public` (AGENTS.md's default): its only consumers are
+    /// `fuzz-chat` and `ManifoldFuzzTests`, both in this package. manifold-mlx's
+    /// `fuzz-mlx` driver imports `ManifoldFuzz` cross-package and reads
+    /// `FuzzReport`'s other members, but has its own "findings are DATA — exit
+    /// 0 regardless" exit policy and calls neither `isInert` nor this — so
+    /// there is no cross-package consumer to keep this public for. Widen it
+    /// later, with a stated reason, if one appears.
+    package static func exitCode(for report: FuzzReport) -> Int32 {
+        (report.isInert || report.totalRuns == 0) ? 1 : 0
+    }
 }
 
 private extension Duration {

@@ -1,8 +1,10 @@
 name: Fuzz (weekly rotation)
 
 # Weekly-tier fuzzing: 30 minutes rotating every installed Ollama model on a
-# self-hosted Apple-Silicon runner. Report-only — the job never fails on
-# findings; artefacts are uploaded for review.
+# self-hosted Apple-Silicon runner. Findings are gated against
+# `.github/fuzz-allowlist.json` via `scripts/fuzz-ci-gate.sh` (#2367) — an
+# unallowlisted finding fails the job; every finding is still uploaded as an
+# artifact for review regardless of gate outcome.
 #
 # This is the single fuzz workflow ManifoldKit runs. The historical PR /
 # nightly / hosted-heartbeat tiers were retired in 2026-05: the signal data
@@ -14,9 +16,13 @@ name: Fuzz (weekly rotation)
 # Requires a self-hosted runner labelled `[self-hosted, macos, arm64]`
 # with Ollama installed and at least one model pulled. See FUZZING.md § CI tiers.
 
-# Schedule disabled: no `[self-hosted, macos, arm64]` runner is registered, so
-# scheduled runs queue for 24h and auto-cancel. Re-enable the cron once a
-# self-hosted Apple-Silicon runner is available (see FUZZING.md § CI tiers).
+# No `schedule:` trigger exists yet — only workflow_dispatch below. A prior
+# cron was removed because no `[self-hosted, macos, arm64]` runner is
+# registered (a scheduled run against a nonexistent runner queues for 24h and
+# auto-cancels). Provisioning a runner is necessary but not sufficient to make
+# this run automatically: someone must also add a `schedule:` block back, not
+# just "re-enable" one — there is nothing here to re-enable. See FUZZING.md
+# § CI tiers.
 on:
   workflow_dispatch:
 
@@ -50,6 +56,17 @@ jobs:
           else
             echo "Weekly fuzz run produced no INDEX.md."
           fi
+
+      # Fails the job on any finding not covered by an unexpired
+      # .github/fuzz-allowlist.json entry. This is the enforcement point
+      # scripts/fuzz-ci-gate.sh was built for (#549) and left unwired when
+      # the PR-tier job that used to call it was retired (#1440, #2367).
+      # `if: always()` so a gate failure doesn't hide behind a green "Run
+      # fuzz" step whose 30-minute budget simply expired with findings on
+      # the board.
+      - name: Gate findings against allowlist
+        if: always()
+        run: scripts/fuzz-ci-gate.sh tmp/fuzz/index.json
 
       - name: Upload findings artifact
         if: always()

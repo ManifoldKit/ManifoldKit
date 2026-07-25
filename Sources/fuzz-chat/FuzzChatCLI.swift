@@ -328,15 +328,17 @@ struct FuzzChatCLI {
         // is a no-op; LlamaFuzzFactory overrides this to await unloadAndWait(),
         // preventing the SIGABRT from ggml-metal resource-set teardown (#391).
         await factory.teardown()
-        // A campaign that drove zero real completions must never exit 0 — a
-        // clean "findings=0" from an inert rig reads as a strong all-clear and
-        // is actually evidence of nothing (ManifoldKit#2344). `reporter.error`
-        // already printed the diagnostic; this is what makes it load-bearing
-        // for anything scripting fuzz-chat (CI, an overnight cron) rather than
-        // a message a human has to be watching the terminal to notice.
-        if report.isInert {
-            exit(1)
-        }
+        // A campaign that drove zero real completions, OR that never ran a
+        // single iteration at all (backend factory threw before the loop —
+        // ManifoldKit#2367), must never exit 0 — a clean "findings=0" from
+        // either an inert rig or one that silently no-started reads as a
+        // strong all-clear and is actually evidence of nothing (#2344,
+        // #2367). `reporter.error` already printed the diagnostic in both
+        // cases; this is what makes it load-bearing for anything scripting
+        // fuzz-chat (CI, an overnight cron) rather than a message a human has
+        // to be watching the terminal to notice. `FuzzReport.exitCode(for:)`
+        // is the single, unit-tested source of truth for this decision.
+        exit(FuzzReport.exitCode(for: report))
     }
 
     struct CampaignOptions {

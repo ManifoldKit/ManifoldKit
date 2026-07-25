@@ -383,17 +383,20 @@ family. The fuzzer earns its keep during that work (see #487 cluster, the April
 and consider temporarily re-introducing a daily workflow until the new backend
 matures.
 
-The `scripts/fuzz-ci-gate.sh` script and `.github/fuzz-allowlist.json` are still
-on disk — they were used by the retired PR-tier gate and can be re-wired into a
-future workflow if needed.
+The `scripts/fuzz-ci-gate.sh` script and `.github/fuzz-allowlist.json` were
+originally wired into the retired PR-tier gate; #2367 (2026-07) re-wired the
+script into the weekly tier below. That makes the gate ready to enforce the
+moment the weekly job runs — it does not make the job itself run any more
+often than it already did. The workflow is still `workflow_dispatch`-only
+(see below); wiring the gate did not add or enable a schedule.
 
 ### Weekly tier — `.github/workflows/fuzz-weekly.yml`
 
-- **When:** `workflow_dispatch` only. A Sunday `07:00 UTC` cron is available in the workflow but is disabled until a self-hosted Apple-Silicon runner is provisioned. Re-enable the `schedule:` block in `fuzz-weekly.yml` once a runner is registered.
+- **When:** `workflow_dispatch` only — there is currently no `schedule:` trigger in the workflow at all, not even a disabled one. A previous cron was removed because no self-hosted Apple-Silicon runner is registered (a scheduled run against a nonexistent runner queues for 24h and auto-cancels). Bringing this back to a schedule needs two separate things: provision the runner, *and* someone adds a `schedule:` block to `fuzz-weekly.yml` — provisioning the runner alone does not make it run automatically.
 - **Runner:** `[self-hosted, macos, arm64]`.
 - **Budget:** 30 wall-clock minutes.
 - **Backend:** `--backend ollama --model all` — rotates through every installed Ollama model per iteration. This is the explicit sibling-coverage sweep; bugs that only fire on a non-default model surface here.
-- **Gate:** none. The job is report-only: the `INDEX.md` is echoed to the job log and the full findings tree is uploaded to `fuzz-weekly-findings-<run-id>`.
+- **Gate:** `scripts/fuzz-ci-gate.sh tmp/fuzz/index.json` against `.github/fuzz-allowlist.json` — a finding not covered by an unexpired allowlist entry fails the job. The `INDEX.md` is echoed to the job log and the full findings tree is uploaded to `fuzz-weekly-findings-<run-id>` regardless of gate outcome, so a red run still leaves the artifact to triage from.
 
 ### Self-hosted runner requirements
 

@@ -216,6 +216,11 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldVoiceTests
     ManifoldSkillsTests
     ManifoldToolsTests
+    # Fuzz harness unit/integration tests (corpus, detectors, sink, the
+    # fuzz-ci-gate.sh contract). Unconditional since the Fuzz trait retired
+    # in v0.48 — hermetic, no live backend needed (#2367: this suite existed
+    # with zero CI coverage until this line).
+    ManifoldFuzzTests
     # App-eval harness (estate#1 wave 1): schema/mapper/scorer/renderer/ledger
     # unit tests + the MK-compression-golden dogfood, all hermetic.
     ManifoldAppEvalTests

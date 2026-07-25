@@ -95,11 +95,15 @@ final class TestTargetGateAuditTest: XCTestCase {
             "tests) — runs only in nightly-slow-tests.yml, never per-PR. " +
             "See scripts/test.sh's MCP_FILTER_REQUESTED handling and " +
             "nightly-slow-tests.yml.",
-        "ManifoldFuzzTests":
-            "ManifoldFuzz is now a published library product (see AGENTS.md " +
-            "§ Targets), but ManifoldFuzzTests is still gate-exempt because " +
-            "its campaign runs via scripts/fuzz.sh on a weekly-only cadence " +
-            "(fuzz-weekly.yml), not swift test.",
+        // ManifoldFuzzTests was allowlisted here with the reason "gate-exempt
+        // — its campaign runs via scripts/fuzz.sh on a weekly cadence, not
+        // swift test." That conflated the fuzz CAMPAIGN (fuzz-weekly.yml,
+        // genuinely weekly-only) with ManifoldFuzzTests, the unit/integration
+        // TEST TARGET for the fuzz harness's own code — which was simply
+        // never wired anywhere (#2367). Removed the entry now that it's
+        // gated in both scripts/test.sh's PROFILE_CI_XCTEST_FILTERS and
+        // ci.yml's XCTest batch --filter list; a stale exemption here would
+        // let this audit go green even if the wiring regressed later.
     ]
 
     func test_everyTestTargetIsGatedInScriptAndExecutedByCI() throws {

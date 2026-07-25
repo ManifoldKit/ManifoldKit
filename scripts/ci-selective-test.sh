@@ -76,7 +76,7 @@ for suite in "$@"; do
     ManifoldBackendsTests)
       run_swift_test "$suite" --parallel
       ;;
-    ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldAppIntentsTests|ManifoldAppEvalTests|APIFreezeTests|ManifoldSnapshotTests|ManifoldTelemetryOTLPTests|ManifoldKitTests|ManifoldHuggingFaceTests)
+    ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldFuzzTests|ManifoldAppIntentsTests|ManifoldAppEvalTests|APIFreezeTests|ManifoldSnapshotTests|ManifoldTelemetryOTLPTests|ManifoldKitTests|ManifoldHuggingFaceTests)
       # No .xcscheme for these suites; their traits were retired in v0.48
       # (PR A3) so they compile under the shared core lane shape and reuse
       # its .build. swift test routing avoids the no-scheme failure path.
@@ -85,6 +85,8 @@ for suite in "$@"; do
       # fast, and hermetic — same routing. ManifoldSnapshotTests (.dump-strategy
       # view-hierarchy snapshots, no rendering) and ManifoldTelemetryOTLPTests
       # (hermetic, MockURLProtocol) are both trait-free too — same routing.
+      # ManifoldFuzzTests (#2367) is likewise trait-free and hermetic (no live
+      # backend needed) — same routing.
       run_swift_test "$suite"
       ;;
     *)
