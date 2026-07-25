@@ -72,13 +72,13 @@ final class GenerationQueuePerRequestDetectorTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], []]
 
         let queue = makeQueue()
-        queue.handoffDetector = { @Sendable _, call in .handoff(AgentHandoff(targetAgentID: wrongTarget)) }
+        queue.handoffDetector = { @Sendable _, call in .handoff(AgentHandoff(targetAgentID: wrongTarget, sourceCall: call)) }
 
-        let detectorA: @Sendable (UUID?, ToolCall) -> HandoffDetectionResult = { _, _ in
-            .handoff(AgentHandoff(targetAgentID: targetA))
+        let detectorA: @Sendable (UUID?, ToolCall) -> HandoffDetectionResult = { _, call in
+            .handoff(AgentHandoff(targetAgentID: targetA, sourceCall: call))
         }
-        let detectorB: @Sendable (UUID?, ToolCall) -> HandoffDetectionResult = { _, _ in
-            .handoff(AgentHandoff(targetAgentID: targetB))
+        let detectorB: @Sendable (UUID?, ToolCall) -> HandoffDetectionResult = { _, call in
+            .handoff(AgentHandoff(targetAgentID: targetB, sourceCall: call))
         }
 
         // Enqueue both before draining either: request B's detector is set on
@@ -131,7 +131,7 @@ final class GenerationQueuePerRequestDetectorTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[]]
 
         let queue = makeQueue()
-        queue.handoffDetector = { @Sendable _, _ in .handoff(AgentHandoff(targetAgentID: fallbackTarget)) }
+        queue.handoffDetector = { @Sendable _, call in .handoff(AgentHandoff(targetAgentID: fallbackTarget, sourceCall: call)) }
 
         let (_, stream) = try queue.enqueue(
             structuredMessages: [StructuredMessage(role: "user", content: "go")],

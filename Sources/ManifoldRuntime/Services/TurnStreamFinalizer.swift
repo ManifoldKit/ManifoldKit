@@ -636,6 +636,37 @@ package struct TurnStreamFinalizer: Sendable {
                         )
                         sessionRecord = current
                         events.emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
+
+                        // Persist the transfer call itself (#2378). The
+                        // handoff short-circuits normal tool dispatch (the
+                        // GenerationToolDispatchLoop never yields
+                        // `.dispatchToolCall` for it), so without this the
+                        // assistant message carries no content parts, the
+                        // terminal-kind classification below sees no visible
+                        // text/tool/thinking content, and the whole turn is
+                        // dropped as `.empty` — silently discarding the
+                        // agent switch's only visible trace and starving
+                        // `HandoffChipView`'s adjacency lookup of a "from"
+                        // message. A synthesized success `ToolResult` keeps
+                        // the tool-invocation UI in its `.completed` state
+                        // instead of stuck `.running` (no result will ever
+                        // arrive through the normal dispatch path).
+                        // Mirror the `.dispatchToolCall` / `.appendToolResult`
+                        // shape exactly (content parts + matching events) so
+                        // the live-streaming UI (`ChatGenerationCoordinator`'s
+                        // `.toolCallRequested`/`.toolCallCompleted` handlers)
+                        // renders the handoff the same way it renders any
+                        // other tool call, not just after a reload.
+                        assistantMessage.contentParts.append(.toolCall(handoff.sourceCall))
+                        events.emit(.toolCallRequested(handoff.sourceCall))
+                        let targetName = current.agents.first(where: { $0.id == handoff.targetAgentID })?.name
+                            ?? "the next agent"
+                        let result = ToolResult(
+                            callId: handoff.sourceCall.id,
+                            content: "Handed off to \(targetName)."
+                        )
+                        assistantMessage.contentParts.append(.toolResult(result))
+                        events.emit(.toolCallCompleted(result.callId, result))
                     } else {
                         Log.inference.warning(
                             "ConversationTurnExecutor: received handoff event but session record was unavailable; agent swap dropped"

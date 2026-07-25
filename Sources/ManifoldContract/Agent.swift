@@ -45,10 +45,21 @@ public struct AgentDefinition: Sendable, Identifiable, Equatable, Hashable, Coda
 public struct AgentHandoff: Sendable, Equatable {
     public let targetAgentID: UUID
     public let payload: String?
+    /// The `transfer_to_<name>` tool call that triggered this handoff.
+    ///
+    /// Carried so the turn executor can persist the call (and a synthetic
+    /// success result) onto the assistant message even though the handoff
+    /// short-circuits normal tool dispatch — otherwise a turn whose only
+    /// product is a handoff has no content parts, gets classified `.empty`,
+    /// and is silently dropped, losing the agent switch's visible outcome
+    /// and starving `HandoffChipView`'s adjacency lookup of a "from" message
+    /// (#2378).
+    public let sourceCall: ToolCall
 
-    public init(targetAgentID: UUID, payload: String? = nil) {
+    public init(targetAgentID: UUID, payload: String? = nil, sourceCall: ToolCall) {
         self.targetAgentID = targetAgentID
         self.payload = payload
+        self.sourceCall = sourceCall
     }
 }
 

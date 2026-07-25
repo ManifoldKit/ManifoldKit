@@ -7,6 +7,14 @@ import ManifoldTools
 /// emits a token-only synthesis the runner treats as the final assistant
 /// message. Layer 2 XCUITests rely on this fixed shape — adding a new
 /// scenario to `DemoScenarios.all` requires a matching entry here.
+///
+/// `ScriptedBackend` pops one entry per `generate(...)` call regardless of
+/// which runtime turn asked for it, so this two-entry shape works
+/// identically whether both calls land in one `sendMessage` (normal tool
+/// dispatch continues the loop) or in two (`handoff-research-write`'s second
+/// entry is consumed by `DemoScenarioRunner`'s automatic follow-up turn —
+/// see `DemoScenario.handoffFollowUpPrompt` — because a genuine handoff is
+/// turn-scoped and never triggers a second `generate()` call on its own).
 extension DemoScenarios {
 
     /// Returns the turn list for `scenarioID`, or a small fallback when no

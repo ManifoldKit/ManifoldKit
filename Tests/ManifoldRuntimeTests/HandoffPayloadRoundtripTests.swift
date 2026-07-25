@@ -10,7 +10,8 @@ final class HandoffPayloadRoundtripTests: XCTestCase {
     func test_payload_nil_roundtrips() {
         let previous = AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
         let next = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
-        let handoff = AgentHandoff(targetAgentID: next.id, payload: nil)
+        let sourceCall = ToolCall(id: "rt-nil", toolName: "transfer_to_Writer", arguments: "{}")
+        let handoff = AgentHandoff(targetAgentID: next.id, payload: nil, sourceCall: sourceCall)
 
         let boundary = HandoffDetector.boundaryMessage(
             from: previous,
@@ -28,7 +29,8 @@ final class HandoffPayloadRoundtripTests: XCTestCase {
     func test_payload_present_roundtrips() {
         let previous = AgentDefinition(name: "Researcher", systemPrompt: "", description: "")
         let next = AgentDefinition(name: "Writer", systemPrompt: "", description: "")
-        let handoff = AgentHandoff(targetAgentID: next.id, payload: "outline-here")
+        let sourceCall = ToolCall(id: "rt-payload", toolName: "transfer_to_Writer", arguments: #"{"payload":"outline-here"}"#)
+        let handoff = AgentHandoff(targetAgentID: next.id, payload: "outline-here", sourceCall: sourceCall)
 
         let boundary = HandoffDetector.boundaryMessage(
             from: previous,

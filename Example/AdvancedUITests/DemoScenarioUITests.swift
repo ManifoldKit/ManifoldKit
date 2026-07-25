@@ -87,14 +87,21 @@ final class DemoScenarioUITests: XCTestCase {
             failedTools: ["invoke_skill"],
             assistantAnswer: "An actor in Swift is a reference type that protects its mutable state behind an isolation boundary."
         ),
-        // handoff-research-write: the expectedHandoffs assertion fires loudly
-        // when transfer_to_writer fails to materialise. Under --uitesting the
-        // scripted backend emits the call so the demo path is deterministic.
+        // handoff-research-write: transfer_to_writer is a genuine handoff
+        // (Researcher's session carries a real agent roster via
+        // configureContext, so ConversationTurnExecutor's handoffDetector
+        // intercepts the call rather than routing it through normal tool
+        // dispatch — see HandoffDetector.classify). The turn that emits it
+        // persists as a *completed* tool invocation (TurnStreamFinalizer
+        // synthesizes a success ToolResult so the UI doesn't show a stuck
+        // "running" spinner waiting for a result that will never arrive
+        // through normal dispatch); the scripted answer comes from the
+        // runner's automatic follow-up turn that plays Writer (#2378).
         ScenarioExpectation(
             id: "handoff-research-write",
             cardID: "demo-card-handoff-research-write",
-            completedTools: [],
-            failedTools: ["transfer_to_writer"],
+            completedTools: ["transfer_to_writer"],
+            failedTools: [],
             assistantAnswer: "MCP is a JSON-RPC protocol that lets hosts advertise tools and resources to model runtimes."
         ),
         // hook-input-sanitize: scripted backend emits the post-hook
@@ -167,11 +174,12 @@ final class DemoScenarioUITests: XCTestCase {
 
     func test_handoffResearchWrite_launchArg_rendersTransferToWriterAndScriptedAnswer() {
         // The loud-failure contract on `expectedHandoffs` is encoded as a
-        // failedTools/completedTools assertion here: if the scripted
-        // `transfer_to_writer` tool-call does not render in the bubble, the
-        // failedTools wait below fails with a clear message. That maps the
-        // plan's "demo fails LOUDLY if no handoff fires" requirement onto
-        // the XCUITest harness without needing live LLM execution.
+        // completedTools assertion here: if the scripted `transfer_to_writer`
+        // tool-call does not render in the bubble, the wait below fails with
+        // a clear message. That maps the plan's "demo fails LOUDLY if no
+        // handoff fires" requirement onto the XCUITest harness without
+        // needing live LLM execution. The answer assertion covers the
+        // runner's automatic follow-up turn (see `DemoScenario.handoffFollowUpPrompt`).
         assertLaunchArgScenario(scenarioExpectations[8])
     }
 

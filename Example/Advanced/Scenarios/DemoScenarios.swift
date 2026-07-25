@@ -188,7 +188,13 @@ enum DemoScenarios {
         // 3B-class models cannot reliably emit transfer_to_* on first attempt;
         // gate at .balanced (≈8B+) so the card shows an "install a larger
         // model" hint when the active backend is below the bar.
-        minCapableModel: .balanced
+        minCapableModel: .balanced,
+        // Handoffs are turn-scoped (docs/.../AgentHandoffs.md): Researcher's
+        // turn swaps the active agent but produces no answer of its own —
+        // Writer's prose is the *next* turn's job. Without this, the runner
+        // sends one prompt, sees Researcher's transfer, and stops; the card
+        // never shows the payoff the scenario exists to demonstrate (#2378).
+        handoffFollowUpPrompt: "Go ahead and draft it, Writer."
     )
 
     /// Demonstrates the W2C `preToolUse` hook: a path-traversal-shaped

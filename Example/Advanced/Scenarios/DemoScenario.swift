@@ -89,6 +89,19 @@ struct DemoScenario: Identifiable, Sendable {
     /// any tier is fine.
     let minCapableModel: ModelCapabilityTier?
 
+    /// A second prompt the runner sends automatically after the first one
+    /// completes, for scenarios whose payoff needs a second model turn.
+    ///
+    /// Handoffs are turn-scoped by design (`docs/.../AgentHandoffs.md`): the
+    /// turn that emits `transfer_to_<agent>` swaps the active agent but
+    /// produces no answer from the new agent — that answer is the *next*
+    /// turn's job (`HandoffScenarioTests.test_handoff_followUpTurn_…`
+    /// exercises exactly this two-`processTurn` shape). A scenario that
+    /// wants to show both the transfer AND the new agent's answer from one
+    /// tap needs the runner to issue that second turn itself; `nil` for
+    /// every scenario that doesn't hand off (#2378).
+    let handoffFollowUpPrompt: String?
+
     init(
         id: String,
         title: String,
@@ -102,7 +115,8 @@ struct DemoScenario: Identifiable, Sendable {
         configure: (@MainActor @Sendable (ToolRegistry) -> Void)? = nil,
         configureContext: (@MainActor @Sendable (inout DemoScenarioRuntimeContext) -> Void)? = nil,
         expectedHandoffs: [String]? = nil,
-        minCapableModel: ModelCapabilityTier? = nil
+        minCapableModel: ModelCapabilityTier? = nil,
+        handoffFollowUpPrompt: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -117,5 +131,6 @@ struct DemoScenario: Identifiable, Sendable {
         self.configureContext = configureContext
         self.expectedHandoffs = expectedHandoffs
         self.minCapableModel = minCapableModel
+        self.handoffFollowUpPrompt = handoffFollowUpPrompt
     }
 }
