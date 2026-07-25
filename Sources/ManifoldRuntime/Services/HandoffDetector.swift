@@ -42,7 +42,7 @@ public enum HandoffDetector {
             return .regular(call)
         }
         let payload = parsePayload(from: call.arguments)
-        return .handoff(AgentHandoff(targetAgentID: target.id, payload: payload))
+        return .handoff(AgentHandoff(targetAgentID: target.id, payload: payload, sourceCall: call))
     }
 
     /// Build the prepended "Handoff instructions" block listing siblings of

@@ -264,11 +264,7 @@ package struct TurnStreamFinalizer: Sendable {
         // parts, even if no visible text tokens arrived. Used below so all
         // three terminal paths (error, cancellation, normal) persist tool-only
         // turns rather than silently dropping them.
-        let hasToolContent = assistantMessage.contentParts.contains { part in
-            if case .toolCall = part { return true }
-            if case .toolResult = part { return true }
-            return false
-        }
+        let hasToolContent = assistantMessage.hasToolContent
 
         // True when the model emitted reasoning/thinking content this turn,
         // even with no visible text and no tool calls. Without this, a
@@ -636,6 +632,50 @@ package struct TurnStreamFinalizer: Sendable {
                         )
                         sessionRecord = current
                         events.emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
+
+                        // Persist the transfer call itself (#2378). The
+                        // handoff short-circuits normal tool dispatch (the
+                        // GenerationToolDispatchLoop never yields
+                        // `.dispatchToolCall` for it), so without this the
+                        // assistant message carries no content parts, the
+                        // terminal-kind classification below sees no visible
+                        // text/tool/thinking content, and the whole turn is
+                        // dropped as `.empty` — silently discarding the
+                        // agent switch's only visible trace. A synthesized
+                        // success `ToolResult` keeps the tool-invocation UI
+                        // in its `.completed` state instead of stuck
+                        // `.running` (no result will ever arrive through the
+                        // normal dispatch path) — appending only the call
+                        // would instead make `TranscriptHealer` inject an
+                        // `errorKind: .cancelled` "interrupted before
+                        // completion" result on next load, misreporting a
+                        // handoff that actually succeeded as a failed one.
+                        // Mirror the `.dispatchToolCall` / `.appendToolResult`
+                        // shape exactly (content parts + matching events) so
+                        // the live-streaming UI (`ChatGenerationCoordinator`'s
+                        // `.toolCallRequested`/`.toolCallCompleted` handlers)
+                        // renders the handoff the same way it renders any
+                        // other tool call, not just after a reload.
+                        //
+                        // `sourceCall` is nil only for an `AgentHandoff` built
+                        // through the 2-argument source-compat initializer
+                        // (see `Agent.swift`) — `HandoffDetector.classify`,
+                        // the sole production producer, always supplies it.
+                        // Without it there is nothing to persist, so this
+                        // turn falls back to the pre-#2378 behaviour (agent
+                        // swap only).
+                        if let sourceCall = handoff.sourceCall {
+                            assistantMessage.contentParts.append(.toolCall(sourceCall))
+                            events.emit(.toolCallRequested(sourceCall))
+                            let targetName = current.agents.first(where: { $0.id == handoff.targetAgentID })?.name
+                                ?? "the next agent"
+                            let result = ToolResult(
+                                callId: sourceCall.id,
+                                content: "Handed off to \(targetName)."
+                            )
+                            assistantMessage.contentParts.append(.toolResult(result))
+                            events.emit(.toolCallCompleted(result.callId, result))
+                        }
                     } else {
                         Log.inference.warning(
                             "ConversationTurnExecutor: received handoff event but session record was unavailable; agent swap dropped"

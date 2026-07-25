@@ -523,7 +523,7 @@ final class ChatGenerationCoordinator {
 
             if reason == .stop,
                let completed = currentMessages().first(where: { $0.id == messageID }),
-               completed.hasVisibleContent || completed.hasThinkingContent,
+               completed.hasVisibleContent || completed.hasThinkingContent || completed.hasToolContent,
                let session = currentActiveSession() {
                 onSetLastTurnState(.completed(completed))
                 runPostGenerationTasks(message: completed, session: session)
@@ -761,7 +761,7 @@ final class ChatGenerationCoordinator {
            let completed = outcome.assistantMessageID.flatMap({ id in
                currentMessages().first(where: { $0.id == id })
            }) ?? outcome.assistantMessage,
-           completed.hasVisibleContent || completed.hasThinkingContent,
+           completed.hasVisibleContent || completed.hasThinkingContent || completed.hasToolContent,
            let session = currentActiveSession() {
             onSetLastTurnState(.completed(completed))
             runPostGenerationTasks(message: completed, session: session)

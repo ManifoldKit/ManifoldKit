@@ -19,7 +19,9 @@ AgentHandoff Struct
 AgentHandoff conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 AgentHandoff.__derived_struct_equals(_:_:) Func
 AgentHandoff.init(targetAgentID:payload:) Constructor
+AgentHandoff.init(targetAgentID:payload:sourceCall:) Constructor
 AgentHandoff.payload Var
+AgentHandoff.sourceCall Var
 AgentHandoff.targetAgentID Var
 Array Struct
 Array conformances: BidirectionalCollection,CVarArg,Collection,ContiguousBytes,Copyable,CustomDebugStringConvertible,CustomReflectable,CustomStringConvertible,DataProtocol,Decodable,DecodableWithConfiguration,Encodable,EncodableWithConfiguration,Equatable,Escapable,ExpressibleByArrayLiteral,Hashable,MutableCollection,MutableDataProtocol,RandomAccessCollection,RangeReplaceableCollection,Sendable,SendableMetatype,Sequence

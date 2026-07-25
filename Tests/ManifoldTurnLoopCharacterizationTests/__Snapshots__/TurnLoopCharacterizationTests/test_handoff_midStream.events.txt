@@ -3,13 +3,16 @@
 2  contextAssembled  slots:0
 3  streamStarted  id:<uuid:3>
 4  agentHandoff  from:<uuid:4> to:<uuid:5>
-5  streamFinished  id:<uuid:3> reason:empty
-6  afterGeneration  id:<uuid:3> finalText:""
-7  messageInserted  id:<uuid:6> role:user content:"now write the draft"
-8  beforeContextAssembly  session:<uuid:2> prompt:"now write the draft" msgCount:2
-9  contextAssembled  slots:0
-10  streamStarted  id:<uuid:7>
-11  tokenEmitted  id:<uuid:7> delta:"Drafting"
-12  messageInserted  id:<uuid:7> role:assistant content:"Drafting"
-13  streamFinished  id:<uuid:7> reason:stop
-14  afterGeneration  id:<uuid:7> finalText:"Drafting"
+5  toolCallRequested  callId:tc-1 tool:transfer_to_Writer
+6  toolCallCompleted  callId:tc-1 status:ok
+7  messageInserted  id:<uuid:3> role:assistant content:(empty)
+8  streamFinished  id:<uuid:3> reason:stop
+9  afterGeneration  id:<uuid:3> finalText:""
+10  messageInserted  id:<uuid:6> role:user content:"now write the draft"
+11  beforeContextAssembly  session:<uuid:2> prompt:"now write the draft" msgCount:3
+12  contextAssembled  slots:0
+13  streamStarted  id:<uuid:7>
+14  tokenEmitted  id:<uuid:7> delta:"Drafting"
+15  messageInserted  id:<uuid:7> role:assistant content:"Drafting"
+16  streamFinished  id:<uuid:7> reason:stop
+17  afterGeneration  id:<uuid:7> finalText:"Drafting"

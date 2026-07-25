@@ -106,6 +106,14 @@ enum DemoScenarioRunner {
         if scenario.autoSend || CommandLine.arguments.contains("--bck-demo-autosend-scenario") {
             do {
                 _ = try await chat.sendMessage(scenario.prompt)
+                // Handoffs are turn-scoped (see `DemoScenario.handoffFollowUpPrompt`
+                // doc comment): the turn that just completed may have swapped
+                // the active agent without producing that agent's answer.
+                // Drive the second turn ourselves so a single tap on the card
+                // still shows the full payoff (#2378).
+                if let followUp = scenario.handoffFollowUpPrompt {
+                    _ = try await chat.sendMessage(followUp)
+                }
             } catch {
                 chat.errorMessage = "Failed to run scenario: \(error.localizedDescription)"
             }
