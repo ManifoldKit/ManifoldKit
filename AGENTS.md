@@ -1035,6 +1035,14 @@ not a surprise discovered by the post-release fan-out.
 
 `changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.
 
+**Release Please can silently drop a whole commit from the changelog** (#2380): its commit
+parser hard-fails on a squashed body whenever an identifier is immediately followed by nested
+parentheses (e.g. Swift code like `exit(FuzzReport.exitCode(for: report))`) and the failure is
+logged only at debug level, so the entire PR — not just the offending paragraph — vanishes with
+no visible warning. `scripts/changelog-coverage-check.sh` cross-checks the newest section against
+every non-hidden-type commit since the previous tag and is wired into `lint.yml`'s required check
+on the release-please branch; a red there means a commit is missing and must be added by hand.
+
 **Capability-field release-notes discipline:** a release that adds a new `BackendCapabilities`
 field ships a one-line CHANGELOG callout — "new capability field `X`, default `Y` — backends
 that support `X` must opt in." New fields default to their old-behavior value, so a companion
