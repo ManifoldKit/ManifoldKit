@@ -1,41 +1,38 @@
 #!/usr/bin/env bash
-# extract-snippets.sh — Extract fenced Swift code blocks from README.md,
-# docs/QUICKSTART*.md, docs/SWIFTUI-MULTI-SESSION.md, docs/RECIPES.md,
-# docs/WHY-MANIFOLDKIT.md, and DocC catalogs into standalone .swift files for
-# downstream compilation.
+# extract-snippets.sh — Extract fenced Swift code blocks from the documentation
+# corpus into standalone .swift files for downstream compilation.
 #
 # Wave D-C1 of the DX overhaul: the README's Hello World snippet is the
 # single most important piece of copy-paste correctness in the repo. This
 # script (plus its companion compile gate) makes "a future PR silently
 # breaks the snippet" a CI failure rather than a Slack apology.
 #
-# DocC coverage (added 2026-05-23 in response to A2-F8): in addition to the
-# README/QUICKSTART files, the script walks every `Sources/*/Documentation.docc/`
-# Markdown file (including nested `Articles/` and `Extensions/` directories).
-# DocC articles are documentation and are subject to the same compile-test
-# policy — A2-F8 was a broken `BuildingAChatUI.md` snippet that the
-# README/QUICKSTART-scoped gate could not see. Extracted DocC blocks use the
-# label `docc-<module>-<filename>-<NNN>` so test output is greppable per
-# article.
+# Coverage (see SNIPPET_GATE_OPT_OUT below for the full rationale):
+#   - every root-level *.md and every docs/*.md, minus a reasoned opt-out list
+#   - every Markdown file inside a `.docc/` directory under Sources/
+# Coverage is DERIVED from the filesystem, not enumerated: a new doc is gated
+# on creation, and excluding one is a reviewable diff line with a reason.
 #
 # What it does:
-#   - Walks README.md, docs/QUICKSTART*.md, and every Markdown file inside
-#     a `.docc/` directory under `Sources/`.
 #   - Pulls out every fenced block tagged ```swift (case-insensitive).
-#   - Numbers them per-file (readme-001.swift, quickstart-001.swift,
-#     docc-manifoldui-buildingachatui-001.swift, ...).
+#   - Numbers them per-file with a %03d index (readme-001.swift,
+#     docc-manifoldui-buildingachatui-001.swift, ...). The slug is the
+#     lowercased basename; the 3-digit suffix is what makes a per-doc glob
+#     exact, since one slug can prefix another (quickstart / quickstart-cli).
 #   - Writes each to --out <dir> (default a fresh, process-unique dir under
 #     $TMPDIR/manifoldkit-snippets-<pid>; pass --out explicitly for a stable
 #     path) with a `// Source: <relative-path>:<line>` header so failures
 #     point back to docs.
 #
 # Skip / include policy:
-#   - Blocks fenced as ```swift,no-build (or any ```swift* containing the
-#     literal token "no-build") are recorded with a `.skip` marker file
-#     instead of a `.swift` file. Use this sparingly — placeholder snippets
-#     with `/* ... */` or undefined identifiers, Package.swift fragments that
-#     a consumer must paste into their own manifest, etc. The Hello World
-#     snippet MUST never carry no-build.
+#   - ```swift,no-build:<reason> records a `.skip` marker instead of a
+#     `.swift` file. The reason is MANDATORY — a bare `no-build` is rejected
+#     outside BARE_NO_BUILD_GRANDFATHERED, mirroring ScriptFailOpenAuditTest's
+#     `# fail-open-ok: <reason>` rule. Use it for genuinely partial snippets;
+#     the Hello World MUST never carry it.
+#   - A doc that has been triaged (not grandfathered) must compile at least
+#     one block. A doc where everything is skipped costs a full macOS run per
+#     edit and verifies nothing.
 #   - Snippets whose first non-comment line starts with `.package(` or
 #     `.target(` (or that lead with `import PackageDescription`) are
 #     heuristically classified as Package.swift fragments and written to
@@ -48,8 +45,9 @@
 # Exit codes:
 #   0 — extracted at least one Swift block across all inputs.
 #   1 — usage error or I/O failure.
-#   2 — zero Swift blocks found across all inputs (defensive — if every
-#       snippet vanished we want a loud signal, not silent success).
+#   2 — a policy failure: zero Swift blocks found anywhere (defensive), a bare
+#       or missing-reason `no-build` tag, or a triaged doc with no compiling
+#       block.
 #
 # Portability: BSD awk/sed/grep only (macOS default toolchain). No grep -P.
 
@@ -120,6 +118,17 @@ done
 SNIPPET_GATE_OPT_OUT=(
     # Prose/reference docs with no consumer-pasteable Swift. Cheap to gate, but
     # nothing to gain — no fenced Swift at all, or only shell/JSON.
+    # Root-level docs. Swept by the glob above, so each needs a line here or
+    # it is gated — that is the point of the inversion.
+    "CHANGELOG.md:release history; 159 fences are historical release-note excerpts, not consumer recipes"
+    "CLAUDE.md:stub importing AGENTS.md; no Swift"
+    "CODE_OF_CONDUCT.md:policy text; no Swift"
+    "CONTRIBUTING.md:contributor prose; no Swift"
+    "RELEASE.md:release runbook; no Swift"
+    "TESTING.md:untriaged — 12 fences, contributor test recipes"
+    "SECURITY.md:untriaged — 4 fences"
+    "FUZZING.md:untriaged — 2 fences"
+
     "docs/README.md:index page; no Swift"
     "docs/FIPS.md:regulatory prose; no Swift"
     "docs/THREAT_MODEL.md:threat-model prose; Swift appears only as attack illustrations"
@@ -138,6 +147,7 @@ SNIPPET_GATE_OPT_OUT=(
     "docs/SOURCEKIT_DIAGNOSTICS.md:diagnostic runbook; shell not Swift"
     "docs/LLAMA_CONTRACT.md:tombstone pointing at manifold-llama"
     "docs/LOCAL-GGUF.md:storage-contract prose; no consumer Swift"
+    "docs/ANATOMY-OF-ONE-TURN.md:internal turn walkthrough; no fenced Swift"
     "docs/MIGRATION-INDEX.md:index page; no Swift"
     "docs/AppStoreSubmission.md:submission checklist; single plist-shaped fence"
     "docs/UI-REFRESH-2026.md:design rationale; no consumer Swift"
@@ -174,7 +184,6 @@ SNIPPET_GATE_OPT_OUT=(
     "docs/LOCAL-TOOL-CALLING.md:untriaged — 4 fences, prompt-envelope illustrations"
     "docs/RAG-TUNING.md:untriaged — 3 fences"
     "docs/share-action-extension-recipe.md:untriaged — 3 fences, app-extension host code"
-    "docs/ANATOMY-OF-ONE-TURN.md:internal turn walkthrough; no fenced Swift"
 )
 
 # is_opted_out <repo-relative-path> — true when the doc is on the opt-out list.
@@ -208,9 +217,22 @@ is_opted_out() {
 # per block whether it compiles or genuinely cannot, dropping or annotating the
 # tag — then DELETE its line here. The list only shrinks.
 #
-# Deliberately NOT covering: any doc a future PR adds. New docs are
-# reason-required from birth, which is the behaviour that stops the backlog
-# growing while this register drains.
+# Scope, stated precisely — the loose version of this claim is wrong:
+#
+#   - A new `docs/*.md` or root-level `*.md` IS reason-required from birth.
+#   - A new **DocC article** is NOT: the `Sources/*.docc/*` match below is
+#     wholesale, so a brand-new article can ship a bare tag.
+#   - A **new block in one of the 9 listed files** is NOT: the register grants
+#     the file, not the blocks that existed when it was written.
+#
+# So this register bounds the backlog for new *documents* only; it does not
+# stop the two holes above. The strictly better mechanism is a count-based
+# ratchet — commit today's per-doc skip counts, fail when any count increases —
+# which closes both without needing anyone to triage first. It was declined for
+# this PR to keep the diff reviewable, and that decline is recorded here rather
+# than left implicit, per the "record the declined RCA prescription" rule in
+# AGENTS.md § Documentation gates. Whoever drains this register should replace
+# it with the ratchet rather than shrinking it to zero by hand.
 BARE_NO_BUILD_GRANDFATHERED=(
     "README.md"
     "docs/QUICKSTART.md"
@@ -425,16 +447,28 @@ extract_one() {
     done <<<"$awk_out"
 }
 
-# Root-level docs + every docs/*.md, minus the reasoned opt-outs above.
-# `gated_docs` is also consumed by the per-file coverage assertion in
-# extract-snippets-test.sh via --print-gated.
+# Every root-level *.md and every docs/*.md, minus the reasoned opt-outs above.
+#
+# Root files are swept by glob rather than named: listing "README.md" and
+# "AGENTS.md" explicitly left TESTING.md (12 fences), SECURITY.md (4) and
+# FUZZING.md (2) ungated with no opt-out line — silently uncovered, which is
+# the exact property this rewrite exists to remove.
+#
+# `docs/` is maxdepth 1 on purpose: its subdirectories (plans/, design/,
+# images/) are internal working material, not published guides. The workflow
+# `paths:` filter is scoped to match, so no doc can trigger the gate without
+# being swept by it.
+#
+# No `2>/dev/null` on the find: a masked producer here would yield an empty
+# sweep and a green run off the remaining inputs — the zero-match-parse shape
+# this PR is otherwise arguing against.
 gated_docs=()
-for candidate in "README.md" "AGENTS.md"; do
-    [[ -f "$REPO_ROOT/$candidate" ]] && gated_docs+=("$candidate")
-done
 while IFS= read -r doc_rel; do
     [[ -n "$doc_rel" ]] && gated_docs+=("$doc_rel")
-done < <(cd "$REPO_ROOT" && find docs -maxdepth 1 -type f -name '*.md' 2>/dev/null | LC_ALL=C sort)
+done < <(cd "$REPO_ROOT" && find . -maxdepth 1 -type f -name '*.md' | sed 's|^\./||' | LC_ALL=C sort)
+while IFS= read -r doc_rel; do
+    [[ -n "$doc_rel" ]] && gated_docs+=("$doc_rel")
+done < <(cd "$REPO_ROOT" && find docs -maxdepth 1 -type f -name '*.md' | LC_ALL=C sort)
 
 for doc_rel in "${gated_docs[@]}"; do
     is_opted_out "$doc_rel" && continue
@@ -492,8 +526,15 @@ for doc_rel in "${gated_docs[@]}"; do
     # `set -euo pipefail` that aborts the script before this check can report —
     # the assertion would be structurally incapable of firing. `find` exits 0
     # on no matches.
-    compiled_count=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-*.swift" | wc -l | tr -d ' ')
-    skipped_count=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-*.skip" | wc -l | tr -d ' ')
+    #
+    # The `-[0-9][0-9][0-9]` suffix is load-bearing, NOT decoration: block
+    # indices are written with `printf "%03d"`, and a bare `${doc_slug}-*`
+    # glob also matches every sibling whose slug shares this prefix —
+    # `quickstart-*` matches all 18 of quickstart-cli/-rag/-tools/-voice's
+    # files while only 4 are its own. With the loose glob this assertion was
+    # vacuous for exactly the doc most likely to be triaged next.
+    compiled_count=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].swift" | wc -l | tr -d ' ')
+    skipped_count=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip" | wc -l | tr -d ' ')
     if [[ "$compiled_count" -eq 0 && "$skipped_count" -gt 0 ]]; then
         echo "::error file=${doc_rel}::every Swift block in this doc is skipped, so the snippet gate runs on it and verifies nothing. Make at least one block compile, or move the doc to SNIPPET_GATE_OPT_OUT with a reason." >&2
         coverage_failures=$((coverage_failures + 1))
@@ -504,7 +545,7 @@ if [[ $coverage_failures -gt 0 ]]; then
 fi
 
 if [[ $total -eq 0 ]]; then
-    echo "::error::No Swift snippets extracted from README.md, docs/QUICKSTART*.md, or any DocC catalog." >&2
+    echo "::error::No Swift snippets extracted from any gated doc or DocC catalog." >&2
     echo "If the docs intentionally dropped all code blocks, remove this gate." >&2
     exit 2
 fi

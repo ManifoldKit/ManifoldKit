@@ -110,7 +110,12 @@ func load(_ model: ModelInfo, into selection: ModelSelection) {
         // Notification.Name pattern as `BackendName`), so a `default:` arm is
         // required: a companion package or third party can mint a new model
         // type this switch has never heard of.
-        break
+        //
+        // Do NOT leave this as a bare `break`. A load that silently does
+        // nothing shows the user a spinner that never resolves, with no error
+        // to explain it — surface it instead (Principle 6, "errors are
+        // visible").
+        print("Unhandled model type \(model.modelType.rawValue) — not loading.")
     }
     // Cloud endpoints are not on-disk models; a headless selection surface drives
     // local/foundation models. For cloud, use a ChatViewModel's selectedEndpoint

@@ -40,9 +40,13 @@ on:
       # QUICKSTART-IMAGE-GEN.md — so editing that file triggered this ~14-min
       # job and compiled nothing from it. A superset can over-trigger; it can
       # never silently under-cover.
-      - "README.md"
-      - "AGENTS.md"
-      - "docs/**/*.md"
+      # Scoped to exactly what extract-snippets.sh sweeps: root-level *.md and
+      # docs/*.md (maxdepth 1). Deliberately NOT docs/**/*.md — that would
+      # trigger this ~14-min job for docs/plans/*.md, which the extractor does
+      # not read, reinstating the QUICKSTART-IMAGE-GEN defect (job runs, checks
+      # nothing) at a different scope.
+      - "*.md"
+      - "docs/*.md"
       - "Sources/**/*.docc/**/*.md"
       - "Sources/ManifoldKit/**"
       - "Sources/ManifoldUI/**"

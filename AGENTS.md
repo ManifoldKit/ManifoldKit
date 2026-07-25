@@ -136,7 +136,7 @@ conversation runtime, and the model container in the right order. Because it
 is `async`, wire it from a `.task { }` on the launch view — **not** from
 `App.init()`, which is synchronous and would deadlock:
 
-```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
+```swift,no-build:defines the app entry point; `ContentView` is defined in the next block, so this one cannot compile in isolation
 import SwiftUI
 import SwiftData
 import ManifoldKit
@@ -862,11 +862,21 @@ Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `Mani
 Docs are held to the same tripwire standard as code (Principle 4). Three layers,
 each with a different failure mode:
 
-| Layer | Audit | Catches |
-|---|---|---|
-| **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header |
-| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references |
-| **Snippets** | `scripts/extract-snippets.sh` + `-test.sh` | a fenced `swift` block that does not compile as published |
+| Layer | Audit | Catches | Blocks a merge? |
+|---|---|---|---|
+| **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — runs under the required `test` check |
+| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same |
+| **Snippets** | `scripts/extract-snippets.sh` + `-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
+
+> **The snippet gate is advisory, not blocking.** `main`'s required contexts are
+> `test`, `lint`, `api-digester-check`; `readme-snippets` is not among them and
+> has no `merge_group` trigger, so a red run does **not** stop
+> `gh pr merge --squash --auto`. Treat a red `readme-snippets` as a stop anyway
+> — this is the same red-but-not-blocking shape that let the api-digester reds
+> through (#2274, #2287). Promoting it to required is not a one-line change: a
+> required check with no `merge_group` trigger never reports to the queue and
+> blocks it permanently (the failure mode documented under "Companion release
+> PRs" above), so the trigger must be added first.
 
 Rules when editing docs:
 
