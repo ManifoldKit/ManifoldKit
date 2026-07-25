@@ -1,0 +1,19 @@
+name: zz-expr-probe
+# TEMPORARY. Settles whether `github.event.pull_request.draft == false` runs or
+# skips on a non-pull_request event. Deleted in the following commit.
+on:
+  push:
+    branches: [ci/readme-snippets-merge-group]
+permissions:
+  contents: read
+jobs:
+  bare-guard:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "BARE GUARD RAN on ${{ github.event_name }}"
+  compound-guard:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "COMPOUND GUARD RAN on ${{ github.event_name }}"
