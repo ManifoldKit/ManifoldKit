@@ -72,6 +72,14 @@ try {
   fail(`BASE_TAG '${baseTag}' does not resolve to a commit`);
 }
 
+// Scope filter, not a false-positive dodge: a hidden-type commit (e.g.
+// chore:) was never going into the changelog, so it failing to parse isn't
+// the #2380 defect -- only a commit release-please would actually publish
+// can be "silently dropped" from what it publishes. Read dynamically from
+// release-please-config.json rather than hardcoded, so a type later
+// un-hidden there is automatically covered here too -- intentional, not a
+// surprise: if that ever happens, this check's scope widens in lockstep
+// with what actually ships in the changelog.
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const sections = config.packages['.']['changelog-sections'];
 const visibleTypes = new Set(sections.filter((s) => !s.hidden).map((s) => s.type));

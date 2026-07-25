@@ -8,7 +8,10 @@ name: Lint
 #   - changelog-parser-check        (scripts/changelog-parser-check.sh —
 #                                     #2380: re-runs release-please's own
 #                                     commit parser and reds on any commit
-#                                     it would silently drop)
+#                                     it would silently drop; runs per-PR
+#                                     (every PR, its own commits) and, on
+#                                     the release-please branch, again over
+#                                     the whole release range)
 #   - commitlint                    (was commitlint.yml — Lint PR Title)
 #   - known-issue-lint              (was known-issue-lint.yml)
 #   - docs-header-lint              (scripts/lint-docs-headers.sh — cheap mirror
@@ -276,53 +279,81 @@ jobs:
       # changelog with no warning anywhere in normal output. PR #2375's
       # 223-line squashed body hit this exact pattern.
       #
-      # This re-runs the SAME parser release-please uses over every
-      # releasable commit in range and reds on any commit release-please
-      # itself would drop — the defect directly, not a proxy for it. It
-      # deliberately does NOT compare against CHANGELOG.md's text at all
-      # (that's scripts/changelog-coverage-check.sh's job — kept as the
-      # operator's manual pre-rewrite check, see RELEASE.md step 2; it isn't
-      # wired into CI because it can only mean anything against
-      # release-please's own generated bullets, and — see below — CI can't
-      # reliably observe that state on this branch). Not looking at the
-      # changelog at all means this check has no editorial-omission
-      # false-positive surface (the Prisma rewrite's legitimate bullet
-      # omissions are invisible to it) and fires on ANY push by ANY actor to
-      # the release PR, including Rory's own rewrite commits — the commit
-      # history the parser sees doesn't change just because the changelog
-      # prose does.
+      # This re-runs the SAME parser release-please uses over releasable
+      # commits and reds on any commit release-please itself would drop —
+      # the defect directly, not a proxy for it. It deliberately does NOT
+      # compare against CHANGELOG.md's text at all (that's
+      # scripts/changelog-coverage-check.sh's job — kept as the operator's
+      # manual pre-rewrite check, see RELEASE.md step 2; it isn't wired into
+      # CI because it can only mean anything against release-please's own
+      # generated bullets, and CI can't reliably observe that state on this
+      # branch — see the action_required paragraph below). Not looking at
+      # the changelog at all means this check has no editorial-omission
+      # false-positive surface and fires on ANY push by ANY actor.
       #
-      # Firing on any actor is what makes this immune to a real, verified
-      # gap: EVERY github-actions[bot]-triggered workflow run on this
-      # branch — across both the 0.73.0 and 0.74.0 cycles, all 6 workflows
-      # that trigger on it (Lint, CI, CI Required Test Shim, CodeQL, README
-      # Snippets, cold-start-human), 94 runs total — sits at
-      # `conclusion: action_required` and never actually executes; only
-      # roryford-actor pushes ever complete
-      # (`gh api repos/ManifoldKit/ManifoldKit/actions/runs?branch=
+      # Two runs, two different ranges, both below:
+      #   1. Per-PR (every PR, this PR's own commits since its merge-base) —
+      #      preventive: rejects a parser-hostile commit body at the source,
+      #      before it can ever reach a release. This is also what makes the
+      #      check exercised continuously rather than only on a release PR —
+      #      see the action_required paragraph for why "only tested when it
+      #      matters" was rejected as a shape for this gate.
+      #   2. Whole-range (release-please branch only, every releasable
+      #      commit since the previous tag) — catches a commit that entered
+      #      main some other way (a direct push, a squash whose body wasn't
+      #      exactly any individual source commit's message) and gives the
+      #      Prisma-rewrite operator one authoritative "is this release
+      #      clean" answer.
+      # Per-PR checks the PR's OWN (pre-squash) commit messages against the
+      # parser — the right target, since that's genuinely what release-please
+      # will see once GitHub assembles the squash body from them, but NOT a
+      # guarantee about the exact final squashed text (a maintainer can still
+      # edit the squash-merge box by hand at merge time).
+      #
+      # Firing on any actor (both ranges) is what makes this immune to a
+      # real, verified gap: EVERY github-actions[bot]-triggered workflow run
+      # on the release-please branch — across both the 0.73.0 and 0.74.0
+      # cycles, all 6 workflows that trigger on it (Lint, CI, CI Required
+      # Test Shim, CodeQL, README Snippets, cold-start-human), 94 runs total
+      # — sits at `conclusion: action_required` and never actually executes;
+      # only roryford-actor pushes ever complete (`gh api
+      # repos/ManifoldKit/ManifoldKit/actions/runs?branch=
       # release-please--branches--main`). A check gated to fire only on a
       # bot regeneration (an earlier draft of this gate did exactly that)
       # would never run in practice under this repo's current Actions
       # settings — see AGENTS.md § Release workflow for the full writeup;
       # that finding outlives this PR and applies to `changelog-lint` too.
-      - name: changelog-parser-check — skip for non-Release-Please PRs
-        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--branches--')
-        run: |
-          echo "Non-Release-Please PR; changelog parser validation is not required."
-          echo "Passing changelog-parser-check to provide the required check context."
-
       - name: Set up Node.js (changelog-parser-check)
-        if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')
+        if: always() && github.event_name == 'pull_request'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 'lts/*'
 
-      - name: changelog-parser-check — every releasable commit parses
-        if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')
+      - name: changelog-parser-check (per-PR) — this PR's own commits parse cleanly
+        if: always() && github.event_name == 'pull_request'
         # scripts/changelog-parser-check.sh installs the pinned release-please
-        # dependency (scripts/changelog-parser-check/package-lock.json) and
-        # runs check.mjs. The npm install itself is a hard failure, never a
-        # silent skip — see that script's header comment.
+        # dependency and runs check.mjs against an explicit range; `npm ci`
+        # failing is a hard failure here, never a silent skip — see that
+        # script's header comment. Base-ref handling mirrors dep-budget /
+        # large-file-guard just above: fetch the base tip (fetch-depth: 0
+        # from Checkout already has most of it; this refreshes it, never
+        # `--depth=1` — #2325), then diff against the true merge-base so a
+        # long-lived branch isn't penalized for commits landing on the base
+        # after it diverged.
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          bash scripts/changelog-parser-check.sh "$base_sha" HEAD
+
+      - name: changelog-parser-check — skip whole-range run for non-Release-Please PRs
+        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--branches--')
+        run: |
+          echo "Non-Release-Please PR; the whole-release-range changelog parser validation is not required (the per-PR run above already covers this PR's own commits)."
+          echo "Passing changelog-parser-check to provide the required check context."
+
+      - name: changelog-parser-check (whole-range) — every releasable commit since the last tag parses
+        if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')
         run: bash scripts/changelog-parser-check.sh
 
       # ── commitlint (PR title) ─────────────────────────────────────────────

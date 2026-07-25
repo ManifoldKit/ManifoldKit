@@ -6,6 +6,7 @@
   "dependencies": {
     "release-please": "16.18.0"
   },
+  "overridesNote": "Each override pins a transitive dep of release-please to its GitHub-advisory first_patched_version (dependency-review, a required check, reds on anything less). None are reachable from what this tool calls -- it only runs parseConventionalCommits(), never an Octokit/network path -- but a future advisory in release-please's tree will still red an unrelated PR here until these are refreshed; that's the fix when it happens, not a real vulnerability in this tool.",
   "overrides": {
     "brace-expansion": "5.0.8",
     "@octokit/plugin-paginate-rest": "9.2.2",
