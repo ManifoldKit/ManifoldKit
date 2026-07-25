@@ -1,5 +1,148 @@
 # Changelog
 
+## [0.74.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.73.0...v0.74.0) (2026-07-25)
+
+Apple's Foundation Models backend gains real guided structured output, and says so honestly —
+the capability claim now fails closed rather than quietly degrading. Alongside it, the pre-1.0
+API surface takes its largest deliberate trim yet: provider vocabulary becomes extensible,
+unadopted public API is demoted or deleted, and every published product now carries a written
+maturity tier so an adopter can tell what they can build on. Several of this release's fixes
+came from tripwires finding real defects rather than from bug reports.
+
+### Highlights
+
+#### Foundation Models produces guided structured output
+
+`FoundationBackend` now drives Apple's guided-generation path end to end, so a request for
+typed output is satisfied by the model's own constrained decoding instead of hopeful parsing.
+Just as importantly, the capability claim is now truthful: where grammar-constrained sampling
+cannot be honoured the backend fails closed rather than silently returning free text, and
+`ToolChoice` forcing is actually respected.
+
+See [#2362](https://github.com/ManifoldKit/ManifoldKit/issues/2362) and
+[#2357](https://github.com/ManifoldKit/ManifoldKit/issues/2357).
+
+#### Provider vocabulary is extensible, and eight wire enums are frozen (breaking)
+
+`CloudMessageEncoder` and `CloudPayloadHandler.Provider` are now structs rather than enums, so
+a third-party provider can mint an identifier without breaking every downstream exhaustive
+`switch` — the same `Notification.Name` pattern `BackendName` already uses. Equality
+comparisons and static-member call sites are unchanged; what changes is that an exhaustive
+`switch` over either type now needs a `default:` arm:
+
+```swift
+switch encoder {
+case .anthropic: …
+case .openAI:    …
+default:         … // now required
+}
+```
+
+Eight payload sum types were deliberately frozen in the same pass, with the non-exhaustive
+policy documented per type. See
+[#2345](https://github.com/ManifoldKit/ManifoldKit/issues/2345).
+
+#### Compression can see the system prompt (breaking)
+
+`CompressionPolicy` was budgeting without knowing the system prompt or the tokenizer, so
+compression near the context boundary could still overflow on the following turn. The seam now
+carries the system prompt:
+
+```swift
+func compress(
+    history: [ChatMessage],
+    sessionID: UUID,
+    systemPrompt: String?,          // new
+    generate: GenerateFn
+) async throws -> CompressionResult
+```
+
+`PreTurnCompressionPolicy.compressBeforeTurn(…)` gains the same parameter. Custom conformances
+need updating; see the migration notes on both protocols and
+[#2288](https://github.com/ManifoldKit/ManifoldKit/issues/2288).
+
+#### The public surface sheds API nothing adopted (breaking)
+
+Three sweeps land together. `NetworkActivityCenter`, `ModelCatalog`, `RouterBackend` and
+`ModelManagementViewModel`'s benchmark members move from `public` to `package`, and
+`URLSessionFactory.ephemeral(…)`, `HuggingFaceService.init(…)` and
+`BackgroundDownloadManager.init(…)` drop their `activityCenter` parameter — the shared centre is
+wired internally now. `ToolCallConformanceCache` and its two implementations are removed
+outright, as are the decorative `MediaGeneration<Output>` seam, its
+`ImageGeneration`/`VideoGeneration`/`AudioGeneration` typealiases, and the deprecated
+`MessagePart.generatedImageContent` / `.generatedVideoContent` accessors. Every removal was
+screened against known consumers first, and an inert-surface tripwire now guards against the
+pattern returning.
+
+See [`docs/MIGRATION-api-demotions-0.71.md`](docs/MIGRATION-api-demotions-0.71.md),
+[`docs/MIGRATION-inert-surface-sweep-2026-07-22.md`](docs/MIGRATION-inert-surface-sweep-2026-07-22.md),
+[#2351](https://github.com/ManifoldKit/ManifoldKit/issues/2351),
+[#2358](https://github.com/ManifoldKit/ManifoldKit/issues/2358) and
+[#2350](https://github.com/ManifoldKit/ManifoldKit/issues/2350).
+
+#### Every published product now has a stated maturity tier
+
+`docs/PRODUCTION-READINESS.md` is a new normative page assigning all 30 library products and 3
+executables to exactly one of four tiers — core guarantees, supported integrations,
+experimental, and semver-exempt developer tooling — replacing `Experimental¹` footnotes
+scattered across five documents. An audit test keeps the assignment exhaustive and
+non-overlapping against `Package.swift`, so a new product cannot ship untiered. The page is
+explicit about where its own criteria are not yet met, including that `import ManifoldKit`
+re-exports an experimental module.
+
+See [#2374](https://github.com/ManifoldKit/ManifoldKit/issues/2374).
+
+#### Local MLX models detect their real context window
+
+MLX models never populated `detectedContextLength`, so every load silently fell back to a
+hardcoded 8192 ceiling and a user's context-size override above that was clamped away. The
+value now comes from the model's own `config.json`. Default behaviour is unchanged — without a
+session override the conservative 8192 request still stands — but an override above 8192 now
+takes effect for a model that genuinely supports it. Paired with manifold-mlx, which warns when
+a session exceeds the model's trained context instead of degrading in silence.
+
+See [#2372](https://github.com/ManifoldKit/ManifoldKit/issues/2372) and
+[manifold-mlx#164](https://github.com/ManifoldKit/manifold-mlx/pull/164).
+
+#### New capability field: `supportsAudioInput`
+
+`BackendCapabilities` gains `supportsAudioInput`, default `false` — backends that accept
+`.audio` message parts must opt in. No in-package backend sets it `true` yet; today the flag
+governs only the fail-closed capability gate, not a live encode path. Companion backend
+maintainers: a capabilities literal that omits the field silently reports the default rather
+than failing to compile. See
+[#2359](https://github.com/ManifoldKit/ManifoldKit/issues/2359).
+
+#### The fuzz harness stopped lying about its own coverage
+
+`ManifoldFuzzTests` — 30 files, ~250 test functions — was invoked by no CI job and no local
+profile, and the selective-CI resolver didn't know it existed, so a PR touching only
+`Sources/ManifoldFuzz/**` resolved to zero suites. It now runs on every PR, and
+`scripts/fuzz-ci-gate.sh` is wired into the weekly workflow instead of sitting unreferenced on
+disk. Wiring it in immediately surfaced a latent crash that had been invisible since the tests
+were written. In the same pass, a fuzz campaign that never starts now exits non-zero instead of
+reporting success, and `CancellationRaceDetector` was found to be reporting false positives —
+it matched any single common word across two turns, which is why an earlier "cross-turn token
+leak" report turned out not to be a product bug at all.
+
+See [#2375](https://github.com/ManifoldKit/ManifoldKit/issues/2375),
+[#2373](https://github.com/ManifoldKit/ManifoldKit/issues/2373) and
+[#2360](https://github.com/ManifoldKit/ManifoldKit/issues/2360).
+
+### Features
+
+- **MCP elicitation** — an MCP server can now request structured input from the user mid-session, completing the client's interactive surface ([#2284](https://github.com/ManifoldKit/ManifoldKit/issues/2284), implementing [#1926](https://github.com/ManifoldKit/ManifoldKit/issues/1926)).
+- **Releases are gated on the companion canary** — the release workflow now fails when manifold-mlx or manifold-llama are red against core `main`, with the two documented direct-merge carve-outs written down ([#2342](https://github.com/ManifoldKit/ManifoldKit/issues/2342)).
+
+### Fixes
+
+- **The server rejects empty messages properly** — an empty message list now returns 400 rather than proceeding, and the anonymous-access warning stops printing twice ([#2317](https://github.com/ManifoldKit/ManifoldKit/issues/2317)).
+- **Truthful quickStart, MCP OAuth guard, and HuggingFace checksum enforcement** — the documented `quickStart` generation-tools recipe now matches what the API actually offers, MCP OAuth gains a guard plus events, and downloaded snapshots are checksum-verified on the module's own path ([#2355](https://github.com/ManifoldKit/ManifoldKit/issues/2355)).
+- **The chat UI fails loudly instead of rendering a lie** — undeliverable audio surfaces an error rather than silence, a video tool result reports what actually happened, and the in-flight generation indicator reflects real state ([#2356](https://github.com/ManifoldKit/ManifoldKit/issues/2356)).
+- **Handoff scanning skips single-agent sessions** — the per-body handoff scan is no longer run when a session has one agent ([#2368](https://github.com/ManifoldKit/ManifoldKit/issues/2368)).
+- **llama.cpp throughput reaches the performance sweep** — `BENCH_RESULT` output is now surfaced in performance signals instead of being dropped ([#2343](https://github.com/ManifoldKit/ManifoldKit/issues/2343)).
+- **Test and CI gates** — perf budgets that can actually fail plus a `MockURLProtocol` isolation tripwire ([#2365](https://github.com/ManifoldKit/ManifoldKit/issues/2365)); a script fail-open tripwire and the guard-demonstrated-red discipline ([#2364](https://github.com/ManifoldKit/ManifoldKit/issues/2364)); the API-baseline module scope derived from `Package.swift` ([#2369](https://github.com/ManifoldKit/ManifoldKit/issues/2369)); the local profile's XCTest batch runs `--parallel` to match CI ([#2366](https://github.com/ManifoldKit/ManifoldKit/issues/2366)); Ollama tool-calling is asserted rather than skipped ([#2370](https://github.com/ManifoldKit/ManifoldKit/issues/2370)); the UI-refresh visual walkthrough is a committed suite ([#2371](https://github.com/ManifoldKit/ManifoldKit/issues/2371)); and the Example UI smoke lane retries the xcodebuild package-resolution crash ([#2363](https://github.com/ManifoldKit/ManifoldKit/issues/2363)).
+
 ## [0.73.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.72.0...v0.73.0) (2026-07-19)
 
 ManifoldKit's built-in chat surface has a new default look — the 2026 UI refresh ships as the
