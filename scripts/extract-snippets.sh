@@ -235,10 +235,21 @@ BASELINE_FILE="$REPO_ROOT/scripts/snippet-skip-baseline.tsv"
 
 # baseline_field <path> <column 2|3> — the recorded count, or 0 if unlisted.
 baseline_field() {
-    local needle="$1" col="$2"
+    local needle="$1" col="$2" value
     [[ -f "$BASELINE_FILE" ]] || { printf '0'; return; }
-    awk -F'\t' -v n="$needle" -v c="$col" '$1 == n { print $c; found=1 } END { if (!found) print 0 }' \
-        "$BASELINE_FILE" | head -1
+    value=$(awk -F'\t' -v n="$needle" -v c="$col" '$1 == n { print $c; found=1 } END { if (!found) print 0 }' \
+        "$BASELINE_FILE" | head -1)
+    # Reject anything non-numeric LOUDLY. `[[ x -gt y ]]` on a junk operand
+    # raises an arithmetic error, `[[ ]]` then returns 1 (false), and `set -e`
+    # does not fire because the comparison sits in an `if` condition — so a
+    # single stray CR (a TSV saved with CRLF endings) silently disables the
+    # entire ratchet while the script exits 0 and prints no annotation. That is
+    # the worst possible failure: an inert guard that looks green.
+    if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+        echo "::error file=scripts/snippet-skip-baseline.tsv::column ${col} for '${needle}' is not a number (got '${value}'). Check for CRLF line endings, a missing column, or spaces instead of tabs — a non-numeric value would silently disable the ratchet." >&2
+        exit 2
+    fi
+    printf '%s' "$value"
 }
 
 # docc_slug_for <Sources/<Module>/<Module>.docc/...> — `docc-<module>-<file>`,
@@ -554,19 +565,38 @@ for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"} ${docc_files[@]+"${docc_files
     esac
 
     total_skips=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip" | wc -l | tr -d ' ')
+    # `while read`, not `for … in $(find …)`: the unquoted command substitution
+    # word-splits, so an OUT_DIR containing a space made this count 0 bare tags
+    # and the bare arm degraded to "found nothing" instead of erroring. CI's
+    # OUT_DIR has no spaces, so that was latent — but a detection path that
+    # silently reads zero is exactly what this whole gate exists to prevent.
     bare_skips=0
-    for skip_file in $(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip"); do
+    while IFS= read -r skip_file; do
+        [[ -n "$skip_file" ]] || continue
         if grep -q '^# Skip reason: explicit-no-build-tag (bare' "$skip_file"; then
             bare_skips=$((bare_skips + 1))
         fi
-    done
+    done < <(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-[0-9][0-9][0-9].skip")
 
     ratchet_rows="${ratchet_rows}${doc_rel}	${bare_skips}	${total_skips}
 "
 
     baseline_bare=$(baseline_field "$doc_rel" 2)
     baseline_total=$(baseline_field "$doc_rel" 3)
-    if [[ "$bare_skips" -gt "$baseline_bare" ]]; then
+    # The LOWER arm is what makes this a ratchet rather than a high-water mark.
+    # Without it, every skip you triage away leaves permanent invisible
+    # headroom: drain a doc's 4 bare tags to 0 (green, baseline still says 4),
+    # and months later a PR can add 4 brand-new bare tags with exit 0 and no TSV
+    # diff. That falsifies the "may keep what it had, never gain one" promise —
+    # what actually held was "never exceed the high-water mark, ever".
+    #
+    # It also self-guards the counter: a future change that breaks counting
+    # reads 0 for everything and goes instantly red here, rather than sitting
+    # green while enforcing nothing.
+    if [[ "$bare_skips" -lt "$baseline_bare" || "$total_skips" -lt "$baseline_total" ]]; then
+        echo "::error file=${doc_rel}::skip counts FELL (bare ${baseline_bare} → ${bare_skips}, total ${baseline_total} → ${total_skips}) — good, but the budget must come down with them or it becomes headroom a later PR can spend silently. Run: scripts/extract-snippets.sh --update-baseline" >&2
+        ratchet_failures=$((ratchet_failures + 1))
+    elif [[ "$bare_skips" -gt "$baseline_bare" ]]; then
         echo "::error file=${doc_rel}::bare \`swift,no-build\` count rose ${baseline_bare} → ${bare_skips}. A bare tag has no reason attached, so nothing records why the block cannot compile. Add \`no-build:<why>\`, or make the block compile. (If this is genuinely new legacy debt, bump the count in scripts/snippet-skip-baseline.tsv and say why in the PR.)" >&2
         ratchet_failures=$((ratchet_failures + 1))
     elif [[ "$total_skips" -gt "$baseline_total" ]]; then

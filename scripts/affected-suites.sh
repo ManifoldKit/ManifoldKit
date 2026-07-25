@@ -262,6 +262,21 @@ for p in "${CHANGED[@]}"; do
       log "changed: $p → target APIFreezeTests (surface-baseline tooling)"
       continue
       ;;
+    # Same shape, same reason: these suites EXECUTE the script named, so an edit
+    # to it must run them rather than discovering the break in the merge queue.
+    # (The blanket scripts/*.sh rule further down selects ManifoldCoreTests for
+    # ScriptFailOpenAuditTest, which scans every script; these two are about
+    # suites that run one specific script end to end.)
+    scripts/fuzz-ci-gate.sh)
+      changed_targets_add "ManifoldFuzzTests"
+      log "changed: $p → target ManifoldFuzzTests (FuzzCIGateScriptTests runs it)"
+      continue
+      ;;
+    scripts/check-readme.sh)
+      changed_targets_add "ManifoldInferenceTests"
+      log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest runs it)"
+      continue
+      ;;
   esac
   # Only Sources/ and Tests/ paths can map to a target. Anything else (docs,
   # READMEs, …) cannot affect compiled test outcomes and is ignored.

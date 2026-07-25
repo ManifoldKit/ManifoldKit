@@ -48,8 +48,13 @@ on:
       # script edits never triggered this workflow at all. PR #2385 changed two
       # shell scripts and got `test` reported green in 4s by the CI Required Test
       # Shim; the audit first ran in the merge queue, where a failure poisons the
-      # batch (#2306 / #2212). affected-suites.sh keeps the cost bounded — a
-      # scripts-only diff selects ManifoldCoreTests alone, not a full run.
+      # batch (#2306 / #2212). affected-suites.sh bounds the cost — a scripts-only
+      # diff selects ManifoldCoreTests alone rather than mode=full — but "bounded"
+      # is not "cheap": ManifoldCoreTests.xcscheme builds the
+      # ManifoldInference + ManifoldRuntime + ManifoldPersistenceSwiftData
+      # subgraph, i.e. most of the package. A scripts-only PR therefore goes from
+      # a 4s shim echo to a near-full macOS compile. That is the right trade
+      # against poisoning a 5-PR merge-queue batch, but it is a real trade.
       - "scripts/**.sh"
   pull_request:
     # `ready_for_review` is REQUIRED here: the default pull_request activity
@@ -97,8 +102,13 @@ on:
       # script edits never triggered this workflow at all. PR #2385 changed two
       # shell scripts and got `test` reported green in 4s by the CI Required Test
       # Shim; the audit first ran in the merge queue, where a failure poisons the
-      # batch (#2306 / #2212). affected-suites.sh keeps the cost bounded — a
-      # scripts-only diff selects ManifoldCoreTests alone, not a full run.
+      # batch (#2306 / #2212). affected-suites.sh bounds the cost — a scripts-only
+      # diff selects ManifoldCoreTests alone rather than mode=full — but "bounded"
+      # is not "cheap": ManifoldCoreTests.xcscheme builds the
+      # ManifoldInference + ManifoldRuntime + ManifoldPersistenceSwiftData
+      # subgraph, i.e. most of the package. A scripts-only PR therefore goes from
+      # a 4s shim echo to a near-full macOS compile. That is the right trade
+      # against poisoning a 5-PR merge-queue batch, but it is a real trade.
       - "scripts/**.sh"
   # Merge queue: when a PR is queued, GitHub builds a temp branch
   # (main + earlier-queued PRs + this PR) and dispatches `merge_group`. The

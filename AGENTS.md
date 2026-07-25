@@ -882,10 +882,25 @@ The same gap existed for **shell scripts**: `ci.yml`'s paths were an allowlist o
 ~12 named scripts, so most `scripts/*.sh` edits never triggered CI, and
 `affected-suites.sh` resolved a scripts-only diff to `NONE` — meaning
 `ScriptFailOpenAuditTest`, which scans all of `scripts/`, first ran in the merge
-queue. `ci.yml` now globs `scripts/**.sh` and the resolver force-includes
-`ManifoldCoreTests` for any `scripts/*.sh` change. **General rule: if an audit
-scans a directory, a change anywhere in that directory must select the suite the
-audit lives in.**
+queue. `ci.yml` now globs `scripts/**.sh` (kept in lockstep with
+`ci-required-test-shim.yml`'s `paths-ignore` — the `shim-drift` lint step
+enforces that) and the resolver force-includes `ManifoldCoreTests` for any
+`scripts/*.sh` change.
+
+**The rule: a suite that reads or executes a file must be selected when that file
+changes.** Two enforcement shapes, both in `affected-suites.sh`:
+
+- *Scans a whole directory* → a blanket rule. `ScriptFailOpenAuditTest` scans all
+  of `scripts/`, so any `scripts/*.sh` edit selects `ManifoldCoreTests`.
+- *Executes one specific script* → an explicit `case` mapping, alongside the
+  existing `api-surface-baseline.sh` → `APIFreezeTests` entry:
+  `fuzz-ci-gate.sh` → `ManifoldFuzzTests`, `check-readme.sh` →
+  `ManifoldInferenceTests`.
+
+That second list is **hand-kept and has no tripwire** — nothing detects a new
+script-executing test that forgets its mapping. If you add one, add the mapping
+in the same PR; if that keeps being forgotten, the fix is an audit that greps
+`Tests/` for `scripts/` invocations and asserts each has an entry.
 
 > **The snippet gate is advisory, not blocking.** `main`'s required contexts are
 > `test`, `lint`, `api-digester-check`; `readme-snippets` is not among them and
