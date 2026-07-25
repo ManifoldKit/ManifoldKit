@@ -83,11 +83,11 @@ on:
   # always, but in the case that matters: an author who also updated the DocC
   # articles matches `Sources/**/*.docc/**/*.md` and does trigger it, so the gap
   # is precisely the DRIFT case, the author who forgot the docs. `test` does not
-  # close it (the repo's own Sources/Tests are updated in the same PR, so it is
-  # green; it does not compile docs) and `api-digester-check` flags the rename
-  # itself, not the stale snippet. Today only nightly-slow-tests.yml's `doc-gates`
-  # catches that, post-merge, within 24h. The unconditional queue run is the only
-  # pre-merge coverage for the snippet still compiling. (The PR-level filter under-covering the umbrella's real dependency
+  # close it (the repo's own source and test targets are updated in the same PR,
+  # so it is green; it does not compile docs) and `api-digester-check` flags the
+  # rename itself, not the stale snippet. Today only nightly-slow-tests.yml's
+  # `doc-gates` catches that, post-merge, within 24h. The unconditional queue run
+  # is the only pre-merge coverage for the snippet still compiling. (The PR-level filter under-covering the umbrella's real dependency
   # surface is a pre-existing gap worth its own issue, not this PR's job.)
   #
   # merge_group carries no paths filter, so this runs on EVERY queued batch
