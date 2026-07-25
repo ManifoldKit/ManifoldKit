@@ -411,10 +411,16 @@ final class OllamaBackendToolCallingTests: XCTestCase {
 
     /// `OllamaBackend` must ship a non-nil default `streamIdleTimeout` so a
     /// stalled generation — the tool-continuation request that never
-    /// produces a byte, observed in #2376 — has SOME application-level
-    /// bound short of `defaultRequestIdleTimeout`'s 30 minutes. Before the
-    /// fix this property was left `nil` (the `SSECloudBackend` default),
-    /// disabling `GenerationStream`'s idle-timeout gate entirely.
+    /// produces a byte, observed in #2376 — has an application-level bound
+    /// that Ollama's own code surfaces (`InferenceError.idleTimeout`),
+    /// rather than relying solely on whichever transport-level `URLSession`
+    /// timeout happens to fire first. Before the fix this property was left
+    /// `nil` (the `SSECloudBackend` default), disabling `GenerationStream`'s
+    /// idle-timeout gate entirely.
+    ///
+    /// Also pins the exact default value — `defaultStreamIdleTimeout` drift
+    /// (e.g. to something close to `defaultRequestIdleTimeout`) would pass
+    /// the "strictly tighter" check below without this.
     ///
     /// Sabotage check: comment out the `streamIdleTimeout = ...` assignment
     /// in `OllamaBackend.init` — this assertion fails because the property
@@ -422,12 +428,13 @@ final class OllamaBackendToolCallingTests: XCTestCase {
     func test_defaultStreamIdleTimeout_isNonNilAndBounded() {
         let backend = OllamaBackend()
         let timeout = backend.streamIdleTimeout
-        XCTAssertNotNil(timeout, "#2376: a stalled Ollama generation must have a bounded application-level timeout, not rely solely on the 30-minute requestIdleTimeout")
+        XCTAssertNotNil(timeout, "#2376: a stalled Ollama generation must have a bounded application-level timeout, not rely solely on transport-level URLSession timeouts")
+        XCTAssertEqual(timeout, .seconds(300), "pins the shipped default — see OllamaBackend.defaultStreamIdleTimeout")
         if let timeout {
             XCTAssertLessThan(
                 timeout,
                 .seconds(OllamaBackend.defaultRequestIdleTimeout),
-                "streamIdleTimeout must be strictly tighter than the 30-minute HTTP-layer requestIdleTimeout to give a meaningfully earlier, visible failure"
+                "streamIdleTimeout must be strictly tighter than requestIdleTimeout to give a meaningfully earlier, visible failure"
             )
         }
     }
@@ -526,5 +533,85 @@ final class OllamaBackendToolCallingTests: XCTestCase {
             .seconds(2),
             "the timeout must fire on its own bound, well before the stub's 5s artificial stall — a value close to 5s would mean the stub resolved instead of the timeout firing"
         )
+    }
+
+    /// Pins the exact wire shape of a tool-continuation follow-up request:
+    /// the assistant turn carries `tool_calls`, and the tool-result turn
+    /// carries `role: "tool"` + `tool_call_id`. #2376's investigation ruled
+    /// out a malformed follow-up body as the cause of the observed stall (by
+    /// replaying this exact shape against a live Ollama server by hand), but
+    /// that evidence is not itself committed anywhere — this test is the
+    /// durable, in-repo version of that check, so a future regression in the
+    /// tool-aware history encoding (`CloudMessageEncoder.ollama`) is caught
+    /// even though the stall's root cause remains open.
+    ///
+    /// Sabotage check: change `ollamaEncodeToolAwareEntry` (in
+    /// `CloudMessageEncoder.swift`) to omit `tool_call_id` — this test fails
+    /// on the `tool_call_id` assertion below.
+    func test_toolContinuation_followUpRequestBody_hasExpectedToolAwareShape() async throws {
+        let (backend, chatURL) = makeBackend()
+        try await loadBackend(backend)
+
+        MockURLProtocol.stub(
+            url: chatURL,
+            response: .sse(chunks: [
+                ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"done"},"done":true}"#),
+            ], statusCode: 200)
+        )
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let call = ToolCall(id: "call_1", toolName: "fakeRateLimited", arguments: "{}")
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", content: "go"),
+            StructuredMessage(role: "assistant", parts: [.toolCall(call)]),
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: call.id, content: "{\"ok\":true}", errorKind: nil)),
+            ]),
+        ]
+
+        let stream = try backend.generate(
+            prompt: "",
+            systemPrompt: nil,
+            config: GenerationConfig(tools: [
+                ToolDefinition(name: "fakeRateLimited", description: "test", parameters: .object([:])),
+            ]),
+            hints: GenerationRuntimeHints(history: history)
+        )
+        _ = try await drain(stream)
+
+        let request = try XCTUnwrap(MockURLProtocol.capturedRequests.last(where: { $0.url == chatURL }))
+        // URLSession's async `bytes(for:)` path (used by SSEGenerationTaskRunner)
+        // converts `httpBody` → `httpBodyStream` during transmission — read
+        // whichever is populated (mirrors ClaudeBackendTests's pattern).
+        let bodyData: Data
+        if let direct = request.httpBody {
+            bodyData = direct
+        } else if let stream = request.httpBodyStream {
+            var collected = Data()
+            stream.open()
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
+            defer { buffer.deallocate() }
+            while stream.hasBytesAvailable {
+                let read = stream.read(buffer, maxLength: 4096)
+                if read > 0 { collected.append(buffer, count: read) }
+            }
+            stream.close()
+            bodyData = collected
+        } else {
+            XCTFail("captured request has no body")
+            return
+        }
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+
+        let assistantEntry = try XCTUnwrap(messages.first { ($0["role"] as? String) == "assistant" && $0["tool_calls"] != nil })
+        let toolCalls = try XCTUnwrap(assistantEntry["tool_calls"] as? [[String: Any]])
+        XCTAssertEqual(toolCalls.count, 1)
+        let toolCallFunction = try XCTUnwrap(toolCalls.first?["function"] as? [String: Any])
+        XCTAssertEqual(toolCallFunction["name"] as? String, "fakeRateLimited")
+
+        let toolResultEntry = try XCTUnwrap(messages.first { ($0["role"] as? String) == "tool" })
+        XCTAssertEqual(toolResultEntry["tool_call_id"] as? String, "call_1", "tool result must carry tool_call_id so Ollama can pair it with the originating call")
+        XCTAssertEqual(toolResultEntry["content"] as? String, "{\"ok\":true}")
     }
 }
