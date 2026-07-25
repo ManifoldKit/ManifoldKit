@@ -46,6 +46,7 @@ on:
       #   action-pin-audit    → .github/workflows/**, .github/actions/**
       #   known-issue-lint    → Sources/**, Tests/**
       #   docs-header-lint    → docs/*.md, scripts/lint-docs-headers.sh
+      #   doc-claims-lint     → *.md, docs/**, Sources/**/*.docc/**, scripts/lint-doc-claims.sh
       #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
       #   availability-audit  → Sources/**, scripts/audit-availability.sh
       #   secret-scan         → Sources/**, Tests/**, .github/workflows/**
@@ -55,6 +56,12 @@ on:
       - "Sources/**"
       - "Tests/**"
       - "docs/*.md"
+      # doc-claims-lint additionally reads root-level *.md, docs/
+      # subdirectories, and DocC articles — a broken link in any of them
+      # must trigger it, so its surface is listed rather than assumed.
+      - "*.md"
+      - "docs/**"
+      - "Sources/**/*.docc/**"
       - ".github/workflows/**"
       - ".github/actions/**"
       - "README.md"
@@ -62,6 +69,7 @@ on:
       - "scripts/check-readme.sh"
       - "scripts/audit-availability.sh"
       - "scripts/lint-docs-headers.sh"
+      - "scripts/lint-doc-claims.sh"
   # Merge queue: `lint` is a required check, so it MUST report on the queue's
   # `merge_group` branch or the queue stalls. The content-check steps (actionlint,
   # pin-audit, known-issue, availability, readme) run; PR-only steps (commitlint,
@@ -356,6 +364,21 @@ jobs:
       - name: "docs-header-lint — verify Audience:/Status: headers"
         if: always()
         run: bash scripts/lint-docs-headers.sh
+
+      # ── doc-claims-lint ───────────────────────────────────────────────────
+      # Same rationale as docs-header-lint immediately above, for the
+      # markdown-only half of Tests/ManifoldCoreTests/DocClaimsAuditTest.swift:
+      # broken relative .md links, dead #anchors, and orphaned docs are all
+      # breakable by a docs-only diff, which never runs the macOS `test` job on
+      # the PR head — so without this the first failure lands in the merge
+      # queue and poisons the batch (#2306 / #2212, 2026-07).
+      #
+      # The symbol-existence check is deliberately NOT mirrored: it can only be
+      # broken by a *source* change, and a source change always triggers
+      # ci.yml where the authoritative Swift audit runs. See the script header.
+      - name: "doc-claims-lint — verify doc links, anchors, index coverage"
+        if: always()
+        run: bash scripts/lint-doc-claims.sh
 
       # ── availability-audit ────────────────────────────────────────────────
       # Flags @available / #available annotations that exceed the Package.swift

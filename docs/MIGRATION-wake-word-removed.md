@@ -20,8 +20,8 @@ failure rather than something a reader discovers.
 | Symbol | Kind | Was in |
 |---|---|---|
 | `AppleWakeWordDetector` | `public final class` | `Sources/ManifoldVoice/Services/AppleWakeWordDetector.swift` (deleted) |
-| `WakeWordDetector` | `public protocol` | `VoiceConversationController.swift` |
-| `WakeWordDetection` | `public struct` | `VoiceConversationController.swift` |
+| `WakeWordDetector` | `public protocol` | `Sources/ManifoldVoice/VoiceTypes.swift` |
+| `WakeWordDetection` | `public struct` | `Sources/ManifoldVoice/VoiceTypes.swift` |
 | `WakeWordToast` | `public struct` (SwiftUI `View`) | `Sources/ManifoldVoice/Views/WakeWordToast.swift` (deleted) |
 | `VoiceConversationController.recentWakeWordDetection` | `public private(set) var` | `VoiceConversationController.swift` |
 | `VoiceConversationController.init(wakeWordDetector:)` | initialiser parameter | `VoiceConversationController.swift` |

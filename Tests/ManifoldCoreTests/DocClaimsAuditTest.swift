@@ -6,11 +6,15 @@ import XCTest
 /// ## Why this exists
 ///
 /// The repo already audits documentation form: `DocsAudienceStatusAuditTest`
-/// checks every doc carries an `**Audience:**` / `**Status:**` header (56/56
-/// compliant), and `DocSourcePathReferenceAuditTest` checks `Sources/…` link
+/// checks every doc carries an `**Audience:**` / `**Status:**` header, and
+/// `DocSourcePathReferenceAuditTest` checks `Sources/…` link
 /// targets resolve. Nothing checked whether a doc's *claims* were true — that
-/// a symbol it names still exists, that a link it offers still resolves, that
-/// a doc it ships is reachable at all.
+/// a symbol it names still exists, that a relative `.md` link it offers still
+/// resolves, that a doc it ships is reachable at all.
+///
+/// Not covered: `<doc:Article>` links (59 in the corpus), multi-line
+/// `` ``…`` `` spans, and relative links to non-Markdown targets — the last of
+/// those is `DocSourcePathReferenceAuditTest`'s job for `Sources/…` paths.
 ///
 /// That gap shipped a real defect. PR #2007 (2026-06-21) deleted the entire
 /// wake-word subsystem from `ManifoldVoice` — `AppleWakeWordDetector`,
@@ -67,9 +71,14 @@ final class DocClaimsAuditTest: XCTestCase {
     /// symbol that has simply been deleted must have its doc reference fixed,
     /// not silenced here.
     ///
-    /// Empty at introduction: the whole corpus resolved cleanly once the
-    /// wake-word references were removed. Keep it that way if you can.
-    private static let allowedUnresolvedSymbols: Set<String> = []
+    /// Keep this as short as possible.
+    private static let allowedUnresolvedSymbols: Set<String> = [
+        // manifold-llama companion package. `docs/THREAT_MODEL.md` documents
+        // its `secureWipe()` because the threat model spans both repos. It
+        // resolved "for free" until the index stopped harvesting comment
+        // tokens — i.e. it was only ever passing by accident.
+        "LlamaBackend",
+    ]
 
     /// Docs deliberately reachable from no other Markdown file. Empty at
     /// introduction. A new entry needs a reason: "nothing links it yet" is a
@@ -80,6 +89,51 @@ final class DocClaimsAuditTest: XCTestCase {
 
     func test_docClaimsResolve() throws {
         let repoRoot = try Self.locateRepoRoot()
+
+        // ── Floors: prove the audit actually looked at something ──────────
+        //
+        // Every check below returns "no violations" for an empty corpus, so a
+        // green run is only meaningful alongside evidence that the corpus was
+        // found. Without these, relocating `Sources/` or `docs/` turns the whole
+        // suite into a no-op that still reports success — the inert-machinery
+        // failure mode (#2274, #2287) applied to the audit itself.
+        //
+        // Numbers are ~60% of measured values at introduction: 151 markdown
+        // files, 970 symbol links, and 11,526 source tokens. That token figure
+        // is AFTER comment/string-literal stripping — an earlier draft set the
+        // floor from a 22,121 pre-stripping measurement and tripped
+        // immediately. Low enough not to tick on ordinary editing, high enough
+        // that a collapsed corpus fails.
+        let corpusFiles = Self.markdownFiles(repoRoot: repoRoot)
+        XCTAssertGreaterThan(
+            corpusFiles.count, 90,
+            "Only \(corpusFiles.count) Markdown files found — the corpus collapsed; every check below would vacuously pass"
+        )
+        // Per-directory floor, not just the aggregate: `docs/` supplies 71 of
+        // the 151 corpus files, so an aggregate-only floor of 90 would stop
+        // catching a vanished `docs/` the moment the DocC catalogs grow past
+        // ~80 files. Three of the four checks read `docs/` specifically, so
+        // assert on it directly.
+        let docsCount = try FileManager.default
+            .contentsOfDirectory(at: repoRoot.appendingPathComponent("docs"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "md" }.count
+        XCTAssertGreaterThan(
+            docsCount, 40,
+            "Only \(docsCount) docs/*.md found — the link, anchor and orphan checks would vacuously pass"
+        )
+        let tokenCount = Self.sourceTokenIndex(repoRoot: repoRoot).count
+        XCTAssertGreaterThan(
+            tokenCount, 7_000,
+            "Symbol index has only \(tokenCount) tokens — Sources/ did not resolve properly"
+        )
+        let symbolLinkCount = corpusFiles.reduce(0) { total, url in
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return total }
+            return total + content.components(separatedBy: .newlines).reduce(0) { $0 + Self.symbolLinks(in: $1).count }
+        }
+        XCTAssertGreaterThan(
+            symbolLinkCount, 500,
+            "Only \(symbolLinkCount) DocC symbol links found across the corpus — extraction is broken"
+        )
 
         var violations: [String] = []
         violations.append(contentsOf: try Self.auditSymbolReferences(repoRoot: repoRoot))
@@ -203,11 +257,16 @@ final class DocClaimsAuditTest: XCTestCase {
 
                 let wanted = String(parts[1]).lowercased()
                 if anchors.contains(wanted) { continue }
-                // GitHub disambiguates repeated headings with a `-1`, `-2` …
-                // suffix. Accept those when the base heading exists.
-                if let range = wanted.range(of: #"-\d+$"#, options: .regularExpression),
-                   anchors.contains(String(wanted[wanted.startIndex..<range.lowerBound])) {
-                    continue
+                // GitHub disambiguates repeated headings with `-1`, `-2`, …
+                // Accept such a suffix only when the base heading genuinely
+                // occurs more than once: accepting it unconditionally lets
+                // `#foo-7` resolve against a single `## Foo`, which 404s.
+                if let range = wanted.range(of: #"-\d+$"#, options: .regularExpression) {
+                    let base = String(wanted[wanted.startIndex..<range.lowerBound])
+                    let suffix = Int(wanted[range].dropFirst()) ?? Int.max
+                    if anchors.contains(base), suffix < headingOccurrences(of: base, in: resolved) {
+                        continue
+                    }
                 }
                 violations.append("\(relative)  broken anchor → \(target)")
             }
@@ -220,9 +279,11 @@ final class DocClaimsAuditTest: XCTestCase {
     /// Every `docs/*.md` must be referenced by at least one other Markdown file.
     static func auditIndexCoverage(repoRoot: URL) throws -> [String] {
         let docsDir = repoRoot.appendingPathComponent("docs")
-        guard let entries = try? FileManager.default.contentsOfDirectory(
+        // Throw rather than `return []`: an unreadable docs/ would otherwise
+        // report "no orphans" while having looked at nothing.
+        let entries = try FileManager.default.contentsOfDirectory(
             at: docsDir, includingPropertiesForKeys: nil
-        ) else { return [] }
+        )
 
         let candidates = entries
             .filter { $0.pathExtension == "md" }
@@ -459,11 +520,106 @@ final class DocClaimsAuditTest: XCTestCase {
         var tokens = Set<String>()
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            for token in identifiers(in: content) {
+            for token in identifiers(in: strippingCommentsAndStringLiterals(content)) {
                 tokens.insert(token)
             }
         }
+
+        // A DocC link may legitimately target something that is not a Swift
+        // declaration: a module (``ManifoldVoice``) or another article
+        // (``BuildingAChatUI``). Those names live in the directory layout, not
+        // in any `.swift` body — before comment-stripping they leaked into the
+        // index via `import` lines and prose in comments, which is not a
+        // guarantee worth relying on. Add them deliberately instead.
+        if let moduleEntries = try? FileManager.default.contentsOfDirectory(
+            at: sourcesDir, includingPropertiesForKeys: [.isDirectoryKey]
+        ) {
+            for entry in moduleEntries {
+                tokens.insert(entry.lastPathComponent)          // module name
+            }
+        }
+        if let articleEnumerator = FileManager.default.enumerator(
+            at: sourcesDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ) {
+            for case let url as URL in articleEnumerator where url.pathExtension == "md" {
+                tokens.insert(url.deletingPathExtension().lastPathComponent)  // article name
+            }
+        }
         return tokens
+    }
+
+    /// Removes `//` line comments, `/* … */` block comments, and string
+    /// literals from Swift source before tokenising.
+    ///
+    /// Without this the index is defeated by comment residue, which is the
+    /// dominant real-world case rather than a corner: a removal that leaves
+    /// behind a "this used to be `X`" doc comment keeps `X` in the index
+    /// forever, so a doc still claiming `X` exists passes. Measured on this
+    /// repo at the time of writing, `DefaultBackends` (retired) survived as a
+    /// token in **9** files and `StructuredHistoryReceiver` (removed — the type
+    /// that reddened the companion canary on 2026-07-20) in 1, all of them doc
+    /// comments. Removals that leave such a comment are exactly the removals
+    /// whose docs go stale, so the blind spot lined up precisely with the
+    /// failure mode.
+    ///
+    /// Approximate but conservative in the safe direction: over-stripping can
+    /// only cause a false positive (a loud, fixable failure), never a silent
+    /// pass.
+    static func strippingCommentsAndStringLiterals(_ source: String) -> String {
+        var out = ""
+        out.reserveCapacity(source.count)
+
+        var iterator = source.startIndex
+        var blockDepth = 0
+        var inLineComment = false
+        var inString = false
+        var inMultilineString = false
+
+        while iterator < source.endIndex {
+            let remaining = source[iterator...]
+
+            if inLineComment {
+                if source[iterator] == "\n" { inLineComment = false; out.append("\n") }
+                iterator = source.index(after: iterator); continue
+            }
+            if blockDepth > 0 {
+                if remaining.hasPrefix("*/") {
+                    blockDepth -= 1
+                    iterator = source.index(iterator, offsetBy: 2); continue
+                }
+                if remaining.hasPrefix("/*") {
+                    blockDepth += 1
+                    iterator = source.index(iterator, offsetBy: 2); continue
+                }
+                if source[iterator] == "\n" { out.append("\n") }
+                iterator = source.index(after: iterator); continue
+            }
+            if inMultilineString {
+                if remaining.hasPrefix("\"\"\"") {
+                    inMultilineString = false
+                    iterator = source.index(iterator, offsetBy: 3); continue
+                }
+                iterator = source.index(after: iterator); continue
+            }
+            if inString {
+                if source[iterator] == "\\" {
+                    // Skip the escape and whatever it escapes.
+                    iterator = source.index(iterator, offsetBy: min(2, source.distance(from: iterator, to: source.endIndex)))
+                    continue
+                }
+                if source[iterator] == "\"" { inString = false }
+                iterator = source.index(after: iterator); continue
+            }
+
+            if remaining.hasPrefix("//") { inLineComment = true; iterator = source.index(iterator, offsetBy: 2); continue }
+            if remaining.hasPrefix("/*") { blockDepth = 1; iterator = source.index(iterator, offsetBy: 2); continue }
+            if remaining.hasPrefix("\"\"\"") { inMultilineString = true; iterator = source.index(iterator, offsetBy: 3); continue }
+            if source[iterator] == "\"" { inString = true; iterator = source.index(after: iterator); continue }
+
+            out.append(source[iterator])
+            iterator = source.index(after: iterator)
+        }
+        return out
     }
 
     // MARK: - Extraction
@@ -497,7 +653,21 @@ final class DocClaimsAuditTest: XCTestCase {
     static func headingAnchors(of fileURL: URL) -> Set<String> {
         guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return [] }
         var anchors = Set<String>()
+        // Fence tracking is required, not cosmetic: `# comment` lines inside a
+        // ```bash block are not headings, and GitHub does not create anchors
+        // for them. Measured on this repo, 44 heading-shaped lines live inside
+        // fenced blocks (`# Pin to one model` in FUZZING.md, `# project.yml`,
+        // …). Harvesting them makes a link to a phantom anchor resolve, so the
+        // check would pass where GitHub 404s.
+        var openFence: String? = nil
         for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let fence = openFence {
+                if trimmed.hasPrefix(fence) { openFence = nil }
+                continue
+            }
+            if trimmed.hasPrefix("```") { openFence = "```"; continue }
+            if trimmed.hasPrefix("~~~") { openFence = "~~~"; continue }
             guard let heading = matches(of: #"^#{1,6}\s+(.*)$"#, in: line).first else { continue }
             // Strip inline formatting GitHub drops before slugging: link
             // syntax (keeping the label), code ticks, bold/italic asterisks.
@@ -515,6 +685,29 @@ final class DocClaimsAuditTest: XCTestCase {
             anchors.insert(githubSlug(text))
         }
         return anchors
+    }
+
+    /// How many headings in `fileURL` slug to `slug` — GitHub only mints a
+    /// `-N` suffix when a heading repeats.
+    static func headingOccurrences(of slug: String, in fileURL: URL) -> Int {
+        guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return 0 }
+        var count = 0
+        var openFence: String? = nil
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let fence = openFence {
+                if trimmed.hasPrefix(fence) { openFence = nil }
+                continue
+            }
+            if trimmed.hasPrefix("```") { openFence = "```"; continue }
+            if trimmed.hasPrefix("~~~") { openFence = "~~~"; continue }
+            guard let heading = matches(of: #"^#{1,6}\s+(.*)$"#, in: line).first else { continue }
+            var text = heading
+            text = replacing(#"\[([^\]]*)\]\([^)]*\)"#, with: "$1", in: text)
+            text = replacing("[`*]", with: "", in: text)
+            if githubSlug(text) == slug { count += 1 }
+        }
+        return count
     }
 
     /// GitHub's heading-slug algorithm: lowercase, drop everything that is not

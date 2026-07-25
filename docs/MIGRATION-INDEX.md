@@ -4,8 +4,12 @@
 **Status:** living
 
 Every retired or breaking-changed API in ManifoldKit gets a migration note
-(Principle 9). This is the complete list, newest first, with the release that
-shipped the change — start here when a version bump breaks your build.
+(Principle 9). This is the complete list, newest first, with **the release that
+shipped the note** — start here when a version bump breaks your build.
+
+For every row but one, the note shipped in the same commit as the change it
+documents, so that release is also when the API changed. The wake-word row is
+the exception and says so.
 
 Find your error message with a repo search across this directory; most notes
 are indexed by the literal compiler diagnostic you'll hit.
