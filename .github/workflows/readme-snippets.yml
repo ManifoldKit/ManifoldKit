@@ -67,9 +67,24 @@ on:
       - "scripts/extract-snippets-test.sh"
       - ".github/workflows/readme-snippets.yml"
 
+  # Merge queue. Required for this workflow to EVER become a required check:
+  # a required context that never reports on the queue's `merge_group` branch
+  # stalls the queue permanently (the failure mode documented in AGENTS.md under
+  # "Companion release PRs"). Adding the trigger is therefore the prerequisite
+  # step, and it is safe on its own — an extra green check run on the queue —
+  # so it can land before the branch-protection change rather than with it.
+  #
+  # merge_group carries no paths filter, so this runs on every queued batch
+  # regardless of the `paths:` above. That is the same belt-and-braces shape
+  # ci.yml relies on, and it is what makes the queue's result trustworthy.
+  merge_group:
+    types: [checks_requested]
+
 concurrency:
   group: readme-snippets-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Don't cancel a merge_group run mid-flight — that would stall the queue.
+  # Mirrors lint.yml, which is already a required check on the queue.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 permissions:
   contents: read
@@ -77,7 +92,10 @@ permissions:
 jobs:
   readme-snippets:
     # Skip on draft PRs — CI runs once the PR is marked ready.
-    if: github.event.pull_request.draft == false
+    # `github.event.pull_request` does not exist on a merge_group event, so the
+    # bare `…draft == false` form evaluates false there and the job SKIPS — the
+    # check would never report and the queue would hang. Same idiom as ci.yml:129.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
     # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
     # min) can stall the whole org queue if this job hangs (#2099 CI review).
