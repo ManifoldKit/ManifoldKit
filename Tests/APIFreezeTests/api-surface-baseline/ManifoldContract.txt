@@ -62,7 +62,7 @@ BackendName.wellKnown Var
 BackendVisionCapability Enum
 BackendVisionCapability conformances: Copyable,Escapable
 BackendVisionCapability.claudeMessagesSupportsImageInput(modelName:) Func
-BackendVisionCapability.llamaSupportsImageInput Var
+BackendVisionCapability.llamaSupportsImageInput(projectorStaged:engineSupportsImageEmbedding:) Func
 BackendVisionCapability.mlxSupportsImageInput(probedCapabilities:) Func
 BackendVisionCapability.ollamaSupportsImageInput(probedVision:) Func
 BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName:) Func
