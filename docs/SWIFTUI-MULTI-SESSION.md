@@ -224,18 +224,22 @@ On the **manual bootstrap path** (this section's `chatVM`), Foundation is
 **not** auto-selected. Two explicit wiring steps are required:
 
 1. Set `foundationModelProvider` so the view model can probe availability.
-2. Call `loadFoundationModelIfAvailable()` (or `autoSelectFirstRunModel()`,
-   which is gated on a first-launch `UserDefaults` flag) to trigger the
-   actual load.
+2. Call `loadFoundationModelIfAvailable()` to select Foundation **and**
+   `dispatchSelectedLoad()`.
 
 ```swift,no-build
-#if canImport(ManifoldFoundation)
+#if canImport(FoundationModels)
 if #available(macOS 26, iOS 26, *) {
     chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
     chatVM.loadFoundationModelIfAvailable()
 }
 #endif
 ```
+
+Do **not** substitute `autoSelectFirstRunModel()` for step 2 unless your
+UI also dispatches a load on selection change — that helper only sets
+`selectedModel` (and is first-launch-flag gated); it deliberately does not
+load (avoids a double-load race with view `onChange` handlers).
 
 Without those two steps on the manual path, `availableModels` will not
 contain the Foundation entry and the chat surface will show "Welcome —
@@ -454,10 +458,24 @@ struct MyChatApp: App {
             let sessionVM = SessionManagerViewModel()
             await sessionVM.configureAndLoad(bootstrap: bootstrap)
 
-            // --- Endpoint → model load (manual path, every cold start) ---
+            // 1) Restore or create the initial session *before* host selection.
+            // `switchToSession` applies the session's persisted model/endpoint
+            // IDs (and clears both when the session has none — typical for a
+            // brand-new session). Selecting Ollama *before* this call is wiped.
+            // Order mirrors `quickStart()` (session → select if still nil → load).
+            if let restored = await sessionVM.selectInitialSession() {
+                sessionVM.activeSession = restored
+                await chatVM.switchToSession(restored)
+            } else if let fresh = try? await sessionVM.createSession() {
+                sessionVM.activeSession = fresh
+                await chatVM.switchToSession(fresh)
+            }
+
+            // 2) Endpoint → model load (manual path, every cold start).
             // Unlike quickStart() relaunch, manual bootstrap does NOT auto-select
             // the first stored cloud endpoint. Insert alone leaves the composer
-            // inert. Re-run this block on first launch *and* relaunch.
+            // inert. Only bind when *both* model and endpoint are still nil so
+            // a restored Foundation/local selection is not clobbered by Ollama.
             var endpoints = try await bootstrap.endpointStore.fetchEndpoints()
             if endpoints.isEmpty {
                 let ollama = APIEndpointRecord(
@@ -471,20 +489,11 @@ struct MyChatApp: App {
                 endpoints = try await bootstrap.endpointStore.fetchEndpoints()
             }
             chatVM.setAvailableEndpoints(endpoints)
-            if chatVM.selectedEndpoint == nil {
+            if chatVM.selectedModel == nil, chatVM.selectedEndpoint == nil {
                 chatVM.selectedEndpoint = endpoints.first
             }
             if chatVM.selectedEndpoint != nil {
                 await chatVM.loadSelectedEndpoint()
-            }
-
-            // Restore or create the initial session.
-            if let restored = await sessionVM.selectInitialSession() {
-                sessionVM.activeSession = restored
-                await chatVM.switchToSession(restored)
-            } else if let fresh = try? await sessionVM.createSession() {
-                sessionVM.activeSession = fresh
-                await chatVM.switchToSession(fresh)
             }
 
             self.bootstrap = bootstrap

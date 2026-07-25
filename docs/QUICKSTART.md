@@ -70,7 +70,7 @@ struct MyChatApp: App {
 }
 ```
 
-Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
+Run the app. `quickStart()` compiles, launches, and renders a usable composer. On macOS 26 / iOS 26 with Apple Intelligence available it also **Foundation-first-selects and dispatches a load** before returning (see [What "available immediately" actually means](#what-available-immediately-actually-means)). On older OSes or when Foundation is unavailable, seed a starter model / cloud endpoint — [First-launch backend selection](#first-launch-backend-selection).
 
 ## Required Info.plist keys for ChatView
 
@@ -127,9 +127,15 @@ struct SeedSessionExample {
 
 ## First-launch backend selection
 
-`quickStart()` registers every compiled-in backend with the inference service, but **it does not pick one for you**. The composer is enabled (a session exists), but no model is loaded — `ChatViewModel.isModelLoaded` is `false`, the composer placeholder reads "No model loaded", and the empty-state surfaces a "Select Model" button that flips the `showModelManagement` binding (see [`showModelManagement` binding](#showmodelmanagement-binding) below — by itself the binding doesn't present anything).
+`quickStart()` registers every compiled-in backend, then runs a selection policy and **dispatches** a load when something is selectable:
 
-This section shows the four documented paths to get a model loaded on first launch — starting with the new zero-setup seed path. To react to the user's choice (persist it, refresh UI) or to populate your own discovery list, see the `ModelRegistry.onSelectionChanged` / `foundationModelProvider` and `CuratedModel.all` rows in [Host configuration seams](#host-configuration-seams).
+1. **Foundation-first** when Apple Intelligence is available (macOS 26 / iOS 26+).
+2. Else the first **on-disk local model** a registered companion backend can load.
+3. Else the first **stored cloud/LAN endpoint** (relaunch path when endpoints already exist).
+
+When none of those apply, the composer is enabled (a session exists) but inert — `isModelLoaded` is `false`, the placeholder reads "No model loaded", and the empty-state "Select Model" button flips `showModelManagement` (see [`showModelManagement` binding](#showmodelmanagement-binding) — by itself the binding doesn't present anything).
+
+This section covers the paths that fill that gap on first launch (starter seed download, post-return Ollama seed, manual Foundation re-enable). To react to the user's choice or populate your own discovery list, see the `ModelRegistry.onSelectionChanged` / `foundationModelProvider` and `CuratedModel.all` rows in [Host configuration seams](#host-configuration-seams).
 
 ### Seeding a starter model (recommended for new apps)
 
@@ -208,15 +214,18 @@ If no Foundation / on-disk / stored-endpoint model is selected, `ChatView`'s wel
 Use the explicit two-step when you are **not** on `quickStart()` (manual `ManifoldBootstrap.build`), or when you need to **re-select Foundation after session churn** (create/switch can leave `isModelLoaded` stale relative to the engine — re-call after minting a session if `sendMessage` fails with "No model loaded"):
 
 ```swift,no-build
-#if canImport(ManifoldFoundation)
+// Gate on FoundationModels (the Apple framework), not ManifoldFoundation —
+// the ManifoldFoundation module always compiles; FoundationBackend only exists
+// when FoundationModels is present (matches QuickStart.swift).
+#if canImport(FoundationModels)
 if #available(macOS 26, iOS 26, *) {
     chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
-    chatVM.loadFoundationModelIfAvailable()
+    chatVM.loadFoundationModelIfAvailable()  // select + dispatchSelectedLoad
 }
 #endif
 ```
 
-`loadFoundationModelIfAvailable()` is a no-op when the provider returns `false` or when no Foundation entry exists in `availableModels`, so it's safe to call unconditionally on supported OSes.
+`loadFoundationModelIfAvailable()` is a no-op when the provider returns `false` or when no Foundation entry exists in `availableModels`. Prefer it over `autoSelectFirstRunModel()` when you need a load — the latter only *selects* Foundation (first-launch flag gated) and expects a view-layer `onChange` / `dispatchSelectedLoad` to actually load.
 
 ### Seeding an Ollama endpoint
 
