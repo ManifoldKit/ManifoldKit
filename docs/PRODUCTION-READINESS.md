@@ -206,7 +206,7 @@ explicitly opts out of that guarantee (e.g. a throwaway spike product tagged
 
 ## Open questions
 
-Two placements in this page are judgment calls this audit doesn't fully
+Three placements in this page are judgment calls this audit doesn't fully
 settle — flagged rather than silently resolved:
 
 1. **`ManifoldSkills` is Experimental, but `ManifoldKit` (Core) re-exports
@@ -228,6 +228,22 @@ settle — flagged rather than silently resolved:
    but that placement will keep resting on documentation rather than a gate
    until the tooling limitation is fixed or the module is restructured so
    its seam compiles unconditionally.
+3. **Tier 2's stated criterion isn't met by every Tier 2 member.** The tier
+   is defined above as receiving "the same full release-gated verification
+   as Core," but two of its members don't, today: `ManifoldServerKit` has no
+   api-digester coverage at all (see item 2 above), and `ManifoldFuzz` is
+   exercised by neither the cold-start gates nor the release-time demo-app
+   build gate — nothing in the gate suite links or imports it the way the
+   demo app links `ManifoldUIModelManagement`/`ManifoldHuggingFace`/`ManifoldVoice`.
+   The property `ManifoldFuzz`'s row cites (tracked in the public-surface
+   baseline, not on the § 7 exemption roster) is real, but it doesn't
+   discriminate Tier 2 from Tier 3b — every Tier 3b product is tracked in
+   that same baseline too (§ 7 says so explicitly). So in practice, the
+   operative test this page actually applies for these two products is
+   **roster membership and absence from an exemption list**, not gate
+   coverage — the tier's own stated bar. This is a gap in what the tier
+   promises versus what's verified, not a reason to move either product;
+   recorded here rather than silently glossed over.
 
 ## Derivation & governance
 

@@ -8,12 +8,19 @@ import XCTest
 ///
 /// `docs/PRODUCTION-READINESS.md` assigns every published `.library` product
 /// to exactly one of four maturity tiers (Core guarantees / Supported
-/// first-party integrations / Experimental / Labs), each marked by a
-/// `<!-- TIER-MANIFEST:<id> --> ... <!-- /TIER-MANIFEST -->` block — a
-/// bullet list of backtick-quoted product names directly under each tier
-/// heading. This is the machine-checked canonical list; the prose table
-/// underneath restates the same names with rationale for human readers, but
-/// only the `TIER-MANIFEST` blocks are parsed here.
+/// first-party integrations / Experimental / Labs). Each tier — and each
+/// labeled sub-tier, since Tier 3 splits into 3a "zero-adopter experimental"
+/// and 3b "semver-exempt developer tooling" for reasons documented in the
+/// doc itself — carries its own
+/// `<!-- TIER-MANIFEST:<id> --> ... <!-- /TIER-MANIFEST -->` block: a bullet
+/// list of backtick-quoted product names directly under that (sub-)tier's
+/// heading. As of this writing that's five blocks for four tiers. This is
+/// the machine-checked canonical list; the prose table underneath restates
+/// the same names with rationale for human readers, but only the
+/// `TIER-MANIFEST` blocks are parsed here. The block/tier count is not
+/// itself asserted — the audit is agnostic to how many blocks exist or what
+/// IDs they use; it only requires every `.library` product to land in
+/// exactly one.
 ///
 /// Two invariants, mirroring the doc's own claim ("exhaustive +
 /// non-overlapping"):
