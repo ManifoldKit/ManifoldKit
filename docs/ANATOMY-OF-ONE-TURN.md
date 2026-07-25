@@ -28,7 +28,7 @@ is far more stable than any specific line number.
 | `TurnInput` | The value `ConversationRuntime.processTurn` accepts — a `TurnKind` (`.send` / `.regenerate` / `.edit` / `.branch`) plus session id and `TurnConfig`. |
 | `TurnKind` | Which of the four turn shapes this is. `SingleTurnDriver` switches on it once and never again. |
 | `ConversationStreamHandle` | An opaque token identifying one in-flight generation stream, returned by `processTurn` and passed back into `cancel(_:)`. |
-| `PromptSlot` | One named block of system-prompt content (persona instructions, RAG context, tool guidance) contributed by a `HistoryProvider`/`ContextProvider` and folded into the composed system prompt. |
+| `PromptSlot` | One named block of system-prompt content (persona instructions, RAG context, tool guidance) contributed by a `HistoryProvider`/`PromptContextProvider` and folded into the composed system prompt. |
 | `StructuredMessage` | The wire-shaped message (`role` + `[MessagePart]`) that actually crosses to a backend — distinct from the persisted `ChatMessage` and the cloud-wire payload types (see AGENTS.md's message-types table). |
 | `GenerationEvent` | The engine-layer event vocabulary (`ManifoldInference`): tokens, thinking, tool calls, completion. |
 | `ConversationEvent` | The runtime-layer event vocabulary (`ManifoldRuntime`), a superset: everything `GenerationEvent` has, plus persistence identity (`messageInserted`/`messageRemoved`), history shaping, compression, and multi-agent handoff. |
@@ -44,7 +44,7 @@ cancellation that arrives mid-assembly and is checked too late).
 **Assembly** builds the system prompt, gathers RAG/tool/agent context, and
 constructs the `[StructuredMessage]` history that will cross the wire. It
 touches the persistence store (for prior history and session state) but not
-the network. It can fail (a `ContextProvider` throwing, a RAG retrieval
+the network. It can fail (a `PromptContextProvider` throwing, a RAG retrieval
 error) and those failures are reported as `ConversationError` before any
 token is requested.
 

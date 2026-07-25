@@ -81,6 +81,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 
 | Doc | Covers |
 |-----|--------|
+| [**MIGRATION-INDEX.md**](MIGRATION-INDEX.md) | **Every migration note, newest first, with the release that shipped it.** Start here when a version bump breaks your build — the individual notes below are the highlights, not the full set. |
 | [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits, the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. **Shim sections are historical** — `ManifoldBackends` / `DefaultBackends` are gone; see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md). |
 | [**MIGRATION-shims-retired.md**](MIGRATION-shims-retired.md) | **Current** import/registrar model after P7 removed `ManifoldBackends` / `DefaultBackends` / `ManifoldCloud`. Read this before trusting any 0.48 "still compiles" shim note. |
 | [MIGRATION-api-demotions-0.71.md](MIGRATION-api-demotions-0.71.md) | Public→package demotions in the 0.71 train. |
@@ -120,5 +121,7 @@ and forward-looking design notes. Most are also linked from
 |-----|--------|
 | [SCOPE_DECISION.md](SCOPE_DECISION.md) | Scope rationale for what's in vs. out. |
 | [QA-PRACTICES.md](QA-PRACTICES.md) | The four cross-cutting QA practices (DX walkthroughs, audit tests, the sabotage suite, cold-start gates). |
+| [QA-EVALUATION-PROCESS.md](QA-EVALUATION-PROCESS.md) | How a release candidate is evaluated before it ships — the hand-run checks that sit outside `swift test`. |
+| [UI-REFRESH-2026.md](UI-REFRESH-2026.md) / [UI-REFRESH-2026-PLAN.md](UI-REFRESH-2026-PLAN.md) | The 2026 UI refresh: the design rationale and the unit-by-unit delivery plan (issue #2307). Consumer-facing change inventory is in [MIGRATION-ui-refresh.md](MIGRATION-ui-refresh.md). |
 | [wwdc-2026-trait-stubs.md](wwdc-2026-trait-stubs.md) | The pre-wired stub traits for whatever Apple ships next. |
 | [plans/](plans) | In-flight release plans. |

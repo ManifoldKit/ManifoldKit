@@ -314,7 +314,7 @@ ManifoldVoice              ManifoldUIModelManagement
                 (MCP descriptors, client, tool bridge)
 ```
 
-The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) and `ManifoldMCP` depend on `ManifoldInference` **directly**, not via `ManifoldRuntime` — that keeps them free of SwiftData so host apps can wire backends or MCP into a non-SwiftData runtime. The full target list lives in [CLAUDE.md → Targets](CLAUDE.md#targets).
+The backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) and `ManifoldMCP` depend on `ManifoldInference` **directly**, not via `ManifoldRuntime` — that keeps them free of SwiftData so host apps can wire backends or MCP into a non-SwiftData runtime. The full target list lives in [AGENTS.md → Targets](AGENTS.md#targets).
 
 ### Turn-loop orchestration
 
