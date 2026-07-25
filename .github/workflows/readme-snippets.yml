@@ -74,16 +74,30 @@ on:
   # step, and it is safe on its own — an extra green check run on the queue —
   # so it can land before the branch-protection change rather than with it.
   #
-  # merge_group carries no paths filter, so this runs on every queued batch
-  # regardless of the `paths:` above. That is the same belt-and-braces shape
-  # ci.yml relies on, and it is what makes the queue's result trustworthy.
+  # merge_group carries no paths filter, so this runs on EVERY queued batch
+  # regardless of the `paths:` above — including batches that touch no docs. That
+  # is deliberate and matches ci.yml:88 ("the queue branch is the real pre-merge
+  # state, so we always validate it"), but it is not free: this is a ~14-min
+  # macos-15 job, and macOS runners are org-capped at ~5 concurrent, so each batch
+  # now holds a second macOS slot alongside ci.yml's required `test`.
+  #
+  # That cost only buys something once `readme-snippets` is actually required —
+  # until then the queue does not wait on it and the result is discarded. So the
+  # interim window should be SHORT: land this, confirm the check reports on a real
+  # merge_group run, then add the required context. Leaving it un-required
+  # indefinitely is the worst of both (full cost, no gate), and a failure on an
+  # already-merged batch head surfaces as a red check on main that nothing gated
+  # on — the red-but-not-blocking conditioning behind #2274 / #2287.
   merge_group:
     types: [checks_requested]
 
 concurrency:
   group: readme-snippets-${{ github.event_name }}-${{ github.ref }}
-  # Don't cancel a merge_group run mid-flight — that would stall the queue.
-  # Mirrors lint.yml, which is already a required check on the queue.
+  # Mirrors lint.yml for consistency. Note this is INERT for merge_group: the
+  # group key already includes `github.ref`, which for a queue batch is the unique
+  # `refs/heads/gh-readonly-queue/main/pr-N-<sha>` (ci.yml:113 documents the same),
+  # so two batches never share a group and cancel-in-progress is never consulted.
+  # Kept because the PR-side behaviour (force-push collapse) is what it is for.
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 permissions:
@@ -92,9 +106,19 @@ permissions:
 jobs:
   readme-snippets:
     # Skip on draft PRs — CI runs once the PR is marked ready.
-    # `github.event.pull_request` does not exist on a merge_group event, so the
-    # bare `…draft == false` form evaluates false there and the job SKIPS — the
-    # check would never report and the queue would hang. Same idiom as ci.yml:129.
+    # The `github.event_name != 'pull_request'` clause states the intent
+    # explicitly. It is NOT load-bearing, contrary to what this repo asserted in
+    # four places (ci.yml, build-modes.yml, #2065's commit message, and an earlier
+    # draft of this file): the claim was that a bare `…draft == false` evaluates
+    # FALSE on a non-PR event and skips the job. Measured, it does not — an absent
+    # property yields null, GitHub coerces null and false alike to 0, so
+    # `null == false` is TRUE and the bare form RUNS. A throwaway push-triggered
+    # workflow with both forms was dispatched to settle it: both jobs ran.
+    #
+    # No run in this repo could ever have falsified the claim, because every
+    # workflow with a non-PR trigger already used the compound form. Keep the
+    # compound form — it is correct under either reading and says what it means —
+    # but do not repeat the mechanism as though it were the reason.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
     # macOS jobs are org-capped at ~5 concurrent; an unbounded default (360
