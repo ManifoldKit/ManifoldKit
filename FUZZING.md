@@ -342,13 +342,13 @@ All ten single-turn detectors are implemented and covered by the calibration cor
 | ID | Looks for |
 |----|-----------|
 | `turn-boundary-kv-state` | KV-cache residue bleeding across turn boundaries in multi-turn sessions. |
-| `cancellation-race` | Output emitted after a cancellation request is acknowledged. |
+| `cancellation-race` | Turn 1's own tail leaking verbatim into turn 2 on a capture where a `.stop` step sits between them. Despite the name, `SessionScriptRunner` is strictly sequential — a `.stop` step always lands after the preceding turn has already completed — so this does not today exercise a live cancellation race (see #2361); it only catches turn-boundary residue on stop-adjacent captures. |
 | `session-context-leak` | Context from one session appearing in a different session's output. |
 
 ### Infrastructure
 
 - **`--shrink`** — minimise a failing prompt to the smallest input that still fires the detector.
-- **Multi-turn** — opt-in via `--session-scripts`. The harness drives bundled `SessionScript` JSONs through `InferenceService.enqueue`, exercising the queue, cancellation, and latest-wins load paths that single-turn fuzzing can't reach. Three multi-turn detectors ship alongside: `turn-boundary-kv-state`, `cancellation-race`, and `session-context-leak`. Single-turn remains the default ([#492](https://github.com/ManifoldKit/ManifoldKit/issues/492)).
+- **Multi-turn** — opt-in via `--session-scripts`. The harness drives bundled `SessionScript` JSONs through `InferenceService.enqueue`, exercising the queue and latest-wins load paths that single-turn fuzzing can't reach. It does **not** exercise cancellation-while-generating: `SessionScriptRunner.execute` is strictly sequential, so a `.stop` step always runs after the preceding turn has already finished — see #2361, which found that gap. Three multi-turn detectors ship alongside: `turn-boundary-kv-state`, `cancellation-race`, and `session-context-leak`. Single-turn remains the default ([#492](https://github.com/ManifoldKit/ManifoldKit/issues/492)).
 - **Slash command** — `/fuzz` shortcut to run `scripts/fuzz.sh` from inside Claude Code.
 - **Multi-backend factory fleet** — `FuzzRunner` accepts a `FuzzBackendFactory` protocol (landed via [#496](https://github.com/ManifoldKit/ManifoldKit/issues/496)) and `FoundationFuzzFactory` shipped, but a true all-backends campaign was never implemented ([#501](https://github.com/ManifoldKit/ManifoldKit/issues/501)) — the unwired `--backend all` placeholder value was removed in v0.64, and the Llama/MLX factories moved to the companion packages (v0.48, #1749), so an in-repo campaign could only ever cover the local families anyway. Run one backend per campaign.
 

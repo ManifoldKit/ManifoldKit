@@ -481,3 +481,5 @@ API breakage: func BackendCapabilities.updating(supportedParameters:maxContextTo
 API breakage: constructor MCPSamplingRequest.init(messages:modelPreferences:systemPrompt:maxTokens:temperature:stopSequences:) has been removed
 API breakage: constructor MCPServerDescriptor.init(id:displayName:transport:authorization:toolNamespace:resourceURL:initializationTimeout:requestTimeout:dataDisclosure:toolFilter:approvalPolicy:allowsSTDIOTransport:isUnauthenticatedUnsafe:allowsSampling:) has been removed
 API breakage: constructor MCPClientConfiguration.init(sseStreamLimits:requestTimeout:maxConcurrentRequestsPerSession:maxMessageBytes:maxJSONNestingDepth:keychain:lifecyclePolicy:networkPathObserver:lifecycleObserver:samplingHandler:) has been removed
+API breakage: constructor CancellationRaceDetector.init(minTokenChars:) has been removed
+API breakage: var CancellationRaceDetector.minTokenChars has been removed
