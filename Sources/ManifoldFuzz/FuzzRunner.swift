@@ -401,7 +401,15 @@ public struct FuzzReport: Sendable {
     /// need, kept in one place — extracted as a pure function (ManifoldKit
     /// #2367 review) specifically so it can be unit-tested exhaustively
     /// without spawning the `fuzz-chat` process.
-    public static func exitCode(for report: FuzzReport) -> Int32 {
+    ///
+    /// `package`, not `public` (AGENTS.md's default): its only consumers are
+    /// `fuzz-chat` and `ManifoldFuzzTests`, both in this package. manifold-mlx's
+    /// `fuzz-mlx` driver imports `ManifoldFuzz` cross-package and reads
+    /// `FuzzReport`'s other members, but has its own "findings are DATA — exit
+    /// 0 regardless" exit policy and calls neither `isInert` nor this — so
+    /// there is no cross-package consumer to keep this public for. Widen it
+    /// later, with a stated reason, if one appears.
+    package static func exitCode(for report: FuzzReport) -> Int32 {
         (report.isInert || report.totalRuns == 0) ? 1 : 0
     }
 }
