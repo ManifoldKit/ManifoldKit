@@ -522,7 +522,15 @@ for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"}; do
     # definition. Data-driven now, rather than a second hand-kept list: as the
     # ratchet drains a doc's bare count to 0, this assertion starts applying to
     # it automatically.
-    [[ "$(baseline_field "$doc_rel" 2)" != "0" ]] && continue
+    # Hoisted to an assignment, NOT inlined in the `[[ ]]` below. baseline_field
+    # exits 2 on a non-numeric count, and that exit only propagates through an
+    # assignment (`set -e` fires on a failed command substitution). Inside a
+    # `[[ ]]` test the failure is swallowed and the branch is taken anyway — so
+    # the inline form left this call site fail-open on exactly the junk value the
+    # validation was added to catch, while the ratchet's own call sites were
+    # protected. Verified both shapes directly under /bin/bash.
+    doc_baseline_bare=$(baseline_field "$doc_rel" 2)
+    [[ "$doc_baseline_bare" != "0" ]] && continue
     doc_slug="$(slug_for "$doc_rel")"
     # `find`, not `ls`: a no-match glob makes `ls` exit non-zero, and under
     # `set -euo pipefail` that aborts the script before this check can report —
