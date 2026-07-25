@@ -1,0 +1,7 @@
+# NOTES — run-3 (manual bootstrap + Ollama)
+
+- **Backend / path**: Manual `ManifoldBootstrap.build` + explicit `OllamaBackends`/`CloudSaaSBackends`/`FoundationBackends.register`, Ollama endpoint seed (`llama3.1:8b` @ localhost:11434), multi-session UI (`SessionListView` + `ChatView` + `SessionManagerViewModel`). Avoided `quickStart()` by design.
+- **What worked smoothly**: Package path dep with `name:`; umbrella + `ManifoldUIModelManagement` products; `configureAndLoad` / `selectInitialSession` / session restore (#1464 guidance); SwiftData store under Application Support; `ChatView` + streaming send; generation probe returned `DX_OK` in ~1s once model loaded; persistence across quit+relaunch (same session UUID, message rows retained).
+- **Surprising**: "Full recipe" in SWIFTUI-MULTI-SESSION §6 does **not** wire first-launch (or relaunch) model load for a freshly seeded Ollama endpoint — must borrow `loadSelectedEndpoint` / `selectedEndpoint` from QUICKSTART. Manual path is not feature-parity with `quickStart` on cloud endpoint auto-selection.
+- **Docs quality**: High once stitched; each piece is accurate, but the happy path is split across three docs + MinimalExample only shows `quickStart`.
+- **Overall impression**: SwiftUI DX is strong for the drop-in `ChatView` / session sidebar surface. Manual bootstrap is well-documented for assembly and persistence, weaker on "make Ollama actually load after seed." Persistence just works when you follow `configureAndLoad` + restore-before-mint.
