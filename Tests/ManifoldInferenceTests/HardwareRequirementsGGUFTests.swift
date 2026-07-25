@@ -98,6 +98,40 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertFalse(paths.contains { $0.contains("/download/") })
     }
 
+    func test_findGGUFModel_rejectedOnlyTree_doesNotReportDiscoveredOnNil() {
+        // Name-selector miss with loadable models present must stay quiet
+        // and must not print skipMessage's "Discovered N" success line.
+        // Rejected-only trees are the sole stderr case (acceptedCount == 0).
+        _ = createGGUFFile("loadable.gguf", size: 12)
+        _ = createGGUFFile("too-small.gguf", size: 1)
+
+        let nameMiss = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "mistral",
+            minimumModelSize: 10
+        )
+        XCTAssertNil(nameMiss)
+
+        // Rejected-only: nothing meets the size floor.
+        let onlyTinyRoot = tempDirectory.appendingPathComponent("tiny-only", isDirectory: true)
+        try? fm.createDirectory(at: onlyTinyRoot, withIntermediateDirectories: true)
+        fm.createFile(
+            atPath: onlyTinyRoot.appendingPathComponent("tiny.gguf").path,
+            contents: Data(count: 1)
+        )
+        let rejectedOnly = HardwareRequirements.discoverGGUFModelsWithDiagnostics(
+            in: [onlyTinyRoot],
+            minimumModelSize: 10
+        )
+        XCTAssertTrue(rejectedOnly.models.isEmpty)
+        XCTAssertEqual(rejectedOnly.diagnostics.acceptedCount, 0)
+        XCTAssertGreaterThan(rejectedOnly.diagnostics.rejectedGGUFFileCount, 0)
+        XCTAssertTrue(
+            rejectedOnly.diagnostics.skipMessage.contains("none were loadable"),
+            rejectedOnly.diagnostics.skipMessage
+        )
+    }
+
     func test_discoverGGUFModelsWithDiagnostics_distinguishesRejectedFromEmpty() {
         // A .gguf that fails the minimum size bound is "found but not loadable".
         _ = createGGUFFile("too-small.gguf", size: 1)

@@ -42,7 +42,7 @@ missing argument labels 'projectorStaged:engineSupportsImageEmbedding:' in call
 
 Pass real probes from the backend that owns mmproj staging and embedding:
 
-```swift
+```swift,no-build:API-shape fragment for BackendCapabilities construction, not a standalone program
 // Until the engine can embed images, keep both halves false — same runtime
 // behaviour as the old constant, but compiles against the new API:
 supportsVision: BackendVisionCapability.llamaSupportsImageInput(

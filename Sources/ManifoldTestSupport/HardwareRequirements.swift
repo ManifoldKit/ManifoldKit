@@ -450,12 +450,14 @@ public enum HardwareRequirements {
             nameContains: substring,
             environment: environment
         )
-        // When discovery found .gguf files that all failed validation, surface
-        // that on stderr so logs distinguish "no models on disk" from "found
-        // files but none loadable" (#2384). Quiet when the tree is simply empty
-        // (the common XCTSkip path). Callers that want a typed message should
-        // use ``discoverGGUFModelsWithDiagnostics`` directly.
-        if selected == nil, diagnostics.rejectedGGUFFileCount > 0 {
+        // Only when discovery found .gguf files and *none* were loadable —
+        // not when loadable models exist but a name selector missed (that
+        // path still returns nil without a false "Discovered N" log line).
+        // Quiet when the tree is simply empty (common XCTSkip). Typed skip
+        // messages: ``discoverGGUFModelsWithDiagnostics``.
+        if selected == nil,
+           diagnostics.acceptedCount == 0,
+           diagnostics.rejectedGGUFFileCount > 0 {
             fputs("HardwareRequirements.findGGUFModel: \(diagnostics.skipMessage)\n", stderr)
         }
         return selected
