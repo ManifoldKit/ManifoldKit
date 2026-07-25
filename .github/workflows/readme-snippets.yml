@@ -33,14 +33,16 @@ on:
       #   - The scripts the gate runs (including check-readme.sh, which the
       #     workflow's pre-flight step invokes — leaving the script off the
       #     filter would mean an edit to the lint silently bypasses the gate).
-      # The QUICKSTART glob + WHY-MANIFOLDKIT.md + SWIFTUI-MULTI-SESSION.md +
-      # RECIPES.md match extract-snippets.sh's actual coverage (every
-      # docs/QUICKSTART*.md is swept).
+      # Coverage is derived by extract-snippets.sh from README.md, AGENTS.md
+      # and docs/*.md (minus its reasoned opt-out list), so this filter is a
+      # superset rather than a hand-kept echo of it. The previous filter globbed
+      # docs/QUICKSTART*.md while the extractor used an explicit list missing
+      # QUICKSTART-IMAGE-GEN.md — so editing that file triggered this ~14-min
+      # job and compiled nothing from it. A superset can over-trigger; it can
+      # never silently under-cover.
       - "README.md"
-      - "docs/QUICKSTART*.md"
-      - "docs/WHY-MANIFOLDKIT.md"
-      - "docs/SWIFTUI-MULTI-SESSION.md"
-      - "docs/RECIPES.md"
+      - "AGENTS.md"
+      - "docs/**/*.md"
       - "Sources/**/*.docc/**/*.md"
       - "Sources/ManifoldKit/**"
       - "Sources/ManifoldUI/**"

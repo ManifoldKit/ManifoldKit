@@ -11,7 +11,7 @@ The types in this guide live in `ManifoldInference`. The umbrella `import Manifo
 
 A tool is a `ToolDefinition` (the JSON-Schema contract the model sees) paired with an executor that runs it. The protocol is `ToolExecutor`, but most callers use `TypedToolExecutor`, which decodes JSON arguments into a Swift type, runs a handler, and encodes the result back to JSON.
 
-```swift,no-build
+```swift
 import ManifoldInference
 
 struct WeatherArgs: Decodable, Sendable { let city: String }
@@ -47,14 +47,14 @@ let weather = TypedToolExecutor<WeatherArgs, WeatherResult>(
 
 A `ToolRegistry` holds executors keyed by name (case-insensitive). Register on construction or with `register(_:)`:
 
-```swift,no-build
+```swift,no-build:step in a narrative walkthrough; builds on identifiers defined in earlier blocks
 let registry = ToolRegistry()
 registry.register(weather)
 ```
 
 Wire the registry into an `InferenceService` at init time:
 
-```swift,no-build
+```swift,no-build:step in a narrative walkthrough; builds on identifiers defined in earlier blocks
 let inference = InferenceService(toolRegistry: registry)
 OllamaBackends.register(with: inference)
 CloudSaaSBackends.register(with: inference)
@@ -67,7 +67,7 @@ The coordinator re-reads the registry on every turn, so you can `register(_:)` m
 
 For the queued chat path, put `registry.definitions` on a `GenerationConfig`:
 
-```swift,no-build
+```swift,no-build:step in a narrative walkthrough; builds on identifiers defined in earlier blocks
 var config = GenerationConfig(...)
 config.tools = registry.definitions
 config.toolChoice = .auto          // .auto | .none | .required | .tool(name:)
@@ -102,7 +102,7 @@ The complete list is in [`Sources/ManifoldContract/GenerationEvent.swift`](../So
 
 Long-running tools (downloads, paginated fetches, multi-step queries) can report liveness without breaking the atomic-result contract. Override `executeStreaming(arguments:)` to yield `ToolExecutionEvent.progress(message:fraction:)` chunks, then exactly one `.completed(ToolResult)`:
 
-```swift,no-build
+```swift,no-build:step in a narrative walkthrough; builds on identifiers defined in earlier blocks
 struct BulkFetchTool: ToolExecutor {
     let definition: ToolDefinition
 
@@ -146,7 +146,7 @@ Return a `ToolResult` with an explicit `errorKind` when a failure is meaningful 
 
 Pure-read tools auto-approve. A tool that writes a file, sends a message, or calls a paid API should set `requiresApproval` to `true`:
 
-```swift,no-build
+```swift,no-build:step in a narrative walkthrough; builds on identifiers defined in earlier blocks
 let sendTool = TypedToolExecutor<SendArgs, SendResult>(
     definition: ToolDefinition(name: "send_email", description: "Sends an email.", parameters: schema),
     requiresApproval: true
@@ -159,7 +159,7 @@ The orchestrator then consults a `ToolApprovalGate` before dispatching. The defa
 
 Distinct from approval, a `PreToolUseHook` runs synchronously before dispatch and can rewrite arguments or block the call. The closure shape is:
 
-```swift,no-build
+```swift,no-build:step in a narrative walkthrough; builds on identifiers defined in earlier blocks
 let hook: PreToolUseHook = { toolName, arguments, requestGroupID in
     if isDangerous(arguments) {
         return .block(reason: "blocked by policy")

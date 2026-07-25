@@ -136,7 +136,7 @@ conversation runtime, and the model container in the right order. Because it
 is `async`, wire it from a `.task { }` on the launch view — **not** from
 `App.init()`, which is synchronous and would deadlock:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 import SwiftUI
 import SwiftData
 import ManifoldKit
@@ -278,7 +278,7 @@ open while you wire the real app.
 The user-facing API is **`vm.sendMessage(_:)`** (NOT `vm.send(_:)` — that name
 does not exist on `ChatViewModel`):
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 let reply = try await vm.sendMessage("hi")
 print(reply.content)
 ```
@@ -287,7 +287,7 @@ For scripted drivers / integration tests, `sendMessage(_:)` returns the
 completed `ChatMessage`. Polling `vm.lastTurnState` after the awaited call
 inspects the same outcome:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 await vm.sendMessage()                  // uses vm.inputText + draftAttachments
 switch vm.lastTurnState {
 case .completed(let record): /* use record */
@@ -310,7 +310,7 @@ via `BackendName(rawValue:)` without breaking every downstream exhaustive
 `switch`. Six well-known identifiers ship as `public static let` constants.
 Compare via the typed accessor — never against raw string literals:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 import ManifoldKit   // re-exports ManifoldInference
 
 if vm.activeBackendName == BackendName.foundation.rawValue {
@@ -337,7 +337,7 @@ available as `.allCases` for source compatibility with the pre-#1742 enum):
 0.18 strings, so apps reading already-persisted backend names off disk migrate
 in place:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 if let backend = BackendName.parse(persisted) {
     // 0.18 "Apple" and 0.19 "foundation" both map to .foundation here.
 }
@@ -376,7 +376,7 @@ built-in per-kind view — the finer-grained sibling of `.chatMessageRenderer(_:
 **The built-in styles are the new look; `.classic` restores the pre-refresh
 appearance in one call:**
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 ChatView(showModelManagement: $show)
     .classicManifoldTheme()
 ```
@@ -400,7 +400,7 @@ never the reverse), so the seam is closure-injected exactly like
 Register an executor with `ToolRegistry`, then thread the registry's
 `definitions` into `GenerationConfig.tools`:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 let registry = ToolRegistry()
 registry.register(MyWeatherTool())
 
@@ -427,7 +427,7 @@ on every consumer:
 )
 ```
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 @ToolSchema
 struct WeatherArguments: Decodable, Sendable {
     /// City name
@@ -446,7 +446,7 @@ let tool = ToolDefinition(
 Without `--traits Macros`, declare the parameter schema by hand. `JSONSchemaValue`
 is a recursive enum (`.string`, `.number`, `.bool`, `.null`, `.array`, `.object`):
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 let tool = ToolDefinition(
     name: "get_weather",
     description: "Returns weather for a city.",
@@ -471,7 +471,7 @@ per request. Curate per call. Cloud backends handle 20+ tools fine.
 Cloud endpoints (OpenAI, Claude, Ollama, LM Studio, custom) flow through
 `APIEndpointRecord` values. The 5-step canonical flow:
 
-```swift
+```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
 import ManifoldInference
 
 // 1. Build the record.

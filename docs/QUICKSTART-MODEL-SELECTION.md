@@ -23,7 +23,7 @@ synchronous call.
 
 ## The list is the product
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 @MainActor
@@ -59,7 +59,7 @@ plus KV cache exceed the device budget gets a `.deny` verdict and the load is
 refused — no half-loaded backend, no crash. You can run the same check yourself
 before offering a model:
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 @MainActor
@@ -89,7 +89,7 @@ Selection and load differ by family. Foundation is OS-resident (gate on OS
 availability), local models route through `loadSelected()`, and cloud endpoints
 are a chat-host concern (drive them through `ChatViewModel.selectedEndpoint`):
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 @MainActor
@@ -105,6 +105,12 @@ func load(_ model: ModelInfo, into selection: ModelSelection) {
         // On-disk local model — admission-checked, then loaded.
         selection.select(model)
         selection.loadSelected()
+    default:
+        // `ModelType` is an extensible struct, not a closed enum (same
+        // Notification.Name pattern as `BackendName`), so a `default:` arm is
+        // required: a companion package or third party can mint a new model
+        // type this switch has never heard of.
+        break
     }
     // Cloud endpoints are not on-disk models; a headless selection surface drives
     // local/foundation models. For cloud, use a ChatViewModel's selectedEndpoint
@@ -114,7 +120,7 @@ func load(_ model: ModelInfo, into selection: ModelSelection) {
 
 Observe progress without a chat surface:
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 @MainActor
@@ -143,7 +149,7 @@ cannot reason." Do not route a user away from a local model purely on
 `supportsReasoning == false`; treat it as a hint, and curate the flag when you
 know better:
 
-```swift,no-build
+```swift
 import ManifoldKit
 
 @MainActor

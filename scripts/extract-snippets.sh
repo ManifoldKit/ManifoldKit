@@ -98,42 +98,160 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Every docs/QUICKSTART-*.md is swept (not just the high-level ones): a doc with
-# no compile gate drifts silently. Blocks needing a module the gate does not
-# build (ManifoldVoice in VOICE) are tagged ```swift,no-build``` in the doc;
-# package-manifest fragments (APPINTENTS) auto-skip via the .package/.target
-# heuristic. The workflow `paths:` filter globs docs/QUICKSTART*.md to match.
-# IMAGE-GEN/VIDEO-GEN quickstarts moved to the manifold-mlx companion package
-# with the MLX family in v0.48 PR C2.
-INPUTS=(
+# ── Coverage is DERIVED, not enumerated ──────────────────────────────────
+#
+# Every `README.md`, `AGENTS.md`, and `docs/*.md` is swept unless it appears in
+# SNIPPET_GATE_OPT_OUT below. That default is the whole point: this list used to
+# be an enumeration of filenames, and an enumeration is always one incident
+# behind. It grew reactively eight times (#1397 added CLI the day the CLI doc
+# landed, #1417 added DocC after BuildingAChatUI.md broke, #1680 after BYO
+# drift, #2331 added SWIFTUI-MULTI-SESSION + RECIPES), and #2331 — titled "fix
+# accuracy drift in AGENTS, recipes, …" — still did not add AGENTS.md, the file
+# named first in its own title. A new doc is now covered on creation; excluding
+# one is a reviewable diff line with a reason attached.
+#
+# For the same reason there is no second copy of this list: the `INPUTS=(…)`
+# array that used to live here was dead code, never referenced by anything,
+# while the real list was a column of hardcoded `extract_one` calls further
+# down. Two lists, one inert — so updating the obvious one changed nothing.
+#
+# Format: "<repo-relative path>:<reason>". A bare path with no reason is
+# rejected, mirroring ScriptFailOpenAuditTest's `# fail-open-ok: <reason>` rule.
+SNIPPET_GATE_OPT_OUT=(
+    # Prose/reference docs with no consumer-pasteable Swift. Cheap to gate, but
+    # nothing to gain — no fenced Swift at all, or only shell/JSON.
+    "docs/README.md:index page; no Swift"
+    "docs/FIPS.md:regulatory prose; no Swift"
+    "docs/THREAT_MODEL.md:threat-model prose; Swift appears only as attack illustrations"
+    "docs/RELIABILITY.md:reliability contract prose; no consumer Swift"
+    "docs/POSITIONING.md:category argument; no consumer Swift"
+    "docs/SCOPE_DECISION.md:scope rationale; no consumer Swift"
+    "docs/PRODUCTION-READINESS.md:maturity matrix; no consumer Swift"
+    "docs/API-DESIGN.md:policy doc; illustrative signatures only"
+    "docs/RELEASE-1.0.md:release policy; no consumer Swift"
+    "docs/QA-PRACTICES.md:contributor QA prose; no consumer Swift"
+    "docs/QA-EVALUATION-PROCESS.md:contributor QA prose; no consumer Swift"
+    "docs/TESTING-CI-PRINCIPLES.md:contributor CI prose; no consumer Swift"
+    "docs/HARDWARE-TOOLCHAIN.md:hardware/toolchain notes; shell not Swift"
+    "docs/TRAIT-COSTS.md:measurement tables; no consumer Swift"
+    "docs/FeatureMatrix.md:trait table; no Swift"
+    "docs/SOURCEKIT_DIAGNOSTICS.md:diagnostic runbook; shell not Swift"
+    "docs/LLAMA_CONTRACT.md:tombstone pointing at manifold-llama"
+    "docs/LOCAL-GGUF.md:storage-contract prose; no consumer Swift"
+    "docs/MIGRATION-INDEX.md:index page; no Swift"
+    "docs/AppStoreSubmission.md:submission checklist; single plist-shaped fence"
+    "docs/UI-REFRESH-2026.md:design rationale; no consumer Swift"
+    "docs/UI-REFRESH-2026-PLAN.md:internal delivery plan; no consumer Swift"
+    "docs/wwdc-2026-trait-stubs.md:stubs for unshipped Apple API — cannot compile by construction"
+    "docs/COMPANION-BACKENDS.md:companion-authoring guide; snippets target another package's module"
+    "docs/APP-EVAL.md:ManifoldAppEval is not linked by the gate's test target"
+    "docs/QUICKSTART-SERVER.md:server binary usage; shell not Swift"
+    "docs/CLOUD-OAUTH.md:host-side OAuth patterns; snippets reference host-defined types"
+    "docs/PROVIDER-BRIDGE.md:AnyLanguageModel bridge; not linked by the gate's test target"
+    # Previously omitted by accident: the workflow `paths:` filter globbed
+    # docs/QUICKSTART*.md while the extractor used an explicit list this file
+    # was missing from, so editing it triggered a ~14-min run that compiled
+    # nothing from it. Now an explicit, reasoned decision — its five fences all
+    # construct MLXDiffusionBackend, which lives in the manifold-mlx companion
+    # package and cannot be linked from core.
+    "docs/QUICKSTART-IMAGE-GEN.md:snippets construct MLXDiffusionBackend — manifold-mlx type, not linkable from core"
+
+    # ── Untriaged backlog ────────────────────────────────────────────────
+    # These DO carry consumer-pasteable Swift and SHOULD be gated. They are
+    # opted out only because nobody has verified their snippets compile yet —
+    # exactly the debt this inversion is meant to surface rather than hide.
+    # Removing an entry here is the unit of progress; do not add one.
+    "docs/MIGRATION-0.48.md:untriaged — 8 fences, historical migration snippets"
+    "docs/MIGRATION-shims-retired.md:untriaged — 5 fences"
+    "docs/MIGRATION-ui-refresh.md:untriaged — 4 fences"
+    "docs/MIGRATION-history-through-hints.md:untriaged — 2 fences"
+    "docs/MIGRATION-compression-policy-system-prompt.md:untriaged — 2 fences"
+    "docs/MIGRATION-enum-growth-sweep-2208.md:untriaged — 1 fence"
+    "docs/MIGRATION-cost-estimation-removed.md:untriaged — 1 fence"
+    "docs/MIGRATION-wake-word-removed.md:untriaged — host-side replacement recipe"
+    "docs/MIGRATING-FROM-FOUNDATION-MODELS.md:untriaged — 5 fences"
+    "docs/MODEL-MANAGEMENT.md:untriaged — 4 fences"
+    "docs/LOCAL-TOOL-CALLING.md:untriaged — 4 fences, prompt-envelope illustrations"
+    "docs/RAG-TUNING.md:untriaged — 3 fences"
+    "docs/share-action-extension-recipe.md:untriaged — 3 fences, app-extension host code"
+    "docs/ANATOMY-OF-ONE-TURN.md:internal turn walkthrough; no fenced Swift"
+)
+
+# is_opted_out <repo-relative-path> — true when the doc is on the opt-out list.
+# A bare entry with no `:<reason>` is a hard error: an unexplained exclusion is
+# how coverage quietly rots.
+is_opted_out() {
+    local needle="$1" entry path reason
+    for entry in "${SNIPPET_GATE_OPT_OUT[@]}"; do
+        path="${entry%%:*}"
+        reason="${entry#*:}"
+        if [[ "$path" == "$needle" ]]; then
+            if [[ -z "$reason" || "$reason" == "$entry" ]]; then
+                echo "::error::SNIPPET_GATE_OPT_OUT entry '$entry' has no reason. Add ':<why>'." >&2
+                exit 2
+            fi
+            return 0
+        fi
+    done
+    return 1
+}
+
+# ── Bare-`no-build` debt register ────────────────────────────────────────
+#
+# Docs listed here may still carry a bare ```swift,no-build. Everywhere else a
+# reason is mandatory (see the skip-policy block below).
+#
+# This is a DEBT REGISTER, not a config knob: it exists only because
+# retrofitting reasons onto ~150 pre-existing blocks would mean inventing
+# justifications for tags someone else wrote years of commits ago, and a
+# fabricated reason is worse than an honest "untriaged". Triage a doc — decide
+# per block whether it compiles or genuinely cannot, dropping or annotating the
+# tag — then DELETE its line here. The list only shrinks.
+#
+# Deliberately NOT covering: any doc a future PR adds. New docs are
+# reason-required from birth, which is the behaviour that stops the backlog
+# growing while this register drains.
+BARE_NO_BUILD_GRANDFATHERED=(
     "README.md"
     "docs/QUICKSTART.md"
     "docs/QUICKSTART-CLI.md"
     "docs/QUICKSTART-RAG.md"
     "docs/QUICKSTART-BRING-YOUR-OWN-UI.md"
-    "docs/QUICKSTART-MODEL-SELECTION.md"
-    "docs/QUICKSTART-TOOLS.md"
     "docs/QUICKSTART-APPINTENTS.md"
-    "docs/QUICKSTART-VOICE.md"
     "docs/SWIFTUI-MULTI-SESSION.md"
-    "docs/RECIPES.md"
     "docs/WHY-MANIFOLDKIT.md"
 )
 
+# allows_bare_no_build <repo-relative-path>
+# DocC catalog articles are grandfathered wholesale for now — 107 of the 176
+# skipped blocks live there, and triaging them is its own pass.
+allows_bare_no_build() {
+    local needle="$1" entry
+    case "$needle" in
+        Sources/*.docc/*) return 0 ;;
+    esac
+    for entry in "${BARE_NO_BUILD_GRANDFATHERED[@]}"; do
+        [[ "$entry" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+# slug_for <repo-relative-path> — lowercased basename without the extension.
+# Derived, so a new doc needs no slug registration.
+slug_for() {
+    local base
+    base="$(basename "$1" .md)"
+    printf '%s' "$base" | tr '[:upper:]' '[:lower:]'
+}
+
 mkdir -p "$OUT_DIR"
 # Clean any prior run so a deleted snippet doesn't linger as a stale file.
-# Includes docc-* prefixes added in the 2026-05-23 DocC extension and the
-# why-* / quickstart-rag-* prefixes added in the 0.45 front-door pass.
-# (quickstart-rag-* is also caught by the quickstart-* glob, but list it
-# explicitly so intent survives a future glob change.)
-rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift "$OUT_DIR"/quickstart-cli-*.swift \
-      "$OUT_DIR"/quickstart-rag-*.swift "$OUT_DIR"/why-*.swift \
-      "$OUT_DIR"/swiftui-multi-session-*.swift "$OUT_DIR"/recipes-*.swift \
-      "$OUT_DIR"/docc-*.swift \
-      "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip \
-      "$OUT_DIR"/quickstart-rag-*.skip "$OUT_DIR"/why-*.skip \
-      "$OUT_DIR"/swiftui-multi-session-*.skip "$OUT_DIR"/recipes-*.skip \
-      "$OUT_DIR"/docc-*.skip 2>/dev/null || true  # fail-open-ok: best-effort cleanup of prior outputs — globs may match nothing
+# This used to be a hand-maintained column of per-slug prefix globs
+# (readme-*, quickstart-rag-*, why-*, …) — a third filename list to keep in
+# sync, and one that would silently leak stale files the moment a doc gained a
+# slug nobody added a glob for. Slugs are derived now, so match on extension:
+# OUT_DIR is a dedicated snippets directory, so nothing else lives here.
+rm -f "$OUT_DIR"/*.swift "$OUT_DIR"/*.skip 2>/dev/null || true  # fail-open-ok: best-effort cleanup of prior outputs — globs may match nothing
 
 total=0
 total_skipped=0
@@ -225,9 +343,33 @@ extract_one() {
                 # Decide skip / keep.
                 local skip_reason=""
                 # Explicit no-build tag.
+                # `no-build` must carry a reason: ```swift,no-build:<why>.
+                #
+                # A bare tag costs nothing to write and hides everything behind
+                # it — which is how 176 of 207 blocks (85%) ended up skipped,
+                # and how docs/QUICKSTART-VOICE.md advertised a subsystem
+                # deleted five weeks earlier. Requiring a reason puts the
+                # justification in the diff where a reviewer sees it, exactly
+                # as ScriptFailOpenAuditTest requires `# fail-open-ok: <reason>`
+                # for a `|| true`. Same hazard, same remedy.
                 case "$cur_tag" in
+                    *no-build:*)
+                        no_build_reason="${cur_tag#*no-build:}"
+                        # Trim a trailing fence-tag remnant and whitespace.
+                        no_build_reason="$(printf '%s' "$no_build_reason" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+                        if [[ ${#no_build_reason} -lt 12 ]]; then
+                            echo "::error file=${rel_path},line=$((cur_start - 1))::\`no-build\` reason is missing or too short (\"${no_build_reason}\"). Write why this block cannot compile, e.g. \`\`\`swift,no-build:fragment; builds on identifiers defined in earlier blocks" >&2
+                            exit 2
+                        fi
+                        skip_reason="no-build: ${no_build_reason}"
+                        ;;
                     *no-build*)
-                        skip_reason="explicit-no-build-tag"
+                        if allows_bare_no_build "$rel_path"; then
+                            skip_reason="explicit-no-build-tag (untriaged; reason not yet required for this doc)"
+                        else
+                            echo "::error file=${rel_path},line=$((cur_start - 1))::bare \`swift,no-build\` is no longer accepted in this doc — add a reason: \`\`\`swift,no-build:<why this cannot compile>. If it CAN compile, drop the tag and let the gate prove it." >&2
+                            exit 2
+                        fi
                         ;;
                 esac
 
@@ -283,18 +425,21 @@ extract_one() {
     done <<<"$awk_out"
 }
 
-extract_one "README.md" "readme"
-extract_one "docs/QUICKSTART.md" "quickstart"
-extract_one "docs/QUICKSTART-CLI.md" "quickstart-cli"
-extract_one "docs/QUICKSTART-RAG.md" "quickstart-rag"
-extract_one "docs/QUICKSTART-BRING-YOUR-OWN-UI.md" "quickstart-byo-ui"
-extract_one "docs/QUICKSTART-MODEL-SELECTION.md" "quickstart-model-selection"
-extract_one "docs/QUICKSTART-TOOLS.md" "quickstart-tools"
-extract_one "docs/QUICKSTART-APPINTENTS.md" "quickstart-appintents"
-extract_one "docs/QUICKSTART-VOICE.md" "quickstart-voice"
-extract_one "docs/SWIFTUI-MULTI-SESSION.md" "swiftui-multi-session"
-extract_one "docs/RECIPES.md" "recipes"
-extract_one "docs/WHY-MANIFOLDKIT.md" "why"
+# Root-level docs + every docs/*.md, minus the reasoned opt-outs above.
+# `gated_docs` is also consumed by the per-file coverage assertion in
+# extract-snippets-test.sh via --print-gated.
+gated_docs=()
+for candidate in "README.md" "AGENTS.md"; do
+    [[ -f "$REPO_ROOT/$candidate" ]] && gated_docs+=("$candidate")
+done
+while IFS= read -r doc_rel; do
+    [[ -n "$doc_rel" ]] && gated_docs+=("$doc_rel")
+done < <(cd "$REPO_ROOT" && find docs -maxdepth 1 -type f -name '*.md' 2>/dev/null | LC_ALL=C sort)
+
+for doc_rel in "${gated_docs[@]}"; do
+    is_opted_out "$doc_rel" && continue
+    extract_one "$doc_rel" "$(slug_for "$doc_rel")"
+done
 
 # DocC catalogs. Walk every Markdown file inside any Sources/*/Documentation.docc/
 # directory (including nested Articles/, Extensions/, etc.). Slug pattern is
@@ -323,6 +468,40 @@ for docc_rel in "${docc_files[@]}"; do
 done
 
 echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(s) into ${OUT_DIR}"
+
+# ── Per-doc coverage: a triaged doc must compile at least one block ───────
+#
+# The pre-existing guard was global — "did extraction write zero .swift files
+# across ALL inputs" — so a doc contributing nothing but .skip files passed
+# silently as long as some other doc compiled something. Four docs
+# (QUICKSTART-TOOLS, -MODEL-SELECTION, -VOICE, RECIPES) sat at 100% skipped
+# while still triggering a ~14-minute macOS run on every edit: full latency
+# cost, zero signal.
+#
+# Scope matches the debt register: a doc that has been triaged (not
+# grandfathered) must earn real coverage. Grandfathered docs and DocC articles
+# are exempt until their own triage pass — 28 DocC articles are currently at
+# zero, which is the next tranche of this work, not a reason to weaken the rule
+# where it already holds.
+coverage_failures=0
+for doc_rel in "${gated_docs[@]}"; do
+    is_opted_out "$doc_rel" && continue
+    allows_bare_no_build "$doc_rel" && continue
+    doc_slug="$(slug_for "$doc_rel")"
+    # `find`, not `ls`: a no-match glob makes `ls` exit non-zero, and under
+    # `set -euo pipefail` that aborts the script before this check can report —
+    # the assertion would be structurally incapable of firing. `find` exits 0
+    # on no matches.
+    compiled_count=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-*.swift" | wc -l | tr -d ' ')
+    skipped_count=$(find "$OUT_DIR" -maxdepth 1 -name "${doc_slug}-*.skip" | wc -l | tr -d ' ')
+    if [[ "$compiled_count" -eq 0 && "$skipped_count" -gt 0 ]]; then
+        echo "::error file=${doc_rel}::every Swift block in this doc is skipped, so the snippet gate runs on it and verifies nothing. Make at least one block compile, or move the doc to SNIPPET_GATE_OPT_OUT with a reason." >&2
+        coverage_failures=$((coverage_failures + 1))
+    fi
+done
+if [[ $coverage_failures -gt 0 ]]; then
+    exit 2
+fi
 
 if [[ $total -eq 0 ]]; then
     echo "::error::No Swift snippets extracted from README.md, docs/QUICKSTART*.md, or any DocC catalog." >&2

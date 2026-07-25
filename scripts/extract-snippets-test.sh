@@ -149,6 +149,13 @@ for snippet in "${snippets[@]}"; do
                 // \`ModelPicker\` sample view (and other model-management UI)
                 // compile in the snippet gate. (Decision 6 / Correction G.)
                 .product(name: \"ManifoldUIModelManagement\", package: \"ManifoldKit\"),
+                // ManifoldVoice is likewise not re-exported by the umbrella.
+                // Linked so docs/QUICKSTART-VOICE.md snippets compile rather
+                // than being permanently no-build for want of a product edge.
+                // That doc is where the wake-word rot went unnoticed for five
+                // weeks (PR #2007 deleted the subsystem, the doc kept
+                // advertising it) precisely because nothing there compiled.
+                .product(name: \"ManifoldVoice\", package: \"ManifoldKit\"),
             ],
             path: \"Sources/$target\"
         ),
