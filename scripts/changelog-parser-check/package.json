@@ -5,5 +5,12 @@
   "type": "module",
   "dependencies": {
     "release-please": "16.18.0"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "@octokit/plugin-paginate-rest": "9.2.2",
+    "@octokit/request": "8.4.1",
+    "@octokit/request-error": "5.1.1",
+    "diff": "8.0.3"
   }
 }
