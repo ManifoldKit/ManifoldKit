@@ -49,6 +49,78 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, nested.standardizedFileURL.path)
     }
 
+    func test_findGGUFModel_searchesFamilyNameGroupedLayout() {
+        // Models/<family>/<name>/<file>.gguf — depth 3 under the search root.
+        // Pre-#2384 discovery stopped at depth 2 and silently skipped these.
+        let grouped = createGGUFFile("gguf/Qwen3-VL-8B/model.gguf")
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "Qwen3-VL",
+            minimumModelSize: 1
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, grouped.standardizedFileURL.path)
+    }
+
+    func test_findGGUFModel_flatLayoutStillWorks() {
+        let flat = createGGUFFile("tiny-flat.gguf")
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            nameContains: "tiny-flat",
+            minimumModelSize: 1
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, flat.standardizedFileURL.path)
+    }
+
+    func test_discoverGGUFModels_skipsCacheSidecarTrees() {
+        // Hugging Face download sidecars under a cache dir must not be selected
+        // even when they end in `.gguf` (locks/metadata junk).
+        _ = createGGUFFile(".cache/huggingface/download/junk.gguf")
+        // Non-hidden "cache" / "huggingface" names are also excluded.
+        _ = createGGUFFile("cache/huggingface/download/also-junk.gguf")
+        let real = createGGUFFile("gguf/real-model/model.gguf")
+
+        let models = HardwareRequirements.discoverGGUFModels(
+            in: [tempDirectory],
+            minimumModelSize: 1
+        )
+
+        XCTAssertEqual(models.map(\.standardizedFileURL.path), [real.standardizedFileURL.path])
+    }
+
+    func test_discoverGGUFModelsWithDiagnostics_distinguishesRejectedFromEmpty() {
+        // A .gguf that fails the minimum size bound is "found but not loadable".
+        _ = createGGUFFile("too-small.gguf", size: 1)
+
+        let emptyRoot = tempDirectory.appendingPathComponent("empty-root", isDirectory: true)
+        try? fm.createDirectory(at: emptyRoot, withIntermediateDirectories: true)
+
+        let rejected = HardwareRequirements.discoverGGUFModelsWithDiagnostics(
+            in: [tempDirectory],
+            minimumModelSize: 10
+        )
+        XCTAssertTrue(rejected.models.isEmpty)
+        XCTAssertGreaterThan(rejected.diagnostics.rejectedGGUFFileCount, 0)
+        XCTAssertTrue(
+            rejected.diagnostics.skipMessage.contains("none were loadable"),
+            rejected.diagnostics.skipMessage
+        )
+
+        let empty = HardwareRequirements.discoverGGUFModelsWithDiagnostics(
+            in: [emptyRoot],
+            minimumModelSize: 1
+        )
+        XCTAssertTrue(empty.models.isEmpty)
+        XCTAssertEqual(empty.diagnostics.rejectedGGUFFileCount, 0)
+        XCTAssertTrue(
+            empty.diagnostics.skipMessage.contains("No GGUF models found"),
+            empty.diagnostics.skipMessage
+        )
+    }
+
     func test_findGGUFModel_missingEnvOverride_returnsNilRatherThanSmallestCandidate() {
         // An explicit env name-fragment that matches no candidate is a request
         // for a specific model. The function must return nil (caller skips)

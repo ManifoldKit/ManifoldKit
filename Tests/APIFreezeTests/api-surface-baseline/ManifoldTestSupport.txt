@@ -94,7 +94,16 @@ GoldenQuery.query Var
 GoldenQuery.relevantDocumentTitles Var
 HardwareRequirements Enum
 HardwareRequirements conformances: Copyable,Escapable
+HardwareRequirements.GGUFDiscoveryDiagnostics Struct
+HardwareRequirements.GGUFDiscoveryDiagnostics conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
+HardwareRequirements.GGUFDiscoveryDiagnostics.__derived_struct_equals(_:_:) Func
+HardwareRequirements.GGUFDiscoveryDiagnostics.acceptedCount Var
+HardwareRequirements.GGUFDiscoveryDiagnostics.maxDepth Var
+HardwareRequirements.GGUFDiscoveryDiagnostics.rejectedGGUFFileCount Var
+HardwareRequirements.GGUFDiscoveryDiagnostics.scannedDirectoryCount Var
+HardwareRequirements.GGUFDiscoveryDiagnostics.skipMessage Var
 HardwareRequirements.discoverGGUFModels(in:fileManager:minimumModelSize:maximumModelSize:) Func
+HardwareRequirements.discoverGGUFModelsWithDiagnostics(in:fileManager:minimumModelSize:maximumModelSize:) Func
 HardwareRequirements.discoverMLXModelDirectories(in:fileManager:) Func
 HardwareRequirements.findGGUFModel(in:nameContains:environment:fileManager:minimumModelSize:maximumModelSize:) Func
 HardwareRequirements.findGGUFModel(nameContains:environment:maximumModelSize:) Func
@@ -103,6 +112,7 @@ HardwareRequirements.findMLXModelDirectory(nameContains:environment:) Func
 HardwareRequirements.findOllamaModel(nameContains:environment:) Func
 HardwareRequirements.findOllamaModel(preferredSizeRange:environment:) Func
 HardwareRequirements.findOllamaToolCapableModel(environment:) Func
+HardwareRequirements.ggufDiscoveryMaxDepth Var
 HardwareRequirements.hasFoundationModels Var
 HardwareRequirements.hasMetalDevice Var
 HardwareRequirements.hasOllamaServer Var
@@ -112,6 +122,7 @@ HardwareRequirements.isValidGGUFModel(_:minimumModelSize:maximumModelSize:) Func
 HardwareRequirements.isValidMLXDirectory(_:fileManager:) Func
 HardwareRequirements.listOllamaModels() Func
 HardwareRequirements.matchingFilesystemModel(_:in:) Func
+HardwareRequirements.mlxDiscoveryMaxDepth Var
 HardwareRequirements.ollamaModelIsToolCapable(_:) Func
 HardwareRequirements.selectFilesystemModel(from:environmentKey:nameContains:environment:) Func
 HardwareRequirements.selectOllamaModel(from:preferredSizeRange:environment:) Func
