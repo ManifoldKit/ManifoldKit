@@ -343,24 +343,19 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
-    /// **Known gap on a simulator destination** (2026-07-25), stated as what
-    /// was observed rather than as a diagnosis: every step up to and including
-    /// sending passes — the endpoint is created and reports Ready, the switcher
-    /// selects it, the turn starts — but no reply arrives and the transcript
-    /// sits on the typing indicator until the timeout. The request does not
-    /// reach the server: a host round-trip taken straight afterwards still paid
-    /// the ~21 s cold model load, which a request that had arrived would have
-    /// avoided.
+    /// **Known failure — tracked as #2376.** Every step up to and including
+    /// sending passes: the endpoint is created and reports Ready, the switcher
+    /// selects it, the turn starts. Then, if the model calls a tool, the turn
+    /// hangs after the tool result goes back — the app dispatches a second
+    /// `/api/chat` request and never surfaces a completion, an error, or a
+    /// timeout, so the transcript sits on the typing indicator and this test
+    /// fails on its final assertion.
     ///
-    /// That narrows it to "never arrived", not to a cause. Two candidates, both
-    /// unconfirmed: the turn never dispatched a request at all, or a cleartext
-    /// `http://localhost` call was refused (the demo declares no
-    /// `NSAppTransportSecurity` exception). The silent 90 s spinner argues
-    /// *against* the transport story — an ATS refusal returns -1022 in
-    /// milliseconds and would surface through `ErrorBannerView` — so this needs
-    /// `NetworkActivity` (`ManifoldNetworking`) or a `simctl log stream` to
-    /// separate them. The assertion is deliberately left strict rather than
-    /// softened into something that passes without a reply.
+    /// The server is not at fault (that same conversation shape, replayed by
+    /// hand, streams to `done` in ~5 s) and neither is App Transport Security
+    /// (a full-process log capture contains no ATS denial). The assertion is
+    /// deliberately left strict rather than softened into something that passes
+    /// without a reply.
     ///
     /// Opt in with an environment assignment on the run command (see
     /// ``runnerOverride(_:)`` — an argument-position `TEST_RUNNER_…=…` does not
