@@ -30,7 +30,7 @@ not a rule.**
    keep compiling, upgrade paths are written down. AI assistants are
    first-class readers — their common mistakes against this API are documented
    and corrected. *(Cold-start gates, doc-snippet compile gate,
-   `AgentsMdAuditTest`.)*
+   `AgentsMdAuditTest`, `DocClaimsAuditTest`, `DocsAudienceStatusAuditTest`.)*
 2. **Dependencies flow one way.** UI → Runtime → Inference → Contract →
    leaves. Backends plug into the Contract kernel; the kernel never depends on
    the engine; UI never imports a backend. A cycle is a regression no matter
@@ -856,6 +856,55 @@ Never use `assertionFailure`/`fatalError` for conditions that have fallback logi
 `try?` is banned in production code. `SilentCatchAuditTest` (in `ManifoldInferenceTests`) fails CI if `try?` appears in error-propagation paths. Use `do/catch` with `Log.*` so the error is visible. Optional decoding at trust boundaries is the only legitimate exception.
 
 Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `ManifoldCoreTests`) flags fail-open idioms in `scripts/` — a missing `set -euo pipefail` header, `set +e` never re-armed, and `|| true` swallows outside a small tolerant-command idiom set (`grep`, `kill`, `rm`, …), with **no** idiom escape for masked load-bearing producers (`swift build|test|run`, `xcodebuild`). A genuine tolerance carries `# fail-open-ok: <reason>` on or just above the line; a bare marker with no reason is itself flagged.
+
+## Documentation gates
+
+Docs are held to the same tripwire standard as code (Principle 4). Three layers,
+each with a different failure mode:
+
+| Layer | Audit | Catches |
+|---|---|---|
+| **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header |
+| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references |
+| **Snippets** | `scripts/extract-snippets.sh` + `-test.sh` | a fenced `swift` block that does not compile as published |
+
+Rules when editing docs:
+
+- **Removing a public API means updating every doc that names it**, not just the
+  README. `DocClaimsAuditTest`'s symbol check is the tripwire; the PR template
+  carries the grep. This exists because PR #2007 deleted `ManifoldVoice`'s
+  wake-word subsystem and `docs/QUICKSTART-VOICE.md` advertised it for five more
+  weeks — see [docs/MIGRATION-wake-word-removed.md](docs/MIGRATION-wake-word-removed.md).
+- **Snippet coverage is derived, not enumerated.** Every `README.md`,
+  `AGENTS.md`, and `docs/*.md` is swept unless it is in
+  `SNIPPET_GATE_OPT_OUT` in `scripts/extract-snippets.sh`, with a reason. Adding
+  a doc does not require registering it anywhere; excluding one is a reviewable
+  line. Do not reintroduce a filename list — the old one grew reactively eight
+  times and still missed `AGENTS.md`, and a second copy of it (`INPUTS=()`) sat
+  dead in the same file for months.
+- **`no-build` carries a reason**: ```` ```swift,no-build:<why> ````. A bare tag
+  is rejected, exactly as `ScriptFailOpenAuditTest` rejects a bare `|| true` —
+  same hazard (a free, invisible opt-out), same remedy. Pre-existing bare tags
+  live in `BARE_NO_BUILD_GRANDFATHERED`, a debt register that only shrinks;
+  triage a doc, then delete its line. **A doc with no compiling block at all
+  fails the gate** — it would otherwise cost a full macOS run per edit and
+  verify nothing.
+- **A doc's snippets compile as published.** The harness deliberately injects no
+  imports: if a reader must paste an `import` the snippet omits, the snippet is
+  wrong. Prefer making a block self-contained over tagging it.
+
+### When an RCA's primary fix is declined, record the decision
+
+`scripts/dx-walkthrough/runs/2026-05-23_v0.33.0/01-chat-cli/ROOT_CAUSES.md`
+identified `no-build` overloading as a root cause, offered a structural fix
+(split the tag) and an *"Or simpler:"* heading lint, and warned the cheap option
+*"[does] nothing for the next snippet that's tagged `no-build` because someone
+didn't want to wrestle with the gate."* The cheap option shipped; the predicted
+recurrence landed four weeks later and went unnoticed for five more.
+
+So: declining an RCA's leading prescription is a legitimate call, but it is a
+**decision to record** — in the PR body, with what will catch the recurrence
+instead. The cheaper variant always looks sufficient on the day.
 
 ## Commit style
 
