@@ -109,10 +109,23 @@ final class DocClaimsAuditTest: XCTestCase {
     /// token somewhere under `Sources/`.
     static func auditSymbolReferences(repoRoot: URL) throws -> [String] {
         let sourceTokens = sourceTokenIndex(repoRoot: repoRoot)
-        // An empty index means we failed to find Sources/ at all — reporting
-        // "every symbol is missing" would be worse than useless, so bail loudly
-        // rather than emitting thousands of phantom violations.
-        guard !sourceTokens.isEmpty else { return [] }
+        // An empty index means `Sources/` could not be enumerated at all —
+        // never legitimate in this repo. Reporting "every symbol is missing"
+        // would be worse than useless, but so would returning no violations:
+        // that is a silent pass on the exact anomaly that would make this
+        // check inert, and an audit that can quietly succeed while blind is
+        // the fail-open shape Principle 6 bans. Throw instead, so the failure
+        // is impossible to mistake for a clean run.
+        guard !sourceTokens.isEmpty else {
+            throw NSError(domain: "DocClaimsAuditTest", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: """
+                    Built an empty symbol index from \(repoRoot.path)/Sources — the \
+                    symbol check would silently pass on every doc. This means the \
+                    repo root resolved somewhere unexpected or Sources/ is \
+                    unreadable; it is never a legitimate state.
+                    """,
+            ])
+        }
 
         var violations: [String] = []
         for fileURL in markdownFiles(repoRoot: repoRoot) {
@@ -269,6 +282,33 @@ final class DocClaimsAuditTest: XCTestCase {
         XCTAssertFalse(
             violations.contains { $0.contains("PlantedRealType") },
             "A symbol that exists in Sources/ must not be flagged; got \(violations)"
+        )
+    }
+
+    /// A repo root with no readable `Sources/` must make
+    /// ``auditSymbolReferences(repoRoot:)`` **throw**, not quietly return zero
+    /// violations.
+    ///
+    /// This guards a fail-open that shipped in the first draft of this file:
+    /// the guard returned `[]`, so if the root ever resolved somewhere without
+    /// a `Sources/` directory the symbol check would pass every doc while
+    /// verifying nothing — indistinguishable from a clean run, which is
+    /// precisely how inert machinery survives (#2274, #2287).
+    func test_sabotage_auditSymbolReferencesThrowsOnEmptySourceIndex() throws {
+        let tmp = try Self.makeTempRoot("doc-claims-empty-index")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // A doc naming a symbol that exists nowhere — the audit would report it
+        // if it could see any sources at all.
+        try FileManager.default.createDirectory(
+            at: tmp.appendingPathComponent("docs"), withIntermediateDirectories: true
+        )
+        try "Ships ``PlantedTotallyDeletedType``."
+            .write(to: tmp.appendingPathComponent("docs/planted.md"), atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(
+            try Self.auditSymbolReferences(repoRoot: tmp),
+            "An unreadable/absent Sources/ must throw, not return zero violations"
         )
     }
 
