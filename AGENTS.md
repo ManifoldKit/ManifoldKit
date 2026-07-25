@@ -862,11 +862,21 @@ Shell scripts are held to the same standard: `ScriptFailOpenAuditTest` (in `Mani
 Docs are held to the same tripwire standard as code (Principle 4). Three layers,
 each with a different failure mode:
 
-| Layer | Audit | Catches | Blocks a merge? |
+| Layer | Authoritative audit | Catches | Blocks a merge? |
 |---|---|---|---|
-| **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — runs under the required `test` check |
-| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same |
+| **Form** | `DocsAudienceStatusAuditTest` | missing `**Audience:**` / `**Status:**` header | **yes** — required `test`, mirrored on docs-only PRs by `scripts/lint-docs-headers.sh` under required `lint` |
+| **Claims** | `DocClaimsAuditTest` | a `` ``Symbol`` `` that no longer exists, a broken relative `.md` link, a dead `#anchor`, a `docs/*.md` nothing references | **yes** — same shape, mirrored by `scripts/lint-doc-claims.sh` |
 | **Snippets** | `scripts/extract-snippets.sh` + `-test.sh` | a fenced `swift` block that does not compile as published | **no — advisory** (see below) |
+
+**Why each doc-driven audit needs a `lint` mirror.** `ci.yml`'s macOS `test` job
+is paths-filtered and excludes `docs/**`, and `scripts/affected-suites.sh` keeps
+the affected-suite set empty for docs-only diffs — so a docs-only PR never runs
+these audits on the PR head; the CI Required Test Shim reports `test` green in
+their place. `merge_group` has no paths filter, so the first failure lands
+*inside the queue* and poisons the batch (#2306 took #2212 down six times).
+`lint` is ubuntu, required, and has no `pull_request` paths filter, so a mirror
+there catches it on the PR run. **A new markdown-driven audit ships with a
+`lint` mirror, or it does not block on the PRs that can break it.**
 
 > **The snippet gate is advisory, not blocking.** `main`'s required contexts are
 > `test`, `lint`, `api-digester-check`; `readme-snippets` is not among them and
