@@ -105,16 +105,22 @@ mints a fresh one if the store is empty). On every subsequent relaunch the
 sidebar comes back populated and the previously open chat is already
 selected — no host-side wait/restore heuristic required.
 
-**Model loading.** `quickStart()` also dispatches a load for whichever
-backend it selected: the built-in policy's local model (Foundation-first,
-then first on-disk GGUF), a per-session model/endpoint restored by
-``switchToSession(_:)``, or — when no local model is available — the first
-configured cloud endpoint in the endpoint store. You do **not** need a
-separate `loadSelectedEndpoint()` / `dispatchSelectedLoad()` call after
-`quickStart()` returns on relaunch. ``switchToSession(_:)`` performs the
-same dispatch when the user picks a different sidebar row, so the
-`onChange` handler above does not need an extra `dispatchSelectedLoad()`
-either.
+**Model loading.** Sessions restore automatically; **a usable model depends on
+the path.** What `quickStart()` does before it returns (see
+`Sources/ManifoldKit/QuickStart.swift`):
+
+| Goal | What `quickStart()` does | What the host must still do |
+|------|--------------------------|-----------------------------|
+| **Apple Foundation Models** (macOS 26 / iOS 26+, `FoundationBackend.isAvailable`) | Wires `foundationModelProvider`, runs the **Foundation-first** `defaultSelectionPolicy`, then **dispatches** a load | Observe `modelLoadState` before the first send (dispatch is fire-and-forget — #2222). No extra host call on the happy path. |
+| **Local GGUF / MLX** already on disk (and companion registrar passed) | Same policy falls through to the first compatible on-disk model, then dispatches | Companion package + weights; see §4 |
+| **Relaunch** with a cloud/LAN endpoint already in the store (and no local model selected) | Selects the first stored endpoint and dispatches a load | Observe `modelLoadState`; no second `loadSelectedEndpoint()` for selection |
+| **First launch** seeding Ollama / OpenAI / Claude *after* `quickStart` returns | Nothing for that endpoint (it did not exist yet) | `setAvailableEndpoints` + `selectedEndpoint` + **awaited** `loadSelectedEndpoint()` — see [QUICKSTART.md → Seeding an Ollama endpoint](QUICKSTART.md#seeding-an-ollama-endpoint) |
+| **Manual `ManifoldBootstrap.build` path** | Does **not** run the selection policy or auto-select endpoints | Host must do Foundation (§4) or the cloud triad (§4 / §6) on **every** cold start |
+
+``switchToSession(_:)`` re-dispatches load for the session's remembered
+model/endpoint when the user picks a different sidebar row, so the
+`onChange` handler above does not need an extra `dispatchSelectedLoad()`.
+
 >
 > **"Dispatches" is not "awaits" (#2222).** Every one of those dispatches —
 > `quickStart()`'s own selection, ``switchToSession(_:)``'s restore, the
@@ -129,13 +135,12 @@ either.
 > instead of inferring it from `isModelLoaded` alone — it's the one property
 > that distinguishes "still loading" from "loaded" from "failed with a real
 > `Error`".
-
-> **First-launch Ollama seeding.** If you insert an endpoint *after*
-> `quickStart()` returns (the pattern in [QUICKSTART.md → Seeding an Ollama
-> endpoint](QUICKSTART.md#seeding-an-ollama-endpoint)), you still need one
-> explicit `loadSelectedEndpoint()` on that first run — the endpoint did not
-> exist in the store when `quickStart()` ran. Every subsequent relaunch
-> picks it up automatically.
+>
+> **Older QUICKSTART prose said Foundation was "not auto-selected by
+> `quickStart()`".** That is stale relative to current `quickStart` (it wires
+> the provider + Foundation-first policy + `dispatchSelectedLoad`). Explicit
+> `loadFoundationModelIfAvailable()` remains the right tool for the **manual**
+> bootstrap path and for re-enabling Foundation after session churn (§4).
 
 ## 3. When to use the manual bootstrap path
 
@@ -210,10 +215,13 @@ proper.
 
 ### Foundation (on-device, iOS 26 / macOS 26+)
 
-`FoundationBackends.register(with:)` installs `FoundationBackend`
-automatically when the OS version qualifies, but **Foundation is not
-auto-selected**. Two explicit wiring steps are required before the chat
-view model will treat it as an available model:
+`FoundationBackends.register(with:)` installs `FoundationBackend` when the
+OS version qualifies. On the **`quickStart()` path**, that is enough: the
+facade wires `foundationModelProvider`, Foundation-first-selects when
+`FoundationBackend.isAvailable`, and dispatches a load (see §2).
+
+On the **manual bootstrap path** (this section's `chatVM`), Foundation is
+**not** auto-selected. Two explicit wiring steps are required:
 
 1. Set `foundationModelProvider` so the view model can probe availability.
 2. Call `loadFoundationModelIfAvailable()` (or `autoSelectFirstRunModel()`,
@@ -229,10 +237,18 @@ if #available(macOS 26, iOS 26, *) {
 #endif
 ```
 
-Without those two steps, `availableModels` will not contain the Foundation
-entry and the chat surface will show "Welcome — Download a model to get
-started" even on a supported OS. Set ``ChatViewModel/onFirstLaunch`` if you
-want to show an onboarding sheet instead of auto-loading.
+Without those two steps on the manual path, `availableModels` will not
+contain the Foundation entry and the chat surface will show "Welcome —
+Download a model to get started" even on a supported OS. Set
+``ChatViewModel/onFirstLaunch`` if you want to show an onboarding sheet
+instead of auto-loading.
+
+> **Session churn caveat.** After `createSession()` / `switchToSession` under
+> Foundation, `isModelLoaded` can report `true` while `sendMessage` still fails
+> with `InferenceError.inferenceFailure("No model loaded")` (DX walkthrough
+> 2026-07-25). Prefer `modelLoadState`, and re-call
+> `loadFoundationModelIfAvailable()` after minting a new session if generation
+> fails with that error.
 
 ### Local GGUF (llama.cpp) and MLX
 
@@ -260,13 +276,35 @@ to give users the endpoint editor. Hosts that pre-configure endpoints in code
 (e.g. for an internal demo) can skip the UI entirely and write directly to
 `bootstrap.endpointStore`.
 
+**Inserting a record is not enough to generate.** After the store write you
+must also bind the chat view model and load:
+
+```swift,no-build
+chatVM.setAvailableEndpoints([endpoint])   // or the full fetched list
+chatVM.selectedEndpoint = endpoint
+await chatVM.loadSelectedEndpoint()        // await on first seed; see #2222
+```
+
+- On the **`quickStart()` path**, that triad is required only when you seed
+  *after* `quickStart` returns (first launch). On relaunch, `quickStart`
+  re-selects the first stored endpoint and dispatches a load for you.
+- On the **manual `ManifoldBootstrap.build` path**, there is **no** equivalent
+  auto-select. You must run the triad (or at least re-select +
+  `loadSelectedEndpoint()`) on **every** cold start — first launch *and*
+  relaunch — or the sidebar comes back populated while the composer stays
+  inert (`selectedEndpoint == nil` / `isModelLoaded == false`). Section 6's
+  full recipe does this.
+
 ## 5. When `ManifoldUIModelManagement` is required
 
 `ManifoldUIModelManagement` is the **separate, explicitly imported**
 product that hosts the model browser, downloader, storage UI, and API
 endpoint editor. The dependency edge runs `ManifoldUIModelManagement →
-ManifoldUI` (never the reverse), which is why these views are not visible
-from `ManifoldUI` alone.
+ManifoldUI` (never the reverse), which is why these views — and the
+``.environment(\.endpointStore, …)`` key used by `APIConfigurationView` —
+are not visible from `import ManifoldKit` / `ManifoldUI` alone. Without
+`import ManifoldUIModelManagement`, the compiler reports
+`EnvironmentValues has no member 'endpointStore'`.
 
 Mount it via closure injection on `ChatView`:
 
@@ -306,9 +344,9 @@ It covers:
 
 - **Manual `ManifoldBootstrap.build(...)` bootstrap** from a `.task { }` (async, no deadlock).
 - **`SessionManagerViewModel` wired with `configureAndLoad`** (relaunch-safe restore).
-- **`.environment(\.endpointStore, bootstrap.endpointStore)` injection** — required for `APIConfigurationView` to save keys.
-- **Ollama endpoint pre-seeded in code** — the same pattern applies to any cloud provider.
-- **`ManifoldUIModelManagement`** mounted via closure injection (optional).
+- **`.environment(\.endpointStore, bootstrap.endpointStore)` injection** — requires `import ManifoldUIModelManagement` (the env key lives there, not in the umbrella).
+- **Ollama endpoint pre-seeded *and loaded*** — insert alone is not enough; the recipe binds `selectedEndpoint` and awaits `loadSelectedEndpoint()` on every cold start (manual path has no `quickStart`-style auto-select).
+- **`ManifoldUIModelManagement`** mounted via closure injection (optional for the model browser; required for the env-key / `APIConfigurationView` lines).
 
 ### Package dependency
 
@@ -346,8 +384,11 @@ Target dependencies (add what you need):
 
 ```swift,no-build
 import SwiftUI
+import SwiftData                 // required for `.modelContainer` type-checking
 import ManifoldKit
-import ManifoldUIModelManagement   // optional — omit if you don't want the model browser
+// Required for `.environment(\.endpointStore, …)`, `APIConfigurationView`,
+// and `ModelManagementSheet` — the env key is NOT on the ManifoldKit umbrella.
+import ManifoldUIModelManagement
 
 @main
 struct MyChatApp: App {
@@ -368,6 +409,7 @@ struct MyChatApp: App {
                     .environment(sessionVM)
                     // Inject the endpoint store so APIConfigurationView can
                     // persist API keys without any extra glue in the host.
+                    // (Requires `import ManifoldUIModelManagement` above.)
                     .environment(\.endpointStore, bootstrap.endpointStore)
                     .modelContainer(bootstrap.modelContainer)
             } else if let startupError {
@@ -412,15 +454,28 @@ struct MyChatApp: App {
             let sessionVM = SessionManagerViewModel()
             await sessionVM.configureAndLoad(bootstrap: bootstrap)
 
-            // Pre-seed an Ollama endpoint if none exist yet.
-            let existing = try await bootstrap.endpointStore.fetchEndpoints()
-            if existing.isEmpty {
+            // --- Endpoint → model load (manual path, every cold start) ---
+            // Unlike quickStart() relaunch, manual bootstrap does NOT auto-select
+            // the first stored cloud endpoint. Insert alone leaves the composer
+            // inert. Re-run this block on first launch *and* relaunch.
+            var endpoints = try await bootstrap.endpointStore.fetchEndpoints()
+            if endpoints.isEmpty {
                 let ollama = APIEndpointRecord(
                     name: "Local Ollama",
                     provider: .ollama,
-                    modelName: "llama3.2:3b"
+                    // paste a tag from `ollama list` — the host may not have
+                    // whatever default the docs last used
+                    modelName: "llama3.1:8b"
                 )
                 try await bootstrap.endpointStore.insertEndpoint(ollama)
+                endpoints = try await bootstrap.endpointStore.fetchEndpoints()
+            }
+            chatVM.setAvailableEndpoints(endpoints)
+            if chatVM.selectedEndpoint == nil {
+                chatVM.selectedEndpoint = endpoints.first
+            }
+            if chatVM.selectedEndpoint != nil {
+                await chatVM.loadSelectedEndpoint()
             }
 
             // Restore or create the initial session.
