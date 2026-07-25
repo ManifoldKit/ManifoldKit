@@ -133,6 +133,39 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     /// Override via ``SSECloudBackend/requestIdleTimeout`` after init.
     public static let defaultRequestIdleTimeout: TimeInterval = 1800
 
+    /// Default application-level idle timeout between generation *events*
+    /// (see ``SSECloudBackend/streamIdleTimeout``).
+    ///
+    /// #2376: a tool-continuation turn against Ollama could stall for a
+    /// long time after the tool result was posted with no visible error and
+    /// no application-level signal, because this backend never configured
+    /// ``SSECloudBackend/streamIdleTimeout`` (the finer-grained, event-level
+    /// gate `GenerationStream` already implements) — `defaultRequestIdleTimeout`
+    /// alone was doing the job. `defaultRequestIdleTimeout` (1800s) is stamped
+    /// onto `URLRequest.timeoutInterval`, but the backend's `URLSession`
+    /// (`URLSessionProvider.unpinned`) separately configures
+    /// `timeoutIntervalForResource = 600`, which Foundation enforces
+    /// independently and which a per-request `timeoutInterval` cannot
+    /// override — so the connection's *actual* outer ceiling was already
+    /// governed by that 600s resource timeout, not by
+    /// `defaultRequestIdleTimeout`'s 1800s (read from
+    /// `Sources/ManifoldCloudCore/URLSessionProvider.swift`, not verified
+    /// with a live multi-minute stall). Either way, that ceiling produced no
+    /// application-visible failure state for several minutes — long enough
+    /// that a user has no way to tell a real stall from a working turn —
+    /// violating Principle 6 (errors are visible).
+    ///
+    /// 5 minutes gives a bound Ollama itself owns and reports through
+    /// (`InferenceError.idleTimeout`) well before either transport-level
+    /// ceiling could fire, while still covering the "several minutes" cold
+    /// VRAM load / long-prompt prefill window `defaultRequestIdleTimeout`'s
+    /// own doc comment describes. `GenerationStream`'s idle monitor starts
+    /// counting from stream creation — slightly before the connection is
+    /// even opened — so this covers the pre-first-token `.loading` window
+    /// too, not just mid-stream gaps.
+    /// Override via ``SSECloudBackend/streamIdleTimeout`` after init.
+    public static let defaultStreamIdleTimeout: Duration = .seconds(300)
+
     /// Conservative floor for `num_ctx` when the caller did not plumb a real
     /// context budget via `ModelLoadPlan` (`.cloud()` default is `1`).
     /// Ollama's server-side `OLLAMA_CONTEXT_LENGTH` defaults to 2048 tokens,
@@ -210,6 +243,8 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             payloadHandler: CloudPayloadHandler.ollama
         )
         requestIdleTimeout = OllamaBackend.defaultRequestIdleTimeout
+        // #2376: bound the event-level gap too — see `defaultStreamIdleTimeout`.
+        streamIdleTimeout = OllamaBackend.defaultStreamIdleTimeout
         let weakSelfBox = WeakOllamaBackendBox(self)
         let routing = CloudAdapterRouting(
             payloadHandler: adapter.payloadHandler,
@@ -279,6 +314,8 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         // first response byte arrives. Set a generous HTTP-layer idle timeout
         // so that cold-start latency isn't misreported as a network failure.
         requestIdleTimeout = OllamaBackend.defaultRequestIdleTimeout
+        // #2376: bound the event-level gap too — see `defaultStreamIdleTimeout`.
+        streamIdleTimeout = OllamaBackend.defaultStreamIdleTimeout
 
         // Phase 3/Ollama — install adapter routing so the stream loop runs
         // in `CloudRoutedStreamParser` driving a fresh

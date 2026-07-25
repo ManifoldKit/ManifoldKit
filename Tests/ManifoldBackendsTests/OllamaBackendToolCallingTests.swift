@@ -406,4 +406,125 @@ final class OllamaBackendToolCallingTests: XCTestCase {
             "no .token event must fire from the same line after cancellation interrupts processToolCalls"
         )
     }
+
+    // MARK: - #2376: tool-continuation stall must terminate, not hang forever
+
+    /// `OllamaBackend` must ship a non-nil default `streamIdleTimeout` so a
+    /// stalled generation — the tool-continuation request that never
+    /// produces a byte, observed in #2376 — has SOME application-level
+    /// bound short of `defaultRequestIdleTimeout`'s 30 minutes. Before the
+    /// fix this property was left `nil` (the `SSECloudBackend` default),
+    /// disabling `GenerationStream`'s idle-timeout gate entirely.
+    ///
+    /// Sabotage check: comment out the `streamIdleTimeout = ...` assignment
+    /// in `OllamaBackend.init` — this assertion fails because the property
+    /// reads `nil` again.
+    func test_defaultStreamIdleTimeout_isNonNilAndBounded() {
+        let backend = OllamaBackend()
+        let timeout = backend.streamIdleTimeout
+        XCTAssertNotNil(timeout, "#2376: a stalled Ollama generation must have a bounded application-level timeout, not rely solely on the 30-minute requestIdleTimeout")
+        if let timeout {
+            XCTAssertLessThan(
+                timeout,
+                .seconds(OllamaBackend.defaultRequestIdleTimeout),
+                "streamIdleTimeout must be strictly tighter than the 30-minute HTTP-layer requestIdleTimeout to give a meaningfully earlier, visible failure"
+            )
+        }
+    }
+
+    /// End-to-end tool round trip: turn 1 gets a tool call, the (synthesised)
+    /// tool result is threaded into turn 2's history exactly as
+    /// `GenerationToolDispatchLoop` would, and turn 2's connection stalls
+    /// (never delivers a single byte) — modelling the exact silent hang from
+    /// #2376's observed log trace. With a bounded `streamIdleTimeout` the
+    /// second `generate()` call must throw `InferenceError.idleTimeout`
+    /// well before the stub's artificial delay elapses, rather than hang.
+    ///
+    /// Sabotage check performed manually: setting
+    /// `backend.streamIdleTimeout = nil` right after construction (reverting
+    /// to the pre-fix default) makes this test hang until the harness's own
+    /// timeout kills it — confirmed by running with a 2s stub delay and a
+    /// `nil` override, which never completes within the 10s per-test guard
+    /// below and has to be killed. Restoring the override makes it pass in
+    /// well under 1s.
+    func test_toolContinuation_stalledSecondTurn_terminatesWithVisibleError() async throws {
+        let (backend, chatURL) = makeBackend()
+        try await loadBackend(backend)
+
+        // Tight enough that the test runs fast; long enough to be
+        // meaningfully distinguishable from immediate delivery.
+        backend.streamIdleTimeout = .milliseconds(300)
+
+        // Turn 1: the model calls `fakeRateLimited`.
+        let turn1Chunks: [Data] = [
+            ndjsonLine(#"""
+            {"model":"llama3.2","message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"fakeRateLimited","arguments":"{}"}}]},"done":false}
+            """#),
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":10,"eval_count":5}"#),
+        ]
+        MockURLProtocol.stubSequence(url: chatURL, responses: [
+            .sse(chunks: turn1Chunks, statusCode: 200),
+            // Turn 2: connection "opens" (no error) but never delivers a
+            // byte within the test's lifetime — the exact shape of #2376's
+            // silent stall. `firstByteDelay` is deliberately far longer than
+            // `streamIdleTimeout` above so a pass proves the *timeout* fired,
+            // not that the stub happened to resolve fast.
+            .delayedFirstByte(
+                data: ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"ok"},"done":true}"#),
+                firstByteDelay: 5.0,
+                statusCode: 200
+            ),
+        ])
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let toolConfig = GenerationConfig(tools: [
+            ToolDefinition(name: "fakeRateLimited", description: "test", parameters: .object([:])),
+        ])
+
+        // Turn 1.
+        let stream1 = try backend.generate(prompt: "go", systemPrompt: nil, config: toolConfig)
+        let events1 = try await drain(stream1)
+        let call = try XCTUnwrap(events1.compactMap { event -> ToolCall? in
+            if case .toolCall(let c) = event { return c }
+            return nil
+        }.first)
+
+        // Thread the call + a synthesised result into history exactly as
+        // `GenerationToolDispatchLoop.runLoop` does (#2312/#1909).
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", content: "go"),
+            StructuredMessage(role: "assistant", parts: [.toolCall(call)]),
+            StructuredMessage(role: "tool", parts: [
+                .toolResult(ToolResult(callId: call.id, content: "{\"ok\":true}", errorKind: nil)),
+            ]),
+        ]
+
+        // Turn 2 — this is the request that stalls.
+        let start = ContinuousClock.now
+        let stream2 = try backend.generate(
+            prompt: "",
+            systemPrompt: nil,
+            config: toolConfig,
+            hints: GenerationRuntimeHints(history: history)
+        )
+
+        do {
+            _ = try await drain(stream2)
+            XCTFail("expected InferenceError.idleTimeout — the stalled turn must not complete silently")
+        } catch let error as InferenceError {
+            guard case .idleTimeout = error else {
+                XCTFail("expected .idleTimeout, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("expected InferenceError.idleTimeout, got \(type(of: error)): \(error)")
+        }
+
+        let elapsed = ContinuousClock.now - start
+        XCTAssertLessThan(
+            elapsed,
+            .seconds(2),
+            "the timeout must fire on its own bound, well before the stub's 5s artificial stall — a value close to 5s would mean the stub resolved instead of the timeout firing"
+        )
+    }
 }
