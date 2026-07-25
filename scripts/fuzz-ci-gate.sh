@@ -7,8 +7,10 @@
 # Exit codes:
 #   0   — no findings, or every finding is covered by an unexpired allowlist entry.
 #   1   — one or more findings are not covered, an allowlist entry has expired,
-#         or index.json is missing (a campaign that never wrote one never ran —
-#         see the missing-index branch below).
+#         index.json is missing (a campaign that never wrote one never ran —
+#         see the missing-index branch below), or index.json reports
+#         totalRuns <= 0 (a zero-run campaign, possibly a stale file from an
+#         earlier run left in place by a checkout that didn't clean tmp/fuzz/).
 #   2   — usage / input-parse error.
 #
 # The allowlist JSON shape is:
@@ -75,6 +77,26 @@ except (OSError, json.JSONDecodeError) as e:
 # in an object with `totalRuns`; legacy form is a bare array.
 if isinstance(index_data, dict) and "rows" in index_data:
     rows = index_data["rows"]
+    # A zero-run campaign is not "no findings" — it's evidence the campaign
+    # never ran (fuzz-chat's isInert check requires totalRuns > 0 by design,
+    # so a factory failure before the first iteration still exits 0; see
+    # ManifoldKit#2367 and FuzzReport.exitCode(for:)). The missing-index
+    # branch above only catches the case where the file itself is absent;
+    # this catches the same condition surviving as a STALE index.json from an
+    # earlier run — e.g. a checkout with `clean: false` that reuses tmp/fuzz/
+    # across jobs. Only enforced for the modern envelope: the legacy bare
+    # array (below) predates the totalRuns field and current code never
+    # writes it, so there is nothing reliable to check there.
+    total_runs = index_data.get("totalRuns")
+    if isinstance(total_runs, int) and total_runs <= 0:
+        print(
+            f"fuzz-ci-gate: index.json at {index_path} reports totalRuns={total_runs} — "
+            "the campaign did not run. This may be a stale index.json left over from an "
+            "earlier run (e.g. a checkout that didn't clean tmp/fuzz/) rather than a fresh "
+            "empty result; investigate the run that should have produced this file.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 elif isinstance(index_data, list):
     rows = index_data
 else:
