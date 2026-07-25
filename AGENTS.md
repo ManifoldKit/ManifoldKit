@@ -1039,12 +1039,32 @@ not a surprise discovered by the post-release fan-out.
 parser hard-fails on a squashed body whenever an identifier is immediately followed by nested
 parentheses (e.g. Swift code like `exit(FuzzReport.exitCode(for: report))`) and the failure is
 logged only at debug level, so the entire PR — not just the offending paragraph — vanishes with
-no visible warning. `scripts/changelog-coverage-check.sh` cross-checks CHANGELOG.md's newest
-section against every non-hidden-type commit since the previous tag, but only while that section
-still holds Release Please's own generated bullets (`lint.yml`'s release-please-branch job, gated
-to the PR's `opened` event and any `synchronize` actually pushed by `github-actions[bot]`) — never
-against the hand-rewritten Highlights, which is allowed to omit bullets editorially. A red means
-Release Please's own generator dropped a commit it saw; add the entry by hand during the rewrite.
+no visible warning. Two independent, differently-scoped guards exist against this — don't
+conflate them:
+- **CI gate (`lint.yml`'s `changelog-parser-check`, blocking):** re-runs release-please's own
+  commit parser (`scripts/changelog-parser-check.sh`) over every releasable commit since the
+  previous tag and reds on any commit the parser itself can't handle — the defect directly, not
+  a proxy for it. Never looks at `CHANGELOG.md`'s content, so it has no editorial-omission
+  false-positive surface and fires on every push to the release PR, any actor, any event.
+- **Manual pre-rewrite check (`scripts/changelog-coverage-check.sh`, not wired into CI):**
+  cross-checks `CHANGELOG.md`'s newest section text against every non-hidden-type commit —
+  useful only while that section still holds release-please's own generated bullets, never
+  against the hand-rewritten Highlights (which is allowed to omit bullets editorially). Run it
+  by hand before starting the rewrite (RELEASE.md step 2); it is not a CI gate because it can't
+  reliably observe "still generated" state in CI on this branch — see the next paragraph.
+
+**Bot-triggered workflow runs on the release-please branch never execute** (found while building
+the above): every `github-actions[bot]`-actor run on `release-please--branches--main` — both the
+0.73.0 and 0.74.0 cycles, all 6 workflows that trigger on it (`Lint`, `CI`, `CI Required Test
+Shim`, `CodeQL`, `README Snippets`, `cold-start-human`), 94 runs total — sits at `conclusion:
+action_required` and is never approved; only `roryford`-actor pushes on that branch ever
+complete (`gh api repos/ManifoldKit/ManifoldKit/actions/runs?branch=release-please--branches--main`).
+This silently shapes what any release-branch CI gate can be built on: a check gated to fire only
+on a release-please regeneration (a bot `synchronize`) will never actually run in practice under
+these settings, however correct its logic — this is why `changelog-parser-check` above is
+deliberately gated on *any* actor, not on detecting a bot push. `changelog-lint` (already merged,
+already required, already gated on the release-please branch regardless of actor) has the same
+exposure and has always only gotten a real verdict from Rory's own push, not release-please's.
 
 **Capability-field release-notes discipline:** a release that adds a new `BackendCapabilities`
 field ships a one-line CHANGELOG callout — "new capability field `X`, default `Y` — backends

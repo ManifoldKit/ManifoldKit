@@ -1,6 +1,11 @@
 .build/
 .swiftpm/
 
+# npm dependency install for scripts/changelog-parser-check.sh (#2380) —
+# package-lock.json is committed for a reproducible pin; node_modules is
+# reinstalled by the script (`npm ci`) each run, same as .build/ above.
+scripts/changelog-parser-check/node_modules/
+
 # scripts/test.sh and scripts/ci-test-with-watchdog.sh write captured swift-test
 # output + watchdog diagnostics here by default (package-relative, not $TMPDIR —
 # #2298: TMPDIR is per-user on macOS, so two concurrent local runs would clobber

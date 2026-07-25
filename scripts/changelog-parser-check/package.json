@@ -1,0 +1,9 @@
+{
+  "name": "changelog-parser-check",
+  "private": true,
+  "description": "Pinned dependency for scripts/changelog-parser-check.sh (#2380) -- re-runs release-please's own conventional-commit parser over every releasable commit and reds on any commit release-please itself would silently drop.",
+  "type": "module",
+  "dependencies": {
+    "release-please": "16.18.0"
+  }
+}
