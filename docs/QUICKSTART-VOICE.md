@@ -156,26 +156,19 @@ final class FakeTranscriber: SpeechTranscribing {
 let voice = VoiceConversationController(transcriber: FakeTranscriber())
 ```
 
-Same shape for ``SpeechSynthesizing`` (TTS) and ``WakeWordDetector``.
+Same shape for ``SpeechSynthesizing`` (TTS).
+
+> **Wake-word detection was removed in v0.59.0 (PR #2007).** `ManifoldVoice`
+> shipped an `AppleWakeWordDetector`, a `WakeWordDetector` protocol, and a
+> `WakeWordToast` accessory until that release; they are gone, with no
+> replacement in core. If you need phrase triggering, observe the transcript
+> stream yourself via ``SpeechTranscribing`` and match on
+> ``SpeechTranscriptionUpdate/text``. See
+> [MIGRATION-wake-word-removed.md](MIGRATION-wake-word-removed.md).
 
 ---
 
-## 5. Wake words
-
-`ManifoldVoice` ships ``AppleWakeWordDetector`` for on-device phrase matching
-against the live transcript stream:
-
-```swift,no-build
-let detector = AppleWakeWordDetector(wakeWords: ["hey assistant", "ok manifold"])
-let voice = VoiceConversationController(wakeWordDetector: detector)
-
-// Observe voice.recentWakeWordDetection — it appears for ~2s after a match,
-// then auto-clears. Plug it into a toast, haptic, or auto-start logic.
-```
-
----
-
-## 6. Using the chat composer accessory (the other path)
+## 5. Using the chat composer accessory (the other path)
 
 If you *are* building on top of ManifoldKit's `ChatView`, the chat-shaped
 adapter is `VoiceComposerAccessory` — a SwiftUI view that slots into the
