@@ -267,6 +267,11 @@ for p in "${CHANGED[@]}"; do
     # (The blanket scripts/*.sh rule further down selects ManifoldCoreTests for
     # ScriptFailOpenAuditTest, which scans every script; these two are about
     # suites that run one specific script end to end.)
+    # NOTE on cost: ManifoldFuzzTests has no xcscheme, so ci-selective-test.sh
+    # routes it to a full swift-test bundle compile — the shape the force-include
+    # block below explicitly forbids for blanket use (#2290). Accepted here only
+    # because it is bounded to edits of this one script, which are rare, and the
+    # alternative is FuzzCIGateScriptTests first failing inside the merge queue.
     scripts/fuzz-ci-gate.sh)
       changed_targets_add "ManifoldFuzzTests"
       log "changed: $p → target ManifoldFuzzTests (FuzzCIGateScriptTests runs it)"

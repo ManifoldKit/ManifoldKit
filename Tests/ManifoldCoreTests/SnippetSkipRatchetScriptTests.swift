@@ -165,6 +165,105 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         )
     }
 
+    // MARK: - Fail-open guards (this round's fixes)
+
+    /// Counts falling below the recorded budget must fail, or the budget becomes
+    /// permanent headroom a later PR can spend silently — the difference between
+    /// a ratchet and a high-water mark.
+    func test_ratchet_rejectsCountsFallingBelowTheBudget() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t2\t2",
+            guideBody: """
+            ```swift
+            let compiles = 1
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, policyFailure, "A drained budget must be lowered. Output:\n\(output)")
+        XCTAssertTrue(output.contains("FELL"), "The error must say the counts fell. Output:\n\(output)")
+    }
+
+    /// A non-numeric count must fail loudly. `[[ x -gt "13\r" ]]` raises an
+    /// arithmetic error, `[[ ]]` returns false, and `set -e` does not fire inside
+    /// an `if` condition — so one CRLF-saved TSV silently disabled the whole
+    /// ratchet at exit 0 with no annotation, which is the worst available failure:
+    /// an inert guard that looks green.
+    func test_baseline_rejectsANonNumericCount() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\tx\t1",
+            guideBody: """
+            ```swift
+            let compiles = 1
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, policyFailure, "Junk in a count column must fail. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("not a number"),
+            "The error must name the malformed value. Output:\n\(output)"
+        )
+    }
+
+    /// The bare counter must survive an `OUT_DIR` containing a space. Built so
+    /// only the bare arm can catch it: the total stays flat, so a counter that
+    /// silently reads 0 produces a green run.
+    func test_bareCounter_survivesAnOutputPathContainingSpaces() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t1",
+            guideBody: """
+            ```swift
+            let compiles = 1
+            ```
+
+            ```swift,no-build
+            let bare = 2
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo, outDirectoryName: "out dir with spaces")
+        XCTAssertEqual(status, policyFailure, "Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("bare"),
+            """
+            The BARE arm must fire, not just the total arm. With an unquoted \
+            `$(find …)` the bare count read 0 and only the total arm caught \
+            anything — so a change leaving the total flat slipped through. \
+            Output:
+            \(output)
+            """
+        )
+    }
+
+    /// A row for a doc that no longer exists must fail. Nothing consults such a
+    /// row, so it survives forever — and recreating the doc later lets its stale
+    /// budget grant skips with no TSV diff and no annotation.
+    func test_baseline_rejectsARowForADocThatDoesNotExist() throws {
+        let repo = try plantRepo(
+            baseline: "docs/GUIDE.md\t0\t0\ndocs/NEVER-EXISTED.md\t99\t99",
+            guideBody: """
+            ```swift
+            let compiles = 1
+            ```
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let (status, output) = try runExtractor(in: repo)
+        XCTAssertEqual(status, policyFailure, "A stale row must fail. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("NEVER-EXISTED") || output.contains("does not match the tree"),
+            "The error must surface the stale row. Output:\n\(output)"
+        )
+    }
+
     // MARK: - Harness
 
     /// Builds a minimal repo the script can run against: its own copy of the
@@ -200,12 +299,17 @@ final class SnippetSkipRatchetScriptTests: XCTestCase {
         return root
     }
 
-    private func runExtractor(in repo: URL) throws -> (status: Int32, output: String) {
+    /// `outDirectoryName` exists so a test can force a path containing a space —
+    /// the bare counter used to word-split on an unquoted `$(find …)` and read 0.
+    private func runExtractor(
+        in repo: URL,
+        outDirectoryName: String = "out"
+    ) throws -> (status: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [
             repo.appendingPathComponent("scripts/extract-snippets.sh").path,
-            "--out", repo.appendingPathComponent("out").path,
+            "--out", repo.appendingPathComponent(outDirectoryName).path,
         ]
         let pipe = Pipe()
         process.standardOutput = pipe

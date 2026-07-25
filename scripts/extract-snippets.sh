@@ -46,11 +46,21 @@
 # Exit codes:
 #   0 — extracted at least one Swift block across all inputs.
 #   1 — usage error or I/O failure.
-#   2 — a policy failure: zero Swift blocks found anywhere (defensive), a bare
-#       or missing-reason `no-build` tag, or a triaged doc with no compiling
-#       block.
+#   2 — a policy failure, one of:
+#         * zero Swift blocks found anywhere (defensive)
+#         * a `no-build:` tag whose reason is missing or too short
+#         * a triaged doc with no compiling block at all
+#         * a per-doc skip count that ROSE above its recorded budget
+#         * a per-doc skip count that FELL without the budget being lowered
+#         * a non-numeric count in the baseline (would disable the ratchet)
+#         * the baseline not matching the tree (stale or malformed rows)
+#       Regenerate the budget with --update-baseline.
 #
 # Portability: BSD awk/sed/grep only (macOS default toolchain). No grep -P.
+# Also runs on GNU userland: `snippet-policy-lint` (.github/workflows/lint.yml)
+# executes this script on ubuntu-latest, so keep every external invocation to
+# the intersection of BSD and GNU behaviour. Requires no Swift toolchain — that
+# is what allows the policy checks to live in the required `lint` job at all.
 
 set -euo pipefail
 
@@ -66,13 +76,17 @@ UPDATE_BASELINE=0
 
 usage() {
     cat <<EOF
-Usage: $0 [--out <dir>] [--verbose]
+Usage: $0 [--out <dir>] [--verbose] [--update-baseline]
 
 Options:
-  --out <dir>     Output directory (default: a fresh, process-unique dir
-                   under \$TMPDIR/manifoldkit-snippets-<pid>).
-  --verbose       Log each extracted block to stderr.
-  -h, --help      Show this help.
+  --out <dir>          Output directory (default: a fresh, process-unique dir
+                        under \$TMPDIR/manifoldkit-snippets-<pid>).
+  --verbose            Log each extracted block to stderr.
+  --update-baseline    Rewrite scripts/snippet-skip-baseline.tsv from the
+                        current tree instead of enforcing against it. Use after
+                        legitimately adding or removing a skipped block, and say
+                        in the PR why a count moved.
+  -h, --help           Show this help.
 EOF
 }
 
@@ -591,27 +605,56 @@ for doc_rel in ${gated_docs[@]+"${gated_docs[@]}"} ${docc_files[@]+"${docc_files
 
     baseline_bare=$(baseline_field "$doc_rel" 2)
     baseline_total=$(baseline_field "$doc_rel" 3)
-    # The LOWER arm is what makes this a ratchet rather than a high-water mark.
-    # Without it, every skip you triage away leaves permanent invisible
-    # headroom: drain a doc's 4 bare tags to 0 (green, baseline still says 4),
-    # and months later a PR can add 4 brand-new bare tags with exit 0 and no TSV
-    # diff. That falsifies the "may keep what it had, never gain one" promise —
-    # what actually held was "never exceed the high-water mark, ever".
+    # Three INDEPENDENT checks, not an if/elif chain. Chained, with the low arm
+    # first, a fall in one column suppressed a rise in the other — so triaging one
+    # bare tag away while adding two new fragments printed only "counts FELL" and
+    # never the rise annotation, and the remedy it offered (--update-baseline)
+    # recorded the rise. The low arm laundered exactly what the high arms exist to
+    # catch. Each arm now reports its own column and nothing masks anything.
     #
-    # It also self-guards the counter: a future change that breaks counting
-    # reads 0 for everything and goes instantly red here, rather than sitting
-    # green while enforcing nothing.
-    if [[ "$bare_skips" -lt "$baseline_bare" || "$total_skips" -lt "$baseline_total" ]]; then
-        echo "::error file=${doc_rel}::skip counts FELL (bare ${baseline_bare} → ${bare_skips}, total ${baseline_total} → ${total_skips}) — good, but the budget must come down with them or it becomes headroom a later PR can spend silently. Run: scripts/extract-snippets.sh --update-baseline" >&2
+    # The low arm is what makes this a ratchet rather than a high-water mark:
+    # without it, draining a doc's skips leaves permanent invisible headroom a
+    # later PR can spend silently. It also self-guards the counter — a change that
+    # breaks counting reads 0 everywhere and goes instantly red here.
+    if [[ "$bare_skips" -lt "$baseline_bare" ]]; then
+        echo "::error file=${doc_rel}::bare no-build count FELL ${baseline_bare} → ${bare_skips} — good, but the budget must come down with it or it becomes headroom a later PR can spend silently. Run: scripts/extract-snippets.sh --update-baseline (if that itself fails on a malformed baseline, delete the file and regenerate)." >&2
         ratchet_failures=$((ratchet_failures + 1))
-    elif [[ "$bare_skips" -gt "$baseline_bare" ]]; then
+    fi
+    if [[ "$total_skips" -lt "$baseline_total" ]]; then
+        echo "::error file=${doc_rel}::total skipped count FELL ${baseline_total} → ${total_skips} — lower the budget with it: scripts/extract-snippets.sh --update-baseline. Note that dropping a doc's bare count to 0 also switches on the \">=1 compiled block\" assertion for it, so it may then require a compiling block or an opt-out." >&2
+        ratchet_failures=$((ratchet_failures + 1))
+    fi
+    if [[ "$bare_skips" -gt "$baseline_bare" ]]; then
         echo "::error file=${doc_rel}::bare \`swift,no-build\` count rose ${baseline_bare} → ${bare_skips}. A bare tag has no reason attached, so nothing records why the block cannot compile. Add \`no-build:<why>\`, or make the block compile. (If this is genuinely new legacy debt, bump the count in scripts/snippet-skip-baseline.tsv and say why in the PR.)" >&2
         ratchet_failures=$((ratchet_failures + 1))
-    elif [[ "$total_skips" -gt "$baseline_total" ]]; then
+    fi
+    if [[ "$total_skips" -gt "$baseline_total" ]]; then
         echo "::error file=${doc_rel}::skipped-block count rose ${baseline_total} → ${total_skips}. Prefer making the new block compile; if it genuinely cannot, bump the count in scripts/snippet-skip-baseline.tsv so the increase is visible in review." >&2
         ratchet_failures=$((ratchet_failures + 1))
     fi
 done
+
+# ── Backstop: the baseline must equal the tree, exactly ───────────────────
+#
+# The per-doc arms above only consult rows a *currently gated doc* looks up, so
+# they are blind to rows for docs that no longer exist: delete or newly opt out a
+# doc and its row is never validated again. That is not merely untidy — recreate
+# `docs/FOO.md` later and its stale `3 3` row silently grants three bare tags
+# with no TSV diff and no annotation, which is the hole the low arm was added to
+# close. This whole-file comparison closes it, catches formatting junk in rows
+# nothing looks up, and makes the per-doc arms impossible to regress past.
+if [[ $UPDATE_BASELINE -eq 0 && -f "$BASELINE_FILE" ]]; then
+    expected_rows="$(printf '%s' "$ratchet_rows" | LC_ALL=C sort)"
+    actual_rows="$(grep -v '^[[:space:]]*#' "$BASELINE_FILE" | grep -v '^[[:space:]]*$' | LC_ALL=C sort || true)"  # fail-open-ok: grep exits 1 on an all-comment baseline, which the comparison below then reports as a mismatch
+    if [[ "$expected_rows" != "$actual_rows" ]]; then
+        echo "::error file=scripts/snippet-skip-baseline.tsv::baseline does not match the tree. Rows exist for docs that are gone or newly opted out, or a row is malformed. Run: scripts/extract-snippets.sh --update-baseline" >&2
+        printf '%s\n' "--- recorded but not produced by this run:" >&2
+        comm -13 <(printf '%s\n' "$expected_rows") <(printf '%s\n' "$actual_rows") >&2 || true  # fail-open-ok: diagnostic only; the mismatch above already failed the gate
+        printf '%s\n' "--- produced but not recorded:" >&2
+        comm -23 <(printf '%s\n' "$expected_rows") <(printf '%s\n' "$actual_rows") >&2 || true  # fail-open-ok: diagnostic only; the mismatch above already failed the gate
+        ratchet_failures=$((ratchet_failures + 1))
+    fi
+fi
 
 if [[ $UPDATE_BASELINE -eq 1 ]]; then
     {
