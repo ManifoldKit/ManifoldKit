@@ -44,11 +44,31 @@ package struct CloudRoutedStreamParser: Sendable {
         // tool round-trip). Draining to completion lets URLSession mark
         // the transfer finished cleanly before the next generate starts.
         var streamCompleted = false
+        // Cap residual frames after terminal so a provider that never closes
+        // the body cannot keep the turn open indefinitely. Bound is generous
+        // (a few trailing usage frames) but finite; `streamIdleTimeout` is the
+        // outer wall-clock backstop for silence.
+        var residualFramesAfterTerminal = 0
+        let maxResidualFramesAfterTerminal = 32
 
         do {
             for await frame in routing.framedTransport.frames(from: bytes) {
                 if Task.isCancelled { break }
                 if streamCompleted {
+                    residualFramesAfterTerminal += 1
+                    // Still count residual against stream limits so a hostile
+                    // tail cannot bypass the byte/frame budget.
+                    do {
+                        try limitTracker.noteFrame(frame)
+                    } catch {
+                        break
+                    }
+                    if residualFramesAfterTerminal >= maxResidualFramesAfterTerminal {
+                        Log.network.debug(
+                            "CloudRoutedStreamParser: residual drain hit \(maxResidualFramesAfterTerminal, privacy: .public)-frame cap after terminal; stopping"
+                        )
+                        break
+                    }
                     continue
                 }
 

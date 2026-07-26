@@ -179,18 +179,15 @@ struct SSEGenerationTaskRunner {
             }
             if !sawFirstEvent {
                 // Zero-event completion (empty body or a done-only stream that
-                // produced nothing the extractor yielded). Visible in logs so a
-                // subsequent tool-continuation stall can be distinguished from
-                // a silent empty first turn (#2376 diagnostics).
+                // produced nothing the extractor yielded). Info only — not a
+                // stall; do not re-emit the request summary at error level.
                 let elapsed = connectStarted.duration(to: ContinuousClock.now)
                 Log.network.info(
                     "\(context.currentBackendName(), privacy: .public) stream completed with zero events model=\(context.modelName, privacy: .public) elapsed_ms=\(Int(elapsed / .milliseconds(1)), privacy: .public)"
                 )
-                CloudRequestDiagnostic.logAndClearOnStall(
-                    backendName: context.currentBackendName(),
-                    context: "zero-events"
-                )
             }
+            // Always clear so a later stall cannot re-attribute this request.
+            CloudRequestDiagnostic.clear()
         } catch {
             // If the connection produced zero events (pure load-stall that then
             // failed), the phase is still `.loading`; let the caller's catch set
@@ -204,6 +201,8 @@ struct SSEGenerationTaskRunner {
                     backendName: context.currentBackendName(),
                     context: "before-first-event"
                 )
+            } else {
+                CloudRequestDiagnostic.clear()
             }
             throw error
         }

@@ -43,7 +43,7 @@ TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 scripts/example-ui-tests.sh test \
   -only-testing:AdvancedUITests/VisualWalkthroughUITests/testDefineRealOllamaEndpointAndSendLiveMessage
 ```
 
-Previously a known failure ([#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376)): the finale drove the whole flow correctly, then hung if the model called a tool (second `/api/chat` issued, then silence). Core now drains residual stream bytes after `done`, sends `Connection: close` on Ollama requests, bounds stalls with `streamIdleTimeout = 300s`, and logs a tool-continuation request summary. The assertion stays strict — if a hang returns, fail loudly.
+Still tracked as open ([#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376)): the finale has hung if the model called a tool (second `/api/chat` issued, then silence). Core ships hypothesized mitigations (drain residual stream bytes after `done`, `Connection: close` on Ollama, 300s stream idle timeout, tool-continuation request summary logs) but the original iOS walkthrough path is **not** re-confirmed green. The assertion stays strict — if a hang returns, fail loudly and use the new logs.
 
 (The sibling real-model E2E in `ModelManagementUITests` gates on a `~/.manifoldkit_real_e2e` sentinel file instead. That works because it is documented for a macOS destination, where `HOME` is your home directory; under this suite's default simulator destination `HOME` is the simulator's container, so a sentinel you touched on the host would never be seen.)
 

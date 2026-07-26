@@ -623,12 +623,12 @@ final class OllamaBackendToolCallingTests: XCTestCase {
             "Ollama tool-continuation requests must send Connection: close"
         )
 
-        // Diagnostic summary is stored for a later stall re-log.
-        let summary = CloudRequestDiagnostic.load()
-        XCTAssertNotNil(summary, "tool-continuation buildRequest must stash a CloudRequestDiagnostic summary")
-        XCTAssertTrue(summary?.contains("roles=[") == true, "summary should list roles; got \(summary ?? "nil")")
-        XCTAssertTrue(summary?.contains("fakeRateLimited") == true, "summary should list tool names; got \(summary ?? "nil")")
-        CloudRequestDiagnostic.store(nil)
+        // After a successful drain the stash must be cleared so a later
+        // unrelated stall cannot re-attribute this body (#2398 review).
+        XCTAssertNil(
+            CloudRequestDiagnostic.load(),
+            "successful tool-continuation must clear CloudRequestDiagnostic (not leave a stale stall attribution)"
+        )
     }
 
     /// Pins the log-safe request summary shape used for #2376 stall

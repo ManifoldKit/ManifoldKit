@@ -343,16 +343,16 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
-    /// **Previously a known failure (#2376).** Every step up to and including
+    /// **Still open as a hang class (#2376).** Every step up to and including
     /// sending passes: the endpoint is created and reports Ready, the switcher
-    /// selects it, the turn starts. A tool round-trip used to hang after the
-    /// tool result went back (second `/api/chat` issued, then silence until
-    /// the test gave up). Mitigations now in core: drain residual stream
-    /// bytes after `done` so keep-alive sockets are not half-closed, send
-    /// `Connection: close` on Ollama requests, bound stalls with
-    /// `streamIdleTimeout = 300s`, and log a tool-continuation request
-    /// summary so a residual stall still leaves evidence. This assertion
-    /// stays strict — if a hang returns, fail loudly rather than soft-pass.
+    /// selects it, the turn starts. A tool round-trip has hung after the tool
+    /// result went back (second `/api/chat` issued, then silence until the
+    /// test gave up). Core now ships hypothesized mitigations (drain residual
+    /// stream bytes after `done`, `Connection: close` on Ollama, 300s stream
+    /// idle timeout, tool-continuation request summary logs) but the original
+    /// iOS-simulator walkthrough path has **not** been re-confirmed green.
+    /// This assertion stays strict — if a hang returns, fail loudly rather
+    /// than soft-pass, and the new logs should make the next failure actionable.
     ///
     /// Opt in with an environment assignment on the run command (see
     /// ``runnerOverride(_:)`` — an argument-position `TEST_RUNNER_…=…` does not
