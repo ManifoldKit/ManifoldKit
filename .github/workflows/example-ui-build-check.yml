@@ -23,12 +23,15 @@ name: Example UI build check
 # build-modes.yml's per-PR `saas` leg: self-contained draft/path gating, no
 # shared `changes` job dependency.
 #
-# REQUIRED branch-protection check (alongside `test`, `lint`, and
-# `api-digester-check` — see `gh api repos/ManifoldKit/ManifoldKit/branches/main/protection`).
-# Job name `build-for-testing` is the required context. Non-Example PRs get a
-# green echo from example-ui-build-required-shim.yml (paths-ignore inverse of
-# the filter below) so they stay mergeable — same shape as
-# ci-required-test-shim.yml for `test` / `api-digester-check`. Closes #2377.
+# Intended required branch-protection check (alongside `test`, `lint`, and
+# `api-digester-check`). Job name `build-for-testing` is the context.
+# Non-Example PRs + every merge_group entry get a green echo from
+# example-ui-build-required-shim.yml so they stay mergeable / queue-safe.
+# The settings write that actually makes the context required is a
+# maintainer follow-up AFTER this workflow pair has been observed
+# reporting on a real merge_group run — applying it earlier stalls the
+# queue (AGENTS.md). Until that write lands the job is still advisory.
+# Closes #2377 once the settings write is done; this PR is the machinery.
 #
 # KNOWN RESIDUAL GAP: `paths:` below covers the Example app's own sources
 # plus the dependency graph, but not core `Sources/**`. A rename of a public

@@ -58,31 +58,50 @@ on:
       - "scripts/example-ui-tests.sh"
       - ".github/workflows/example-ui-build-check.yml"
       # ↑↑↑ MUST stay identical to example-ui-build-check.yml's pull_request `paths:` ↑↑↑
+  # Queue safety: a required context that never reports on the merge_group
+  # branch stalls the queue permanently (AGENTS.md; same reason
+  # readme-snippets needs a merge_group trigger before it can be required).
+  # The real example-ui-build-check.yml job is multi-minute macOS
+  # xcodebuild — deliberately NOT re-run on every queue entry (org-wide
+  # concurrency cap). This shim is the cheap always-on reporter: PR-head
+  # still runs the real job for Example-path PRs and is the merge gate
+  # that catches compile breaks; the queue re-report is the green echo
+  # that keeps the required context from hanging.
+  merge_group:
 
 permissions:
   contents: read
 
-# Mirror example-ui-build-check.yml's pull_request keying: collapse a PR's
-# superseded in-flight runs on force-push.
+# Collapse a PR's superseded in-flight runs on force-push. Never cancel a
+# merge_group run mid-flight — that leaves the required check unreported
+# and stalls the queue (mirrors lint.yml / ci.yml).
 concurrency:
-  group: example-ui-build-required-shim-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: example-ui-build-required-shim-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   # Job name MUST be `build-for-testing` so it reports the same required
   # status-check context as example-ui-build-check.yml's heavy job. They are
   # mutually exclusive on pure-Example / pure-non-Example PRs; see "WHY IT IS
-  # FAIL-SAFE" above for the mixed case.
+  # FAIL-SAFE" above for the mixed case. On merge_group this job always
+  # runs (no paths-ignore on that event) so the required context reports.
   build-for-testing:
-    # Mirror example-ui-build-check.yml: a draft must NOT satisfy the required
-    # check, so the review loop happens before CI. When the draft is readied
-    # (`ready_for_review`), this runs and reports.
-    if: github.event.pull_request.draft == false
+    # Draft skip for pull_request only. merge_group has no
+    # `pull_request.draft` — the naive `draft == false` alone would skip
+    # every queue run and reintroduce the stall this shim exists to prevent
+    # (ci.yml:129 idiom; same trap as readme-snippets #2391).
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: No Example-relevant changes
+      - name: Report required build-for-testing context
         run: |
-          echo "This PR touches none of example-ui-build-check.yml's paths, so the"
-          echo "macOS xcodebuild build-for-testing job is not run on the PR head."
-          echo "The required 'build-for-testing' check is satisfied here without a"
-          echo "build. PRs that touch Example/** still run the real job."
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "merge_group: reporting green 'build-for-testing' without a macOS"
+            echo "xcodebuild. Example compile was gated on the PR head when the"
+            echo "diff touched Example/** (see example-ui-build-check.yml)."
+          else
+            echo "This PR touches none of example-ui-build-check.yml's paths, so the"
+            echo "macOS xcodebuild build-for-testing job is not run on the PR head."
+            echo "The required 'build-for-testing' check is satisfied here without a"
+            echo "build. PRs that touch Example/** still run the real job."
+          fi
