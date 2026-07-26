@@ -37,7 +37,8 @@
 # example-ui-build-check.yml's pull_request `paths:`.
 #
 # Precedent: ci-required-test-shim.yml (same shape for `test` /
-# `api-digester-check`). Closes #2377.
+# `api-digester-check`). Refs #2377 — full close needs the branch-protection
+# settings write after a merge_group run is observed reporting this context.
 
 name: Example UI Build Required Shim
 
