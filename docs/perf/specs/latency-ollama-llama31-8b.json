@@ -1,0 +1,20 @@
+{
+  "model_family": "llama-3.1-8b-instruct",
+  "protocol": {
+    "prompt": "Write a three-sentence summary of why the sky is blue.",
+    "temperature": 0.0,
+    "max_tokens": 16,
+    "warmup_runs": 1,
+    "timed_runs": 20,
+    "measure_cold": true
+  },
+  "lanes": [
+    {
+      "name": "ollama",
+      "transport": "http-ollama",
+      "endpoint": "http://localhost:11434",
+      "model": "llama3.1:8b",
+      "quant": "Q4_K_M"
+    }
+  ]
+}

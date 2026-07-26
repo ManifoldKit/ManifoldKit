@@ -127,7 +127,10 @@ threshold is a streaming-cadence regression tripwire
 (`IntegratedStreamingPerformanceTests`, which fails only on a *profoundly*
 broken cadence, not on baseline drift). Per **Policy 5** below, performance is
 **not a versioned property** of 1.0: a perf regression is a bug to fix, never a
-breaking change requiring a major.
+breaking change requiring a major. Published, provenance-pinned local-inference
+baselines (Ollama HTTP spine, load/prefill/decode split) live under
+[`docs/perf/`](perf/PERFORMANCE.md) — see #2335; companion server lanes remain
+gated on [#2245](https://github.com/ManifoldKit/ManifoldKit/issues/2245).
 
 ### Semver-exempt and Experimental products (unchanged by 1.0)
 
@@ -324,6 +327,15 @@ this code, so a hard perf-semver promise would be one the project cannot honestl
 keep across the device matrix it runs on. Documenting the tripwire's existence
 gives consumers the honest guarantee — regressions are caught and fixed — without
 overclaiming a numeric contract.
+
+**Published baseline (archived artifacts).** Committed, provenance-pinned
+numbers live under [`docs/perf/`](perf/PERFORMANCE.md) (#2335) — raw
+`BenchResult` JSON, human matrix, and advisory regression thresholds. The
+schema and driver stay in [manifold-eval](https://github.com/ManifoldKit/manifold-eval);
+core only archives what the evaluator produced. HTTP-spine memory / cancel /
+MK-server lanes remain deferred on
+[#2245](https://github.com/ManifoldKit/ManifoldKit/issues/2245). Thresholds are
+investigation triggers, not semver events — consistent with this policy.
 
 **Alternative considered — perf budgets in the semver contract (a named
 regression is a breaking change).** Rejected: attractive in principle, but it
