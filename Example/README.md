@@ -43,7 +43,7 @@ TEST_RUNNER_MANIFOLD_WALKTHROUGH_LIVE=1 scripts/example-ui-tests.sh test \
   -only-testing:AdvancedUITests/VisualWalkthroughUITests/testDefineRealOllamaEndpointAndSendLiveMessage
 ```
 
-Known failure, tracked as [#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376): the finale drives the whole flow correctly — endpoint created and Ready, selected in the switcher, turn started — and then hangs if the model calls a tool. The app sends the tool result, issues a second request, and never surfaces a completion, an error, or a timeout, so the test fails on its final assertion. Neither the server nor App Transport Security is at fault: the same conversation shape replayed by hand streams to completion in ~5s, and a full-process log capture shows no ATS denial. Deliberately not softened into an assertion that passes without a reply.
+Previously a known failure ([#2376](https://github.com/ManifoldKit/ManifoldKit/issues/2376)): the finale drove the whole flow correctly, then hung if the model called a tool (second `/api/chat` issued, then silence). Core now drains residual stream bytes after `done`, sends `Connection: close` on Ollama requests, bounds stalls with `streamIdleTimeout = 300s`, and logs a tool-continuation request summary. The assertion stays strict — if a hang returns, fail loudly.
 
 (The sibling real-model E2E in `ModelManagementUITests` gates on a `~/.manifoldkit_real_e2e` sentinel file instead. That works because it is documented for a macOS destination, where `HOME` is your home directory; under this suite's default simulator destination `HOME` is the simulator's container, so a sentinel you touched on the host would never be seen.)
 

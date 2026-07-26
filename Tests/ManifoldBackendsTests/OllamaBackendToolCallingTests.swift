@@ -613,5 +613,52 @@ final class OllamaBackendToolCallingTests: XCTestCase {
         let toolResultEntry = try XCTUnwrap(messages.first { ($0["role"] as? String) == "tool" })
         XCTAssertEqual(toolResultEntry["tool_call_id"] as? String, "call_1", "tool result must carry tool_call_id so Ollama can pair it with the originating call")
         XCTAssertEqual(toolResultEntry["content"] as? String, "{\"ok\":true}")
+
+        // #2376: tool-continuation requests must refuse keep-alive reuse so a
+        // half-closed prior stream cannot stall the next generate on sticky
+        // URLSession pools (iOS simulator).
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "Connection")?.lowercased(),
+            "close",
+            "Ollama tool-continuation requests must send Connection: close"
+        )
+
+        // Diagnostic summary is stored for a later stall re-log.
+        let summary = CloudRequestDiagnostic.load()
+        XCTAssertNotNil(summary, "tool-continuation buildRequest must stash a CloudRequestDiagnostic summary")
+        XCTAssertTrue(summary?.contains("roles=[") == true, "summary should list roles; got \(summary ?? "nil")")
+        XCTAssertTrue(summary?.contains("fakeRateLimited") == true, "summary should list tool names; got \(summary ?? "nil")")
+        CloudRequestDiagnostic.store(nil)
+    }
+
+    /// Pins the log-safe request summary shape used for #2376 stall
+    /// diagnostics — roles + tool names + body size, never content.
+    func test_toolContinuationRequestSummary_isLogSafeAndIncludesRoles() {
+        let messages: [[String: Any]] = [
+            ["role": "system", "content": "SECRET_SYSTEM"],
+            ["role": "user", "content": "SECRET_USER"],
+            [
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [[
+                    "id": "call_abcdefghijklmnop",
+                    "type": "function",
+                    "function": ["name": "fakeRateLimited", "arguments": ["query": "x"]] as [String: Any],
+                ] as [String: Any]],
+            ],
+            ["role": "tool", "tool_call_id": "call_abcdefghijklmnop", "content": "SECRET_RESULT"],
+        ]
+        let summary = OllamaBackend.toolContinuationRequestSummary(
+            messages: messages,
+            toolsCount: 3,
+            bodyBytes: 1234
+        )
+        XCTAssertTrue(summary.contains("roles=[system→user→assistant→tool]"), summary)
+        XCTAssertTrue(summary.contains("fakeRateLimited"), summary)
+        XCTAssertTrue(summary.contains("result:call_abcdefg…") || summary.contains("result:call_abcdefghijklmnop"), summary)
+        XCTAssertTrue(summary.contains("tools=3"), summary)
+        XCTAssertTrue(summary.contains("body_bytes=1234"), summary)
+        // Must never echo raw message content — secrets stay out of logs.
+        XCTAssertFalse(summary.contains("SECRET_"), "summary leaked content: \(summary)")
     }
 }

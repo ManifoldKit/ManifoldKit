@@ -63,11 +63,19 @@ struct SSEGenerationTaskRunner {
 
         var streamError: Error?
         let connectionGuardBox = StrongBox<ConnectAddressPinningDelegate>()
+        let connectStarted = ContinuousClock.now
         do {
             try await context.validateEndpoint()
 
+            Log.network.debug(
+                "\(context.currentBackendName(), privacy: .public) opening connection model=\(context.modelName, privacy: .public)"
+            )
             let (bytes, connectionGuard) = try await openConnection(streamBox: streamBox)
             connectionGuardBox.value = connectionGuard
+            let headersElapsed = connectStarted.duration(to: ContinuousClock.now)
+            Log.network.debug(
+                "\(context.currentBackendName(), privacy: .public) headers received model=\(context.modelName, privacy: .public) elapsed_ms=\(Int(headersElapsed / .milliseconds(1)), privacy: .public)"
+            )
 
             if context.signalsLoadingUntilFirstToken {
                 // LAN backends (Ollama) can sit on an open `200 OK` connection
@@ -79,7 +87,8 @@ struct SSEGenerationTaskRunner {
                 try await parseAndSignalFirstToken(
                     bytes: bytes,
                     streamBox: streamBox,
-                    continuation: continuation
+                    continuation: continuation,
+                    connectStarted: connectStarted
                 )
             } else {
                 await MainActor.run { streamBox.value?.setPhase(.streaming) }
@@ -140,7 +149,8 @@ struct SSEGenerationTaskRunner {
     private func parseAndSignalFirstToken(
         bytes: URLSession.AsyncBytes,
         streamBox: WeakBox<GenerationStream>,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
+        connectStarted: ContinuousClock.Instant
     ) async throws {
         let inner = AsyncThrowingStream<GenerationEvent, Error> { innerContinuation in
             let parseTask = Task {
@@ -159,14 +169,42 @@ struct SSEGenerationTaskRunner {
             for try await event in inner {
                 if !sawFirstEvent {
                     sawFirstEvent = true
+                    let firstEventElapsed = connectStarted.duration(to: ContinuousClock.now)
+                    Log.network.debug(
+                        "\(context.currentBackendName(), privacy: .public) first event model=\(context.modelName, privacy: .public) elapsed_ms=\(Int(firstEventElapsed / .milliseconds(1)), privacy: .public)"
+                    )
                     await MainActor.run { streamBox.value?.setPhase(.streaming) }
                 }
                 continuation.yield(event)
+            }
+            if !sawFirstEvent {
+                // Zero-event completion (empty body or a done-only stream that
+                // produced nothing the extractor yielded). Visible in logs so a
+                // subsequent tool-continuation stall can be distinguished from
+                // a silent empty first turn (#2376 diagnostics).
+                let elapsed = connectStarted.duration(to: ContinuousClock.now)
+                Log.network.info(
+                    "\(context.currentBackendName(), privacy: .public) stream completed with zero events model=\(context.modelName, privacy: .public) elapsed_ms=\(Int(elapsed / .milliseconds(1)), privacy: .public)"
+                )
+                CloudRequestDiagnostic.logAndClearOnStall(
+                    backendName: context.currentBackendName(),
+                    context: "zero-events"
+                )
             }
         } catch {
             // If the connection produced zero events (pure load-stall that then
             // failed), the phase is still `.loading`; let the caller's catch set
             // `.failed`. Re-throw so retry/error handling in `run` runs.
+            if !sawFirstEvent {
+                let elapsed = connectStarted.duration(to: ContinuousClock.now)
+                Log.network.error(
+                    "\(context.currentBackendName(), privacy: .public) stalled before first event model=\(context.modelName, privacy: .public) elapsed_ms=\(Int(elapsed / .milliseconds(1)), privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+                CloudRequestDiagnostic.logAndClearOnStall(
+                    backendName: context.currentBackendName(),
+                    context: "before-first-event"
+                )
+            }
             throw error
         }
     }

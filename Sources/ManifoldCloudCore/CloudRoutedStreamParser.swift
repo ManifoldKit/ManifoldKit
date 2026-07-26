@@ -32,10 +32,25 @@ package struct CloudRoutedStreamParser: Sendable {
         var wasThinking = false
         var threwMidStream: Error?
         var limitTracker = RoutedStreamLimitTracker(limits: limits)
+        // Once the provider signals end-of-stream we stop *interpreting*
+        // frames, but we keep draining the framed transport until it
+        // finishes naturally. Breaking out of the loop early cancels the
+        // underlying `URLSession.AsyncBytes` transfer mid-body (via the
+        // transport's `onTermination` cancel path). On HTTP/1.1 keep-alive
+        // that can leave the connection half-open from the client's view
+        // and — for backends that serialise concurrent model work (Ollama
+        // on a single local model) — stall the *next* request indefinitely
+        // with no error (#2376 tool-continuation hang after a successful
+        // tool round-trip). Draining to completion lets URLSession mark
+        // the transfer finished cleanly before the next generate starts.
+        var streamCompleted = false
 
         do {
             for await frame in routing.framedTransport.frames(from: bytes) {
                 if Task.isCancelled { break }
+                if streamCompleted {
+                    continue
+                }
 
                 try limitTracker.noteFrame(frame)
 
@@ -77,11 +92,13 @@ package struct CloudRoutedStreamParser: Sendable {
                         handleUsage((promptTokens: prompt, completionTokens: completion))
                         continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                     }
-                    break
+                    streamCompleted = true
+                    continue
                 }
 
                 if !payload.isEmpty, handler.isStreamEnd(payload) {
-                    break
+                    streamCompleted = true
+                    continue
                 }
             }
         } catch {

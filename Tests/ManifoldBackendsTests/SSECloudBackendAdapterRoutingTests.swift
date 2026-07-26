@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import os
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
@@ -36,24 +37,63 @@ private final class RecordingPayloadHandler: SSEPayloadHandler, @unchecked Senda
 
 /// `FramedTransport` that emits a hardcoded sequence of frames, ignoring the
 /// upstream byte stream entirely. Records how many times `frames(from:)` is
-/// invoked so the test can confirm the envelope routed through it.
+/// invoked so the test can confirm the envelope routed through it, and how
+/// many frames the consumer actually pulled (so drain-after-terminal tests
+/// can prove residual frames after `done` are still consumed — #2376).
 private final class RecordingFramedTransport: FramedTransport, @unchecked Sendable {
     let scriptedFrames: [Data]
-    private let lock = NSLock()
-    private var _callCount = 0
-    var callCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return _callCount
+    private struct State {
+        var callCount = 0
+        var yieldedCount = 0
+        var producerFinished = false
+    }
+    private let state = OSAllocatedUnfairLock(initialState: State())
+    var callCount: Int { state.withLock { $0.callCount } }
+    var yieldedCount: Int { state.withLock { $0.yieldedCount } }
+    var producerFinished: Bool { state.withLock { $0.producerFinished } }
+
+    /// When true, frames are yielded from a Task with a brief pause between
+    /// them so a consumer that `break`s early cancels the producer before
+    /// residual frames are emitted — used by the #2376 drain-after-terminal
+    /// test. Default false keeps the historical synchronous producer for
+    /// existing routing tests.
+    let asyncYield: Bool
+
+    init(frames: [Data], asyncYield: Bool = false) {
+        self.scriptedFrames = frames
+        self.asyncYield = asyncYield
     }
 
-    init(frames: [Data]) { self.scriptedFrames = frames }
-
     func frames(from bytes: URLSession.AsyncBytes) -> AsyncStream<Data> {
-        lock.lock(); _callCount += 1; lock.unlock()
+        state.withLock { $0.callCount += 1 }
         let scripted = scriptedFrames
+        let asyncYield = self.asyncYield
         return AsyncStream { continuation in
-            for frame in scripted { continuation.yield(frame) }
-            continuation.finish()
+            if !asyncYield {
+                for frame in scripted {
+                    continuation.yield(frame)
+                    self.state.withLock { $0.yieldedCount += 1 }
+                }
+                self.state.withLock { $0.producerFinished = true }
+                continuation.finish()
+                return
+            }
+            // Async producer: pause between yields so a break-based consumer
+            // cancels us before residual frames after the terminal are
+            // emitted. Drain-based consumers let us run to finish.
+            let task = Task {
+                for frame in scripted {
+                    if Task.isCancelled { break }
+                    continuation.yield(frame)
+                    self.state.withLock { $0.yieldedCount += 1 }
+                    try? await Task.sleep(for: .milliseconds(5))
+                }
+                if !Task.isCancelled {
+                    self.state.withLock { $0.producerFinished = true }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }
@@ -288,6 +328,70 @@ struct SSECloudBackendAdapterRoutingTests {
         #expect(usageRecorder.lastPrompt == 7)
         #expect(usageRecorder.lastCompletion == 11)
         #expect(framedTransport.callCount == 1)
+    }
+
+    /// #2376: after the terminal frame the parser must keep draining residual
+    /// frames so `URLSession.AsyncBytes` completes cleanly rather than being
+    /// cancelled mid-body. Residual frames after DONE must not be interpreted
+    /// (no extra tokens) but the transport producer must still finish.
+    @Test func routedParser_drainsResidualFramesAfterTerminalWithoutInterpretingThem() async throws {
+        let trailing = Data("after-done-should-be-ignored".utf8)
+        let scriptedFrames: [Data] = [
+            Data("alpha".utf8),
+            Data("DONE".utf8),
+            trailing,
+            Data("also-ignored".utf8),
+        ]
+        let payloadHandler = RecordingPayloadHandler()
+        // asyncYield so residual frames only emit if the consumer keeps
+        // pulling after DONE (the whole point of this regression).
+        let framedTransport = RecordingFramedTransport(frames: scriptedFrames, asyncYield: true)
+        let finalizer = RecordingFinalizer(terminalFrame: Data("DONE".utf8))
+        let routing = CloudAdapterRouting(
+            payloadHandler: payloadHandler,
+            framedTransport: framedTransport,
+            streamFinalizer: finalizer,
+            errorBodyDecoder: RecordingErrorBodyDecoder(),
+            buildRequest: { _, _, _, _ in URLRequest(url: URL(string: "https://unused.test/x")!) }
+        )
+        let parser = CloudRoutedStreamParser(
+            routing: routing,
+            limits: .default,
+            handleUsage: { _ in }
+        )
+
+        let endpoint = URL(string: "https://parser-drain-\(UUID().uuidString).test/stream")!
+        MockURLProtocol.stub(url: endpoint, response: .immediate(data: Data("ok".utf8), statusCode: 200))
+        let request = URLRequest(url: endpoint)
+        let (bytes, _) = try await makeMockSession().bytes(for: request)
+        MockURLProtocol.unstub(url: endpoint)
+
+        let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
+            Task {
+                do {
+                    try await parser.parse(bytes: bytes, continuation: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+
+        var tokens: [String] = []
+        for try await event in stream {
+            if case .token(let t) = event { tokens.append(t) }
+        }
+
+        // Only the pre-terminal frame produced a token; residual frames after
+        // DONE were drained without interpretation.
+        #expect(tokens == ["tok(alpha)"])
+        #expect(!payloadHandler.payloads.contains("after-done-should-be-ignored"))
+        #expect(!payloadHandler.payloads.contains("also-ignored"))
+        // Finalizer saw alpha + DONE, not the residual frames.
+        #expect(finalizer.inspected.count == 2)
+        // Producer ran to natural completion (all 4 frames yielded + finish).
+        #expect(framedTransport.yieldedCount == 4)
+        #expect(framedTransport.producerFinished)
     }
 
     /// Asserts that an unconfigured backend (no routing installed) still

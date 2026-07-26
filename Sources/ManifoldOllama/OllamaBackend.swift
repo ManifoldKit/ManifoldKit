@@ -748,11 +748,70 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         var request = URLRequest(url: chatURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        // Prefer Connection: close for streaming NDJSON so a half-closed
+        // keep-alive socket from a previous turn cannot be reused for the next
+        // generate call. Tool-continuation turns (#2376) issue a second
+        // `/api/chat` immediately after the first stream ends; on platforms
+        // where URLSession's keep-alive pool is sticky (iOS simulator in
+        // particular), reusing a connection that was cancelled mid-drain is a
+        // known hang shape. Closing is free for a local LAN hop.
+        request.setValue("close", forHTTPHeaderField: "Connection")
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = bodyData
 
-        Log.network.debug("OllamaBackend request to \(chatURL.absoluteString, privacy: .public) model=\(self.modelName, privacy: .public)")
+        let isToolContinuation = history.containsToolParts
+        if isToolContinuation {
+            // #2376: the walkthrough hang left no request-body evidence. Always
+            // log a structured summary for tool-continuation requests so the
+            // next stall surfaces message roles, tool names, and body size
+            // without requiring a debugger.
+            let summary = Self.toolContinuationRequestSummary(
+                messages: messages,
+                toolsCount: config.tools.count,
+                bodyBytes: bodyData.count
+            )
+            Log.network.info(
+                "OllamaBackend tool-continuation request to \(chatURL.absoluteString, privacy: .public) model=\(self.modelName, privacy: .public) \(summary, privacy: .public)"
+            )
+            // Stash so a later idle-timeout / zero-event stall can re-emit the
+            // same summary without re-encoding the body (#2376 diagnostics).
+            CloudRequestDiagnostic.store(summary)
+        } else {
+            Log.network.debug(
+                "OllamaBackend request to \(chatURL.absoluteString, privacy: .public) model=\(self.modelName, privacy: .public)"
+            )
+        }
 
         return request
+    }
+
+    /// Compact, log-safe summary of a tool-continuation request body for #2376
+    /// diagnostics. Roles + tool names only — never raw user content or tool
+    /// result payloads (those can carry secrets).
+    static func toolContinuationRequestSummary(
+        messages: [[String: Any]],
+        toolsCount: Int,
+        bodyBytes: Int
+    ) -> String {
+        let roles = messages.map { ($0["role"] as? String) ?? "?" }
+        var toolNames: [String] = []
+        for message in messages {
+            if let calls = message["tool_calls"] as? [[String: Any]] {
+                for call in calls {
+                    let name = (call["function"] as? [String: Any])?["name"] as? String
+                    toolNames.append(name ?? "?")
+                }
+            }
+            if let callId = message["tool_call_id"] as? String, !callId.isEmpty {
+                // Pairing id present on the tool-result turn — surface a
+                // truncated form so a missing/empty id is obvious in logs.
+                let short = callId.count > 12 ? String(callId.prefix(12)) + "…" : callId
+                toolNames.append("result:\(short)")
+            }
+        }
+        let rolesJoined = roles.joined(separator: "→")
+        let toolsJoined = toolNames.isEmpty ? "-" : toolNames.joined(separator: ",")
+        return "messages=\(messages.count) roles=[\(rolesJoined)] tool_turns=[\(toolsJoined)] tools=\(toolsCount) body_bytes=\(bodyBytes)"
     }
 
     // MARK: - NDJSON Stream Parsing

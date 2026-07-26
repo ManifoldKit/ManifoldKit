@@ -343,19 +343,16 @@ final class VisualWalkthroughUITests: XCTestCase {
     /// store), needs Ollama serving `llama3.1:8b` at `localhost:11434`, and
     /// **persists an endpoint into the real demo store** that outlives the run.
     ///
-    /// **Known failure — tracked as #2376.** Every step up to and including
+    /// **Previously a known failure (#2376).** Every step up to and including
     /// sending passes: the endpoint is created and reports Ready, the switcher
-    /// selects it, the turn starts. Then, if the model calls a tool, the turn
-    /// hangs after the tool result goes back — the app dispatches a second
-    /// `/api/chat` request and never surfaces a completion, an error, or a
-    /// timeout, so the transcript sits on the typing indicator and this test
-    /// fails on its final assertion.
-    ///
-    /// The server is not at fault (that same conversation shape, replayed by
-    /// hand, streams to `done` in ~5 s) and neither is App Transport Security
-    /// (a full-process log capture contains no ATS denial). The assertion is
-    /// deliberately left strict rather than softened into something that passes
-    /// without a reply.
+    /// selects it, the turn starts. A tool round-trip used to hang after the
+    /// tool result went back (second `/api/chat` issued, then silence until
+    /// the test gave up). Mitigations now in core: drain residual stream
+    /// bytes after `done` so keep-alive sockets are not half-closed, send
+    /// `Connection: close` on Ollama requests, bound stalls with
+    /// `streamIdleTimeout = 300s`, and log a tool-continuation request
+    /// summary so a residual stall still leaves evidence. This assertion
+    /// stays strict — if a hang returns, fail loudly rather than soft-pass.
     ///
     /// Opt in with an environment assignment on the run command (see
     /// ``runnerOverride(_:)`` — an argument-position `TEST_RUNNER_…=…` does not
