@@ -23,17 +23,19 @@ schema-without-producer in core is a dead read path).
 | Same measurement point | One HTTP driver timestamps both `http-ollama` and `http-openai` — no `InferenceService` queue in the TTFT path. |
 | Honest statistics | Median + min/max always. p90 only at `n ≥ 20`. p99 only at `n ≥ 100`. Never publish "p99 of 5 samples". |
 | Prefill caveat | Wall TPS = `tokens ÷ total wall time` (**prefill included**), kept for continuity with retired in-process benches. Always pair with decode tok/s (`generateTps`) when comparing generation throughput. |
-| Provenance | Chip, memory, OS, Ollama version, model digest, harness revision, dated raw JSON. |
+| Provenance | Chip, memory, OS, Ollama version, model digest, harness revision (markdown + filename date). Thermal/power and core pin are **not** yet on the JSON record — re-baseline notes should capture them by hand when claiming a hardware-matched comparison. |
 | Sequential lanes | `runAlone: true` always — concurrent GPU lanes corrupt TPS. |
 
-## Publication suite (minimum continuous baseline)
+## Publication suite (minimum published baseline)
 
-Two specs, not one undersampled hybrid:
+Two specs, not one undersampled hybrid. Re-runs are **manual** today — there
+is no CI schedule that refreshes `docs/perf/`. Continuous / release-blocking
+operation is a follow-up once the recipe is stable.
 
 | Suite | Purpose | `timed_runs` | `max_tokens` | Cold? |
 |-------|---------|--------------|--------------|-------|
 | **Latency** | TTFT distribution + real p90 | ≥ 20 | tiny (16) | yes (`measure_cold`) |
-| **Throughput** | Steady-state generation | 5 | ≥ 256 | optional (warm is enough once cold is measured on latency) |
+| **Throughput** | Longer decode sample | 5 | target ≥ 256 (EOS may stop early) | optional (warm is enough once cold is measured on latency) |
 
 Committed artifacts:
 

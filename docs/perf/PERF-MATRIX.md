@@ -1,10 +1,13 @@
 # Local-inference performance matrix (published baseline)
 
 **Audience:** contributor, release
-**Status:** living baseline — re-run with manifold-eval `perf-bench` and replace
-the raw JSON + matrix files when hardware or the harness changes meaningfully.
+**Status:** archived one-shot baseline — re-run **manually** with
+manifold-eval `perf-bench` and *add* dated raw JSON when hardware or the
+harness changes. There is **no** scheduled workflow that refreshes these
+numbers yet; “continuously-operated” is a follow-up, not a claim about this
+directory.
 
-This is the **committed, human-readable** view of the first continuously-operated
+This is the **committed, human-readable** view of the first **published**
 Ollama baseline for [ManifoldKit #2335](https://github.com/ManifoldKit/ManifoldKit/issues/2335).
 Raw machine-readable records live under [`raw/`](raw/); the specs that produced
 them under [`specs/`](specs/). Governance, thresholds, and deferred metrics:
@@ -55,27 +58,43 @@ a steady-state generation figure. Use the throughput suite / decode column.
 
 ## How to re-run
 
-Requires a live Ollama with `llama3.1:8b` and a manifold-eval checkout that
-includes schema-v2 native metrics (`loadDurationMs` / `prefillTps` / `generateTps`
-+ `measure_cold`):
+Two checkouts. Specs and published artifacts live in **ManifoldKit**; the CLI
+lives in **manifold-eval**. Schema-v2 fields (`loadDurationMs` /
+`prefillTps` / `generateTps` / `measure_cold`) require a manifold-eval
+revision that includes [manifold-eval#56](https://github.com/ManifoldKit/manifold-eval/pull/56)
+(or later main once that lands). Pin the harness SHA you actually run in the
+provenance block.
 
 ```sh
+# Paths assume sibling checkouts:
+#   ~/Repos/ManifoldKit/ManifoldKit
+#   ~/Repos/ManifoldKit/manifold-eval
+CORE="$HOME/Repos/ManifoldKit/ManifoldKit"
+EVAL="$HOME/Repos/ManifoldKit/manifold-eval"
+DATE=$(date -u +%Y-%m-%d)
+
+cd "$EVAL"
 swift run -c release manifold-eval perf-bench \
-  --spec docs/perf/specs/latency-ollama-llama31-8b.json \
-  --out docs/perf/PERF-MATRIX-latency.md \
-  --json-out docs/perf/raw/ollama-llama31-8b-latency-$(date -u +%Y-%m-%d).json \
+  --spec "$CORE/docs/perf/specs/latency-ollama-llama31-8b.json" \
+  --out "$CORE/docs/perf/PERF-MATRIX-latency.md" \
+  --json-out "$CORE/docs/perf/raw/ollama-llama31-8b-latency-${DATE}.json" \
   --title "Ollama latency (llama-3.1-8b-instruct, n=20)"
 
 swift run -c release manifold-eval perf-bench \
-  --spec docs/perf/specs/throughput-ollama-llama31-8b.json \
-  --out docs/perf/PERF-MATRIX-throughput.md \
-  --json-out docs/perf/raw/ollama-llama31-8b-throughput-$(date -u +%Y-%m-%d).json \
+  --spec "$CORE/docs/perf/specs/throughput-ollama-llama31-8b.json" \
+  --out "$CORE/docs/perf/PERF-MATRIX-throughput.md" \
+  --json-out "$CORE/docs/perf/raw/ollama-llama31-8b-throughput-${DATE}.json" \
   --title "Ollama throughput (llama-3.1-8b-instruct, n=5)"
 ```
 
-Then rewrite the summary table above and note harness revision + hardware in
-the provenance block. Do **not** silently overwrite historical raw JSON — add a
-dated file so regressions stay comparable.
+Requires a live Ollama with `llama3.1:8b`. Then rewrite the summary table above
+and note harness revision + hardware in the provenance block. Do **not**
+silently overwrite historical raw JSON — add a dated file so regressions stay
+comparable.
+
+**Throughput note (this publication):** the prompt often stops early via EOS
+(~117 tokens vs `max_tokens: 256`). Decode tok/s is still meaningful; do not
+read the suite as “always filled 256 tokens.”
 
 ## Out of scope (this matrix)
 
