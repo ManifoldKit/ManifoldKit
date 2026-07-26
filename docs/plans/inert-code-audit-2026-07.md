@@ -1,6 +1,24 @@
 # Inert-code audit — 2026-07-03
 
-**Status:** 54 confirmed gaps; 6 fix waves merged. Remaining decision list awaits Rory.
+**Status (2026-07-26): CLOSED as campaign.** Behavioral fix waves 1–6 + the
+decision-list sweep are merged. Issue #2128 tracks residual deferred items only
+as historical context — new work opens its own issue.
+
+| Track | Disposition | Evidence |
+|---|---|---|
+| Waves 1–6 (behavioral) | ✅ merged | #2120–#2125 |
+| Decision-list demotions (`NetworkActivityCenter`, `ModelCatalog`, MMVM benchmark surface, `RouterBackend`) | ✅ demoted → `package` | #2351 |
+| Voice `onSpeechProgress` wire | ✅ live public accessor on `VoiceConversationController` | #2351 |
+| Seam docs (`SwiftDataUsageStore` readers, `.resident` scoring, reliability wrappers) | ✅ documented | #2351 + store doc comments |
+| Inert-surface tripwire + final removals | ✅ `InertSurfaceAuditTest` + allowlist ledger | #2358 |
+| `SettingsService` keep-and-demote | ⏳ gated on origin-app dropping the public read (ruling 2026-07-21) | still `public`; MMUI is in-package |
+| `quickStart` media-services gap | → #1903 | joint rule |
+| `extractDialog` / OS-private storage | deferred to OS 27 | #2358 doc-truth |
+| Skills demo theater | deferred to Experimental¹ graduation | ManifoldSkills §7b |
+| Run-subsystem auto-resume | superseded by demotion | #2270 |
+
+The findings below remain the historical evidence ledger from 2026-07-03 —
+they are not a live todo list.
 
 Systematic audit for code that exists but is not wired up: read paths with no writer, seam-only
 ports, ignored config, orphan events, stubs behind real-looking APIs, and doc-claimed capabilities
