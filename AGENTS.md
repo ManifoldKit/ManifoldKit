@@ -885,8 +885,10 @@ The same gap existed for **shell scripts**: `ci.yml`'s paths were an allowlist o
 `ScriptFailOpenAuditTest`, which scans all of `scripts/`, first ran in the merge
 queue. `ci.yml` now globs `scripts/**.sh` (kept in lockstep with
 `ci-required-test-shim.yml`'s `paths-ignore` — the `shim-drift` lint step
-enforces that) and the resolver force-includes `ManifoldCoreTests` for any
-`scripts/*.sh` change.
+enforces that pair, and the same step also locks
+`example-ui-build-check.yml` ↔ `example-ui-build-required-shim.yml` for the
+required `build-for-testing` context, #2377) and the resolver force-includes
+`ManifoldCoreTests` for any `scripts/*.sh` change.
 
 **The rule: a suite that reads or executes a file must be selected when that file
 changes.** Two enforcement shapes, both in `affected-suites.sh`:

@@ -1,0 +1,88 @@
+# Companion shim to example-ui-build-check.yml — keeps the required
+# `build-for-testing` status check reportable on PRs that the real workflow's
+# path filter excludes, so they stay mergeable AND can enter the merge queue.
+#
+# WHY THIS EXISTS
+# `build-for-testing` (in example-ui-build-check.yml) is a REQUIRED status
+# check once #2377 lands. That workflow's pull_request trigger has a
+# `paths:` filter scoped to Example/** + the driver script/config, so a PR
+# that touches none of those paths never runs the real xcodebuild and the
+# context never reports. Branch protection then leaves the PR un-mergeable,
+# and the native merge queue refuses it: queue ENTRY requires the PR-head
+# required checks to be satisfied. Without this shim such PRs are stuck.
+#
+# HOW IT WORKS
+# This job reports green `build-for-testing` for exactly those excluded PRs
+# via the INVERSE path set: `paths-ignore` mirrors example-ui-build-check.yml's
+# pull_request `paths:`. The real job still runs on PRs that touch Example/**
+# (and can be re-dispatched via workflow_dispatch), so the gate always
+# validates the demo/UI-test compile surface before it lands.
+#
+# WHY IT IS FAIL-SAFE
+# `paths` and `paths-ignore` are NOT strict complements: a PR touching BOTH a
+# filtered path (e.g. Example/Advanced/**) and an unfiltered one (e.g.
+# README.md) trips the real job AND this shim, producing two check runs
+# sharing the required context name. That is safe because GitHub requires
+# EVERY check run sharing a required context name to pass — so when the real
+# build also ran, this echo cannot satisfy the context on its own. (This
+# holds regardless of completion order; it is NOT a timing/last-writer-wins
+# property — that rule only applies to re-runs within a single check suite,
+# and the shim and example-ui-build-check.yml are separate suites.)
+# Consequently a green echo can never mask a real failure. If the lists
+# below ever drift from example-ui-build-check.yml, the only failure mode is
+# a redundant echo or a false BLOCK (a missing required check), never a
+# false PASS that lets untested Example code merge.
+#
+# DRIFT: keep `paths-ignore` below identical to
+# example-ui-build-check.yml's pull_request `paths:`.
+#
+# Precedent: ci-required-test-shim.yml (same shape for `test` /
+# `api-digester-check`). Closes #2377.
+
+name: Example UI Build Required Shim
+
+on:
+  pull_request:
+    # Mirror example-ui-build-check.yml's activity types — `ready_for_review`
+    # is what fires the check when a draft is marked ready (drafts are a
+    # zero-CI staging area; see AGENTS.md §"Draft-PR review loop").
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths-ignore:
+      # ↓↓↓ MUST stay identical to example-ui-build-check.yml's pull_request `paths:` ↓↓↓
+      - "Example/Advanced/**"
+      - "Example/AdvancedUITests/**"
+      - "Example/Advanced.xcodeproj/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - "scripts/example-ui-tests.sh"
+      - ".github/workflows/example-ui-build-check.yml"
+      # ↑↑↑ MUST stay identical to example-ui-build-check.yml's pull_request `paths:` ↑↑↑
+
+permissions:
+  contents: read
+
+# Mirror example-ui-build-check.yml's pull_request keying: collapse a PR's
+# superseded in-flight runs on force-push.
+concurrency:
+  group: example-ui-build-required-shim-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Job name MUST be `build-for-testing` so it reports the same required
+  # status-check context as example-ui-build-check.yml's heavy job. They are
+  # mutually exclusive on pure-Example / pure-non-Example PRs; see "WHY IT IS
+  # FAIL-SAFE" above for the mixed case.
+  build-for-testing:
+    # Mirror example-ui-build-check.yml: a draft must NOT satisfy the required
+    # check, so the review loop happens before CI. When the draft is readied
+    # (`ready_for_review`), this runs and reports.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: No Example-relevant changes
+        run: |
+          echo "This PR touches none of example-ui-build-check.yml's paths, so the"
+          echo "macOS xcodebuild build-for-testing job is not run on the PR head."
+          echo "The required 'build-for-testing' check is satisfied here without a"
+          echo "build. PRs that touch Example/** still run the real job."
