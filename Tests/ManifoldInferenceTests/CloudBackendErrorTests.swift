@@ -70,7 +70,6 @@ final class CloudBackendErrorTests: XCTestCase {
             .missingAPIKey,
             .streamInterrupted,
             .backendDeallocated,
-            .timeout(.seconds(120)),
             .blockedAddress("Hostname evil.com resolved to 10.0.0.1"),
         ]
 
@@ -94,7 +93,6 @@ final class CloudBackendErrorTests: XCTestCase {
             .missingAPIKey,
             .streamInterrupted,
             .backendDeallocated,
-            .timeout(.seconds(60)),
             .blockedAddress("10.0.0.1"),
         ]
 
@@ -110,10 +108,6 @@ final class CloudBackendErrorTests: XCTestCase {
 
     func test_backendDeallocated_isNotRetryable() {
         XCTAssertFalse(CloudBackendError.backendDeallocated.isRetryable)
-    }
-
-    func test_timeout_isRetryable() {
-        XCTAssertTrue(CloudBackendError.timeout(.seconds(120)).isRetryable)
     }
 
     func test_streamInterrupted_isRetryable() {
@@ -259,7 +253,6 @@ final class CloudBackendErrorTests: XCTestCase {
     func test_category_networkErrors_areRetryableTransient() {
         XCTAssertEqual(CloudBackendError.networkError(underlying: URLError(.notConnectedToInternet)).category, .retryableTransient)
         XCTAssertEqual(CloudBackendError.streamInterrupted.category, .retryableTransient)
-        XCTAssertEqual(CloudBackendError.timeout(.seconds(30)).category, .retryableTransient)
     }
 
     func test_category_5xxServerError_isRetryableTransient() {

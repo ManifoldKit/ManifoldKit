@@ -16,8 +16,8 @@ final class BackendCapabilitiesFieldCompletenessTests: XCTestCase {
     /// Every stored property `BackendCapabilities` currently declares.
     /// `Mirror` reflects a *struct's* actual stored fields at runtime — it
     /// does not see computed properties (`contextWindowSize`,
-    /// `visibleParameters`, `preferredStructuredOutputSupport`, the deprecated
-    /// `streamsToolCallArgumentDeltas` alias), so this list only has to track
+    /// `visibleParameters`, `preferredStructuredOutputSupport`), so this list
+    /// only has to track
     /// storage, matching what `union(_:)`/`updating(...)` actually need to
     /// merge/forward.
     ///

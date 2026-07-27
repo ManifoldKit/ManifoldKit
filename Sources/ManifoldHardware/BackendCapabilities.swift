@@ -120,15 +120,6 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// set `false`.
     public let streamsToolCallArguments: Bool
 
-    /// Deprecated alias for ``streamsToolCallArguments``.
-    ///
-    /// One capability should have one public name. ``streamsToolCallArguments``
-    /// is the canonical spelling — it is the stored property, the codable key,
-    /// and the name every backend and consumer already uses. This redundant
-    /// alias is retired before 1.0 to keep the frozen surface minimal.
-    @available(*, deprecated, renamed: "streamsToolCallArguments")
-    public var streamsToolCallArgumentDeltas: Bool { streamsToolCallArguments }
-
     /// True when the backend can emit multiple ``GenerationEvent/toolCall(_:)``
     /// events in one generation round (parallel batch). Single-call backends
     /// and small local models that only reliably emit one call at a time set

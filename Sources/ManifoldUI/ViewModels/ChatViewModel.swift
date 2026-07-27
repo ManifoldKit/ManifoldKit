@@ -209,9 +209,10 @@ public final class ChatViewModel {
     /// model and constructed in ``init`` from the supplied inference / storage
     /// services.
     ///
-    /// Hosts pass this to model-management views via the new explicit-init
-    /// path (`ModelManagementSheet(modelRegistry:)`); the deprecated
-    /// environment-based init reads it through `ChatViewModel`.
+    /// Hosts pass this to model-management views explicitly
+    /// (`ModelManagementSheet(modelRegistry:)`). The environment-based
+    /// initializer that read it through `ChatViewModel` was removed — see
+    /// docs/MIGRATION-deprecation-shims-deleted.md.
     public let modelRegistry: ModelRegistry
 
     /// All models discovered on disk plus the built-in Foundation model.

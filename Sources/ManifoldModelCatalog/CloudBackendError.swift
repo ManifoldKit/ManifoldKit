@@ -15,15 +15,6 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
     /// The backend object was deallocated while a stream was in flight.
     /// Not retryable — the backend no longer exists.
     case backendDeallocated
-    /// No events received within the idle timeout duration.
-    ///
-    /// Deprecated: the idle-timeout wrapper (``GenerationStream``) serves local
-    /// backends too, so it now throws the backend-neutral
-    /// `InferenceError.idleTimeout`. This cloud-specific case is no longer
-    /// thrown by the framework and is retained only for source compatibility
-    /// until 1.0.
-    @available(*, deprecated, message: "Idle-timeout failures now surface as InferenceError.idleTimeout")
-    case timeout(Duration)
     /// The endpoint's hostname resolved to a private, link-local, or reserved
     /// IP address at connect time, indicating a potential DNS rebinding attack.
     /// The associated value describes which address triggered the block.
@@ -66,7 +57,7 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
             return .authenticationFailed
         case .contentFiltered:
             return .contentFiltered
-        case .networkError, .streamInterrupted, .timeout:
+        case .networkError, .streamInterrupted:
             return .retryableTransient
         case .serverError(let code, _) where code >= 500:
             return .retryableTransient
@@ -103,12 +94,6 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
             return "Response stream was interrupted."
         case .backendDeallocated:
             return "Backend was deallocated during generation."
-        case .timeout(let duration):
-            let totalMs = duration.components.seconds * 1000 + duration.components.attoseconds / 1_000_000_000_000_000
-            if totalMs < 1000 {
-                return "No response received for \(totalMs)ms."
-            }
-            return "No response received for \(duration.components.seconds)s."
         case .blockedAddress(let detail):
             return "Connection blocked: the endpoint resolved to a private or reserved address. \(detail)"
         case .unpinnedCredentialedHost(let host):
@@ -132,7 +117,7 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
 
     public var isRetryable: Bool {
         switch self {
-        case .rateLimited, .networkError, .streamInterrupted, .timeout, .providerOverloaded:
+        case .rateLimited, .networkError, .streamInterrupted, .providerOverloaded:
             return true
         case .serverError(let statusCode, _):
             return statusCode >= 500

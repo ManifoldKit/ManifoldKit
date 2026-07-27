@@ -348,9 +348,7 @@ final class QuickStartSeedTests: XCTestCase {
 
     // MARK: - SeedModelError
     //
-    // test_seedModelError_hasNonEmptyDescription was removed in v0.48 (PR
-    // C2): the `.huggingFaceTraitNotAvailable` case is deprecated and
-    // unreachable (the download machinery is always compiled in now), so
-    // constructing it in a test would only pin a dead string and emit a
-    // deprecation warning.
+    // The type is gone. It had a single case, unreachable since v0.48, that
+    // nothing ever threw — see docs/MIGRATION-deprecation-shims-deleted.md.
+    // Its test was removed in v0.48; there is nothing left to construct.
 }

@@ -549,7 +549,7 @@ final class ModelManagementSheetLogicTests: XCTestCase {
             )
         )
         let controller = NSHostingController(
-            rootView: ModelManagementSheet(initialTab: tab)
+            rootView: ModelManagementSheet(modelRegistry: vm.modelRegistry, initialTab: tab)
                 .environment(vm)
                 .environment(modelManagement)
         )

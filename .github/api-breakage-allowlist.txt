@@ -484,3 +484,10 @@ API breakage: constructor MCPClientConfiguration.init(sseStreamLimits:requestTim
 API breakage: constructor CancellationRaceDetector.init(minTokenChars:) has been removed
 API breakage: var CancellationRaceDetector.minTokenChars has been removed
 API breakage: var BackendVisionCapability.llamaSupportsImageInput has been removed
+API breakage: var BackendCapabilities.streamsToolCallArgumentDeltas has been removed
+API breakage: typealias TurnUsageRecord has been removed
+API breakage: var MCPOAuthTokens.accessToken has been removed
+API breakage: enumelement CloudBackendError.timeout has been removed
+API breakage: enum SeedModelError has been removed
+API breakage: constructor StorageManagementView.init() has been removed
+API breakage: constructor ModelManagementSheet.init(initialTab:recommendedModelIDs:recommendationTitle:recommendationMessage:) has been removed

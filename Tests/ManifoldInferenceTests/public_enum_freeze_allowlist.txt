@@ -181,7 +181,6 @@ ManifoldInference/Utilities/MarkdownRendering.swift:public enum MarkdownRenderin
 ManifoldKit/FeatureMatrix.swift:public enum FeatureMatrix {
 ManifoldKit/FeatureMatrix.swift:public enum ManifoldCapability: String, CaseIterable, Sendable {
 ManifoldKit/QuickStart.swift:public enum ManifoldKit {
-ManifoldKit/QuickStartSeed.swift:public enum SeedModelError: Error, LocalizedError, Sendable {
 ManifoldMCP/MCPCatalog.swift:public enum MCPCatalog {
 ManifoldMCP/MCPTypes.swift:public enum AuthRetryDecision: Sendable {
 ManifoldMCP/MCPTypes.swift:public enum MCPApprovalPolicy: Sendable, Equatable, Hashable, Codable {

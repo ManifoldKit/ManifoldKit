@@ -266,35 +266,6 @@ public struct QuickStartSeed: Sendable {
     }
 }
 
-// MARK: - SeedModelError
-
-/// Errors that ``QuickStartSeed`` seeding can surface.
-///
-/// These are deliberately narrow — most conditions (no connectivity, no local
-/// backend) are silently skipped by `quickStart(seed:)` rather than throwing,
-/// so the app still launches. The error cases here reflect programmer-visible
-/// configuration mistakes.
-public enum SeedModelError: Error, LocalizedError, Sendable {
-    /// Historical: the download machinery used to be gated behind the
-    /// retired `HuggingFace` SwiftPM trait. Since v0.48 (PR C2) it is always
-    /// compiled in, so this condition is unreachable. The case is retained
-    /// only so existing exhaustive switches keep compiling for one release.
-    @available(*, deprecated, message: "Unreachable since v0.48 — the download machinery is always compiled in (the HuggingFace trait is retired). See docs/MIGRATION-0.48.md.")
-    case huggingFaceTraitNotAvailable
-
-    public var errorDescription: String? {
-        switch self {
-        case .huggingFaceTraitNotAvailable:
-            return """
-                The first-launch seed download machinery is always available \
-                since ManifoldKit v0.48 — this error is never thrown by \
-                current code. If you see it, an outdated host is calling a \
-                pre-0.48 seam. See docs/MIGRATION-0.48.md.
-                """
-        }
-    }
-}
-
 // MARK: - Internal download helper
 
 /// Drives a single seed download, waiting for completion (or failure) in-place.

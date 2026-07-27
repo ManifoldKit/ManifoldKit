@@ -1,4 +1,3 @@
-(top-level).TurnUsageRecord TypeAlias
 (top-level).makeMessageSearchSnippet(content:query:contextRadius:) Func
 APIEndpointRecord Struct
 APIEndpointRecord conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,Identifiable,Sendable,SendableMetatype
