@@ -1,0 +1,76 @@
+[
+  {
+    "engine" : "ollama",
+    "engineVersion" : "0.32.0",
+    "generateTpsPerRun" : [
+      49.21406815685744,
+      47.29196889401061,
+      47.225425523283945,
+      46.17911259533323,
+      47.672968326813276
+    ],
+    "hardware" : {
+      "chip" : "Apple M5 Pro",
+      "memoryGB" : 64,
+      "os" : "Version 26.5.2 (Build 25F84)"
+    },
+    "lane" : "ollama",
+    "loadDurationMsPerRun" : [
+      106.915917,
+      112.772,
+      106.129583,
+      105.316833,
+      104.8605
+    ],
+    "maxTps" : 46.626947962001104,
+    "maxTtftMs" : 138.328959,
+    "medianGenerateTps" : 47.29196889401061,
+    "medianLoadDurationMs" : 106.129583,
+    "medianPrefillTps" : 1069.5684523809525,
+    "medianTps" : 44.858614119671536,
+    "medianTtftMs" : 130.285542,
+    "minTps" : 43.93710784251249,
+    "minTtftMs" : 128.3955,
+    "model" : "llama3.1:8b",
+    "modelDigest" : "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+    "p90Rank" : 5,
+    "p90Tps" : 46.626947962001104,
+    "p90TtftMs" : 138.328959,
+    "p99Rank" : 5,
+    "p99Tps" : 46.626947962001104,
+    "p99TtftMs" : 138.328959,
+    "prefillTpsPerRun" : [
+      1083.8320531548936,
+      1019.5035460992908,
+      1058.7368808690849,
+      1080.3193987787695,
+      1069.5684523809525
+    ],
+    "quant" : "Q4_K_M",
+    "runAlone" : true,
+    "schemaVersion" : 2,
+    "specHash" : "393fa25cc6e6b10e27c63ccde04dd1afbc55d741ec7978370696a6406c641859",
+    "tokensPerRun" : [
+      117,
+      117,
+      117,
+      117,
+      117
+    ],
+    "tpsPerRun" : [
+      46.626947962001104,
+      44.777650257110764,
+      44.858614119671536,
+      43.93710784251249,
+      45.29608466927499
+    ],
+    "transport" : "http-ollama",
+    "ttftMsPerRun" : [
+      131.366584,
+      138.328959,
+      130.285542,
+      128.913042,
+      128.3955
+    ]
+  }
+]
