@@ -102,6 +102,13 @@ public struct ModelManifest: Sendable, Equatable, Codable {
     /// > site (`manifest.contextWindow ?? 200_000` in an Anthropic backend,
     /// > `?? 128_000` in an OpenAI one), because the knowledge of what a
     /// > sensible default *is* lives with the provider, not with the manifest.
+    ///
+    /// > Warning: producers do not yet agree on *which* window this is. MLX
+    /// > reports the model's trained ceiling (`max_position_embeddings`), while
+    /// > llama.cpp reports the context it actually **allocated** for this load
+    /// > (`ModelLoadPlan.effectiveContextSize`), which is usually smaller.
+    /// > Making absence expressible does **not** settle allocated-vs-trained —
+    /// > don't read a non-`nil` value as necessarily the trained maximum.
     public let contextWindow: Int?
 
     /// Whether the model accepts and honours tool-call definitions in the
