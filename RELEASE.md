@@ -126,10 +126,30 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    drift before it ships.
 
 2. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
-   branch in its worktree (`release-please--branches--main`) and rewrite the
-   newest section's auto-generated bullets into **Prisma-style Highlights**
-   (`### Highlights` with verb-led headlines, 2–3 sentences of context, a
-   runnable snippet for new/changed public APIs). Validate locally with:
+   branch in its worktree (`release-please--branches--main`). CI's
+   `changelog-parser-check` (any push, any actor) already re-runs Release
+   Please's own commit parser and would have reported a red on this PR if
+   it silently dropped a commit (#2380 — its parser can hard-fail on a
+   squashed commit body and lose the whole entry with no visible warning);
+   check that it's green before proceeding. Optionally cross-check the
+   still-generated text directly, before editing anything:
+
+   ```bash
+   bash scripts/changelog-coverage-check.sh CHANGELOG.md  # must exit 0, BEFORE rewriting
+   ```
+
+   A red here means a merged PR's number doesn't appear anywhere in the
+   still-auto-generated section — add the missing entry by hand as part of
+   the rewrite below, same as any other bullet. **Only run this check
+   against the still-generated section** — once you've rewritten it into
+   prose it will flag ordinary, allowed editorial omissions as if they were
+   drops; this script is not wired into CI for exactly that reason (see
+   AGENTS.md § Release workflow).
+
+   Now rewrite the newest section's auto-generated bullets into
+   **Prisma-style Highlights** (`### Highlights` with verb-led headlines,
+   2–3 sentences of context, a runnable snippet for new/changed public
+   APIs). Validate the rewrite locally with:
 
    ```bash
    bash scripts/changelog-lint.sh CHANGELOG.md   # must exit 0
