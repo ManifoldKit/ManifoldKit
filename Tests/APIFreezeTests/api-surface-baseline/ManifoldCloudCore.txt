@@ -29,29 +29,35 @@ CloudHTTPProviderAdapter.messageEncoder Var
 CloudHTTPProviderAdapter.payloadHandler Var
 CloudHTTPProviderAdapter.probeCapabilities() Func
 CloudHTTPProviderAdapter.streamFinalizer Var
-CloudMessageEncoder Enum
-CloudMessageEncoder conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
-CloudMessageEncoder.__derived_enum_equals(_:_:) Func
-CloudMessageEncoder.claude EnumElement
+CloudMessageEncoder Struct
+CloudMessageEncoder conformances: Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
+CloudMessageEncoder.RawValue TypeAlias
+CloudMessageEncoder.allCases Var
+CloudMessageEncoder.claude Var
+CloudMessageEncoder.description Var
 CloudMessageEncoder.encodeMessages(systemPrompt:prompt:structuredHistory:toolAwareHistory:plainHistory:) Func
 CloudMessageEncoder.encodeStructuredMessageContent(for:) Func
 CloudMessageEncoder.encodeTools(_:strict:) Func
-CloudMessageEncoder.hash(into:) Func
-CloudMessageEncoder.hashValue Var
-CloudMessageEncoder.ollama EnumElement
-CloudMessageEncoder.openAI EnumElement
-CloudMessageEncoder.openAIResponses EnumElement
+CloudMessageEncoder.init(rawValue:) Constructor
+CloudMessageEncoder.ollama Var
+CloudMessageEncoder.openAI Var
+CloudMessageEncoder.openAIResponses Var
+CloudMessageEncoder.rawValue Var
+CloudMessageEncoder.wellKnown Var
 CloudPayloadHandler Struct
 CloudPayloadHandler conformances: Copyable,Escapable,SSEPayloadHandler,Sendable,SendableMetatype
-CloudPayloadHandler.Provider Enum
-CloudPayloadHandler.Provider conformances: Copyable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
+CloudPayloadHandler.Provider Struct
+CloudPayloadHandler.Provider conformances: Copyable,CustomStringConvertible,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 CloudPayloadHandler.Provider.RawValue TypeAlias
-CloudPayloadHandler.Provider.claude EnumElement
+CloudPayloadHandler.Provider.allCases Var
+CloudPayloadHandler.Provider.claude Var
+CloudPayloadHandler.Provider.description Var
 CloudPayloadHandler.Provider.init(rawValue:) Constructor
-CloudPayloadHandler.Provider.ollama EnumElement
-CloudPayloadHandler.Provider.openAI EnumElement
-CloudPayloadHandler.Provider.openAIResponses EnumElement
+CloudPayloadHandler.Provider.ollama Var
+CloudPayloadHandler.Provider.openAI Var
+CloudPayloadHandler.Provider.openAIResponses Var
 CloudPayloadHandler.Provider.rawValue Var
+CloudPayloadHandler.Provider.wellKnown Var
 CloudPayloadHandler.extractEvents(from:) Func
 CloudPayloadHandler.extractStreamError(from:) Func
 CloudPayloadHandler.extractToken(from:) Func
