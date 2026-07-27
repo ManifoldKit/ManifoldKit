@@ -66,7 +66,7 @@ private final class UsageReportingBackend: InferenceBackend, @unchecked Sendable
 /// Minimal endpoint-style backend: no network. Conforms to
 /// ``EndpointBackendURLModelConfigurable`` so the Ollama load path in
 /// ``ModelLifecycleCoordinator`` accepts it. Emits one token plus a `.usage`
-/// event so the runtime records a `TurnUsageRecord`.
+/// event so the runtime records a `TurnUsage`.
 private final class FakeEndpointBackend: InferenceBackend, EndpointBackendURLModelConfigurable, @unchecked Sendable {
     var isModelLoaded = false
     var isGenerating = false
@@ -95,21 +95,21 @@ private final class FakeEndpointBackend: InferenceBackend, EndpointBackendURLMod
     func unloadModel() { isModelLoaded = false }
 }
 
-/// Captures every ``TurnUsageRecord`` handed to the store. `UsageStore` is a
+/// Captures every ``TurnUsage`` handed to the store. `UsageStore` is a
 /// `@MainActor` port, so this fake mirrors that isolation rather than being an
 /// actor.
 @MainActor
 private final class CapturingUsageStore: UsageStore {
-    private(set) var records: [TurnUsageRecord] = []
+    private(set) var records: [TurnUsage] = []
 
-    func record(_ record: TurnUsageRecord) async throws { records.append(record) }
+    func record(_ record: TurnUsage) async throws { records.append(record) }
     func summary(sinceDays: Int) async throws -> UsageSummary {
         UsageSummary(totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedInputTokens: 0, totalCacheWriteTokens: 0, turnCount: 0)
     }
     func summary(forEndpoint endpointID: UUID, sinceDays: Int) async throws -> UsageSummary {
         UsageSummary(totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedInputTokens: 0, totalCacheWriteTokens: 0, turnCount: 0)
     }
-    func recentRecords(limit: Int) async throws -> [TurnUsageRecord] { records }
+    func recentRecords(limit: Int) async throws -> [TurnUsage] { records }
 }
 
 /// Compression policy returning one brand-new summary record. The new record's
@@ -168,7 +168,7 @@ private final class CountingExecutor: ToolExecutor, @unchecked Sendable {
 ///     pre-turn and post-turn compression paths.
 ///   - `.toolCallApproved` fires between `.toolCallRequested` and
 ///     `.toolCallCompleted` only when a call genuinely clears approval.
-///   - `endpointID` is threaded into the `TurnUsageRecord` written to the
+///   - `endpointID` is threaded into the `TurnUsage` written to the
 ///     `UsageStore` for endpoint-backed turns (#1207).
 @MainActor
 final class GlassBoxEventWiringTests: XCTestCase {
@@ -538,7 +538,7 @@ final class GlassBoxEventWiringTests: XCTestCase {
         )
     }
 
-    // MARK: - Task D: endpointID threaded into TurnUsageRecord
+    // MARK: - Task D: endpointID threaded into TurnUsage
 
     func test_endpointID_populatedInUsageRecord_forEndpointBackend() async throws {
         let service = InferenceService()
@@ -575,7 +575,7 @@ final class GlassBoxEventWiringTests: XCTestCase {
         let records = usageStore.records
         XCTAssertEqual(records.count, 1, "Exactly one usage record should be written for the turn")
         XCTAssertEqual(records.first?.endpointID, endpoint.id,
-                       "TurnUsageRecord.endpointID must carry the active endpoint id (#1207)")
+                       "TurnUsage.endpointID must carry the active endpoint id (#1207)")
     }
 
     // MARK: - Task D: endpointID is nil for on-disk (local) backends

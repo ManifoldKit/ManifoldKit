@@ -280,15 +280,29 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         self.configure(adapterRouting: routing)
     }
 
-    /// Creates an Ollama backend.
+    /// Creates an Ollama backend with an explicit session.
     ///
     /// - Parameter urlSession: Custom URLSession for testing. Pass `nil` to use the default.
     ///
     /// When `urlSession` is `nil` and the runtime kill-switch
     /// ``URLSessionProvider/networkDisabled`` is set, the underlying property
-    /// access traps. Use ``makeChecked(urlSession:)`` for a throwing variant
-    /// that surfaces the kill-switch as a recoverable error.
-    @available(*, deprecated, message: "Direct construction bypasses registration. Register via OllamaBackends.register(with:) or quickStart(), or use makeChecked(urlSession:) for kill-switch-safe construction; see docs/MIGRATION-shims-retired.md.")
+    /// access traps. ``makeChecked(urlSession:)`` is the public, throwing
+    /// entry point that surfaces the kill-switch as a recoverable error.
+    ///
+    /// Stays `public`, and deliberately carries no deprecation attribute.
+    ///
+    /// The retired `@available(*, deprecated)` here objected to *bypassing
+    /// registration*, not to a missing replacement — registering via
+    /// ``OllamaBackends/register(with:)`` / `quickStart()` remains the
+    /// preferred path, and ``makeChecked(urlSession:)`` is the kill-switch-safe
+    /// factory. But preference is not grounds for a warning on every call
+    /// site, and it is not grounds for demoting this to `package` either:
+    /// fireside's `FiresideEvalCore` calls `OllamaBackend(urlSession:)`
+    /// directly inside a compiled `#if Ollama`, and AGENTS.md § Public API
+    /// design policy is explicit that the `package` default does not apply to
+    /// what a consumer app consumes directly. Narrowing this needs its own
+    /// screened change (`scripts/api-demotion-screen.sh`) with the consumer
+    /// updated in lockstep — not a drive-by in a shim sweep.
     public init(urlSession: URLSession? = nil) {
         // Adapter capabilities mirror what `OllamaBackend.capabilities`
         // resolves before any /api/show probe has run. The dynamic
@@ -427,7 +441,13 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
-    @available(*, deprecated, message: "Direct construction bypasses registration. Register via OllamaBackends.register(with:) or quickStart(), or use makeChecked(urlSession:) for kill-switch-safe construction; see docs/MIGRATION-shims-retired.md.")
+    ///
+    /// This carried a deprecation whose message read "use
+    /// makeChecked(urlSession:)" — i.e. it pointed at itself, so a consumer
+    /// following the neighbouring initializer's own advice got an
+    /// unactionable warning either way. It was a copy of that initializer's
+    /// attribute; the sibling `OpenAIBackend.makeChecked` was never
+    /// deprecated. This is the recommended construction path, not a shim.
     public static func makeChecked(urlSession: URLSession? = nil) throws -> OllamaBackend {
         let session: URLSession
         if let urlSession {

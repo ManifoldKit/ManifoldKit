@@ -18,7 +18,7 @@ public struct ModelManagementSheet: View {
     private let recommendedModelIDs: Set<String>?
     private let recommendationTitle: String?
     private let recommendationMessage: String?
-    private let registrySource: RegistrySource
+    private let modelRegistry: ModelRegistry
 
     public enum Tab: String, CaseIterable {
         case select = "Select"
@@ -84,46 +84,16 @@ public struct ModelManagementSheet: View {
         recommendationTitle: String? = nil,
         recommendationMessage: String? = nil
     ) {
-        self.registrySource = .explicit(modelRegistry)
+        self.modelRegistry = modelRegistry
         self.initialTab = initialTab
         self.recommendedModelIDs = recommendedModelIDs
         self.recommendationTitle = recommendationTitle
         self.recommendationMessage = recommendationMessage
         _selectedTab = State(initialValue: initialTab)
-    }
-
-    /// Deprecated environment-based init. Reads ``ChatViewModel`` from the
-    /// SwiftUI environment and forwards to the registry-driven path.
-    /// Pass `modelRegistry` explicitly instead.
-    @available(*, deprecated, message: "Use ModelManagementSheet(modelRegistry:initialTab:recommendedModelIDs:recommendationTitle:recommendationMessage:) and pass chatViewModel.modelRegistry explicitly.")
-    public init(
-        initialTab: Tab = .select,
-        recommendedModelIDs: Set<String>? = nil,
-        recommendationTitle: String? = nil,
-        recommendationMessage: String? = nil
-    ) {
-        self.registrySource = .environment
-        self.initialTab = initialTab
-        self.recommendedModelIDs = recommendedModelIDs
-        self.recommendationTitle = recommendationTitle
-        self.recommendationMessage = recommendationMessage
-        _selectedTab = State(initialValue: initialTab)
-    }
-
-    private enum RegistrySource {
-        case explicit(ModelRegistry)
-        case environment
     }
 
     public var body: some View {
-        switch registrySource {
-        case .explicit(let registry):
-            content(modelRegistry: registry)
-        case .environment:
-            EnvironmentBridge { registry in
-                content(modelRegistry: registry)
-            }
-        }
+        content(modelRegistry: modelRegistry)
     }
 
     @ViewBuilder
@@ -187,18 +157,6 @@ public struct ModelManagementSheet: View {
             } catch {
                 Log.download.warning("ModelManagementSheet: registry refresh on appear failed: \(error)")
             }
-        }
-    }
-
-    /// Internal helper that pulls ``ChatViewModel`` from the environment so
-    /// the deprecated `init()` overload can keep working without violating
-    /// `@Environment` lookup rules (which require a `View` body site).
-    private struct EnvironmentBridge<Content: View>: View {
-        @Environment(ChatViewModel.self) private var chatViewModel
-        let content: (ModelRegistry) -> Content
-
-        var body: some View {
-            content(chatViewModel.modelRegistry)
         }
     }
 
@@ -281,7 +239,6 @@ public struct ModelManagementSheet: View {
         .accessibilityIdentifier("model-management-scanning-indicator")
     }
 }
-
 
 #Preview {
     let chatVM = ChatViewModel()

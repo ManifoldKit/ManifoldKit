@@ -244,13 +244,13 @@ final class RetryPolicyTests: XCTestCase {
         XCTAssertNil(strategy.delay(for: error, attempt: 2, totalDelayed: 0.02))
     }
 
-    func test_withRetry_retriesTimeoutError() async throws {
+    func test_withRetry_retriesIdleTimeoutError() async throws {
         let strategy = ExponentialBackoffStrategy(maxRetries: 3, baseDelay: 0.01)
         var callCount = 0
         let result: String = try await withRetry(strategy: strategy) {
             callCount += 1
             if callCount < 2 {
-                throw CloudBackendError.timeout(.seconds(120))
+                throw InferenceError.idleTimeout(.seconds(120))
             }
             return "ok"
         }

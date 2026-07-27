@@ -109,7 +109,7 @@ final class AuthMCPOAuthAuthorizationTests: XCTestCase {
         XCTAssertEqual(header, "Bearer refreshed-token")
 
         let stored = try await tokenStore.read(serverID)
-        XCTAssertEqual(stored?.accessToken, "refreshed-token")
+        XCTAssertEqual(stored?.accessTokenData, Data("refreshed-token".utf8))
         XCTAssertEqual(stored?.refreshToken, "refresh-123")
 
         let tokenRequests = MockURLProtocol.capturedRequests.filter { $0.url == tokenEndpoint }

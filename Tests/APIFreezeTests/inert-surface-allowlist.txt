@@ -163,7 +163,6 @@ ScenarioRegistry  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exe
 ScoreValue  # reason: host-facing library surface — public enum consumed downstream or via tests; no in-repo (Sources/) reference.
 ScoredModel  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
 SearchResults  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
-SeedModelError  # reason: host-facing error — thrown by `quickStart(seed:)`; caught downstream.
 SendMessageError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
 SessionListView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 SessionRowStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.

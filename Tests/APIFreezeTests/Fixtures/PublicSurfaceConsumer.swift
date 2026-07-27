@@ -45,14 +45,6 @@ import ManifoldTestSupport
 @MainActor
 enum PublicSurfaceConsumer {
 
-    /// Touches deprecated-but-still-frozen aliases. Annotated `@available`
-    /// deprecated so referencing them here doesn't emit warnings — the freeze
-    /// test still fails to compile if the alias is removed outright.
-    @available(*, deprecated)
-    static func consumeDeprecatedAliases(_ caps: BackendCapabilities) {
-        _ = caps.streamsToolCallArgumentDeltas
-    }
-
     /// Statically referenced from `PublicSurfaceTests` so dead-code-elimination
     /// can't strip the consumer body. Returns `Void`; the body's purpose is
     /// purely to compile against the public surfaces named in it.
@@ -109,12 +101,6 @@ enum PublicSurfaceConsumer {
         _ = caps.contextWindowSize
         _ = caps.preferredStructuredOutputSupport
         _ = caps.visibleParameters
-        // Deprecated alias kept on the frozen surface until 1.0 removal; the
-        // freeze fixture must keep referencing it so its disappearance is
-        // caught as an API break, not a silent drop. Wrapped in a deprecated
-        // helper so the reference itself doesn't emit a warning.
-        Self.consumeDeprecatedAliases(caps)
-
         // Codable round-trip — exposed publicly so callers can persist
         // capability snapshots.
         let encoder = JSONEncoder()

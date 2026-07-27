@@ -121,9 +121,3 @@ public protocol UsageStore: AnyObject, Sendable {
     /// - Throws: Storage errors from the underlying store.
     func recentRecords(limit: Int) async throws -> [TurnUsage]
 }
-
-// MARK: - Deprecation Alias
-
-@available(*, deprecated, renamed: "TurnUsage")
-public typealias TurnUsageRecord = TurnUsage
-

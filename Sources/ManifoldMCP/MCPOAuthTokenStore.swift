@@ -7,13 +7,6 @@ public struct MCPOAuthTokens: Sendable, Codable, Equatable {
     /// the window in which the token lives as a heap `String`.
     public let accessTokenData: Data
 
-    /// String form of the access token. Kept for Codable compatibility and callers
-    /// that need the raw string (e.g. logging with redaction).
-    @available(*, deprecated, message: "Use accessTokenData (Data) instead of accessToken (String); convert with String(data:encoding:) only at UI or protocol boundaries.")
-    public var accessToken: String {
-        String(data: accessTokenData, encoding: .utf8) ?? ""
-    }
-
     public let refreshToken: String?
     public let expiresAt: Date?
     public let scopes: [String]

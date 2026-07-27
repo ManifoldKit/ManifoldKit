@@ -9,9 +9,10 @@ import ManifoldUI
 /// downloaded models with their sizes and delete buttons.
 public struct StorageManagementView: View {
 
-    /// Resolved registry. The canonical init takes one explicitly; the
-    /// deprecated init reads it from `ChatViewModel` via the environment.
-    private let registrySource: RegistrySource
+    /// The registry the host constructed, passed in explicitly. The
+    /// environment-reading initializer that used to be the alternative was
+    /// removed — see docs/MIGRATION-deprecation-shims-deleted.md.
+    private let modelRegistry: ModelRegistry
 
     @Environment(ModelManagementViewModel.self) private var managementViewModel
     @Environment(\.dismiss) private var dismiss
@@ -24,31 +25,11 @@ public struct StorageManagementView: View {
     /// Canonical init — pass the registry the host already constructed
     /// (typically `chatViewModel.modelRegistry`).
     public init(modelRegistry: ModelRegistry) {
-        self.registrySource = .explicit(modelRegistry)
-    }
-
-    /// Deprecated environment-based init. Reads ``ChatViewModel`` from the
-    /// SwiftUI environment and forwards to the registry-driven path.
-    /// Pass `modelRegistry` explicitly instead.
-    @available(*, deprecated, message: "Use StorageManagementView(modelRegistry:) and pass chatViewModel.modelRegistry explicitly.")
-    public init() {
-        self.registrySource = .environment
-    }
-
-    private enum RegistrySource {
-        case explicit(ModelRegistry)
-        case environment
+        self.modelRegistry = modelRegistry
     }
 
     public var body: some View {
-        switch registrySource {
-        case .explicit(let registry):
-            content(modelRegistry: registry)
-        case .environment:
-            EnvironmentBridge { registry in
-                content(modelRegistry: registry)
-            }
-        }
+        content(modelRegistry: modelRegistry)
     }
 
     @ViewBuilder
@@ -101,18 +82,6 @@ public struct StorageManagementView: View {
             } message: {
                 Text(deleteErrorMessage ?? "")
             }
-        }
-    }
-
-    /// Internal helper that pulls ``ChatViewModel`` from the environment so
-    /// the deprecated `init()` overload can keep working without violating
-    /// `@Environment` lookup rules (which require a `View` body site).
-    private struct EnvironmentBridge<Content: View>: View {
-        @Environment(ChatViewModel.self) private var chatViewModel
-        let content: (ModelRegistry) -> Content
-
-        var body: some View {
-            content(chatViewModel.modelRegistry)
         }
     }
 
