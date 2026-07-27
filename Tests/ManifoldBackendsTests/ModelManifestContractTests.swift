@@ -15,6 +15,58 @@ import ManifoldTestSupport
 /// stream lie to each other, reasoning content is silently dropped.
 final class ModelManifestContractTests: XCTestCase {
 
+    // MARK: - Unknown context window resolves per-provider, not by sentinel
+
+    /// `ClaudeBackend` used to detect "the table had no entry" by comparing the
+    /// manifest's `contextWindow` against the literal `8192` that
+    /// `ModelManifest.unknown()` fabricated in another module. With absence on
+    /// the type it reads `?? 200_000` instead; this pins the resulting window.
+    func test_claude_unknownModel_capabilitiesUseAnthropic200kFallback() {
+        let backend = ClaudeBackend()
+        backend.modelName = "claude-imaginary-9000"
+
+        XCTAssertNil(backend.manifest?.contextWindow,
+                     "An unrecognised Claude model must have no measured window")
+        XCTAssertEqual(backend.capabilities.maxContextTokens, 200_000,
+                       "Anthropic's mainstream baseline is the backend's own fallback for an unknown window")
+    }
+
+    /// A model the table *does* cover must keep its real window rather than
+    /// being swept into the fallback.
+    func test_claude_knownModel_capabilitiesUseTableWindow() {
+        let backend = ClaudeBackend()
+        backend.modelName = "claude-sonnet-4-7-20260101"
+
+        XCTAssertEqual(backend.manifest?.contextWindow, 1_000_000)
+        XCTAssertEqual(backend.capabilities.maxContextTokens, 1_000_000,
+                       "A measured 1M window must reach capabilities untouched")
+    }
+
+    /// The collision the old sentinel could not survive: `gpt-4` genuinely has
+    /// an 8,192-token window. A `== 8192` "is this unknown?" check would
+    /// classify it as un-introspected and inflate it to the provider fallback.
+    /// It must stay 8,192.
+    func test_openAI_genuine8kModel_isNotMistakenForUnknown() {
+        let backend = OpenAIBackend()
+        backend.modelName = "gpt-4"
+
+        XCTAssertEqual(backend.manifest?.contextWindow, 8192,
+                       "gpt-4's real window is 8k — a measured value, not a sentinel")
+        XCTAssertEqual(backend.capabilities.maxContextTokens, 8192,
+                       "A genuine 8k model must NOT be inflated to the 128k unknown-model fallback")
+    }
+
+    /// …and the unknown case still gets OpenAI's fallback, so the two are
+    /// resolved by different paths rather than by a shared magic number.
+    func test_openAI_unknownModel_capabilitiesUse128kFallback() {
+        let backend = OpenAIBackend()
+        backend.modelName = "gpt-imaginary-9000"
+
+        XCTAssertNil(backend.manifest?.contextWindow)
+        XCTAssertEqual(backend.capabilities.maxContextTokens, 128_000,
+                       "OpenAI's mainstream baseline is the backend's own fallback for an unknown window")
+    }
+
     // MARK: - Cloud backends — supportsThinking matches the manifest table
 
     func test_claude_sonnet4_manifestReflectsThinking() throws {
@@ -57,8 +109,8 @@ final class ModelManifestContractTests: XCTestCase {
         let backend = OpenAIBackend()
         backend.modelName = "made-up-3000"
         let manifest = try XCTUnwrap(backend.manifest)
-        XCTAssertEqual(manifest.contextWindow, 8192,
-                       "Unknown OpenAI model must fall back to the 8k default")
+        XCTAssertNil(manifest.contextWindow,
+                     "An unrecognised OpenAI model has an unknown window; OpenAIBackend applies the 128k fallback itself")
         XCTAssertEqual(manifest.supportsSeed, false,
                        "Unknown OpenAI model must not advertise seed")
     }

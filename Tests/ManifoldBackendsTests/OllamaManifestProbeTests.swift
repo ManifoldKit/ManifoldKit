@@ -319,6 +319,37 @@ final class OllamaManifestProbeTests: XCTestCase {
                        "Architecture-prefixed context_length keys must be honoured (llama.context_length)")
     }
 
+    /// When `/api/show` reports no `context_length`, the manifest must say so.
+    /// It previously substituted this backend's own `num_ctx` allocation, which
+    /// describes what we will *run with*, not what the model *is* — making a
+    /// failed probe indistinguishable from a model that genuinely has that
+    /// window. `capabilities` still surfaces num_ctx, where the meaning is
+    /// honest.
+    func test_manifest_contextWindowIsNilWhenShowReportsNoContextLength() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "mystery:latest")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(capabilities: ["completion"]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        let manifest = try XCTUnwrap(backend.manifest)
+        XCTAssertNil(manifest.contextWindow,
+                     "No context_length in /api/show means the model's window is unknown — not num_ctx")
+        XCTAssertGreaterThan(backend.capabilities.maxContextTokens, 0,
+                             "capabilities must still resolve a usable window from num_ctx despite the unknown manifest")
+    }
+
     // MARK: - Thinking markers from template
 
     func test_manifest_capturesThinkingMarkersFromTemplate() async throws {

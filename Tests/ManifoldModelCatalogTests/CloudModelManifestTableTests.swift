@@ -40,7 +40,8 @@ final class CloudModelManifestTableTests: XCTestCase {
     func test_openAI_unknownModel_returnsUnknownManifest() {
         let manifest = CloudModelManifestTable.openAI(modelName: "imaginary-model-x")
         XCTAssertEqual(manifest.modelIdentifier, "imaginary-model-x")
-        XCTAssertEqual(manifest.contextWindow, 8192)
+        XCTAssertNil(manifest.contextWindow,
+                     "A table miss means the window is unknown — not 8k")
         XCTAssertFalse(manifest.supportsSeed)
         XCTAssertEqual(manifest.producerKind, .cloud)
     }
@@ -71,8 +72,8 @@ final class CloudModelManifestTableTests: XCTestCase {
     func test_claude_unknownModel_returnsUnknownManifest() {
         let manifest = CloudModelManifestTable.claude(modelName: "unrecognised-claude")
         XCTAssertEqual(manifest.modelIdentifier, "unrecognised-claude")
-        XCTAssertEqual(manifest.contextWindow, 8192,
-                       "Unknown models fall back to the conservative 8k default")
+        XCTAssertNil(manifest.contextWindow,
+                     "A table miss means the window is unknown; ClaudeBackend applies the 200k Anthropic fallback itself")
         XCTAssertFalse(manifest.supportsThinking)
     }
 
