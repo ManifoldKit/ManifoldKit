@@ -9,8 +9,10 @@ staged multimodal projector and a working image-embedding path — matching the
 probed shape already used by the MLX and Ollama helpers, and the contract
 documented on `MultimodalProjectorConfigurable`.
 
-Shipped with PR [#2393](https://github.com/ManifoldKit/ManifoldKit/pull/2393)
-(issues #2381).
+Shipped with PR [#2401](https://github.com/ManifoldKit/ManifoldKit/pull/2401)
+(issue #2381). It was first staged in #2393 and split out of it: a Contract
+API break has to ship under a `feat!:` title to cut a MINOR, and #2393 was a
+`fix:` patch. Merge in lockstep with manifold-llama#166.
 
 ## What changed
 
