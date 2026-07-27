@@ -73,4 +73,86 @@ Through v0.47 that meant even a Foundation-only consumer cloned ~259 MB of sourc
 
 What the user downloads is the stripped, dead-stripped App Store binary; core's compiled overhead without the companion packages is small (no ML runtimes at all). Apple's App Store Review Guidelines §2.5.2 prohibit downloading executable code at runtime — model *weights* are fine; inference *runtimes* must ship in the app bundle. The Apple Foundation Models runtime is provided by the OS at zero bundle cost, making a core-only (Foundation + cloud) app the leanest possible shape. See [docs/AppStoreSubmission.md](AppStoreSubmission.md) for the full submission checklist.
 
+## FAQ: why not keep the glue in core and only externalize the engines?
+
+The companion packages look heavy until you open them: `ManifoldLlama` /
+`ManifoldMLX` are a few thousand lines of Swift. Almost all of the cost is
+**upstream** — the llama.cpp xcframework binary, mlx-swift and its graph —
+not the ManifoldKit-shaped wrappers. So a natural design is:
+
+> Keep the glue (`ManifoldLlama` / `ManifoldMLX`) as products of ManifoldKit,
+> and let consumers who want local inference add the engine packages the same
+> way they add companions today.
+
+That design does **not** work under SwiftPM's package graph rules. The short
+reason: **the package that imports an engine must declare that engine as a
+dependency, and every declared dependency is resolved for every consumer of
+that package.**
+
+### What SwiftPM actually does
+
+1. A target can only `import` modules that its **own** package lists in
+   `Package.swift` (as a `.package` / `.binaryTarget` edge and a target
+   dependency). The *consumer* cannot "inject" llama.cpp or mlx-swift into
+   ManifoldKit so that core compiles `ManifoldLlama` without core declaring
+   those deps.
+2. Declaring those edges on ManifoldKit means they appear in core's package
+   identity. On `swift package resolve`, **every** client of ManifoldKit
+   fetches them — including apps that only use cloud chat or Foundation
+   Models and never link a local backend product.
+3. SwiftPM traits ([SE-0450](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md))
+   gate *compilation* and *linking* (whether a target is built and whether a
+   product is linked into *your* binary). They do **not** gate *resolution*:
+   unused trait edges still clone into `.build/checkouts` (and still download
+   binary targets). Fetch-pruning is a documented future direction, not
+   current behavior. That is why the pre-v0.48 "`MLX` / `Llama` trait"
+   shape still made Foundation-only consumers pay hundreds of megabytes.
+
+So "glue in core + optional engine packages on the consumer" needs all three
+of: glue compiles as part of ManifoldKit, engines only resolve when asked
+for, and core-only apps never see those engines. SwiftPM can give you at
+most two.
+
+### What that implies for the split
+
+| Shape | Core-only resolve skips ML engines? | Glue lives in ManifoldKit package? |
+|-------|--------------------------------------|------------------------------------|
+| Glue + engine deps in core `Package.swift` (even as an "optional" product or trait) | No | Yes |
+| Glue + engines in a **separate package** (companions today) | Yes | No — next door |
+| Multi-package monorepo (second `Package.swift` in the same git tree) | Yes | Same repo, still a second package identity |
+| Protocols / contracts only in core (`InferenceBackend`, …); implementations next to the engines | Yes | Implementations stay out |
+
+Core already owns the **contract**. Companions own the **implementations**,
+because implementations must import the engines, and therefore must live in
+a package whose manifest lists those engines. Moving only the binary out of
+core while leaving `import LlamaSwift` / MLX-using sources in core still
+forces core's manifest to depend on that binary — so core-only consumers
+still resolve it.
+
+The companion working trees are small (order of ~1–2 MB of source, a few
+thousand LOC of glue). The size you avoid on a core-only resolve is the
+**upstream** weight (llama.cpp xcframework download/extract; mlx-swift and
+related checkouts — historically hundreds of MB when these lived in core).
+
+### What companions are *not* solving
+
+- They are not "we prefer many repos for its own sake." A monorepo of several
+  packages would preserve the resolve split; it would not remove the second
+  `.package(...)` line for local inference.
+- They are not required for cloud, Ollama-as-HTTP, Foundation Models, UI,
+  persistence, or the turn loop — those stay in core.
+- They do not make `manifold-server --backend mlx|llama` work out of the
+  box: the CLI is a core product and cannot link companions without putting
+  those deps back on core's resolve path. Hosts that need GGUF/MLX over the
+  OpenAI-compatible HTTP surface embed `ManifoldServer.serve` and inject a
+  `ServerBackendProvider` from a binary that *does* depend on a companion
+  (see `ManifoldServer` DocC / [QUICKSTART-SERVER.md](QUICKSTART-SERVER.md)).
+
+### Pointers
+
+- Install / migrate: [MIGRATION-0.48.md](MIGRATION-0.48.md),
+  [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends)
+- Authoring a new family: [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md)
+- Remaining opt-in trait costs (`Server`, `Macros`) only: tables above
+
 <!-- END HAND-WRITTEN -->

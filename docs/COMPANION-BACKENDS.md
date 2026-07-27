@@ -12,6 +12,13 @@ releases" — the questions every companion package answers from scratch today
 because the constraints are scattered across `Package.swift` comments,
 `CLAUDE.md`, and test-support source docs.
 
+> **Why a separate package at all?** Not because the glue is large — because
+> SwiftPM resolves every dependency listed by a package for every consumer of
+> that package, and traits do not prune fetch. The Swift wrappers must live
+> next to llama.cpp / mlx-swift so core's `Package.swift` never lists them.
+> Full FAQ:
+> [TRAIT-COSTS.md → FAQ: why not keep the glue in core…](TRAIT-COSTS.md#faq-why-not-keep-the-glue-in-core-and-only-externalize-the-engines).
+
 This is the companion-package view. For the core repo's own test conventions,
 suite layout, and per-backend contract walkthrough, [`Tests/README.md`](../Tests/README.md)
 is canonical — this doc summarizes the parts a companion package needs and

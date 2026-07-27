@@ -120,7 +120,13 @@ Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExamp
 
 ## Where each backend lives
 
-As of v0.48 the heavy on-device backends ship as **companion packages**; everything else is a product of the core package. Module names are stable — only the `.package(…)` line differs. Migrating from a trait-based 0.47 setup? **[docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md)** is the error-message-indexed guide.
+As of v0.48 the heavy on-device backends ship as **companion packages** so a
+core-only app never resolves llama.cpp or mlx-swift (SwiftPM traits gate
+link, not fetch — see
+[docs/TRAIT-COSTS.md](docs/TRAIT-COSTS.md#faq-why-not-keep-the-glue-in-core-and-only-externalize-the-engines)).
+Module names are stable — only the `.package(…)` line differs. Migrating from
+a trait-based 0.47 setup? **[docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md)**
+is the error-message-indexed guide.
 
 | You want | Module to import | Package |
 |---|---|---|
