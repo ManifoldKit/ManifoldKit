@@ -95,6 +95,23 @@ final class HardwareRequirementsMLXTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, nested.standardizedFileURL.path)
     }
 
+    func test_findMLXModelDirectory_searchesFamilyGroupedLayout() {
+        // Models/mlx/<org>/<ModelName>/ — depth 3 under the search root.
+        // Pre-#2384 the MLX walk stopped at depth 2 (same class of gap as GGUF).
+        let grouped = tempDirectory
+            .appendingPathComponent("mlx", isDirectory: true)
+            .appendingPathComponent("mlx-community", isDirectory: true)
+            .appendingPathComponent("Qwen3.5-2B-4bit", isDirectory: true)
+        createValidMLXDirectory(at: grouped)
+
+        let result = HardwareRequirements.findMLXModelDirectory(
+            in: [tempDirectory],
+            nameContains: "Qwen3.5"
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, grouped.standardizedFileURL.path)
+    }
+
     func test_findMLXModelDirectory_missingEnvOverride_returnsNilRatherThanFirstCandidate() {
         // An explicit env name-fragment that matches no candidate is a request
         // for a specific model. The function must return nil (caller skips)

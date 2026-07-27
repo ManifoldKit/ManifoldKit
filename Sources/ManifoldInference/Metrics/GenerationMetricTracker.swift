@@ -31,11 +31,39 @@ package final class GenerationMetricTracker: @unchecked Sendable {
             firstTokenInstant = now
         } else if let last = lastTokenInstant {
             // Nanosecond precision is sufficient for display; avoid Duration
-            // arithmetic inside the lock to keep it fast.
-            let gapNs = Int64((now - last).components.attoseconds / 1_000_000_000)
-            interTokenGapsNs.append(gapNs)
+            // arithmetic inside the lock to keep it fast. Read both
+            // `components.seconds` and `components.attoseconds` — the latter
+            // is only the sub-second remainder, so ignoring seconds silently
+            // truncates any gap ≥ 1s (and reports exactly 0 at whole-second
+            // boundaries). See #2382.
+            interTokenGapsNs.append(Self.gapNanoseconds(from: last, to: now))
         }
         lastTokenInstant = now
+    }
+
+    /// Converts a `ContinuousClock` interval to nanoseconds, preserving whole seconds.
+    ///
+    /// Package-visible so unit tests can pin the conversion without sleeping a
+    /// full second through the tracker (the only path that previously discarded
+    /// `components.seconds` and made multi-second gaps report as sub-second).
+    package static func gapNanoseconds(
+        from last: ContinuousClock.Instant,
+        to now: ContinuousClock.Instant
+    ) -> Int64 {
+        nanoseconds(for: now - last)
+    }
+
+    /// Duration → nanoseconds including whole seconds.
+    ///
+    /// `Duration.components.attoseconds` is the sub-second remainder only;
+    /// callers that use it alone under-report every gap ≥ 1s.
+    package static func nanoseconds(for duration: Duration) -> Int64 {
+        let components = duration.components
+        // Int64 nanoseconds saturates around ~292 years — not a practical
+        // concern for inter-token gaps. Prefer the wider intermediate over a
+        // narrower type that would reintroduce silent truncation.
+        return components.seconds * 1_000_000_000
+            + components.attoseconds / 1_000_000_000
     }
 
     package func buildMetric(

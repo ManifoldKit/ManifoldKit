@@ -316,40 +316,64 @@ public enum HardwareRequirements {
         )
     }
 
+    /// Maximum directory depth below each search root for MLX snapshot discovery.
+    ///
+    /// Depth 0 is the search root itself. Depth 4 covers common grouped
+    /// layouts such as `Models/mlx/<ModelName>/` (depth 2) and
+    /// `Models/mlx/<org>/<ModelName>/` (depth 3) without walking unbounded
+    /// user trees. Mirrors ``ggufDiscoveryMaxDepth``.
+    public static let mlxDiscoveryMaxDepth = 4
+
     public static func discoverMLXModelDirectories(
         in searchDirs: [URL],
         fileManager: FileManager = .default
     ) -> [URL] {
         var results: [URL] = []
         for dir in searchDirs {
-            guard let contents = try? fileManager.contentsOfDirectory(
+            walkMLXModelDirectories(
                 at: dir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-
-            for candidate in contents {
-                if isValidMLXDirectory(candidate, fileManager: fileManager) {
-                    results.append(candidate)
-                    continue
-                }
-
-                var isDirectory: ObjCBool = false
-                guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-                      isDirectory.boolValue,
-                      let nestedContents = try? fileManager.contentsOfDirectory(
-                        at: candidate,
-                        includingPropertiesForKeys: [.isDirectoryKey],
-                        options: [.skipsHiddenFiles]
-                      ) else { continue }
-
-                for nestedCandidate in nestedContents
-                where isValidMLXDirectory(nestedCandidate, fileManager: fileManager) {
-                    results.append(nestedCandidate)
-                }
-            }
+                depth: 0,
+                maxDepth: mlxDiscoveryMaxDepth,
+                fileManager: fileManager,
+                results: &results
+            )
         }
         return sortedUniqueURLs(results)
+    }
+
+    private static func walkMLXModelDirectories(
+        at directory: URL,
+        depth: Int,
+        maxDepth: Int,
+        fileManager: FileManager,
+        results: inout [URL]
+    ) {
+        guard depth <= maxDepth else { return }
+        if depth > 0, isValidMLXDirectory(directory, fileManager: fileManager) {
+            results.append(directory)
+            // A valid MLX snapshot is a leaf for discovery — do not descend into
+            // its weight shards / tokenizer artifacts looking for nested models.
+            return
+        }
+        guard depth < maxDepth else { return }
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for candidate in contents {
+            guard shouldDescendIntoDiscoveryDirectory(candidate, fileManager: fileManager) else {
+                continue
+            }
+            walkMLXModelDirectories(
+                at: candidate,
+                depth: depth + 1,
+                maxDepth: maxDepth,
+                fileManager: fileManager,
+                results: &results
+            )
+        }
     }
 
     // MARK: - GGUF Models
@@ -414,18 +438,64 @@ public enum HardwareRequirements {
         minimumModelSize: Int64 = 50 * 1024 * 1024,
         maximumModelSize: Int64? = nil
     ) -> URL? {
-        let candidates = discoverGGUFModelCandidates(
+        let (candidates, diagnostics) = discoverGGUFModelCandidates(
             in: searchDirs,
             fileManager: fileManager,
             minimumModelSize: minimumModelSize,
             maximumModelSize: maximumModelSize
         )
-        return selectGGUFModel(
+        let selected = selectGGUFModel(
             from: candidates,
             environmentKey: "LLAMA_TEST_MODEL",
             nameContains: substring,
             environment: environment
         )
+        // Only when discovery found .gguf files and *none* were loadable —
+        // not when loadable models exist but a name selector missed (that
+        // path still returns nil without a false "Discovered N" log line).
+        // Quiet when the tree is simply empty (common XCTSkip). Typed skip
+        // messages: ``discoverGGUFModelsWithDiagnostics``.
+        if selected == nil,
+           diagnostics.acceptedCount == 0,
+           diagnostics.rejectedGGUFFileCount > 0 {
+            fputs("HardwareRequirements.findGGUFModel: \(diagnostics.skipMessage)\n", stderr)
+        }
+        return selected
+    }
+
+    /// Maximum directory depth below each search root for GGUF file discovery.
+    ///
+    /// Depth 0 is the search root itself (e.g. `~/Documents/Models`). Depth 4
+    /// reaches the common family-grouped layout
+    /// `Models/<family>/<name>/<file>.gguf` (depth 3) plus one extra nesting
+    /// level, without unbounded recursion over user model trees. Hidden
+    /// directories and known non-model trees (`.cache`, Hugging Face download
+    /// sidecars, etc.) are skipped — see ``shouldDescendIntoDiscoveryDirectory``.
+    public static let ggufDiscoveryMaxDepth = 4
+
+    /// Outcome of a GGUF discovery walk: accepted models plus counts that let
+    /// callers distinguish "nothing on disk" from "saw `.gguf` files but none
+    /// passed size/validation bounds" (#2384).
+    public struct GGUFDiscoveryDiagnostics: Sendable, Equatable {
+        public let acceptedCount: Int
+        /// `.gguf` paths visited that failed size bounds or regular-file checks.
+        public let rejectedGGUFFileCount: Int
+        public let scannedDirectoryCount: Int
+        public let maxDepth: Int
+
+        /// Message suitable for `XCTSkip` / log lines when discovery yields no model.
+        public var skipMessage: String {
+            if acceptedCount > 0 {
+                return "Discovered \(acceptedCount) loadable GGUF model(s)."
+            }
+            if rejectedGGUFFileCount > 0 {
+                return "Found \(rejectedGGUFFileCount) .gguf file(s) but none were loadable "
+                    + "(size bounds / validation failed; scanned \(scannedDirectoryCount) "
+                    + "directories to depth \(maxDepth))."
+            }
+            return "No GGUF models found under search roots "
+                + "(scanned \(scannedDirectoryCount) directories to depth \(maxDepth))."
+        }
     }
 
     public static func discoverGGUFModels(
@@ -434,12 +504,29 @@ public enum HardwareRequirements {
         minimumModelSize: Int64 = 50 * 1024 * 1024,
         maximumModelSize: Int64? = nil
     ) -> [URL] {
-        discoverGGUFModelCandidates(
+        discoverGGUFModelsWithDiagnostics(
             in: searchDirs,
             fileManager: fileManager,
             minimumModelSize: minimumModelSize,
             maximumModelSize: maximumModelSize
-        ).map(\.url)
+        ).models
+    }
+
+    /// Same walk as ``discoverGGUFModels(in:fileManager:minimumModelSize:maximumModelSize:)``
+    /// plus diagnostics for honest skip messaging.
+    public static func discoverGGUFModelsWithDiagnostics(
+        in searchDirs: [URL],
+        fileManager: FileManager = .default,
+        minimumModelSize: Int64 = 50 * 1024 * 1024,
+        maximumModelSize: Int64? = nil
+    ) -> (models: [URL], diagnostics: GGUFDiscoveryDiagnostics) {
+        let (candidates, diagnostics) = discoverGGUFModelCandidates(
+            in: searchDirs,
+            fileManager: fileManager,
+            minimumModelSize: minimumModelSize,
+            maximumModelSize: maximumModelSize
+        )
+        return (candidates.map(\.url), diagnostics)
     }
 
     private static func discoverGGUFModelCandidates(
@@ -447,43 +534,117 @@ public enum HardwareRequirements {
         fileManager: FileManager = .default,
         minimumModelSize: Int64,
         maximumModelSize: Int64?
-    ) -> [GGUFModelCandidate] {
+    ) -> ([GGUFModelCandidate], GGUFDiscoveryDiagnostics) {
         var results: [GGUFModelCandidate] = []
+        var rejectedGGUFFileCount = 0
+        var scannedDirectoryCount = 0
         for dir in searchDirs {
-            guard let contents = try? fileManager.contentsOfDirectory(
+            walkGGUFModelCandidates(
                 at: dir,
-                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
+                depth: 0,
+                maxDepth: ggufDiscoveryMaxDepth,
+                fileManager: fileManager,
+                minimumModelSize: minimumModelSize,
+                maximumModelSize: maximumModelSize,
+                results: &results,
+                rejectedGGUFFileCount: &rejectedGGUFFileCount,
+                scannedDirectoryCount: &scannedDirectoryCount
+            )
+        }
+        let ordered = sortedUniqueGGUFCandidates(results)
+        let diagnostics = GGUFDiscoveryDiagnostics(
+            acceptedCount: ordered.count,
+            rejectedGGUFFileCount: rejectedGGUFFileCount,
+            scannedDirectoryCount: scannedDirectoryCount,
+            maxDepth: ggufDiscoveryMaxDepth
+        )
+        return (ordered, diagnostics)
+    }
 
-            for candidate in contents {
-                appendGGUFModel(
+    private static func walkGGUFModelCandidates(
+        at directory: URL,
+        depth: Int,
+        maxDepth: Int,
+        fileManager: FileManager,
+        minimumModelSize: Int64,
+        maximumModelSize: Int64?,
+        results: inout [GGUFModelCandidate],
+        rejectedGGUFFileCount: inout Int,
+        scannedDirectoryCount: inout Int
+    ) {
+        guard depth <= maxDepth else { return }
+        scannedDirectoryCount += 1
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for candidate in contents {
+            if candidate.pathExtension.lowercased() == "gguf" {
+                if let model = ggufModelCandidate(
                     candidate,
-                    to: &results,
                     minimumModelSize: minimumModelSize,
                     maximumModelSize: maximumModelSize
-                )
-
-                var isDirectory: ObjCBool = false
-                guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-                      isDirectory.boolValue,
-                      let nestedContents = try? fileManager.contentsOfDirectory(
-                        at: candidate,
-                        includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-                        options: [.skipsHiddenFiles]
-                      ) else { continue }
-
-                for nestedCandidate in nestedContents {
-                    appendGGUFModel(
-                        nestedCandidate,
-                        to: &results,
-                        minimumModelSize: minimumModelSize,
-                        maximumModelSize: maximumModelSize
-                    )
+                ) {
+                    results.append(model)
+                } else {
+                    rejectedGGUFFileCount += 1
                 }
+                continue
+            }
+
+            guard depth < maxDepth,
+                  shouldDescendIntoDiscoveryDirectory(candidate, fileManager: fileManager) else {
+                continue
+            }
+            walkGGUFModelCandidates(
+                at: candidate,
+                depth: depth + 1,
+                maxDepth: maxDepth,
+                fileManager: fileManager,
+                minimumModelSize: minimumModelSize,
+                maximumModelSize: maximumModelSize,
+                results: &results,
+                rejectedGGUFFileCount: &rejectedGGUFFileCount,
+                scannedDirectoryCount: &scannedDirectoryCount
+            )
+        }
+    }
+
+    /// Directory names that are never model trees — never descend.
+    ///
+    /// Hidden directories (including `.cache`) are already excluded by
+    /// `.skipsHiddenFiles`. Keep this list tight: bare names like
+    /// `huggingface` or `downloads` are legitimate family roots for some
+    /// layouts (`Models/huggingface/<org>/<model>/`), so excluding them
+    /// would reintroduce silent skips (#2384 review).
+    private static let discoveryExcludedDirectoryNames: Set<String> = [
+        // Ollama / blob-store content — not chat GGUF layouts.
+        "blobs",
+    ]
+
+    private static func shouldDescendIntoDiscoveryDirectory(
+        _ url: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return false
+        }
+        let name = url.lastPathComponent
+        if name.hasPrefix(".") { return false }
+        if discoveryExcludedDirectoryNames.contains(name.lowercased()) { return false }
+        // Hugging Face download sidecars: `…/huggingface/download/…` holds
+        // partial blobs / lock files, not loadable model roots.
+        if name.lowercased() == "download" || name.lowercased() == "downloads" {
+            let parent = url.deletingLastPathComponent().lastPathComponent.lowercased()
+            if parent == "huggingface" || parent == ".cache" || parent == "cache" {
+                return false
             }
         }
-        return sortedUniqueGGUFCandidates(results)
+        return true
     }
 
     /// Checks whether a directory looks like a loadable local MLX snapshot.
@@ -648,21 +809,6 @@ public enum HardwareRequirements {
         }
 
         return ordered.first
-    }
-
-    private static func appendGGUFModel(
-        _ candidate: URL,
-        to results: inout [GGUFModelCandidate],
-        minimumModelSize: Int64,
-        maximumModelSize: Int64?
-    ) {
-        if let candidate = ggufModelCandidate(
-            candidate,
-            minimumModelSize: minimumModelSize,
-            maximumModelSize: maximumModelSize
-        ) {
-            results.append(candidate)
-        }
     }
 
     private static func ggufModelCandidate(
