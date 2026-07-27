@@ -89,7 +89,6 @@ ModelManagementSheet.Tab.rawValue Var
 ModelManagementSheet.Tab.select EnumElement
 ModelManagementSheet.Tab.storage EnumElement
 ModelManagementSheet.body Var
-ModelManagementSheet.init(initialTab:recommendedModelIDs:recommendationTitle:recommendationMessage:) Constructor
 ModelManagementSheet.init(modelRegistry:initialTab:recommendedModelIDs:recommendationTitle:recommendationMessage:) Constructor
 ModelManagementViewModel Class
 ModelManagementViewModel attrs: Custom,Final
@@ -226,5 +225,4 @@ StorageManagementView attrs: Custom
 StorageManagementView conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 StorageManagementView.Body TypeAlias
 StorageManagementView.body Var
-StorageManagementView.init() Constructor
 StorageManagementView.init(modelRegistry:) Constructor

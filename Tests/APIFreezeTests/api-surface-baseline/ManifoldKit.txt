@@ -71,10 +71,3 @@ QuickStartSeed Struct
 QuickStartSeed conformances: Copyable,Escapable,Sendable,SendableMetatype
 QuickStartSeed.recommended(useCase:device:foundationAvailable:onProgress:) Func
 QuickStartSeed.recommendedSmallModel(onProgress:) Func
-SeedModelError Enum
-SeedModelError conformances: Copyable,Equatable,Error,Escapable,Hashable,LocalizedError,Sendable,SendableMetatype
-SeedModelError.__derived_enum_equals(_:_:) Func
-SeedModelError.errorDescription Var
-SeedModelError.hash(into:) Func
-SeedModelError.hashValue Var
-SeedModelError.huggingFaceTraitNotAvailable EnumElement

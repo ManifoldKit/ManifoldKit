@@ -242,7 +242,6 @@ MCPOAuthTokenStore.write Var
 MCPOAuthTokens Struct
 MCPOAuthTokens conformances: Copyable,Decodable,Encodable,Equatable,Escapable,Sendable,SendableMetatype
 MCPOAuthTokens.__derived_struct_equals(_:_:) Func
-MCPOAuthTokens.accessToken Var
 MCPOAuthTokens.accessTokenData Var
 MCPOAuthTokens.encode(to:) Func
 MCPOAuthTokens.expiresAt Var

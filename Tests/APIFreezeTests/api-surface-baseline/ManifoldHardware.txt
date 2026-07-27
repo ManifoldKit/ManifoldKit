@@ -70,7 +70,6 @@ BackendCapabilities.rendersFullPrompt Var
 BackendCapabilities.requiresPromptTemplate Var
 BackendCapabilities.satisfies(_:) Func
 BackendCapabilities.sharesMLXProcessResources Var
-BackendCapabilities.streamsToolCallArgumentDeltas Var
 BackendCapabilities.streamsToolCallArguments Var
 BackendCapabilities.supportedParameters Var
 BackendCapabilities.supportsAudioInput Var

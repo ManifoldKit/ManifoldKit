@@ -118,7 +118,6 @@ CloudBackendError.quotaExceeded EnumElement
 CloudBackendError.rateLimited EnumElement
 CloudBackendError.serverError EnumElement
 CloudBackendError.streamInterrupted EnumElement
-CloudBackendError.timeout EnumElement
 CloudBackendError.unpinnedCredentialedHost EnumElement
 CloudModelManifestTable Enum
 CloudModelManifestTable conformances: Copyable,Escapable
