@@ -179,16 +179,38 @@ final class SessionExportIntegrationTests: XCTestCase {
     //    before starting the next export) actually prevents the leak — but
     //    it drives `sessionManager.exportSession` directly and calls
     //    `cleanup()` itself, so it would stay green even if
-    //    `SessionExportSheet.performExport()` never called it. This view's
-    //    private `.task(id:)` lifecycle isn't independently hostable in
-    //    these snapshot-only UI tests (no ViewInspector-style async-task
-    //    driver in this repo), so it can't be exercised end-to-end here.
+    //    `SessionExportSheet.performExport()` never called it (verified:
+    //    reverting the one-line fix in `performExport()` and re-running
+    //    this test leaves it passing).
     //  - `test_performExport_sourceCallsCleanupBeforeReplacingExportedFile`
-    //    closes that gap by asserting on `performExport()`'s actual source:
-    //    it fails if the `cleanupExportedFile()` call is removed, or moved
-    //    after `exportedFile` is reassigned. A source-scanning audit, not a
-    //    behavioral test — but it's the piece that actually goes red if
-    //    someone reverts the one-line fix in `SessionExportSheet.swift`.
+    //    closes that gap with a source-scanning audit that fails if
+    //    `performExport()`'s `cleanupExportedFile()` call is removed or
+    //    reordered after `exportedFile` is reassigned (verified: reverting
+    //    the fix makes THIS test fail, with a clear message).
+    //
+    // A real behavioral test was attempted first, via ViewInspector's
+    // `callTask(id:)` (ViewInspector 0.10.3 is already a project dependency,
+    // wired into this exact target — see `Package.swift`). It genuinely
+    // drives `.task(id:)` closures rather than re-implementing them, and is
+    // used elsewhere in this file's sibling suite (`ChatShellStateScreenWiringTests`)
+    // for tap/binding-driven wiring tests. It does not work here: both
+    // `sheet.inspect().find(ViewType.Form.self)` and the direct
+    // `sheet.inspect().navigationStack().form()` accessor throw
+    // `InspectionError: Form<...> does not have 'task' modifier` when asked
+    // to locate the exact `.task(id: selectedFormat)` modifier
+    // `SessionExportSheet` chains onto its `Form` — even though that
+    // modifier is unambiguously present in the source one line above
+    // `.onDisappear`. ViewInspector works by string-matching SwiftUI's
+    // private modifier type names (e.g. `_TaskValueModifier<Value>`); the
+    // likely cause is a naming/structure mismatch between what 0.10.3
+    // expects and the modifier shape actually emitted by the installed
+    // macOS 26 / Swift 6.3 SDK, which is a version-compatibility gap in the
+    // dependency, not something fixable from this test file. So: a
+    // source-scanning audit, honestly labelled as one — it pins *textual
+    // ordering in source*, so it would pass if the cleanup call sat in a
+    // dead branch, and it can break on a benign refactor that moves the
+    // call into a helper. Revisit if/when ViewInspector is bumped past
+    // 0.10.3 and this gap might have closed.
 
     func test_cleanupBeforeReplace_mechanismLeavesNoOrphanedDirectory() async throws {
         let session = try await seedSession(title: "Switch Formats")
