@@ -9,8 +9,14 @@ import ManifoldInference
 public enum OllamaBackends: BackendRegistrar {
     @MainActor
     public static func register(with service: InferenceService) {
+        // Snapshot the service graph's own security policy (#2293) so the factory
+        // closure scopes each backend to it rather than to process-global state.
+        let securityPolicy = service.securityPolicy
+
         service.registerEndpointBackendFactory { provider in
-            provider == .ollama ? OllamaBackend(_registrar: ()) : nil
+            provider == .ollama
+                ? OllamaBackend(_registrar: (), securityPolicy: securityPolicy)
+                : nil
         }
 
         // Declare support via `availableInBuild` to stay coupled to

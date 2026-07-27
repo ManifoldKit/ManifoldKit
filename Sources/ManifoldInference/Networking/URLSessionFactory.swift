@@ -51,10 +51,16 @@ public enum URLSessionFactory {
     /// sweep, #2128) via an internally-wired `NetworkActivityTrackingDelegate`,
     /// stashed in ``CompositeURLSessionDelegate/ownedDataDelegate`` so it
     /// survives past `additionalDataDelegate`'s weak reference.
+    ///   - securityPolicy: This session's own security policy, or `nil` to
+    ///     resolve the transitional process-global ``ManifoldConfiguration``
+    ///     at use time. A non-`nil` value is also entered into
+    ///     ``NetworkPolicyRegistry`` for the session's lifetime (#2293) —
+    ///     invalidate the session on teardown so the entry is released.
     public static func ephemeral(
         hopCap: Int = 3,
         resourceTimeout: TimeInterval = defaultResourceTimeout,
-        additionalDataDelegate: URLSessionDataDelegate? = nil
+        additionalDataDelegate: URLSessionDataDelegate? = nil,
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = defaultRequestTimeout
@@ -70,7 +76,8 @@ public enum URLSessionFactory {
             serverTrustHandler: nil,
             downloadDelegate: nil,
             dataDelegate: nil,
-            ownedDataDelegate: tracker
+            ownedDataDelegate: tracker,
+            securityPolicy: securityPolicy
         )
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }
@@ -88,10 +95,14 @@ public enum URLSessionFactory {
     ///     `BackgroundDownloadManager`). Forwarded by the composite for
     ///     `didFinishDownloadingTo`, `didWriteData`, `didCompleteWithError`,
     ///     etc.
+    ///   - securityPolicy: This session's own security policy, or `nil` to
+    ///     resolve the transitional process-global ``ManifoldConfiguration``
+    ///     at use time (#2293).
     public static func background(
         identifier: String,
         hopCap: Int = 3,
-        additionalDownloadDelegate: URLSessionDownloadDelegate? = nil
+        additionalDownloadDelegate: URLSessionDownloadDelegate? = nil,
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) -> URLSession {
         let config = URLSessionConfiguration.background(withIdentifier: identifier)
         config.isDiscretionary = false
@@ -103,7 +114,8 @@ public enum URLSessionFactory {
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,
             downloadDelegate: additionalDownloadDelegate,
-            dataDelegate: nil
+            dataDelegate: nil,
+            securityPolicy: securityPolicy
         )
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }

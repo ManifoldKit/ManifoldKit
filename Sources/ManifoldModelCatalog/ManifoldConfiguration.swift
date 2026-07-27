@@ -26,7 +26,18 @@ public struct ManifoldConfiguration: Sendable {
     public static var shared: ManifoldConfiguration {
         get { storage.withLock { $0 } }
         set {
-            storage.withLock { $0 = newValue }
+            // Capture the outgoing value under the same lock that installs the
+            // new one, so the old → new pair logged below is the real
+            // transition even when two threads assign concurrently.
+            let previous = storage.withLock { current -> ManifoldConfiguration in
+                let previous = current
+                current = newValue
+                return previous
+            }
+            // Logged *after* releasing the lock: `Log.security` reads
+            // `ManifoldConfiguration.shared` for its subsystem, and
+            // `OSAllocatedUnfairLock` is not recursive.
+            reportSecurityFieldMutations(from: previous.securityPolicy, to: newValue.securityPolicy)
             // Keep the ManifoldSecrets leaf module's Keychain service name
             // in sync whenever the configuration changes. ManifoldSecrets is
             // zero-dependency so it cannot import ManifoldConfiguration
@@ -35,6 +46,55 @@ public struct ManifoldConfiguration: Sendable {
                 ManifoldConfiguration.shared.keychainServiceName
             }
         }
+    }
+
+    // MARK: - Security-field mutation audit (#2293)
+
+    /// Observer invoked with the same message that is written to
+    /// `Log.security` whenever a security field on ``shared`` changes.
+    ///
+    /// This exists so the audit line can be asserted in tests without scraping
+    /// the unified log. Lock-guarded rather than a bare
+    /// `nonisolated(unsafe) static var` because the production path *reads* it
+    /// while test setup/teardown *writes* it — an unlocked seam there is a live
+    /// cross-thread race under `swift test --parallel`, not a style nit
+    /// (`UnlockedNonisolatedUnsafeTestSeamAuditTest`).
+    private static let securityMutationObserverStorage =
+        OSAllocatedUnfairLock<(@Sendable (String) -> Void)?>(initialState: nil)
+
+    package static var securityMutationObserverForTesting: (@Sendable (String) -> Void)? {
+        get { securityMutationObserverStorage.withLock { $0 } }
+        set { securityMutationObserverStorage.withLock { $0 = newValue } }
+    }
+
+    /// Emits one `Log.security` line per changed security field, naming the
+    /// field and both values.
+    ///
+    /// Acceptance criterion 3 of #2293: while a transitional global remains,
+    /// "who relaxed my TLS pinning?" must be answerable from the log. Only the
+    /// three security-load-bearing fields are audited — `appName`, `features`,
+    /// and the keychain-naming fields are not security-relevant and would only
+    /// add noise.
+    private static func reportSecurityFieldMutations(
+        from previous: ManifoldSecurityPolicy,
+        to next: ManifoldSecurityPolicy
+    ) {
+        guard previous != next else { return }
+
+        var lines: [String] = []
+        if previous.networkPolicy != next.networkPolicy {
+            lines.append("networkPolicy: \(previous.networkPolicy) -> \(next.networkPolicy)")
+        }
+        if previous.customHostTrustPolicy != next.customHostTrustPolicy {
+            lines.append("customHostTrustPolicy: \(previous.customHostTrustPolicy) -> \(next.customHostTrustPolicy)")
+        }
+        if previous.allowUnpinnedCredentialedHosts != next.allowUnpinnedCredentialedHosts {
+            lines.append("allowUnpinnedCredentialedHosts: \(previous.allowUnpinnedCredentialedHosts) -> \(next.allowUnpinnedCredentialedHosts)")
+        }
+
+        let message = "ManifoldConfiguration.shared security field mutated — " + lines.joined(separator: "; ")
+        Log.security.warning("\(message, privacy: .public)")
+        securityMutationObserverForTesting?(message)
     }
 
     /// Display name used in export headers, empty states, etc.

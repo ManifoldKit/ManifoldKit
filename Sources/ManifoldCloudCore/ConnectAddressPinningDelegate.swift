@@ -111,6 +111,14 @@ public final class ConnectAddressPinningDelegate: NSObject, URLSessionTaskDelega
     /// On a blocked connect address the response body is zero-filled before the
     /// throw so private-network payloads (e.g. cloud IMDS) do not linger in the
     /// returned `Data` buffer even for the brief window before ARC reclaim.
+    ///
+    /// The ``ManifoldSecurityPolicy`` handed to ``CredentialedHostTrustGate`` is
+    /// **read off `session`**, not taken as a parameter (#2293). Every
+    /// policy-scoped session `URLSessionProvider` builds carries its policy on its
+    /// ``CompositeURLSessionDelegate``, so a caller handed a scoped session gets
+    /// scoped enforcement with no call-site change — and this function grows no
+    /// public parameter that no first-party writer sets. Callers using the shared
+    /// unscoped session resolve the transitional global, exactly as before.
     public static func pinnedData(
         for request: URLRequest,
         on session: URLSession
@@ -120,7 +128,11 @@ public final class ConnectAddressPinningDelegate: NSObject, URLSessionTaskDelega
             let hasCredentials = request.value(forHTTPHeaderField: "Authorization") != nil
                 || request.value(forHTTPHeaderField: "x-api-key") != nil
                 || request.value(forHTTPHeaderField: "api-key") != nil
-            try CredentialedHostTrustGate.check(url: url, hasCredentials: hasCredentials)
+            try CredentialedHostTrustGate.check(
+                url: url,
+                hasCredentials: hasCredentials,
+                securityPolicy: securityPolicy(carriedBy: session)
+            )
         }
 
         let connectionGuard = ConnectAddressPinningDelegate()
@@ -134,5 +146,18 @@ public final class ConnectAddressPinningDelegate: NSObject, URLSessionTaskDelega
             )
         }
         return (data, response)
+    }
+
+    /// The ``ManifoldSecurityPolicy`` a session was built with, or `nil` for a
+    /// session that tracks the transitional process-global configuration.
+    ///
+    /// Reads it off the session's ``CompositeURLSessionDelegate`` — the object
+    /// `URLSessionProvider` already stamps the policy onto when it builds a
+    /// policy-scoped session. This is what lets `pinnedData(for:on:)` enforce the
+    /// right graph's `allowUnpinnedCredentialedHosts` without every call site
+    /// (`CloudReranker`, `DefaultWebSearchRuntime`, `OllamaModelListService`,
+    /// `OllamaModelProbe`) having to thread a policy it has no way to obtain.
+    static func securityPolicy(carriedBy session: URLSession) -> ManifoldSecurityPolicy? {
+        (session.delegate as? CompositeURLSessionDelegate)?.securityPolicy
     }
 }

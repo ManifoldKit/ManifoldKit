@@ -6,7 +6,8 @@ import ManifoldInference
 ///
 /// Validates the server's leaf certificate SPKI (Subject Public Key Info) SHA-256
 /// hash against a set of known pins for Anthropic and OpenAI APIs. Connections to
-/// unknown hosts (custom endpoints) are governed by
+/// unknown hosts (custom endpoints) are governed by this delegate's
+/// ``securityPolicy`` — or, when that is `nil`, by the transitional
 /// ``ManifoldConfiguration/customHostTrustPolicy``: the default
 /// (``.platformDefault``) falls through to OS trust evaluation; ``.requireExplicitPins``
 /// rejects any host without configured pins (fail-closed).
@@ -15,6 +16,31 @@ import ManifoldInference
 /// Pin rotation: when a provider rotates certificates, update the pin sets below.
 /// Include at least one backup pin per host to avoid lockout during rotation.
 public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
+
+    // MARK: - Instance policy
+
+    /// This delegate's own security policy, or `nil` to resolve the transitional
+    /// process-global ``ManifoldConfiguration`` at challenge time.
+    ///
+    /// Only ``ManifoldSecurityPolicy/customHostTrustPolicy`` is consumed here.
+    /// Two delegates constructed with different policies evaluate unpinned custom
+    /// hosts differently in the same process — the point of #2293. A `nil` policy
+    /// reads the global live, which is byte-for-byte the pre-#2293 behaviour, so
+    /// an unmigrated host loses nothing.
+    public let securityPolicy: ManifoldSecurityPolicy?
+
+    /// - Parameter securityPolicy: The policy this delegate enforces. Pass `nil`
+    ///   (the default) to keep reading the transitional process-global
+    ///   ``ManifoldConfiguration``.
+    public init(securityPolicy: ManifoldSecurityPolicy? = nil) {
+        self.securityPolicy = securityPolicy
+        super.init()
+    }
+
+    /// The custom-host trust policy in force for this delegate.
+    private var effectiveCustomHostTrustPolicy: ManifoldConfiguration.CustomHostTrustPolicy {
+        securityPolicy?.customHostTrustPolicy ?? ManifoldConfiguration.shared.customHostTrustPolicy
+    }
 
     // MARK: - Pin Sets
 
@@ -163,7 +189,7 @@ public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
 
         // If no pins are configured for a custom host, apply the configured trust policy.
         guard let expectedPins = pins, !expectedPins.isEmpty else {
-            switch ManifoldConfiguration.shared.customHostTrustPolicy {
+            switch effectiveCustomHostTrustPolicy {
             case .platformDefault:
                 Log.network.warning("PinnedSessionDelegate: no pins configured for custom host \(host, privacy: .public). Falling back to default trust evaluation.")
                 completionHandler(.performDefaultHandling, nil)

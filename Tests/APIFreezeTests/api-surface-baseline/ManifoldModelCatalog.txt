@@ -394,6 +394,7 @@ ManifoldConfiguration.memoryPressureQueueLabel Var
 ManifoldConfiguration.modelsDirectoryName Var
 ManifoldConfiguration.networkPolicy Var
 ManifoldConfiguration.pendingDownloadsKey Var
+ManifoldConfiguration.securityPolicy Var
 ManifoldConfiguration.shared Var
 ManifoldConfiguration.sseStreamLimits Var
 ManifoldConfiguration.useSecureEnclave Var
@@ -413,6 +414,18 @@ ManifoldKitError.serverError EnumElement
 ManifoldKitError.timedOut EnumElement
 ManifoldKitError.tlsFailure EnumElement
 ManifoldKitError.unknown EnumElement
+ManifoldSecurityPolicy Struct
+ManifoldSecurityPolicy conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
+ManifoldSecurityPolicy.__derived_struct_equals(_:_:) Func
+ManifoldSecurityPolicy.allowUnpinnedCredentialedHosts Var
+ManifoldSecurityPolicy.customHostTrustPolicy Var
+ManifoldSecurityPolicy.default Var
+ManifoldSecurityPolicy.init(networkPolicy:customHostTrustPolicy:allowUnpinnedCredentialedHosts:) Constructor
+ManifoldSecurityPolicy.intersect(_:_:) Func
+ManifoldSecurityPolicy.mostRestrictive(_:_:) Func
+ManifoldSecurityPolicy.mostRestrictive(of:) Func
+ManifoldSecurityPolicy.networkPolicy Var
+ManifoldSecurityPolicy.sharedConfiguration Var
 MediaKind Enum
 MediaKind conformances: CaseIterable,Copyable,Decodable,Encodable,Equatable,Escapable,Hashable,RawRepresentable,Sendable,SendableMetatype
 MediaKind.AllCases TypeAlias

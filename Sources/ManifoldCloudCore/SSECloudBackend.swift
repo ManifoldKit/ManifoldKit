@@ -233,6 +233,18 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
         sseStreamLimits ?? ManifoldConfiguration.shared.sseStreamLimits
     }
 
+    /// This backend's own security policy, or `nil` to resolve the transitional
+    /// process-global ``ManifoldConfiguration`` at request time.
+    ///
+    /// Seeded at registration time by `CloudSaaSBackends.register(with:)` /
+    /// `OllamaBackends.register(with:)` from `InferenceService.securityPolicy`,
+    /// so two `ManifoldBootstrap` graphs in one process get backends that enforce
+    /// their *own* ``ManifoldSecurityPolicy/allowUnpinnedCredentialedHosts``
+    /// rather than racing over a process-global (#2293). Set it at construction;
+    /// mutating it mid-flight is not supported. The optional-with-global-fallback
+    /// shape deliberately mirrors ``sseStreamLimits``.
+    public var securityPolicy: ManifoldSecurityPolicy?
+
     // MARK: - Init
 
     /// Creates an SSE cloud backend.
@@ -626,6 +638,10 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
         }
         let capturedStrategy = retryStrategy
         let capturedBaseURL = baseURL
+        // Snapshot the instance policy on the call stack so the validate closure
+        // (which runs per retry, off this actor) reads this backend's policy and
+        // never re-enters process-global state.
+        let capturedSecurityPolicy = securityPolicy
         // Snapshot credential presence from the built request so the validate
         // closure does not re-enter Keychain on every retry.
         let requestHasCredentials = request.value(forHTTPHeaderField: "Authorization") != nil
@@ -646,7 +662,8 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
                 // so Authorization is not sent under platform trust alone.
                 try CredentialedHostTrustGate.check(
                     url: capturedBaseURL,
-                    hasCredentials: requestHasCredentials
+                    hasCredentials: requestHasCredentials,
+                    securityPolicy: capturedSecurityPolicy
                 )
             },
             metricSink: metricSink,

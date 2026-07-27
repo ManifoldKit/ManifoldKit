@@ -191,8 +191,9 @@ CompositeURLSessionDelegate conformances: CVarArg,Copyable,CustomDebugStringConv
 CompositeURLSessionDelegate.dataDelegate Var
 CompositeURLSessionDelegate.downloadDelegate Var
 CompositeURLSessionDelegate.init() Constructor
-CompositeURLSessionDelegate.init(redirectGuard:serverTrustHandler:downloadDelegate:dataDelegate:ownedDataDelegate:) Constructor
+CompositeURLSessionDelegate.init(redirectGuard:serverTrustHandler:downloadDelegate:dataDelegate:ownedDataDelegate:securityPolicy:) Constructor
 CompositeURLSessionDelegate.redirectGuard Var
+CompositeURLSessionDelegate.securityPolicy Var
 CompositeURLSessionDelegate.serverTrustHandler Var
 CompositeURLSessionDelegate.urlSession(_:dataTask:didReceive:) Func
 CompositeURLSessionDelegate.urlSession(_:dataTask:didReceive:completionHandler:) Func
@@ -595,6 +596,7 @@ InferenceService.respond(_:to:config:) Func
 InferenceService.respond(_:to:config:reask:) Func
 InferenceService.runFastOrPrimary(prompt:systemPrompt:config:preferFast:) Func
 InferenceService.secureWipe() Func
+InferenceService.securityPolicy Var
 InferenceService.selectedPromptTemplate Var
 InferenceService.setHandoffDetector(_:) Func
 InferenceService.stopGeneration() Func
@@ -1196,10 +1198,10 @@ TurnContext.sessionID Var
 TurnContext.tokenizer Var
 URLSessionFactory Enum
 URLSessionFactory conformances: Copyable,Escapable
-URLSessionFactory.background(identifier:hopCap:additionalDownloadDelegate:) Func
+URLSessionFactory.background(identifier:hopCap:additionalDownloadDelegate:securityPolicy:) Func
 URLSessionFactory.defaultRequestTimeout Var
 URLSessionFactory.defaultResourceTimeout Var
-URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:) Func
+URLSessionFactory.ephemeral(hopCap:resourceTimeout:additionalDataDelegate:securityPolicy:) Func
 VideoGenerationBackend Protocol
 VideoGenerationBackend conformances: Copyable,Escapable,Sendable,SendableMetatype
 VideoGenerationBackend.cancel() Func

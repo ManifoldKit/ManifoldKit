@@ -1,8 +1,8 @@
 import Foundation
 import os
 
-/// `URLProtocol` subclass that enforces the active
-/// ``ManifoldConfiguration/networkPolicy`` before any connection is opened.
+/// `URLProtocol` subclass that enforces the strictest live
+/// ``ManifoldConfiguration/NetworkPolicy`` before any connection is opened.
 ///
 /// Registered at index 0 in the `protocolClasses` list of every
 /// `URLSessionConfiguration` built by ``URLSessionFactory`` via
@@ -11,11 +11,22 @@ import os
 /// request — complementing the redirect-level check in
 /// ``CompositeURLSessionDelegate`` which covers 30x hops.
 ///
+/// ## Why this one path is not instance-scoped (#2293)
+///
+/// `canInit(with:)` is an `override class func` Foundation drives with only a
+/// `URLRequest`, and `URLSessionTask` has no back-reference to its session — so
+/// there is no route from here to a session, delegate, or bootstrap instance.
+/// Instead of last-write-wins global state, this path resolves
+/// ``NetworkPolicyRegistry/effectiveNetworkPolicy``: the **intersection** of every
+/// live registered policy and the transitional global. The fold only ever
+/// tightens, so one graph relaxing its own policy can never relax another's. See
+/// ``NetworkPolicyRegistry`` for the lifetime and disjoint-allowlist caveats.
+///
 /// ## How interception works
 ///
-/// `canInit(with:)` reads `ManifoldConfiguration.shared.networkPolicy` at call
-/// time (not at session creation) so a policy set after session creation takes
-/// effect on the next task. When the policy is `.unrestricted` or the host
+/// `canInit(with:)` resolves the effective policy at call time (not at session
+/// creation) so a policy set — or a graph registered — after session creation
+/// takes effect on the next task. When the policy is `.unrestricted` or the host
 /// passes the allowlist, `canInit` returns `false` so the OS transport handles
 /// the request normally — zero overhead on the happy path. When the host is
 /// blocked, `canInit` returns `true`, `startLoading` immediately calls
@@ -41,7 +52,7 @@ final class NetworkPolicyURLProtocol: URLProtocol, @unchecked Sendable {
         // Only claim requests whose host is actively blocked by the policy.
         // Returning false here lets the OS transport handle allowed requests
         // with zero overhead.
-        let policy = ManifoldConfiguration.shared.networkPolicy
+        let policy = NetworkPolicyRegistry.shared.effectiveNetworkPolicy
         guard case .allowlist = policy else { return false }
         guard let url = request.url else { return false }
         do {
@@ -62,7 +73,7 @@ final class NetworkPolicyURLProtocol: URLProtocol, @unchecked Sendable {
         // Re-run the check (policy may have changed between canInit and now,
         // though that is extremely unlikely). Regardless, if we reached
         // startLoading it's because canInit said the host is blocked.
-        let policy = ManifoldConfiguration.shared.networkPolicy
+        let policy = NetworkPolicyRegistry.shared.effectiveNetworkPolicy
         let host = request.url?.host ?? ""
 
         let policyError: NetworkPolicyError

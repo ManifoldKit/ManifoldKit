@@ -293,7 +293,20 @@ public final class ManifoldBootstrap {
         // Appended at the tail to keep the existing parameter positions stable
         // for the API source-compat digester (#1904 UI fast-follow). Grouped
         // with the other *GenerationService params at the call site by label.
-        audioGenerationService: AudioGenerationService? = nil
+        audioGenerationService: AudioGenerationService? = nil,
+        // #2293 opt-in: instance-scope this graph's security policy.
+        //
+        // Deliberately NOT defaulted to `configuration.securityPolicy`. The
+        // enforcement seams read `securityPolicy?.X ?? ManifoldConfiguration.shared.X`,
+        // so seeding a non-nil snapshot makes the `?? global` branch dead for every
+        // bootstrap host — a host that later tightens
+        // `ManifoldConfiguration.shared.customHostTrustPolicy` would silently stop
+        // getting that tightening, i.e. unpinned custom hosts fall back to OS trust
+        // where they previously failed closed. `nil` keeps the pre-#2293
+        // live-tracking behaviour byte-for-byte; pass
+        // `securityPolicy: configuration.securityPolicy` to opt this graph out of
+        // the global entirely (what a multi-graph process wants).
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) throws {
         try self.init(
             configuration: configuration,
@@ -309,7 +322,8 @@ public final class ManifoldBootstrap {
             enableResumableRuns: false,
             makeModelContainer: makeModelContainer,
             isInMemory: isInMemory,
-            audioGenerationService: audioGenerationService
+            audioGenerationService: audioGenerationService,
+            securityPolicy: securityPolicy
         )
     }
 
@@ -339,7 +353,20 @@ public final class ManifoldBootstrap {
         // Appended at the tail to keep the existing parameter positions stable
         // for the API source-compat digester (#1904 UI fast-follow). Grouped
         // with the other *GenerationService params at the call site by label.
-        audioGenerationService: AudioGenerationService? = nil
+        audioGenerationService: AudioGenerationService? = nil,
+        // #2293 opt-in: instance-scope this graph's security policy.
+        //
+        // Deliberately NOT defaulted to `configuration.securityPolicy`. The
+        // enforcement seams read `securityPolicy?.X ?? ManifoldConfiguration.shared.X`,
+        // so seeding a non-nil snapshot makes the `?? global` branch dead for every
+        // bootstrap host — a host that later tightens
+        // `ManifoldConfiguration.shared.customHostTrustPolicy` would silently stop
+        // getting that tightening, i.e. unpinned custom hosts fall back to OS trust
+        // where they previously failed closed. `nil` keeps the pre-#2293
+        // live-tracking behaviour byte-for-byte; pass
+        // `securityPolicy: configuration.securityPolicy` to opt this graph out of
+        // the global entirely (what a multi-graph process wants).
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) throws {
         // Capture the previous configuration before any mutation so a failure
         // partway through bootstrap leaves `ManifoldConfiguration.shared`
@@ -350,6 +377,13 @@ public final class ManifoldBootstrap {
             ManifoldConfiguration.shared = configuration
 
             let resolvedInferenceService = inferenceService ?? InferenceService()
+            // Only when the caller opted in (#2293). Seeding unconditionally would
+            // make the `?? ManifoldConfiguration.shared` fallback in every
+            // enforcement seam dead for all bootstrap hosts, silently dropping
+            // live tracking of later global tightenings.
+            if let securityPolicy {
+                resolvedInferenceService.securityPolicy = securityPolicy
+            }
             self.inferenceService = resolvedInferenceService
 
             let resolvedModelContainer = try makeModelContainer()
@@ -628,7 +662,20 @@ public final class ManifoldBootstrap {
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         // Appended at the tail to keep existing parameter positions stable for
         // the API source-compat digester (#1904 UI fast-follow).
-        audioGenerationService: AudioGenerationService? = nil
+        audioGenerationService: AudioGenerationService? = nil,
+        // #2293 opt-in: instance-scope this graph's security policy.
+        //
+        // Deliberately NOT defaulted to `configuration.securityPolicy`. The
+        // enforcement seams read `securityPolicy?.X ?? ManifoldConfiguration.shared.X`,
+        // so seeding a non-nil snapshot makes the `?? global` branch dead for every
+        // bootstrap host — a host that later tightens
+        // `ManifoldConfiguration.shared.customHostTrustPolicy` would silently stop
+        // getting that tightening, i.e. unpinned custom hosts fall back to OS trust
+        // where they previously failed closed. `nil` keeps the pre-#2293
+        // live-tracking behaviour byte-for-byte; pass
+        // `securityPolicy: configuration.securityPolicy` to opt this graph out of
+        // the global entirely (what a multi-graph process wants).
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         build(
             configuration: configuration,
@@ -643,7 +690,8 @@ public final class ManifoldBootstrap {
             hookRegistry: hookRegistry,
             enableResumableRuns: false,
             makeModelContainer: makeModelContainer,
-            audioGenerationService: audioGenerationService
+            audioGenerationService: audioGenerationService,
+            securityPolicy: securityPolicy
         )
     }
 
@@ -670,7 +718,20 @@ public final class ManifoldBootstrap {
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         // Appended at the tail to keep existing parameter positions stable for
         // the API source-compat digester (#1904 UI fast-follow).
-        audioGenerationService: AudioGenerationService? = nil
+        audioGenerationService: AudioGenerationService? = nil,
+        // #2293 opt-in: instance-scope this graph's security policy.
+        //
+        // Deliberately NOT defaulted to `configuration.securityPolicy`. The
+        // enforcement seams read `securityPolicy?.X ?? ManifoldConfiguration.shared.X`,
+        // so seeding a non-nil snapshot makes the `?? global` branch dead for every
+        // bootstrap host — a host that later tightens
+        // `ManifoldConfiguration.shared.customHostTrustPolicy` would silently stop
+        // getting that tightening, i.e. unpinned custom hosts fall back to OS trust
+        // where they previously failed closed. `nil` keeps the pre-#2293
+        // live-tracking behaviour byte-for-byte; pass
+        // `securityPolicy: configuration.securityPolicy` to opt this graph out of
+        // the global entirely (what a multi-graph process wants).
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
             of: RuntimeBootstrapMilestone.self,
@@ -688,6 +749,10 @@ public final class ManifoldBootstrap {
 
                 continuation.yield(.resolvingInferenceService)
                 let resolvedService = inferenceService ?? InferenceService()
+                // Opt-in only (#2293) — see the synchronous `init` for why.
+                if let securityPolicy {
+                    resolvedService.securityPolicy = securityPolicy
+                }
                 await Task.yield()
 
                 continuation.yield(.buildingModelContainer)
@@ -773,7 +838,10 @@ public final class ManifoldBootstrap {
     public static func makeInMemory(
         configuration: ManifoldConfiguration,
         inferenceService: InferenceService? = nil,
-        ragConfiguration: RAGConfiguration? = nil
+        ragConfiguration: RAGConfiguration? = nil,
+        // #2293 opt-in — see the synchronous `init` for why this is not
+        // defaulted to `configuration.securityPolicy`.
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) throws -> ManifoldBootstrap {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         return try ManifoldBootstrap(
@@ -781,7 +849,8 @@ public final class ManifoldBootstrap {
             ragConfiguration: ragConfiguration,
             inferenceService: inferenceService,
             makeModelContainer: { container },
-            isInMemory: true
+            isInMemory: true,
+            securityPolicy: securityPolicy
         )
     }
 

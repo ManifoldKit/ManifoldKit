@@ -228,7 +228,12 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     /// in the `ManifoldServer` module and calls this across the module boundary.
     /// External consumers building `OllamaBackend` directly should use the
     /// public init or register via `DefaultBackends.register(_:)`.
-    package init(_registrar: Void) {
+    ///
+    /// - Parameter securityPolicy: The registering service graph's own security
+    ///   policy (#2293). Non-`nil` scopes both this backend's credentialed-host
+    ///   gate and its LAN session's redirect/allowlist enforcement to that
+    ///   policy instead of the transitional process-global configuration.
+    package init(_registrar: Void, securityPolicy: ManifoldSecurityPolicy? = nil) {
         self.adapter = OllamaAdapter(
             capabilities: Self.defaultAdapterCapabilities,
             requestBuilder: { _, _, _, _ in
@@ -239,9 +244,11 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         )
         super.init(
             defaultModelName: "llama3.2",
-            urlSession: URLSessionProvider.unpinned,
+            urlSession: securityPolicy.map { URLSessionProvider.unpinned(securityPolicy: $0) }
+                ?? URLSessionProvider.unpinned,
             payloadHandler: CloudPayloadHandler.ollama
         )
+        self.securityPolicy = securityPolicy
         requestIdleTimeout = OllamaBackend.defaultRequestIdleTimeout
         // #2376: bound the event-level gap too — see `defaultStreamIdleTimeout`.
         streamIdleTimeout = OllamaBackend.defaultStreamIdleTimeout

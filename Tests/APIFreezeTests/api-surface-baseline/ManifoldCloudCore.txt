@@ -150,8 +150,10 @@ PinnedSessionDelegate Class
 PinnedSessionDelegate attrs: Final,ObjC
 PinnedSessionDelegate conformances: CVarArg,Copyable,CustomDebugStringConvertible,CustomStringConvertible,Equatable,Escapable,Hashable,NSObjectProtocol,Sendable,SendableMetatype,URLSessionDelegate
 PinnedSessionDelegate.init() Constructor
+PinnedSessionDelegate.init(securityPolicy:) Constructor
 PinnedSessionDelegate.loadDefaultPins() Func
 PinnedSessionDelegate.pinnedHosts Var
+PinnedSessionDelegate.securityPolicy Var
 PinnedSessionDelegate.urlSession(_:didReceive:completionHandler:) Func
 PromptCachePolicy Enum
 PromptCachePolicy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
@@ -201,6 +203,7 @@ SSECloudBackend.requestIdleTimeout Var
 SSECloudBackend.resolveAPIKey() Func
 SSECloudBackend.retrySleeper Var
 SSECloudBackend.retryStrategy Var
+SSECloudBackend.securityPolicy Var
 SSECloudBackend.setIsGenerating(_:) Func
 SSECloudBackend.setIsModelLoaded(_:) Func
 SSECloudBackend.signalsLoadingUntilFirstToken Var
@@ -245,9 +248,11 @@ URLSessionProvider.background(identifier:hopCap:additionalDownloadDelegate:) Fun
 URLSessionProvider.defaultHopCap Var
 URLSessionProvider.networkDisabled Var
 URLSessionProvider.pinned Var
+URLSessionProvider.pinned(securityPolicy:) Func
 URLSessionProvider.throwingPinned() Func
 URLSessionProvider.throwingUnpinned() Func
 URLSessionProvider.unpinned Var
+URLSessionProvider.unpinned(securityPolicy:) Func
 WebSearchRuntimeError Enum
 WebSearchRuntimeError conformances: Copyable,Equatable,Error,Escapable,LocalizedError,Sendable,SendableMetatype
 WebSearchRuntimeError.__derived_enum_equals(_:_:) Func

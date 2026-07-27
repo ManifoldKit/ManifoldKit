@@ -112,7 +112,7 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
         case .blockedAddress(let detail):
             return "Connection blocked: the endpoint resolved to a private or reserved address. \(detail)"
         case .unpinnedCredentialedHost(let host):
-            return "Credentialed request to unpinned host '\(host)' rejected. Add SPKI pins via PinnedSessionDelegate.pinnedHosts, or set ManifoldConfiguration.shared.allowUnpinnedCredentialedHosts = true only if you accept residual DNS-rebinding risk."
+            return "Credentialed request to unpinned host '\(host)' rejected. Add SPKI pins via PinnedSessionDelegate.pinnedHosts, or set allowUnpinnedCredentialedHosts = true on this graph's ManifoldSecurityPolicy (or on ManifoldConfiguration.shared in a single-graph process) only if you accept residual DNS-rebinding risk."
         case .networkDisabled:
             return "Network access is disabled by the runtime kill-switch (URLSessionProvider.networkDisabled)."
         case .quotaExceeded(let provider):

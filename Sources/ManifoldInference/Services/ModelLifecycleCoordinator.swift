@@ -179,6 +179,18 @@ final class ModelLifecycleCoordinator {
         cloudBackendFactories.removeAll()
     }
 
+    /// Builds an endpoint backend from the registered factories without loading
+    /// it against a configured endpoint.
+    ///
+    /// Exists so the #2293 registrar-liveness check can inspect the backend a
+    /// registrar's factory actually produces — the security policy stamped onto
+    /// it, the session it was handed — without a Keychain-backed
+    /// `APIEndpointRecord` load. `package` because it is framework-internal
+    /// introspection, not consumer API.
+    package func makeEndpointBackendWithoutLoading(for provider: APIProvider) -> (any InferenceBackend)? {
+        createCloudBackend(for: provider)
+    }
+
     func declareSupport(for modelType: ModelType) {
         supportedLocalModelTypes.insert(modelType)
     }

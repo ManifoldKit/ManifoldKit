@@ -28,6 +28,7 @@ import ManifoldNetworking
 /// `@unchecked Sendable` is justified here because:
 /// - `redirectGuard` and `serverTrustHandler` are `let` after init.
 /// - `downloadDelegate` is a weak reference set once at init.
+/// - `securityPolicy` is an immutable value type, `let` after init.
 /// - Each child delegate handles its own internal synchronisation
 ///   (`RedirectGuardDelegate` uses `NSLock`; `PinnedSessionDelegate` uses
 ///   class-level `NSLock` for its pin sets).
@@ -61,16 +62,39 @@ public final class CompositeURLSessionDelegate: NSObject, @unchecked Sendable {
     /// works through the existing `dataDelegate` plumbing.
     private let ownedDataDelegate: URLSessionDataDelegate?
 
+    /// This session's own security policy, or `nil` to resolve
+    /// ``ManifoldConfiguration/shared`` at use time.
+    ///
+    /// Only ``ManifoldSecurityPolicy/networkPolicy`` is consumed here (the
+    /// redirect-destination check below); the TLS-trust fields belong to
+    /// ``serverTrustHandler``, which carries its own policy.
+    ///
+    /// A non-`nil` value is deliberately **not** entered into
+    /// ``NetworkPolicyRegistry`` here — ``InferenceService`` owns that
+    /// registration. `URLSession` retains its delegate until the session is
+    /// invalidated, and the policy-scoped sessions are cached for the process
+    /// lifetime, so a delegate-owned entry would be immortal and a torn-down
+    /// bootstrap would keep restricting the graphs that outlive it. The service
+    /// graph is the right lifetime for that entry. See ``NetworkPolicyRegistry``
+    /// (#2293).
+    ///
+    /// It also does not track later mutations of the global: a non-`nil` policy is
+    /// this session's policy, full stop. Pass `nil` (the default) to keep resolving
+    /// the global live.
+    public let securityPolicy: ManifoldSecurityPolicy?
+
     public init(
         redirectGuard: RedirectGuardDelegate,
         serverTrustHandler: URLSessionDelegate? = nil,
         downloadDelegate: URLSessionDownloadDelegate? = nil,
         dataDelegate: URLSessionDataDelegate? = nil,
-        ownedDataDelegate: URLSessionDataDelegate? = nil
+        ownedDataDelegate: URLSessionDataDelegate? = nil,
+        securityPolicy: ManifoldSecurityPolicy? = nil
     ) {
         self.redirectGuard = redirectGuard
         self.serverTrustHandler = serverTrustHandler
         self.downloadDelegate = downloadDelegate
+        self.securityPolicy = securityPolicy
         // Prefer the owned delegate when both are supplied: it sits on top
         // of the caller's delegate (which it forwards to internally).
         self.ownedDataDelegate = ownedDataDelegate
@@ -133,7 +157,10 @@ extension CompositeURLSessionDelegate: URLSessionTaskDelegate {
         // redirect guard so an allowlist violation surfaces as a
         // NetworkPolicyError rather than a generic cancellation.
         if let url = request.url {
-            let policy = ManifoldConfiguration.shared.networkPolicy
+            // Instance policy when this session has one; otherwise the
+            // transitional global, read live so a host that mutates it after
+            // session creation keeps the behaviour it had before #2293.
+            let policy = securityPolicy?.networkPolicy ?? ManifoldConfiguration.shared.networkPolicy
             do {
                 try NetworkPolicyGuard.check(url: url, policy: policy)
             } catch {

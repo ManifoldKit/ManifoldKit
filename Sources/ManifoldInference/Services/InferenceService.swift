@@ -204,6 +204,63 @@ public final class InferenceService {
     /// reset, or otherwise manage the lifecycle of this backend.
     public var fastBackend: (any InferenceBackend)?
 
+    // MARK: - Security policy
+
+    /// The security policy this service graph owns, or `nil` — the default — to
+    /// leave the backends it registers resolving the transitional process-global
+    /// ``ManifoldConfiguration`` **live, at use time**.
+    ///
+    /// This is the instance that acceptance criterion 1 of #2293 asks for: the
+    /// TLS-pinning and credential-exposure knobs are resolved from a value owned
+    /// by *this* service graph, so two `ManifoldBootstrap`s in one process no
+    /// longer contend over a last-write-wins global. The backend registrars
+    /// (`CloudSaaSBackends.register(with:)`, `OllamaBackends.register(with:)`)
+    /// read it at registration time and build policy-scoped sessions and backends
+    /// from it.
+    ///
+    /// > Important: Setting this is an **opt-in that trades away live tracking of
+    /// > the global.** While it is `nil`, a host that later tightens
+    /// > `ManifoldConfiguration.shared.customHostTrustPolicy` (or any other
+    /// > security field) sees that tightening take effect immediately on existing
+    /// > backends. Once it holds a value, this graph is pinned to that value and
+    /// > later global mutations do not reach it — which is the whole point for a
+    /// > multi-graph process, and a silent fail-open for a single-graph host that
+    /// > did not ask for it. That is why `ManifoldBootstrap` does **not** seed this
+    /// > from its configuration unless the caller passes
+    /// > `securityPolicy:` explicitly.
+    ///
+    /// Set it **before** registering backends — registrars snapshot it, so a
+    /// later change does not retroactively re-scope backends that already exist.
+    ///
+    /// Assigning also (re-)enters this graph's ``ManifoldSecurityPolicy/networkPolicy``
+    /// into ``NetworkPolicyRegistry``, so the static ``NetworkPolicyURLProtocol``
+    /// backstop — which cannot see a session — enforces at least this restrictive a
+    /// policy on initial requests too. The entry is owned by this service and is
+    /// released when the service is deallocated, so a torn-down graph stops
+    /// restricting the graphs that outlive it.
+    public var securityPolicy: ManifoldSecurityPolicy? {
+        didSet {
+            guard securityPolicy?.networkPolicy != oldValue?.networkPolicy else { return }
+            // Drop the old entry before taking the new one so a re-assignment
+            // cannot transiently double-count this graph in the fold.
+            networkPolicyRegistration = nil
+            networkPolicyRegistration = securityPolicy.map {
+                NetworkPolicyRegistry.shared.register($0.networkPolicy)
+            }
+        }
+    }
+
+    /// Keeps this graph's ``NetworkPolicyRegistry`` entry alive exactly as long as
+    /// the service is.
+    ///
+    /// The registration deliberately hangs off the service rather than off a
+    /// `URLSession` delegate: `URLSession` retains its delegate until the session
+    /// is invalidated, and the policy-scoped sessions are cached for the process
+    /// lifetime, so a delegate-owned registration would be immortal and a dead
+    /// bootstrap would keep restricting live ones. The service graph is the
+    /// correct granularity — the registry tracks *live graphs*.
+    private var networkPolicyRegistration: NetworkPolicyRegistration?
+
     // MARK: - Deep-Backend Routing
 
     /// Optional secondary backend for Deep-scoped turns (#799). Host-owned and
@@ -235,6 +292,13 @@ public final class InferenceService {
 
     public func registerBackendFactory(_ factory: @escaping BackendFactory) {
         lifecycle.registerBackendFactory(factory)
+    }
+
+    /// Builds an endpoint backend from the registered factories without loading
+    /// it. Framework-internal introspection for the #2293 registrar-liveness
+    /// check — see `ModelLifecycleCoordinator.makeEndpointBackendWithoutLoading(for:)`.
+    package func makeEndpointBackendWithoutLoading(for provider: APIProvider) -> (any InferenceBackend)? {
+        lifecycle.makeEndpointBackendWithoutLoading(for: provider)
     }
 
     public func registerEndpointBackendFactory(_ factory: @escaping EndpointBackendFactory) {

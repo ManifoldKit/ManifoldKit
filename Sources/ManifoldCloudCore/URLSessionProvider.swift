@@ -167,6 +167,90 @@ public enum URLSessionProvider {
         return _unpinned
     }
 
+    // MARK: - Policy-scoped sessions (#2293)
+
+    /// Sessions built for an explicit ``ManifoldSecurityPolicy``, keyed by the
+    /// policy value.
+    ///
+    /// Keyed rather than one-per-caller because `URLSession` owns a connection
+    /// pool: minting a fresh session per backend instance would fragment
+    /// keep-alive connections and multiply delegate objects. Two graphs holding
+    /// *different* policies get different sessions (which is the point); two
+    /// graphs holding equal policies share one, exactly as they share ``pinned``
+    /// today.
+    ///
+    /// Deliberately unbounded-but-tiny: the key space is the set of distinct
+    /// policies a process configures, which is one or two in practice. Entries
+    /// live for the process lifetime, matching ``pinned`` / ``unpinned``.
+    private struct PolicyScopedKey: Equatable {
+        let policy: ManifoldSecurityPolicy
+        let pinning: Bool
+    }
+
+    private static let _policyScoped = OSAllocatedUnfairLock<[(PolicyScopedKey, URLSession)]>(
+        initialState: []
+    )
+
+    /// A pinned session that enforces `securityPolicy` instead of the
+    /// transitional process-global ``ManifoldConfiguration``.
+    ///
+    /// Passing `nil` returns the shared ``pinned`` session, whose delegates read
+    /// the global live — the pre-#2293 behaviour.
+    ///
+    /// - Note: Traps with a precondition if ``networkDisabled`` is `true`, for
+    ///   symmetry with ``pinned``.
+    public static func pinned(securityPolicy: ManifoldSecurityPolicy?) -> URLSession {
+        precondition(!networkDisabled, "URLSessionProvider.networkDisabled is set; use throwing variant URLSessionProvider.throwingPinned() instead.")
+        guard let securityPolicy else { return _pinned }
+        return policyScopedSession(securityPolicy, pinning: true)
+    }
+
+    /// An unpinned (LAN) session that enforces `securityPolicy` instead of the
+    /// transitional process-global ``ManifoldConfiguration``.
+    ///
+    /// Passing `nil` returns the shared ``unpinned`` session.
+    ///
+    /// - Note: Traps with a precondition if ``networkDisabled`` is `true`, for
+    ///   symmetry with ``unpinned``.
+    public static func unpinned(securityPolicy: ManifoldSecurityPolicy?) -> URLSession {
+        precondition(!networkDisabled, "URLSessionProvider.networkDisabled is set; use throwing variant URLSessionProvider.throwingUnpinned() instead.")
+        guard let securityPolicy else { return _unpinned }
+        return policyScopedSession(securityPolicy, pinning: false)
+    }
+
+    private static func policyScopedSession(
+        _ policy: ManifoldSecurityPolicy,
+        pinning: Bool
+    ) -> URLSession {
+        // The pinning flag participates in identity: a pinned and an unpinned
+        // session for the same policy are different sessions.
+        let key = PolicyScopedKey(policy: policy, pinning: pinning)
+
+        if pinning {
+            PinnedSessionDelegate.loadDefaultPins()
+        }
+
+        return _policyScoped.withLock { table in
+            if let existing = table.first(where: { $0.0 == key }) {
+                return existing.1
+            }
+            let composite = CompositeURLSessionDelegate(
+                redirectGuard: RedirectGuardDelegate(hopCap: defaultHopCap),
+                serverTrustHandler: pinning ? PinnedSessionDelegate(securityPolicy: policy) : nil,
+                downloadDelegate: nil,
+                dataDelegate: nil,
+                securityPolicy: policy
+            )
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 300
+            config.timeoutIntervalForResource = 600
+            config.tlsMinimumSupportedProtocolVersion = .TLSv12
+            let session = URLSession(configuration: config, delegate: composite, delegateQueue: nil)
+            table.append((key, session))
+            return session
+        }
+    }
+
     /// Builds a background `URLSession` with the redirect guard installed.
     ///
     /// Forwards to ``URLSessionFactory/background(identifier:hopCap:additionalDownloadDelegate:)``.
@@ -191,5 +275,42 @@ public enum URLSessionProvider {
             hopCap: hopCap,
             additionalDownloadDelegate: additionalDownloadDelegate
         )
+    }
+}
+
+/// Memoises a policy-scoped pinned session so a registrar can defer building it
+/// until a backend is actually constructed.
+///
+/// Lives here rather than in `CloudSaaSBackends` for two reasons: `URLSession`
+/// types belong behind the networking boundary (`TrafficBoundaryAuditTest` rule 1
+/// enforces that, and it caught the first attempt), and this is the file that owns
+/// the policy-scoped session cache it draws from.
+///
+/// The deferral exists because ``URLSessionProvider/pinned(securityPolicy:)``
+/// `precondition`s on the ``URLSessionProvider/networkDisabled`` kill-switch:
+/// resolving at registration time would crash a host that locks the network and
+/// then calls `quickStart()`, where before #2293 the trap deferred to
+/// cloud-backend construction and never fired in a process with no cloud endpoint.
+///
+/// `@MainActor` because the backend factory closures it serves are `@MainActor`,
+/// which is also what makes the unsynchronised `stored` safe.
+@MainActor
+package final class LazyPolicyScopedSession {
+    private let securityPolicy: ManifoldSecurityPolicy?
+    private var stored: URLSession?
+
+    package init(securityPolicy: ManifoldSecurityPolicy?) {
+        self.securityPolicy = securityPolicy
+    }
+
+    /// The scoped pinned session, or `nil` when the graph has no policy — in which
+    /// case each backend resolves the shared ``URLSessionProvider/pinned`` itself,
+    /// exactly as before #2293.
+    package func resolve() -> URLSession? {
+        guard let securityPolicy else { return nil }
+        if let stored { return stored }
+        let session = URLSessionProvider.pinned(securityPolicy: securityPolicy)
+        stored = session
+        return session
     }
 }

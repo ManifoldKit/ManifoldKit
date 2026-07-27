@@ -23,7 +23,17 @@ enum CredentialedHostTrustGate {
     /// Throws ``CloudBackendError/unpinnedCredentialedHost(_:)`` when a
     /// credentialed request would target an unpinned non-loopback host and
     /// unpinned credentialed hosts are not allowed.
-    static func check(url: URL?, hasCredentials: Bool) throws {
+    ///
+    /// - Parameter securityPolicy: The caller's own policy. Callers are
+    ///   instances (`SSECloudBackend`, the `pinnedData` transport helper) that
+    ///   carry a policy; this gate is a `static func` only because it holds no
+    ///   state of its own. Pass `nil` to resolve the transitional
+    ///   process-global ``ManifoldConfiguration`` at call time (#2293).
+    static func check(
+        url: URL?,
+        hasCredentials: Bool,
+        securityPolicy: ManifoldSecurityPolicy? = nil
+    ) throws {
         guard hasCredentials else { return }
         guard let url else { return }
         // Full IPv4 loopback range + canonical names — aligned with
@@ -40,7 +50,9 @@ enum CredentialedHostTrustGate {
         // resolve them; prefer real hostnames with SPKI pins.
         if isTestOrLocalSpecialUseHost(normalized) { return }
 
-        if ManifoldConfiguration.shared.allowUnpinnedCredentialedHosts { return }
+        let allowUnpinned = securityPolicy?.allowUnpinnedCredentialedHosts
+            ?? ManifoldConfiguration.shared.allowUnpinnedCredentialedHosts
+        if allowUnpinned { return }
 
         PinnedSessionDelegate.loadDefaultPins()
         if let pins = PinnedSessionDelegate.pinnedHosts[normalized], !pins.isEmpty {
