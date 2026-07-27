@@ -19,15 +19,26 @@ import Darwin
 /// the host app instead of failing the request.
 ///
 /// The distinguishing test applied while triaging existing sites for this
-/// PR: is the trapped value fixed once at construction (a wiring/config
-/// mistake — "genuine programmer error", stays as a trap), or can it change
-/// during the process's lifetime after the trapping code was already reached
-/// once safely (a live runtime condition with a fallback — must not trap)?
-/// `URLSessionProvider.networkDisabled` is documented as flippable at any
-/// time; every other precondition site in `Sources/` at the time of writing
-/// gates a value fixed once at object construction, matching the safe
-/// "stays" bucket. See `trapping_construct_allowlist.txt` for the per-site
-/// reasoning.
+/// PR — sharpened twice during review, see AGENTS.md's Error handling
+/// section for the canonical statement: a trap is legitimate only when
+/// ALL THREE hold — (a) the value is fixed once at construction, never
+/// mutated afterward; (b) the value originates from code the programmer
+/// wrote and controls directly, not from data that can enter the process
+/// from outside their control (config, a defaults key, a runtime-filtered
+/// list, public API a separate caller drives with its own data); and (c) a
+/// trap here crashes the *developer's own process* (a build, a test run, a
+/// CLI/fuzz tool they're driving directly), not a shipped app on someone
+/// else's device. `URLSessionProvider.networkDisabled` fails (a) — it's a
+/// runtime toggle flippable at any time. `RedirectGuardDelegate.hopCap`,
+/// `FallbackBackend`'s empty-chain check, and `DocumentChunker`'s
+/// chunkSize/overlap fail (b) and (c) together — each is public API fed
+/// from host-app-controlled runtime data reachable from a shipped app's own
+/// bootstrap path. `RotatingFuzzFactory` fails (b) alone (it's public API
+/// on a published library a companion package can drive programmatically)
+/// but correctly stays a trap because it passes (c) — `ManifoldFuzz` never
+/// ships inside a consumer app, so a bad value only ever crashes the
+/// developer's own fuzz process. See `trapping_construct_allowlist.txt` for
+/// the full per-site reasoning.
 ///
 /// ## Approval shape
 ///

@@ -17,24 +17,41 @@
 #
 # ## The rule
 #
-# Every entry below gates a value that (a) is fixed ONCE, at object
-# construction, by the calling code — never a value that can change during
-# the process's lifetime after the guarded code path was already reached
-# safely — AND (b) originates from code the programmer wrote and controls
-# directly (a literal array, a hardcoded scenario definition), not from
-# data that can enter the process from outside the programmer's control
-# (a config file, a defaults key, a runtime-filtered list, a value forwarded
-# from public API that a separate host app calls with its own data).
+# Every entry below gates a value that satisfies ALL THREE conditions:
 #
-# Both conditions must hold. (a) alone is not sufficient — this allowlist
-# used to carry `RedirectGuardDelegate.hopCap`, `FallbackBackend`'s
-# empty-chain check, and `DocumentChunker`'s chunkSize/overlap on exactly
-# this reasoning, until review established that all three are public API
-# fed from host-app-controlled runtime data (a config-derived hop cap, a
+#   (a) is fixed ONCE, at object construction, by the calling code — never
+#       a value that can change during the process's lifetime after the
+#       guarded code path was already reached safely;
+#   (b) originates from code the programmer wrote and controls directly (a
+#       literal array, a hardcoded scenario definition), not from data that
+#       can enter the process from outside the programmer's control (a
+#       config file, a defaults key, a runtime-filtered list, a value
+#       forwarded from public API that a separate caller calls with its own
+#       data); AND
+#   (c) a trap here crashes the DEVELOPER's own process (a build, a test
+#       run, a fuzz/CLI tool the developer is driving directly) — not a
+#       shipped app running on someone else's device.
+#
+# All three must hold. (a) alone is not sufficient — this allowlist used to
+# carry `RedirectGuardDelegate.hopCap`, `FallbackBackend`'s empty-chain
+# check, and `DocumentChunker`'s chunkSize/overlap on exactly that
+# reasoning, until review established that all three are public API fed
+# from host-app-controlled runtime data (a config-derived hop cap, a
 # `available.filter { $0.isReady }`-built chain, `RAGConfiguration` read by
-# `ManifoldBootstrap`) — condition (b) failed for all three, so they were
-# fixed (clamp/log/throw-a-catchable-error) instead of staying here. See
-# their init doc comments and the regression tests next to each fix.
+# `ManifoldBootstrap`) reachable from a SHIPPED app's own bootstrap path —
+# they failed (b) and (c) together, so they were fixed
+# (clamp/log/throw-a-catchable-error) instead of staying here. See their
+# init doc comments and the regression tests next to each fix.
+#
+# (b) alone is not sufficient either — it looked that way until (c)
+# separated it out. `RotatingFuzzFactory` below is public API reachable
+# from outside this repo (`ManifoldFuzz` is a published `.library()`
+# product; a companion package's fuzz driver can construct it
+# programmatically with nobody at a terminal) — it fails (b) exactly like
+# `hopCap` did. It correctly stays a trap anyway, because it fails (c):
+# `ManifoldFuzz` is developer tooling that never ships inside an app, so a
+# bad value crashes the fuzz operator's OWN process immediately with a
+# clear message — good feedback, not a footgun a stranger inherits.
 #
 # A value that *can* legitimately flip after construction (like
 # URLSessionProvider.networkDisabled, fixed in this same PR) fails
@@ -63,16 +80,18 @@ ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(length >= 0, "DER len
 # DocumentChunker feed a must-fix.
 ManifoldAppEval/Runner/RuntimeScenario.swift:precondition( userMessages.count == scriptedTurns.count,
 
-# Fuzz-factory wiring: empty child list / non-positive blockSize. Reachable
-# only from fuzz-driver CLI wiring (OllamaFuzzFactory, invoked from
-# scripts/fuzz.sh by a human operator) — condition (b): the "caller" is a
-# person launching a fuzz campaign from a terminal, and a bad CLI flag
-# crashing that same terminal session immediately, at launch, is the
-# equivalent of a compiler error for the person who can fix it on the spot,
-# not a shipped app crashing for an end user. Flagged to the PR author for
-# explicit sign-off rather than silently kept, since it's a public
-# initializer and the line is genuinely closer to the "outside control"
-# side than the other eval/fuzz entries here.
+# Fuzz-factory wiring: empty child list / non-positive blockSize. This is
+# `public` API on a published `.library()` product (`ManifoldFuzz` — see
+# AGENTS.md, manifold-mlx's `fuzz-mlx` is a cross-package consumer), so it
+# fails condition (b): a value here CAN originate outside this repo's
+# programmer control (a companion package's fuzz driver could construct it
+# from CLI-flag-derived data with nobody at a terminal). It stays a trap
+# anyway because it fails condition (c) instead: `ManifoldFuzz` is
+# developer/CI tooling that never ships inside a consumer app — a bad value
+# crashes the fuzz operator's OWN process (their terminal, their CI job)
+# immediately with a clear message, not a stranger's shipped app with no
+# way to diagnose it. Blast radius, not provenance, is what keeps this one
+# a trap — see AGENTS.md's Error handling section for the general form.
 ManifoldFuzz/RotatingFuzzFactory.swift:precondition(!children.isEmpty, "RotatingFuzzFactory requires at least one child factory")
 ManifoldFuzz/RotatingFuzzFactory.swift:precondition(blockSize >= 1, "RotatingFuzzFactory blockSize must be >= 1")
 
