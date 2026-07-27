@@ -244,9 +244,14 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // the manifest produced at loadModel-time; the factory falls back to
         // OpenAI's mainstream 128k when the configured model name doesn't
         // prefix-match the manifest table.
+        //
+        // `flatMap`, not `manifest?.contextWindow`: the latter is `Int??` now
+        // that the manifest's own field is optional, and the nested `.some(nil)`
+        // ("manifest present, window unknown") would not be flattened into the
+        // factory's `?? 128_000` fallback.
         Self.capabilities(
             forModelName: modelName,
-            contextWindow: manifest?.contextWindow
+            contextWindow: manifest.flatMap(\.contextWindow)
         )
     }
 

@@ -183,10 +183,16 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // name — Claude 4-class models all support thinking, so the
         // optimistic default is safer than under-reporting and silently
         // hiding the reasoning UI.
+        //
+        // The 200k fallback applies only when the manifest genuinely has no
+        // context window (`nil`). It used to be selected by comparing against
+        // the literal `8192` that `ModelManifest.unknown()` fabricated, which
+        // reached across a module boundary into another target's magic number:
+        // a genuine 8k Claude entry would have been silently inflated to 200k,
+        // and moving that constant would have silently shrunk every unknown
+        // Claude model to it. Absence is now on the type.
         let resolvedManifest = manifest ?? .unknown(modelIdentifier: modelName, producerKind: .cloud)
-        let resolvedContext = Int32(resolvedManifest.contextWindow == 8192
-            ? 200_000
-            : resolvedManifest.contextWindow)
+        let resolvedContext = Int32(resolvedManifest.contextWindow ?? 200_000)
         return BackendCapabilities(
             supportedParameters: [.temperature, .topP, .topK],
             maxContextTokens: resolvedContext,

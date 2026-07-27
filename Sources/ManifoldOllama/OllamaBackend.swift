@@ -464,16 +464,17 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
     public override var capabilities: BackendCapabilities {
         // Prefer the `/api/show` `model_info.context_length` captured into
-        // the manifest at load time. Fall back to the historical 128k
-        // default (covers most modern Llama 3.x / Qwen3 weights) until a
-        // real probe runs.
-        let resolvedManifest = withStateLock { _manifest }
-        let resolvedContext: Int32
-        if let resolvedManifest {
-            resolvedContext = Int32(resolvedManifest.contextWindow)
-        } else {
-            resolvedContext = 128_000
-        }
+        // the manifest at load time. When `/api/show` did not report one the
+        // manifest's `contextWindow` is `nil` (unknown — not "small"), so fall
+        // back to the num_ctx this backend will actually run with, which is a
+        // real configured value rather than a guess about the model. Before
+        // any load has happened there is no num_ctx either, so the last resort
+        // is the historical 128k default (covers most modern Llama 3.x / Qwen3
+        // weights).
+        let (resolvedManifest, numCtx) = withStateLock { (_manifest, effectiveNumCtx) }
+        let resolvedContext = Int32(
+            resolvedManifest?.contextWindow ?? (numCtx > 0 ? numCtx : 128_000)
+        )
         return BackendCapabilities(
             supportedParameters: [
                 .temperature, .topP, .topK, .repeatPenalty,
@@ -599,7 +600,13 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
             probed = .empty
         }
 
-        let resolvedContextWindow = probed.contextLength ?? max(resolvedNumCtx, Self.defaultNumCtxFloor)
+        // Only a real `/api/show` `model_info.context_length` describes the
+        // *model*. `resolvedNumCtx` is this backend's own runtime allocation,
+        // which used to be substituted here — that made a probe failure
+        // indistinguishable from a model that genuinely has that window. The
+        // num_ctx fallback now lives in `capabilities`, where it is honestly
+        // labelled as "what we will run with" rather than "what the model is".
+        let resolvedContextWindow = probed.contextLength
         let manifest = ModelManifest(
             contextWindow: resolvedContextWindow,
             supportsTools: probed.tools,
@@ -623,7 +630,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         }
 
         setIsModelLoaded(true)
-        Log.inference.info("OllamaBackend configured for \(self.modelName, privacy: .public) at \(self.baseURL?.host() ?? "unknown", privacy: .public) thinking=\(self.isThinkingModel, privacy: .public) num_ctx=\(resolvedNumCtx, privacy: .public) ctxWindow=\(resolvedContextWindow, privacy: .public)")
+        Log.inference.info("OllamaBackend configured for \(self.modelName, privacy: .public) at \(self.baseURL?.host() ?? "unknown", privacy: .public) thinking=\(self.isThinkingModel, privacy: .public) num_ctx=\(resolvedNumCtx, privacy: .public) ctxWindow=\(resolvedContextWindow.map(String.init) ?? "unknown", privacy: .public)")
     }
 
     // MARK: - Request Building
