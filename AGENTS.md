@@ -908,14 +908,23 @@ in the same PR; if that keeps being forgotten, the fix is an audit that greps
 > requirement, the per-doc ">=1 compiled block" assertion and the skip ratchet —
 > runs as `snippet-policy-lint` in the required `lint` job, where it blocks. Only
 > the *compile* (`extract-snippets-test.sh`, which needs macOS + Swift) remains in
-> `readme-snippets`, which is **not** a required context and has no `merge_group`
-> trigger: a red there does **not** stop `gh pr merge --squash --auto`. Treat one
-> as a stop anyway — that is the red-but-not-blocking shape that let the
-> api-digester reds through (#2274, #2287). Making the compile blocking too means
-> adding a `merge_group` trigger to `readme-snippets.yml` first, because a
-> required check that never reports to the queue stalls it permanently (the
-> failure mode documented under "Companion release PRs" above). `lint` already
-> has that trigger, which is why the policy half could be promoted without one.
+> `readme-snippets`, which is **not** a required context: a red there does **not**
+> stop `gh pr merge --squash --auto`. Treat one as a stop anyway — that is the
+> red-but-not-blocking shape that let the api-digester reds through (#2274,
+> #2287).
+>
+> **Making the compile blocking is now one step: add `readme-snippets` to
+> `main`'s required contexts.** The prerequisite — a `merge_group` trigger, so the
+> check reports on the queue rather than being assumed failed after the ruleset's
+> `check_response_timeout_minutes` (60) and having its batch ejected — landed in
+> #2391. ("Stalls forever" is the folklore; it is an hour per batch, repeatedly,
+> which is bad enough.) Do it **promptly**
+> rather than leaving it: the trigger already spends a second `macos-15` slot on
+> every queued batch (the job itself is short — measured 3–4 min), and until the
+> context is required the queue does not wait on it and the result is discarded,
+> so the interim state pays for a gate it does not get and can surface a red check
+> on an already-merged commit. Confirm the check is
+> observed reporting on a real `merge_group` run before flipping it.
 
 Rules when editing docs:
 

@@ -153,7 +153,14 @@ jobs:
     # CI fires once when the PR is marked ready (see CLAUDE.md §"Draft-PR review
     # loop"). Every heavy job `needs: [changes]`, so skipping this gate cascades
     # the skip to the whole workflow. The `event_name != 'pull_request'` clause
-    # keeps push-to-main runs unconditional (no PR context there).
+    # states explicitly that push-to-main runs are unconditional (no PR context there).
+    # NOTE: the "a bare `…draft == false` skips on non-PR events" rationale
+    # (#2065) was MEASURED FALSE. GitHub coerces null and false alike to `0`, so
+    # `null == false` is true and the bare form RUNS on a non-PR event. (The
+    # draft guard itself works correctly on pull_request events — that was never
+    # in question.) The compound form below is still correct and worth keeping as
+    # explicitness; only the stated reason was wrong. See
+    # .github/workflows/readme-snippets.yml for the measurement and its scope.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # Backstop against an org-wide macOS-slot stall: an untimed hung job would
