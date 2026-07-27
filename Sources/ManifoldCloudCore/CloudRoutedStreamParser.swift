@@ -32,10 +32,45 @@ package struct CloudRoutedStreamParser: Sendable {
         var wasThinking = false
         var threwMidStream: Error?
         var limitTracker = RoutedStreamLimitTracker(limits: limits)
+        // Once the provider signals end-of-stream we stop *interpreting*
+        // frames, but we keep draining the framed transport until it
+        // finishes naturally. Breaking out of the loop early cancels the
+        // underlying `URLSession.AsyncBytes` transfer mid-body (via the
+        // transport's `onTermination` cancel path). On HTTP/1.1 keep-alive
+        // that can leave the connection half-open from the client's view
+        // and — for backends that serialise concurrent model work (Ollama
+        // on a single local model) — stall the *next* request indefinitely
+        // with no error (#2376 tool-continuation hang after a successful
+        // tool round-trip). Draining to completion lets URLSession mark
+        // the transfer finished cleanly before the next generate starts.
+        var streamCompleted = false
+        // Cap residual frames after terminal so a provider that never closes
+        // the body cannot keep the turn open indefinitely. Bound is generous
+        // (a few trailing usage frames) but finite; `streamIdleTimeout` is the
+        // outer wall-clock backstop for silence.
+        var residualFramesAfterTerminal = 0
+        let maxResidualFramesAfterTerminal = 32
 
         do {
             for await frame in routing.framedTransport.frames(from: bytes) {
                 if Task.isCancelled { break }
+                if streamCompleted {
+                    residualFramesAfterTerminal += 1
+                    // Still count residual against stream limits so a hostile
+                    // tail cannot bypass the byte/frame budget.
+                    do {
+                        try limitTracker.noteFrame(frame)
+                    } catch {
+                        break
+                    }
+                    if residualFramesAfterTerminal >= maxResidualFramesAfterTerminal {
+                        Log.network.debug(
+                            "CloudRoutedStreamParser: residual drain hit \(maxResidualFramesAfterTerminal, privacy: .public)-frame cap after terminal; stopping"
+                        )
+                        break
+                    }
+                    continue
+                }
 
                 try limitTracker.noteFrame(frame)
 
@@ -77,11 +112,13 @@ package struct CloudRoutedStreamParser: Sendable {
                         handleUsage((promptTokens: prompt, completionTokens: completion))
                         continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                     }
-                    break
+                    streamCompleted = true
+                    continue
                 }
 
                 if !payload.isEmpty, handler.isStreamEnd(payload) {
-                    break
+                    streamCompleted = true
+                    continue
                 }
             }
         } catch {

@@ -224,6 +224,16 @@ struct GenerationToolDispatchLoop {
             // stack — no shared instance-state install (#2312). Tool-aware
             // backends derive their `tool_use`/`tool_result` wire shape from the
             // structured tool parts via `[StructuredMessage].toolAwareHistory`.
+            if iterations > 1 {
+                // #2376: make tool-continuation turns unmistakable in the
+                // inference log — the hang observed in the walkthrough sat
+                // between "tool_dispatch_completed" and silence, with no
+                // marker that the loop had re-entered generate().
+                let toolParts = currentMessages.containsToolParts
+                Log.inference.info(
+                    "tool_continuation_generate iteration=\(iterations, privacy: .public) messages=\(currentMessages.count, privacy: .public) has_tool_parts=\(toolParts, privacy: .public)"
+                )
+            }
             let stream = try generateWithConfig(currentMessages, systemPrompt, config, hints)
 
             // Tool calls are buffered during stream iteration and dispatched
