@@ -60,8 +60,12 @@
 //             permanently red on an already-published defect (e.g. the
 //             bare default today derives v0.73.0, whose range still
 //             contains f95f6428) -- that's expected for a human poking at
-//             it by hand; it self-heals at the next real release, and CI
-//             never invokes this script without an explicit range.
+//             it by hand; it self-heals at the next real release. CI *does*
+//             use the bare form (lint.yml's whole-range step passes no
+//             arguments), but only on the release-please branch, where the
+//             derived base is the previous tag -- so an already-published
+//             defect falls outside the range instead of reddening it.
+//             Verified: v0.74.0..origin/main is clean.
 //   HEAD_REF  defaults to HEAD.
 //
 // Exit 0 = every releasable commit in range parses (or, in --per-pr mode,
@@ -128,6 +132,12 @@ let baseTag = positional[0];
 const headRef = positional[1] || 'HEAD';
 
 if (!baseTag) {
+  // Guarded for the same reason configPath is below: without it a --repo
+  // target lacking CHANGELOG.md exits on a raw ENOENT stack instead of this
+  // gate's own diagnostic. It failed closed either way; this just says why.
+  if (!existsSync(changelogPath)) {
+    fail(`${changelogPath} not found -- cannot derive BASE_TAG (pass it explicitly as argv[2])`);
+  }
   const changelog = readFileSync(changelogPath, 'utf8');
   const headers = [...changelog.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)];
   if (headers.length < 2) {
@@ -142,14 +152,23 @@ try {
   fail(`BASE_TAG '${baseTag}' does not resolve to a commit`);
 }
 
-// Scope filter, not a false-positive dodge: a hidden-type commit (e.g.
-// chore:) was never going into the changelog, so it failing to parse isn't
-// the #2380 defect -- only a commit release-please would actually publish
-// can be "silently dropped" from what it publishes. Read dynamically from
-// release-please-config.json rather than hardcoded, so a type later
-// un-hidden there is automatically covered here too -- intentional, not a
-// surprise: if that ever happens, this check's scope widens in lockstep
-// with what actually ships in the changelog.
+// Scope filter, not a false-positive dodge: a NON-breaking hidden-type
+// commit (e.g. a plain `chore:`) was never going into the changelog, so it
+// failing to parse isn't the #2380 defect -- only a commit release-please
+// would actually publish can be "silently dropped" from what it publishes.
+// Read dynamically from release-please-config.json rather than hardcoded, so
+// a type later un-hidden there is automatically covered here too.
+//
+// A BREAKING hidden-type commit is a different animal and is NOT filtered
+// out -- see isBreaking() below. An earlier version of this comment claimed
+// hidden-type commits simply "were never going into the changelog"; that is
+// false for breaking ones, and verified so against the pinned
+// release-please: `chore(deps)!: …` with a clean body parses with
+// breaking=true and renders BOTH a `### ⚠ BREAKING CHANGES` entry and a
+// `### Chores` bullet, and it drives the version bump. With a
+// parser-hostile body it is dropped entirely, taking the breaking notice
+// AND the bump with it. Filtering those out by type would have left #2380's
+// worst variant uncovered behind a comment asserting it couldn't happen.
 if (!existsSync(configPath)) {
   fail(`${configPath} not found -- the visible changelog-sections types cannot be derived, so scope would be guessed rather than read`);
 }
@@ -163,10 +182,29 @@ if (visibleTypes.size === 0) {
 const RECORD_SEP = '\x1f';
 const log = git(['log', '--no-merges', `--format=%H${RECORD_SEP}%s`, `${baseTag}..${headRef}`]).trim();
 if (!log) {
+  if (perPr) {
+    // Same reasoning as the `checked === 0` relaxation below, one step
+    // earlier: in per-PR mode an empty `--no-merges` range is a legitimate
+    // shape (a PR containing only merge commits), and reddening the required
+    // lint check on it would be exactly the false red --per-pr exists to
+    // prevent. The whole-range mode below still refuses a vacuous pass.
+    console.log(
+      `changelog-parser-check: no non-merge commits in ${baseTag}..${headRef} -- nothing to parse in this PR.`
+    );
+    process.exit(0);
+  }
   fail(`no commits found in range ${baseTag}..${headRef} -- refusing to report a vacuous pass`);
 }
 
-const headerRe = /^([a-zA-Z]+)(\([^)]*\))?!?:/;
+// `!` is captured (group 3) rather than skipped: it is one of the two ways a
+// commit declares itself breaking, and a breaking commit is in scope
+// regardless of whether its type is hidden.
+const headerRe = /^([a-zA-Z]+)(\([^)]*\))?(!)?:/;
+
+// The other way: a `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer anywhere in
+// the body. Both spellings are accepted by the conventional-commits spec and
+// by release-please, so both are honoured here.
+const breakingFooterRe = /^BREAKING[ -]CHANGE:/m;
 
 let checked = 0;
 const failures = [];
@@ -180,11 +218,19 @@ for (const line of log.split('\n')) {
   const m = subject.match(headerRe);
   if (!m) continue;
   const type = m[1];
-  if (!visibleTypes.has(type)) continue;
+  const bangInHeader = m[3] === '!';
+
+  // Fetched before the scope decision, not after: deciding whether a
+  // hidden-type commit is breaking requires its body (the footer form).
+  const fullMessage = git(['log', '-1', '--format=%B', sha]);
+  const isBreaking = bangInHeader || breakingFooterRe.test(fullMessage);
+
+  // In scope if release-please would publish it: a visible type, or ANY
+  // breaking commit (a breaking `chore!:` renders under ⚠ BREAKING CHANGES
+  // and drives the version bump even though `chore` is hidden).
+  if (!visibleTypes.has(type) && !isBreaking) continue;
 
   checked++;
-
-  const fullMessage = git(['log', '-1', '--format=%B', sha]);
 
   // parseConventionalCommits() catches its own parse errors internally and
   // only logs them at `debug` level -- it never throws and never surfaces

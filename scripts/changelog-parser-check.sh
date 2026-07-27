@@ -30,8 +30,13 @@
 #         (derived from CHANGELOG.md's second header), and that range still
 #         contains f95f6428, the already-published #2375 defect. That's
 #         expected for a human poking at the bare form by hand — it
-#         self-heals at the next real release, and CI never invokes this
-#         script without an explicit range (see lint.yml).
+#         self-heals at the next real release. CI *does* use the bare form
+#         (lint.yml's whole-range step passes no arguments), but only on the
+#         release-please branch, where the CHANGELOG-derived base is the
+#         previous tag, so an already-published defect falls outside the
+#         range rather than reddening it. Verified: v0.74.0..origin/main is
+#         clean. An earlier version of this note claimed CI never invokes the
+#         bare form, which was simply wrong about the workflow.
 #
 # Exit 0 = every releasable commit in range parses cleanly (or, with
 # --per-pr, there were none to check). Exit 1 = at least one doesn't, or the

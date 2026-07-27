@@ -54,6 +54,22 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         return true
     }
 
+    /// Skipping on absent tooling is a developer-machine convenience only. On
+    /// CI it must be a hard failure: the runner image is *supposed* to have
+    /// node/npm (lint.yml installs Node 24), so their absence means the gate
+    /// is not being exercised — and because the parallel runner folds XCTSkip
+    /// into the passed count, a skip there is indistinguishable from a pass.
+    /// That is precisely the inert-but-green shape this file's header objects
+    /// to, and it would have applied to the file's own precondition.
+    private func requireTooling() throws {
+        guard !toolingAvailable() else { return }
+        if ProcessInfo.processInfo.environment["CI"] != nil {
+            XCTFail("node/npm/git must be present on CI — a skip here would silently stop exercising the changelog parser gate")
+            throw XCTSkip("tooling missing on CI (already failed above)")
+        }
+        throw XCTSkip("node/npm/git not on PATH (local run)")
+    }
+
     // MARK: - Fixture repository
 
     /// The parser-hostile construct from #2380's confirmed root cause: an
@@ -77,13 +93,42 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         let root: URL
         /// Non-conventional initial commit — the base of every range below.
         let base: String
-        /// `chore(main): release 0.0.1` — a hidden type, so a range ending
-        /// here matches zero releasable commits.
-        let choreOnly: String
+        /// A commit of the config's hidden type, non-breaking, so a range
+        /// ending here matches zero releasable commits.
+        let hiddenOnly: String
         /// A `fix:` commit whose body breaks release-please's parser.
         let hostile: String
         /// A `fix:` commit that parses cleanly.
         let clean: String
+        /// A BREAKING commit of the *hidden* type whose body breaks the
+        /// parser. release-please publishes breaking hidden-type commits
+        /// (⚠ BREAKING CHANGES + the version bump), so dropping one is the
+        /// worst variant of #2380 — the gate must not filter it out by type.
+        let breakingHiddenHostile: String
+        /// The hidden type actually read from the copied config, so a config
+        /// edit that un-hides it changes the fixture instead of breaking the
+        /// tests with a diagnostic that points at the wrong file.
+        let hiddenType: String
+    }
+
+    /// Reads the first hidden `changelog-sections` type out of the real
+    /// config. Fails loudly rather than defaulting: if nothing is hidden, the
+    /// zero-releasable-commits scenarios below cannot be constructed at all,
+    /// and silently substituting a guess would make them assert something
+    /// other than what they claim.
+    private func hiddenType(in configURL: URL) throws -> String {
+        let data = try Data(contentsOf: configURL)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let packages = json?["packages"] as? [String: Any]
+        let root = packages?["."] as? [String: Any]
+        let sections = root?["changelog-sections"] as? [[String: Any]]
+        let hidden = sections?.first { ($0["hidden"] as? Bool) == true }
+        guard let type = hidden?["type"] as? String else {
+            throw NSError(domain: "fixture", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "release-please-config.json has no hidden changelog-sections type; the zero-releasable-commit scenarios in this file cannot be built without one"
+            ])
+        }
+        return type
     }
 
     /// Builds a throwaway git repository. Caller owns cleanup.
@@ -144,9 +189,11 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
             return try head()
         }
 
+        let hidden = try hiddenType(in: root.appendingPathComponent("release-please-config.json"))
+
         try run(["init", "-b", "main"])
         let base = try commit("initial fixture commit (deliberately non-conventional)", marker: "0")
-        let choreOnly = try commit("chore(main): release 0.0.1", marker: "1")
+        let hiddenOnly = try commit("\(hidden)(main): release 0.0.1", marker: "1")
         let hostile = try commit(
             "fix(fuzz): gate the CI fuzz job on its own findings\n\n\(Self.parserHostileBody)",
             marker: "2"
@@ -155,8 +202,20 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
             "fix(runtime): bound tool-continuation stalls with a stream idle timeout\n\nA stalled continuation now surfaces as a timeout error instead of hanging.",
             marker: "3"
         )
+        let breakingHiddenHostile = try commit(
+            "\(hidden)(deps)!: drop the legacy shim\n\n\(Self.parserHostileBody)",
+            marker: "4"
+        )
 
-        return Fixture(root: root, base: base, choreOnly: choreOnly, hostile: hostile, clean: clean)
+        return Fixture(
+            root: root,
+            base: base,
+            hiddenOnly: hiddenOnly,
+            hostile: hostile,
+            clean: clean,
+            breakingHiddenHostile: breakingHiddenHostile,
+            hiddenType: hidden
+        )
     }
 
     // scripts/changelog-parser-check.sh always re-runs `npm ci` against the
@@ -215,7 +274,7 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         guard let root = repoRoot() else {
             throw XCTSkip("changelog-parser-check.sh not found from test bundle location")
         }
-        guard toolingAvailable() else { throw XCTSkip("node/npm/git not on PATH") }
+        try requireTooling()
         let fixture = try makeFixture(realRepoRoot: root)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         try body(root, fixture)
@@ -229,7 +288,7 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
     func test_parserHostileReleasableCommit_isRejected() throws {
         try withFixture { root, fixture in
             let (status, output) = try run(root: root, args: [
-                "--repo", fixture.root.path, fixture.choreOnly, fixture.hostile,
+                "--repo", fixture.root.path, fixture.hiddenOnly, fixture.hostile,
             ])
 
             XCTAssertEqual(status, 1, "a commit release-please cannot parse must red the gate: \(output)")
@@ -263,17 +322,17 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
 
     // MARK: - Zero-match handling, per mode
 
-    /// A range containing only `chore(main): release 0.0.1` — `chore` is a
-    /// hidden changelog-sections type, so zero releasable commits match.
-    /// This is the exact shape of a release-please PR (#2352 was the one
-    /// that motivated the flag), which this gate must never red.
-    func test_perPR_choreOnlyRange_exitsZero() throws {
+    /// A range containing only a non-breaking commit of the config's hidden
+    /// type (`chore(main): release 0.0.1` as the config stands), so zero
+    /// releasable commits match. This is the exact shape of a release-please
+    /// PR (#2352 motivated the flag), which this gate must never red.
+    func test_perPR_hiddenTypeOnlyRange_exitsZero() throws {
         try withFixture { root, fixture in
             let (status, output) = try run(root: root, args: [
-                "--per-pr", "--repo", fixture.root.path, fixture.base, fixture.choreOnly,
+                "--per-pr", "--repo", fixture.root.path, fixture.base, fixture.hiddenOnly,
             ])
 
-            XCTAssertEqual(status, 0, "a chore-only per-PR range must pass, not red the release PR it belongs to: \(output)")
+            XCTAssertEqual(status, 0, "a hidden-type-only per-PR range must pass, not red the release PR it belongs to: \(output)")
             XCTAssertTrue(
                 output.contains("no releasable commits") || output.contains("nothing to parse"),
                 "expected the explicit 'nothing to parse' message, got: \(output)"
@@ -288,7 +347,7 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
     func test_wholeRange_zeroReleasableCommits_stillFailsClosed() throws {
         try withFixture { root, fixture in
             let (status, output) = try run(root: root, args: [
-                "--repo", fixture.root.path, fixture.base, fixture.choreOnly,
+                "--repo", fixture.root.path, fixture.base, fixture.hiddenOnly,
             ])
 
             XCTAssertEqual(status, 1, "whole-range mode must still fail closed on zero matched commits: \(output)")
@@ -308,7 +367,7 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         guard let root = repoRoot() else {
             throw XCTSkip("changelog-parser-check.sh not found from test bundle location")
         }
-        guard toolingAvailable() else { throw XCTSkip("node/npm/git not on PATH") }
+        try requireTooling()
 
         let empty = FileManager.default.temporaryDirectory
             .appendingPathComponent("changelog-parser-check-not-a-repo-\(UUID().uuidString)")
@@ -324,29 +383,82 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
         )
     }
 
+    // MARK: - Breaking hidden-type commits are in scope
+
+    /// The worst variant of #2380, and the one the type filter used to hide.
+    /// A BREAKING commit of a hidden type (`chore(deps)!:`) IS published by
+    /// release-please — verified against the pinned version, it renders a
+    /// `### ⚠ BREAKING CHANGES` entry plus a `### Chores` bullet, and it
+    /// drives the version bump. So when its body defeats the parser, the
+    /// release loses the breaking notice AND the bump. Scoping the gate to
+    /// visible types only would report that as clean.
+    func test_breakingHiddenTypeCommit_isInScopeAndRejected() throws {
+        try withFixture { root, fixture in
+            let (status, output) = try run(root: root, args: [
+                "--repo", fixture.root.path, fixture.clean, fixture.breakingHiddenHostile,
+            ])
+
+            XCTAssertEqual(
+                status, 1,
+                "a breaking \(fixture.hiddenType)!: commit whose body defeats the parser must red the gate — it is published AND drives the bump: \(output)"
+            )
+            XCTAssertTrue(
+                output.contains("would silently DROP"),
+                "expected the #2380 diagnostic for the breaking hidden-type commit, got: \(output)"
+            )
+            XCTAssertTrue(
+                output.contains("drop the legacy shim"),
+                "the diagnostic must name the breaking commit's subject, got: \(output)"
+            )
+        }
+    }
+
+    /// Same commit, per-PR mode: the `--per-pr` relaxation applies ONLY to
+    /// the zero-match case, never to a commit that genuinely fails to parse.
+    func test_perPR_stillRedsOnHostileCommit() throws {
+        try withFixture { root, fixture in
+            let (status, output) = try run(root: root, args: [
+                "--per-pr", "--repo", fixture.root.path, fixture.hiddenOnly, fixture.hostile,
+            ])
+
+            XCTAssertEqual(
+                status, 1,
+                "--per-pr must not soften a real parse failure — it only relaxes the zero-match case: \(output)"
+            )
+            XCTAssertTrue(
+                output.contains("would silently DROP"),
+                "expected the #2380 diagnostic in per-PR mode too, got: \(output)"
+            )
+        }
+    }
+
     // MARK: - Sabotage
 
-    /// Plants the exact regression this test suite exists to catch: if
-    /// `--per-pr` mode's zero-match guard were wrongly wired to ALSO fail
-    /// closed (i.e. the fix reverted), `test_perPR_choreOnlyRange_exitsZero`
-    /// above would fail with status 1 instead of 0. Asserting that
-    /// directly here, rather than only trusting the positive test, follows
-    /// this repo's in-file sabotage convention (Principle 4): a positive
-    /// assertion alone can be satisfied by code that never runs the
-    /// checked path at all.
-    func test_sabotage_perPRZeroMatch_wouldFailIfGuardStillHardFails() throws {
+    /// In-file sabotage per Principle 4, replacing an earlier version that
+    /// asserted `perPRStatus != wholeRangeStatus` on the zero-match range —
+    /// which the two positive tests above already strictly imply, so it could
+    /// not catch a regression they wouldn't. This plants the real hazard
+    /// instead: the `--per-pr` relaxation escaping its intended scope.
+    ///
+    /// Both invocations use the SAME hostile range and must BOTH red. If a
+    /// future edit widens the zero-match relaxation into a general
+    /// "per-PR mode is lenient", this fails while every other test still
+    /// passes — that combination is the regression, and nothing else here
+    /// detects it.
+    func test_sabotage_perPRLeniency_mustNotExtendBeyondZeroMatch() throws {
         try withFixture { root, fixture in
-            let (perPRStatus, _) = try run(root: root, args: [
-                "--per-pr", "--repo", fixture.root.path, fixture.base, fixture.choreOnly,
+            let (perPRStatus, perPROutput) = try run(root: root, args: [
+                "--per-pr", "--repo", fixture.root.path, fixture.hiddenOnly, fixture.hostile,
             ])
             let (wholeRangeStatus, _) = try run(root: root, args: [
-                "--repo", fixture.root.path, fixture.base, fixture.choreOnly,
+                "--repo", fixture.root.path, fixture.hiddenOnly, fixture.hostile,
             ])
 
-            XCTAssertNotEqual(
+            XCTAssertEqual(
                 perPRStatus, wholeRangeStatus,
-                "the whole point of --per-pr is that it disagrees with whole-range mode on an identical zero-match range -- if these ever converge, the mode flag stopped doing anything"
+                "on a range containing a genuinely unparseable commit the two modes must AGREE (both red); a divergence here means --per-pr started swallowing real defects: \(perPROutput)"
             )
+            XCTAssertEqual(perPRStatus, 1, "and the agreed verdict must be red, not a shared pass: \(perPROutput)")
         }
     }
 }
