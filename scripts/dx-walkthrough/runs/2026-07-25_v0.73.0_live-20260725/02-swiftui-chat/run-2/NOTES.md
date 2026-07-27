@@ -1,0 +1,7 @@
+# NOTES — swiftui-chat run-2 (Foundation Models)
+
+- **Backend path**: Apple Foundation Models via `ManifoldKit.quickStart(backends: [FoundationBackends.self], configuration:)` + `foundationModelProvider` + `loadFoundationModelIfAvailable()` (QUICKSTART "Seeding Foundation Models"). macOS 26.5.2, `FoundationBackend.isAvailable == true`.
+- **App shape**: SwiftPM executable (`DXSwiftUIChat`) with multi-session UI — `SessionListView` sidebar + `ChatView` detail per `docs/SWIFTUI-MULTI-SESSION.md` §2. Unique store id `com.manifoldkit.dx.walkthrough.swiftui-chat.run2`.
+- **What worked smoothly**: Path dependency + umbrella import; cold build ~47s; Foundation generation end-to-end (`sendMessage` → `Hello from foundation smoke.`); session persistence across quit/relaunch (store message count 2→4→6; active session title restored).
+- **Surprising**: (1) Docs disagree on whether `quickStart` auto-loads Foundation. (2) MinimalExample does not wire Foundation or multi-session. (3) Bare `swift run` + extra layout wrappers around `NavigationSplitView` SIGTRAPped AppKit. (4) After session churn, `isModelLoaded` could stay true while inference said "No model loaded".
+- **Overall impression**: SwiftUI happy path is *close* to CLI polish once you find the multi-session + Foundation doc slices, but Foundation is a second-class citizen in Hello World/MinimalExample, and multi-session restore + Foundation re-load has sharp edges. Persistence and ChatView drop-in are the strong parts.

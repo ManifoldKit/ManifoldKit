@@ -10,7 +10,8 @@ A one-page tutorial for getting from "empty SwiftUI project" to "working chat UI
 ## Prerequisites
 
 - Xcode 16+ on macOS, or Swift 6.1+ toolchain. ManifoldKit's own `Package.swift` declares `// swift-tools-version: 6.1` and platforms `.iOS(.v18)` / `.macOS(.v15)`; consumer packages should match (or go higher) to avoid SwiftPM version-resolution churn.
-- A SwiftUI app target on iOS 18+ / macOS 15+ (Apple Foundation Models require iOS 26+ / macOS 26+).
+- **If your app's own manifest declares `.macOS(.v26)` / `.iOS(.v26)`**, use `// swift-tools-version: 6.2` (or newer) in *that* package — those platform enum cases were introduced in PackageDescription 6.2; under 6.1 the manifest fails with `'v26' is unavailable`. ManifoldKit itself stays on 6.1 / macOS 15 floor; only the consumer targeting the new OS need bump. CLI recipes that target Foundation on macOS 26 already use 6.2 — see [`QUICKSTART-CLI.md`](QUICKSTART-CLI.md) §1.
+- A SwiftUI app target on iOS 18+ / macOS 15+ (Apple Foundation Models require iOS 26+ / macOS 26+). Prefer an **Xcode app target** (or a real `.app` bundle) for SwiftUI hosts — a bare SwiftPM `executableTarget` `@main App` often fails to activate a window or lacks a bundle identifier, which complicates screenshots and TCC.
 - Familiarity with SwiftUI's `App` protocol and `@State`. No prior knowledge of MLX, llama.cpp, MCP, or any specific backend is assumed.
 
 ## Install
@@ -69,7 +70,7 @@ struct MyChatApp: App {
 }
 ```
 
-Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
+Run the app. `quickStart()` compiles, launches, and renders a usable composer. On macOS 26 / iOS 26 with Apple Intelligence available it also **Foundation-first-selects and dispatches a load** before returning (see [What "available immediately" actually means](#what-available-immediately-actually-means)). On older OSes or when Foundation is unavailable, seed a starter model / cloud endpoint — [First-launch backend selection](#first-launch-backend-selection).
 
 ## Required Info.plist keys for ChatView
 
@@ -126,9 +127,15 @@ struct SeedSessionExample {
 
 ## First-launch backend selection
 
-`quickStart()` registers every compiled-in backend with the inference service, but **it does not pick one for you**. The composer is enabled (a session exists), but no model is loaded — `ChatViewModel.isModelLoaded` is `false`, the composer placeholder reads "No model loaded", and the empty-state surfaces a "Select Model" button that flips the `showModelManagement` binding (see [`showModelManagement` binding](#showmodelmanagement-binding) below — by itself the binding doesn't present anything).
+`quickStart()` registers every compiled-in backend, then runs a selection policy and **dispatches** a load when something is selectable:
 
-This section shows the four documented paths to get a model loaded on first launch — starting with the new zero-setup seed path. To react to the user's choice (persist it, refresh UI) or to populate your own discovery list, see the `ModelRegistry.onSelectionChanged` / `foundationModelProvider` and `CuratedModel.all` rows in [Host configuration seams](#host-configuration-seams).
+1. **Foundation-first** when Apple Intelligence is available (macOS 26 / iOS 26+).
+2. Else the first **on-disk local model** a registered companion backend can load.
+3. Else the first **stored cloud/LAN endpoint** (relaunch path when endpoints already exist).
+
+When none of those apply, the composer is enabled (a session exists) but inert — `isModelLoaded` is `false`, the placeholder reads "No model loaded", and the empty-state "Select Model" button flips `showModelManagement` (see [`showModelManagement` binding](#showmodelmanagement-binding) — by itself the binding doesn't present anything).
+
+This section covers the paths that fill that gap on first launch (starter seed download, post-return Ollama seed, manual Foundation re-enable). To react to the user's choice or populate your own discovery list, see the `ModelRegistry.onSelectionChanged` / `foundationModelProvider` and `CuratedModel.all` rows in [Host configuration seams](#host-configuration-seams).
 
 ### Seeding a starter model (recommended for new apps)
 
@@ -192,55 +199,33 @@ struct MyChatApp: App {
 
 ### What "available immediately" actually means
 
-On macOS 26 / iOS 26, the Apple Foundation Models backend is *registered* by `FoundationBackends.register(with:)` (folded into `quickStart()`) — but it is **not auto-selected by `quickStart()`**. `ChatViewModel` needs two extra inputs before Foundation Models appears in `availableModels`:
+On macOS 26 / iOS 26, when Apple Intelligence is available, **`quickStart()` already Foundation-first-selects and dispatches a load** before it returns:
 
-1. A provider closure that reports availability — `foundationModelProvider = { FoundationBackend.isAvailable }`.
-2. An explicit `loadFoundationModelIfAvailable()` call (or `autoSelectFirstRunModel()`, which is gated on a first-launch `UserDefaults` flag).
+1. Wires `foundationModelProvider = { FoundationBackend.isAvailable }` on the view model's registry.
+2. Runs `defaultSelectionPolicy` (Foundation first, then first compatible on-disk model).
+3. Calls fire-and-forget `dispatchSelectedLoad()` when something was selected.
 
-Without those, `availableModels` won't contain the Foundation entry and `ChatView`'s welcome state will read "Welcome — Download a model to get started" even though the OS ships with one. (Tracked as A2-F1 in the iter-1 walkthrough.)
+You do **not** need a second host-side `loadFoundationModelIfAvailable()` for the default `quickStart` → `ChatView` path. What you *do* need is to treat "dispatched" as not "loaded" (#2222): observe `viewModel.modelLoadState` (or tolerate `SendMessageError.modelLoading` and retry) before assuming the first turn can complete.
 
-### Seeding Foundation Models
+If no Foundation / on-disk / stored-endpoint model is selected, `ChatView`'s welcome state will still read "Welcome — Download a model to get started" — seed a cloud endpoint (below) or a companion local model in that case.
 
-Add this to the `Hello World` example so the moment `result` is non-nil, you also probe Foundation availability and dispatch a load. The probe is OS-gated; the rest of `quickStart()`'s flow runs unchanged on older OSes.
+### Seeding Foundation Models (manual bootstrap / re-enable)
+
+Use the explicit two-step when you are **not** on `quickStart()` (manual `ManifoldBootstrap.build`), or when you need to **re-select Foundation after session churn** (create/switch can leave `isModelLoaded` stale relative to the engine — re-call after minting a session if `sendMessage` fails with "No model loaded"):
 
 ```swift,no-build
-import SwiftUI
-import SwiftData
-import ManifoldKit
-#if canImport(ManifoldFoundation)
-import ManifoldFoundation
-#endif
-
-@main
-struct MyChatApp: App {
-    @State private var result: QuickStartResult?
-    @State private var showModelManagement = false
-
-    var body: some Scene {
-        WindowGroup {
-            if let result {
-                ChatView(showModelManagement: $showModelManagement)
-                    .environment(result.viewModel)
-                    .modelContainer(result.bootstrap.modelContainer)
-                    .task {
-                        #if canImport(ManifoldFoundation)
-                        if #available(macOS 26, iOS 26, *) {
-                            result.viewModel.foundationModelProvider = { FoundationBackend.isAvailable }
-                            result.viewModel.loadFoundationModelIfAvailable()
-                        }
-                        #endif
-                    }
-            } else {
-                ProgressView().task {
-                    result = try? await ManifoldKit.quickStart()
-                }
-            }
-        }
-    }
+// Gate on FoundationModels (the Apple framework), not ManifoldFoundation —
+// the ManifoldFoundation module always compiles; FoundationBackend only exists
+// when FoundationModels is present (matches QuickStart.swift).
+#if canImport(FoundationModels)
+if #available(macOS 26, iOS 26, *) {
+    chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
+    chatVM.loadFoundationModelIfAvailable()  // select + dispatchSelectedLoad
 }
+#endif
 ```
 
-`loadFoundationModelIfAvailable()` is a no-op when the provider returns `false` or when no Foundation entry exists in `availableModels`, so it's safe to call unconditionally on supported OSes.
+`loadFoundationModelIfAvailable()` is a no-op when the provider returns `false` or when no Foundation entry exists in `availableModels`. Prefer it over `autoSelectFirstRunModel()` when you need a load — the latter only *selects* Foundation (first-launch flag gated) and expects a view-layer `onChange` / `dispatchSelectedLoad` to actually load.
 
 ### Seeding an Ollama endpoint
 

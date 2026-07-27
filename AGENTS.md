@@ -161,8 +161,8 @@ struct MyChatApp: App {
                     .environment(chatViewModel)
                     .environment(sessionManager)
                     .environment(modelManagement)
-                    // .environment(\.endpointStore, ...) lets APIConfigurationView
-                    // persist API keys without extra glue in the host.
+                    // endpointStore env key lives in ManifoldUIModelManagement
+                    // (imported above) — not on the ManifoldKit umbrella alone.
                     .environment(\.endpointStore, bootstrap.endpointStore)
                     .modelContainer(bootstrap.modelContainer)
             } else if let startupError {
@@ -216,6 +216,14 @@ struct MyChatApp: App {
                 sessions.activeSession = fresh
                 await vm.switchToSession(fresh)
             }
+
+            // Sessions restore above; a *model* does not. Manual bootstrap does
+            // not auto-select Foundation or the first stored cloud endpoint
+            // (unlike quickStart() on relaunch). Seed + load before showing UI:
+            //   Foundation → docs/QUICKSTART.md "Seeding Foundation Models"
+            //   Ollama/cloud → setAvailableEndpoints + selectedEndpoint +
+            //     await loadSelectedEndpoint() every cold start
+            //   (full Ollama recipe: docs/SWIFTUI-MULTI-SESSION.md §6)
 
             self.bootstrap = bootstrap
             self.chatViewModel = vm
