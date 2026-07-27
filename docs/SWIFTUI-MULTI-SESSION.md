@@ -283,7 +283,7 @@ to give users the endpoint editor. Hosts that pre-configure endpoints in code
 **Inserting a record is not enough to generate.** After the store write you
 must also bind the chat view model and load:
 
-```swift,no-build
+```swift,no-build:fragment; builds on identifiers defined in earlier blocks
 chatVM.setAvailableEndpoints([endpoint])   // or the full fetched list
 chatVM.selectedEndpoint = endpoint
 await chatVM.loadSelectedEndpoint()        // await on first seed; see #2222
