@@ -270,9 +270,9 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // OpenAI's mainstream 128k when the configured model name doesn't
         // prefix-match the manifest table.
         //
-        // `flatMap`, not `manifest?.contextWindow`: the latter is `Int??` now
-        // that the manifest's own field is optional, and the nested `.some(nil)`
-        // ("manifest present, window unknown") would not be flattened.
+        // Optional chaining flattens, so `manifest?.contextWindow` is `Int?`
+        // (not `Int??`) and one `??` covers both "no manifest" and "manifest
+        // with no measured window".
         //
         // The table-miss fallback is resolved HERE rather than being allowed to
         // fall through to the factory's 128k. Before `contextWindow` became
@@ -285,7 +285,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // model would be handed a 128k budget and truncate or 400. Undersell.
         Self.capabilities(
             forModelName: modelName,
-            contextWindow: manifest.flatMap(\.contextWindow) ?? Self.unknownModelContextWindow
+            contextWindow: manifest?.contextWindow ?? Self.unknownModelContextWindow
         )
     }
 

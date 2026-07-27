@@ -38,7 +38,7 @@ both live in the codebase before this change:
 2. **Callers reverse-engineered the sentinel.** `ClaudeBackend` recovered
    "unknown" by comparing against the literal from another module:
 
-   ```swift
+   ```swift,no-build:historical before-shape, retained for searchability
    // before — reached across a module boundary into another target's constant
    let resolvedContext = Int32(resolvedManifest.contextWindow == 8192
        ? 200_000
@@ -62,14 +62,14 @@ every consumer to say what it wants to happen when the window is unknown.
 The initializer takes `Int?`, and Swift promotes a non-optional `Int`
 implicitly, so a backend that measured a real value compiles unchanged:
 
-```swift
+```swift,no-build:API-shape fragment, not a standalone program
 ModelManifest(contextWindow: 131_072, /* … */)   // still fine
 ```
 
 The one change to make is on the *failure* path. If you were substituting a
 plausible number when introspection failed, stop — pass `nil`:
 
-```swift
+```swift,no-build:before/after fragment referring to a caller-supplied probe
 // before
 let window = probe.contextLength ?? 8192
 // after — absence is now sayable
@@ -82,15 +82,25 @@ Choose the default that is right for *your* provider, at the call site where
 that knowledge lives:
 
 ```swift
-// Anthropic backend
-let context = manifest.contextWindow ?? 200_000
+import ManifoldKit
 
-// OpenAI backend
-let context = manifest.contextWindow ?? 128_000
+// Pick the default that is right for your provider.
+func anthropicContext(_ manifest: ModelManifest) -> Int {
+    manifest.contextWindow ?? 200_000
+}
 
-// Nested optional: `backend.manifest?.contextWindow` is now `Int??`.
-// Use flatMap so "manifest present, window unknown" flattens correctly.
-let context = backend.manifest.flatMap(\.contextWindow) ?? 128_000
+func openAIContext(_ manifest: ModelManifest) -> Int {
+    manifest.contextWindow ?? 128_000
+}
+
+// Through an optional backend manifest: Swift's optional chaining FLATTENS,
+// so `manifest?.contextWindow` is `Int?` — not `Int??` — and a single `??`
+// covers both "no manifest at all" and "manifest with no measured window".
+// This block compiles, so that claim is checked rather than asserted.
+func contextOrDefault(_ manifest: ModelManifest?) -> Int {
+    let window: Int? = manifest?.contextWindow
+    return window ?? 128_000
+}
 ```
 
 If your consumer can do something better than guess — surface the uncertainty,
@@ -136,31 +146,35 @@ underselling — a short prompt is recoverable, an overflow is not.
 
 ## Companion packages
 
-Sites needing adaptation in lockstep. All three are **compile errors**, not
-silent misbehaviour, so the build will surface them:
+**No companion source change is required to build or to keep working.** This was
+verified by compiling each call site's exact expression, not by inference.
 
-- `manifold-mlx` — `Sources/ManifoldMLX/MLXBackend.swift:66`
-  (`Int32(_manifest?.contextWindow ?? 8192)` — `Int?? ?? Int` yields `Int?`, so
-  the `Int32(...)` conversion no longer compiles).
-- `manifold-mlx` — `Sources/ManifoldMLX/MLXBackend.swift:734`
-  (`if let trainedMax = _manifest?.contextWindow` strips one level and binds
-  `Int?`, so `runningContext > trainedMax` no longer compiles).
-- `manifold-llama` — `Sources/manifold-tools-llama/Benchmark.swift:93`
-  (`backend.manifest?.contextWindow` is now `Int??` against the `Int?` declared
-  at `:33`).
+Swift's optional chaining flattens: `backend.manifest?.contextWindow`, where the
+property is itself `Int?`, has type `Int?` — *not* `Int??`. So every existing
+companion read still compiles, and a single `??` now covers both "no manifest"
+and "manifest with no measured window":
 
-Use `flatMap(\.contextWindow)` at each. `manifold-eval` has no references and
-needs no change.
+| Site | Still compiles? | Behaviour |
+|------|-----------------|-----------|
+| `manifold-mlx` `MLXBackend.swift:66` — `Int32(_manifest?.contextWindow ?? 8192)` | yes | unchanged — `MLXModelProbe` still supplies a non-`nil` window, and on the `.unknown()` path the `?? 8192` yields the same number it used to read |
+| `manifold-mlx` `MLXBackend.swift:734` — `if let trainedMax = _manifest?.contextWindow` | yes (binds `Int`) | unchanged — already gated on `_trainedContextWasDetected`, which is false in exactly the cases the window is now `nil` |
+| `manifold-llama` `LlamaBackend.swift:519` (producer) | yes | unchanged — always passes a measured `Int` |
+| `manifold-llama` `Benchmark.swift:93` — `backend.manifest?.contextWindow` | yes (`Int?` into the `Int?` at `:33`) | unchanged |
+| `manifold-eval` | n/a | no references |
 
-**Follow-up, not part of the lockstep fix:**
+The one thing to know: because these compile *silently*, a companion that later
+starts producing `nil` will change behaviour at these sites without any build
+error. That is the trade for flattening — read the sites when you adopt `nil`,
+because the compiler will not remind you.
+
+**Optional follow-up (not required, and not lockstep):**
 `manifold-mlx/Sources/ManifoldMLX/MLXModelProbe.swift:330-336` does
-`extractContextWindow(...) ?? 8192` — the same defect class this note describes,
-one repo over, and now fixable because `nil` is expressible. It **compiles
-unchanged**, so the lockstep build will *not* surface it; it needs a deliberate
-edit and can land separately. Passing the optional through also makes the
-`contextWindowWasDetected` / `_trainedContextWasDetected` side-channel
-redundant — that machinery exists only because the manifest could not
-previously say "unknown".
+`extractContextWindow(...) ?? 8192` — the same fabrication this note describes,
+one repo over, and now expressible as `nil`. Passing the optional through is the
+change that actually makes `nil` reachable in MLX, so it is also the change that
+requires re-reading the two `MLXBackend` sites above. Doing so retires the
+`contextWindowWasDetected` / `_trainedContextWasDetected` side-channel, which
+exists only because the manifest could not previously say "unknown".
 
 ## Related
 
