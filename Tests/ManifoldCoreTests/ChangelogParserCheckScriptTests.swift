@@ -434,31 +434,98 @@ final class ChangelogParserCheckScriptTests: XCTestCase {
 
     // MARK: - Sabotage
 
-    /// In-file sabotage per Principle 4, replacing an earlier version that
-    /// asserted `perPRStatus != wholeRangeStatus` on the zero-match range —
-    /// which the two positive tests above already strictly imply, so it could
-    /// not catch a regression they wouldn't. This plants the real hazard
-    /// instead: the `--per-pr` relaxation escaping its intended scope.
+    /// In-file sabotage per Principle 4. This is the third shape of this
+    /// test, and the reason is worth recording: the first two asserted things
+    /// the positive tests above already strictly implied (statuses differing,
+    /// then statuses agreeing, on ranges those tests already pin), so neither
+    /// could fail for a reason the others wouldn't. A sabotage that only
+    /// re-runs the shipped script cannot be independent of the tests that run
+    /// the shipped script. So this one **mutates the script** — the only way
+    /// to plant a defect the rest of the suite cannot see.
     ///
-    /// Both invocations use the SAME hostile range and must BOTH red. If a
-    /// future edit widens the zero-match relaxation into a general
-    /// "per-PR mode is lenient", this fails while every other test still
-    /// passes — that combination is the regression, and nothing else here
-    /// detects it.
-    func test_sabotage_perPRLeniency_mustNotExtendBeyondZeroMatch() throws {
+    /// It plants exactly the scope hole this commit closed (reverting the
+    /// breaking-commit widening to a plain visible-types filter) and pins the
+    /// subtle part: the sabotaged gate **still exits 1**, just for the wrong
+    /// reason — "matched 0 releasable commits" (it filtered the breaking
+    /// commit out and then tripped the zero-match guard) instead of naming the
+    /// dropped commit. A status-only assertion therefore passes against the
+    /// broken gate, which means
+    /// `test_breakingHiddenTypeCommit_isInScopeAndRejected`'s
+    /// `output.contains(...)` assertions are load-bearing, not decoration.
+    /// This test fails if a future cleanup trims them.
+    func test_sabotage_revertingBreakingScope_producesTheWrongDiagnosis() throws {
         try withFixture { root, fixture in
-            let (perPRStatus, perPROutput) = try run(root: root, args: [
-                "--per-pr", "--repo", fixture.root.path, fixture.hiddenOnly, fixture.hostile,
-            ])
-            let (wholeRangeStatus, _) = try run(root: root, args: [
-                "--repo", fixture.root.path, fixture.hiddenOnly, fixture.hostile,
+            let checkDir = root.appendingPathComponent("scripts/changelog-parser-check")
+
+            // One real invocation first, purely so `npm ci` has populated the
+            // shared node_modules the mutated copy will symlink to. Its own
+            // verdict is asserted by other tests; ignored here.
+            _ = try run(root: root, args: [
+                "--repo", fixture.root.path, fixture.clean, fixture.breakingHiddenHostile,
             ])
 
-            XCTAssertEqual(
-                perPRStatus, wholeRangeStatus,
-                "on a range containing a genuinely unparseable commit the two modes must AGREE (both red); a divergence here means --per-pr started swallowing real defects: \(perPROutput)"
+            let modules = checkDir.appendingPathComponent("node_modules")
+            try XCTSkipUnless(
+                FileManager.default.fileExists(atPath: modules.path),
+                "node_modules absent after a real invocation — the script's own npm ci failed, which its other tests report"
             )
-            XCTAssertEqual(perPRStatus, 1, "and the agreed verdict must be red, not a shared pass: \(perPROutput)")
+
+            let sandbox = FileManager.default.temporaryDirectory
+                .appendingPathComponent("changelog-parser-check-sabotage-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: sandbox) }
+
+            // Symlinked, not copied: the mutation under test is the scope
+            // filter, and the parser it runs against must stay the pinned one.
+            try FileManager.default.createSymbolicLink(
+                at: sandbox.appendingPathComponent("node_modules"),
+                withDestinationURL: modules
+            )
+
+            let shipped = try String(contentsOf: checkDir.appendingPathComponent("check.mjs"), encoding: .utf8)
+            let intact = "if (!visibleTypes.has(type) && !isBreaking) continue;"
+            // If the line is reworded, this test must fail loudly rather than
+            // silently sabotage nothing and report a green.
+            XCTAssertTrue(
+                shipped.contains(intact),
+                "the scope-filter line this sabotage mutates has changed shape — update this test, do not delete it"
+            )
+            let sabotaged = shipped.replacingOccurrences(
+                of: intact,
+                with: "if (!visibleTypes.has(type)) continue; // sabotage: pre-fix scope filter"
+            )
+            let scriptURL = sandbox.appendingPathComponent("check.mjs")
+            try sabotaged.write(to: scriptURL, atomically: true, encoding: .utf8)
+
+            let outURL = sandbox.appendingPathComponent("out.log")
+            FileManager.default.createFile(atPath: outURL.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: outURL)
+            defer { try? handle.close() }
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = [
+                "node", scriptURL.path,
+                "--repo", fixture.root.path, fixture.clean, fixture.breakingHiddenHostile,
+            ]
+            process.standardOutput = handle
+            process.standardError = handle
+            try process.run()
+            process.waitUntilExit()
+            let output = String(data: (try? Data(contentsOf: outURL)) ?? Data(), encoding: .utf8) ?? ""
+
+            XCTAssertFalse(
+                output.contains("would silently DROP"),
+                "the sabotaged gate must NOT produce the correct #2380 diagnosis — if it does, the scope widening is not what makes that diagnosis happen: \(output)"
+            )
+            XCTAssertTrue(
+                output.contains("matched 0 releasable commits"),
+                "the sabotaged gate should filter the breaking commit out and then trip the zero-match guard: \(output)"
+            )
+            XCTAssertEqual(
+                process.terminationStatus, 1,
+                "documenting that the sabotaged gate still exits 1 — which is why a status-only assertion cannot catch this regression: \(output)"
+            )
         }
     }
 }

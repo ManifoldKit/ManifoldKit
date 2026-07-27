@@ -215,6 +215,14 @@ for (const line of log.split('\n')) {
   const sha = line.slice(0, sepIndex);
   const subject = line.slice(sepIndex + 1);
 
+  // A subject that doesn't match at all (`Revert "feat: x"`, a double-scope
+  // `feat(a)(b)!:`) is skipped -- release-please returns zero entries for
+  // those too, so they are dropped rather than published-then-lost, which is
+  // a different failure than #2380's. Consequence worth stating plainly: "0
+  // failures" from this gate means "nothing release-please would publish got
+  // silently dropped", NOT "everything in this range was published".
+  // commitlint gates PR titles and direct pushes to main are blocked, which
+  // is what keeps that gap narrow.
   const m = subject.match(headerRe);
   if (!m) continue;
   const type = m[1];
