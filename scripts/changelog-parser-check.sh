@@ -17,7 +17,13 @@
 # release-please branch never execute under this repo's current Actions
 # settings; runs by a human actor do).
 #
-# Usage:  scripts/changelog-parser-check.sh [--per-pr] [BASE_TAG] [HEAD_REF]
+# Usage:  scripts/changelog-parser-check.sh [--per-pr] [--repo PATH] [BASE_TAG] [HEAD_REF]
+#         (`--repo` points the history/config read at another git repository;
+#         the pinned release-please install always comes from THIS script's
+#         own directory. CI never passes it — it exists so this gate's own
+#         test suite can run against a synthetic fixture repo instead of
+#         this repo's real tags, which the `test` job's `fetch-depth: 2`
+#         tagless checkout cannot resolve.)
 #         (all optional — see check.mjs's own header for the defaults and
 #         what --per-pr changes). Run with NO arguments today, this reds
 #         unfixably on a historical commit: BASE_TAG defaults to v0.73.0

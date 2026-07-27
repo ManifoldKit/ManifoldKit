@@ -22,7 +22,19 @@
 // the operator's own Prisma-rewrite commits -- the git history the parser
 // sees doesn't change just because the changelog prose does.
 //
-// Usage: node check.mjs [--per-pr] [BASE_TAG] [HEAD_REF]
+// Usage: node check.mjs [--per-pr] [--repo PATH] [BASE_TAG] [HEAD_REF]
+//   --repo    The git repository to read history and release-please-config.json
+//             from. Defaults to this script's own repository (two levels up),
+//             which is what CI always uses -- lint.yml never passes this
+//             flag. It exists so this gate's own test suite can point it at a
+//             synthetic fixture repository with known commits: without it, the
+//             only testable ranges were this repo's real tags, and the `test`
+//             job checks out with `fetch-depth: 2` and no tags, so a
+//             tag-anchored range does not resolve there at all (the shape that
+//             red-ed ChangelogParserCheckScriptTests on its first real CI
+//             run). node_modules is still resolved next to this script, never
+//             from --repo, so the pinned release-please version being
+//             exercised is always this repo's pinned one.
 //   --per-pr  Changes the meaning of "zero releasable commits matched" from
 //             a hard failure to an expected, visible pass. Without this
 //             flag (the whole-range/release-branch mode), matching zero
@@ -58,31 +70,52 @@
 // zero-commit "pass" in whole-range mode.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { parseConventionalCommits } from 'release-please/build/src/commit.js';
 import { parser as rawParser } from '@conventional-commits/parser';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, '..', '..');
 
 function fail(msg) {
   console.error(`::error::changelog-parser-check: ${msg}`);
   process.exit(1);
 }
 
+const rawArgs = process.argv.slice(2);
+const perPrIndex = rawArgs.indexOf('--per-pr');
+const perPr = perPrIndex !== -1;
+let positional = perPr ? [...rawArgs.slice(0, perPrIndex), ...rawArgs.slice(perPrIndex + 1)] : rawArgs;
+
+// --repo PATH: see this file's header. Consumed before the positional
+// BASE_TAG/HEAD_REF so the two can be combined in any order.
+const repoIndex = positional.indexOf('--repo');
+let repoRoot = path.resolve(__dirname, '..', '..');
+if (repoIndex !== -1) {
+  const value = positional[repoIndex + 1];
+  if (!value) {
+    fail('--repo requires a path argument');
+  }
+  repoRoot = path.resolve(value);
+  positional = [...positional.slice(0, repoIndex), ...positional.slice(repoIndex + 2)];
+}
+
 function git(args) {
   return execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8' });
 }
 
+// An unresolvable --repo must fail loudly here rather than surface later as a
+// confusing "no commits found in range" -- a gate pointed at the wrong tree is
+// worse than one that refuses to run.
+try {
+  git(['rev-parse', '--git-dir']);
+} catch {
+  fail(`--repo '${repoRoot}' is not a git repository`);
+}
+
 const changelogPath = path.join(repoRoot, 'CHANGELOG.md');
 const configPath = path.join(repoRoot, 'release-please-config.json');
-
-const rawArgs = process.argv.slice(2);
-const perPrIndex = rawArgs.indexOf('--per-pr');
-const perPr = perPrIndex !== -1;
-const positional = perPr ? [...rawArgs.slice(0, perPrIndex), ...rawArgs.slice(perPrIndex + 1)] : rawArgs;
 
 // An explicitly-passed empty string ("$base_sha" expanding to nothing, a
 // caller-side bug) must fail loudly rather than silently fall through to
@@ -117,6 +150,9 @@ try {
 // un-hidden there is automatically covered here too -- intentional, not a
 // surprise: if that ever happens, this check's scope widens in lockstep
 // with what actually ships in the changelog.
+if (!existsSync(configPath)) {
+  fail(`${configPath} not found -- the visible changelog-sections types cannot be derived, so scope would be guessed rather than read`);
+}
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const sections = config.packages['.']['changelog-sections'];
 const visibleTypes = new Set(sections.filter((s) => !s.hidden).map((s) => s.type));
@@ -202,9 +238,15 @@ if (failures.length > 0) {
   }
   console.error('');
   console.error('This is the #2380 defect itself, not just a symptom. Reword the offending');
-  console.error('construct in the commit body (commonly: an identifier immediately followed');
-  console.error('by NESTED parentheses, e.g. `exit(FuzzReport.exitCode(for: report))` --');
-  console.error('add a space, back-tick it, or restructure the sentence) and amend/re-squash.');
+  console.error('construct in the commit body and amend/re-squash. The usual cause is a body');
+  console.error('line that BEGINS with an identifier immediately followed by NESTED');
+  console.error('parentheses, e.g. a line starting `exit(FuzzReport.exitCode(for: report))`.');
+  console.error('');
+  console.error('Fixes verified against the pinned parser — indent the line by two spaces,');
+  console.error('turn it into a `- ` bullet, put any words in front of it, or un-nest the');
+  console.error('call. Back-ticking it and adding a space before the inner `(` do NOT help,');
+  console.error('and neither does a fenced code block: the grammar only stops treating the');
+  console.error('text as a footer-ish token when the line does not START with the construct.');
   process.exit(1);
 }
 
