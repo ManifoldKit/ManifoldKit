@@ -172,15 +172,19 @@ jobs:
           echo "All third-party actions are SHA-pinned."
 
       # ── shim-drift ────────────────────────────────────────────────────────
-      # ci-required-test-shim.yml's `paths-ignore` must stay the exact inverse
-      # of ci.yml's pull_request `paths:` (see that shim's header comment for
-      # why) — a drift lets a PR either dodge the real `test` suite (a missing
-      # entry in ci.yml) or get wrongly blocked as untestable (a missing entry
+      # Each required path-filtered check has a companion shim whose
+      # `paths-ignore` must stay the exact inverse of the real workflow's
+      # pull_request `paths:` (see each shim's header comment for why) — a
+      # drift lets a PR either dodge the real suite (a missing entry in the
+      # real workflow) or get wrongly blocked as untestable (a missing entry
       # in the shim). A 2026-07-10 CI review found `scripts/regenerate-mcp-
       # fixtures.sh` present in ci.yml's paths but absent from the shim's
       # paths-ignore; this step is the tripwire so that class of drift fails
-      # CI instead of silently shipping.
-      - name: shim-drift — ci.yml PR paths must equal shim paths-ignore
+      # CI instead of silently shipping. Pairs checked:
+      #   - ci.yml ↔ ci-required-test-shim.yml (`test` / `api-digester-check`)
+      #   - example-ui-build-check.yml ↔ example-ui-build-required-shim.yml
+      #     (`build-for-testing`, #2377)
+      - name: shim-drift — path-filtered required checks must equal their shims
         if: always()
         run: |
           # PyYAML ships preinstalled on ubuntu-latest's system python3, but
@@ -191,36 +195,54 @@ jobs:
           import sys
           import yaml
 
-          with open(".github/workflows/ci.yml") as f:
-              ci = yaml.safe_load(f)
-          with open(".github/workflows/ci-required-test-shim.yml") as f:
-              shim = yaml.safe_load(f)
-
           # PyYAML parses the bare top-level `on:` key as the boolean True
           # (YAML 1.1's on/off/yes/no are booleans), not the string "on" — so
           # it must be looked up via wf.get('on', wf.get(True)) or a plain
           # wf['on'] KeyErrors on every run.
-          ci_on = ci.get('on', ci.get(True))
-          shim_on = shim.get('on', shim.get(True))
+          def on_block(wf):
+              return wf.get('on', wf.get(True))
 
-          ci_paths = sorted(ci_on['pull_request']['paths'])
-          shim_paths_ignore = sorted(shim_on['pull_request']['paths-ignore'])
+          def check_pair(real_path, shim_path, real_label, shim_label):
+              with open(real_path) as f:
+                  real = yaml.safe_load(f)
+              with open(shim_path) as f:
+                  shim = yaml.safe_load(f)
+              real_paths = sorted(on_block(real)['pull_request']['paths'])
+              shim_ignore = sorted(on_block(shim)['pull_request']['paths-ignore'])
+              if real_paths != shim_ignore:
+                  real_only = sorted(set(real_paths) - set(shim_ignore))
+                  shim_only = sorted(set(shim_ignore) - set(real_paths))
+                  print(f"::error::{real_label}'s pull_request.paths and {shim_label}'s "
+                        "pull_request.paths-ignore have drifted apart. They must stay identical "
+                        "(see the shim's header comment for why: the shim reports a green "
+                        "required context for PRs that don't touch a real-check-relevant path, "
+                        "and a drifted list either lets a real change dodge the suite or wrongly "
+                        "blocks a safe PR).")
+                  if real_only:
+                      print(f"  In {real_label}'s paths but missing from the shim's "
+                            f"paths-ignore: {real_only}")
+                  if shim_only:
+                      print(f"  In the shim's paths-ignore but missing from {real_label}'s "
+                            f"paths: {shim_only}")
+                  return False
+              print(f"OK: {len(real_paths)} entries match between {real_label}'s paths "
+                    f"and {shim_label}'s paths-ignore.")
+              return True
 
-          if ci_paths != shim_paths_ignore:
-              ci_only = sorted(set(ci_paths) - set(shim_paths_ignore))
-              shim_only = sorted(set(shim_paths_ignore) - set(ci_paths))
-              print("::error::ci.yml's pull_request.paths and ci-required-test-shim.yml's "
-                    "pull_request.paths-ignore have drifted apart. They must stay identical "
-                    "(see the shim's header comment for why: the shim reports a green 'test' "
-                    "for PRs that don't touch a real-test-relevant path, and a drifted list "
-                    "either lets a real change dodge the suite or wrongly blocks a safe PR).")
-              if ci_only:
-                  print(f"  In ci.yml's paths but missing from the shim's paths-ignore: {ci_only}")
-              if shim_only:
-                  print(f"  In the shim's paths-ignore but missing from ci.yml's paths: {shim_only}")
-              sys.exit(1)
-
-          print(f"OK: {len(ci_paths)} entries match between ci.yml's paths and the shim's paths-ignore.")
+          ok = True
+          ok &= check_pair(
+              ".github/workflows/ci.yml",
+              ".github/workflows/ci-required-test-shim.yml",
+              "ci.yml",
+              "ci-required-test-shim.yml",
+          )
+          ok &= check_pair(
+              ".github/workflows/example-ui-build-check.yml",
+              ".github/workflows/example-ui-build-required-shim.yml",
+              "example-ui-build-check.yml",
+              "example-ui-build-required-shim.yml",
+          )
+          sys.exit(0 if ok else 1)
           PYEOF
 
       # ── changelog-lint ────────────────────────────────────────────────────
