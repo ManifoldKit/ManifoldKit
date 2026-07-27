@@ -125,6 +125,16 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         self.configure(adapterRouting: routing)
     }
 
+    /// Context budget assumed for a model name that doesn't prefix-match
+    /// ``CloudModelManifestTable``.
+    ///
+    /// Deliberately conservative rather than optimistic: this backend also
+    /// serves LM Studio and custom OpenAI-compatible endpoints, where an
+    /// unrecognised name usually means a *small local* model, not a large
+    /// frontier one. Underselling costs a shorter prompt; overselling costs a
+    /// truncated conversation or an HTTP 400.
+    static let unknownModelContextWindow = 8192
+
     /// Single source of truth for the OpenAI Chat Completions
     /// `BackendCapabilities` value. Keyed on `modelName` so vision support
     /// can flip per-model; an explicit `contextWindow` override threads in
@@ -230,10 +240,12 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     ///
     /// Cloud backends can't introspect the model at runtime, so the manifest
     /// is derived from a vendored prefix table. Returns an `unknown(...)`
-    /// manifest (conservative defaults: 8k context, no seed, no penalties)
-    /// for any model name that doesn't prefix-match a table entry — that
-    /// keeps the backend safe against new model releases without having to
-    /// ship a code change for every API name.
+    /// manifest (no measured context window, no seed, no penalties) for any
+    /// model name that doesn't prefix-match a table entry — that keeps the
+    /// backend safe against new model releases without having to ship a code
+    /// change for every API name. The context budget for such a model is
+    /// chosen by ``capabilities``, not fabricated into the manifest; see
+    /// ``unknownModelContextWindow``.
     public override var manifest: ModelManifest? {
         CloudModelManifestTable.openAI(modelName: modelName)
     }
@@ -247,11 +259,20 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         //
         // `flatMap`, not `manifest?.contextWindow`: the latter is `Int??` now
         // that the manifest's own field is optional, and the nested `.some(nil)`
-        // ("manifest present, window unknown") would not be flattened into the
-        // factory's `?? 128_000` fallback.
+        // ("manifest present, window unknown") would not be flattened.
+        //
+        // The table-miss fallback is resolved HERE rather than being allowed to
+        // fall through to the factory's 128k. Before `contextWindow` became
+        // optional, a miss produced `ModelManifest.unknown()`'s fabricated 8192
+        // and the factory's `?? 128_000` was structurally unreachable from this
+        // path (`manifest` is never nil). Letting it fire now would silently
+        // raise the budget for an unrecognised model 8k → 128k — and this
+        // backend is also the LM Studio / custom OpenAI-compatible endpoint,
+        // where model names essentially never match the table, so a small local
+        // model would be handed a 128k budget and truncate or 400. Undersell.
         Self.capabilities(
             forModelName: modelName,
-            contextWindow: manifest.flatMap(\.contextWindow)
+            contextWindow: manifest.flatMap(\.contextWindow) ?? Self.unknownModelContextWindow
         )
     }
 

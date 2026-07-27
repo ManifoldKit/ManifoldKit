@@ -42,10 +42,13 @@ final class ModelManifestContractTests: XCTestCase {
                        "A measured 1M window must reach capabilities untouched")
     }
 
-    /// The collision the old sentinel could not survive: `gpt-4` genuinely has
-    /// an 8,192-token window. A `== 8192` "is this unknown?" check would
-    /// classify it as un-introspected and inflate it to the provider fallback.
-    /// It must stay 8,192.
+    /// Forward regression pin, not a revert-detector: this passes on `main`
+    /// too, because `gpt-4`'s table entry already carried a real 8,192 window.
+    /// It exists so that reintroducing a `contextWindow == 8192` "is this
+    /// unknown?" test anywhere in the resolution path goes red — the collision
+    /// that shape cannot survive, since `gpt-4` genuinely *is* an 8k model.
+    /// The revert-detector for the sentinel itself is
+    /// `ModelManifestTests.test_genuine8kWindow_isDistinguishableFromUnknown`.
     func test_openAI_genuine8kModel_isNotMistakenForUnknown() {
         let backend = OpenAIBackend()
         backend.modelName = "gpt-4"
@@ -56,15 +59,26 @@ final class ModelManifestContractTests: XCTestCase {
                        "A genuine 8k model must NOT be inflated to the 128k unknown-model fallback")
     }
 
-    /// …and the unknown case still gets OpenAI's fallback, so the two are
-    /// resolved by different paths rather than by a shared magic number.
-    func test_openAI_unknownModel_capabilitiesUse128kFallback() {
+    /// …and the unknown case is resolved by a different path — the backend's
+    /// own conservative constant — rather than by a shared magic number.
+    ///
+    /// The value matches `gpt-4`'s genuine window above *by coincidence*, which
+    /// is precisely why the manifest-level assertions differ (`8192` vs `nil`):
+    /// that is the distinction the old sentinel could not express.
+    ///
+    /// It also pins behaviour parity with pre-optional `main`. A table miss used
+    /// to produce `unknown()`'s fabricated 8192, so `capabilities` reported 8k;
+    /// letting the factory's unreachable `?? 128_000` fire instead would have
+    /// silently raised an unrecognised model's budget 16×.
+    func test_openAI_unknownModel_capabilitiesUseConservativeFallback() {
         let backend = OpenAIBackend()
         backend.modelName = "gpt-imaginary-9000"
 
-        XCTAssertNil(backend.manifest?.contextWindow)
-        XCTAssertEqual(backend.capabilities.maxContextTokens, 128_000,
-                       "OpenAI's mainstream baseline is the backend's own fallback for an unknown window")
+        XCTAssertNil(backend.manifest?.contextWindow,
+                     "A table miss must report no measured window")
+        XCTAssertEqual(backend.capabilities.maxContextTokens,
+                       Int32(OpenAIBackend.unknownModelContextWindow),
+                       "An unrecognised model keeps the conservative budget it had before contextWindow became optional — this backend also serves small local LM Studio models")
     }
 
     // MARK: - Cloud backends — supportsThinking matches the manifest table
