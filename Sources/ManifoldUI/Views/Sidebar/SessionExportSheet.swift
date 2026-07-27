@@ -119,6 +119,11 @@ public struct SessionExportSheet: View {
     }
 
     private func performExport() async {
+        // Clean up the previous export before starting the next one — this
+        // task re-runs on every format-picker change (`.task(id:
+        // selectedFormat)`), so without this each switch orphaned a
+        // `ManifoldKit-export-<uuid>/` temp directory nothing ever removed.
+        cleanupExportedFile()
         exportedFile = nil
         errorMessage = nil
         do {

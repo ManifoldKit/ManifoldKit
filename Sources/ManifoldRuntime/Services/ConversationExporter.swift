@@ -28,9 +28,19 @@ public struct ShareableFile: Sendable, Equatable {
     /// ``cleanup()`` to remove recursively. A caller-supplied directory may
     /// hold other files the caller still needs, so recursively deleting it
     /// would be a caller bug the exporter must not commit on their behalf.
-    public let ownedDirectory: URL?
+    ///
+    /// `package`, not `public` — the only construction site is
+    /// ``ConversationExporter`` itself (same module). Keeping this a
+    /// package-private write would defeat the fix it enables: a public
+    /// setter would let any host mint a `ShareableFile` with an arbitrary
+    /// `ownedDirectory` and hand it to `cleanup()`, reopening the exact
+    /// recursive-delete-of-an-unowned-directory bug this type exists to
+    /// close, one layer up. Nothing here validates that `ownedDirectory` is
+    /// an ancestor of `url`, so that guarantee has to come from being
+    /// unconstructible outside this module, not from a runtime check.
+    package let ownedDirectory: URL?
 
-    public init(
+    package init(
         url: URL,
         suggestedFilename: String,
         contentType: UTType,
@@ -42,11 +52,11 @@ public struct ShareableFile: Sendable, Equatable {
         self.ownedDirectory = ownedDirectory
     }
 
-    /// Old-signature overload kept explicitly: a defaulted-parameter
-    /// addition to an `init` still reads as "constructor removed" to the
-    /// api-digester surface diff (it keys on the full parameter list, not
-    /// just source-call compatibility), so the pre-`ownedDirectory` shape
-    /// is preserved here rather than relying on the default alone.
+    /// Public convenience init for hosts constructing a ``ShareableFile``
+    /// directly (rare — normal usage goes through ``ConversationExporter``).
+    /// Always sets `ownedDirectory` to `nil`: a caller building one of these
+    /// by hand necessarily owns whatever directory `url` lives in, so
+    /// `cleanup()` removes only the file, never a directory it didn't mint.
     public init(url: URL, suggestedFilename: String, contentType: UTType) {
         self.init(url: url, suggestedFilename: suggestedFilename, contentType: contentType, ownedDirectory: nil)
     }

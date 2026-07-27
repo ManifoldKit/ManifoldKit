@@ -167,6 +167,39 @@ final class SessionExportIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - Repeated export cleanup (regression: SessionExportSheet's
+    // `.task(id: selectedFormat)` re-runs `performExport()` on every format
+    // switch — before the fix, each re-run overwrote `exportedFile` without
+    // calling `cleanup()` on the previous one, orphaning a
+    // `ManifoldKit-export-<uuid>/` temp directory per switch. This exercises
+    // the same sequence `performExport()` now runs (cleanup-before-replace)
+    // through the service layer, since the view's private `.task` lifecycle
+    // isn't independently hostable in these snapshot-only UI tests.
+
+    func test_repeatedExport_cleanupBeforeReplace_leavesNoOrphanedDirectory() async throws {
+        let session = try await seedSession(title: "Switch Formats")
+
+        let markdownFile = try await sessionManager.exportSession(session, format: MarkdownExportFormat())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: markdownFile.url.path))
+        let markdownDirectory = try XCTUnwrap(markdownFile.ownedDirectory)
+
+        // Mirrors `SessionExportSheet.performExport()`: clean up the
+        // in-flight file before starting the next export.
+        markdownFile.cleanup()
+
+        let plainTextFile = try await sessionManager.exportSession(session, format: PlainTextExportFormat())
+        track(plainTextFile)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: markdownDirectory.path),
+            "Switching formats must not leave the previous export's temp directory behind"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: plainTextFile.url.path),
+            "The newly selected format's export must still land on disk"
+        )
+    }
+
     // MARK: - Not limited to the active session
 
     func test_exportSession_worksForNonActiveSession() async throws {
