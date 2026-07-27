@@ -115,4 +115,69 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
             XCTFail("Expected CloudBackendError.networkDisabled but got \(error)")
         }
     }
+
+    // MARK: - Non-throwing accessors no longer trap (regression coverage)
+    //
+    // Before this fix, `URLSessionProvider.pinned`/`.unpinned` trapped the
+    // process with a `precondition` when `networkDisabled` was set — so
+    // merely constructing a cloud backend via its plain, non-`makeChecked`
+    // convenience `init(urlSession:)` (the common, undocumented-as-risky
+    // path) crashed the whole host app instead of failing the one request.
+    // Sabotage check: reintroduce `precondition(!networkDisabled, ...)` in
+    // either accessor and these tests crash the test process instead of
+    // passing/failing normally.
+
+    // The error thrown by `NetworkKillSwitchProtocol` round-trips through
+    // URLSession's task machinery (even for an ephemeral in-process
+    // session), which re-serializes it as a bridged `NSError` and does not
+    // reliably reconstruct the original `CloudBackendError.networkDisabled`
+    // Swift case on the other side of `data(for:)` — so these assertions
+    // compare `NSError` domain/code against the same error's own bridged
+    // representation instead of pattern-matching the Swift enum case.
+    // What matters for this regression test is (a) no trap and (b) the
+    // request never reaches the network — not the exact catch-site
+    // ergonomics, which `throwingPinned()`/`throwingUnpinned()` already
+    // cover with a direct (non-round-tripped) throw.
+
+    func test_pinned_doesNotTrap_whenNetworkDisabled_andFailsFirstRequest() async throws {
+        URLSessionProvider.networkDisabled = true
+        // Must not trap merely by being accessed.
+        let session = URLSessionProvider.pinned
+
+        let expected = CloudBackendError.networkDisabled as NSError
+        let request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        do {
+            _ = try await session.data(for: request)
+            XCTFail("Request through the poisoned session should fail, not reach the network")
+        } catch {
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, expected.domain, "unexpected error domain: \(error)")
+            XCTAssertEqual(ns.code, expected.code, "unexpected error code: \(error)")
+        }
+    }
+
+    func test_unpinned_doesNotTrap_whenNetworkDisabled_andFailsFirstRequest() async throws {
+        URLSessionProvider.networkDisabled = true
+        let session = URLSessionProvider.unpinned
+
+        let expected = CloudBackendError.networkDisabled as NSError
+        let request = URLRequest(url: URL(string: "http://localhost:11434/api/generate")!)
+        do {
+            _ = try await session.data(for: request)
+            XCTFail("Request through the poisoned session should fail, not reach the network")
+        } catch {
+            let ns = error as NSError
+            XCTAssertEqual(ns.domain, expected.domain, "unexpected error domain: \(error)")
+            XCTAssertEqual(ns.code, expected.code, "unexpected error code: \(error)")
+        }
+    }
+
+    func test_claudeBackendPlainInit_doesNotTrap_whenNetworkDisabled() {
+        URLSessionProvider.networkDisabled = true
+        // The plain convenience init (not `makeChecked`) must not crash the
+        // process just because the kill-switch is set — only a subsequent
+        // request through the resulting backend fails.
+        let backend = ClaudeBackend()
+        XCTAssertNotNil(backend)
+    }
 }

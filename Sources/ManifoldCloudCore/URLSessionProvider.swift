@@ -27,15 +27,23 @@ import os
 /// ## Two accessor flavours
 ///
 /// Each session has two accessors:
-/// - A non-throwing static property (``pinned``, ``unpinned``) that traps if
-///   the kill-switch is set at first access. This is the legacy ergonomic API
-///   used by every cloud backend's `init(urlSession:)` and by the bulk of the
-///   test suite.
+/// - A non-throwing static property (``pinned``, ``unpinned``) used as the
+///   default `urlSession:` value by every cloud backend's convenience
+///   `init(urlSession:)` and by the bulk of the test suite. Because these
+///   sit inside non-throwing initializers, they cannot themselves throw when
+///   the kill-switch is set — instead they log a warning and return a
+///   **poisoned session** (see below) that fails every request with
+///   ``CloudBackendError/networkDisabled`` rather than reaching the network.
+///   The kill-switch guarantee ("no request reaches the network") holds
+///   either way; only the failure's timing and shape differ (a thrown error
+///   at first-request time instead of at session-construction time).
 /// - A throwing function (``throwingPinned()``, ``throwingUnpinned()``) that
 ///   surfaces the kill-switch as a recoverable
-///   ``CloudBackendError/networkDisabled`` error. Use this from embedders
-///   that flip the kill-switch dynamically and from tests that exercise the
-///   failure path.
+///   ``CloudBackendError/networkDisabled`` error *before* a session is even
+///   handed back. Prefer this from embedders that flip the kill-switch
+///   dynamically (e.g. via a `makeChecked(urlSession:)`-style factory) and
+///   from tests that exercise the failure path — it fails one step earlier
+///   and without needing a real request round-trip.
 ///
 /// ## Redirect policy
 ///
@@ -52,8 +60,10 @@ public enum URLSessionProvider {
     /// Belt-and-suspenders runtime kill-switch. When `true`, the throwing
     /// factories (``throwingPinned()``, ``throwingUnpinned()``) throw
     /// ``CloudBackendError/networkDisabled`` rather than returning a session;
-    /// the non-throwing accessors trap with a precondition for the same
-    /// reason. Useful for a regulated runtime that wants to lock network
+    /// the non-throwing accessors (``pinned``, ``unpinned``) instead return a
+    /// poisoned session that fails every request with the same error — see
+    /// "Two accessor flavours" above. Neither path lets a request reach the
+    /// network. Useful for a regulated runtime that wants to lock network
     /// even in a `full`-trait build.
     ///
     /// Defaults to `false`. Callers may flip it at any point during the
@@ -105,10 +115,16 @@ public enum URLSessionProvider {
     /// is enforced for `api.openai.com` and `api.anthropic.com`; custom hosts
     /// fall through to default trust evaluation.
     ///
-    /// - Note: Traps with a precondition if ``networkDisabled`` is `true`.
-    ///   Use ``throwingPinned()`` for a throwing variant.
+    /// - Note: Returns a poisoned session (every request fails with
+    ///   ``CloudBackendError/networkDisabled``) if ``networkDisabled`` is
+    ///   `true`, logging a warning — it does not trap. Use
+    ///   ``throwingPinned()`` to catch the kill-switch before construction
+    ///   instead of at first request.
     public static var pinned: URLSession {
-        precondition(!networkDisabled, "URLSessionProvider.networkDisabled is set; use throwing variant URLSessionProvider.throwingPinned() instead.")
+        if networkDisabled {
+            Log.network.warning("URLSessionProvider.pinned accessed while networkDisabled=true; returning a session that fails every request with CloudBackendError.networkDisabled instead of trapping. Use URLSessionProvider.throwingPinned() to catch this before construction.")
+            return _networkDisabledSession
+        }
         return _pinned
     }
 
@@ -148,10 +164,16 @@ public enum URLSessionProvider {
     /// Appropriate for servers discovered via Bonjour or configured with
     /// private/local IP addresses where TLS pinning is not applicable.
     ///
-    /// - Note: Traps with a precondition if ``networkDisabled`` is `true`.
-    ///   Use ``throwingUnpinned()`` for a throwing variant.
+    /// - Note: Returns a poisoned session (every request fails with
+    ///   ``CloudBackendError/networkDisabled``) if ``networkDisabled`` is
+    ///   `true`, logging a warning — it does not trap. Use
+    ///   ``throwingUnpinned()`` to catch the kill-switch before construction
+    ///   instead of at first request.
     public static var unpinned: URLSession {
-        precondition(!networkDisabled, "URLSessionProvider.networkDisabled is set; use throwing variant URLSessionProvider.throwingUnpinned() instead.")
+        if networkDisabled {
+            Log.network.warning("URLSessionProvider.unpinned accessed while networkDisabled=true; returning a session that fails every request with CloudBackendError.networkDisabled instead of trapping. Use URLSessionProvider.throwingUnpinned() to catch this before construction.")
+            return _networkDisabledSession
+        }
         return _unpinned
     }
 
@@ -192,4 +214,35 @@ public enum URLSessionProvider {
             additionalDownloadDelegate: additionalDownloadDelegate
         )
     }
+
+    // MARK: - Kill-switch poisoned session
+
+    /// Session handed back by ``pinned``/``unpinned`` when ``networkDisabled``
+    /// is `true`. Every request made through it fails immediately with
+    /// ``CloudBackendError/networkDisabled`` via ``NetworkKillSwitchProtocol``
+    /// — no request is ever placed on the wire — so the non-throwing
+    /// accessors can honor the kill-switch guarantee without trapping the
+    /// process. Built once; `URLProtocol` registration is per-configuration,
+    /// not per-request, so the same instance is reused across calls.
+    private static let _networkDisabledSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [NetworkKillSwitchProtocol.self]
+        return URLSession(configuration: config)
+    }()
+}
+
+/// `URLProtocol` that fails every request instantly with
+/// ``CloudBackendError/networkDisabled`` instead of letting it reach the
+/// network. Installed on ``URLSessionProvider``'s poisoned session — see
+/// `_networkDisabledSession`.
+private final class NetworkKillSwitchProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: CloudBackendError.networkDisabled)
+    }
+
+    override func stopLoading() {}
 }

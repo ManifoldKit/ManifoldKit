@@ -274,11 +274,20 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
 
     /// The backend's capability declaration.
     ///
-    /// Subclasses must override this property and return appropriate capabilities.
-    /// The base implementation traps with a clear message — see `payloadHandler`
-    /// for the recommended compile-time-enforced pattern.
+    /// Subclasses must override this property and return appropriate
+    /// capabilities. `capabilities` cannot be made a compile-time-enforced
+    /// init parameter the way `payloadHandler` is: subclasses (Claude,
+    /// OpenAI, Ollama) compute it dynamically from the current `modelName`,
+    /// so it has to stay a re-evaluated property, not a value fixed at
+    /// construction. The base implementation therefore cannot trap — a
+    /// missing override on a third-party subclass is a real bug, but one
+    /// with a viable fallback (report the most conservative capability set
+    /// so callers degrade gracefully — no tool calling, no thinking, no
+    /// streaming assumptions — rather than crash the whole process) so it
+    /// logs an error and returns a minimal, safe default instead of trapping.
     open var capabilities: BackendCapabilities {
-        fatalError("\(type(of: self)) must override `capabilities`")
+        Log.inference.error("\(type(of: self)) must override `capabilities` — returning a minimal fallback (no advanced features advertised) instead of trapping.")
+        return BackendCapabilities(isRemote: true)
     }
 
     /// Optional ``ModelManifest`` describing the loaded model.
@@ -300,13 +309,21 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
     /// parameter, **never** from shared backend instance state. Threading it on
     /// the call stack is what makes concurrent requests against one shared
     /// backend instance safe (#2312).
+    ///
+    /// The base implementation throws rather than trapping: unlike
+    /// `capabilities`, this hook is already `throws`, so a missing override —
+    /// on a third-party subclass, most likely — surfaces as a normal,
+    /// catchable `CloudBackendError` on the generation call that needed it,
+    /// instead of crashing the host process.
     open func buildRequest(
         prompt: String,
         systemPrompt: String?,
         config: GenerationConfig,
         hints: GenerationRuntimeHints
     ) throws -> URLRequest {
-        fatalError("\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:hints:)`")
+        throw CloudBackendError.invalidURL(
+            "\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:hints:)`"
+        )
     }
 
     /// Extracts a text token from an SSE JSON payload.

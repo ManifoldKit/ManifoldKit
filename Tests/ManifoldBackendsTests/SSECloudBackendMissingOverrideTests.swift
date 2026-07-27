@@ -1,0 +1,66 @@
+import XCTest
+@testable import ManifoldCloudCore
+@testable import ManifoldInference
+
+/// Regression coverage for `SSECloudBackend`'s subclass-override hooks.
+///
+/// Before this fix, a subclass that forgot to override `capabilities` or
+/// `buildRequest(...)` crashed the whole host process via `fatalError` the
+/// first time either was touched — a real risk given `SSECloudBackend` is
+/// `open` and no companion package (manifold-mlx, manifold-llama) currently
+/// subclasses it, but nothing stops a third-party subclass from doing so.
+/// `buildRequest` was already `throws`, so it now throws a
+/// `CloudBackendError` instead of trapping — a genuine compile-time-enforced
+/// fix is not available for `capabilities` (see the doc comment on the
+/// property) because it must stay a dynamically re-evaluated `open var`, so
+/// it logs and returns a conservative fallback instead.
+///
+/// Sabotage check: reintroduce either `fatalError` and these tests crash the
+/// test process instead of passing/failing normally.
+final class SSECloudBackendMissingOverrideTests: XCTestCase {
+
+    func test_capabilities_doesNotTrap_whenSubclassOmitsOverride() {
+        let backend = BareMinimumSSEBackend(
+            defaultModelName: "test-model",
+            urlSession: URLSession(configuration: .ephemeral),
+            payloadHandler: NoOpPayloadHandler()
+        )
+        // Must not crash merely by being read.
+        let capabilities = backend.capabilities
+        XCTAssertTrue(capabilities.isRemote, "the base fallback should still report the backend as remote")
+        XCTAssertFalse(capabilities.supportsToolCalling, "the base fallback should be maximally conservative")
+    }
+
+    func test_buildRequest_throws_whenSubclassOmitsOverride() {
+        let backend = BareMinimumSSEBackend(
+            defaultModelName: "test-model",
+            urlSession: URLSession(configuration: .ephemeral),
+            payloadHandler: NoOpPayloadHandler()
+        )
+        XCTAssertThrowsError(
+            try backend.buildRequest(
+                prompt: "hi",
+                systemPrompt: nil,
+                config: GenerationConfig(),
+                hints: GenerationRuntimeHints()
+            )
+        ) { error in
+            guard case CloudBackendError.invalidURL = error else {
+                XCTFail("Expected CloudBackendError.invalidURL but got \(error)")
+                return
+            }
+        }
+    }
+}
+
+/// Deliberately omits both `capabilities` and `buildRequest` overrides —
+/// the exact shape of a third-party subclass that forgot to implement them.
+private final class BareMinimumSSEBackend: SSECloudBackend, @unchecked Sendable {}
+
+private struct NoOpPayloadHandler: SSEPayloadHandler {
+    func extractToken(from payload: String) -> String? { nil }
+    func extractEvents(from payload: String) -> [GenerationEvent] { [] }
+    func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? { nil }
+    func isStreamEnd(_ payload: String) -> Bool { false }
+    func extractStreamError(from payload: String) -> Error? { nil }
+}

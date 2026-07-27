@@ -1,0 +1,80 @@
+# TrappingConstructAuditTest — path-based allowlist for
+# fatalError / assertionFailure / precondition / preconditionFailure.
+#
+# Format: one fingerprint per line, of the form
+#   <relative path under Sources/>:<trimmed source line>
+#
+# - Empty lines and `#`-prefixed lines are ignored.
+# - Entries must match the audit's fingerprint EXACTLY (the line content
+#   after trimming leading/trailing whitespace).
+#
+# Every entry below gates a value that is fixed ONCE, at object
+# construction, by the calling code — never a value that can change during
+# the process's lifetime after the guarded code path was already reached
+# safely. That is the dividing line this audit enforces (see the class doc
+# comment in TrappingConstructAuditTest.swift): a construction-time
+# wiring/config mistake has no meaningful "recovery" beyond "the object
+# can't do its job," so trapping at the call site that built it is more
+# debuggable than deferring to a later, harder-to-trace failure. A value
+# that *can* legitimately flip after construction (like
+# URLSessionProvider.networkDisabled, fixed in this same PR) must not be on
+# this list — it must have a real recoverable path instead.
+
+# DER/OID parsing invariants on the certificate-pinning path. Structural
+# guarantees about the parser's own byte-level output, not caller input —
+# same shape as an array-bounds check. This file is off-limits for this PR
+# (a concurrent PR is rewriting its pin logic); allowlisted, not touched.
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(components.count >= 2, "OID requires at least two components")
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(components[0] <= 2, "OID first component must be 0, 1, or 2")
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(components[1] <= 39 || components[0] == 2, "OID second component out of range")
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(length >= 0, "DER length cannot be negative")
+
+# Eval-scenario constructor: userMessages/scriptedTurns array-count mismatch
+# is a mistake in the (hand-written, static) scenario definition itself —
+# there is no meaningful way to "run" a scenario with mismatched turn data.
+ManifoldAppEval/Runner/RuntimeScenario.swift:precondition(
+
+# Fuzz-factory wiring: empty child list / non-positive blockSize are
+# construction-time CLI/config mistakes fixed for the life of the factory.
+ManifoldFuzz/RotatingFuzzFactory.swift:precondition(!children.isEmpty, "RotatingFuzzFactory requires at least one child factory")
+ManifoldFuzz/RotatingFuzzFactory.swift:precondition(blockSize >= 1, "RotatingFuzzFactory blockSize must be >= 1")
+
+# Fuzz scenario helper: turnPrompts/kvReusePerTurn array-count mismatch is a
+# bug in the (hand-written, static) scenario's own call, not runtime input.
+ManifoldFuzz/Scenarios/KVReuseCoverageScenario.swift:precondition(turnPrompts.count == kvReusePerTurn.count,
+
+# RAG eval harness / test-support constructors: k / dimensions are supplied
+# once by the (internal, static) call site that builds the evaluator or
+# embedding backend, never mutated afterward.
+ManifoldTestSupport/RAGEval/RAGEvaluator.swift:precondition(k > 0, "retrieval cut-off k must be positive")
+ManifoldTestSupport/RAGEval/HashingEmbeddingBackend.swift:precondition(dimensions > 0, "embedding dimensions must be positive")
+
+# Redirect guard hop cap: immutable `let hopCap`, fixed once at
+# construction from a caller-supplied literal or config value — same shape
+# as DocumentChunker's chunkSize below, not a live-flippable toggle.
+ManifoldInference/Networking/RedirectGuardDelegate.swift:precondition(hopCap >= 0, "RedirectGuardDelegate: hopCap must be non-negative")
+
+# FallbackBackend / RouterBackend: an empty backend-chain array is a wiring
+# mistake in the host code that assembled the chain. Already reasoned about
+# explicitly in-code (see the comment immediately above each precondition):
+# deferring to a per-request `.noBackendsConfigured`/exhausted error would
+# just move the same crash-worthy bug later and make it harder to trace to
+# its source, for no behavioral benefit — the object can't serve any
+# request either way.
+ManifoldInference/Services/FallbackBackend.swift:precondition(
+ManifoldInference/Services/RouterBackend.swift:precondition(
+
+# PromptSlotPosition.atDepth: depth is supplied once by the (internal,
+# static) slot definition, never mutated afterward.
+ManifoldInference/Services/PromptSlot.swift:precondition(n >= 0, "PromptSlotPosition.atDepth depth must be >= 0; got \(n)")
+
+# DocumentChunker: chunkSize/overlap are constructor parameters fixed for
+# the life of the chunker, supplied by the (internal) call site.
+ManifoldRuntime/Services/DocumentChunker.swift:precondition(chunkSize > 0, "chunkSize must be positive")
+ManifoldRuntime/Services/DocumentChunker.swift:precondition(overlap >= 0 && overlap < chunkSize, "overlap must be in [0, chunkSize)")
+
+# Compile-time-constant regex literal, lazily compiled once into a `static
+# let`. The pattern never changes at runtime, so a compile failure here is
+# a toolchain/ICU regression, not bad input — there genuinely is no
+# recovery path (the in-code comment already states this rationale).
+ManifoldRuntime/Services/Compression/AnchoredCompressionStrategy.swift:preconditionFailure("[AnchoredCompression] failed to compile summary regex: \(error)")
