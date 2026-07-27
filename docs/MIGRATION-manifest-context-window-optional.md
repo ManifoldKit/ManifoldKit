@@ -107,7 +107,7 @@ manifest read off disk still looks like a known 8k model. Re-probe rather than
 trusting a persisted manifest across the upgrade if that distinction matters to
 you.
 
-## What changes at runtime
+## Behaviour changes
 
 Two behaviours are deliberately held constant, but they are easy to break while
 adapting, so they are written down:
@@ -131,21 +131,31 @@ underselling — a short prompt is recoverable, an overflow is not.
 
 ## Companion packages
 
-Known sites needing adaptation (compile errors, not silent misbehaviour):
+Sites needing adaptation in lockstep. All three are **compile errors**, not
+silent misbehaviour, so the build will surface them:
 
 - `manifold-mlx` — `Sources/ManifoldMLX/MLXBackend.swift:66`
-  (`Int32(_manifest?.contextWindow ?? 8192)`, now `Int??`) and `:734`
-  (`if let trainedMax = _manifest?.contextWindow` binds `Int?`). Use
-  `flatMap(\.contextWindow)`.
-- `manifold-mlx` — `Sources/ManifoldMLX/MLXModelProbe.swift:330` still
-  fabricates `8192` when `max_position_embeddings` is absent. It compiles
-  unchanged, so the build will *not* catch it; pass the optional through
-  instead. Doing so makes the `contextWindowWasDetected` /
-  `_trainedContextWasDetected` side-channel redundant — it exists only because
-  the manifest previously could not say "unknown".
+  (`Int32(_manifest?.contextWindow ?? 8192)` — `Int?? ?? Int` yields `Int?`, so
+  the `Int32(...)` conversion no longer compiles).
+- `manifold-mlx` — `Sources/ManifoldMLX/MLXBackend.swift:734`
+  (`if let trainedMax = _manifest?.contextWindow` strips one level and binds
+  `Int?`, so `runningContext > trainedMax` no longer compiles).
 - `manifold-llama` — `Sources/manifold-tools-llama/Benchmark.swift:93`
-  (`backend.manifest?.contextWindow` is now `Int??` against a declared `Int?`).
-- `manifold-eval` — no references; no change required.
+  (`backend.manifest?.contextWindow` is now `Int??` against the `Int?` declared
+  at `:33`).
+
+Use `flatMap(\.contextWindow)` at each. `manifold-eval` has no references and
+needs no change.
+
+**Follow-up, not part of the lockstep fix:**
+`manifold-mlx/Sources/ManifoldMLX/MLXModelProbe.swift:330-336` does
+`extractContextWindow(...) ?? 8192` — the same defect class this note describes,
+one repo over, and now fixable because `nil` is expressible. It **compiles
+unchanged**, so the lockstep build will *not* surface it; it needs a deliberate
+edit and can land separately. Passing the optional through also makes the
+`contextWindowWasDetected` / `_trainedContextWasDetected` side-channel
+redundant — that machinery exists only because the manifest could not
+previously say "unknown".
 
 ## Related
 
