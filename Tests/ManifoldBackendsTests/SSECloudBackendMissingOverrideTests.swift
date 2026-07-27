@@ -9,11 +9,13 @@ import XCTest
 /// first time either was touched — a real risk given `SSECloudBackend` is
 /// `open` and no companion package (manifold-mlx, manifold-llama) currently
 /// subclasses it, but nothing stops a third-party subclass from doing so.
-/// `buildRequest` was already `throws`, so it now throws a
-/// `CloudBackendError` instead of trapping — a genuine compile-time-enforced
-/// fix is not available for `capabilities` (see the doc comment on the
-/// property) because it must stay a dynamically re-evaluated `open var`, so
-/// it logs and returns a conservative fallback instead.
+/// `buildRequest` was already `throws`, so it now throws
+/// `CloudBackendError.missingRequiredOverride` instead of trapping —
+/// compile-time enforcement (the `payloadHandler` pattern) is not used for
+/// either hook: both are dynamically re-evaluated per call against live
+/// instance state (`capabilities` reads `modelName`; `buildRequest` reads
+/// keychain/cache-policy/baseURL/modelName), which is what open-method
+/// overriding is for, so both log/throw a conservative fallback instead.
 ///
 /// Sabotage check: reintroduce either `fatalError` and these tests crash the
 /// test process instead of passing/failing normally.
@@ -45,8 +47,8 @@ final class SSECloudBackendMissingOverrideTests: XCTestCase {
                 hints: GenerationRuntimeHints()
             )
         ) { error in
-            guard case CloudBackendError.invalidURL = error else {
-                XCTFail("Expected CloudBackendError.invalidURL but got \(error)")
+            guard case CloudBackendError.missingRequiredOverride = error else {
+                XCTFail("Expected CloudBackendError.missingRequiredOverride but got \(error)")
                 return
             }
         }

@@ -110,6 +110,7 @@ CloudBackendError.errorDescription Var
 CloudBackendError.invalidURL EnumElement
 CloudBackendError.isRetryable Var
 CloudBackendError.missingAPIKey EnumElement
+CloudBackendError.missingRequiredOverride EnumElement
 CloudBackendError.networkDisabled EnumElement
 CloudBackendError.networkError EnumElement
 CloudBackendError.parseError EnumElement

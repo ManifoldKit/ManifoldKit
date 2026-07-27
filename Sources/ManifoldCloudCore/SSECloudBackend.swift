@@ -313,15 +313,31 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
     /// The base implementation throws rather than trapping: unlike
     /// `capabilities`, this hook is already `throws`, so a missing override —
     /// on a third-party subclass, most likely — surfaces as a normal,
-    /// catchable `CloudBackendError` on the generation call that needed it,
-    /// instead of crashing the host process.
+    /// catchable `CloudBackendError.missingRequiredOverride` on the
+    /// generation call that needed it, instead of crashing the host process.
+    ///
+    /// This is not made compile-time-enforced the way `payloadHandler` is
+    /// (an init-required stored property): every shipping subclass builds
+    /// its request from full instance state read at call time (keychain
+    /// account, `cachePolicy`, `modelName`, `baseURL`, …), which is exactly
+    /// what dynamic-dispatch method overriding is for. Converting it to an
+    /// init-injected closure would need a two-phase init (build the closure
+    /// after `super.init()`, capturing `self` weakly — the same shape as
+    /// `configure(adapterRouting:)`) threaded through all four in-repo
+    /// subclasses (Claude, OpenAI, OpenAI Responses, Ollama — verified no
+    /// companion package subclasses this class at all), which is a real
+    /// architecture change to the class's documented "legacy path" (the
+    /// override-based design every shipping backend still uses today), not
+    /// a fix scoped to trapping constructs. A throwing fallback is
+    /// proportionate; the compile-time-enforced version is a separate
+    /// refactor.
     open func buildRequest(
         prompt: String,
         systemPrompt: String?,
         config: GenerationConfig,
         hints: GenerationRuntimeHints
     ) throws -> URLRequest {
-        throw CloudBackendError.invalidURL(
+        throw CloudBackendError.missingRequiredOverride(
             "\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:hints:)`"
         )
     }
