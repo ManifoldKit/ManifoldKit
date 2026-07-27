@@ -285,9 +285,46 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
     /// so callers degrade gracefully — no tool calling, no thinking, no
     /// streaming assumptions — rather than crash the whole process) so it
     /// logs an error and returns a minimal, safe default instead of trapping.
+    ///
+    /// Every field below is spelled out explicitly rather than relying on
+    /// `BackendCapabilities.init`'s memberwise defaults: those defaults are
+    /// tuned for the *common* backend (`supportsStreaming: true`,
+    /// `memoryStrategy: .resident`), which is not conservative here — a
+    /// first cut of this fallback used just `BackendCapabilities(isRemote:
+    /// true)` and silently inherited `supportsStreaming: true` (advertising
+    /// a capability the broken subclass never demonstrated) and
+    /// `memoryStrategy: .resident` (violating this very type's own
+    /// documented invariant that every remote backend reports `.external`).
     open var capabilities: BackendCapabilities {
         Log.inference.error("\(type(of: self)) must override `capabilities` — returning a minimal fallback (no advanced features advertised) instead of trapping.")
-        return BackendCapabilities(isRemote: true)
+        return BackendCapabilities(
+            supportedParameters: [],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: false,
+            supportsToolCalling: false,
+            supportsStructuredOutput: false,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            memoryStrategy: .external,
+            maxOutputTokens: 4096,
+            supportsStreaming: false,
+            isRemote: true,
+            supportsKVCachePersistence: false,
+            supportsGrammarConstrainedSampling: false,
+            supportsThinking: false,
+            supportsVision: false,
+            supportsAudioInput: false,
+            streamsToolCallArguments: false,
+            supportsParallelToolCalls: false,
+            supportsGuidedStructuredOutput: false,
+            supportsStrictSchema: false,
+            sharesMLXProcessResources: false,
+            rendersFullPrompt: false,
+            maxAdvertisedToolCount: nil,
+            toolDialect: nil
+        )
     }
 
     /// Optional ``ModelManifest`` describing the loaded model.
@@ -316,21 +353,46 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
     /// catchable `CloudBackendError.missingRequiredOverride` on the
     /// generation call that needed it, instead of crashing the host process.
     ///
-    /// This is not made compile-time-enforced the way `payloadHandler` is
-    /// (an init-required stored property): every shipping subclass builds
-    /// its request from full instance state read at call time (keychain
-    /// account, `cachePolicy`, `modelName`, `baseURL`, …), which is exactly
-    /// what dynamic-dispatch method overriding is for. Converting it to an
-    /// init-injected closure would need a two-phase init (build the closure
-    /// after `super.init()`, capturing `self` weakly — the same shape as
-    /// `configure(adapterRouting:)`) threaded through all four in-repo
-    /// subclasses (Claude, OpenAI, OpenAI Responses, Ollama — verified no
-    /// companion package subclasses this class at all), which is a real
-    /// architecture change to the class's documented "legacy path" (the
-    /// override-based design every shipping backend still uses today), not
-    /// a fix scoped to trapping constructs. A throwing fallback is
-    /// proportionate; the compile-time-enforced version is a separate
-    /// refactor.
+    /// ### Why this stays a throwing fallback, not a compile-time-enforced
+    /// requirement
+    ///
+    /// Re-examined during review, since all four in-repo subclasses already
+    /// override this and no companion package subclasses `SSECloudBackend`
+    /// at all (verified: `grep -rln SSECloudBackend` against manifold-mlx
+    /// and manifold-llama returns zero matches in either) — so "would this
+    /// break a real consumer" isn't the blocker. Two independent Swift
+    /// limitations are:
+    ///
+    /// 1. **A protocol requirement doesn't force anything here.** Swift has
+    ///    no "abstract method" — conforming `SSECloudBackend` to a protocol
+    ///    that declares `buildRequest(...)` doesn't help, because the class
+    ///    still needs *some* method body to satisfy the protocol, and
+    ///    whatever body it has (this throwing fallback, or the historical
+    ///    `fatalError`) already satisfies the requirement — a subclass that
+    ///    skips the override compiles either way. Only converting the hook
+    ///    into a required *stored* value (the `payloadHandler` pattern:
+    ///    dependency injection, not method overriding) gets compiler
+    ///    enforcement, which leads to limitation 2.
+    /// 2. **The stored-value conversion needs `self` before `self` exists.**
+    ///    Every shipping subclass builds its request from live instance
+    ///    state read at call time (keychain account, `cachePolicy`,
+    ///    `modelName`, `baseURL`, …) — unlike `payloadHandler`, which is a
+    ///    self-contained value with no backend-instance dependency.
+    ///    Converting `buildRequest` to an init-required closure would need
+    ///    that closure to capture `self` weakly, but Swift forbids
+    ///    referencing `self` before `super.init()` completes — so the
+    ///    closure can only be built *after* construction (the same
+    ///    two-phase shape `configure(adapterRouting:)` already uses), which
+    ///    makes it an optional, settable-after-init property again, not a
+    ///    compiler-enforced one. That reintroduces exactly the "forgot to
+    ///    wire it up" risk this fix exists to close, just moved to a
+    ///    different call.
+    ///
+    /// Both limitations are structural, not proportionality/effort calls:
+    /// there is no Swift-idiomatic way to get a hard compile error for "this
+    /// open method must be overridden" without also solving problem 2, and
+    /// problem 2 has no solution for a hook that needs live instance state.
+    /// A throwing fallback is the correct outcome here, not a shortcut.
     open func buildRequest(
         prompt: String,
         systemPrompt: String?,

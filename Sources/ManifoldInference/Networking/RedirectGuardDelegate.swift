@@ -94,10 +94,22 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
 
     /// Creates a redirect guard with the given hop cap.
     ///
-    /// - Parameter hopCap: Maximum redirects to allow per task. Must be `>= 0`.
+    /// - Parameter hopCap: Maximum redirects to allow per task. A negative
+    ///   value is clamped to `0` (reject every redirect — the strictest,
+    ///   fail-closed interpretation) with a logged warning rather than
+    ///   trapping: unlike the constants this file's own callers pass
+    ///   (``URLSessionProvider/defaultHopCap``), this is public API taking a
+    ///   caller-supplied `Int` that a consumer can plausibly source from
+    ///   runtime configuration (a defaults key, a loaded policy file) rather
+    ///   than a hardcoded literal — a malformed config value should not
+    ///   crash the host app that read it.
     public init(hopCap: Int) {
-        precondition(hopCap >= 0, "RedirectGuardDelegate: hopCap must be non-negative")
-        self.hopCap = hopCap
+        if hopCap < 0 {
+            Log.network.warning("RedirectGuardDelegate: hopCap \(hopCap, privacy: .public) is negative; clamping to 0 (reject every redirect) instead of trapping.")
+            self.hopCap = 0
+        } else {
+            self.hopCap = hopCap
+        }
     }
 
     // MARK: - URLSessionTaskDelegate

@@ -2,6 +2,20 @@ import Foundation
 import ManifoldHardware
 
 /// Errors from cloud API backends (OpenAI-compatible and Claude).
+///
+/// ## Vocabulary growth (1.x)
+///
+/// New cases are added as new provider-specific failure modes are
+/// identified — `quotaExceeded`, `providerOverloaded`, `contentFiltered`,
+/// `blockedAddress`, `unpinnedCredentialedHost`, and `missingRequiredOverride`
+/// all landed after this type's original ship. This is source-breaking for
+/// an exhaustive `switch` outside this package; add a `default:` arm (or an
+/// explicit case for each you handle) to stay resilient to a future case —
+/// see `docs/MIGRATION-cloudbackenderror-missingRequiredOverride.md` for the
+/// concrete example. Cross-cutting properties (`errorDescription`,
+/// `isRetryable`, `category`) are updated in the same PR that adds a case,
+/// so generic error handling (logging, retry policy, user-facing message)
+/// never needs the switch to be exhaustive in the first place.
 public enum CloudBackendError: LocalizedError, CategorizedError {
     case invalidURL(String)
     case authenticationFailed(provider: String)

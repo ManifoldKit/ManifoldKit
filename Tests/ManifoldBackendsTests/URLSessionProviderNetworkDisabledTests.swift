@@ -144,8 +144,13 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
         // Must not trap merely by being accessed.
         let session = URLSessionProvider.pinned
 
+        // A fake, UUID-namespaced, guaranteed-unresolvable host — never a
+        // real provider hostname. `NetworkKillSwitchProtocol.canInit(with:)`
+        // intercepts every request regardless of target, so this proves the
+        // regression without risking real egress to a live API if the
+        // interception were ever broken (found in review).
         let expected = CloudBackendError.networkDisabled as NSError
-        let request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        let request = URLRequest(url: URL(string: "https://killswitch-\(UUID().uuidString).test/v1/messages")!)
         do {
             _ = try await session.data(for: request)
             XCTFail("Request through the poisoned session should fail, not reach the network")
@@ -160,8 +165,9 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
         URLSessionProvider.networkDisabled = true
         let session = URLSessionProvider.unpinned
 
+        // Fake host — see the comment in the `pinned` variant above.
         let expected = CloudBackendError.networkDisabled as NSError
-        let request = URLRequest(url: URL(string: "http://localhost:11434/api/generate")!)
+        let request = URLRequest(url: URL(string: "http://killswitch-\(UUID().uuidString).test/api/generate")!)
         do {
             _ = try await session.data(for: request)
             XCTFail("Request through the poisoned session should fail, not reach the network")
@@ -179,5 +185,32 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
         // request through the resulting backend fails.
         let backend = ClaudeBackend()
         XCTAssertNotNil(backend)
+    }
+
+    /// Locks in the design decision documented on `URLSessionProvider.pinned`
+    /// (see "Design decision — deliberately NOT re-checked per request"):
+    /// `pinned`/`unpinned` are resolved ONCE, at access time, exactly like
+    /// every other injected `urlSession` in this codebase — a session
+    /// obtained while the switch was `true` stays poisoned for its whole
+    /// lifetime even after the switch flips back to `false`. This is not
+    /// re-litigated by a future "helpful" change that makes the session
+    /// dynamically re-check the switch per request without a deliberate
+    /// design review (see the doc comment for why that's a bigger change).
+    func test_pinned_staysPoisoned_afterNetworkDisabledFlipsBackOff() async throws {
+        URLSessionProvider.networkDisabled = true
+        let session = URLSessionProvider.pinned // captured while poisoned
+
+        URLSessionProvider.networkDisabled = false // switch flips back off
+
+        let request = URLRequest(url: URL(string: "https://killswitch-\(UUID().uuidString).test/v1/messages")!)
+        do {
+            _ = try await session.data(for: request)
+            XCTFail("A session captured while the switch was set must stay poisoned even after the switch flips off")
+        } catch {
+            let ns = error as NSError
+            let expected = CloudBackendError.networkDisabled as NSError
+            XCTAssertEqual(ns.domain, expected.domain)
+            XCTAssertEqual(ns.code, expected.code)
+        }
     }
 }

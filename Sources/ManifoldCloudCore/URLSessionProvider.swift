@@ -34,9 +34,27 @@ import os
 ///   the kill-switch is set — instead they log a warning and return a
 ///   **poisoned session** (see below) that fails every request with
 ///   ``CloudBackendError/networkDisabled`` rather than reaching the network.
-///   The kill-switch guarantee ("no request reaches the network") holds
-///   either way; only the failure's timing and shape differ (a thrown error
-///   at first-request time instead of at session-construction time).
+///
+///   **Design decision — deliberately NOT re-checked per request.** A cloud
+///   backend's `urlSession` is a `public let`, resolved once at
+///   construction, exactly like every other injected session in this
+///   codebase (see the doc comment on ``networkDisabled`` below) — there is
+///   no per-request re-consult of the live switch value anywhere in this
+///   type, poisoned or not. So: construct while the switch is `true` and the
+///   backend is durably poisoned for its whole lifetime, even if the switch
+///   later flips back to `false` — the mirror image of the pre-existing
+///   behavior where a backend constructed while the switch was `false` stays
+///   durably *unaffected* by a later flip to `true`. This was already true
+///   before this fix; only the *shape* of the "stuck" state changed (a
+///   permanently poisoned session instead of a permanently crashed process
+///   — the crash could never manifest as "stuck", since it took the whole
+///   host process down at construction time). Making the resolution dynamic
+///   (re-checking on every request) would be a real architecture change —
+///   `urlSession` would need to become a live-switching proxy instead of an
+///   immutable capture — out of scope for a fix to trapping constructs; the
+///   throwing factories exist precisely for callers who need the switch
+///   caught freshly rather than resolved once (a `makeChecked(urlSession:)`-
+///   style factory re-checks on every construction, not just the first).
 /// - A throwing function (``throwingPinned()``, ``throwingUnpinned()``) that
 ///   surfaces the kill-switch as a recoverable
 ///   ``CloudBackendError/networkDisabled`` error *before* a session is even

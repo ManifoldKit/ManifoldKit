@@ -36,8 +36,10 @@ import Darwin
 /// `SilentCatchAuditTest`. Format: one fingerprint
 /// (`relative/path.swift:trimmed line`) per line; `#`-prefixed lines and
 /// blank lines are ignored. There are no idiom rules — unlike `try?`, these
-/// four constructs are rare enough (17 non-fatalError sites, one file, as of
-/// this PR) that a blanket idiom would hide real regressions.
+/// four constructs are rare enough (13 allowlisted call sites across 9 files
+/// as of this PR, all `precondition`/`preconditionFailure` — zero
+/// `fatalError`/`assertionFailure` sites remain in `Sources/`) that a
+/// blanket idiom would hide real regressions.
 ///
 /// The full detection pipeline lives in ``scan(sourcesRoot:allowlist:)`` so
 /// the in-file sabotage test exercises the exact function the audit runs.
@@ -175,6 +177,52 @@ final class TrappingConstructAuditTest: XCTestCase {
         )
     }
 
+    /// Two multi-line `precondition(` calls whose OPENING line is identical
+    /// bare text ("precondition(") but whose actual condition (the next
+    /// line) differs must fingerprint differently — otherwise allowlisting
+    /// one silently exempts every future bare-opener `precondition(` in the
+    /// same file, a blanket exemption the stale-allowlist check would never
+    /// catch (found in review of this PR).
+    func test_sabotage_bareMultilineOpenersFingerprintDistinctly() throws {
+        let tmp = try Self.makeSabotageTempDirectory(
+            name: "trapping-construct-multiline-sabotage-\(UUID().uuidString)"
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let root = tmp.appendingPathComponent("ManifoldSomeModule", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try """
+        import Foundation
+
+        struct TwoCallers {
+            init(a: [Int], b: [Int]) {
+                precondition(
+                    a.count == b.count,
+                    "a and b must align"
+                )
+            }
+
+            init(c: [Int]) {
+                precondition(
+                    !c.isEmpty,
+                    "c must not be empty"
+                )
+            }
+        }
+        """.write(to: root.appendingPathComponent("TwoCallers.swift"), atomically: true, encoding: .utf8)
+
+        let (offenders, found) = try Self.scan(sourcesRoot: tmp, allowlist: [])
+        XCTAssertEqual(offenders.count, 2, "both bare-opener preconditions must be flagged as distinct offenders")
+
+        let firstFingerprint = "ManifoldSomeModule/TwoCallers.swift:precondition( a.count == b.count,"
+        XCTAssertTrue(found.contains(firstFingerprint), "expected fingerprint not found; got \(found)")
+
+        // Allowlisting only the first must NOT exempt the second.
+        let (exempted, _) = try Self.scan(sourcesRoot: tmp, allowlist: [firstFingerprint])
+        XCTAssertEqual(exempted.count, 1, "allowlisting one bare-opener call must not exempt the other")
+        XCTAssertTrue(exempted.contains { $0.text.contains("c.isEmpty") })
+    }
+
     // MARK: - Detection
 
     static func scan(
@@ -195,10 +243,28 @@ final class TrappingConstructAuditTest: XCTestCase {
                 let line = rawLine.trimmingCharacters(in: .whitespaces)
                 guard let construct = Self.lineTrappingConstruct(line) else { continue }
                 _ = construct
-                let fingerprint = "\(relativePath):\(line)"
+                // A multi-line call whose opening line is JUST the bare
+                // "construct(" (no argument content yet) would otherwise
+                // fingerprint identically to every other bare opening of the
+                // same construct in the file — a blanket, file-wide
+                // exemption that a later, unrelated multi-line call could
+                // silently inherit. Fold in the next non-blank line (which,
+                // for every real call site of this shape, carries the actual
+                // condition) so the fingerprint is specific to this call.
+                var fingerprintText = line
+                if Self.isBareConstructOpener(line, construct: construct) {
+                    var peek = index + 1
+                    while peek < lines.count {
+                        let next = lines[peek].trimmingCharacters(in: .whitespaces)
+                        if next.isEmpty { peek += 1; continue }
+                        fingerprintText = "\(line) \(next)"
+                        break
+                    }
+                }
+                let fingerprint = "\(relativePath):\(fingerprintText)"
                 found.insert(fingerprint)
                 if !allowlist.contains(fingerprint) {
-                    offenders.append((file: relativePath, line: index + 1, text: line))
+                    offenders.append((file: relativePath, line: index + 1, text: fingerprintText))
                 }
             }
         }
@@ -223,6 +289,14 @@ final class TrappingConstructAuditTest: XCTestCase {
             }
         }
         return nil
+    }
+
+    /// `true` when `line`, trimmed, is exactly `construct(` — the opening
+    /// line of a multi-line call with no argument content on the same line
+    /// (e.g. `precondition(` alone, condition and message on following
+    /// lines). See the blanket-exemption note at the call site above.
+    private static func isBareConstructOpener(_ line: String, construct: String) -> Bool {
+        line == "\(construct)("
     }
 
     // MARK: - Allowlist loading

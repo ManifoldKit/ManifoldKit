@@ -24,11 +24,28 @@ public struct DocumentChunker: Sendable {
     public var chunkSize: Int
     public var overlap: Int
 
+    /// `chunkSize`/`overlap` are clamped to a valid range with a logged
+    /// warning rather than trapping on an invalid value: unlike a hardcoded
+    /// literal, this is public API that `ManifoldBootstrap` feeds directly
+    /// from a host app's `RAGConfiguration` (`chunkSize`/`chunkOverlap`) —
+    /// runtime, host-supplied configuration, not a value only the library's
+    /// own authors control. A malformed RAG config setting should degrade
+    /// (fall back to the documented default / clamp the overlap) rather than
+    /// crash the app at RAG-service construction time.
     public init(chunkSize: Int = 1800, overlap: Int = 200) {
-        precondition(chunkSize > 0, "chunkSize must be positive")
-        precondition(overlap >= 0 && overlap < chunkSize, "overlap must be in [0, chunkSize)")
-        self.chunkSize = chunkSize
-        self.overlap = overlap
+        var resolvedChunkSize = chunkSize
+        if resolvedChunkSize <= 0 {
+            Log.persistence.warning("DocumentChunker: chunkSize \(chunkSize) is not positive; falling back to the default of 1800.")
+            resolvedChunkSize = 1800
+        }
+        var resolvedOverlap = overlap
+        if resolvedOverlap < 0 || resolvedOverlap >= resolvedChunkSize {
+            let clamped = max(0, min(overlap, resolvedChunkSize - 1))
+            Log.persistence.warning("DocumentChunker: overlap \(overlap) is out of range [0, \(resolvedChunkSize)); clamping to \(clamped).")
+            resolvedOverlap = clamped
+        }
+        self.chunkSize = resolvedChunkSize
+        self.overlap = resolvedOverlap
     }
 
     // MARK: - Public API

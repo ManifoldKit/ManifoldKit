@@ -111,4 +111,33 @@ final class DocumentChunkerTests: XCTestCase {
         )
     }
 
+    // MARK: - Invalid config clamps instead of trapping (regression coverage)
+    //
+    // Before this fix, `init(chunkSize:overlap:)` trapped the process with
+    // `precondition`s on both parameters — but `ManifoldBootstrap` feeds
+    // this initializer directly from a host app's `RAGConfiguration`
+    // (chunkSize/chunkOverlap), so a malformed host config value should
+    // degrade, not crash RAG-service construction. Sabotage check:
+    // reintroduce either precondition and these tests crash the test
+    // process instead of passing/failing normally.
+
+    func testNonPositiveChunkSize_fallsBackToDefault_insteadOfTrapping() {
+        let chunker = DocumentChunker(chunkSize: 0, overlap: 10)
+        XCTAssertEqual(chunker.chunkSize, 1800, "a non-positive chunkSize must fall back to the documented default")
+    }
+
+    func testNegativeChunkSize_fallsBackToDefault_insteadOfTrapping() {
+        let chunker = DocumentChunker(chunkSize: -5, overlap: 10)
+        XCTAssertEqual(chunker.chunkSize, 1800)
+    }
+
+    func testOverlapOutOfRange_clampsIntoValidRange_insteadOfTrapping() {
+        let negativeOverlap = DocumentChunker(chunkSize: 100, overlap: -1)
+        XCTAssertEqual(negativeOverlap.overlap, 0, "a negative overlap must clamp to 0")
+
+        let tooLargeOverlap = DocumentChunker(chunkSize: 100, overlap: 500)
+        XCTAssertTrue(tooLargeOverlap.overlap >= 0 && tooLargeOverlap.overlap < tooLargeOverlap.chunkSize,
+                      "overlap must clamp into [0, chunkSize)")
+    }
+
 }
