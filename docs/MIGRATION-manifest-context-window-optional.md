@@ -1,8 +1,8 @@
 # Migration — `ModelManifest.contextWindow` is now `Int?`
 
-**Audience:** consumer, companion-backend author
-**Status:** shipped
-**Applies to:** v0.75.0 and later
+**Audience:** consumer
+**Status:** living
+**Applies to:** v0.75.0 and later (companion-backend authors: see "Producers" below)
 
 ## The compiler diagnostics you'll hit
 

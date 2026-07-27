@@ -471,10 +471,17 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
         // any load has happened there is no num_ctx either, so the last resort
         // is the historical 128k default (covers most modern Llama 3.x / Qwen3
         // weights).
+        //
+        // Gate on manifest *presence*, not on `effectiveNumCtx`: that property
+        // is seeded to `defaultNumCtxFloor` at init, so a `numCtx > 0` guard
+        // would answer 8192 before any load where this used to answer 128k.
         let (resolvedManifest, numCtx) = withStateLock { (_manifest, effectiveNumCtx) }
-        let resolvedContext = Int32(
-            resolvedManifest?.contextWindow ?? (numCtx > 0 ? numCtx : 128_000)
-        )
+        let resolvedContext: Int32
+        if let resolvedManifest {
+            resolvedContext = Int32(resolvedManifest.contextWindow ?? numCtx)
+        } else {
+            resolvedContext = 128_000
+        }
         return BackendCapabilities(
             supportedParameters: [
                 .temperature, .topP, .topK, .repeatPenalty,
