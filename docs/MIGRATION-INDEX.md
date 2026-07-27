@@ -16,6 +16,7 @@ are indexed by the literal compiler diagnostic you'll hit.
 
 | Release | Migration note | What changed |
 |---------|----------------|--------------|
+| next | [`MIGRATION-llama-vision-probe.md`](MIGRATION-llama-vision-probe.md) | `BackendVisionCapability.llamaSupportsImageInput` Bool property → probed function `(projectorStaged:engineSupportsImageEmbedding:)` (#2381 / #2401). |
 | v0.74.0 | [`MIGRATION-wake-word-removed.md`](MIGRATION-wake-word-removed.md)¹ | `ManifoldVoice` wake-word detection (`AppleWakeWordDetector`, `WakeWordDetector`, `WakeWordDetection`, `WakeWordToast`) removed — no core replacement. |
 | v0.74.0 | [`MIGRATION-inert-surface-sweep-2026-07-22.md`](MIGRATION-inert-surface-sweep-2026-07-22.md) | Inert public surface removed (read paths with no writer). |
 | v0.74.0 | [`MIGRATION-media-generation-seam-removed.md`](MIGRATION-media-generation-seam-removed.md) | Generic `MediaGeneration` seam + deprecated `MessagePart` media shims removed. |
