@@ -53,12 +53,19 @@ package no longer compiles. Add a `default:` (or an explicit
 forward, since the type is now declared vocabulary-growth, not frozen:
 
 ```swift
-switch error {
-case .missingAPIKey: // ...
-case .networkDisabled: // ...
-default:
-    // Handle unrecognized/future CloudBackendError cases, including
-    // .missingRequiredOverride.
+import ManifoldKit
+
+func describe(_ error: CloudBackendError) -> String {
+    switch error {
+    case .missingAPIKey:
+        return "No API key configured."
+    case .networkDisabled:
+        return "Network access is disabled."
+    default:
+        // Handles every other CloudBackendError case, including
+        // .missingRequiredOverride and any case added later.
+        return error.localizedDescription
+    }
 }
 ```
 
