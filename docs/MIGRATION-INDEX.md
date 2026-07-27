@@ -16,6 +16,7 @@ are indexed by the literal compiler diagnostic you'll hit.
 
 | Release | Migration note | What changed |
 |---------|----------------|--------------|
+| next | [`MIGRATION-manifest-context-window-optional.md`](MIGRATION-manifest-context-window-optional.md) | `ModelManifest.contextWindow` is now `Int?`; `.unknown(...)` no longer fabricates an `8192` window. |
 | next | [`MIGRATION-llama-vision-probe.md`](MIGRATION-llama-vision-probe.md) | `BackendVisionCapability.llamaSupportsImageInput` Bool property → probed function `(projectorStaged:engineSupportsImageEmbedding:)` (#2381 / #2401). |
 | next | [`MIGRATION-deprecation-shims-deleted.md`](MIGRATION-deprecation-shims-deleted.md) | All `@available(*, deprecated)` shims removed (pre-1.0 policy: delete, don't deprecate). Includes one bug fix: `OllamaBackend.makeChecked` was deprecated by mistake and is now the recommended path. |
 | v0.74.0 | [`MIGRATION-wake-word-removed.md`](MIGRATION-wake-word-removed.md)¹ | `ManifoldVoice` wake-word detection (`AppleWakeWordDetector`, `WakeWordDetector`, `WakeWordDetection`, `WakeWordToast`) removed — no core replacement. |

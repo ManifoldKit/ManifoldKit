@@ -11,9 +11,10 @@ import Foundation
 ///
 /// Coverage is best-effort and intentionally narrow. Anything that doesn't
 /// match falls through to ``ModelManifest/unknown(modelIdentifier:producerKind:)``,
-/// which is conservative (8k context, no tools, no thinking, no seed). A
-/// missing entry never crashes — it just means the host's model name needs to
-/// be added here.
+/// which is conservative (no tools, no thinking, no seed) and reports **no**
+/// context window at all — `nil`, not a plausible number. Each backend names
+/// its own fallback for that case. A missing entry never crashes — it just
+/// means the host's model name needs to be added here.
 ///
 /// To add a new model, append a tuple to ``openAIManifests`` /
 /// ``claudeManifests`` keyed by the longest prefix that uniquely identifies

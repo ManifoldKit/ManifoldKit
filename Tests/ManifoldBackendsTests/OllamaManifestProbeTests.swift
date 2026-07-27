@@ -319,6 +319,49 @@ final class OllamaManifestProbeTests: XCTestCase {
                        "Architecture-prefixed context_length keys must be honoured (llama.context_length)")
     }
 
+    /// When `/api/show` reports no `context_length`, the manifest must say so.
+    /// It previously substituted this backend's own `num_ctx` allocation, which
+    /// describes what we will *run with*, not what the model *is* — making a
+    /// failed probe indistinguishable from a model that genuinely has that
+    /// window. `capabilities` still surfaces num_ctx, where the meaning is
+    /// honest.
+    func test_manifest_contextWindowIsNilWhenShowReportsNoContextLength() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "mystery:latest")
+
+        // Before any load there is no manifest at all — capabilities must fall
+        // back to the historical 128k default, NOT to the num_ctx seed (which
+        // is `defaultNumCtxFloor`, i.e. 8192, from init).
+        XCTAssertEqual(backend.capabilities.maxContextTokens, 128_000,
+                       "With no manifest loaded, capabilities must report the 128k default")
+
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(capabilities: ["completion"]),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        // 32_768 is deliberately distinctive: it is neither the old fabricated
+        // 8192 sentinel nor the 128k no-manifest default, so the assertions
+        // below cannot pass by coincidence.
+        try await backend.loadModel(
+            from: URL(string: "unused:")!,
+            plan: .cloud(requestedContextSize: 32_768)
+        )
+
+        let manifest = try XCTUnwrap(backend.manifest)
+        XCTAssertNil(manifest.contextWindow,
+                     "No context_length in /api/show means the model's window is unknown — the manifest must not substitute this backend's own num_ctx")
+        XCTAssertEqual(backend.capabilities.maxContextTokens, 32_768,
+                       "capabilities resolves the unknown manifest window to the num_ctx we will actually run with")
+    }
+
     // MARK: - Thinking markers from template
 
     func test_manifest_capturesThinkingMarkersFromTemplate() async throws {

@@ -125,6 +125,29 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         self.configure(adapterRouting: routing)
     }
 
+    /// Context budget assumed for a model name that doesn't prefix-match
+    /// ``CloudModelManifestTable``.
+    ///
+    /// **This is a conservative guess, not a measurement.** It deliberately
+    /// does *not* live on ``ModelManifest`` — a manifest reports `nil` for a
+    /// model it could not introspect, precisely so that a guess can never
+    /// impersonate a probed value. The guess belongs here, at the layer that
+    /// owns it, where it is named, reviewable, and cannot propagate as fact.
+    ///
+    /// Conservative rather than optimistic because the risks are asymmetric:
+    /// this backend also serves LM Studio and custom OpenAI-compatible
+    /// endpoints, where an unrecognised name (`qwen3-8b-mlx`, `local-model`, …)
+    /// usually means a *small local* model rather than a frontier one.
+    /// Undershooting only wastes available context; overshooting causes hard
+    /// failures — server-side truncation or an HTTP 400.
+    ///
+    /// > Note: the ideal is host-aware — an unrecognised model on
+    /// > `api.openai.com` genuinely is 128k-class, while one on somebody's
+    /// > LM Studio is not. Routing this on the configured base URL is a
+    /// > deliberate follow-up, out of scope for the change that made
+    /// > ``ModelManifest/contextWindow`` optional.
+    static let unknownModelContextWindow = 8192
+
     /// Single source of truth for the OpenAI Chat Completions
     /// `BackendCapabilities` value. Keyed on `modelName` so vision support
     /// can flip per-model; an explicit `contextWindow` override threads in
@@ -230,10 +253,12 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     ///
     /// Cloud backends can't introspect the model at runtime, so the manifest
     /// is derived from a vendored prefix table. Returns an `unknown(...)`
-    /// manifest (conservative defaults: 8k context, no seed, no penalties)
-    /// for any model name that doesn't prefix-match a table entry — that
-    /// keeps the backend safe against new model releases without having to
-    /// ship a code change for every API name.
+    /// manifest (no measured context window, no seed, no penalties) for any
+    /// model name that doesn't prefix-match a table entry — that keeps the
+    /// backend safe against new model releases without having to ship a code
+    /// change for every API name. The context budget for such a model is
+    /// chosen by ``capabilities``, not fabricated into the manifest; see
+    /// ``unknownModelContextWindow``.
     public override var manifest: ModelManifest? {
         CloudModelManifestTable.openAI(modelName: modelName)
     }
@@ -244,9 +269,23 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
         // the manifest produced at loadModel-time; the factory falls back to
         // OpenAI's mainstream 128k when the configured model name doesn't
         // prefix-match the manifest table.
+        //
+        // Optional chaining flattens, so `manifest?.contextWindow` is `Int?`
+        // (not `Int??`) and one `??` covers both "no manifest" and "manifest
+        // with no measured window".
+        //
+        // The table-miss fallback is resolved HERE rather than being allowed to
+        // fall through to the factory's 128k. Before `contextWindow` became
+        // optional, a miss produced `ModelManifest.unknown()`'s fabricated 8192
+        // and the factory's `?? 128_000` was structurally unreachable from this
+        // path (`manifest` is never nil). Letting it fire now would silently
+        // raise the budget for an unrecognised model 8k → 128k — and this
+        // backend is also the LM Studio / custom OpenAI-compatible endpoint,
+        // where model names essentially never match the table, so a small local
+        // model would be handed a 128k budget and truncate or 400. Undersell.
         Self.capabilities(
             forModelName: modelName,
-            contextWindow: manifest?.contextWindow
+            contextWindow: manifest?.contextWindow ?? Self.unknownModelContextWindow
         )
     }
 

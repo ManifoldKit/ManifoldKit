@@ -76,13 +76,40 @@ public enum ProducerKind: String, Sendable, Equatable, Codable {
 /// `manifest.supportsThinking == true` — see
 /// `BackendCapabilitiesContractTests`.
 public struct ModelManifest: Sendable, Equatable, Codable {
-    /// The model's true context window in tokens.
+    /// The model's true context window in tokens, or `nil` when the backend
+    /// could not determine it.
     ///
     /// Read from `text_config.max_position_embeddings` (preferred), or
     /// `max_position_embeddings` / `model_max_length` for legacy MLX configs;
     /// from `model_info.context_length` on Ollama's `/api/show`; or from a
     /// vendored prefix-table entry for cloud providers.
-    public let contextWindow: Int
+    ///
+    /// > Important: `nil` means **unknown**, not "small". A backend that
+    /// > cannot introspect the loaded model MUST leave this `nil` rather than
+    /// > substituting a plausible-looking number — a fabricated value is
+    /// > indistinguishable from a measured one, so every downstream consumer
+    /// > (``ContextWindowManager`` trimming, compression thresholds, the
+    /// > utilisation meter) silently computes against a fiction and the user
+    /// > sees truncation with no error. This field was a non-optional `Int`
+    /// > carrying a hardcoded `8192` on the unknown path. That sentinel
+    /// > forced `ClaudeBackend` to reverse-engineer absence by
+    /// > comparing against the literal (`contextWindow == 8192 ? 200_000 : …`),
+    /// > which mislabelled any genuine 8k model as unknown and would have
+    /// > silently shrunk every unknown Claude model to 8k had the constant
+    /// > ever moved.
+    /// >
+    /// > Consumers name their own domain-appropriate fallback at the call
+    /// > site (`manifest.contextWindow ?? 200_000` in an Anthropic backend,
+    /// > `?? 128_000` in an OpenAI one), because the knowledge of what a
+    /// > sensible default *is* lives with the provider, not with the manifest.
+    ///
+    /// > Warning: producers do not yet agree on *which* window this is. MLX
+    /// > reports the model's trained ceiling (`max_position_embeddings`), while
+    /// > llama.cpp reports the context it actually **allocated** for this load
+    /// > (`ModelLoadPlan.effectiveContextSize`), which is usually smaller.
+    /// > Making absence expressible does **not** settle allocated-vs-trained —
+    /// > don't read a non-`nil` value as necessarily the trained maximum.
+    public let contextWindow: Int?
 
     /// Whether the model accepts and honours tool-call definitions in the
     /// request body.
@@ -127,8 +154,12 @@ public struct ModelManifest: Sendable, Equatable, Codable {
     /// Where the model runs.
     public let producerKind: ProducerKind
 
+    /// - Parameter contextWindow: The measured context window, or `nil` when
+    ///   the backend could not determine one. Producers that *did* measure a
+    ///   value pass it directly — a non-optional `Int` promotes implicitly, so
+    ///   existing call sites are unaffected by the optionality change.
     public init(
-        contextWindow: Int,
+        contextWindow: Int?,
         supportsTools: Bool,
         supportsThinking: Bool,
         thinkingMarkers: ThinkingMarkers?,
@@ -150,17 +181,22 @@ public struct ModelManifest: Sendable, Equatable, Codable {
     /// Conservative manifest used when a backend cannot introspect the
     /// loaded model.
     ///
-    /// The defaults intentionally undersell rather than oversell: 8k
-    /// context window (modern minimum), no tools, no thinking, no seed,
-    /// only `temperature` + `topP` sampling. A backend that returns
-    /// `.unknown(...)` should emit a `Log.warn` so the consumer sees the
-    /// degradation.
+    /// The capability flags intentionally undersell rather than oversell: no
+    /// tools, no thinking, no seed, only `temperature` + `topP` sampling. A
+    /// backend that returns `.unknown(...)` should emit a `Log.warn` so the
+    /// consumer sees the degradation.
+    ///
+    /// ``contextWindow`` is `nil` — genuinely absent rather than underselling
+    /// with a plausible number. There is no conservative *value* for a context
+    /// window: too low silently truncates conversations that would have fit,
+    /// too high overflows the model. The only honest answer is "unknown", so
+    /// the caller picks a fallback it can justify. See ``contextWindow``.
     public static func unknown(
         modelIdentifier: String,
         producerKind: ProducerKind = .local
     ) -> ModelManifest {
         ModelManifest(
-            contextWindow: 8192,
+            contextWindow: nil,
             supportsTools: false,
             supportsThinking: false,
             thinkingMarkers: nil,
