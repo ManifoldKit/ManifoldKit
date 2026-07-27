@@ -1,6 +1,6 @@
 # Migration: `BackendVisionCapability.llamaSupportsImageInput` is probed
 
-**Audience:** companion backend authors (primarily `ManifoldLlama`)
+**Audience:** contributor
 **Status:** living
 
 **This is a breaking change.** The llama vision capability gate is no longer a
@@ -55,6 +55,19 @@ supportsVision: BackendVisionCapability.llamaSupportsImageInput(
     projectorStaged: mmprojURL != nil,
     engineSupportsImageEmbedding: Self.engineCanEmbedImages
 )
+```
+
+The call itself is a standalone, pasteable expression — here it is compiled on its
+own, outside the `BackendCapabilities` construction context above:
+
+```swift
+import ManifoldKit
+
+let supportsVision = BackendVisionCapability.llamaSupportsImageInput(
+    projectorStaged: true,
+    engineSupportsImageEmbedding: true
+)
+assert(supportsVision)
 ```
 
 `GenerationQueue` still hard-throws image-bearing turns when
