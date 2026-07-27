@@ -8,21 +8,7 @@
 /// accept images and an implemented request/generation path that preserves
 /// `MessagePart.image(data:mimeType:placeholderHash:)` payloads.
 public enum BackendVisionCapability {
-    /// Whether a llama.cpp (GGUF) backend should advertise image-input support.
-    ///
-    /// Both halves are required — mirrors the `MultimodalProjectorConfigurable`
-    /// contract: a staged mmproj URL alone must not yield `true` unless the
-    /// engine can actually turn `MessagePart.image` into embeddings
-    /// (e.g. vendored llama.cpp with `mtmd`/`clip` wired). Callers in
-    /// `ManifoldLlama` probe both and pass the results here; a constant
-    /// `false` previously made vision structurally unreachable even after the
-    /// companion implemented embedding (#2381).
-    public static func llamaSupportsImageInput(
-        projectorStaged: Bool,
-        engineSupportsImageEmbedding: Bool
-    ) -> Bool {
-        projectorStaged && engineSupportsImageEmbedding
-    }
+    public static var llamaSupportsImageInput: Bool { false }
 
     public static func mlxSupportsImageInput(probedCapabilities: ModelCapabilities?) -> Bool {
         probedCapabilities?.supportsVision ?? false

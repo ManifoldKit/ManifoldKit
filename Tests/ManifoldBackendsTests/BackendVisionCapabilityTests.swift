@@ -6,36 +6,10 @@ import ManifoldInference
 @testable import ManifoldCloudCore
 
 final class BackendVisionCapabilityTests: XCTestCase {
-    func test_llamaVisionGate_requiresProjectorAndEngineEmbedding() {
-        // Truth table for the probed form (#2381). A staged projector alone
-        // must not light up vision — MultimodalProjectorConfigurable requires
-        // a real image-embedding path as well.
+    func test_llamaVisionGate_staysFalseUntilImageEmbeddingIsImplemented() {
         XCTAssertFalse(
-            BackendVisionCapability.llamaSupportsImageInput(
-                projectorStaged: false,
-                engineSupportsImageEmbedding: false
-            )
-        )
-        XCTAssertFalse(
-            BackendVisionCapability.llamaSupportsImageInput(
-                projectorStaged: true,
-                engineSupportsImageEmbedding: false
-            ),
-            "Staged mmproj URL alone must not advertise vision"
-        )
-        XCTAssertFalse(
-            BackendVisionCapability.llamaSupportsImageInput(
-                projectorStaged: false,
-                engineSupportsImageEmbedding: true
-            ),
-            "Engine embedding capability without a projector must not advertise vision"
-        )
-        XCTAssertTrue(
-            BackendVisionCapability.llamaSupportsImageInput(
-                projectorStaged: true,
-                engineSupportsImageEmbedding: true
-            ),
-            "Both projector staged and engine embedding support must yield true"
+            BackendVisionCapability.llamaSupportsImageInput,
+            "LlamaBackend must not advertise vision while the vendored llama.cpp binding lacks an image-embedding path."
         )
     }
 
