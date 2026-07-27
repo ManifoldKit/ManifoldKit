@@ -20,25 +20,26 @@ import Darwin
 ///
 /// The distinguishing test applied while triaging existing sites for this
 /// PR — sharpened twice during review, see AGENTS.md's Error handling
-/// section for the canonical statement: a trap is legitimate only when
-/// ALL THREE hold — (a) the value is fixed once at construction, never
-/// mutated afterward; (b) the value originates from code the programmer
-/// wrote and controls directly, not from data that can enter the process
-/// from outside their control (config, a defaults key, a runtime-filtered
-/// list, public API a separate caller drives with its own data); and (c) a
-/// trap here crashes the *developer's own process* (a build, a test run, a
-/// CLI/fuzz tool they're driving directly), not a shipped app on someone
-/// else's device. `URLSessionProvider.networkDisabled` fails (a) — it's a
-/// runtime toggle flippable at any time. `RedirectGuardDelegate.hopCap`,
-/// `FallbackBackend`'s empty-chain check, and `DocumentChunker`'s
-/// chunkSize/overlap fail (b) and (c) together — each is public API fed
-/// from host-app-controlled runtime data reachable from a shipped app's own
-/// bootstrap path. `RotatingFuzzFactory` fails (b) alone (it's public API
-/// on a published library a companion package can drive programmatically)
-/// but correctly stays a trap because it passes (c) — `ManifoldFuzz` never
-/// ships inside a consumer app, so a bad value only ever crashes the
-/// developer's own fuzz process. See `trapping_construct_allowlist.txt` for
-/// the full per-site reasoning.
+/// section for the canonical statement: a trap is **wrong** if EITHER (A)
+/// the value can change during the process's lifetime after the guarded
+/// code path was already reached safely, OR (B) BOTH (B1) the value can
+/// originate from outside the programmer's control (config, a defaults key,
+/// a runtime-filtered list, public API a separate caller drives with its
+/// own data) AND (B2) a resulting crash lands in a shipped app on someone
+/// else's device, not just the developer's own process (a build, a test
+/// run, a CLI/fuzz tool they're driving directly) — B1 alone is not
+/// sufficient to trigger (B). `URLSessionProvider.networkDisabled` is wrong
+/// under (A) — it's a runtime toggle flippable at any time.
+/// `RedirectGuardDelegate.hopCap`, `FallbackBackend`'s empty-chain check,
+/// and `DocumentChunker`'s chunkSize/overlap are wrong under (B) — each is
+/// public API fed from host-app-controlled runtime data reachable from a
+/// shipped app's own bootstrap path, satisfying both B1 and B2.
+/// `RotatingFuzzFactory` satisfies B1 alone (it's public API on a published
+/// library a companion package can drive programmatically) but not B2
+/// (`ManifoldFuzz` never ships inside a consumer app, so a bad value only
+/// ever crashes the developer's own fuzz process) — neither (A) nor (B)
+/// applies, so it correctly stays a trap. See
+/// `trapping_construct_allowlist.txt` for the full per-site reasoning.
 ///
 /// ## Approval shape
 ///
