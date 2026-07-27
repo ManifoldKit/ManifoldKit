@@ -1,0 +1,131 @@
+# TrappingConstructAuditTest — path-based allowlist for
+# fatalError / assertionFailure / precondition / preconditionFailure.
+#
+# Format: one fingerprint per line, of the form
+#   <relative path under Sources/>:<trimmed source line>
+#
+# For a multi-line call whose opening line is bare (just "precondition("
+# with no argument content), the audit folds the next non-blank line into
+# the fingerprint too (space-joined) — see
+# TrappingConstructAuditTest.isBareConstructOpener. A bare-opener-only
+# fingerprint would otherwise grant a blanket, file-wide exemption to any
+# future unrelated multi-line call in the same file (found in review).
+#
+# - Empty lines and `#`-prefixed lines are ignored.
+# - Entries must match the audit's fingerprint EXACTLY (the line content
+#   after trimming leading/trailing whitespace, folded per the above).
+#
+# ## The rule
+#
+# A trap is WRONG (must be replaced with a recoverable path, NOT
+# allowlisted) if EITHER:
+#
+#   (A) the value can change during the process's lifetime after the
+#       guarded code path was already reached safely — a runtime toggle, a
+#       dynamically-flippable feature flag; OR
+#   (B) BOTH of the following hold together —
+#       (B1) the value can originate from outside the programmer's control
+#            (a config file, a defaults key, a runtime-filtered list, a
+#            value forwarded through public API that a separate caller
+#            drives with its own data), AND
+#       (B2) a resulting crash lands in a shipped app running on someone
+#            else's device, not just in the developer's own process (a
+#            build, a test run, a CLI/fuzz tool they're driving directly).
+#
+# B1 and B2 must BOTH hold for branch (B) to apply — B1 alone is not
+# enough, and treating it as sufficient is exactly the mistake this allowlist
+# made once already: it used to carry `RedirectGuardDelegate.hopCap`,
+# `FallbackBackend`'s empty-chain check, and `DocumentChunker`'s
+# chunkSize/overlap on "fixed at construction, so it's fine" (i.e. only
+# checking "not A") reasoning, until review established each is public API
+# fed from host-app-controlled runtime data (a config-derived hop cap, a
+# `available.filter { $0.isReady }`-built chain, `RAGConfiguration` read by
+# `ManifoldBootstrap`) reachable from a SHIPPED app's own bootstrap path —
+# B1 and B2 both hold, so they were fixed (clamp/log/throw-a-catchable-error)
+# instead of staying here. See their init doc comments and the regression
+# tests next to each fix.
+#
+# `RotatingFuzzFactory` below is the useful near-miss that makes B1-alone
+# look sufficient until you check B2: it's public API reachable from
+# outside this repo (`ManifoldFuzz` is a published `.library()` product; a
+# companion package's fuzz driver can construct it programmatically with
+# nobody at a terminal) — B1 holds. But B2 does NOT hold: `ManifoldFuzz` is
+# developer tooling that never ships inside an app, so a bad value crashes
+# the fuzz operator's OWN process immediately with a clear message — good
+# feedback, not a footgun a stranger inherits. Neither (A) nor (B) applies,
+# so the trap is correct and it stays on this list.
+#
+# A value that *can* legitimately flip after construction (like
+# URLSessionProvider.networkDisabled, fixed in this same PR) triggers (A)
+# and must not be on this list either.
+
+# DER/OID parsing invariants on the certificate-pinning path. Structural
+# guarantees about the parser's own byte-level output, not caller input —
+# same shape as an array-bounds check. This file is off-limits for this PR
+# (a concurrent PR is rewriting its pin logic); allowlisted, not touched.
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(components.count >= 2, "OID requires at least two components")
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(components[0] <= 2, "OID first component must be 0, 1, or 2")
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(components[1] <= 39 || components[0] == 2, "OID second component out of range")
+ManifoldCloudCore/PinnedSessionDelegate.swift:precondition(length >= 0, "DER length cannot be negative")
+
+# Eval-scenario constructor: userMessages/scriptedTurns array-count mismatch.
+# Every current call site is a hardcoded Swift array literal in
+# ManifoldAppEval's own built-in scenario registry
+# (RuntimeScenarioRegistry.swift) — grepped for every `userMessages:` call
+# site in Sources/ to confirm none is fed from a loaded/generated source, so
+# B1 is arguably borderline (this is `public` API and a host app authoring
+# its own eval goldens could in principle build these arrays from loaded
+# data) — but B2 does not hold either way: the failure mode is a dev-time
+# eval-authoring/test-run crash (the fixture author's own `swift test` or
+# eval run), not a live production serving path — the same debugging-benefit
+# rationale as the other eval/fuzz entries below, not the "config read at
+# app-bootstrap time, reachable from a shipped app" shape that made
+# RAGConfiguration's DocumentChunker feed a must-fix.
+ManifoldAppEval/Runner/RuntimeScenario.swift:precondition( userMessages.count == scriptedTurns.count,
+
+# Fuzz-factory wiring: empty child list / non-positive blockSize. This is
+# `public` API on a published `.library()` product (`ManifoldFuzz` — see
+# AGENTS.md, manifold-mlx's `fuzz-mlx` is a cross-package consumer), so B1
+# holds: a value here CAN originate outside this repo's programmer control
+# (a companion package's fuzz driver could construct it from CLI-flag-derived
+# data with nobody at a terminal). It stays a trap anyway because B2 does
+# NOT hold: `ManifoldFuzz` is developer/CI tooling that never ships inside a
+# consumer app — a bad value crashes the fuzz operator's OWN process (their
+# terminal, their CI job) immediately with a clear message, not a stranger's
+# shipped app with no way to diagnose it. B1 without B2 doesn't trigger
+# branch (B) — blast radius, not provenance alone, is what keeps this one a
+# trap. See AGENTS.md's Error handling section for the general form.
+ManifoldFuzz/RotatingFuzzFactory.swift:precondition(!children.isEmpty, "RotatingFuzzFactory requires at least one child factory")
+ManifoldFuzz/RotatingFuzzFactory.swift:precondition(blockSize >= 1, "RotatingFuzzFactory blockSize must be >= 1")
+
+# Fuzz scenario helper: turnPrompts/kvReusePerTurn array-count mismatch is a
+# bug in the (hand-written, static) scenario's own call, not runtime input —
+# same eval/fuzz-authoring shape as RuntimeScenario above.
+ManifoldFuzz/Scenarios/KVReuseCoverageScenario.swift:precondition(turnPrompts.count == kvReusePerTurn.count,
+
+# RAG eval harness / test-support constructors: k / dimensions. Zero call
+# sites in Sources/ (grepped) — these types are only ever constructed from
+# Tests/, so there is no production/host-app path through them at all.
+ManifoldTestSupport/RAGEval/RAGEvaluator.swift:precondition(k > 0, "retrieval cut-off k must be positive")
+ManifoldTestSupport/RAGEval/HashingEmbeddingBackend.swift:precondition(dimensions > 0, "embedding dimensions must be positive")
+
+# RouterBackend: empty child-backend array. `RouterBackend` is
+# `package`-scoped (not `public`) — it cannot be constructed from outside
+# this SwiftPM package boundary at all, so B1 is structurally false for
+# every possible caller (branch (B) can't apply without B1), unlike its
+# public sibling `FallbackBackend` (fixed in this PR — see
+# FallbackBackend.swift's init doc comment for why the same shape of
+# empty-array check there had to change).
+ManifoldInference/Services/RouterBackend.swift:precondition( !children.isEmpty,
+
+# PromptSlotPosition.atDepth: depth is supplied by every current call site
+# (grepped) as a literal Int in ManifoldUI's PromptInspectorView — hardcoded
+# UI wiring, not host-app-configurable.
+ManifoldInference/Services/PromptSlot.swift:precondition(n >= 0, "PromptSlotPosition.atDepth depth must be >= 0; got \(n)")
+
+# Compile-time-constant regex literal, lazily compiled once into a `static
+# let`. The pattern never changes at runtime, so a compile failure here is
+# a toolchain/ICU regression, not bad input — there genuinely is no
+# recovery path (the in-code comment already states this rationale). Not
+# reachable from any caller-supplied value at all, so condition (b) is moot.
+ManifoldRuntime/Services/Compression/AnchoredCompressionStrategy.swift:preconditionFailure("[AnchoredCompression] failed to compile summary regex: \(error)")

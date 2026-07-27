@@ -317,6 +317,44 @@ final class RedirectGuardDelegateTests: XCTestCase {
                      "Hop cap 0 must reject the first redirect")
     }
 
+    // MARK: - Negative hopCap does not trap (regression coverage)
+    //
+    // Before this fix, `init(hopCap:)` trapped the process with
+    // `precondition(hopCap >= 0, ...)` — but hopCap is public API that can
+    // plausibly be sourced from runtime configuration, not just a hardcoded
+    // literal, so a malformed config value should not crash the host app.
+    // Sabotage check: reintroduce the precondition and this test crashes
+    // the test process instead of passing/failing normally.
+
+    func test_negativeHopCap_clampsToZero_insteadOfTrapping() {
+        let guardDelegate = RedirectGuardDelegate(hopCap: -1)
+        XCTAssertEqual(guardDelegate.hopCap, 0, "a negative hopCap must clamp to 0 (reject every redirect), not trap")
+    }
+
+    func test_endToEnd_negativeHopCap_rejectsFirstRedirectLikeZero() async throws {
+        let runID = UUID().uuidString
+        let upstreamHost = "neghopcap-\(runID).test"
+        let nextHost = "neghopcap-next-\(runID).test"
+        let upstreamURL = URL(string: "https://\(upstreamHost)/start")!
+        let nextURL = URL(string: "https://\(nextHost)/redirected")!
+
+        RedirectingURLProtocol.installRedirect(
+            from: upstreamURL,
+            to: nextURL,
+            statusCode: 302,
+            terminalStatusCode: 200,
+            terminalBody: Data("ok".utf8)
+        )
+        defer { RedirectingURLProtocol.reset() }
+
+        // Must not trap merely by being constructed.
+        let session = makeURLSessionWithRedirectGuard(hopCap: -5)
+        let (_, response) = try await session.data(for: URLRequest(url: upstreamURL))
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 302)
+        XCTAssertNil(RedirectingURLProtocol.terminalRequest(for: nextURL),
+                     "A negative hopCap must clamp to 0 and reject the first redirect, exactly like hopCap: 0")
+    }
+
     // MARK: - Helpers
 
     /// Builds a `URLSession` whose only delegate is a fresh

@@ -274,11 +274,57 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
 
     /// The backend's capability declaration.
     ///
-    /// Subclasses must override this property and return appropriate capabilities.
-    /// The base implementation traps with a clear message — see `payloadHandler`
-    /// for the recommended compile-time-enforced pattern.
+    /// Subclasses must override this property and return appropriate
+    /// capabilities. `capabilities` cannot be made a compile-time-enforced
+    /// init parameter the way `payloadHandler` is: subclasses (Claude,
+    /// OpenAI, Ollama) compute it dynamically from the current `modelName`,
+    /// so it has to stay a re-evaluated property, not a value fixed at
+    /// construction. The base implementation therefore cannot trap — a
+    /// missing override on a third-party subclass is a real bug, but one
+    /// with a viable fallback (report the most conservative capability set
+    /// so callers degrade gracefully — no tool calling, no thinking, no
+    /// streaming assumptions — rather than crash the whole process) so it
+    /// logs an error and returns a minimal, safe default instead of trapping.
+    ///
+    /// Every field below is spelled out explicitly rather than relying on
+    /// `BackendCapabilities.init`'s memberwise defaults: those defaults are
+    /// tuned for the *common* backend (`supportsStreaming: true`,
+    /// `memoryStrategy: .resident`), which is not conservative here — a
+    /// first cut of this fallback used just `BackendCapabilities(isRemote:
+    /// true)` and silently inherited `supportsStreaming: true` (advertising
+    /// a capability the broken subclass never demonstrated) and
+    /// `memoryStrategy: .resident` (violating this very type's own
+    /// documented invariant that every remote backend reports `.external`).
     open var capabilities: BackendCapabilities {
-        fatalError("\(type(of: self)) must override `capabilities`")
+        Log.inference.error("\(type(of: self)) must override `capabilities` — returning a minimal fallback (no advanced features advertised) instead of trapping.")
+        return BackendCapabilities(
+            supportedParameters: [],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: false,
+            supportsToolCalling: false,
+            supportsStructuredOutput: false,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            memoryStrategy: .external,
+            maxOutputTokens: 4096,
+            supportsStreaming: false,
+            isRemote: true,
+            supportsKVCachePersistence: false,
+            supportsGrammarConstrainedSampling: false,
+            supportsThinking: false,
+            supportsVision: false,
+            supportsAudioInput: false,
+            streamsToolCallArguments: false,
+            supportsParallelToolCalls: false,
+            supportsGuidedStructuredOutput: false,
+            supportsStrictSchema: false,
+            sharesMLXProcessResources: false,
+            rendersFullPrompt: false,
+            maxAdvertisedToolCount: nil,
+            toolDialect: nil
+        )
     }
 
     /// Optional ``ModelManifest`` describing the loaded model.
@@ -300,13 +346,62 @@ open class SSECloudBackend: InferenceBackend, @unchecked Sendable {
     /// parameter, **never** from shared backend instance state. Threading it on
     /// the call stack is what makes concurrent requests against one shared
     /// backend instance safe (#2312).
+    ///
+    /// The base implementation throws rather than trapping: unlike
+    /// `capabilities`, this hook is already `throws`, so a missing override —
+    /// on a third-party subclass, most likely — surfaces as a normal,
+    /// catchable `CloudBackendError.missingRequiredOverride` on the
+    /// generation call that needed it, instead of crashing the host process.
+    ///
+    /// ### Why this stays a throwing fallback, not a compile-time-enforced
+    /// requirement
+    ///
+    /// Re-examined during review, since all four in-repo subclasses already
+    /// override this and no companion package subclasses `SSECloudBackend`
+    /// at all (verified: `grep -rln SSECloudBackend` against manifold-mlx
+    /// and manifold-llama returns zero matches in either) — so "would this
+    /// break a real consumer" isn't the blocker. Two independent Swift
+    /// limitations are:
+    ///
+    /// 1. **A protocol requirement doesn't force anything here.** Swift has
+    ///    no "abstract method" — conforming `SSECloudBackend` to a protocol
+    ///    that declares `buildRequest(...)` doesn't help, because the class
+    ///    still needs *some* method body to satisfy the protocol, and
+    ///    whatever body it has (this throwing fallback, or the historical
+    ///    `fatalError`) already satisfies the requirement — a subclass that
+    ///    skips the override compiles either way. Only converting the hook
+    ///    into a required *stored* value (the `payloadHandler` pattern:
+    ///    dependency injection, not method overriding) gets compiler
+    ///    enforcement, which leads to limitation 2.
+    /// 2. **The stored-value conversion needs `self` before `self` exists.**
+    ///    Every shipping subclass builds its request from live instance
+    ///    state read at call time (keychain account, `cachePolicy`,
+    ///    `modelName`, `baseURL`, …) — unlike `payloadHandler`, which is a
+    ///    self-contained value with no backend-instance dependency.
+    ///    Converting `buildRequest` to an init-required closure would need
+    ///    that closure to capture `self` weakly, but Swift forbids
+    ///    referencing `self` before `super.init()` completes — so the
+    ///    closure can only be built *after* construction (the same
+    ///    two-phase shape `configure(adapterRouting:)` already uses), which
+    ///    makes it an optional, settable-after-init property again, not a
+    ///    compiler-enforced one. That reintroduces exactly the "forgot to
+    ///    wire it up" risk this fix exists to close, just moved to a
+    ///    different call.
+    ///
+    /// Both limitations are structural, not proportionality/effort calls:
+    /// there is no Swift-idiomatic way to get a hard compile error for "this
+    /// open method must be overridden" without also solving problem 2, and
+    /// problem 2 has no solution for a hook that needs live instance state.
+    /// A throwing fallback is the correct outcome here, not a shortcut.
     open func buildRequest(
         prompt: String,
         systemPrompt: String?,
         config: GenerationConfig,
         hints: GenerationRuntimeHints
     ) throws -> URLRequest {
-        fatalError("\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:hints:)`")
+        throw CloudBackendError.missingRequiredOverride(
+            "\(type(of: self)) must override `buildRequest(prompt:systemPrompt:config:hints:)`"
+        )
     }
 
     /// Extracts a text token from an SSE JSON payload.

@@ -42,11 +42,12 @@ Heuristic markdown diff; groups findings into Disappeared, Persisted, New.
 
 ## 2. Audit tests
 
-**What.** A pattern: a single XCTest file walks `Sources/` (or `Package.swift`, or `.docc` articles) and grep-asserts a discipline rule. Each one bans an entire class of regression. As of writing there are 19 such files. Representative examples:
+**What.** A pattern: a single XCTest file walks `Sources/` (or `Package.swift`, or `.docc` articles) and grep-asserts a discipline rule. Each one bans an entire class of regression. As of writing there are 20 such files. Representative examples:
 
 | Audit | Rule it enforces | Origin |
 |---|---|---|
 | `SilentCatchAuditTest` | `try?` and empty `catch { }` are banned in `Sources/` outside an idiom/path allowlist | #242 / PR #262 |
+| `TrappingConstructAuditTest` | `fatalError`/`assertionFailure`/`precondition`/`preconditionFailure` are banned in `Sources/` on a recoverable path, outside a path allowlist | trapping-constructs-on-recoverable-paths PR |
 | `TrafficBoundaryAuditTest` | 4-rule import-graph and HTTP-egress allowlist (`URLSession` per-file, hostname allowlists, no UI→Backends imports, …) | architecture invariants — see [CONTRIBUTING.md § Architecture invariants](../CONTRIBUTING.md#architecture-invariants) |
 | `PackageTraitGateAuditTest` | Gate consumer→library edges in `Package.swift`, not library→library | trait-combo build pain |
 | `ProtocolLocationAuditTest` | Cross-family protocols live in `ManifoldInference`, not the umbrella |  |

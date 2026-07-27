@@ -494,3 +494,4 @@ API breakage: constructor ModelManagementSheet.init(initialTab:recommendedModelI
 API breakage: var ModelManifest.contextWindow has declared type change from Swift.Int to Swift.Int?
 API breakage: accessor ModelManifest.contextWindow.Get() has return type change from Swift.Int to Swift.Int?
 API breakage: constructor ModelManifest.init(contextWindow:supportsTools:supportsThinking:thinkingMarkers:supportsSeed:supportedSamplingParameters:modelIdentifier:producerKind:) has parameter 0 type change from Swift.Int to Swift.Int?
+API breakage: enumelement CloudBackendError.missingRequiredOverride has been added as a new enum case

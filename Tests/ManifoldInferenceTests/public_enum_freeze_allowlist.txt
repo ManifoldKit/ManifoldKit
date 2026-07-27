@@ -200,7 +200,6 @@ ManifoldModelCatalog/APIEndpointRecord.swift:public enum CodingKeys: String, Cod
 ManifoldModelCatalog/AudioGenerationEvent.swift:public enum AudioGenerationEvent: Sendable {
 ManifoldModelCatalog/ChatTemplateToolDescriptor.swift:public enum ArgEncoding: String, Sendable, Equatable, Hashable, Codable {
 ManifoldModelCatalog/ChatTemplateToolDescriptor.swift:public enum Extractability: String, Sendable, Equatable, Hashable, Codable {
-ManifoldModelCatalog/CloudBackendError.swift:public enum CloudBackendError: LocalizedError, CategorizedError {
 ManifoldModelCatalog/CloudModelManifestTable.swift:public enum CloudModelManifestTable {
 ManifoldModelCatalog/DownloadState.swift:public enum DownloadStatus: Sendable {
 ManifoldModelCatalog/GeneratedMediaPayload.swift:public enum MediaKind: String, Sendable, Codable, Hashable, CaseIterable {

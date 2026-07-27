@@ -2,6 +2,20 @@ import Foundation
 import ManifoldHardware
 
 /// Errors from cloud API backends (OpenAI-compatible and Claude).
+///
+/// ## Vocabulary growth (1.x)
+///
+/// New cases are added as new provider-specific failure modes are
+/// identified — `quotaExceeded`, `providerOverloaded`, `contentFiltered`,
+/// `blockedAddress`, `unpinnedCredentialedHost`, and `missingRequiredOverride`
+/// all landed after this type's original ship. This is source-breaking for
+/// an exhaustive `switch` outside this package; add a `default:` arm (or an
+/// explicit case for each you handle) to stay resilient to a future case —
+/// see `docs/MIGRATION-cloudbackenderror-missingRequiredOverride.md` for the
+/// concrete example. Cross-cutting properties (`errorDescription`,
+/// `isRetryable`, `category`) are updated in the same PR that adds a case,
+/// so generic error handling (logging, retry policy, user-facing message)
+/// never needs the switch to be exhaustive in the first place.
 public enum CloudBackendError: LocalizedError, CategorizedError {
     case invalidURL(String)
     case authenticationFailed(provider: String)
@@ -42,6 +56,15 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
     /// The request was rejected by the provider's content filter.
     /// Not retryable — the content must change.
     case contentFiltered(provider: String, reason: String?)
+    /// An `open` subclass hook on `SSECloudBackend` (or a future similar
+    /// base class) that a concrete subclass was required to override was
+    /// never overridden. This is a programmer/integration error — the
+    /// associated value names the missing hook — surfaced as a catchable
+    /// error on the call that needed it instead of a `fatalError`, so a
+    /// third-party subclass with a wiring mistake fails the one request
+    /// instead of crashing the host process. Not retryable: retrying the
+    /// same call hits the same missing override every time.
+    case missingRequiredOverride(String)
 
     // MARK: - CategorizedError
 
@@ -62,7 +85,8 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
         case .serverError(let code, _) where code >= 500:
             return .retryableTransient
         case .invalidURL, .parseError, .backendDeallocated,
-             .blockedAddress, .unpinnedCredentialedHost, .networkDisabled, .serverError:
+             .blockedAddress, .unpinnedCredentialedHost, .networkDisabled, .serverError,
+             .missingRequiredOverride:
             return .nonRetryable
         }
     }
@@ -112,6 +136,8 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
                 return "\(provider) rejected the request due to content policy: \(reason)"
             }
             return "\(provider) rejected the request due to content policy."
+        case .missingRequiredOverride(let detail):
+            return "Internal error: \(detail)"
         }
     }
 
@@ -123,7 +149,8 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
             return statusCode >= 500
         case .invalidURL, .authenticationFailed, .parseError, .missingAPIKey,
              .backendDeallocated, .blockedAddress, .unpinnedCredentialedHost,
-             .networkDisabled, .quotaExceeded, .contentFiltered:
+             .networkDisabled, .quotaExceeded, .contentFiltered,
+             .missingRequiredOverride:
             return false
         }
     }

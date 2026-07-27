@@ -312,4 +312,29 @@ final class FallbackBackendTests: XCTestCase {
         XCTAssertEqual(tokens, ["free-fn"])
         XCTAssertEqual(secondary.generateCallCount, 0)
     }
+
+    // MARK: - Empty backend chain does not trap (regression coverage)
+    //
+    // Before this fix, `init(backends:)` trapped the process with
+    // `precondition(!backends.isEmpty, ...)` — but `backends` is public API
+    // that can plausibly be sourced from runtime filtering (e.g.
+    // `available.filter { $0.isReady }`), not just a hardcoded literal, so a
+    // filter that legitimately empties out should not crash the host app.
+    // Sabotage check: reintroduce the precondition and this test crashes the
+    // test process instead of passing/failing normally.
+
+    func testEmptyBackendChain_doesNotTrap_andThrowsFallbackExhausted() async {
+        // Must not crash merely by being constructed.
+        let chain = FallbackBackend(backends: [])
+        XCTAssertTrue(chain.backends.isEmpty)
+
+        do {
+            _ = try await drain(chain)
+            XCTFail("generate() on an empty chain should throw, not succeed")
+        } catch let error as FallbackExhaustedError {
+            XCTAssertTrue(error.perBackendErrors.isEmpty)
+        } catch {
+            XCTFail("Expected FallbackExhaustedError but got \(error)")
+        }
+    }
 }

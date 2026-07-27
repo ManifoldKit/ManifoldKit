@@ -79,13 +79,20 @@ public final class FallbackBackend: InferenceBackend, @unchecked Sendable {
         policy: FallbackPolicy = .default,
         retrySleeper: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
-        // An empty chain would fail every request with an empty
-        // `FallbackExhaustedError` — surfacing the wiring mistake here, at the
-        // call site that built the chain, is far easier to debug.
-        precondition(
-            !backends.isEmpty,
-            "FallbackBackend requires at least one backend"
-        )
+        // An empty chain fails every `generate(...)` call with an empty
+        // `FallbackExhaustedError` — `generate`'s loop over `backends` is
+        // already a no-op for `[]`, falling straight through to that throw,
+        // so this was never actually a crash-only condition; a caller
+        // catches it exactly like an exhausted non-empty chain. This is
+        // public API taking a caller-supplied array that can plausibly come
+        // from runtime filtering (e.g. `available.filter { $0.isReady }`),
+        // not just a hardcoded literal — a host app whose readiness filter
+        // legitimately empties out at some point in its lifecycle should see
+        // a failed generation, not a crashed process. Log the almost-certain
+        // wiring mistake so it's still loud in the console.
+        if backends.isEmpty {
+            Log.inference.warning("FallbackBackend constructed with an empty backend list — every generate() call will throw FallbackExhaustedError(perBackendErrors: []).")
+        }
         self.backends = backends
         self.policy = policy
         self.retrySleeper = retrySleeper
