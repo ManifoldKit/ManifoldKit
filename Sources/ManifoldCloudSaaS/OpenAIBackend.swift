@@ -128,11 +128,24 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, EndpointB
     /// Context budget assumed for a model name that doesn't prefix-match
     /// ``CloudModelManifestTable``.
     ///
-    /// Deliberately conservative rather than optimistic: this backend also
-    /// serves LM Studio and custom OpenAI-compatible endpoints, where an
-    /// unrecognised name usually means a *small local* model, not a large
-    /// frontier one. Underselling costs a shorter prompt; overselling costs a
-    /// truncated conversation or an HTTP 400.
+    /// **This is a conservative guess, not a measurement.** It deliberately
+    /// does *not* live on ``ModelManifest`` — a manifest reports `nil` for a
+    /// model it could not introspect, precisely so that a guess can never
+    /// impersonate a probed value. The guess belongs here, at the layer that
+    /// owns it, where it is named, reviewable, and cannot propagate as fact.
+    ///
+    /// Conservative rather than optimistic because the risks are asymmetric:
+    /// this backend also serves LM Studio and custom OpenAI-compatible
+    /// endpoints, where an unrecognised name (`qwen3-8b-mlx`, `local-model`, …)
+    /// usually means a *small local* model rather than a frontier one.
+    /// Undershooting only wastes available context; overshooting causes hard
+    /// failures — server-side truncation or an HTTP 400.
+    ///
+    /// > Note: the ideal is host-aware — an unrecognised model on
+    /// > `api.openai.com` genuinely is 128k-class, while one on somebody's
+    /// > LM Studio is not. Routing this on the configured base URL is a
+    /// > deliberate follow-up, out of scope for the change that made
+    /// > ``ModelManifest/contextWindow`` optional.
     static let unknownModelContextWindow = 8192
 
     /// Single source of truth for the OpenAI Chat Completions

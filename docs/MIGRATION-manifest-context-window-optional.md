@@ -129,6 +129,11 @@ If you maintain a backend, this is the decision to make consciously: what budget
 should *your* provider assume for a model it cannot identify? Prefer
 underselling — a short prompt is recoverable, an overflow is not.
 
+> **Follow-up (not in this change):** the OpenAI-compatible fallback ideally
+> keys on the configured host — an unrecognised model on `api.openai.com`
+> genuinely is 128k-class, while one on a local LM Studio is not. Today a
+> single conservative constant covers both.
+
 ## Companion packages
 
 Sites needing adaptation in lockstep. All three are **compile errors**, not
