@@ -91,8 +91,8 @@ public struct ModelManifest: Sendable, Equatable, Codable {
     /// > (``ContextWindowManager`` trimming, compression thresholds, the
     /// > utilisation meter) silently computes against a fiction and the user
     /// > sees truncation with no error. This field was a non-optional `Int`
-    /// > carrying a hardcoded `8192` on the unknown path until v0.75; the
-    /// > sentinel forced `ClaudeBackend` to reverse-engineer absence by
+    /// > carrying a hardcoded `8192` on the unknown path. That sentinel
+    /// > forced `ClaudeBackend` to reverse-engineer absence by
     /// > comparing against the literal (`contextWindow == 8192 ? 200_000 : …`),
     /// > which mislabelled any genuine 8k model as unknown and would have
     /// > silently shrunk every unknown Claude model to 8k had the constant
@@ -157,7 +157,7 @@ public struct ModelManifest: Sendable, Equatable, Codable {
     /// - Parameter contextWindow: The measured context window, or `nil` when
     ///   the backend could not determine one. Producers that *did* measure a
     ///   value pass it directly — a non-optional `Int` promotes implicitly, so
-    ///   existing call sites are unaffected by the v0.75 optionality change.
+    ///   existing call sites are unaffected by the optionality change.
     public init(
         contextWindow: Int?,
         supportsTools: Bool,

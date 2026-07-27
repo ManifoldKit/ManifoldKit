@@ -2,7 +2,7 @@
 
 **Audience:** consumer
 **Status:** living
-**Applies to:** v0.75.0 and later (companion-backend authors: you are a *consumer* here — see "Consumers" and the named sites under "Companion packages")
+**Applies to:** the next minor release and later (companion-backend authors: you are a *consumer* here — see "Consumers" and "Companion packages")
 
 ## The compiler diagnostics you'll hit
 
@@ -111,7 +111,7 @@ skip a trim, ask the user — that option now exists for the first time.
 `ModelManifest` is `Codable`, and the synthesised coding for an optional uses
 `decodeIfPresent`. Nothing in ManifoldKit itself persists a `ModelManifest`
 (there is no SwiftData model and no on-disk cache for it), so this affects
-consumer-side persistence only. A payload written before v0.75 that carries
+consumer-side persistence only. A payload written before that release which carries
 `"contextWindow": 8192` decodes as `.some(8192)` — i.e. an old *unknown*
 manifest read off disk still looks like a known 8k model. Re-probe rather than
 trusting a persisted manifest across the upgrade if that distinction matters to
