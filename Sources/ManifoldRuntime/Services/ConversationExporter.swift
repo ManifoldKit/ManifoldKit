@@ -20,10 +20,57 @@ public struct ShareableFile: Sendable, Equatable {
     /// UTI used by the share sheet to pick handlers and icons.
     public let contentType: UTType
 
-    public init(url: URL, suggestedFilename: String, contentType: UTType) {
+    /// The directory ``ConversationExporter`` created to hold `url`, or `nil`
+    /// when the caller passed their own `directory:` override.
+    ///
+    /// This is what makes ownership representable instead of living only in
+    /// a comment: only a directory the exporter itself minted is safe for
+    /// ``cleanup()`` to remove recursively. A caller-supplied directory may
+    /// hold other files the caller still needs, so recursively deleting it
+    /// would be a caller bug the exporter must not commit on their behalf.
+    public let ownedDirectory: URL?
+
+    public init(
+        url: URL,
+        suggestedFilename: String,
+        contentType: UTType,
+        ownedDirectory: URL? = nil
+    ) {
         self.url = url
         self.suggestedFilename = suggestedFilename
         self.contentType = contentType
+        self.ownedDirectory = ownedDirectory
+    }
+
+    /// Old-signature overload kept explicitly: a defaulted-parameter
+    /// addition to an `init` still reads as "constructor removed" to the
+    /// api-digester surface diff (it keys on the full parameter list, not
+    /// just source-call compatibility), so the pre-`ownedDirectory` shape
+    /// is preserved here rather than relying on the default alone.
+    public init(url: URL, suggestedFilename: String, contentType: UTType) {
+        self.init(url: url, suggestedFilename: suggestedFilename, contentType: contentType, ownedDirectory: nil)
+    }
+
+    /// Removes what the exporter actually created: the whole temp directory
+    /// when ``ConversationExporter`` minted one for this export, or just the
+    /// file when the caller supplied `directory:` and therefore owns that
+    /// directory's lifecycle.
+    ///
+    /// Best-effort in the sense that a missing target isn't treated as
+    /// caller error, but a real failure is logged, never swallowed silently
+    /// (AGENTS.md Principle 6 — no `try?` in production paths).
+    public func cleanup() {
+        let target = ownedDirectory ?? url
+        do {
+            try FileManager.default.removeItem(at: target)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            // Already gone (e.g. double cleanup, or the share sheet moved
+            // it) — not worth logging.
+        } catch {
+            Log.persistence.error(
+                "ShareableFile.cleanup failed for \(target.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 }
 
@@ -51,7 +98,7 @@ public enum ConversationExporter {
         let data = try format.export(session: session, messages: messages)
         let filename = sanitisedFilename(for: session, fileExtension: format.fileExtension)
 
-        let dir = try resolveDirectory(directory)
+        let (dir, ownedDirectory) = try resolveDirectory(directory)
         let fileURL = dir.appendingPathComponent(filename, isDirectory: false)
 
         do {
@@ -63,7 +110,8 @@ public enum ConversationExporter {
         return ShareableFile(
             url: fileURL,
             suggestedFilename: filename,
-            contentType: format.contentType
+            contentType: format.contentType,
+            ownedDirectory: ownedDirectory
         )
     }
 
@@ -150,16 +198,22 @@ public enum ConversationExporter {
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func resolveDirectory(_ override: URL?) throws -> URL {
+    /// Returns the directory to write into, plus that same URL again as the
+    /// second element only when *this call* created it — the ownership
+    /// signal ``ShareableFile.ownedDirectory`` carries forward. A
+    /// caller-supplied `override` is never reported as owned, even though we
+    /// `createDirectory` it here too: the caller asked for that specific
+    /// location, so its lifecycle is theirs, not ours to delete later.
+    private static func resolveDirectory(_ override: URL?) throws -> (directory: URL, ownedDirectory: URL?) {
         if let override {
             try FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
-            return override
+            return (override, nil)
         }
         // Each export gets its own temp subdir so two exports of the same
         // session don't clobber each other before the share sheet finishes.
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ManifoldKit-export-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return (dir, dir)
     }
 }

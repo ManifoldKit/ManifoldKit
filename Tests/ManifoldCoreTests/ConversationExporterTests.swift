@@ -154,6 +154,64 @@ final class ConversationExporterTests: XCTestCase {
         XCTAssertEqual(name, "demo.jsonl")
     }
 
+    // MARK: - ShareableFile.cleanup() ownership
+
+    /// The default (no `directory:` override) path mints its own temp
+    /// subdirectory — `cleanup()` must remove that whole directory, not just
+    /// the file, so the caller doesn't leak an empty `ManifoldKit-export-*`
+    /// directory into `tmp` on every export.
+    func test_cleanup_removesExporterOwnedTempDirectory() throws {
+        let session = ManifoldInference.ChatSession(title: "owned")
+        let file = try ConversationExporter.export(
+            session: session,
+            messages: [ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id)],
+            format: MarkdownExportFormat(),
+            directory: nil
+        )
+        let ownedDirectory = try XCTUnwrap(file.ownedDirectory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ownedDirectory.path))
+
+        file.cleanup()
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: ownedDirectory.path),
+            "cleanup() should remove the exporter-minted temp directory"
+        )
+    }
+
+    /// The important case: when a caller passes their own `directory:`, the
+    /// exporter does not own that directory's lifecycle, so `cleanup()` must
+    /// leave it standing — a no-op implementation of `cleanup()` (or the old
+    /// `deletingLastPathComponent()` idiom) would delete it and fail this.
+    func test_cleanup_doesNotDeleteCallerSuppliedDirectory() throws {
+        let session = ManifoldInference.ChatSession(title: "caller-owned")
+        let sibling = tempDir.appendingPathComponent("sibling.txt", isDirectory: false)
+        try Data("keep me".utf8).write(to: sibling)
+
+        let file = try ConversationExporter.export(
+            session: session,
+            messages: [ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id)],
+            format: MarkdownExportFormat(),
+            directory: tempDir
+        )
+        XCTAssertNil(file.ownedDirectory, "caller-supplied directory must not be reported as exporter-owned")
+
+        file.cleanup()
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: tempDir.path),
+            "cleanup() must not remove a directory the caller supplied"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: sibling.path),
+            "cleanup() must not touch other files the caller left in their own directory"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: file.url.path),
+            "cleanup() should still remove the exported file itself"
+        )
+    }
+
     // MARK: - SwiftData convenience overload
 
     func test_export_viaPersistenceProvider_fetchesMessagesInOrder() async throws {
@@ -209,6 +267,6 @@ final class ConversationExporterTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path))
 
         // Caller owns cleanup; clean up so we don't leak fixtures.
-        try? FileManager.default.removeItem(at: file.url.deletingLastPathComponent())
+        file.cleanup()
     }
 }

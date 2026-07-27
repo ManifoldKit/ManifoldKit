@@ -70,6 +70,13 @@ tmp/
 scripts/dx-walkthrough/runs/**
 !scripts/dx-walkthrough/runs/**/
 !scripts/dx-walkthrough/runs/**/*.md
+# The blanket directory re-inclusion above also un-ignores any `.build/`
+# nested inside a run (each run builds a throwaway SwiftPM app under
+# app/.build/, including its checked-out dependency sources) — the root
+# `.build/` rule near the top of this file never gets a chance to apply
+# because the more specific negation below it wins. Re-ignore explicitly so
+# `git add -A` can't sweep a full dependency-checkout tree back in.
+scripts/dx-walkthrough/runs/**/.build/
 # Phase 4 (iPhone on-device) per-run config — contains device UDID + team ID.
 # Never commit; each developer fills in their own. Takes precedence over the
 # blanket *.md re-inclusion above (gitignore evaluates rules in file order,

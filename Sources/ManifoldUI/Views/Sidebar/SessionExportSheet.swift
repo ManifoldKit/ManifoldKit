@@ -131,14 +131,11 @@ public struct SessionExportSheet: View {
         }
     }
 
-    /// Best-effort temp-file cleanup mirroring ``ExportButton``'s pattern —
-    /// filesystem cleanup never blocks the user, and `ConversationExporter`
-    /// writes into a unique per-export subdirectory of `tmp`, so removing the
-    /// parent directory is sufficient.
+    /// `ShareableFile.cleanup()` knows whether it owns its parent directory
+    /// (see `ConversationExporter`), mirroring ``ExportButton``'s pattern —
+    /// neither view ever computes a path to delete itself.
     private func cleanupExportedFile() {
-        if let url = exportedFile?.url {
-            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-        }
+        exportedFile?.cleanup()
     }
 }
 
