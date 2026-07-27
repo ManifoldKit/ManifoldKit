@@ -92,12 +92,10 @@ public struct ExportButton<Format: ConversationExportFormat>: View {
     }
 
     private func cleanupPendingFile() {
-        // The exporter writes into a unique subdirectory of `tmp`; remove the
-        // whole directory so we don't leak the file once the share sheet
-        // closes. Best-effort: filesystem cleanup never blocks the user.
-        if let url = pendingFile?.shareable.url {
-            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-        }
+        // `ShareableFile.cleanup()` knows whether it owns its parent
+        // directory (see `ConversationExporter`) — we never compute a path
+        // to delete here.
+        pendingFile?.shareable.cleanup()
         pendingFile = nil
     }
 

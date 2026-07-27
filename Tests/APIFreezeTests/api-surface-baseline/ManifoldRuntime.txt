@@ -699,6 +699,7 @@ SessionToolSource.toolDefinitions(for:) Func
 ShareableFile Struct
 ShareableFile conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
 ShareableFile.__derived_struct_equals(_:_:) Func
+ShareableFile.cleanup() Func
 ShareableFile.contentType Var
 ShareableFile.init(url:suggestedFilename:contentType:) Constructor
 ShareableFile.suggestedFilename Var

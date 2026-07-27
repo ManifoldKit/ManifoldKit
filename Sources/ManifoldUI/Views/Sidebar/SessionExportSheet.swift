@@ -119,6 +119,11 @@ public struct SessionExportSheet: View {
     }
 
     private func performExport() async {
+        // Clean up the previous export before starting the next one — this
+        // task re-runs on every format-picker change (`.task(id:
+        // selectedFormat)`), so without this each switch orphaned a
+        // `ManifoldKit-export-<uuid>/` temp directory nothing ever removed.
+        cleanupExportedFile()
         exportedFile = nil
         errorMessage = nil
         do {
@@ -131,14 +136,11 @@ public struct SessionExportSheet: View {
         }
     }
 
-    /// Best-effort temp-file cleanup mirroring ``ExportButton``'s pattern —
-    /// filesystem cleanup never blocks the user, and `ConversationExporter`
-    /// writes into a unique per-export subdirectory of `tmp`, so removing the
-    /// parent directory is sufficient.
+    /// `ShareableFile.cleanup()` knows whether it owns its parent directory
+    /// (see `ConversationExporter`), mirroring ``ExportButton``'s pattern —
+    /// neither view ever computes a path to delete itself.
     private func cleanupExportedFile() {
-        if let url = exportedFile?.url {
-            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-        }
+        exportedFile?.cleanup()
     }
 }
 

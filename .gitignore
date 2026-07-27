@@ -70,6 +70,21 @@ tmp/
 scripts/dx-walkthrough/runs/**
 !scripts/dx-walkthrough/runs/**/
 !scripts/dx-walkthrough/runs/**/*.md
+# The blanket directory re-inclusion above also un-ignores any `.build/`
+# nested inside a run (each run builds a throwaway SwiftPM app under
+# app/.build/) — the root `.build/` rule near the top of this file matches
+# first, but gitignore is last-match-wins by file order, not by pattern
+# specificity, so the later `!.../**/` negation overrides it for every path
+# under `runs/`, `.build/` included. Concretely: `.build/checkouts/*` entries
+# are themselves git repositories (SwiftPM checks out each dependency as a
+# real clone with its own `.git`), so under the un-ignored state `git add -A`
+# would stage them as broken embedded-git-repo gitlinks (git warns "adding
+# embedded git repository" per clone) rather than their file trees — still
+# unfetchable references no clone of this repo could resolve, and on top of
+# that any other non-`.md` build byproduct under `.build/` (build.db,
+# workspace-state.json, compiled binaries, …) would go in whole. Re-ignore
+# explicitly so `git add -A` can't sweep any of that back in.
+scripts/dx-walkthrough/runs/**/.build/
 # Phase 4 (iPhone on-device) per-run config — contains device UDID + team ID.
 # Never commit; each developer fills in their own. Takes precedence over the
 # blanket *.md re-inclusion above (gitignore evaluates rules in file order,
