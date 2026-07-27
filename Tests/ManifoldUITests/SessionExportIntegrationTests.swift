@@ -171,12 +171,26 @@ final class SessionExportIntegrationTests: XCTestCase {
     // `.task(id: selectedFormat)` re-runs `performExport()` on every format
     // switch — before the fix, each re-run overwrote `exportedFile` without
     // calling `cleanup()` on the previous one, orphaning a
-    // `ManifoldKit-export-<uuid>/` temp directory per switch. This exercises
-    // the same sequence `performExport()` now runs (cleanup-before-replace)
-    // through the service layer, since the view's private `.task` lifecycle
-    // isn't independently hostable in these snapshot-only UI tests.
+    // `ManifoldKit-export-<uuid>/` temp directory per switch.
+    //
+    // Two tests, because neither alone pins the fix:
+    //  - `test_cleanupBeforeReplace_mechanismLeavesNoOrphanedDirectory`
+    //    proves the underlying primitive (`ShareableFile.cleanup()` called
+    //    before starting the next export) actually prevents the leak — but
+    //    it drives `sessionManager.exportSession` directly and calls
+    //    `cleanup()` itself, so it would stay green even if
+    //    `SessionExportSheet.performExport()` never called it. This view's
+    //    private `.task(id:)` lifecycle isn't independently hostable in
+    //    these snapshot-only UI tests (no ViewInspector-style async-task
+    //    driver in this repo), so it can't be exercised end-to-end here.
+    //  - `test_performExport_sourceCallsCleanupBeforeReplacingExportedFile`
+    //    closes that gap by asserting on `performExport()`'s actual source:
+    //    it fails if the `cleanupExportedFile()` call is removed, or moved
+    //    after `exportedFile` is reassigned. A source-scanning audit, not a
+    //    behavioral test — but it's the piece that actually goes red if
+    //    someone reverts the one-line fix in `SessionExportSheet.swift`.
 
-    func test_repeatedExport_cleanupBeforeReplace_leavesNoOrphanedDirectory() async throws {
+    func test_cleanupBeforeReplace_mechanismLeavesNoOrphanedDirectory() async throws {
         let session = try await seedSession(title: "Switch Formats")
 
         let markdownFile = try await sessionManager.exportSession(session, format: MarkdownExportFormat())
@@ -198,6 +212,56 @@ final class SessionExportIntegrationTests: XCTestCase {
             FileManager.default.fileExists(atPath: plainTextFile.url.path),
             "The newly selected format's export must still land on disk"
         )
+    }
+
+    func test_performExport_sourceCallsCleanupBeforeReplacingExportedFile() throws {
+        let source = try String(contentsOf: try Self.locateSessionExportSheetSource(), encoding: .utf8)
+
+        guard let funcRange = source.range(of: "private func performExport() async {") else {
+            XCTFail("Could not locate performExport() in SessionExportSheet.swift — did it get renamed?")
+            return
+        }
+        guard let bodyEndRange = source.range(of: "\n    }", range: funcRange.upperBound..<source.endIndex) else {
+            XCTFail("Could not locate the end of performExport()'s body")
+            return
+        }
+        let body = source[funcRange.upperBound..<bodyEndRange.lowerBound]
+
+        guard let cleanupRange = body.range(of: "cleanupExportedFile()") else {
+            XCTFail(
+                "performExport() no longer calls cleanupExportedFile() — this reopens the leak where every " +
+                "format-picker switch orphans a ManifoldKit-export-<uuid>/ temp directory"
+            )
+            return
+        }
+        guard let replaceRange = body.range(of: "exportedFile = nil") else {
+            XCTFail("performExport() no longer resets exportedFile — test assumption stale, update this audit")
+            return
+        }
+        XCTAssertLessThan(
+            cleanupRange.lowerBound,
+            replaceRange.lowerBound,
+            "cleanupExportedFile() must run BEFORE exportedFile is reassigned — cleaning up after handing out " +
+            "a fresh exportedFile would clean up the wrong (new) file, not the orphaned previous one"
+        )
+    }
+
+    /// Walks up from `#filePath` to the repo root (marked by `Package.swift`)
+    /// then down to the source file under audit. Mirrors the upwalk pattern
+    /// other audit tests in this repo use (e.g. `FixtureRedactionAuditTest`)
+    /// so this works regardless of invocation cwd.
+    private static func locateSessionExportSheetSource(filePath: StaticString = #filePath) throws -> URL {
+        var dir = URL(fileURLWithPath: "\(filePath)").deletingLastPathComponent()
+        while dir.path != "/" {
+            let candidate = dir.appendingPathComponent("Package.swift")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return dir.appendingPathComponent("Sources/ManifoldUI/Views/Sidebar/SessionExportSheet.swift")
+            }
+            dir.deleteLastPathComponent()
+        }
+        throw NSError(domain: "SessionExportIntegrationTests", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Could not locate repo root (Package.swift) from #filePath"
+        ])
     }
 
     // MARK: - Not limited to the active session

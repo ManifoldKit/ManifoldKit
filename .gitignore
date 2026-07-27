@@ -75,13 +75,15 @@ scripts/dx-walkthrough/runs/**
 # app/.build/) — the root `.build/` rule near the top of this file matches
 # first, but gitignore is last-match-wins by file order, not by pattern
 # specificity, so the later `!.../**/` negation overrides it for every path
-# under `runs/`, `.build/` included. Concretely, a stray run tree in this
-# checkout (2026-07-25_v0.73.0_live-20260725/) would let `git add -A` stage
-# 42 of `.build/checkouts/*`'s dependency clones as embedded-git-repo
-# gitlinks (git warns "adding embedded git repository" per clone) — not
-# their full file trees, since each clone is itself a real `.git` repo, but
-# still 42 broken, unfetchable references no clone of this repo could ever
-# resolve. Re-ignore explicitly so `git add -A` can't sweep those back in.
+# under `runs/`, `.build/` included. Concretely: `.build/checkouts/*` entries
+# are themselves git repositories (SwiftPM checks out each dependency as a
+# real clone with its own `.git`), so under the un-ignored state `git add -A`
+# would stage them as broken embedded-git-repo gitlinks (git warns "adding
+# embedded git repository" per clone) rather than their file trees — still
+# unfetchable references no clone of this repo could resolve, and on top of
+# that any other non-`.md` build byproduct under `.build/` (build.db,
+# workspace-state.json, compiled binaries, …) would go in whole. Re-ignore
+# explicitly so `git add -A` can't sweep any of that back in.
 scripts/dx-walkthrough/runs/**/.build/
 # Phase 4 (iPhone on-device) per-run config — contains device UDID + team ID.
 # Never commit; each developer fills in their own. Takes precedence over the
