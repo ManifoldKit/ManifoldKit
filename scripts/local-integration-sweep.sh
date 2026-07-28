@@ -80,7 +80,17 @@ done
 # or a lane renamed out from under overnight-sweep.sh's LANES default) used to
 # select nothing, bypass every lane_noop guard, and report "Every requested lane
 # did work" with exit 0 — a perfect clean run that measured nothing at all.
-KNOWN_LANES="core llama mlx eval collate evalmain matrix"
+# `matrix` is deliberately ABSENT: it is a sub-step of the core lane (its block
+# is gated on `have_lane core`), so listing it as selectable would certify a lane
+# name that runs nothing — the allowlist itself becoming a source of false
+# confidence. It still reports under its own `matrix:` prefix.
+KNOWN_LANES="core llama mlx eval collate evalmain"
+if [ -z "$LANES" ]; then
+  # An empty lane set iterates the validator zero times and selects nothing —
+  # reproducing the exact "did no work, reported clean" outcome the validator
+  # was added to prevent.
+  echo "empty lane set — known lanes: $KNOWN_LANES" >&2; exit 2
+fi
 for _l in $(printf '%s' "$LANES" | tr ',' ' '); do
   case " $KNOWN_LANES " in
     *" $_l "*) ;;
@@ -370,7 +380,9 @@ if [ "$OLLAMA_NEEDED" -eq 1 ]; then
     # embedding model during `--lanes core` reds the gate for a precondition the
     # run never touches, which teaches the operator to ignore the exit code.
     if [ -n "$ROLE_ERROR" ]; then
-      pf WARN "role:resolution" "role query failed: $ROLE_ERROR"
+      # Escape `|`: PREFLIGHT.md renders these as a markdown table, and a pipe in
+      # an upstream error string would silently split the row into bogus columns.
+      pf WARN "role:resolution" "role query failed: $(printf '%s' "$ROLE_ERROR" | sed 's/|/\\|/g')"
     fi
     if have_lane eval; then
     for rp in "tool:$EVAL_TOOL_MODEL:tools-capable, BFCL" "instruct:$EVAL_INSTRUCT_MODEL:largest chat, IFEval" "embed:$EVAL_EMBED_MODEL:embedding, MTEB"; do
@@ -617,6 +629,7 @@ if have_lane core; then
             log "=== [matrix] $(date +%H:%M:%S) rendered $MATRIX_MD ==="
           else
             SUMMARY_LANES="${SUMMARY_LANES}matrix: render failed -> matrix/score.log\n"
+            FAILED_LANES="${FAILED_LANES}matrix: render failed\n"
           fi
         else
           lane_noop "matrix" "no records emitted -> matrix/score.log"
@@ -695,6 +708,7 @@ if have_lane collate; then
       # exactly this reason and every other caller classifies it.
       if [ "$MLX_LEG_RC" -eq 143 ] || [ "$MLX_LEG_RC" -eq 137 ]; then
         SUMMARY_LANES="${SUMMARY_LANES}collate: MLX leg TIMEOUT/killed (rc=$MLX_LEG_RC, cap ${LANE_TIMEOUT}s) — records below are partial or absent\n"
+        FAILED_LANES="${FAILED_LANES}collate: MLX leg TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
       fi
       if [ -s "$MLX_RECORDS" ]; then
         if ( cd "$EVAL_DIR" && swift build ) >"$COLLATE_DIR/eval-build.log" 2>&1; then
@@ -718,7 +732,7 @@ if have_lane collate; then
             if grep -qE '^## Cross-runtime view' "$XRUNTIME_MD" 2>/dev/null; then
               SUMMARY_LANES="${SUMMARY_LANES}collate: rendered a cross-runtime comparison (ollama+mlx; NO llama leg — manifold-tools-llama lacks --emit-records) -> $(basename "$XRUNTIME_MD")\n"
             else
-              lane_noop "collate" "collate exited 0 but rendered NO cross-runtime section: the legs' model keys did not match, so nothing was actually compared (ollama='$(grep -o '\"model\"[^,]*' "$OLLAMA_RECORDS" 2>/dev/null | head -1)' vs mlx='$(grep -o '\"model\"[^,]*' "$MLX_RECORDS" 2>/dev/null | head -1)') -> $(basename "$XRUNTIME_MD")"
+              lane_noop "collate" "EXPECTED until ManifoldKit#2411 — collate exited 0 but rendered NO cross-runtime section: the legs' model keys did not match, so nothing was actually compared (ollama='$(grep -o '\"model\"[^,]*' "$OLLAMA_RECORDS" 2>/dev/null | head -1)' vs mlx='$(grep -o '\"model\"[^,]*' "$MLX_RECORDS" 2>/dev/null | head -1)') -> $(basename "$XRUNTIME_MD")"
             fi
           else
             SUMMARY_LANES="${SUMMARY_LANES}collate: fail(rc=$?) -> collate/collate.log\n"
@@ -865,6 +879,7 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     run_capped "$logf" "$@"; local rc=$?
     if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: TIMEOUT/killed (rc=$rc, cap ${EVAL_CMD_TIMEOUT}s; resumable) -> $(basename "$logf")\n"
+      FAILED_LANES="${FAILED_LANES}eval:${lbl}: TIMEOUT/killed after ${EVAL_CMD_TIMEOUT}s\n"
       log "=== [eval:$lbl] $(date +%H:%M:%S) KILLED after ${EVAL_CMD_TIMEOUT}s cap ==="
       return 1
     fi
@@ -875,6 +890,7 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: ok ${metric:+— $metric} -> $(basename "$logf")\n"
     else
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: fail(rc=$rc) ${metric:+— $metric} -> $(basename "$logf")\n"
+      FAILED_LANES="${FAILED_LANES}eval:${lbl}: fail(rc=$rc)\n"
     fi
     log "=== [eval:$lbl] $(date +%H:%M:%S) done rc=$rc ==="
     return $rc
@@ -948,8 +964,10 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
       bfcl_rc=$?
       if [ $bfcl_rc -eq 143 ] || [ $bfcl_rc -eq 137 ]; then
         SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: TIMEOUT/killed (rc=$bfcl_rc, cap ${EVAL_CMD_TIMEOUT}s) -> bfcl.log\n"
+        FAILED_LANES="${FAILED_LANES}eval:bfcl: TIMEOUT/killed after ${EVAL_CMD_TIMEOUT}s\n"
       elif [ $bfcl_rc -ne 0 ]; then
         SUMMARY_LANES="${SUMMARY_LANES}eval:bfcl: fail(rc=$bfcl_rc) -> bfcl.log\n"
+        FAILED_LANES="${FAILED_LANES}eval:bfcl: fail(rc=$bfcl_rc)\n"
       elif [ "$EVAL_BFCL_CATEGORY" = "all" ]; then
         # Full corpus generated — the overall IS the honest number.
         bfcl_metric="$(grep -hiE 'overall|accuracy' "$EVAL_OUT/BFCL.md" 2>/dev/null | tail -1 | sed 's/[*|]//g; s/^ *//; s/[[:space:]]\{2,\}/ /g')"
