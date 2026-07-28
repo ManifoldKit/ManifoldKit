@@ -385,8 +385,12 @@ if [ "$OLLAMA_NEEDED" -eq 1 ]; then
       pf WARN "role:resolution" "role query failed: $(printf '%s' "$ROLE_ERROR" | sed 's/|/\\|/g')"
     fi
     if have_lane eval; then
-    for rp in "tool:$EVAL_TOOL_MODEL:tools-capable, BFCL" "instruct:$EVAL_INSTRUCT_MODEL:largest chat, IFEval" "embed:$EVAL_EMBED_MODEL:embedding, MTEB"; do
-      _role="${rp%%:*}"; _rest="${rp#*:}"; _m="${_rest%%:*}"; _why="${_rest#*:}"
+    # Delimit on '|', NOT ':' — Ollama tags contain colons (`qwen3.5:9b`), so
+    # splitting on the first ':' reported role:tool as "qwen3.5" with "9b" folded
+    # into the reason. Display-only, but a preflight table that misnames the model
+    # it selected is the kind of small dishonesty this whole change exists to end.
+    for rp in "tool|$EVAL_TOOL_MODEL|tools-capable, BFCL" "instruct|$EVAL_INSTRUCT_MODEL|largest chat, IFEval" "embed|$EVAL_EMBED_MODEL|embedding, MTEB"; do
+      _role="${rp%%|*}"; _rest="${rp#*|}"; _m="${_rest%%|*}"; _why="${_rest#*|}"
       if [ -n "$_m" ]; then pf PASS "role:$_role" "$_m ($_why)"
       else pf FAIL "role:$_role" "no installed model satisfies this role ($_why) — sub-lane will skip"; fi
     done

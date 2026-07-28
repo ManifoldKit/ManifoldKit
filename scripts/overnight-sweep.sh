@@ -66,7 +66,10 @@ log "=== overnight signal run START (lanes=$LANES, out=$OUT) ==="
   echo "# PREP $(date '+%Y-%m-%d %H:%M:%S %Z')"
   for name in "core:$CORE_DIR" "llama:$LLAMA_DIR" "mlx:$MLX_DIR" "eval:$EVAL_DIR"; do
     d="${name#*:}"; n="${name%%:*}"
-    if [ -d "$d/.git" ]; then
+    # -e, not -d: in a git WORKTREE `.git` is a FILE containing a gitdir pointer,
+    # so `-d` reported the core repo MISSING and PREP silently lost the very
+    # branch/HEAD attribution it exists to record.
+    if [ -e "$d/.git" ]; then
       br="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)"
       sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null)"
       dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
