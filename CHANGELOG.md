@@ -1,5 +1,125 @@
 # Changelog
 
+## [0.75.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.74.0...v0.75.0) (2026-07-27)
+
+A context window that cannot say "I don't know" turns out to be a recurring defect class, not a
+one-off — this release closes the second instance (the first was MLX's hardcoded `8192` in
+v0.74.0) by making the type itself represent absence. Two more trapping constructs on recoverable
+paths are replaced with real error handling, llama.cpp vision support moves from a hardcoded
+`false` to an actual probe, and every remaining pre-1.0 deprecation shim is deleted.
+
+### Highlights
+
+#### Unknown context windows are representable, not fabricated (breaking)
+
+`ModelManifest.contextWindow` was `Int`, and `.unknown(...)` filled the gap with a fabricated
+`8192` — a number indistinguishable from a real measurement. `ClaudeBackend` had reverse-engineered
+that literal to detect it (`resolvedManifest.contextWindow == 8192 ? 200_000 : …`), a comparison
+that breaks the moment any genuine 8k model — OpenAI's `gpt-4`, for one — reaches the same code
+path. The field is now `Int?`; `nil` means "could not be determined," and each backend names its
+own honest fallback at the call site instead of trusting a shared magic number:
+
+```swift
+// Before: a fabricated Int, indistinguishable from a measured one
+let resolvedContext = resolvedManifest.contextWindow == 8192 ? 200_000 : resolvedManifest.contextWindow
+
+// After: absence is on the type; the backend picks its own fallback
+let resolvedContext = resolvedManifest.contextWindow ?? 200_000
+```
+
+See [`docs/MIGRATION-manifest-context-window-optional.md`](docs/MIGRATION-manifest-context-window-optional.md)
+and [#2404](https://github.com/ManifoldKit/ManifoldKit/issues/2404). Companion note: manifold-mlx's
+own `ModelManifest.unknown(...)` call site changes value silently (no compile error) when a
+model's `config.json` is missing — tracked at
+[manifold-mlx#169](https://github.com/ManifoldKit/manifold-mlx/issues/169), landing separately.
+
+#### llama.cpp vision support is probed, not hardcoded (breaking)
+
+`BackendVisionCapability.llamaSupportsImageInput` was a `Bool` property hardcoded to `false` —
+every llama.cpp model reported no vision support regardless of whether it actually had one. It is
+now a function taking the two facts that decide the answer:
+
+```swift
+// Before
+static let llamaSupportsImageInput: Bool = false
+
+// After
+static func llamaSupportsImageInput(projectorStaged: Bool, engineSupportsImageEmbedding: Bool) -> Bool
+```
+
+manifold-llama's adaptation ([manifold-llama#166](https://github.com/ManifoldKit/manifold-llama/pull/166))
+lands separately once this release publishes — see
+[`docs/MIGRATION-llama-vision-probe.md`](docs/MIGRATION-llama-vision-probe.md) and
+[#2401](https://github.com/ManifoldKit/ManifoldKit/issues/2401).
+
+#### Every pre-1.0 deprecation shim is deleted
+
+Per the project's own "delete, don't deprecate" policy, every remaining `@available(*, deprecated)`
+shim is gone outright, along with an audit test enforcing the rule going forward. One real bug fix
+rides along: `OllamaBackend.makeChecked` had been marked deprecated by mistake and is now the
+recommended path. See
+[`docs/MIGRATION-deprecation-shims-deleted.md`](docs/MIGRATION-deprecation-shims-deleted.md) and
+[#2403](https://github.com/ManifoldKit/ManifoldKit/issues/2403).
+
+#### Trapping constructs on recoverable paths no longer crash the process
+
+`URLSessionProvider.pinned`/`.unpinned` used `precondition` to trap the process the moment the
+`networkDisabled` kill-switch was flipped, even though the type's own documentation says it can be
+toggled "at any point during the process lifetime" — a documented runtime toggle that could crash
+a host app on its default construction path. `SSECloudBackend`'s two required-override hooks had
+the same problem with `fatalError`. Both now fail the request or return a conservative value
+instead of trapping, and a new `TrappingConstructAuditTest` scans `Sources/` for the pattern going
+forward — the same shape as the existing `SilentCatchAuditTest`. See
+[#2406](https://github.com/ManifoldKit/ManifoldKit/issues/2406).
+
+### Fixes
+
+- **Ollama streaming stalls are bounded** — a stream that finishes without a tool-continuation
+  response, or that stops emitting tokens mid-turn, now surfaces an error via a real idle timeout
+  instead of hanging the turn ([#2398](https://github.com/ManifoldKit/ManifoldKit/issues/2398),
+  [#2387](https://github.com/ManifoldKit/ManifoldKit/issues/2387)).
+- **`ShareableFile` owns its export cleanup** — export views no longer compute a path to delete
+  themselves; `ShareableFile.cleanup()` removes only the directory the exporter actually created,
+  closing a latent hazard for any caller of `ConversationExporter.export(directory:)`
+  ([#2405](https://github.com/ManifoldKit/ManifoldKit/issues/2405)).
+- **Metrics and discovery fixes** — inter-token-latency now reports whole seconds, and GGUF/MLX
+  model discovery searches the correct depth, closing
+  [#2381](https://github.com/ManifoldKit/ManifoldKit/issues/2381)
+  ([#2393](https://github.com/ManifoldKit/ManifoldKit/issues/2393)).
+- **The handoff scenario renders its actual answer**, and the Example UI test target now compiles
+  on every PR rather than only at release time
+  ([#2390](https://github.com/ManifoldKit/ManifoldKit/issues/2390)).
+- **CI and release tooling** — snippet-gate coverage is derived rather than hand-maintained, with
+  the no-build escape hatch priced ([#2385](https://github.com/ManifoldKit/ManifoldKit/issues/2385));
+  script audits now run on script PRs, with the no-build budget ratcheted down
+  ([#2389](https://github.com/ManifoldKit/ManifoldKit/issues/2389)); and the changelog-lint step
+  catches entries release-please silently drops
+  ([#2386](https://github.com/ManifoldKit/ManifoldKit/issues/2386)).
+
+### Documentation
+
+- **The inert-code audit campaign is closed out**
+  ([#2128](https://github.com/ManifoldKit/ManifoldKit/issues/2128),
+  [#2396](https://github.com/ManifoldKit/ManifoldKit/issues/2396)), alongside an explanation of why
+  companion backend glue can't live in core
+  ([#2394](https://github.com/ManifoldKit/ManifoldKit/issues/2394)) and a governed Ollama
+  performance baseline for [#2335](https://github.com/ManifoldKit/ManifoldKit/issues/2335)
+  ([#2397](https://github.com/ManifoldKit/ManifoldKit/issues/2397)).
+- **SwiftUI load-ceremony gaps found by the DX walkthrough are fixed**
+  ([#2392](https://github.com/ManifoldKit/ManifoldKit/issues/2392)).
+
+### Tests
+
+- **The Example UI build-for-testing gate is required on every PR**, not just at release time
+  ([#2395](https://github.com/ManifoldKit/ManifoldKit/issues/2395)), and a new audit checks doc
+  claims — symbols, links, anchors, and index coverage
+  ([#2383](https://github.com/ManifoldKit/ManifoldKit/issues/2383)).
+
+### Continuous Integration
+
+- **`readme-snippets` can become a required check** now that it runs on `merge_group`
+  ([#2391](https://github.com/ManifoldKit/ManifoldKit/issues/2391)).
+
 ## [0.74.0](https://github.com/ManifoldKit/ManifoldKit/compare/v0.73.0...v0.74.0) (2026-07-25)
 
 Apple's Foundation Models backend gains real guided structured output, and says so honestly —
