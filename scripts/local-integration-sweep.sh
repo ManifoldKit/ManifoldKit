@@ -687,7 +687,25 @@ if have_lane evalmain && [ -d "$EVAL_DIR/.git" ]; then
   # pin — every later eval run would then measure something other than what it
   # reported. Same discipline overnight-sweep.sh's PREP block already applies to
   # branches: measure the tree as-is, never mutate it behind the operator.
-  log "=== [evalmain] $(date +%H:%M:%S) cloning manifold-eval -> $EVALMAIN_CLONE ==="
+  # The clone captures the operator's checkout AS COMMITTED — which may lag its
+  # own origin, and does not include uncommitted work. Silently testing a stale
+  # eval and reporting a clean pass is the same lie this whole change removes, so
+  # measure the lag and say so. `git fetch` only moves remote-tracking refs; it
+  # touches no branch and no working tree, so it respects the "measure the tree
+  # as-is" rule. Found the hard way: this machine's checkout was 8 commits behind
+  # origin/main, which made a stale pin look like a live one.
+  git -C "$EVAL_DIR" fetch --quiet origin 2>/dev/null   # fail-open-ok: offline is fine — the lag check below just falls back to whatever refs are already local, and reports that it could not measure
+  EVAL_BEHIND="$(git -C "$EVAL_DIR" rev-list --count HEAD..origin/main 2>/dev/null)"
+  EVAL_HEAD="$(git -C "$EVAL_DIR" rev-parse --short HEAD 2>/dev/null)"
+  EVAL_DIRTY="$(git -C "$EVAL_DIR" status --porcelain 2>/dev/null | grep -c .)"
+  if [ -z "$EVAL_BEHIND" ]; then
+    SUMMARY_LANES="${SUMMARY_LANES}evalmain: NOTE could not measure clone freshness (no origin/main ref) — result is about local HEAD $EVAL_HEAD\n"
+  elif [ "$EVAL_BEHIND" -gt 0 ]; then
+    SUMMARY_LANES="${SUMMARY_LANES}evalmain: STALE SOURCE — cloned HEAD $EVAL_HEAD is $EVAL_BEHIND commit(s) behind origin/main; this lane tested OLD manifold-eval against core\n"
+    pf WARN "evalmain-freshness" "manifold-eval checkout is $EVAL_BEHIND commit(s) behind origin/main"
+  fi
+  [ "${EVAL_DIRTY:-0}" -gt 0 ] && SUMMARY_LANES="${SUMMARY_LANES}evalmain: NOTE $EVAL_DIRTY uncommitted path(s) in $EVAL_DIR are NOT in the clone\n"
+  log "=== [evalmain] $(date +%H:%M:%S) cloning manifold-eval ($EVAL_HEAD, behind=${EVAL_BEHIND:-?}) -> $EVALMAIN_CLONE ==="
   if git clone --shared --quiet "$EVAL_DIR" "$EVALMAIN_CLONE" 2>"$EVALMAIN_DIR/clone.log"; then
     run_lane evalmain "$EVALMAIN_DIR/evalmain.log" \
       bash -c "cd '$EVALMAIN_CLONE' && \
