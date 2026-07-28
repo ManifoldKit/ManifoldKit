@@ -729,7 +729,16 @@ if have_lane collate; then
             # legs share a normalized model key. Matching the looser phrase
             # matched this lane's own --title, so the assertion could never fail
             # — the same inert-guard bug, one layer up.
-            if grep -qE '^## Cross-runtime view' "$XRUNTIME_MD" 2>/dev/null; then
+            # Two conditions, both required. The section header is emitted only
+            # when >=2 legs share a normalized model key — but `crossRuntimeSection`
+            # groups by key WITHOUT requiring distinct backends, so two Ollama tags
+            # that normalize alike (e.g. `qwen3.5:9b` and `qwen3.5:9b-instruct`,
+            # since `instruct` is dropped) would render a "cross-runtime" section
+            # containing no MLX row at all. The sweep auto-selects every installed
+            # chat tag, so that collision is one `ollama pull` away. Requiring the
+            # section to actually NAME the mlx leg makes the claim match reality.
+            if grep -qE '^## Cross-runtime view' "$XRUNTIME_MD" 2>/dev/null \
+               && sed -n '/^## Cross-runtime view/,$p' "$XRUNTIME_MD" 2>/dev/null | grep -q '| mlx |'; then
               SUMMARY_LANES="${SUMMARY_LANES}collate: rendered a cross-runtime comparison (ollama+mlx; NO llama leg — manifold-tools-llama lacks --emit-records) -> $(basename "$XRUNTIME_MD")\n"
             else
               lane_noop "collate" "EXPECTED until ManifoldKit#2411 — collate exited 0 but rendered NO cross-runtime section: the legs' model keys did not match, so nothing was actually compared (ollama='$(grep -o '\"model\"[^,]*' "$OLLAMA_RECORDS" 2>/dev/null | head -1)' vs mlx='$(grep -o '\"model\"[^,]*' "$MLX_RECORDS" 2>/dev/null | head -1)') -> $(basename "$XRUNTIME_MD")"
