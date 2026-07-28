@@ -946,6 +946,13 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     local lbl="$1" logf="$2"; shift 2
     log "=== [eval:$lbl] $(date +%H:%M:%S) starting (cap ${EVAL_CMD_TIMEOUT}s) ==="
     run_capped "$logf" "$@"; local rc=$?
+    # CONSUME the suppression flag here — immediately after the run and BEFORE
+    # any early return. Clearing it further down let it survive the TIMEOUT
+    # branch's `return 1`, so a scorer that timed out would leak suppression into
+    # the NEXT sub-lane and withhold its perfectly good metric. Read once, reset
+    # once, no path excepted.
+    local suppress="${EVAL_SUPPRESS_METRIC:-0}"
+    EVAL_SUPPRESS_METRIC=0
     if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: TIMEOUT/killed (rc=$rc, cap ${EVAL_CMD_TIMEOUT}s; resumable) -> $(basename "$logf")\n"
       FAILED_LANES="${FAILED_LANES}eval:${lbl}: TIMEOUT/killed after ${EVAL_CMD_TIMEOUT}s\n"
@@ -959,14 +966,9 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     # this line is what overnight-sweep.sh prints at the TOP of the morning
     # summary. Withholding it in the capability-scores block while emitting it
     # here would gate the render site nobody reads first.
-    if [ "${EVAL_SUPPRESS_METRIC:-0}" = "1" ]; then
+    if [ "$suppress" = "1" ]; then
       metric="metric withheld — coverage below ${EVAL_MIN_COVERAGE_PCT}%; see Capability scores"
     fi
-    # CONSUME-ONCE. The flag is armed per sub-lane, and mteb runs after ifeval in
-    # the same shell: leaving it set would withhold a perfectly good MTEB
-    # spearman computed over the full 1379-pair corpus. A guard that suppresses
-    # a valid measurement is as wrong as one that prints an invalid one.
-    EVAL_SUPPRESS_METRIC=0
     if [ "$rc" -eq 0 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: ok ${metric:+— $metric} -> $(basename "$logf")\n"
     else
