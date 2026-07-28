@@ -33,7 +33,7 @@ CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # (`~/Repos/ManifoldKit/manifold-*`), reporting every companion MISSING in PREP
 # while the sweep it wraps was still able to find them.
 COMPANIONS_DIR="${COMPANIONS_DIR:-$HOME/Repos}"
-LANES="${LANES:-core,llama,mlx,eval}"
+LANES="${LANES:-core,llama,mlx,eval,collate,evalmain}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$CORE_DIR/.local-integration-runs/overnight-$STAMP"
 mkdir -p "$OUT"
@@ -103,7 +103,7 @@ log "=== sweep exited rc=$SWEEP_RC ==="
   echo
   echo "## Preflight"
   if [ -f "$OUT/sweep/PREFLIGHT.md" ]; then
-    grep -E '^\| |^\*\*|^All preflight' "$OUT/sweep/PREFLIGHT.md" 2>/dev/null
+    grep -E '^\| |^\*\*|^All [0-9]' "$OUT/sweep/PREFLIGHT.md" 2>/dev/null
   else
     echo "(no PREFLIGHT.md — sweep may have died before preflight wrote it)"
   fi
@@ -114,7 +114,7 @@ log "=== sweep exited rc=$SWEEP_RC ==="
   echo
   echo "## Per-lane result"
   echo '```'
-  grep -hE '^(core|llama|mlx[-a-z]*|matrix|eval[:a-z-]*): ' "$OUT/sweep/REPORT.md" 2>/dev/null || echo "(no lane lines — sweep may have died in prep)"
+  grep -hE '^(core|llama|mlx[-a-z]*|matrix|collate|eval[:a-z-]*): ' "$OUT/sweep/REPORT.md" 2>/dev/null || echo "(no lane lines — sweep may have died in prep)"
   echo '```'
   echo
   echo "## MLX throughput"
