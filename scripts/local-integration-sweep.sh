@@ -962,6 +962,11 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     if [ "${EVAL_SUPPRESS_METRIC:-0}" = "1" ]; then
       metric="metric withheld — coverage below ${EVAL_MIN_COVERAGE_PCT}%; see Capability scores"
     fi
+    # CONSUME-ONCE. The flag is armed per sub-lane, and mteb runs after ifeval in
+    # the same shell: leaving it set would withhold a perfectly good MTEB
+    # spearman computed over the full 1379-pair corpus. A guard that suppresses
+    # a valid measurement is as wrong as one that prints an invalid one.
+    EVAL_SUPPRESS_METRIC=0
     if [ "$rc" -eq 0 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: ok ${metric:+— $metric} -> $(basename "$logf")\n"
     else
