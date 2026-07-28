@@ -55,10 +55,22 @@ COMPANIONS_DIR="${COMPANIONS_DIR:-$HOME/Repos}"
 LANES="core,llama,mlx,eval,collate,evalmain"
 # Preflight knobs. OLLAMA_START_TIMEOUT bounds the wait for a daemon we start
 # ourselves; EVAL_TOOL_MAX_BYTES caps the model chosen for the BFCL role (the
-# largest corpus) so the night stays bounded — the instruct role deliberately
-# takes the largest model instead, for capability signal. See _resolve_roles().
+# largest corpus) so the night stays bounded. The instruct role has its own
+# ceiling for the same reason — see EVAL_INSTRUCT_MAX_BYTES and _resolve_roles().
 OLLAMA_START_TIMEOUT="${OLLAMA_START_TIMEOUT:-60}"
 EVAL_TOOL_MAX_BYTES="${EVAL_TOOL_MAX_BYTES:-12000000000}"
+# Same ceiling for the instruct role. It previously took the LARGEST chat model
+# on the "capability signal, not a tiny model's ceiling" argument — still right,
+# but "capable" has to also mean "finishes inside the cap". On 2026-07-28 that
+# selected qwen3.6:27b (17.4 GB), which blew the harness's 120s per-case timeout
+# on essentially every case: 261 timeouts, 264/541 attempted, and 3 responses
+# persisted before the outer cap killed the lane.
+EVAL_INSTRUCT_MAX_BYTES="${EVAL_INSTRUCT_MAX_BYTES:-12000000000}"
+# Refuse to print a capability score derived from near-zero coverage. IFEval and
+# BFCL both score un-generated cases rather than treating them as holes
+# (manifold-eval#59, #60), so a run that generated 3 of 541 cases still renders a
+# readable "19.2%". Below this percentage the sweep reports coverage instead.
+EVAL_MIN_COVERAGE_PCT="${EVAL_MIN_COVERAGE_PCT:-80}"
 SKIP_NEGATIVE_CONTROL="${SKIP_NEGATIVE_CONTROL:-0}"
 LANE_TIMEOUT="${LANE_TIMEOUT:-2400}"   # per-lane hard cap (s); a hung xctest must not eat the night
 # The eval lane drives hundreds of live generations (not xctest), so it gets its
@@ -281,10 +293,11 @@ ensure_ollama() {
 # way: `tools` means tools whatever the tag is called.
 # Emits shell assignments on stdout, plus `#`-prefixed inventory comments.
 _resolve_roles() {
-  python3 - "$EVAL_TOOL_MAX_BYTES" <<'PY'
+  python3 - "$EVAL_TOOL_MAX_BYTES" "$EVAL_INSTRUCT_MAX_BYTES" <<'PY'
 import json, sys, urllib.request
 
 MAX_TOOL_BYTES = int(sys.argv[1])
+MAX_INSTRUCT_BYTES = int(sys.argv[2])
 
 def api(path, payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
@@ -320,21 +333,42 @@ is_embed = lambda x: "embedding" in x[2] or "embed" in x[0].lower()
 # tool role drives the LARGEST corpus (BFCL), so it takes the biggest model that
 # still fits under the size ceiling — capability with a bounded runtime.
 tool = pick(lambda x: "tools" in x[2] and x[1] <= MAX_TOOL_BYTES)
+tool_oversize = 0
 if not tool:
     tool = pick(lambda x: "tools" in x[2])
+    tool_oversize = 1 if tool else 0
 # instruct role is a CAPABILITY signal (is MK's prompt assembly lossy?), so it
-# deliberately takes the largest chat model regardless of the ceiling.
-instruct = pick(lambda x: "completion" in x[2] and not is_embed(x))
+# takes the largest chat model that still FITS THE CEILING. It used to ignore the
+# ceiling entirely; that selected a 17.4 GB model which timed out on essentially
+# every case, so "capable" now also means "finishes inside the cap".
+instruct = pick(lambda x: "completion" in x[2] and not is_embed(x) and x[1] <= MAX_INSTRUCT_BYTES)
+instruct_oversize = 0
+if not instruct:
+    # Nothing fits. Falling back to the largest overall reintroduces exactly the
+    # timeout this ceiling exists to prevent, so the fallback must be ANNOUNCED —
+    # a silent one renders a green preflight row for the failing precondition.
+    instruct = pick(lambda x: "completion" in x[2] and not is_embed(x))
+    instruct_oversize = 1 if instruct else 0
 embed = pick(is_embed)
 vision = pick(lambda x: "vision" in x[2])
 
 import shlex
+# Inventory FIRST, assignments LAST. The shell reads the assignments with a sed
+# range anchored on the first ROLE_ line running to EOF (a line filter would
+# truncate the multi-line ROLE_TOOL_TAGS value mid-quote). Ordering the output
+# this way keeps that range default-DENY by construction: nothing that is not a
+# role assignment can follow it. Do not append anything after this block.
+for n, sz, c in sorted(info):
+    print("# %-42s %6.1f GB  caps=%s" % (n, sz / 1e9, ",".join(c) or "none"))
 print("ROLE_TOOL=%s" % shlex.quote(tool))
 print("ROLE_INSTRUCT=%s" % shlex.quote(instruct))
 print("ROLE_EMBED=%s" % shlex.quote(embed))
 print("ROLE_VISION=%s" % shlex.quote(vision))
-for n, s, c in sorted(info):
-    print("# %-42s %6.1f GB  caps=%s" % (n, s / 1e9, ",".join(c) or "none"))
+print("ROLE_TOOL_OVERSIZE=%d" % tool_oversize)
+print("ROLE_INSTRUCT_OVERSIZE=%d" % instruct_oversize)
+# Every tools-capable tag, for the conformance matrix (newline-joined). MUST be
+# last — it is the only multi-line value.
+print("ROLE_TOOL_TAGS=%s" % shlex.quote("\n".join(n for n, _, c in info if "tools" in c)))
 PY
 }
 
@@ -366,11 +400,12 @@ done
 # -- ollama + role models -----------------------------------------------------
 OLLAMA_NEEDED=0
 if have_lane core || have_lane eval; then OLLAMA_NEEDED=1; fi
-ROLE_TOOL=""; ROLE_INSTRUCT=""; ROLE_EMBED=""; ROLE_VISION=""; ROLE_ERROR=""
+ROLE_TOOL=""; ROLE_INSTRUCT=""; ROLE_EMBED=""; ROLE_VISION=""; ROLE_ERROR=""; ROLE_TOOL_TAGS=""
+ROLE_TOOL_OVERSIZE=0; ROLE_INSTRUCT_OVERSIZE=0
 if [ "$OLLAMA_NEEDED" -eq 1 ]; then
   if ensure_ollama; then
     ROLES_RAW="$(_resolve_roles 2>"$OUT/preflight-roles.err")"
-    eval "$(printf '%s\n' "$ROLES_RAW" | grep -E '^ROLE_[A-Z]+=')"   # fail-open-ok: grep filters to the assignment lines the helper emits; a miss leaves the roles empty and each guard below reports it
+    eval "$(printf '%s\n' "$ROLES_RAW" | sed -n '/^ROLE_[A-Z_]*=/,$p')"   # fail-open-ok: the sed range starts at the first ROLE_ assignment and the helper emits nothing but assignments after that point (inventory is printed BEFORE them); a miss leaves every role empty, which each guard below reports as a named FAIL
     printf '%s\n' "$ROLES_RAW" | grep '^#' > "$OUT/ollama-inventory.txt"   # fail-open-ok: inventory comments are diagnostics; an empty file is not a run-stopping condition
     # Caller-set env always wins over resolution.
     EVAL_TOOL_MODEL="${EVAL_TOOL_MODEL:-$ROLE_TOOL}"
@@ -389,9 +424,14 @@ if [ "$OLLAMA_NEEDED" -eq 1 ]; then
     # splitting on the first ':' reported role:tool as "qwen3.5" with "9b" folded
     # into the reason. Display-only, but a preflight table that misnames the model
     # it selected is the kind of small dishonesty this whole change exists to end.
-    for rp in "tool|$EVAL_TOOL_MODEL|tools-capable, BFCL" "instruct|$EVAL_INSTRUCT_MODEL|largest chat, IFEval" "embed|$EVAL_EMBED_MODEL|embedding, MTEB"; do
+    for rp in "tool|$EVAL_TOOL_MODEL|tools-capable, BFCL" "instruct|$EVAL_INSTRUCT_MODEL|largest chat that fits the ceiling, IFEval" "embed|$EVAL_EMBED_MODEL|embedding, MTEB"; do
       _role="${rp%%|*}"; _rest="${rp#*|}"; _m="${_rest%%|*}"; _why="${_rest#*|}"
-      if [ -n "$_m" ]; then pf PASS "role:$_role" "$_m ($_why)"
+      _oversize=0
+      [ "$_role" = "tool" ] && _oversize="${ROLE_TOOL_OVERSIZE:-0}"
+      [ "$_role" = "instruct" ] && _oversize="${ROLE_INSTRUCT_OVERSIZE:-0}"
+      if [ -n "$_m" ] && [ "$_oversize" = "1" ]; then
+        pf WARN "role:$_role" "$_m EXCEEDS the size ceiling — no smaller model satisfies this role; expect per-case timeouts"
+      elif [ -n "$_m" ]; then pf PASS "role:$_role" "$_m ($_why)"
       else pf FAIL "role:$_role" "no installed model satisfies this role ($_why) — sub-lane will skip"; fi
     done
     else
@@ -505,9 +545,24 @@ if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
   { echo "## Model selection (auto)"; echo '```'; } >> "$REPORT"
   if [ -z "${MATRIX_MODELS:-}" ] && [ -n "$OLLAMA_CHAT_TAGS" ]; then
     # strip `:latest` so rows match the soak-baseline naming for clean diffs
-    MATRIX_MODELS="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | sed 's/:latest$//' | paste -sd, -)"
+    # Tools-capable tags only. The conformance scenarios ARE tool-calling
+    # scenarios, so a tag whose /api/show capabilities omit `tools` renders a
+    # 💥 load-fail row ("Tools passed to a backend that does not support tool
+    # calling") that says nothing about the model and nothing about ManifoldKit.
+    # Observed for gemma3:4b, which advertises only completion,vision.
+    # `| sort` on both branches: /api/tags is ordered by modified_at, so it
+    # changes whenever a model is pulled or run, and an unsorted list makes this
+    # report line diff noisily between otherwise identical runs.
+    _tool_tags="$(printf '%s\n' "${ROLE_TOOL_TAGS:-}" | grep . | sed 's/:latest$//' | sort | paste -sd, -)"
+    if [ -n "$_tool_tags" ]; then
+      MATRIX_MODELS="$_tool_tags"
+      _matrix_rule="tools-capable tags (/api/show capabilities)"
+    else
+      MATRIX_MODELS="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | sed 's/:latest$//' | sort | paste -sd, -)"
+      _matrix_rule="FALLBACK: ALL chat tags — the capability query returned none, so expect 💥 load-fail rows for models without tool support"
+    fi
     export MATRIX_MODELS
-    echo "MATRIX_MODELS (matrix lane) <- installed: $MATRIX_MODELS" >> "$REPORT"
+    echo "MATRIX_MODELS (matrix lane) <- $_matrix_rule: $MATRIX_MODELS" >> "$REPORT"
   else
     echo "MATRIX_MODELS: caller-set or no installed tags ('${MATRIX_MODELS:-}')" >> "$REPORT"
   fi
@@ -851,10 +906,11 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
   # `embeddinggemma`, so all three sub-lanes skipped and the sweep still read
   # clean. An empty value here means preflight found nothing for that role; the
   # per-sub-lane guards below report it as a named skip.
-  # Rationale preserved from the old defaults: the instruct role deliberately
-  # takes the LARGEST chat model, so IFEval reflects ManifoldKit's prompt-assembly
-  # quality rather than a tiny model's ceiling — a 0.5B scores ~21% and can't
-  # separate "model is small" from "MK plumbing is lossy". Override
+  # Rationale preserved from the old defaults: the instruct role takes the
+  # largest chat model THAT FITS EVAL_INSTRUCT_MAX_BYTES, so IFEval reflects
+  # ManifoldKit's prompt-assembly quality rather than a tiny model's ceiling — a
+  # 0.5B scores ~21% and can't separate "model is small" from "MK plumbing is
+  # lossy" — while still completing inside the per-case timeout. Override
   # EVAL_INSTRUCT_MODEL=qwen2.5:0.5b-instruct-q4_K_M for the provenance-anchored
   # 22.9% baseline.
   EVAL_TOOL_MODEL="${EVAL_TOOL_MODEL:-}"
@@ -899,6 +955,17 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     # Scorer reports print a one-line metric summary to stdout (BFCL/IFEval
     # accuracy, MTEB Spearman). Surface it verbatim; fall back to the exit code.
     local metric; metric="$(grep -hiE 'accuracy|spearman|pearson|F1|pass%|strict' "$logf" 2>/dev/null | tail -1 | sed 's/[[:space:]]\{2,\}/ /g')"
+    # A metric computed over near-zero coverage is an artifact, not a result, and
+    # this line is what overnight-sweep.sh prints at the TOP of the morning
+    # summary. Withholding it in the capability-scores block while emitting it
+    # here would gate the render site nobody reads first.
+    # Suppression is scoped to the sub-lane it was computed for, by LABEL — never
+    # by "whichever call happens next". The reason is carried alongside so this
+    # line cannot assert a coverage percentage on the path where coverage was
+    # UNMEASURABLE (no responses file, or no corpus to divide by).
+    if [ "$lbl" = "ifeval" ] && [ "${EVAL_SUPPRESS_METRIC:-0}" = "1" ]; then
+      metric="metric withheld — ${EVAL_SUPPRESS_REASON:-coverage below ${EVAL_MIN_COVERAGE_PCT}%}; see Capability scores"
+    fi
     if [ "$rc" -eq 0 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: ok ${metric:+— $metric} -> $(basename "$logf")\n"
     else
@@ -1017,6 +1084,23 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
         "$EVAL_BIN" ifeval-generate --ollama-model "$EVAL_INSTRUCT_MODEL" \
           --corpus "$EVAL_IFEVAL_CORPUS" --out "$EVAL_OUT/ifeval-responses.jsonl"
       eval_gen_count "ifeval-generate" "$EVAL_OUT/ifeval-generate.log" "$EVAL_OUT/ifeval-responses.jsonl"
+      # Coverage decides whether the scorer's number is reportable at all. IFEval
+      # counts a MISSING response as a vacuous pass for any instruction an empty
+      # string satisfies, so a near-empty run still yields a readable accuracy
+      # (3/541 responses rendered "19.2%", 104 "passed"). manifold-eval#60.
+      _ifc_total="$(grep -c . "$EVAL_IFEVAL_CORPUS" 2>/dev/null)"
+      _ifc_have="$(grep -c . "$EVAL_OUT/ifeval-responses.jsonl" 2>/dev/null)"
+      EVAL_SUPPRESS_METRIC=0; EVAL_SUPPRESS_REASON=""
+      if [ -n "$_ifc_total" ] && [ "${_ifc_total:-0}" -gt 0 ] 2>/dev/null; then
+        if [ $(( ${_ifc_have:-0} * 100 / _ifc_total )) -lt "$EVAL_MIN_COVERAGE_PCT" ]; then
+          EVAL_SUPPRESS_METRIC=1
+          EVAL_SUPPRESS_REASON="only ${_ifc_have:-0}/${_ifc_total} responses generated (below ${EVAL_MIN_COVERAGE_PCT}% coverage)"
+        fi
+      else
+        # Denominator unknown => coverage unmeasurable => not reportable.
+        EVAL_SUPPRESS_METRIC=1
+        EVAL_SUPPRESS_REASON="coverage UNMEASURABLE (corpus absent, so generated cases cannot be checked against it)"
+      fi
       if [ -s "$EVAL_OUT/ifeval-responses.jsonl" ]; then
         run_eval_cmd "ifeval" "$EVAL_OUT/ifeval.log" \
           "$EVAL_BIN" ifeval --corpus "$EVAL_IFEVAL_CORPUS" \
@@ -1069,9 +1153,37 @@ fi
   echo "## Capability scores (manifold-eval)"
   if [ -d "$OUT/eval" ]; then
     echo '```'
+    # Coverage gate. IFEval and BFCL both score cases that were never generated
+    # rather than treating them as holes (manifold-eval#60, #59) — and for IFEval
+    # a MISSING response vacuously satisfies whole instruction classes
+    # ("respond in all lowercase" is trivially true of an empty string), so a run
+    # that persisted 3 of 541 responses still renders "Strict Accuracy 19.2%",
+    # with 104 of those "passes" being absent responses. A readable percentage
+    # with no coverage next to it is indistinguishable from a real measurement,
+    # which is the entire failure mode this sweep exists to prevent. So: below
+    # EVAL_MIN_COVERAGE_PCT, print the coverage and REFUSE to print the score.
+    _cov_pct() {  # responses-file corpus-count -> integer percent, or empty
+      [ -f "$1" ] || return 0
+      [ -n "$2" ] && [ "$2" -gt 0 ] 2>/dev/null || return 0
+      local n; n="$(grep -c . "$1" 2>/dev/null)"
+      echo $(( n * 100 / $2 ))
+    }
+    _ifeval_total="$(grep -c . "${EVAL_IFEVAL_CORPUS:-/nonexistent}" 2>/dev/null)"
+    _ifeval_cov="$(_cov_pct "$OUT/eval/ifeval-responses.jsonl" "${_ifeval_total:-0}")"
     for r in BFCL IFEVAL MTEB; do
       f="$OUT/eval/$r.md"
-      if [ -s "$f" ]; then
+      # Gate on [ -s "$f" ] FIRST so "not produced" keeps its own honest branch
+      # below; then withhold for BOTH low coverage and UNMEASURABLE coverage. An
+      # empty _ifeval_cov means the responses file or the corpus was absent —
+      # that is the worst case, and it previously took the permissive branch.
+      if [ "$r" = "IFEVAL" ] && [ -s "$f" ] && \
+         { [ -z "$_ifeval_cov" ] || [ "$_ifeval_cov" -lt "$EVAL_MIN_COVERAGE_PCT" ]; }; then
+        if [ -z "$_ifeval_cov" ]; then
+          echo "$r: SCORE WITHHELD — coverage UNMEASURABLE (responses file or corpus absent); a score here could not be checked against what was generated."
+        else
+          echo "$r: SCORE WITHHELD — only ${_ifeval_cov}% coverage ($(grep -c . "$OUT/eval/ifeval-responses.jsonl" 2>/dev/null)/${_ifeval_total} responses). IFEval scores missing responses as vacuous passes (manifold-eval#60), so any accuracy printed here would be an artifact, not a measurement. See eval/$r.md for the raw table."
+        fi
+      elif [ -s "$f" ]; then
         # Match the summary line, not the table HEADER row (which also contains
         # "Accuracy"): BFCL -> "Overall", IFEval -> "Strict Accuracy", MTEB ->
         # "Spearman". For a category-scoped BFCL run the Overall is diluted — the
