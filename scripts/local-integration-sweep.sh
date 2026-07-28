@@ -430,7 +430,7 @@ if [ "$OLLAMA_NEEDED" -eq 1 ]; then
       [ "$_role" = "tool" ] && _oversize="${ROLE_TOOL_OVERSIZE:-0}"
       [ "$_role" = "instruct" ] && _oversize="${ROLE_INSTRUCT_OVERSIZE:-0}"
       if [ -n "$_m" ] && [ "$_oversize" = "1" ]; then
-        pf WARN "role:$_role" "$_m EXCEEDS the size ceiling — no smaller model satisfies this role; expect per-case timeouts ($_why)"
+        pf WARN "role:$_role" "$_m EXCEEDS the size ceiling — no smaller model satisfies this role; expect per-case timeouts"
       elif [ -n "$_m" ]; then pf PASS "role:$_role" "$_m ($_why)"
       else pf FAIL "role:$_role" "no installed model satisfies this role ($_why) — sub-lane will skip"; fi
     done
@@ -946,13 +946,6 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     local lbl="$1" logf="$2"; shift 2
     log "=== [eval:$lbl] $(date +%H:%M:%S) starting (cap ${EVAL_CMD_TIMEOUT}s) ==="
     run_capped "$logf" "$@"; local rc=$?
-    # CONSUME the suppression flag here — immediately after the run and BEFORE
-    # any early return. Clearing it further down let it survive the TIMEOUT
-    # branch's `return 1`, so a scorer that timed out would leak suppression into
-    # the NEXT sub-lane and withhold its perfectly good metric. Read once, reset
-    # once, no path excepted.
-    local suppress="${EVAL_SUPPRESS_METRIC:-0}"
-    EVAL_SUPPRESS_METRIC=0
     if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: TIMEOUT/killed (rc=$rc, cap ${EVAL_CMD_TIMEOUT}s; resumable) -> $(basename "$logf")\n"
       FAILED_LANES="${FAILED_LANES}eval:${lbl}: TIMEOUT/killed after ${EVAL_CMD_TIMEOUT}s\n"
@@ -966,8 +959,12 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
     # this line is what overnight-sweep.sh prints at the TOP of the morning
     # summary. Withholding it in the capability-scores block while emitting it
     # here would gate the render site nobody reads first.
-    if [ "$suppress" = "1" ]; then
-      metric="metric withheld — coverage below ${EVAL_MIN_COVERAGE_PCT}%; see Capability scores"
+    # Suppression is scoped to the sub-lane it was computed for, by LABEL — never
+    # by "whichever call happens next". The reason is carried alongside so this
+    # line cannot assert a coverage percentage on the path where coverage was
+    # UNMEASURABLE (no responses file, or no corpus to divide by).
+    if [ "$lbl" = "ifeval" ] && [ "${EVAL_SUPPRESS_METRIC:-0}" = "1" ]; then
+      metric="metric withheld — ${EVAL_SUPPRESS_REASON:-coverage below ${EVAL_MIN_COVERAGE_PCT}%}; see Capability scores"
     fi
     if [ "$rc" -eq 0 ]; then
       SUMMARY_LANES="${SUMMARY_LANES}eval:${lbl}: ok ${metric:+— $metric} -> $(basename "$logf")\n"
@@ -1093,15 +1090,17 @@ if have_lane eval && [ -d "$EVAL_DIR" ]; then
       # (3/541 responses rendered "19.2%", 104 "passed"). manifold-eval#60.
       _ifc_total="$(grep -c . "$EVAL_IFEVAL_CORPUS" 2>/dev/null)"
       _ifc_have="$(grep -c . "$EVAL_OUT/ifeval-responses.jsonl" 2>/dev/null)"
-      EVAL_SUPPRESS_METRIC=0
+      EVAL_SUPPRESS_METRIC=0; EVAL_SUPPRESS_REASON=""
       if [ -n "$_ifc_total" ] && [ "${_ifc_total:-0}" -gt 0 ] 2>/dev/null; then
         if [ $(( ${_ifc_have:-0} * 100 / _ifc_total )) -lt "$EVAL_MIN_COVERAGE_PCT" ]; then
           EVAL_SUPPRESS_METRIC=1
+          EVAL_SUPPRESS_REASON="only ${_ifc_have:-0}/${_ifc_total} responses generated (below ${EVAL_MIN_COVERAGE_PCT}% coverage)"
         fi
       else
-        EVAL_SUPPRESS_METRIC=1   # denominator unknown => coverage unmeasurable => not reportable
+        # Denominator unknown => coverage unmeasurable => not reportable.
+        EVAL_SUPPRESS_METRIC=1
+        EVAL_SUPPRESS_REASON="coverage UNMEASURABLE (corpus absent, so generated cases cannot be checked against it)"
       fi
-      export EVAL_SUPPRESS_METRIC
       if [ -s "$EVAL_OUT/ifeval-responses.jsonl" ]; then
         run_eval_cmd "ifeval" "$EVAL_OUT/ifeval.log" \
           "$EVAL_BIN" ifeval --corpus "$EVAL_IFEVAL_CORPUS" \
