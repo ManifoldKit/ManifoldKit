@@ -76,6 +76,18 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Reject an unknown lane name outright. `--lanes none` (or a typo like `lama`,
+# or a lane renamed out from under overnight-sweep.sh's LANES default) used to
+# select nothing, bypass every lane_noop guard, and report "Every requested lane
+# did work" with exit 0 — a perfect clean run that measured nothing at all.
+KNOWN_LANES="core llama mlx eval collate evalmain matrix"
+for _l in $(printf '%s' "$LANES" | tr ',' ' '); do
+  case " $KNOWN_LANES " in
+    *" $_l "*) ;;
+    *) echo "unknown lane '$_l' — known lanes: $KNOWN_LANES" >&2; exit 2 ;;
+  esac
+done
+
 mkdir -p "$OUT"
 REPORT="$OUT/REPORT.md"
 PREFLIGHT="$OUT/PREFLIGHT.md"
@@ -85,6 +97,14 @@ SUMMARY_LANES=""   # "name=status(skip/pass/fail) detail" lines, newline-joined
 # used to render identically to a pass and the script exited 0 either way — the
 # single most dangerous property this sweep had for an unattended overnight run.
 NOOP_LANES=""
+# Lanes that RAN and FAILED (non-zero rc, or a watchdog kill). Previously these
+# fed only the human-readable summary: every lane could fail to BUILD and the
+# script still exited 0, because the exit code looked at no-ops only.
+FAILED_LANES=""
+# Measurements taken against a source of unknown or known-stale provenance. Not
+# a failure, but it must reach the verdict — a pass over stale input is not the
+# pass it appears to be.
+STALE_NOTES=""
 PREFLIGHT_LINES=""
 PREFLIGHT_FAILED=0
 
@@ -175,6 +195,7 @@ run_lane() {
   local status detail
   if [ $rc -eq 143 ] || [ $rc -eq 137 ]; then
     SUMMARY_LANES="${SUMMARY_LANES}${name}: TIMEOUT/killed (rc=$rc, cap ${LANE_TIMEOUT}s) -> $(basename "$logf")\n"
+    FAILED_LANES="${FAILED_LANES}${name}: TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
     log "=== [$name] $(date +%H:%M:%S) KILLED after ${LANE_TIMEOUT}s cap ==="
     return
   fi
@@ -193,7 +214,15 @@ run_lane() {
     log "=== [$name] $(date +%H:%M:%S) NO-OP: no test verdicts ($detail) ==="
     return
   fi
-  if [ "$rc" -eq 0 ] && [ "$fails" -eq 0 ]; then status="pass"; else status="fail(rc=$rc)"; fi
+  if [ "$rc" -eq 0 ] && [ "$fails" -eq 0 ]; then
+    status="pass"
+  else
+    status="fail(rc=$rc)"
+    # A lane that fails to BUILD has rc!=0 and zero verdict lines, so it misses
+    # the no-op branch above; without this it reached the report as a failure
+    # nobody's exit code ever saw.
+    FAILED_LANES="${FAILED_LANES}${name}: ${status} (${detail})\n"
+  fi
   SUMMARY_LANES="${SUMMARY_LANES}${name}: ${status} (${detail}) -> $(basename "$logf")\n"
   log "=== [$name] $(date +%H:%M:%S) done: $status ($detail) ==="
 }
@@ -257,7 +286,8 @@ def api(path, payload=None):
 try:
     tags = api("/api/tags").get("models", [])
 except Exception as exc:
-    print("ROLE_ERROR=%s" % str(exc).replace("\n", " ")[:120])
+    import shlex as _s
+    print("ROLE_ERROR=%s" % _s.quote(str(exc).replace("\n", " ")[:120]))
     sys.exit(0)
 
 info = []
@@ -336,11 +366,21 @@ if [ "$OLLAMA_NEEDED" -eq 1 ]; then
     EVAL_TOOL_MODEL="${EVAL_TOOL_MODEL:-$ROLE_TOOL}"
     EVAL_INSTRUCT_MODEL="${EVAL_INSTRUCT_MODEL:-$ROLE_INSTRUCT}"
     EVAL_EMBED_MODEL="${EVAL_EMBED_MODEL:-$ROLE_EMBED}"
+    # Role models matter ONLY to the eval lane. Failing preflight on a missing
+    # embedding model during `--lanes core` reds the gate for a precondition the
+    # run never touches, which teaches the operator to ignore the exit code.
+    if [ -n "$ROLE_ERROR" ]; then
+      pf WARN "role:resolution" "role query failed: $ROLE_ERROR"
+    fi
+    if have_lane eval; then
     for rp in "tool:$EVAL_TOOL_MODEL:tools-capable, BFCL" "instruct:$EVAL_INSTRUCT_MODEL:largest chat, IFEval" "embed:$EVAL_EMBED_MODEL:embedding, MTEB"; do
       _role="${rp%%:*}"; _rest="${rp#*:}"; _m="${_rest%%:*}"; _why="${_rest#*:}"
       if [ -n "$_m" ]; then pf PASS "role:$_role" "$_m ($_why)"
       else pf FAIL "role:$_role" "no installed model satisfies this role ($_why) — sub-lane will skip"; fi
     done
+    else
+      pf "SKIP" "role:*" "eval lane not requested — role models are irrelevant to this run"
+    fi
   else
     pf FAIL "role:*" "ollama unavailable — role models unresolvable"
   fi
@@ -607,8 +647,9 @@ fi
 # TWO KNOWN LIMITATIONS, both surfaced in the output rather than hidden:
 #   1. There is NO llama leg. `manifold-tools-llama` parses only --model/--bench/
 #      --flash/--describe — it has no --emit-records path, unlike its MLX sibling.
-#      The leg renders as an explicit hole row with that reason attached, never as
-#      a measured zero.
+#      Nothing emits a placeholder record for it, so the matrix simply has no
+#      llama row; the absence is carried in this lane's summary line instead. A
+#      missing row is NOT a measured zero — do not read it as one.
 #   2. `manifold-tools-mlx` hardcodes `coreCommit: "unknown"`, so collate's
 #      comparability guard cannot actually verify the MLX leg and will emit an
 #      advisory mixed-commit diagnostic every run. Recorded here so the operator
@@ -621,7 +662,11 @@ if have_lane collate; then
   COLLATE_FAMILY="${COLLATE_FAMILY:-Mistral-7B-Instruct-v0.3}"
   COLLATE_MLX_MODEL="${COLLATE_MLX_MODEL:-}"
   if [ -z "$COLLATE_MLX_MODEL" ]; then
-    COLLATE_MLX_MODEL="$(find "$MODELS_DIR" -maxdepth 3 -type d -name "*${COLLATE_FAMILY}*" 2>/dev/null | head -1)"
+    # Require config.json: a plain -name match also hits the GGUF family dir,
+    # and `gguf` sorts before `mlx`, so head -1 selected a directory with no MLX
+    # snapshot in it and the lane no-op'd with a reason that was simply false.
+    COLLATE_MLX_MODEL="$(find "$MODELS_DIR" -maxdepth 3 -type d -name "*${COLLATE_FAMILY}*" 2>/dev/null \
+      | while read -r _d; do [ -f "$_d/config.json" ] && printf '%s\n' "$_d"; done | head -1)"
   fi
   OLLAMA_RECORDS="$OUT/matrix/records.json"
 
@@ -645,18 +690,41 @@ if have_lane collate; then
       run_capped_lane "$COLLATE_DIR/mlx-run.log" \
         "$MLX_TOOL_BIN" --model "$COLLATE_MLX_MODEL" --scenario all \
           --output "$COLLATE_DIR/mlx-transcript.jsonl" --emit-records "$MLX_RECORDS"
+      MLX_LEG_RC=$?
+      # A watchdog kill (143/137) must be visible; run_capped_lane returns it for
+      # exactly this reason and every other caller classifies it.
+      if [ "$MLX_LEG_RC" -eq 143 ] || [ "$MLX_LEG_RC" -eq 137 ]; then
+        SUMMARY_LANES="${SUMMARY_LANES}collate: MLX leg TIMEOUT/killed (rc=$MLX_LEG_RC, cap ${LANE_TIMEOUT}s) — records below are partial or absent\n"
+      fi
       if [ -s "$MLX_RECORDS" ]; then
         if ( cd "$EVAL_DIR" && swift build ) >"$COLLATE_DIR/eval-build.log" 2>&1; then
           EVAL_BIN_C="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
           if "$EVAL_BIN_C" collate "$OLLAMA_RECORDS" "$MLX_RECORDS" \
                --out "$XRUNTIME_MD" --title "Cross-runtime — $COLLATE_FAMILY" \
                >"$COLLATE_DIR/collate.log" 2>&1; then
-            SUMMARY_LANES="${SUMMARY_LANES}collate: rendered 2 legs (ollama+mlx; NO llama leg — manifold-tools-llama lacks --emit-records) -> $(basename "$XRUNTIME_MD")\n"
+            # Rendering is NOT the same as comparing. The renderer only emits a
+            # cross-runtime section when >=2 legs share a normalized model key,
+            # and the two legs name the same weights differently — Ollama by tag
+            # (`mistral:7b-instruct-v0.3-q4_K_M`) and MLX by snapshot dir
+            # (`Mistral-7B-Instruct-v0.3-4bit`). Those normalize to DIFFERENT
+            # keys, so the file renders happily as two unrelated rows with no
+            # comparison in it. Claiming "rendered 2 legs" off a zero exit was
+            # this script's own green-but-inert failure, reintroduced.
+            if grep -qi "cross-runtime" "$XRUNTIME_MD" 2>/dev/null; then
+              SUMMARY_LANES="${SUMMARY_LANES}collate: rendered a cross-runtime comparison (ollama+mlx; NO llama leg — manifold-tools-llama lacks --emit-records) -> $(basename "$XRUNTIME_MD")\n"
+            else
+              lane_noop "collate" "collate exited 0 but rendered NO cross-runtime section: the legs' model keys did not match, so nothing was actually compared (ollama='$(grep -o '\"model\"[^,]*' "$OLLAMA_RECORDS" 2>/dev/null | head -1)' vs mlx='$(grep -o '\"model\"[^,]*' "$MLX_RECORDS" 2>/dev/null | head -1)') -> $(basename "$XRUNTIME_MD")"
+            fi
           else
             SUMMARY_LANES="${SUMMARY_LANES}collate: fail(rc=$?) -> collate/collate.log\n"
+            FAILED_LANES="${FAILED_LANES}collate: collate command failed\n"
           fi
           # Surface the guard's own verdict rather than assuming it passed.
-          if grep -qi "coreCommit\|mixed\|drift" "$COLLATE_DIR/collate.log" 2>/dev/null; then
+          # Match the diagnostic the collator ACTUALLY emits — "records span N
+          # ManifoldKit core commits (...)". The previous pattern (coreCommit/
+          # mixed/drift) matched none of those words, so the NOTE this lane
+          # promises "every run" could never fire once.
+          if grep -qiE '\[warning\]|core commits?' "$COLLATE_DIR/collate.log" 2>/dev/null; then
             SUMMARY_LANES="${SUMMARY_LANES}collate: NOTE comparability diagnostic emitted (expected — manifold-tools-mlx hardcodes coreCommit \"unknown\") -> collate/collate.log\n"
           fi
         else
@@ -694,15 +762,25 @@ if have_lane evalmain && [ -d "$EVAL_DIR/.git" ]; then
   # touches no branch and no working tree, so it respects the "measure the tree
   # as-is" rule. Found the hard way: this machine's checkout was 8 commits behind
   # origin/main, which made a stale pin look like a live one.
-  git -C "$EVAL_DIR" fetch --quiet origin 2>/dev/null   # fail-open-ok: offline is fine — the lag check below just falls back to whatever refs are already local, and reports that it could not measure
+  # Capture the fetch rc. A FAILED fetch leaves a stale-but-present origin/main
+  # ref, so rev-list still succeeds and can report 0 — reading as "fresh" when
+  # the truth is "unmeasured". That silent-fresh path is the very incident this
+  # block exists to catch, so the failure must be announced, not swallowed.
+  git -C "$EVAL_DIR" fetch --quiet origin 2>/dev/null   # fail-open-ok: offline must not abort the lane; the rc is captured on the next line and reported below
+  EVAL_FETCH_RC=$?
   EVAL_BEHIND="$(git -C "$EVAL_DIR" rev-list --count HEAD..origin/main 2>/dev/null)"
   EVAL_HEAD="$(git -C "$EVAL_DIR" rev-parse --short HEAD 2>/dev/null)"
   EVAL_DIRTY="$(git -C "$EVAL_DIR" status --porcelain 2>/dev/null | grep -c .)"
-  if [ -z "$EVAL_BEHIND" ]; then
+  if [ "$EVAL_FETCH_RC" -ne 0 ]; then
+    # UNMEASURED, not fresh. Say so regardless of what rev-list computed.
+    SUMMARY_LANES="${SUMMARY_LANES}evalmain: FRESHNESS UNMEASURED — git fetch failed (rc=$EVAL_FETCH_RC, offline?); origin/main ref may be stale, so \"behind=${EVAL_BEHIND:-?}\" is not trustworthy\n"
+    STALE_NOTES="${STALE_NOTES}evalmain freshness unmeasured (fetch rc=$EVAL_FETCH_RC)\n"
+  elif [ -z "$EVAL_BEHIND" ]; then
     SUMMARY_LANES="${SUMMARY_LANES}evalmain: NOTE could not measure clone freshness (no origin/main ref) — result is about local HEAD $EVAL_HEAD\n"
+    STALE_NOTES="${STALE_NOTES}evalmain freshness unmeasurable (no origin/main ref)\n"
   elif [ "$EVAL_BEHIND" -gt 0 ]; then
     SUMMARY_LANES="${SUMMARY_LANES}evalmain: STALE SOURCE — cloned HEAD $EVAL_HEAD is $EVAL_BEHIND commit(s) behind origin/main; this lane tested OLD manifold-eval against core\n"
-    pf WARN "evalmain-freshness" "manifold-eval checkout is $EVAL_BEHIND commit(s) behind origin/main"
+    STALE_NOTES="${STALE_NOTES}evalmain tested manifold-eval $EVAL_BEHIND commit(s) behind origin/main (HEAD $EVAL_HEAD)\n"
   fi
   [ "${EVAL_DIRTY:-0}" -gt 0 ] && SUMMARY_LANES="${SUMMARY_LANES}evalmain: NOTE $EVAL_DIRTY uncommitted path(s) in $EVAL_DIR are NOT in the clone\n"
   log "=== [evalmain] $(date +%H:%M:%S) cloning manifold-eval ($EVAL_HEAD, behind=${EVAL_BEHIND:-?}) -> $EVALMAIN_CLONE ==="
@@ -1030,11 +1108,43 @@ if [ "$SKIP_NEGATIVE_CONTROL" != "1" ]; then
   # 3. A nonexistent repo path must not resolve.
   neg_check "repo-probe" "resolve_repo rejects a package that does not exist" \
     resolve_repo "manifold-does-not-exist"
+  # Positive control: a resolve_repo stuck at `return 1` is precisely the failure
+  # that started all of this, and it would pass the negative check perfectly.
+  if resolve_repo "manifold-mlx" >/dev/null 2>&1 || resolve_repo "manifold-eval" >/dev/null 2>&1; then
+    NEG_RESULTS="${NEG_RESULTS}  OK   repo-probe-accepts — resolve_repo finds a companion that IS present\n"
+  else
+    NEG_RESULTS="${NEG_RESULTS}  DEAD repo-probe-accepts — resolve_repo found NO companion repo; it may be stuck closed, which would silently skip every companion lane\n"
+    NEG_FAILED=1
+  fi
   # 4. Ollama must actually reject a bogus model rather than 200-ing — proves the
   #    live endpoint the eval/matrix lanes depend on is discriminating, not a stub.
   if ollama_up; then
-    neg_check "ollama-rejects-bogus" "ollama /api/show 404s an uninstalled tag" \
-      curl -sf --max-time 10 localhost:11434/api/show -d '{"name":"definitely-not-a-real-model:0b"}'
+    # Assert the STATUS CODE, not merely a non-zero curl exit: a timeout (28), a
+    # refused connection (7) or a missing curl (127) are all non-zero for reasons
+    # that prove nothing about whether Ollama discriminates.
+    _bogus_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+      localhost:11434/api/show -d '{"name":"definitely-not-a-real-model:0b"}' 2>/dev/null)"
+    if [ "$_bogus_code" = "404" ]; then
+      NEG_RESULTS="${NEG_RESULTS}  OK   ollama-rejects-bogus — /api/show returned 404 for an uninstalled tag\n"
+    else
+      NEG_RESULTS="${NEG_RESULTS}  DEAD ollama-rejects-bogus — expected HTTP 404, got '${_bogus_code:-<no response>}'; this probe proves nothing\n"
+      NEG_FAILED=1
+    fi
+    # Positive control: an Ollama that 404'd EVERYTHING would ace the check above.
+    if [ -z "${ROLE_INSTRUCT:-}" ]; then
+      # Absence of a check must be visible: an unrun control is not a passed one.
+      NEG_RESULTS="${NEG_RESULTS}  n/a  ollama-accepts-real — SKIPPED (no role model resolved; the bogus-tag check above is therefore unpaired)\n"
+    fi
+    if [ -n "${ROLE_INSTRUCT:-}" ]; then
+      _real_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+        localhost:11434/api/show -d "{\"name\":\"$ROLE_INSTRUCT\"}" 2>/dev/null)"
+      if [ "$_real_code" = "200" ]; then
+        NEG_RESULTS="${NEG_RESULTS}  OK   ollama-accepts-real — /api/show returned 200 for $ROLE_INSTRUCT\n"
+      else
+        NEG_RESULTS="${NEG_RESULTS}  DEAD ollama-accepts-real — expected HTTP 200 for installed '$ROLE_INSTRUCT', got '${_real_code:-<no response>}'; the bogus-tag check above is therefore meaningless\n"
+        NEG_FAILED=1
+      fi
+    fi
   fi
   # 5. collate must refuse an empty corpus (its documented error-severity exit).
   if [ -n "${EVAL_BIN_C:-}" ] && [ -x "${EVAL_BIN_C:-}" ]; then
@@ -1077,7 +1187,21 @@ VERDICT_MD="$OUT/verdict-fragment.md"
   else
     echo "Every requested lane did work."
   fi
-  echo "preflight_failed=$PREFLIGHT_FAILED  noop_lanes=$NOOP_COUNT  negative_control_failed=$NEG_FAILED"
+  if [ -n "$FAILED_LANES" ]; then
+    echo
+    echo "LANE(S) THAT RAN AND FAILED:"
+    printf "%b" "$FAILED_LANES" | sed 's/^/  - /'
+  fi
+  if [ -n "$STALE_NOTES" ]; then
+    echo
+    echo "MEASUREMENTS OF UNCERTAIN PROVENANCE (a pass here is not the pass it looks like):"
+    printf "%b" "$STALE_NOTES" | sed 's/^/  - /'
+  fi
+  echo
+  # "0" must not be printable when the control never ran — the same ambiguity the
+  # preflight block explicitly refuses.
+  if [ "$SKIP_NEGATIVE_CONTROL" = "1" ]; then _neg_state="SKIPPED (SKIP_NEGATIVE_CONTROL=1 — nothing verified the rig can report failure)"; else _neg_state="$NEG_FAILED"; fi
+  echo "preflight_failed=$PREFLIGHT_FAILED  noop_lanes=$NOOP_COUNT  failed_lanes=$(printf "%b" "$FAILED_LANES" | grep -c .)  negative_control_failed=$_neg_state"
   echo '```'
   echo
 } > "$VERDICT_MD"
@@ -1096,6 +1220,7 @@ printf "%b" "$SUMMARY_LANES"
 EXIT_RC=0
 [ "$NOOP_COUNT" -gt 0 ] && EXIT_RC=1
 [ "$PREFLIGHT_FAILED" -eq 1 ] && EXIT_RC=1
+[ -n "$FAILED_LANES" ] && EXIT_RC=1
 [ "$NEG_FAILED" -eq 1 ] && EXIT_RC=2
-log "exit rc=$EXIT_RC (0=clean, 1=preflight/no-op lanes, 2=negative control inert)"
+log "exit rc=$EXIT_RC (0=clean, 1=preflight/no-op/failed lanes, 2=negative control inert)"
 exit "$EXIT_RC"

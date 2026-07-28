@@ -128,7 +128,7 @@ log "=== sweep exited rc=$SWEEP_RC ==="
   echo '```'
   echo
   echo "## Core lane failures (triage these first)"
-  if grep -qE '^core: (fail|TIMEOUT)' "$OUT/sweep/REPORT.md" 2>/dev/null; then
+  if grep -qE '^core: (fail|TIMEOUT|SKIP-NO-WORK)' "$OUT/sweep/REPORT.md" 2>/dev/null; then
     echo '```'
     grep -hE "failed \(|error:|XCTAssert|Test Case '.*' failed" "$OUT/sweep/core.log" 2>/dev/null | grep -vE 'ACMonitoredAccountStore|CoreData:|accounts-service' | head -30
     echo '```'
@@ -150,3 +150,9 @@ log "=== sweep exited rc=$SWEEP_RC ==="
 
 log "=== DONE. summary -> $SUMMARY ==="
 echo "OVERNIGHT_SWEEP_COMPLETE out=$OUT rc=$SWEEP_RC summary=$SUMMARY" | tee -a "$WRAP_LOG"
+# Propagate the sweep's verdict. This was previously the last command in the
+# file and it is a pipeline ending in `tee`, so the wrapper always exited 0 —
+# the rc appeared in the sentinel TEXT but nothing checking $? could ever see
+# it. The inner script's exit code only became meaningful with this change, so
+# leaving it unpropagated would make the whole gate invisible to automation.
+exit "$SWEEP_RC"
