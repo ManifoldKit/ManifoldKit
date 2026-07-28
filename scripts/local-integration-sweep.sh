@@ -59,6 +59,18 @@ LANES="core,llama,mlx,eval,collate,evalmain"
 # takes the largest model instead, for capability signal. See _resolve_roles().
 OLLAMA_START_TIMEOUT="${OLLAMA_START_TIMEOUT:-60}"
 EVAL_TOOL_MAX_BYTES="${EVAL_TOOL_MAX_BYTES:-12000000000}"
+# Same ceiling for the instruct role. It previously took the LARGEST chat model
+# on the "capability signal, not a tiny model's ceiling" argument — still right,
+# but "capable" has to also mean "finishes inside the cap". On 2026-07-28 that
+# selected qwen3.6:27b (17.4 GB), which blew the harness's 120s per-case timeout
+# on essentially every case: 261 timeouts, 264/541 attempted, and 3 responses
+# persisted before the outer cap killed the lane.
+EVAL_INSTRUCT_MAX_BYTES="${EVAL_INSTRUCT_MAX_BYTES:-12000000000}"
+# Refuse to print a capability score derived from near-zero coverage. IFEval and
+# BFCL both score un-generated cases rather than treating them as holes
+# (manifold-eval#59, #60), so a run that generated 3 of 541 cases still renders a
+# readable "19.2%". Below this percentage the sweep reports coverage instead.
+EVAL_MIN_COVERAGE_PCT="${EVAL_MIN_COVERAGE_PCT:-80}"
 SKIP_NEGATIVE_CONTROL="${SKIP_NEGATIVE_CONTROL:-0}"
 LANE_TIMEOUT="${LANE_TIMEOUT:-2400}"   # per-lane hard cap (s); a hung xctest must not eat the night
 # The eval lane drives hundreds of live generations (not xctest), so it gets its
@@ -281,10 +293,11 @@ ensure_ollama() {
 # way: `tools` means tools whatever the tag is called.
 # Emits shell assignments on stdout, plus `#`-prefixed inventory comments.
 _resolve_roles() {
-  python3 - "$EVAL_TOOL_MAX_BYTES" <<'PY'
+  python3 - "$EVAL_TOOL_MAX_BYTES" "$EVAL_INSTRUCT_MAX_BYTES" <<'PY'
 import json, sys, urllib.request
 
 MAX_TOOL_BYTES = int(sys.argv[1])
+MAX_INSTRUCT_BYTES = int(sys.argv[2])
 
 def api(path, payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
@@ -324,7 +337,9 @@ if not tool:
     tool = pick(lambda x: "tools" in x[2])
 # instruct role is a CAPABILITY signal (is MK's prompt assembly lossy?), so it
 # deliberately takes the largest chat model regardless of the ceiling.
-instruct = pick(lambda x: "completion" in x[2] and not is_embed(x))
+instruct = pick(lambda x: "completion" in x[2] and not is_embed(x) and x[1] <= MAX_INSTRUCT_BYTES)
+if not instruct:
+    instruct = pick(lambda x: "completion" in x[2] and not is_embed(x))
 embed = pick(is_embed)
 vision = pick(lambda x: "vision" in x[2])
 
@@ -333,6 +348,8 @@ print("ROLE_TOOL=%s" % shlex.quote(tool))
 print("ROLE_INSTRUCT=%s" % shlex.quote(instruct))
 print("ROLE_EMBED=%s" % shlex.quote(embed))
 print("ROLE_VISION=%s" % shlex.quote(vision))
+# Every tools-capable tag, for the conformance matrix (newline-joined).
+print("ROLE_TOOL_TAGS=%s" % shlex.quote("\n".join(n for n, _, c in info if "tools" in c)))
 for n, s, c in sorted(info):
     print("# %-42s %6.1f GB  caps=%s" % (n, s / 1e9, ",".join(c) or "none"))
 PY
@@ -366,11 +383,11 @@ done
 # -- ollama + role models -----------------------------------------------------
 OLLAMA_NEEDED=0
 if have_lane core || have_lane eval; then OLLAMA_NEEDED=1; fi
-ROLE_TOOL=""; ROLE_INSTRUCT=""; ROLE_EMBED=""; ROLE_VISION=""; ROLE_ERROR=""
+ROLE_TOOL=""; ROLE_INSTRUCT=""; ROLE_EMBED=""; ROLE_VISION=""; ROLE_ERROR=""; ROLE_TOOL_TAGS=""
 if [ "$OLLAMA_NEEDED" -eq 1 ]; then
   if ensure_ollama; then
     ROLES_RAW="$(_resolve_roles 2>"$OUT/preflight-roles.err")"
-    eval "$(printf '%s\n' "$ROLES_RAW" | grep -E '^ROLE_[A-Z]+=')"   # fail-open-ok: grep filters to the assignment lines the helper emits; a miss leaves the roles empty and each guard below reports it
+    eval "$(printf '%s\n' "$ROLES_RAW" | sed -n '/^ROLE_[A-Z_]*=/,$p' | grep -v '^# ')"   # fail-open-ok: grep filters to the assignment lines the helper emits; a miss leaves the roles empty and each guard below reports it
     printf '%s\n' "$ROLES_RAW" | grep '^#' > "$OUT/ollama-inventory.txt"   # fail-open-ok: inventory comments are diagnostics; an empty file is not a run-stopping condition
     # Caller-set env always wins over resolution.
     EVAL_TOOL_MODEL="${EVAL_TOOL_MODEL:-$ROLE_TOOL}"
@@ -505,7 +522,13 @@ if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
   { echo "## Model selection (auto)"; echo '```'; } >> "$REPORT"
   if [ -z "${MATRIX_MODELS:-}" ] && [ -n "$OLLAMA_CHAT_TAGS" ]; then
     # strip `:latest` so rows match the soak-baseline naming for clean diffs
-    MATRIX_MODELS="$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | sed 's/:latest$//' | paste -sd, -)"
+    # Tools-capable tags only. The conformance scenarios ARE tool-calling
+    # scenarios, so a tag whose /api/show capabilities omit `tools` renders a
+    # 💥 load-fail row ("Tools passed to a backend that does not support tool
+    # calling") that says nothing about the model and nothing about ManifoldKit.
+    # Observed for gemma3:4b, which advertises only completion,vision.
+    _tool_tags="$(printf '%s\n' "${ROLE_TOOL_TAGS:-}" | grep . | sed 's/:latest$//' | paste -sd, -)"
+    MATRIX_MODELS="${_tool_tags:-$(printf '%s\n' "$OLLAMA_CHAT_TAGS" | sed 's/:latest$//' | paste -sd, -)}"
     export MATRIX_MODELS
     echo "MATRIX_MODELS (matrix lane) <- installed: $MATRIX_MODELS" >> "$REPORT"
   else
@@ -1069,9 +1092,28 @@ fi
   echo "## Capability scores (manifold-eval)"
   if [ -d "$OUT/eval" ]; then
     echo '```'
+    # Coverage gate. IFEval and BFCL both score cases that were never generated
+    # rather than treating them as holes (manifold-eval#60, #59) — and for IFEval
+    # a MISSING response vacuously satisfies whole instruction classes
+    # ("respond in all lowercase" is trivially true of an empty string), so a run
+    # that persisted 3 of 541 responses still renders "Strict Accuracy 19.2%",
+    # with 104 of those "passes" being absent responses. A readable percentage
+    # with no coverage next to it is indistinguishable from a real measurement,
+    # which is the entire failure mode this sweep exists to prevent. So: below
+    # EVAL_MIN_COVERAGE_PCT, print the coverage and REFUSE to print the score.
+    _cov_pct() {  # responses-file corpus-count -> integer percent, or empty
+      [ -f "$1" ] || return 0
+      [ -n "$2" ] && [ "$2" -gt 0 ] 2>/dev/null || return 0
+      local n; n="$(grep -c . "$1" 2>/dev/null)"
+      echo $(( n * 100 / $2 ))
+    }
+    _ifeval_total="$(grep -c . "${EVAL_IFEVAL_CORPUS:-/nonexistent}" 2>/dev/null)"
+    _ifeval_cov="$(_cov_pct "$OUT/eval/ifeval-responses.jsonl" "${_ifeval_total:-0}")"
     for r in BFCL IFEVAL MTEB; do
       f="$OUT/eval/$r.md"
-      if [ -s "$f" ]; then
+      if [ "$r" = "IFEVAL" ] && [ -n "$_ifeval_cov" ] && [ "$_ifeval_cov" -lt "$EVAL_MIN_COVERAGE_PCT" ]; then
+        echo "$r: SCORE WITHHELD — only ${_ifeval_cov}% coverage ($(grep -c . "$OUT/eval/ifeval-responses.jsonl" 2>/dev/null)/${_ifeval_total} responses). IFEval scores missing responses as vacuous passes (manifold-eval#60), so any accuracy printed here would be an artifact, not a measurement. See eval/$r.md if you need the raw table."
+      elif [ -s "$f" ]; then
         # Match the summary line, not the table HEADER row (which also contains
         # "Accuracy"): BFCL -> "Overall", IFEval -> "Strict Accuracy", MTEB ->
         # "Spearman". For a category-scoped BFCL run the Overall is diluted — the
