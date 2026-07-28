@@ -27,6 +27,11 @@
 set -uo pipefail  # fail-open-ok: NOT -e — the sweep must reach its summary even when lanes fail
 
 CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# COMPANIONS_DIR is a HINT, not the answer — see resolve_repo() below, mirrored
+# from local-integration-sweep.sh. The old hardcoded `$HOME/Repos` default
+# silently missed a checkout layout that nests the family one level deeper
+# (`~/Repos/ManifoldKit/manifold-*`), reporting every companion MISSING in PREP
+# while the sweep it wraps was still able to find them.
 COMPANIONS_DIR="${COMPANIONS_DIR:-$HOME/Repos}"
 LANES="${LANES:-core,llama,mlx,eval}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -37,12 +42,29 @@ SUMMARY="$OUT/SUMMARY.md"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')" "$*" | tee -a "$WRAP_LOG"; }
 
+# Locate a companion repo by PROBING for its Package.swift rather than trusting
+# a path convention. Order: caller's COMPANIONS_DIR, then the core checkout's
+# own parent (siblings-under-one-dir layout), then the two historical
+# defaults. Echoes the resolved path, or nothing. (Mirrors
+# local-integration-sweep.sh's resolve_repo() — these scripts are standalone,
+# so the helper is duplicated rather than sourced.)
+resolve_repo() {
+  local n="$1" c
+  for c in "$COMPANIONS_DIR/$n" "$(dirname "$CORE_DIR")/$n" "$HOME/Repos/$n" "$HOME/Repos/ManifoldKit/$n"; do
+    if [ -f "$c/Package.swift" ]; then (cd "$c" && pwd); return 0; fi
+  done
+  return 1
+}
+LLAMA_DIR="$(resolve_repo manifold-llama)" || LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
+MLX_DIR="$(resolve_repo manifold-mlx)"     || MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
+EVAL_DIR="$(resolve_repo manifold-eval)"   || EVAL_DIR="$COMPANIONS_DIR/manifold-eval"
+
 log "=== overnight signal run START (lanes=$LANES, out=$OUT) ==="
 
 # ----- PREP: honest per-repo state (no stashing, no branch switching) --------
 {
   echo "# PREP $(date '+%Y-%m-%d %H:%M:%S %Z')"
-  for name in "core:$CORE_DIR" "llama:$COMPANIONS_DIR/manifold-llama" "mlx:$COMPANIONS_DIR/manifold-mlx" "eval:$COMPANIONS_DIR/manifold-eval"; do
+  for name in "core:$CORE_DIR" "llama:$LLAMA_DIR" "mlx:$MLX_DIR" "eval:$EVAL_DIR"; do
     d="${name#*:}"; n="${name%%:*}"
     if [ -d "$d/.git" ]; then
       br="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)"
@@ -78,6 +100,17 @@ log "=== sweep exited rc=$SWEEP_RC ==="
   echo "# Overnight local-inference signal run — $STAMP"
   echo
   echo "_Sweep exit rc=$SWEEP_RC. Full report: \`$OUT/sweep/REPORT.md\`; wrapper log: \`$WRAP_LOG\`._"
+  echo
+  echo "## Preflight"
+  if [ -f "$OUT/sweep/PREFLIGHT.md" ]; then
+    grep -E '^\| |^\*\*|^All preflight' "$OUT/sweep/PREFLIGHT.md" 2>/dev/null
+  else
+    echo "(no PREFLIGHT.md — sweep may have died before preflight wrote it)"
+  fi
+  if grep -qE ': SKIP-NO-WORK' "$OUT/sweep/REPORT.md" 2>/dev/null; then
+    echo
+    echo "**⚠️ one or more requested lanes did NO WORK this run (SKIP-NO-WORK below) — read this before trusting the results as signal.**"
+  fi
   echo
   echo "## Per-lane result"
   echo '```'
