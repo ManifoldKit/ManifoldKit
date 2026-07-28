@@ -700,7 +700,7 @@ if have_lane collate; then
         if ( cd "$EVAL_DIR" && swift build ) >"$COLLATE_DIR/eval-build.log" 2>&1; then
           EVAL_BIN_C="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
           if "$EVAL_BIN_C" collate "$OLLAMA_RECORDS" "$MLX_RECORDS" \
-               --out "$XRUNTIME_MD" --title "Cross-runtime — $COLLATE_FAMILY" \
+               --out "$XRUNTIME_MD" --title "Runtime comparison — $COLLATE_FAMILY" \
                >"$COLLATE_DIR/collate.log" 2>&1; then
             # Rendering is NOT the same as comparing. The renderer only emits a
             # cross-runtime section when >=2 legs share a normalized model key,
@@ -710,7 +710,12 @@ if have_lane collate; then
             # keys, so the file renders happily as two unrelated rows with no
             # comparison in it. Claiming "rendered 2 legs" off a zero exit was
             # this script's own green-but-inert failure, reintroduced.
-            if grep -qi "cross-runtime" "$XRUNTIME_MD" 2>/dev/null; then
+            # Anchor on MatrixRenderer's real section header ("## Cross-runtime
+            # view (same logical model, side by side)"), emitted ONLY when >=2
+            # legs share a normalized model key. Matching the looser phrase
+            # matched this lane's own --title, so the assertion could never fail
+            # — the same inert-guard bug, one layer up.
+            if grep -qE '^## Cross-runtime view' "$XRUNTIME_MD" 2>/dev/null; then
               SUMMARY_LANES="${SUMMARY_LANES}collate: rendered a cross-runtime comparison (ollama+mlx; NO llama leg — manifold-tools-llama lacks --emit-records) -> $(basename "$XRUNTIME_MD")\n"
             else
               lane_noop "collate" "collate exited 0 but rendered NO cross-runtime section: the legs' model keys did not match, so nothing was actually compared (ollama='$(grep -o '\"model\"[^,]*' "$OLLAMA_RECORDS" 2>/dev/null | head -1)' vs mlx='$(grep -o '\"model\"[^,]*' "$MLX_RECORDS" 2>/dev/null | head -1)') -> $(basename "$XRUNTIME_MD")"
