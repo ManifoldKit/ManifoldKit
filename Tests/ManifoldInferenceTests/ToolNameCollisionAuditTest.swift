@@ -21,28 +21,32 @@ import Darwin
 /// decoys were renamed; this audit is what keeps the claim true going
 /// forward.
 ///
-/// **In THIS package today, the `search_web` collision specifically could
-/// not actually trip:** `ManifoldTools` depends only on `ManifoldInference`
-/// (not `ManifoldUI`), and the in-repo `manifold-tools` executable links
-/// `ManifoldTools`/`ManifoldOllama`/`ManifoldCloudSaaS`/`ManifoldInference`
-/// only — never `ManifoldUI` (see `Package.swift`'s `ManifoldTools` and
-/// `manifold-tools` target declarations). So no in-repo driver could ever
-/// advertise both the decoy pool and `WebSearchToolSource`'s real tool in
-/// one process, and a scenario sweep run from this repo could not have
-/// misscored a correct `search_web` call. That half of the fix was
-/// preventive, not a fix for a currently-live scoring bug — do not read a
-/// green run here as evidence that collision was ever actually observed
-/// miscoring anything. The `get_weather` collision, in contrast, WAS live:
-/// `ManifoldFuzz` advertises `SyntheticToolset.definitions` (including
-/// `get_weather`) directly to a real backend under test.
+/// **Keep two propositions apart when reading the above.** That a tool is
+/// *advertised to a live model* is not the same as the *collision* being
+/// reachable; a collision bites only when both names reach one request. The
+/// colliding tools are genuinely live — `WebSearchToolSource`'s `search_web`
+/// ships in the chat UI, and `SyntheticToolset`'s `get_weather` is handed to
+/// a real backend as `GenerationConfig.tools` (`SessionFuzzRunner.swift`,
+/// `FuzzRunner.swift`, gated on `config.tools`) — which is what made the
+/// orthogonality claim false. But **neither collision was reachable inside
+/// this package**, and both for the same reason: no in-repo driver
+/// advertises two of these pools at once. `ManifoldTools` depends only on
+/// `ManifoldInference` (never `ManifoldUI`), the `manifold-tools` executable
+/// links `ManifoldTools`/`ManifoldOllama`/`ManifoldCloudSaaS`/
+/// `ManifoldInference` only, and `fuzz-chat` links `ManifoldFuzz` without
+/// `ManifoldTools` (see those target declarations in `Package.swift`). So no
+/// scenario sweep or fuzz run driven from this repo could have misscored a
+/// correct call to either name.
 ///
-/// The `search_web` collision's real reachability path is cross-package:
-/// `ManifoldTools` is a published `.library()` product (`Package.swift`
-/// products list), so an external consumer — e.g. manifold-eval, or a
-/// consumer app driving its own evals — can import both `ManifoldTools` and
-/// the `ManifoldKit` umbrella (which re-exports `ManifoldUI`) in one
-/// process, at which point the collision this audit blocks becomes live
-/// exactly as originally feared.
+/// Do not read a green run here as evidence that either collision was ever
+/// observed miscoring anything. Both halves of the fix are preventive,
+/// against the same cross-package hazard: `ManifoldTools` and `ManifoldFuzz`
+/// are both published `.library()` products (`Package.swift` products list),
+/// so an external consumer — manifold-eval, manifold-mlx's fuzz driver, or a
+/// consumer app driving its own evals — can import a decoy-pool product
+/// alongside the `ManifoldKit` umbrella (which re-exports `ManifoldUI`) or
+/// alongside `ManifoldFuzz` in one process, at which point the collision
+/// this audit blocks becomes live exactly as originally feared.
 ///
 /// The full detection pipeline lives in ``scan(sourcesRoot:)`` so the
 /// in-file sabotage test exercises the exact function the audit runs.
