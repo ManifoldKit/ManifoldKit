@@ -111,6 +111,21 @@ final class ToolNameCollisionAuditTest: XCTestCase {
         let decoyDeclarations = declarations.filter { $0.file.hasSuffix("DecoyTools.swift") }
         XCTAssertFalse(decoyDeclarations.isEmpty, "Expected to find decoy tool declarations in DecoyTools.swift — detection probably broken")
 
+        // An empty collision set is only meaningful if the scan actually
+        // reached files outside DecoyTools.swift — the right-hand side of the
+        // comparison below. Without this anchor, narrowing the traversal to
+        // Sources/ManifoldTools (a refactor, or an upward #filePath walk that
+        // lands on a sub-root) would still find all 46 decoy names, find no
+        // collisions, and pass while enforcing nothing. The surviving sabotage
+        // test cannot cover this: it passes its own temp root to
+        // `scan(sourcesRoot:)` and so never exercises the real enumeration.
+        XCTAssertTrue(
+            declarations.contains {
+                $0.file.hasSuffix("ManifoldUI/Tools/WebSearchToolSource.swift") && $0.name == "search_web"
+            },
+            "scan did not reach a known non-DecoyTools declaration (WebSearchToolSource's search_web) — an empty collision set would prove nothing"
+        )
+
         let decoyNames = Set(decoyDeclarations.map(\.name))
         let collisions = declarations.filter { !$0.file.hasSuffix("DecoyTools.swift") && decoyNames.contains($0.name) }
 

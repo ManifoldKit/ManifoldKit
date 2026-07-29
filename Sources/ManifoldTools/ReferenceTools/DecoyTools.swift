@@ -42,6 +42,16 @@ import ManifoldInference
 /// tools above; both were renamed. See `ToolNameCollisionAuditTest` for the
 /// enforcement, which fails the build the next time a shipped tool's name
 /// reappears here.
+///
+/// One deliberate exception, which the audit cannot see and does not cover:
+/// the BFCL fixtures (`BFCL/fixtures/*.jsonl`) declare 73 tool names that are
+/// advertised to a live model, and one — `convert_currency` — is also a decoy
+/// here. That is safe because the two sets never reach one advertised
+/// toolset: the `bfcl` subcommand dispatches in `manifold-tools`' `main.swift`
+/// before the scenario CLI's decoy padding, and neither `BFCL/` nor
+/// `BFCLCLI.swift` references `DecoyTools` or `extraTools`. The names above
+/// are Swift declarations; these are JSONL resources, so keep the two
+/// mechanisms distinct when adding either.
 public enum DecoyTools {
 
     /// Largest `--extra-tools N` this pool can satisfy without repeating a
