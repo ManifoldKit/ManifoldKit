@@ -1,0 +1,20 @@
+# Allowlist for ToolNameCollisionAuditTest.
+#
+# Format: one fingerprint (`relative/path.swift:name`) per line, naming the
+# non-DecoyTools.swift declaration that shares a name with a decoy.
+# `#`-prefixed lines and blank lines are ignored.
+#
+# Entries here are pre-existing collisions with a tool definition that is
+# NOT reachable by a real chat session — a fuzz/fixture/test-only toolset —
+# so a decoy call can never be a defensible substitution for it the way it
+# could for a genuinely shipped, model-facing tool (WebSearchToolSource,
+# SkillToolSource, ImageGenerationToolSource, etc.). Adding an entry here
+# requires confirming the colliding declaration is not wired into any real
+# SessionToolSource / ChatViewModel path.
+
+# ManifoldFuzz.SyntheticToolset is a known-answer fixture fed to backends
+# under test via `GenerationConfig.tools` in the fuzz harness — never
+# advertised in a real conversation, so it can't be confused with a decoy
+# padding a live scenario's toolset the way DecoyTools.swift's doc comment
+# describes.
+ManifoldFuzz/SyntheticToolset.swift:get_weather
