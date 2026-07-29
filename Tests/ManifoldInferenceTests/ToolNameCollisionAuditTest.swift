@@ -5,16 +5,36 @@ import Darwin
 /// with a real, shipped model-facing tool defined anywhere else under
 /// `Sources/`.
 ///
+/// ## Why this audit exists, precisely
+///
 /// `DecoyTools` pads a scenario's advertised toolset (`--extra-tools N`, see
 /// that file's doc comment) with plausible-but-irrelevant tool definitions so
 /// a scenario run can tell "the model picked the right tool" from "the model
-/// had no other tool to pick." That guarantee silently breaks if a decoy
-/// happens to share a name with a tool the model can legitimately call
-/// (e.g. `ManifoldUI/Tools/WebSearchToolSource.swift`'s `search_web`) — a
-/// sweep padding a toolset containing that real tool would advertise the
-/// same name twice, so a CORRECT model call is scored as a decoy invocation.
-/// This bit once already (the decoy pool used to define its own
-/// `search_web`, fixed alongside this audit).
+/// had no other tool to pick." `DecoyTools.swift`'s own doc comment asserts
+/// its names are drawn from domains orthogonal to every tool it could be
+/// advertised alongside — the decoy pool used to define `search_web`, which
+/// collides with `ManifoldUI/Tools/WebSearchToolSource.swift`'s shipped
+/// `search_web` tool, making that assertion false as written. Fixing the
+/// false doc claim is reason enough for this audit on its own.
+///
+/// **In THIS package today, that collision cannot actually trip:**
+/// `ManifoldTools` depends only on `ManifoldInference` (not `ManifoldUI`),
+/// and the in-repo `manifold-tools` executable links
+/// `ManifoldTools`/`ManifoldOllama`/`ManifoldCloudSaaS`/`ManifoldInference`
+/// only — never `ManifoldUI` (see `Package.swift`'s `ManifoldTools` and
+/// `manifold-tools` target declarations). So no in-repo driver can advertise
+/// both the decoy pool and `WebSearchToolSource`'s real tool in one process,
+/// and a scenario sweep run from this repo cannot misscore a correct
+/// `search_web` call today. The audit is therefore preventive, not a fix for
+/// a currently-live scoring bug — do not read a green run here as evidence
+/// this collision was ever actually observed miscoring anything.
+///
+/// The real reachability path is cross-package: `ManifoldTools` is a
+/// published `.library()` product (`Package.swift` products list), so an
+/// external consumer — e.g. manifold-eval, or a consumer app driving its own
+/// evals — can import both `ManifoldTools` and the `ManifoldKit` umbrella
+/// (which re-exports `ManifoldUI`) in one process, at which point the
+/// collision this audit blocks becomes live exactly as originally feared.
 ///
 /// The full detection pipeline lives in ``scan(sourcesRoot:)`` so the
 /// in-file sabotage test exercises the exact function the audit runs.
@@ -46,10 +66,17 @@ import Darwin
 /// is not treated as a live declaration.
 ///
 /// Limitation: this is line-based, not AST-based, matching the sibling
-/// audits (`SilentCatchAuditTest`, `TrappingConstructAuditTest`). A tool name
-/// built from a variable (`name: toolName`) is invisible to it — those are
-/// unaffected by this bug class because they aren't string literals a decoy
-/// could accidentally match either.
+/// audits (`SilentCatchAuditTest`, `TrappingConstructAuditTest`). It only
+/// sees STATIC string-literal tool names (`name: "X"` / `def("X"`). A tool
+/// name or description assembled at runtime is invisible to it — e.g.
+/// `SkillToolSource`'s `invoke_skill` description (built per-registry from
+/// discovered `SkillDefinition`s), `HandoffToolSource`'s
+/// `"\(HandoffDetector.transferToolPrefix)\(agent.name)"`, `MCPToolSource`'s
+/// namespaced tool names, and `AppIntentToolExecutor`'s bridged names. This
+/// audit would NOT have caught this same PR's Bug 2 (`SkillToolSource`
+/// describing every skill's arguments using only the first skill's hint) —
+/// that is a parameter-description authoring bug, not a name collision, and
+/// lives entirely inside a per-call runtime string this audit never inspects.
 ///
 /// ## Approval shape
 ///
