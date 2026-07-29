@@ -368,6 +368,7 @@
       "type": "test",
       "path": "Tests/ManifoldUITests",
       "deps": [
+        "ManifoldContractTestSupport",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
         "ManifoldPersistenceTestSupport",
