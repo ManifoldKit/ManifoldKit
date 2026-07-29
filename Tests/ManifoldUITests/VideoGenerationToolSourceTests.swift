@@ -1,8 +1,10 @@
 @preconcurrency import XCTest
 import Foundation
+import os
 @testable import ManifoldUI
 import ManifoldRuntime
 @testable import ManifoldInference
+import ManifoldContractTestSupport
 
 /// Coverage for gap B of the UI-honesty audit (#2356): before this fix,
 /// ``VideoGenerationToolSource`` unconditionally told the model "Video
@@ -10,7 +12,54 @@ import ManifoldRuntime
 /// installed — and swallowed fire-and-forget failures into a log-only
 /// warning.
 @MainActor
-final class VideoGenerationToolSourceTests: XCTestCase {
+final class VideoGenerationToolSourceTests: XCTestCase, SessionToolSourceContract {
+
+    // MARK: - SessionToolSourceContract
+    //
+    // See `WebSearchToolSourceTests`'s `sourceStorage`/`makeSource()`
+    // comment for the full isolation rationale: `makeSource()` is a
+    // nonisolated protocol requirement, but this class is `@MainActor` and
+    // `VideoGenerationToolSource` needs a `@MainActor` `ChatViewModel`.
+    // Calling the contract's nonisolated `assertSessionToolSource_*()`
+    // helpers directly from an `@MainActor` test method does NOT compile
+    // (Swift 6 "sending 'self' risks causing data races" — self is a
+    // non-Sendable `@MainActor`-isolated `XCTestCase`). Fix: the two
+    // `test_contract_*` wrapper methods are `nonisolated` per-member
+    // overrides so `self` isn't sent across an isolation boundary at that
+    // call site, and the actually-`@MainActor`-built source is handed
+    // across via an `OSAllocatedUnfairLock` populated once in `setUp()` —
+    // real mutual exclusion, not `@unchecked Sendable` or `Task.detached`.
+    private let sourceStorage = OSAllocatedUnfairLock<(any SessionToolSource)?>(initialState: nil)
+
+    override func setUp() async throws {
+        try await super.setUp()
+        let source = VideoGenerationToolSource(viewModel: ChatViewModel())
+        sourceStorage.withLock { $0 = source }
+    }
+
+    nonisolated func makeSource() -> any SessionToolSource {
+        guard let source = sourceStorage.withLock({ $0 }) else {
+            fatalError("VideoGenerationToolSourceTests.makeSource() called before setUp() populated the source — a test-harness ordering bug, not a runtime condition a real caller can hit.")
+        }
+        return source
+    }
+
+    nonisolated func test_contract_toolDefinitionsStableAcrossCalls() async {
+        await assertSessionToolSource_toolDefinitions_stableAcrossCalls()
+    }
+
+    nonisolated func test_contract_allowedToolNamesDefaultsToNil() async {
+        await assertSessionToolSource_allowedToolNames_defaultsToNil()
+    }
+
+    // NOTE: assertSessionToolSource_resolve_unknownTool_throws() is
+    // deliberately NOT adopted — see `test_resolve_unknownTool_stillReturnsUnknownToolError`
+    // below, which already pins the actual (non-throwing) behavior:
+    // `resolve` returns a `ToolResult` with `errorKind: .unknownTool`
+    // instead of throwing for an unrecognized tool name. That is a genuine
+    // divergence from `SkillToolSource` / `HandoffToolSource`, not a test
+    // gap; forcing the assertion would be permanently red. Flagged as a
+    // finding in the PR body rather than papered over.
 
     // MARK: - Minimal fakes
 
