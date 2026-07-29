@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 import Foundation
-import os
 @testable import ManifoldUI
 import ManifoldRuntime
 @testable import ManifoldInference
@@ -9,10 +8,17 @@ import ManifoldContractTestSupport
 /// Exercises ``WebSearchToolSource`` against the shared
 /// ``SessionToolSourceContract`` mixin. Construction pattern mirrors
 /// `ChatViewModelWebSearchTests`.
-@MainActor
 final class WebSearchToolSourceTests: XCTestCase, SessionToolSourceContract {
 
-    private func makeViewModel() -> ChatViewModel {
+    // `static` (not an instance method): `setUp()` builds the source inside
+    // a `MainActor.run` closure from a nonisolated context, and a self-bound
+    // instance method call there would capture `self` — a non-Sendable,
+    // task-isolated `XCTestCase` reused later by the test methods — into
+    // that main-actor-isolated closure, which Swift 6 rejects as a data-race
+    // risk. A `static` helper touches no instance state, so no `self`
+    // capture is needed.
+    @MainActor
+    private static func makeViewModel() -> ChatViewModel {
         ChatViewModel(
             inferenceService: InferenceService(),
             userDefaults: UserDefaults(suiteName: "WebSearchToolSourceTests-\(UUID().uuidString)")!
@@ -21,68 +27,32 @@ final class WebSearchToolSourceTests: XCTestCase, SessionToolSourceContract {
 
     // MARK: - SessionToolSourceContract
     //
-    // THE HAZARD: `makeSource()` is a nonisolated protocol requirement (the
-    // protocol carries no global-actor annotation), and this test class is
-    // `@MainActor` because the source under test needs a `@MainActor`
-    // `ChatViewModel`. A first attempt — building the `ChatViewModel` lazily
-    // inside `makeSource()` via `MainActor.assumeIsolated` and calling the
-    // contract's `assertSessionToolSource_*()` helpers directly from
-    // `@MainActor` test methods — does NOT compile: Swift 6 rejects it with
-    // "sending 'self' risks causing data races", because `self` here is a
-    // non-Sendable, `@MainActor`-isolated `XCTestCase` instance, and calling
-    // a *nonisolated* instance method (the protocol extension) from a
-    // `@MainActor`-isolated call site requires sending that isolated `self`
-    // across the boundary — which the compiler correctly refuses since other
-    // methods on `self` remain reachable from the main actor concurrently.
-    // This is a real one, not a false positive: it's exactly the class of
-    // bug AGENTS.md's Swift 6 gotcha #1 warns about (non-isolated async
-    // helpers whose caller assumes an isolation the callee doesn't have).
-    //
-    // Fix: keep the class `@MainActor` (so ordinary per-test setup and
-    // `ChatViewModel` construction stay ergonomic), but declare the two
-    // `test_contract_*` wrapper methods themselves `nonisolated`. A
-    // `nonisolated` member of an `@MainActor` type is legal per-member
-    // isolation override — at that specific call site `self` is no longer
-    // statically main-actor-isolated, so calling the nonisolated contract
-    // helper needs no cross-isolation send.
-    //
-    // That still leaves `makeSource()` needing to hand back a
-    // `@MainActor`-built `WebSearchToolSource` from a nonisolated context.
-    // Building it lazily and unsynchronized would be a real race (the
-    // nonisolated caller and `setUp()` could observe partial state).
-    // Instead the source is built once, actually on the main actor, inside
-    // `setUp()` (which inherits the class's `@MainActor` isolation), and
-    // handed to `makeSource()` through an `OSAllocatedUnfairLock` — the same
-    // lock-guarded-storage shape AGENTS.md's gotcha #7 requires for any
-    // seam that's written from one isolation domain and read from another
-    // (mirrors `URLSessionProvider._networkDisabledLock` /
-    // `CloudImageEncoding._encodeHook`). `WebSearchToolSource` conforms to
-    // `SessionToolSource: Sendable` — `@MainActor`-isolated classes are
-    // Sendable by construction because their mutable state is only ever
-    // touched from that actor — so it's safe to carry the pointer across
-    // the lock. This is deliberately NOT `@unchecked Sendable` or
-    // `Task.detached`: the lock provides real mutual exclusion, not an
-    // unchecked promise.
-    private let sourceStorage = OSAllocatedUnfairLock<(any SessionToolSource)?>(initialState: nil)
+    // `makeSource()` is a nonisolated protocol requirement, but
+    // `WebSearchToolSource` needs a `@MainActor` `ChatViewModel`. This class
+    // carries no `@MainActor` annotation of its own — unlike
+    // `ImageGenerationToolSourceTests`/`VideoGenerationToolSourceTests`,
+    // which retain a pre-existing `@MainActor` on the class for their other
+    // (non-contract) tests — so the shape here matches the two existing
+    // adopters (`SkillToolSourceTests`, `HandoffToolSourceContractTests`):
+    // build the `@MainActor`-isolated source once in `setUp()` via
+    // `MainActor.run`, store it, and hand it back synchronously from the
+    // nonisolated `makeSource()`. `setUp()` and the test method run
+    // sequentially on the same XCTestCase instance, so there is no
+    // concurrent access to `stored` to guard against.
+    private var stored: (any SessionToolSource)?
 
     override func setUp() async throws {
         try await super.setUp()
-        let source = WebSearchToolSource(viewModel: makeViewModel())
-        sourceStorage.withLock { $0 = source }
+        stored = await MainActor.run { WebSearchToolSource(viewModel: Self.makeViewModel()) }
     }
 
-    nonisolated func makeSource() -> any SessionToolSource {
-        guard let source = sourceStorage.withLock({ $0 }) else {
-            fatalError("WebSearchToolSourceTests.makeSource() called before setUp() populated the source — a test-harness ordering bug, not a runtime condition a real caller can hit.")
-        }
-        return source
-    }
+    func makeSource() -> any SessionToolSource { stored! }
 
-    nonisolated func test_contract_toolDefinitionsStableAcrossCalls() async {
+    func test_contract_toolDefinitionsStableAcrossCalls() async {
         await assertSessionToolSource_toolDefinitions_stableAcrossCalls()
     }
 
-    nonisolated func test_contract_allowedToolNamesDefaultsToNil() async {
+    func test_contract_allowedToolNamesDefaultsToNil() async {
         await assertSessionToolSource_allowedToolNames_defaultsToNil()
     }
 
@@ -112,4 +82,16 @@ final class WebSearchToolSourceTests: XCTestCase, SessionToolSourceContract {
         )
         XCTAssertEqual(result.errorKind, .unknownTool)
     }
+
+    // MARK: - SessionToolSourceContract.makeSource() docstring deviation
+    //
+    // `SessionToolSourceContract.makeSource()` documents "Returns a fresh,
+    // fully-configured source for each assertion call." This adopter
+    // deliberately returns the same `setUp()`-built instance for every call
+    // within a test method rather than constructing fresh per call: building
+    // fresh from the nonisolated `makeSource()` would reintroduce the
+    // `@MainActor` construction problem this file exists to solve. It does
+    // not weaken the two assertions actually adopted above (neither depends
+    // on cross-instance freshness), but a future assertion that does would
+    // need this file's `makeSource()` revisited.
 }

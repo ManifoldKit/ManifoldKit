@@ -16,24 +16,51 @@ final class VideoGenerationToolSourceTests: XCTestCase, SessionToolSourceContrac
 
     // MARK: - SessionToolSourceContract
     //
-    // See `WebSearchToolSourceTests`'s `sourceStorage`/`makeSource()`
-    // comment for the full isolation rationale: `makeSource()` is a
-    // nonisolated protocol requirement, but this class is `@MainActor` and
-    // `VideoGenerationToolSource` needs a `@MainActor` `ChatViewModel`.
-    // Calling the contract's nonisolated `assertSessionToolSource_*()`
-    // helpers directly from an `@MainActor` test method does NOT compile
-    // (Swift 6 "sending 'self' risks causing data races" — self is a
-    // non-Sendable `@MainActor`-isolated `XCTestCase`). Fix: the two
-    // `test_contract_*` wrapper methods are `nonisolated` per-member
-    // overrides so `self` isn't sent across an isolation boundary at that
-    // call site, and the actually-`@MainActor`-built source is handed
-    // across via an `OSAllocatedUnfairLock` populated once in `setUp()` —
-    // real mutual exclusion, not `@unchecked Sendable` or `Task.detached`.
+    // ISOLATION: `makeSource()` is a nonisolated protocol requirement, but
+    // this class is `@MainActor` (pre-existing, needed for the rest of this
+    // file's `@MainActor` `ChatViewModel` bodies) and `VideoGenerationToolSource`
+    // needs a `@MainActor` `ChatViewModel`. Calling the contract's nonisolated
+    // `assertSessionToolSource_*()` helpers directly from an ordinary
+    // `@MainActor` test method genuinely does not compile — confirmed with a
+    // from-scratch minimal reproduction (a two-file SwiftPM package,
+    // `swift-tools-version: 6.1`, `swiftLanguageModes: [.v6]`, no other
+    // ManifoldKit code involved) that hits the identical diagnostic:
+    //
+    //   error: sending 'self' risks causing data races [#SendingRisksDataRace]
+    //   note: sending main actor-isolated 'self' to nonisolated instance
+    //   method 'assertStable()' risks causing data races between nonisolated
+    //   and main actor-isolated uses
+    //
+    // `self` is a non-Sendable `@MainActor`-isolated `XCTestCase`, so calling
+    // a nonisolated instance method (the protocol extension) from an
+    // `@MainActor`-isolated call site requires sending that isolated `self`
+    // across the boundary. `nonisolated` on the `test_contract_*` wrapper
+    // methods below IS load-bearing: removing it (confirmed in the same
+    // minimal repro, with this exact lock-based `makeSource()` kept
+    // unchanged) reproduces the identical error. Fix: the `test_contract_*`
+    // wrapper methods are `nonisolated` per-member overrides so `self` isn't
+    // sent across an isolation boundary at that call site, and the
+    // actually-`@MainActor`-built source is handed across via an
+    // `OSAllocatedUnfairLock` populated once in `setUp()` — real mutual
+    // exclusion, not `@unchecked Sendable` or `Task.detached`.
+    //
+    // UserDefaults: `setUp()` runs before every test in this class, so its
+    // `ChatViewModel` must not default to `.standard` (AGENTS.md's
+    // UserDefaults-injection rule, bitten twice: #734/#761) — a per-instance
+    // suite name avoids cross-test / cross-suite pollution under
+    // `swift test --parallel`.
     private let sourceStorage = OSAllocatedUnfairLock<(any SessionToolSource)?>(initialState: nil)
+
+    private func makeContractViewModel() -> ChatViewModel {
+        ChatViewModel(
+            inferenceService: InferenceService(),
+            userDefaults: UserDefaults(suiteName: "VideoGenerationToolSourceTests-\(UUID().uuidString)")!
+        )
+    }
 
     override func setUp() async throws {
         try await super.setUp()
-        let source = VideoGenerationToolSource(viewModel: ChatViewModel())
+        let source = VideoGenerationToolSource(viewModel: makeContractViewModel())
         sourceStorage.withLock { $0 = source }
     }
 
@@ -81,6 +108,18 @@ final class VideoGenerationToolSourceTests: XCTestCase, SessionToolSourceContrac
         )
         XCTAssertEqual(result.errorKind, .unknownTool)
     }
+
+    // MARK: - SessionToolSourceContract.makeSource() docstring deviation
+    //
+    // `SessionToolSourceContract.makeSource()` documents "Returns a fresh,
+    // fully-configured source for each assertion call." This adopter
+    // deliberately returns the same `setUp()`-built instance for every call
+    // within a test method rather than constructing fresh per call: building
+    // fresh from the nonisolated `makeSource()` would reintroduce the
+    // `@MainActor` construction problem the lock exists to solve. It does
+    // not weaken the two assertions actually adopted above (neither depends
+    // on cross-instance freshness), but a future assertion that does would
+    // need this file's `makeSource()` revisited.
 
     // MARK: - Minimal fakes
 
