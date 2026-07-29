@@ -86,13 +86,30 @@ final class WebSearchToolSourceTests: XCTestCase, SessionToolSourceContract {
         await assertSessionToolSource_allowedToolNames_defaultsToNil()
     }
 
-    // NOTE: assertSessionToolSource_resolve_unknownTool_throws() is
-    // deliberately NOT adopted here. `WebSearchToolSource.resolve` never
-    // throws for an unrecognized tool name — it returns a `ToolResult` with
-    // `errorKind: .unknownTool` (see `Sources/ManifoldUI/Tools/WebSearchToolSource.swift`,
-    // already pinned by `ChatViewModelWebSearchTests.test_toolSource_resolve_unknownTool_returnsUnknownToolError`).
-    // That is a genuine behavioral divergence from `SkillToolSource` /
-    // `HandoffToolSource` (which do throw), not a gap in this test file —
-    // adopting the assertion as-is would be permanently red. Reported as a
-    // finding rather than forced or papered over; see the PR body.
+    // MARK: - Deliberate non-adoption: assertSessionToolSource_resolve_unknownTool_throws()
+    //
+    // Not wired up. `WebSearchToolSource.resolve` (`Sources/ManifoldUI/Tools/WebSearchToolSource.swift:51-53`)
+    // does not throw for an unadvertised tool name — it returns
+    // `ToolResult(callId:content:errorKind: .unknownTool)`. This is not the
+    // "fabricated result for a tool it did not advertise" the contract's doc
+    // warns about: `ToolResult.errorKind` is a first-class, localized error
+    // channel (`ToolTypes.swift:451`, mapping `.unknownTool` to "This tool
+    // isn't available."), and `SessionToolSourceExecutor` (`SessionToolSourceExecutor.swift:53-66`)
+    // always constructs sources with an advertised `definition` and forwards
+    // the result unexamined — so an actual unadvertised-name call is not a
+    // reachable production path for this executor. It's a genuine encoding
+    // split across `SessionToolSource` conformers (`SkillToolSource` /
+    // `HandoffToolSource` throw; the three UI tool sources return a
+    // structured error), not a defect this PR should paper over by forcing
+    // the throw-based assertion. Pinned instead as the actual behavior:
+    func test_resolve_unadvertisedToolName_returnsUnknownToolErrorInsteadOfThrowing() async throws {
+        let source = makeSource()
+        let session = makeSession()
+        let result = try await source.resolve(
+            toolName: "__contract_unadvertised_\(UUID().uuidString)",
+            arguments: "{}",
+            session: session
+        )
+        XCTAssertEqual(result.errorKind, .unknownTool)
+    }
 }

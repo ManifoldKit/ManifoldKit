@@ -54,14 +54,35 @@ final class ImageGenerationToolSourceTests: XCTestCase, SessionToolSourceContrac
         await assertSessionToolSource_allowedToolNames_defaultsToNil()
     }
 
-    // NOTE: assertSessionToolSource_resolve_unknownTool_throws() is
-    // deliberately NOT adopted — see `test_resolve_unknownTool_stillReturnsUnknownToolError`
-    // below, which already pins the actual (non-throwing) behavior:
-    // `resolve` returns a `ToolResult` with `errorKind: .unknownTool`
-    // instead of throwing for an unrecognized tool name. That is a genuine
-    // divergence from `SkillToolSource` / `HandoffToolSource`, not a test
-    // gap; forcing the assertion would be permanently red. Flagged as a
-    // finding in the PR body rather than papered over.
+    // MARK: - Deliberate non-adoption: assertSessionToolSource_resolve_unknownTool_throws()
+    //
+    // Not wired up. `ImageGenerationToolSource.resolve` (`Sources/ManifoldUI/Tools/ImageGenerationToolSource.swift:48-50`)
+    // does not throw for an unadvertised tool name — it returns
+    // `ToolResult(callId:content:errorKind: .unknownTool)`. This is not the
+    // "fabricated result for a tool it did not advertise" the contract's doc
+    // warns about: `ToolResult.errorKind` is a first-class, localized error
+    // channel (`ToolTypes.swift:451`, mapping `.unknownTool` to "This tool
+    // isn't available."), and `SessionToolSourceExecutor` (`SessionToolSourceExecutor.swift:53-66`)
+    // always constructs sources with an advertised `definition` and forwards
+    // the result unexamined — so an actual unadvertised-name call is not a
+    // reachable production path for this executor. It's a genuine encoding
+    // split across `SessionToolSource` conformers (`SkillToolSource` /
+    // `HandoffToolSource` throw; the three UI tool sources return a
+    // structured error), not a defect this PR should paper over by forcing
+    // the throw-based assertion. `test_resolve_unknownTool_stillReturnsUnknownToolError`
+    // below already pins this via a literal tool name; this one additionally
+    // pins it through the shared contract fixtures for parity with the
+    // other two adopters:
+    func test_resolve_unadvertisedToolName_returnsUnknownToolErrorInsteadOfThrowing() async throws {
+        let source = makeSource()
+        let session = makeSession()
+        let result = try await source.resolve(
+            toolName: "__contract_unadvertised_\(UUID().uuidString)",
+            arguments: "{}",
+            session: session
+        )
+        XCTAssertEqual(result.errorKind, .unknownTool)
+    }
 
     /// Bare in-memory `MessageStore` — only exists to satisfy
     /// `ImageGenerationRuntime`'s initializer; the configured-but-no-session
