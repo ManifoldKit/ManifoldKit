@@ -27,10 +27,16 @@ import ManifoldInference
 /// local copy and depend on one deterministic pool. See
 /// `docs/COMPANION-BACKENDS.md` for the companion-package relationship.
 ///
-/// Names are deliberately drawn from domains orthogonal to the six reference
-/// tools (`now`, `calc`, `read_file`, `list_dir`, `sample_repo_search`,
-/// `http_get_fixture`) so a decoy call is never a defensible substitution for
-/// a built-in scenario's real tool.
+/// Names are deliberately drawn from domains orthogonal to BOTH the six
+/// reference tools (`now`, `calc`, `read_file`, `list_dir`,
+/// `sample_repo_search`, `http_get_fixture`) AND the shipped, model-facing
+/// tools defined elsewhere under `Sources/` — e.g. `search_web`
+/// (`ManifoldUI/Tools/WebSearchToolSource.swift`) and `invoke_skill`
+/// (`ManifoldSkills/SkillToolSource.swift`) — so a decoy call is never a
+/// defensible substitution for a built-in scenario's real tool, and padding
+/// a toolset that already contains one of those shipped tools via
+/// `--extra-tools N` never advertises the same name twice. See
+/// `ToolNameCollisionAuditTest` for the enforcement.
 public enum DecoyTools {
 
     /// Largest `--extra-tools N` this pool can satisfy without repeating a
@@ -118,8 +124,8 @@ public enum DecoyTools {
             [("city", "City name, e.g. 'San Francisco'."), ("units", "'metric' or 'imperial'.")], required: ["city"]),
         def("send_email", "Sends an email to a recipient with a subject and body.",
             [("to", "Recipient address"), ("subject", "Subject line"), ("body", "Email body")], required: ["to", "body"]),
-        def("search_web", "Searches the web and returns result snippets.",
-            [("query", "Search query")], required: ["query"]),
+        def("get_movie_showtimes", "Returns movie showtimes for a theater or area.",
+            [("movie", "Movie title"), ("location", "Theater or area name")], required: ["movie"]),
         def("translate_text", "Translates text into a target language.",
             [("text", "Text to translate"), ("target_language", "Target language code")], required: ["text", "target_language"]),
         def("set_timer", "Starts a countdown timer for the given duration.",
