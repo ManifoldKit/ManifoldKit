@@ -904,6 +904,9 @@ let package = Package(
                 // Most suites here use makeInMemoryContainer() / InMemoryPersistenceHarness,
                 // moved here in the 4.4 TestSupport split.
                 "ManifoldPersistenceTestSupport",
+                // WebSearchToolSourceTests.swift / ImageGenerationToolSourceTests.swift /
+                // VideoGenerationToolSourceTests.swift adopt SessionToolSourceContract.
+                "ManifoldContractTestSupport",
                 .product(name: "ViewInspector", package: "ViewInspector"),
             ]
         ),
