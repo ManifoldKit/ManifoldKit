@@ -93,11 +93,18 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
         // exposed and it has a hint. With more than one skill, defer to the
         // per-skill hints listed in the tool description above rather than
         // leaking the first skill's format onto every other skill's call.
+        // `argumentHint` is optional frontmatter (most skills don't set one),
+        // so "no exposed skill has a hint" is the ordinary case — pointing
+        // the model at hints "listed above" when none exist would send it
+        // looking for something absent, so that phrasing is gated on at
+        // least one exposed skill actually having a hint.
         let argsDescription: String
         if exposed.count == 1, let onlyHint = exposed[0].argumentHint {
             argsDescription = "Skill arguments. \(onlyHint)"
-        } else {
+        } else if exposed.contains(where: { $0.argumentHint != nil }) {
             argsDescription = "Skill arguments (free-form string; see each skill's argument format listed above; the skill template decides the shape)."
+        } else {
+            argsDescription = "Skill arguments (free-form string; the skill template decides the shape)."
         }
 
         let parameters: JSONSchemaValue = .object([

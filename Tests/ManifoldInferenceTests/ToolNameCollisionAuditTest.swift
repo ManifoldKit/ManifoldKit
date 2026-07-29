@@ -11,30 +11,38 @@ import Darwin
 /// that file's doc comment) with plausible-but-irrelevant tool definitions so
 /// a scenario run can tell "the model picked the right tool" from "the model
 /// had no other tool to pick." `DecoyTools.swift`'s own doc comment asserts
-/// its names are drawn from domains orthogonal to every tool it could be
-/// advertised alongside — the decoy pool used to define `search_web`, which
-/// collides with `ManifoldUI/Tools/WebSearchToolSource.swift`'s shipped
-/// `search_web` tool, making that assertion false as written. Fixing the
-/// false doc claim is reason enough for this audit on its own.
+/// its names are drawn from domains orthogonal to every tool actually
+/// advertised to a live model elsewhere under `Sources/` — the decoy pool
+/// used to define both `search_web` and `get_weather`, colliding with
+/// `ManifoldUI/Tools/WebSearchToolSource.swift`'s shipped `search_web` tool
+/// and `ManifoldFuzz/SyntheticToolset.swift`'s `get_weather` (passed as
+/// `GenerationConfig.tools` by the fuzz harness — a live model can be asked
+/// to call it), making that assertion false as written for both. Both
+/// decoys were renamed; this audit is what keeps the claim true going
+/// forward.
 ///
-/// **In THIS package today, that collision cannot actually trip:**
-/// `ManifoldTools` depends only on `ManifoldInference` (not `ManifoldUI`),
-/// and the in-repo `manifold-tools` executable links
+/// **In THIS package today, the `search_web` collision specifically could
+/// not actually trip:** `ManifoldTools` depends only on `ManifoldInference`
+/// (not `ManifoldUI`), and the in-repo `manifold-tools` executable links
 /// `ManifoldTools`/`ManifoldOllama`/`ManifoldCloudSaaS`/`ManifoldInference`
 /// only — never `ManifoldUI` (see `Package.swift`'s `ManifoldTools` and
-/// `manifold-tools` target declarations). So no in-repo driver can advertise
-/// both the decoy pool and `WebSearchToolSource`'s real tool in one process,
-/// and a scenario sweep run from this repo cannot misscore a correct
-/// `search_web` call today. The audit is therefore preventive, not a fix for
-/// a currently-live scoring bug — do not read a green run here as evidence
-/// this collision was ever actually observed miscoring anything.
+/// `manifold-tools` target declarations). So no in-repo driver could ever
+/// advertise both the decoy pool and `WebSearchToolSource`'s real tool in
+/// one process, and a scenario sweep run from this repo could not have
+/// misscored a correct `search_web` call. That half of the fix was
+/// preventive, not a fix for a currently-live scoring bug — do not read a
+/// green run here as evidence that collision was ever actually observed
+/// miscoring anything. The `get_weather` collision, in contrast, WAS live:
+/// `ManifoldFuzz` advertises `SyntheticToolset.definitions` (including
+/// `get_weather`) directly to a real backend under test.
 ///
-/// The real reachability path is cross-package: `ManifoldTools` is a
-/// published `.library()` product (`Package.swift` products list), so an
-/// external consumer — e.g. manifold-eval, or a consumer app driving its own
-/// evals — can import both `ManifoldTools` and the `ManifoldKit` umbrella
-/// (which re-exports `ManifoldUI`) in one process, at which point the
-/// collision this audit blocks becomes live exactly as originally feared.
+/// The `search_web` collision's real reachability path is cross-package:
+/// `ManifoldTools` is a published `.library()` product (`Package.swift`
+/// products list), so an external consumer — e.g. manifold-eval, or a
+/// consumer app driving its own evals — can import both `ManifoldTools` and
+/// the `ManifoldKit` umbrella (which re-exports `ManifoldUI`) in one
+/// process, at which point the collision this audit blocks becomes live
+/// exactly as originally feared.
 ///
 /// The full detection pipeline lives in ``scan(sourcesRoot:)`` so the
 /// in-file sabotage test exercises the exact function the audit runs.
@@ -73,32 +81,22 @@ import Darwin
 /// discovered `SkillDefinition`s), `HandoffToolSource`'s
 /// `"\(HandoffDetector.transferToolPrefix)\(agent.name)"`, `MCPToolSource`'s
 /// namespaced tool names, and `AppIntentToolExecutor`'s bridged names. This
-/// audit would NOT have caught this same PR's Bug 2 (`SkillToolSource`
-/// describing every skill's arguments using only the first skill's hint) —
+/// audit would NOT have caught this same PR's `SkillToolSource` bug (every
+/// skill's arguments described using only the first exposed skill's hint) —
 /// that is a parameter-description authoring bug, not a name collision, and
 /// lives entirely inside a per-call runtime string this audit never inspects.
 ///
 /// ## Approval shape
 ///
-/// A colliding declaration outside `DecoyTools.swift` falls through to a
-/// path-based allowlist (`tool_name_collision_allowlist.txt`, next to this
-/// file), mirroring `SilentCatchAuditTest`. Format: one fingerprint
-/// (`relative/path.swift:name`) per line; `#`-prefixed lines and blank lines
-/// are ignored. This is for collisions with a tool definition that is not
-/// reachable by a real chat session (a fuzz/fixture/test-only toolset) — see
-/// the allowlist file's own comment for the one entry it carries as of this
-/// PR (`ManifoldFuzz/SyntheticToolset.swift`'s `get_weather`, a pre-existing
-/// collision unrelated to the `search_web` bug this audit was added for).
+/// None — no allowlist. As of this PR every collision this audit can see is
+/// fixed by renaming the colliding decoy, so a bare "no name declared in
+/// DecoyTools.swift reappears elsewhere" assertion is the entire check. If a
+/// future collision genuinely cannot be renamed away (e.g. the colliding
+/// declaration is a fuzz/fixture/test-only toolset intentionally reusing a
+/// common name), reintroduce a path-based allowlist deliberately at that
+/// point — mirroring `SilentCatchAuditTest`'s — rather than keeping one here
+/// pre-emptively with zero entries.
 final class ToolNameCollisionAuditTest: XCTestCase {
-
-    private static let allowlist: Set<String> = {
-        do {
-            return try loadAllowlist()
-        } catch {
-            XCTFail("Failed to load tool_name_collision_allowlist.txt: \(error)")
-            return []
-        }
-    }()
 
     func test_decoyToolNamesDoNotCollideWithShippedToolNames() throws {
         let sourcesURL = try Self.locateSourcesDirectory()
@@ -110,20 +108,10 @@ final class ToolNameCollisionAuditTest: XCTestCase {
         XCTAssertFalse(decoyDeclarations.isEmpty, "Expected to find decoy tool declarations in DecoyTools.swift — detection probably broken")
 
         let decoyNames = Set(decoyDeclarations.map(\.name))
-        let allCollisions = declarations.filter { !$0.file.hasSuffix("DecoyTools.swift") && decoyNames.contains($0.name) }
+        let collisions = declarations.filter { !$0.file.hasSuffix("DecoyTools.swift") && decoyNames.contains($0.name) }
 
-        var found: Set<String> = []
-        var offenders: [ToolNameDeclaration] = []
-        for collision in allCollisions {
-            let fingerprint = "\(collision.file):\(collision.name)"
-            found.insert(fingerprint)
-            if !Self.allowlist.contains(fingerprint) {
-                offenders.append(collision)
-            }
-        }
-
-        if !offenders.isEmpty {
-            let formatted = offenders
+        if !collisions.isEmpty {
+            let formatted = collisions
                 .map { "  \($0.file):\($0.line)  name: \"\($0.name)\"" }
                 .joined(separator: "\n")
             XCTFail("""
@@ -131,25 +119,9 @@ final class ToolNameCollisionAuditTest: XCTestCase {
                 A decoy sharing a shipped tool's name means padding a scenario's toolset with decoys can
                 silently duplicate a name the model is legitimately allowed to call, misscoring a correct
                 call as a decoy invocation. Rename the decoy (keep its position in DecoyTools.pool — see
-                that file's fixed-order doc comment) to something outside every shipped tool's domain, or
-                if the colliding declaration is a fuzz/fixture/test-only toolset never reachable by a real
-                chat session, add its fingerprint to Tests/ManifoldInferenceTests/tool_name_collision_allowlist.txt
-                with a one-line justification.
+                that file's fixed-order doc comment) to something outside every shipped tool's domain.
 
                 \(formatted)
-                """)
-        }
-
-        // Stale-allowlist check: every allowlist entry must still exist in
-        // the source tree, or the list is drifting.
-        let stale = Self.allowlist.subtracting(found)
-        if !stale.isEmpty {
-            let formatted = stale.sorted().joined(separator: "\n  ")
-            XCTFail("""
-                tool_name_collision_allowlist.txt has stale entries that no longer exist as a collision in Sources/.
-                Remove them:
-
-                  \(formatted)
                 """)
         }
     }
@@ -227,47 +199,6 @@ final class ToolNameCollisionAuditTest: XCTestCase {
         )
     }
 
-    /// An allowlisted fingerprint (`file:name`) must exempt exactly the
-    /// collision it names, mirroring `SilentCatchAuditTest`'s allowlist
-    /// contract.
-    func test_sabotage_allowlistExemptsNamedCollisionOnly() throws {
-        let tmp = try Self.makeSabotageTempDirectory(
-            name: "tool-name-collision-allowlist-sabotage-\(UUID().uuidString)"
-        )
-        defer { try? FileManager.default.removeItem(at: tmp) }
-
-        let root = tmp.appendingPathComponent("ManifoldSomeModule", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try """
-        import Foundation
-
-        enum DecoyTools {
-            private static func def(_ name: String) -> Int { 0 }
-            private static let pool = [
-                def("get_weather"),
-            ]
-        }
-        """.write(to: root.appendingPathComponent("DecoyTools.swift"), atomically: true, encoding: .utf8)
-
-        try """
-        import Foundation
-
-        enum FixtureToolset {
-            static let definition = ToolDefinition(name: "get_weather", description: "d", parameters: .object([:]))
-        }
-        """.write(to: root.appendingPathComponent("FixtureToolset.swift"), atomically: true, encoding: .utf8)
-
-        let declarations = try Self.scan(sourcesRoot: tmp)
-        let decoyNames = Set(declarations.filter { $0.file.hasSuffix("DecoyTools.swift") }.map(\.name))
-        let unexempted = declarations.filter { !$0.file.hasSuffix("DecoyTools.swift") && decoyNames.contains($0.name) }
-        XCTAssertFalse(unexempted.isEmpty, "expected the planted collision to be detected before allowlisting")
-
-        let fingerprint = "ManifoldSomeModule/FixtureToolset.swift:get_weather"
-        let allowlist: Set<String> = [fingerprint]
-        let exempted = unexempted.filter { !allowlist.contains("\($0.file):\($0.name)") }
-        XCTAssertTrue(exempted.isEmpty, "an allowlisted fingerprint must exempt the matching collision")
-    }
-
     // MARK: - Detection
 
     struct ToolNameDeclaration: Equatable {
@@ -331,36 +262,6 @@ final class ToolNameCollisionAuditTest: XCTestCase {
         guard let match = regex.firstMatch(in: line, range: range), match.numberOfRanges > 1,
               let captureRange = Range(match.range(at: 1), in: line) else { return nil }
         return String(line[captureRange])
-    }
-
-    // MARK: - Allowlist loading
-
-    /// Reads `tool_name_collision_allowlist.txt` from beside this source
-    /// file. See `SilentCatchAuditTest.loadAllowlist(filePath:)` for the
-    /// identical parsing rules (blank/`#`-comment lines skipped, trailing
-    /// whitespace and CR trimmed).
-    static func loadAllowlist(filePath: StaticString = #filePath) throws -> Set<String> {
-        let url = allowlistURL(filePath: filePath)
-        let content = try String(contentsOf: url, encoding: .utf8)
-        var entries: Set<String> = []
-        for rawLine in content.components(separatedBy: "\n") {
-            var line = rawLine
-            if line.hasSuffix("\r") { line.removeLast() }
-            while let last = line.last, last == " " || last == "\t" {
-                line.removeLast()
-            }
-            let leading = line.drop(while: { $0 == " " || $0 == "\t" })
-            if leading.isEmpty { continue }
-            if leading.first == "#" { continue }
-            entries.insert(line)
-        }
-        return entries
-    }
-
-    private static func allowlistURL(filePath: StaticString = #filePath) -> URL {
-        URL(fileURLWithPath: "\(filePath)")
-            .deletingLastPathComponent()
-            .appendingPathComponent("tool_name_collision_allowlist.txt")
     }
 
     // MARK: - Helpers

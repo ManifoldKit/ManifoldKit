@@ -214,7 +214,42 @@ final class SkillToolSourceTests: XCTestCase, SessionToolSourceContract {
         else {
             return XCTFail("Expected JSON Schema description on args")
         }
-        XCTAssertEqual(argsDescription, "Skill arguments (free-form string; see each skill's argument format listed above; the skill template decides the shape).")
+        // No exposed skill has an argumentHint, so pointing the model at
+        // "hints listed above" would send it looking for something absent —
+        // this must stay the original, unchanged generic text.
+        XCTAssertEqual(argsDescription, "Skill arguments (free-form string; the skill template decides the shape).")
+    }
+
+    /// Multiple exposed skills, NONE with a hint — the ordinary multi-skill
+    /// case (`argumentHint` is optional frontmatter most skills don't set).
+    /// Must fall back to the same unchanged generic text as the single-skill
+    /// no-hint case, not the "listed above" phrasing (there's nothing to list).
+    func test_toolDefinitions_multipleSkillsNoneWithHint_argsParamIsGeneric() async throws {
+        let registry = SkillRegistry()
+        let skillA = SkillDefinition(
+            name: "alpha",
+            description: "Alpha skill",
+            promptTemplate: "alpha body",
+            sourcePath: URL(fileURLWithPath: "/tmp/alpha/SKILL.md")
+        )
+        let skillB = SkillDefinition(
+            name: "beta",
+            description: "Beta skill",
+            promptTemplate: "beta body",
+            sourcePath: URL(fileURLWithPath: "/tmp/beta/SKILL.md")
+        )
+        await registry.load([skillA, skillB])
+        let source = SkillToolSource(registry: registry)
+        let defs = await source.toolDefinitions(for: makeSession())
+
+        guard case .object(let params)? = defs.first?.parameters,
+              case .object(let props)? = params["properties"],
+              case .object(let argsSchema)? = props["args"],
+              case .string(let argsDescription)? = argsSchema["description"]
+        else {
+            return XCTFail("Expected JSON Schema description on args")
+        }
+        XCTAssertEqual(argsDescription, "Skill arguments (free-form string; the skill template decides the shape).")
     }
 
     func test_resolve_setsActiveSkill_observableViaAllowedToolNames() async throws {

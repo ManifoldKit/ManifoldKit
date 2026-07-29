@@ -29,14 +29,19 @@ import ManifoldInference
 ///
 /// Names are deliberately drawn from domains orthogonal to BOTH the six
 /// reference tools (`now`, `calc`, `read_file`, `list_dir`,
-/// `sample_repo_search`, `http_get_fixture`) AND the shipped, model-facing
-/// tools defined elsewhere under `Sources/` — e.g. `search_web`
-/// (`ManifoldUI/Tools/WebSearchToolSource.swift`) and `invoke_skill`
-/// (`ManifoldSkills/SkillToolSource.swift`) — so a decoy call is never a
-/// defensible substitution for a built-in scenario's real tool, and padding
-/// a toolset that already contains one of those shipped tools via
-/// `--extra-tools N` never advertises the same name twice. See
-/// `ToolNameCollisionAuditTest` for the enforcement.
+/// `sample_repo_search`, `http_get_fixture`) AND every model-facing tool
+/// defined elsewhere under `Sources/` that is actually advertised to a live
+/// model — e.g. `search_web` (`ManifoldUI/Tools/WebSearchToolSource.swift`),
+/// `invoke_skill` (`ManifoldSkills/SkillToolSource.swift`), and
+/// `get_weather`/`schedule_alarm` (`ManifoldFuzz/SyntheticToolset.swift`,
+/// passed as `GenerationConfig.tools` by the fuzz harness) — so a decoy call
+/// is never a defensible substitution for a built-in scenario's real tool,
+/// and padding a toolset that already contains one of those tools via
+/// `--extra-tools N` never advertises the same name twice. This pool used to
+/// define both `search_web` and `get_weather` itself, colliding with the two
+/// tools above; both were renamed. See `ToolNameCollisionAuditTest` for the
+/// enforcement, which fails the build the next time a shipped tool's name
+/// reappears here.
 public enum DecoyTools {
 
     /// Largest `--extra-tools N` this pool can satisfy without repeating a
@@ -120,8 +125,8 @@ public enum DecoyTools {
     /// concept and kept in a fixed order. 46 entries so `--extra-tools` can
     /// pad well past any scenario sweep in use today (max observed: 20).
     private static let pool: [ToolDefinition] = [
-        def("get_weather", "Returns the current weather conditions for a city.",
-            [("city", "City name, e.g. 'San Francisco'."), ("units", "'metric' or 'imperial'.")], required: ["city"]),
+        def("get_air_quality", "Returns the current air quality index for a city.",
+            [("city", "City name, e.g. 'San Francisco'."), ("units", "'aqi' or 'pm25'.")], required: ["city"]),
         def("send_email", "Sends an email to a recipient with a subject and body.",
             [("to", "Recipient address"), ("subject", "Subject line"), ("body", "Email body")], required: ["to", "body"]),
         def("get_movie_showtimes", "Returns movie showtimes for a theater or area.",
