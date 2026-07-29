@@ -69,21 +69,40 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
             )
         }
 
-        // when-to-use goes in the TOOL description (not the parameter
-        // description) — OpenAI truncates parameter docs aggressively but
-        // gives the tool description a much larger budget.
+        // when-to-use AND per-skill argument hints go in the TOOL description
+        // (not the parameter description) — OpenAI truncates parameter docs
+        // aggressively but gives the tool description a much larger budget.
+        // `args` is a single shared parameter used to invoke any of the
+        // exposed skills, so one skill's argument format can't live in the
+        // parameter description without misreporting every other skill's
+        // format — each skill's hint is attached to its own line instead.
         var description = "Invoke a discovered skill by name. Available skills:\n"
         for skill in exposed {
             description += "- \(skill.name): \(skill.description)"
             if let whenToUse = skill.whenToUse {
                 description += " (use when: \(whenToUse))"
             }
+            if let argumentHint = skill.argumentHint {
+                description += " (args: \(argumentHint))"
+            }
             description += "\n"
         }
 
+        // The shared `args` parameter description can only safely name a
+        // specific format when it's unambiguous — exactly one skill is
+        // exposed and it has a hint. With more than one skill, defer to the
+        // per-skill hints listed in the tool description above rather than
+        // leaking the first skill's format onto every other skill's call.
+        // `argumentHint` is optional frontmatter (most skills don't set one),
+        // so "no exposed skill has a hint" is the ordinary case — pointing
+        // the model at hints "listed above" when none exist would send it
+        // looking for something absent, so that phrasing is gated on at
+        // least one exposed skill actually having a hint.
         let argsDescription: String
-        if let firstHint = exposed.compactMap(\.argumentHint).first {
-            argsDescription = "Skill arguments. \(firstHint)"
+        if exposed.count == 1, let onlyHint = exposed[0].argumentHint {
+            argsDescription = "Skill arguments. \(onlyHint)"
+        } else if exposed.contains(where: { $0.argumentHint != nil }) {
+            argsDescription = "Skill arguments (free-form string; see each skill's argument format listed above; the skill template decides the shape)."
         } else {
             argsDescription = "Skill arguments (free-form string; the skill template decides the shape)."
         }

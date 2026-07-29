@@ -123,6 +123,135 @@ final class SkillToolSourceTests: XCTestCase, SessionToolSourceContract {
         // becomes non-nil.
     }
 
+    // MARK: - Per-skill args-hint description (bug fix)
+
+    /// Two exposed skills with DIFFERENT `argumentHint`s: the shared `args`
+    /// parameter description must not leak the first skill's hint onto
+    /// every skill, and the tool description must carry both hints, each on
+    /// its own skill's line.
+    func test_toolDefinitions_multipleSkillsWithDifferentHints_argsParamStaysGeneric() async throws {
+        let registry = SkillRegistry()
+        let skillA = SkillDefinition(
+            name: "alpha",
+            description: "Alpha skill",
+            argumentHint: "<file-path>",
+            promptTemplate: "alpha body",
+            sourcePath: URL(fileURLWithPath: "/tmp/alpha/SKILL.md")
+        )
+        let skillB = SkillDefinition(
+            name: "beta",
+            description: "Beta skill",
+            argumentHint: "[--flag] <query>",
+            promptTemplate: "beta body",
+            sourcePath: URL(fileURLWithPath: "/tmp/beta/SKILL.md")
+        )
+        await registry.load([skillA, skillB])
+        let source = SkillToolSource(registry: registry)
+        let defs = await source.toolDefinitions(for: makeSession())
+
+        guard let definition = defs.first else {
+            return XCTFail("Expected one tool definition")
+        }
+        XCTAssertTrue(definition.description.contains("<file-path>"), "tool description must carry alpha's hint")
+        XCTAssertTrue(definition.description.contains("[--flag] <query>"), "tool description must carry beta's hint")
+
+        guard case .object(let params)? = defs.first?.parameters,
+              case .object(let props)? = params["properties"],
+              case .object(let argsSchema)? = props["args"],
+              case .string(let argsDescription)? = argsSchema["description"]
+        else {
+            return XCTFail("Expected JSON Schema description on args")
+        }
+        XCTAssertFalse(argsDescription.contains("<file-path>"), "shared args description must NOT leak the first skill's hint")
+        XCTAssertFalse(argsDescription.contains("[--flag] <query>"), "shared args description must NOT leak any single skill's hint")
+        // Sabotage-evidence: reverting to `exposed.compactMap(\.argumentHint).first`
+        // makes argsDescription contain "<file-path>" and this assertion fails.
+    }
+
+    /// Exactly one exposed skill with a hint: the specific hint IS used in
+    /// the shared `args` parameter description (unambiguous case).
+    func test_toolDefinitions_singleSkillWithHint_argsParamUsesItsHint() async throws {
+        let registry = SkillRegistry()
+        let skill = SkillDefinition(
+            name: "solo",
+            description: "Solo skill",
+            argumentHint: "<only-hint>",
+            promptTemplate: "solo body",
+            sourcePath: URL(fileURLWithPath: "/tmp/solo/SKILL.md")
+        )
+        await registry.load([skill])
+        let source = SkillToolSource(registry: registry)
+        let defs = await source.toolDefinitions(for: makeSession())
+
+        guard case .object(let params)? = defs.first?.parameters,
+              case .object(let props)? = params["properties"],
+              case .object(let argsSchema)? = props["args"],
+              case .string(let argsDescription)? = argsSchema["description"]
+        else {
+            return XCTFail("Expected JSON Schema description on args")
+        }
+        XCTAssertTrue(argsDescription.contains("<only-hint>"), "with exactly one hinted skill, its hint is unambiguous and should be used")
+    }
+
+    /// No skill has a hint: the `args` parameter falls back to the generic,
+    /// free-form description — unchanged behavior.
+    func test_toolDefinitions_noSkillHasHint_argsParamIsGeneric() async throws {
+        let registry = SkillRegistry()
+        let skill = SkillDefinition(
+            name: "plain",
+            description: "Plain skill",
+            promptTemplate: "plain body",
+            sourcePath: URL(fileURLWithPath: "/tmp/plain/SKILL.md")
+        )
+        await registry.load([skill])
+        let source = SkillToolSource(registry: registry)
+        let defs = await source.toolDefinitions(for: makeSession())
+
+        guard case .object(let params)? = defs.first?.parameters,
+              case .object(let props)? = params["properties"],
+              case .object(let argsSchema)? = props["args"],
+              case .string(let argsDescription)? = argsSchema["description"]
+        else {
+            return XCTFail("Expected JSON Schema description on args")
+        }
+        // No exposed skill has an argumentHint, so pointing the model at
+        // "hints listed above" would send it looking for something absent —
+        // this must stay the original, unchanged generic text.
+        XCTAssertEqual(argsDescription, "Skill arguments (free-form string; the skill template decides the shape).")
+    }
+
+    /// Multiple exposed skills, NONE with a hint — the ordinary multi-skill
+    /// case (`argumentHint` is optional frontmatter most skills don't set).
+    /// Must fall back to the same unchanged generic text as the single-skill
+    /// no-hint case, not the "listed above" phrasing (there's nothing to list).
+    func test_toolDefinitions_multipleSkillsNoneWithHint_argsParamIsGeneric() async throws {
+        let registry = SkillRegistry()
+        let skillA = SkillDefinition(
+            name: "alpha",
+            description: "Alpha skill",
+            promptTemplate: "alpha body",
+            sourcePath: URL(fileURLWithPath: "/tmp/alpha/SKILL.md")
+        )
+        let skillB = SkillDefinition(
+            name: "beta",
+            description: "Beta skill",
+            promptTemplate: "beta body",
+            sourcePath: URL(fileURLWithPath: "/tmp/beta/SKILL.md")
+        )
+        await registry.load([skillA, skillB])
+        let source = SkillToolSource(registry: registry)
+        let defs = await source.toolDefinitions(for: makeSession())
+
+        guard case .object(let params)? = defs.first?.parameters,
+              case .object(let props)? = params["properties"],
+              case .object(let argsSchema)? = props["args"],
+              case .string(let argsDescription)? = argsSchema["description"]
+        else {
+            return XCTFail("Expected JSON Schema description on args")
+        }
+        XCTAssertEqual(argsDescription, "Skill arguments (free-form string; the skill template decides the shape).")
+    }
+
     func test_resolve_setsActiveSkill_observableViaAllowedToolNames() async throws {
         let registry = SkillRegistry()
         let skill = SkillDefinition(
