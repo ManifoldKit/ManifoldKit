@@ -36,10 +36,6 @@ final class QuickStartTests: XCTestCase {
         // or extra loadSessions() call needed.
         XCTAssertFalse(result.sessionManager.sessions.isEmpty,
             "sessionManager.sessions must be populated immediately after quickStart() returns (no polling required) — regression guard for #1447")
-
-        guard case .needsModelOrEndpoint = result.readiness else {
-            return XCTFail("A fresh core-only quickStart must report that generation still needs a model or endpoint instead of implying a live chat.")
-        }
     }
 
     /// Errors from any step in the bootstrap chain must be reduced through

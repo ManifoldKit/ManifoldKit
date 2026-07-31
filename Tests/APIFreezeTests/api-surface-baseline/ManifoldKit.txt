@@ -59,18 +59,11 @@ ManifoldTrait.hashValue Var
 ManifoldTrait.init(name:description:unlocks:) Constructor
 ManifoldTrait.name Var
 ManifoldTrait.unlocks Var
-QuickStartReadiness Enum
-QuickStartReadiness conformances: Copyable,Escapable,Sendable,SendableMetatype
-QuickStartReadiness.failed EnumElement
-QuickStartReadiness.loading EnumElement
-QuickStartReadiness.needsModelOrEndpoint EnumElement
-QuickStartReadiness.ready EnumElement
 QuickStartResult Struct
 QuickStartResult attrs: Custom
 QuickStartResult conformances: Copyable,Escapable,Sendable,SendableMetatype
 QuickStartResult.bootstrap Var
 QuickStartResult.init(bootstrap:viewModel:sessionManager:) Constructor
-QuickStartResult.readiness Var
 QuickStartResult.respond(to:) Func
 QuickStartResult.sessionManager Var
 QuickStartResult.viewModel Var

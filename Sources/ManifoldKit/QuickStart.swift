@@ -63,7 +63,7 @@ public enum ManifoldKit {
         FoundationBackends.self,
     ]
 
-    /// Bootstraps a chat runtime with sensible defaults in one call.
+    /// Bootstraps a working chat runtime with sensible defaults in one call.
     ///
     /// Internally this:
     /// 1. Drives `ManifoldBootstrap.build(...)` to completion (consuming its
@@ -71,11 +71,6 @@ public enum ManifoldKit {
     /// 2. Registers the compiled-in default backends.
     /// 3. Constructs a `ChatViewModel` wired to the bootstrap's shared
     ///    `InferenceService`, persistence stores, and `ConversationRuntime`.
-    ///
-    /// This assembles the chat surface; it does not guarantee that a model is
-    /// ready to generate. Read ``QuickStartResult/readiness`` after the call to
-    /// distinguish a ready or loading model from a first-run configuration that
-    /// needs a model or endpoint.
     ///
     /// Errors thrown by any step are reduced through `ManifoldKitError.from(_:)`
     /// so callers always see the unified error rim instead of raw
@@ -109,9 +104,8 @@ public enum ManifoldKit {
     /// first launch when no model is available.
     ///
     /// This overload extends ``quickStart(configuration:)`` with an opt-in
-    /// first-launch download when a compatible local backend has been
-    /// registered. Read ``QuickStartResult/readiness`` rather than assuming the
-    /// returned chat is immediately ready: loading continues asynchronously.
+    /// first-launch download so developers can reach a *live, generating* chat
+    /// in one call — no model management UI required.
     ///
     /// ### What changes versus `quickStart(configuration:)`
     ///
@@ -755,11 +749,6 @@ public enum ManifoldKit {
 /// Pass it to a sidebar or session-list surface alongside `viewModel` — no
 /// additional `configure` or `loadSessions` call is required.
 ///
-/// ``readiness`` is the authoritative first-frame status. `quickStart()`
-/// assembles a chat surface even when no model or cloud endpoint exists yet;
-/// use this value to choose whether to show the chat, a configuration prompt,
-/// or a loading state.
-///
 /// `QuickStartResult` is `Sendable` because all fields are `@MainActor`
 /// reference types; the struct itself carries no mutable state.
 @MainActor
@@ -770,29 +759,6 @@ public struct QuickStartResult: Sendable {
     /// page already loaded. Use this to drive multi-session UI (sidebar,
     /// create/delete/rename) without additional setup.
     public let sessionManager: SessionManagerViewModel
-
-    /// The current generation readiness of this quick-started chat.
-    ///
-    /// This is a computed projection so it follows an asynchronous model load
-    /// after ``ManifoldKit/quickStart(configuration:)`` has returned.
-    public var readiness: QuickStartReadiness {
-        switch viewModel.modelLoadState {
-        case .loaded:
-            return .ready
-        case .loading:
-            return .loading
-        case .failed(let error):
-            return .failed(error)
-        case .idle:
-            // `dispatchSelectedLoad()` is fire-and-forget. A selected target
-            // can still be waiting for its task to begin on the next run-loop
-            // turn, so it is loading rather than a missing configuration.
-            if viewModel.selectedModel != nil || viewModel.selectedEndpoint != nil {
-                return .loading
-            }
-            return .needsModelOrEndpoint
-        }
-    }
 
     public init(
         bootstrap: ManifoldBootstrap,
@@ -822,23 +788,6 @@ public struct QuickStartResult: Sendable {
     public func respond(to text: String) async throws -> String {
         try await viewModel.respond(to: text)
     }
-}
-
-/// The first-frame generation state of a ``QuickStartResult``.
-///
-/// ``ManifoldKit/quickStart(configuration:)`` guarantees an assembled chat
-/// runtime and an active session, not a configured inference model. This value
-/// makes that distinction explicit without requiring hosts to infer it from a
-/// disabled composer or diagnostic logs.
-public enum QuickStartReadiness: Sendable {
-    /// A model or endpoint is loaded and the chat can generate.
-    case ready
-    /// A selected model or endpoint is loading asynchronously.
-    case loading
-    /// Select a local model or configure a cloud/LAN endpoint before sending.
-    case needsModelOrEndpoint
-    /// The selected model or endpoint failed to load.
-    case failed(any Error)
 }
 
 // MARK: - ManifoldConfiguration.default

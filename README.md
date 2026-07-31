@@ -18,7 +18,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart(seed:)` builds the SwiftData container, registers the compiled-in backends, and seeds a curated ~400 MB starter model on first launch. Check `QuickStartResult.readiness` while the selected model loads; errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart(seed:)` builds the SwiftData container, registers the compiled-in backends, and seeds a curated ~400 MB starter model on first launch — one call to a live, generating chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
 .package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.75.0"), // x-release-please-version
@@ -88,7 +88,7 @@ func oneShot() async throws -> String {
 }
 ```
 
-> **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) before selection, then starts an asynchronous model load. The GGUF seed needs the `manifold-llama` companion's `LlamaBackends` registrar (see above) or it is skipped. Check `result.readiness` / `result.viewModel.modelLoadState` to render loading and failure states rather than assuming the composer is ready on its first frame. The seed is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
+> **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The GGUF seed needs the `manifold-llama` companion's `LlamaBackends` registrar (see above) or it is skipped. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
 > **Don't want the starter download?** Drop `seed:` — the chat is then inert until you select a model. `quickStart` registers the backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or keep `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 

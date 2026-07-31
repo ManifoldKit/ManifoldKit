@@ -71,12 +71,11 @@ struct MyChatApp: App {
 }
 ```
 
-> Important: `quickStart()` assembles a chat runtime, not necessarily a ready
-> model. Check `result.readiness`: `.loading` means a selected model is still
-> loading; `.needsModelOrEndpoint` means configure a cloud/LAN endpoint or
-> select a local model. Present `ModelManagementSheet` (from the opt-in
+> Important: The chat is inert until you select a model. `quickStart()` registers
+> the compiled-in backends but loads none, so on first run the composer reads
+> "No model loaded." Present `ModelManagementSheet` (from the opt-in
 > `ManifoldUIModelManagement` module) bound to `showModelManagement`, or seed a
-> local model at launch with its compatible companion registrar.
+> model at launch.
 
 > Warning: **The no-backend cliff.** With no backend registered — no companion
 > backend package linked (`manifold-mlx`, `manifold-llama`, …) and no registrar

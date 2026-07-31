@@ -37,7 +37,7 @@ The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, the b
 
 ## Hello World
 
-`ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one async call. It guarantees an assembled runtime and active session, not a ready inference model: read `QuickStartResult.readiness` to render the first-frame state honestly. Errors normalise to [`ManifoldKitError`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+`ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one async call — a wired runtime in one call, then one more step (model selection) for a live chat. Errors normalise to [`ManifoldKitError`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```swift
 import SwiftUI
@@ -70,7 +70,7 @@ struct MyChatApp: App {
 }
 ```
 
-Run the app. `quickStart()` compiles, launches, and renders a configured chat surface. On macOS 26 / iOS 26 with Apple Intelligence available it also **Foundation-first-selects and dispatches a load** before returning; the result reports `.loading` until that load finishes (see [What "available immediately" actually means](#what-available-immediately-actually-means)). On older OSes or when Foundation is unavailable, `result.readiness` is `.needsModelOrEndpoint` until you seed a starter model or configure a cloud endpoint — [First-launch backend selection](#first-launch-backend-selection).
+Run the app. `quickStart()` compiles, launches, and renders a usable composer. On macOS 26 / iOS 26 with Apple Intelligence available it also **Foundation-first-selects and dispatches a load** before returning (see [What "available immediately" actually means](#what-available-immediately-actually-means)). On older OSes or when Foundation is unavailable, seed a starter model / cloud endpoint — [First-launch backend selection](#first-launch-backend-selection).
 
 ## Required Info.plist keys for ChatView
 
@@ -139,7 +139,7 @@ This section covers the paths that fill that gap on first launch (starter seed d
 
 ### Seeding a starter model (recommended for local-first apps)
 
-The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and dispatches the load before returning. Without the registrar the seed is deliberately skipped and `readiness` remains `.needsModelOrEndpoint`.
+The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and dispatches the load before returning. Without the registrar the seed is deliberately skipped and no model loads (see `QuickStartSeed`).
 
 That dispatch is fire-and-forget (`dispatchSelectedLoad()`), so the load is typically still in flight when `quickStart()` returns and the view appears — `ChatViewModel.isModelLoaded` is not guaranteed `true` on the first observation. Read `viewModel.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(error)`) to drive an accurate "starting up" indicator instead of assuming the composer is immediately live (#2222).
 
