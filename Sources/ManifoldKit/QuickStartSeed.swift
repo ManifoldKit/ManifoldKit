@@ -55,7 +55,10 @@ import ManifoldInference
 /// ### Usage
 ///
 /// ```swift
+/// import ManifoldLlama
+///
 /// let kit = try await ManifoldKit.quickStart(
+///     backends: [LlamaBackends.self],
 ///     seed: .recommendedSmallModel { progress in
 ///         print("Downloading starter model: \(Int(progress * 100))%")
 ///     }
@@ -66,7 +69,10 @@ import ManifoldInference
 /// Omit it when you don't need progress UI:
 ///
 /// ```swift
-/// let kit = try await ManifoldKit.quickStart(seed: .recommendedSmallModel())
+/// let kit = try await ManifoldKit.quickStart(
+///     backends: [LlamaBackends.self],
+///     seed: .recommendedSmallModel()
+/// )
 /// ```
 public struct QuickStartSeed: Sendable {
     // MARK: - Curated model definition

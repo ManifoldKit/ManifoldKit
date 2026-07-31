@@ -60,16 +60,6 @@ stability promise, because "no real adopter has been built against it yet"
 
 ## Tier 1 — Core guarantees
 
-> **One exception inside this tier.** `ManifoldKit` is Tier 1, but the
-> umbrella product it ships re-exports `ManifoldSkills` — which is Tier 3
-> (Experimental), listed below. A plain `import ManifoldKit` therefore hands
-> a consumer Experimental surface (`invoke_skill`, `SKILL.md` discovery)
-> alongside the Core guarantee, with no signal at the import site that the
-> two halves carry different promises. Treat any symbol that originates in
-> `ManifoldSkills` as Tier 3 regardless of which product you imported it
-> through. See [Open questions](#open-questions) — this is flagged, not
-> resolved; do not re-tier either product to make the inconsistency go away.
-
 <!-- TIER-MANIFEST:core-guarantees -->
 - `ManifoldKit`
 - `ManifoldContract`
@@ -85,7 +75,7 @@ stability promise, because "no real adopter has been built against it yet"
 
 | Product | Role | Why Core |
 |---|---|---|
-| `ManifoldKit` | Umbrella re-export (`ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families + `ManifoldUI` + `ManifoldSkills`). | The canonical one-import consumer entry point; carries the aggregate stability promise of everything it re-exports at Core or Supported tier. **Caveat:** it also re-exports `ManifoldSkills`, which is Tier 3 — see [Open questions](#open-questions). |
+| `ManifoldKit` | Umbrella re-export (`ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families + `ManifoldUI`). | The canonical one-import consumer entry point; carries the aggregate stability promise of everything it re-exports at Core or Supported tier. Experimental products, including `ManifoldSkills`, require an explicit import. |
 | `ManifoldContract` | Backend protocols (`InferenceBackend`, `EmbeddingBackend`), value/stream types (`GenerationConfig`, `GenerationEvent`, `Message`) — the inference contract every backend compiles against. | Literally "the inference contract" named in the tier definition. |
 | `ManifoldInference` | Inference orchestration engine: `InferenceService`, `GenerationQueue`, `ModelRegistry`, tool subsystem, `PromptAssembler`, `ContextWindowManager`. | The engine the contract and runtime both depend on; no persistence ports, backend-agnostic. |
 | `ManifoldRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, …), `ConversationRuntime` — the single send/regenerate/edit/cancel/branch turn loop (Principle 8). | Literally "the conversation runtime" named in the tier definition. |
@@ -160,7 +150,7 @@ graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
 | `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge. | Zero-adopter — "the best-documented module of the set" per § 7b, still experimental because no consumer app has been built and tested against it. |
 | `ManifoldMCPHost` | Runtime-backed MCP server boundary exposing sessions/messages/RAG/send-message as MCP tools. | Zero-adopter; depends on the still-experimental `ManifoldMCP`. |
 | `ManifoldAppIntents` | AppIntent ↔ `ToolDefinition` bridge. | Zero-adopter. |
-| `ManifoldSkills` | Claude-Code-compatible `SKILL.md` discovery + `invoke_skill` dispatcher (macOS-only). | Zero-adopter. **Note:** re-exported by the Tier-1 `ManifoldKit` umbrella — see the Tier 1 callout above and [Open questions](#open-questions). |
+| `ManifoldSkills` | Claude-Code-compatible `SKILL.md` discovery + `invoke_skill` dispatcher (macOS-only). | Zero-adopter. Requires explicit `import ManifoldSkills`; it is not re-exported by the Tier-1 `ManifoldKit` umbrella. |
 | `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter). | Zero-adopter **and** § 7 dependency-coupled: its surface can only ever be as stable as the external, pre-1.0 `AnyLanguageModel` package it wraps. |
 | `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. | Zero-adopter. |
 | `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1). | Zero-adopter. |
@@ -206,19 +196,10 @@ explicitly opts out of that guarantee (e.g. a throwaway spike product tagged
 
 ## Open questions
 
-Three placements in this page are judgment calls this audit doesn't fully
+Two placements in this page are judgment calls this audit doesn't fully
 settle — flagged rather than silently resolved:
 
-1. **`ManifoldSkills` is Experimental, but `ManifoldKit` (Core) re-exports
-   it.** The umbrella product's own tier describes the aggregate promise of
-   what it re-exports, but no existing policy states what happens when one
-   re-exported module carries a lower promise than the umbrella itself. A
-   consumer who only ever writes `import ManifoldKit` has no signal that the
-   `invoke_skill` / `SKILL.md`-discovery surface they can now reach is
-   Experimental, not Core. Until this is ruled on, treat any symbol
-   originating in `ManifoldSkills` as Experimental regardless of which
-   product it was imported through.
-2. **`ManifoldServerKit`'s Tier 2 placement is not fully machine-verified.**
+1. **`ManifoldServerKit`'s Tier 2 placement is not fully machine-verified.**
    Its public seam (`ServerBackendProvider`, `ManifoldServer.serve`) is
    absent from `scripts/api-surface-baseline.sh`'s `DEFAULT_MODULES` for a
    documented SwiftPM tooling limitation (`--traits` never reaches the
@@ -228,7 +209,7 @@ settle — flagged rather than silently resolved:
    but that placement will keep resting on documentation rather than a gate
    until the tooling limitation is fixed or the module is restructured so
    its seam compiles unconditionally.
-3. **Tier 2's stated criterion isn't met by every Tier 2 member.** The tier
+2. **Tier 2's stated criterion isn't met by every Tier 2 member.** The tier
    is defined above as receiving "the same full release-gated verification
    as Core," but two of its members don't, today: `ManifoldServerKit` has no
    api-digester coverage at all (see item 2 above), and `ManifoldFuzz` is

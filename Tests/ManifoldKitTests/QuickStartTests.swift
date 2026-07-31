@@ -26,7 +26,9 @@ final class QuickStartTests: XCTestCase {
     func test_quickStart_returnsBootstrappedViewModelAndSessionManager() async throws {
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            foundationAvailableOverride: false,
+            selectionPolicy: { _ in nil }
         )
 
         // Session-manager side (#1425/#1447): `sessionManager` is wired and
@@ -34,6 +36,10 @@ final class QuickStartTests: XCTestCase {
         // or extra loadSessions() call needed.
         XCTAssertFalse(result.sessionManager.sessions.isEmpty,
             "sessionManager.sessions must be populated immediately after quickStart() returns (no polling required) — regression guard for #1447")
+
+        guard case .needsModelOrEndpoint = result.readiness else {
+            return XCTFail("A fresh core-only quickStart must report that generation still needs a model or endpoint instead of implying a live chat.")
+        }
     }
 
     /// Errors from any step in the bootstrap chain must be reduced through

@@ -574,7 +574,6 @@ let package = Package(
                 "ManifoldCloudSaaS",
                 "ManifoldCloudCore",
                 "ManifoldUI",
-                "ManifoldSkills",
                 // Seed-model path: `quickStart(seed:)` drives a background download on
                 // first launch when no model is available. The concrete
                 // BackgroundDownloadManager + HuggingFaceService live in

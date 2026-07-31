@@ -18,7 +18,8 @@ Foundation Models, OpenAI, Anthropic, Ollama / LAN) — all behind one
 `ConversationRuntime`, persistence, the in-core backend families, and the chat
 UI. Specialised modules stay explicit imports: `ManifoldUIModelManagement`
 (model browser / download UI), `ManifoldMCP` (Model Context Protocol),
-`ManifoldVoice` (speech I/O), and `ManifoldAppIntents`. On-device MLX and
+`ManifoldVoice` (speech I/O), `ManifoldAppIntents`, and experimental
+`ManifoldSkills`. On-device MLX and
 llama.cpp inference ship as the separate `manifold-mlx` / `manifold-llama`
 companion packages — add the package and pass its registrar to
 `quickStart(backends:)`; they are not pulled in by the umbrella import alone.
@@ -70,11 +71,12 @@ struct MyChatApp: App {
 }
 ```
 
-> Important: The chat is inert until you select a model. `quickStart()` registers
-> the compiled-in backends but loads none, so on first run the composer reads
-> "No model loaded." Present `ModelManagementSheet` (from the opt-in
+> Important: `quickStart()` assembles a chat runtime, not necessarily a ready
+> model. Check `result.readiness`: `.loading` means a selected model is still
+> loading; `.needsModelOrEndpoint` means configure a cloud/LAN endpoint or
+> select a local model. Present `ModelManagementSheet` (from the opt-in
 > `ManifoldUIModelManagement` module) bound to `showModelManagement`, or seed a
-> model at launch.
+> local model at launch with its compatible companion registrar.
 
 > Warning: **The no-backend cliff.** With no backend registered — no companion
 > backend package linked (`manifold-mlx`, `manifold-llama`, …) and no registrar

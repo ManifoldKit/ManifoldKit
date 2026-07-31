@@ -16,6 +16,9 @@
 //     `ManifoldFuzz` — specialised opt-in modules.
 //   - `ManifoldAnyLanguageModel` — the AnyLanguageModel provider bridge
 //     (its own product since v0.48; the `AnyLanguageModel` trait is retired).
+//   - `ManifoldSkills` — experimental Claude-Code-compatible SKILL.md
+//     discovery and invocation. Keeping it explicit preserves the umbrella's
+//     Core compatibility promise.
 //
 // `ManifoldInference` is re-exported explicitly because consumers who write a
 // custom backend, register a factory, or read `BackendName` need its surface
