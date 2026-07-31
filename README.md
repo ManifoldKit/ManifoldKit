@@ -18,21 +18,17 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Three steps: add **ManifoldKit** (core) plus the **manifold-llama** companion package (the on-device GGUF backend), then drop this into your app entry point. `ManifoldKit.quickStart(backends:seed:)` builds the SwiftData container, registers the compiled-in backends plus the companion registrars you pass, and seeds a curated ~400 MB starter model on first launch. Check `QuickStartResult.readiness` while the selected model loads; errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart(seed:)` builds the SwiftData container, registers the compiled-in backends, and seeds a curated ~400 MB starter model on first launch. Check `QuickStartResult.readiness` while the selected model loads; errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
 .package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.75.0"), // x-release-please-version
-.package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14"),
-// target dependencies: "ManifoldKit", .product(name: "ManifoldLlama", package: "manifold-llama")
+// target dependencies: "ManifoldKit"
 ```
-
-> The `manifold-llama` pin goes live with the v0.48 / manifold-llama 0.1.0 release train. On v0.47 and earlier (and on v0.48 pre-release checkouts), `ManifoldLlama` still ships inside ManifoldKit core — `import ManifoldKit` alone suffices and `backends:` may be omitted. See [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md) for the full move.
 
 ```swift
 import SwiftUI
 import SwiftData
 import ManifoldKit
-import ManifoldLlama
 
 @main
 struct MyChatApp: App {
@@ -52,7 +48,6 @@ struct MyChatApp: App {
                 ProgressView().task {
                     do {
                         result = try await ManifoldKit.quickStart(
-                            backends: [LlamaBackends.self],
                             seed: .recommendedSmallModel()
                         )
                     }
@@ -65,24 +60,35 @@ struct MyChatApp: App {
 }
 ```
 
+Want the on-device GGUF starter model instead of relying on Foundation Models / a manually-loaded backend? Add the **manifold-llama** companion package and pass its registrar — otherwise `quickStart` logs and skips the GGUF seed, because no registered backend can load it:
+
+```swift,no-build:pulls in the manifold-llama companion package, which is a separate SwiftPM dependency the snippet harness (core-only) does not resolve
+// + .package(url: "https://github.com/ManifoldKit/manifold-llama.git", from: "0.2.14")
+// + target dependency: .product(name: "ManifoldLlama", package: "manifold-llama")
+import ManifoldLlama
+
+result = try await ManifoldKit.quickStart(
+    backends: [LlamaBackends.self],
+    seed: .recommendedSmallModel()
+)
+```
+
 #### One-shot response
 
 Already have a `QuickStartResult` and just want one reply as a `String`? `respond(to:)` sends the message, drives the turn, and returns the assistant's text — no `inputText`/observation plumbing:
 
 ```swift
 import ManifoldKit
-import ManifoldLlama
 
 func oneShot() async throws -> String {
     let kit = try await ManifoldKit.quickStart(
-        backends: [LlamaBackends.self],
         seed: .recommendedSmallModel()
     )
     return try await kit.respond(to: "Explain monads in one sentence.")
 }
 ```
 
-> **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) before selection, then starts an asynchronous model load. Pass `[LlamaBackends.self]` from the `manifold-llama` companion or the GGUF seed is skipped. Check `result.readiness` / `result.viewModel.modelLoadState` to render loading and failure states rather than assuming the composer is ready on its first frame. The seed is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
+> **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) before selection, then starts an asynchronous model load. The GGUF seed needs the `manifold-llama` companion's `LlamaBackends` registrar (see above) or it is skipped. Check `result.readiness` / `result.viewModel.modelLoadState` to render loading and failure states rather than assuming the composer is ready on its first frame. The seed is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
 > **Don't want the starter download?** Drop `seed:` — the chat is then inert until you select a model. `quickStart` registers the backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or keep `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 

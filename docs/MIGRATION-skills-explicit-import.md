@@ -14,12 +14,12 @@ compatibility tier visible at the import boundary.
 Add the `ManifoldSkills` product to the target that uses skill discovery or
 `invoke_skill`, then import it directly:
 
-```swift
+```swift,no-build:Package.swift manifest fragment, not standalone Swift
 // Package.swift target dependencies
 .product(name: "ManifoldSkills", package: "ManifoldKit")
 ```
 
-```swift
+```swift,no-build:imports ManifoldSkills, a product the snippet compile harness deliberately does not link
 import ManifoldKit
 import ManifoldSkills
 ```
