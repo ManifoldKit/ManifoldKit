@@ -1,94 +1,150 @@
 import XCTest
 import Foundation
 
-/// Audit: the set of `@_exported import` modules on the `ManifoldKit`
-/// umbrella must not change without a reviewer deliberately updating this
-/// file's baseline.
+/// Audit: `@_exported import` re-exports anywhere in `Sources/` must not
+/// change without a reviewer deliberately updating this file's baseline.
 ///
 /// ## Why
 ///
 /// `swift-api-digester` (the machinery behind `Tests/APIFreezeTests`) dumps
-/// only symbols *declared* in a module. Almost everything `import ManifoldKit`
-/// exposes is not declared there — it is re-exported via `@_exported import`
-/// from `ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
-/// the backend families, and `ManifoldUI` (see `Sources/ManifoldKit/Exports.swift`).
-/// Re-exported symbols never land in `api-surface-baseline/ManifoldKit.txt` —
-/// `grep -ic skill Tests/APIFreezeTests/api-surface-baseline/ManifoldKit.txt`
-/// returns 0 even though `ManifoldSkills` was re-exported for months (retired
-/// in ebcafdbe). So deleting an `@_exported import` line — an instant source
-/// break for every consumer doing `import ManifoldKit` plus a symbol from
-/// that module — sails past api-digester untouched. Found reviewing PR
-/// #2419, which deletes `Sources/ManifoldKit/Exports+Skills.swift`.
+/// only symbols *declared* in a module. A module that re-exports another via
+/// `@_exported import` exposes the re-exported module's public surface too,
+/// but none of it is *declared* there, so none of it lands in that module's
+/// `api-surface-baseline/*.txt`. `grep -ic skill
+/// Tests/APIFreezeTests/api-surface-baseline/ManifoldKit.txt` returns 0 even
+/// though `ManifoldSkills` has been re-exported via `ManifoldKit` for
+/// months. So deleting an `@_exported import` line — an instant source
+/// break for every consumer that reaches the re-exported module's symbols
+/// through the re-exporting one — sails past api-digester untouched. Found
+/// reviewing PR #2419, which deletes `Sources/ManifoldKit/Exports+Skills.swift`.
+///
+/// This is not only a `ManifoldKit`-umbrella problem. `ManifoldContract`
+/// re-exports the tool-calling value types from `ManifoldHardware` (and
+/// `ManifoldModelCatalog`) specifically *because* moving them into Contract
+/// directly would create a dependency cycle (AGENTS.md § Targets,
+/// `ManifoldContractLeafExports.swift`) — that re-export is structurally
+/// load-bearing, not incidental, and losing it is exactly as invisible to
+/// api-digester as the umbrella case. Same for `ManifoldInference`'s five
+/// leaf re-exports and `ManifoldCloudCore`'s re-export of `ManifoldInference`
+/// (needed for `DefaultWebSearchRuntime`'s port conformance).
 ///
 /// ## What it checks
 ///
-/// This audit scans every `.swift` file directly under `Sources/ManifoldKit/`
-/// (a re-export could live in any file there, not just `Exports.swift` — see
-/// the retired `Exports+Skills.swift` precedent) for `@_exported import <Module>`
-/// lines and compares the resulting module set against ``expectedReexports``,
-/// a baseline pinned in this file. Removing a module — or adding one without
-/// updating the baseline — fails with a diff. The baseline is a plain Swift
-/// array literal, matching `PackageTopologyAuditTest.expectedFamilyTargetNames`:
-/// a change to the umbrella's re-export surface is meant to be a reviewable
-/// one-line diff here, not a silent drift.
+/// Scans every `.swift` file under `Sources/` (recursively) for
+/// `@_exported import <Module>` statements, grouping findings by the
+/// re-exporting module (the first path component under `Sources/`) rather
+/// than by file — the same module's re-export set can be spread across
+/// multiple files (`ManifoldKit/Exports.swift` + `Exports+Skills.swift`).
+/// The resulting `[reexportingModule: Set<reexportedModule>]` map is
+/// compared against ``expectedReexports``, the pinned baseline. A module
+/// that stops re-exporting something in the baseline, or starts re-exporting
+/// something not yet baselined, fails — naming both the module and target,
+/// plus the file for an *added* re-export (a *missing* one has no file to
+/// name by definition — the file that carried it is what changed).
 ///
-/// The detection logic lives in ``reexportedModules(sourcesRoot:)`` and
-/// ``diff(found:expected:)`` so the in-file sabotage test exercises the exact
-/// functions the audit runs.
+/// The detection logic lives in ``scanReexports(sourcesRoot:)`` and
+/// ``diff(found:expected:)`` so the in-file sabotage tests exercise the
+/// exact functions the audit runs.
 ///
-/// ## Scope notes
+/// ## Detection details
 ///
-/// * Only the umbrella target (`Sources/ManifoldKit/`) is scanned — this
-///   audit is specifically about the umbrella's re-export contract, not
-///   every `@_exported import` in the repo.
-/// * The `#if BUILDING_DOCC` branch of `Exports.swift` re-exports the same
-///   modules with `@_documentation(visibility: internal)` prefixed — the
-///   parser strips that prefix, so both branches fold into the same set and
-///   must always agree (a divergence there would itself be a bug worth
-///   catching, though this audit doesn't separately assert branch parity).
-/// * Commented-out `@_exported import` lines (`// @_exported import Foo`) are
-///   not counted — the scan skips lines whose trimmed text starts with `//`.
+/// * **Matching is not anchored at line start.** The scan does
+///   `trimmed.range(of: "@_exported import ")`, a substring search, not a
+///   `hasPrefix` check — so both `@_exported import Foo` and the doc-build
+///   annotated form `@_documentation(visibility: internal) @_exported
+///   import Foo` (`Sources/ManifoldKit/Exports.swift`'s `#if BUILDING_DOCC`
+///   branch) are matched by the same code path — confirmed directly:
+///   `test_reexports_matchBaseline` passes against the real tree today,
+///   where `Exports.swift` carries both forms for the same eight modules
+///   (the `#if BUILDING_DOCC` / `#else` branches re-export an identical
+///   list), and `test_sabotage_detectsRemovedAndAddedReexport` asserts the
+///   `@_documentation`-prefixed form is matched in isolation. This audit
+///   can't and doesn't distinguish which branch a given import came from —
+///   it only asserts the union each module contributes is right.
+/// * **Comment lines cannot poison the set.** A line is skipped whenever its
+///   *trimmed* text starts with `//` — which covers every real instance in
+///   this repo of `@_exported import` appearing only in prose:
+///   `Sources/ManifoldKit/Exports.swift:27` (`// Doc-build gate...`),
+///   `Sources/ManifoldContract/BackendError.swift`,
+///   `Sources/ManifoldInference/Services/InferenceService+StructuredOutput.swift`,
+///   `Sources/ManifoldRuntime/Services/ConversationRuntimeTypes.swift`, and
+///   `Sources/ManifoldUI/ViewModels/ChatViewModel+Messages.swift` — all `///`
+///   or `//` doc/prose comments, all excluded because the trimmed line
+///   starts with `//`. Verified by running `grep -n "@_exported import"
+///   Sources/**/*.swift` against every hit and confirming each non-statement
+///   hit starts with `//` after trimming; `test_sabotage_commentLineDoesNotPoisonSet`
+///   plants two of these exact comment strings alongside a real statement
+///   and asserts only the real one counts.
+/// * Only `.swift` files are scanned (DocC `.md`/`.tutorial` prose that
+///   mentions `@_exported import`, e.g. `ManifoldContract.docc`, is never
+///   read).
 final class UmbrellaReexportAuditTest: XCTestCase {
 
-    /// Pinned baseline of modules `ManifoldKit` re-exports today. Update this
-    /// array — with a `feat`/`fix`/migration-note explaining why — whenever a
-    /// re-export is deliberately added or removed.
-    static let expectedReexports: Set<String> = [
-        "ManifoldInference",
-        "ManifoldRuntime",
-        "ManifoldPersistenceSwiftData",
-        "ManifoldFoundation",
-        "ManifoldOllama",
-        "ManifoldCloudSaaS",
-        "ManifoldCloudCore",
-        "ManifoldUI",
-        "ManifoldSkills",
+    /// Pinned baseline: reexporting module -> set of modules it re-exports.
+    /// Update this map — with a `feat`/`fix`/migration-note explaining why —
+    /// whenever a re-export is deliberately added or removed anywhere in
+    /// `Sources/`.
+    static let expectedReexports: [String: Set<String>] = [
+        "ManifoldKit": [
+            "ManifoldInference",
+            "ManifoldRuntime",
+            "ManifoldPersistenceSwiftData",
+            "ManifoldFoundation",
+            "ManifoldOllama",
+            "ManifoldCloudSaaS",
+            "ManifoldCloudCore",
+            "ManifoldUI",
+            "ManifoldSkills",
+        ],
+        // Re-exports ManifoldInference so DefaultWebSearchRuntime's port
+        // conformance (an un-gated library->library edge, see Package.swift)
+        // compiles without every ManifoldCloudCore file importing it.
+        "ManifoldCloudCore": [
+            "ManifoldInference",
+        ],
+        // Load-bearing, not incidental: the tool-calling value types live
+        // physically in ManifoldHardware (moving them into Contract would
+        // cycle) and are re-exported here so Contract consumers see them as
+        // part of the kernel's surface. See ManifoldContractLeafExports.swift.
+        "ManifoldContract": [
+            "ManifoldHardware",
+            "ManifoldModelCatalog",
+        ],
+        "ManifoldInference": [
+            "ManifoldContract",
+            "ManifoldHardware",
+            "ManifoldModelCatalog",
+            "ManifoldNetworking",
+            "ManifoldSecrets",
+        ],
     ]
 
     private var sourcesRoot: URL {
-        // Tests/ManifoldCoreTests/<this>.swift -> repo root -> Sources/ManifoldKit
+        // Tests/ManifoldCoreTests/<this>.swift -> repo root -> Sources
         let here = URL(fileURLWithPath: #filePath)
         return here
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Sources")
-            .appendingPathComponent("ManifoldKit")
     }
 
-    func test_umbrellaReexports_matchBaseline() throws {
-        let found = try Self.reexportedModules(sourcesRoot: sourcesRoot)
+    func test_reexports_matchBaseline() throws {
+        let found = try Self.scanReexports(sourcesRoot: sourcesRoot)
         let (missing, added) = Self.diff(found: found, expected: Self.expectedReexports)
 
         XCTAssertTrue(missing.isEmpty && added.isEmpty, """
-            ManifoldKit's `@_exported import` surface changed without a baseline update.
+            An `@_exported import` re-export changed somewhere under Sources/ without a baseline update.
 
-            Missing (re-export removed — a source break for every consumer doing \
-            `import ManifoldKit` plus a symbol from that module): \(missing.sorted())
-            Added (new re-export, not yet in the baseline): \(added.sorted())
+            Missing (re-export removed — a source break for every consumer that reached \
+            the target module's symbols through the re-exporting one):
+            \(missing.map { "  - \($0.module) no longer re-exports \($0.target) (expected under Sources/\($0.module)/)" }.joined(separator: "\n"))
 
-            If this is deliberate, update `UmbrellaReexportAuditTest.expectedReexports` \
-            in the same PR and say why in the PR body — a removal needs a migration note \
+            Added (new re-export, not yet in the baseline):
+            \(added.map { "  - \($0.module) now re-exports \($0.target), found in \($0.file)" }.joined(separator: "\n"))
+
+            If this is deliberate, update `UmbrellaReexportAuditTest.expectedReexports` in \
+            the same PR and say why in the PR body — a removal needs a migration note \
             (AGENTS.md § "Removing a public API means updating every doc that names it").
             """)
     }
@@ -97,24 +153,25 @@ final class UmbrellaReexportAuditTest: XCTestCase {
         // Guards against the scan silently finding nothing (wrong path, a
         // regex that stopped matching) and reporting a vacuous "0 missing,
         // 0 added" pass.
-        let found = try Self.reexportedModules(sourcesRoot: sourcesRoot)
-        XCTAssertFalse(found.isEmpty, "Expected to find @_exported import lines under Sources/ManifoldKit/ — scan path or regex is probably broken")
+        let found = try Self.scanReexports(sourcesRoot: sourcesRoot)
+        XCTAssertFalse(found.isEmpty, "Expected to find @_exported import lines under Sources/ — scan path or regex is probably broken")
+        XCTAssertTrue(found.contains { $0.module == "ManifoldContract" }, "Expected to find ManifoldContract's leaf re-exports specifically — the non-umbrella coverage this audit exists for")
     }
 
     // MARK: - Sabotage (exercises the same detection functions the audit runs)
 
-    func test_sabotage_detectsRemovedReexport() throws {
+    func test_sabotage_detectsRemovedAndAddedReexport() throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("umbrella-reexport-sabotage-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
         let fm = FileManager.default
-        try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
 
-        // Plant a stand-in Exports.swift missing one module (mirrors PR
-        // #2419 deleting Exports+Skills.swift's `@_exported import
-        // ManifoldSkills` line) and carrying the doc-build annotated branch,
-        // a commented-out line, and blank lines — the real file's shape.
-        let sabotaged = """
+        // Module A: mirrors ManifoldKit — two files contributing to the same
+        // module's re-export set, the doc-build annotated form, and a
+        // planted removal (ManifoldPersistenceSwiftData is missing).
+        let moduleADir = tmp.appendingPathComponent("ModuleA", isDirectory: true)
+        try fm.createDirectory(at: moduleADir, withIntermediateDirectories: true)
+        try """
             // some doc comment
             #if BUILDING_DOCC
             @_documentation(visibility: internal) @_exported import ManifoldInference
@@ -124,75 +181,171 @@ final class UmbrellaReexportAuditTest: XCTestCase {
             @_exported import ManifoldRuntime
             // @_exported import ManifoldPersistenceSwiftData
             #endif
-            """
-        try sabotaged.write(
-            to: tmp.appendingPathComponent("Exports.swift"),
-            atomically: true,
-            encoding: .utf8
-        )
+            """.write(to: moduleADir.appendingPathComponent("Exports.swift"), atomically: true, encoding: .utf8)
+        try """
+            @_exported import ManifoldSkills
+            """.write(to: moduleADir.appendingPathComponent("Exports+Skills.swift"), atomically: true, encoding: .utf8)
 
-        let found = try Self.reexportedModules(sourcesRoot: tmp)
-        XCTAssertEqual(found, ["ManifoldInference", "ManifoldRuntime"], "The commented-out line must not count, and only the two real imports should be found")
+        // Module B: mirrors ManifoldContract — a genuinely new, unbaselined
+        // re-export planted to exercise the "added" branch.
+        let moduleBDir = tmp.appendingPathComponent("ModuleB", isDirectory: true)
+        try fm.createDirectory(at: moduleBDir, withIntermediateDirectories: true)
+        try """
+            @_exported import ManifoldSurprise
+            """.write(to: moduleBDir.appendingPathComponent("LeafExports.swift"), atomically: true, encoding: .utf8)
 
-        let (missing, added) = Self.diff(found: found, expected: Self.expectedReexports)
-        XCTAssertFalse(missing.isEmpty, "Removing ManifoldPersistenceSwiftData (and every other baseline module) must be reported as missing")
-        XCTAssertTrue(missing.contains("ManifoldPersistenceSwiftData"), "The specific removed module must be named")
-        XCTAssertTrue(missing.contains("ManifoldFoundation"), "Every baseline module absent from the sabotaged file must be named")
-        XCTAssertTrue(added.isEmpty, "No unexpected module was added in this sabotage scenario")
+        let found = try Self.scanReexports(sourcesRoot: tmp)
+        let foundMap = Self.groupByModule(found)
 
-        // A clean scan (found == expected) must report no diff at all.
-        let (cleanMissing, cleanAdded) = Self.diff(found: Self.expectedReexports, expected: Self.expectedReexports)
-        XCTAssertTrue(cleanMissing.isEmpty && cleanAdded.isEmpty, "An unchanged re-export set must report zero diff")
+        XCTAssertEqual(foundMap["ModuleA"], ["ManifoldInference", "ManifoldRuntime", "ManifoldSkills"], "Findings from two files in the same module must merge into one set, the commented-out line must not count, and the @_documentation-prefixed form must be matched")
+        XCTAssertEqual(foundMap["ModuleB"], ["ManifoldSurprise"])
 
-        // An added, unbaselined module must be reported too.
-        let (_, addedOnly) = Self.diff(found: Self.expectedReexports.union(["ManifoldMCP"]), expected: Self.expectedReexports)
-        XCTAssertEqual(addedOnly, ["ManifoldMCP"], "A new re-export not yet in the baseline must be flagged as added")
+        let baseline: [String: Set<String>] = [
+            "ModuleA": ["ManifoldInference", "ManifoldRuntime", "ManifoldPersistenceSwiftData", "ManifoldSkills"],
+            "ModuleB": [],
+        ]
+        let (missing, added) = Self.diff(found: found, expected: baseline)
+
+        XCTAssertEqual(missing.count, 1, "Exactly one baseline re-export (ManifoldPersistenceSwiftData) is absent")
+        XCTAssertEqual(missing.first?.module, "ModuleA")
+        XCTAssertEqual(missing.first?.target, "ManifoldPersistenceSwiftData")
+
+        XCTAssertEqual(added.count, 1, "Exactly one unbaselined re-export (ManifoldSurprise) was planted")
+        XCTAssertEqual(added.first?.module, "ModuleB")
+        XCTAssertEqual(added.first?.target, "ManifoldSurprise")
+        XCTAssertTrue(added.first?.file.hasSuffix("LeafExports.swift") ?? false, "The added-reexport finding must name the actual file it was found in, not a generic module-directory placeholder")
+
+        // A module entirely absent from `found` (e.g. every file in it
+        // deleted) must still be reported as missing for each baselined
+        // target, not silently dropped because the key itself vanished.
+        let (missingWhenModuleGone, _) = Self.diff(found: [], expected: baseline)
+        XCTAssertEqual(Set(missingWhenModuleGone.map(\.target)), ["ManifoldInference", "ManifoldRuntime", "ManifoldPersistenceSwiftData", "ManifoldSkills"])
+    }
+
+    func test_sabotage_commentLineDoesNotPoisonSet() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("umbrella-reexport-comment-sabotage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let fm = FileManager.default
+        let moduleDir = tmp.appendingPathComponent("ManifoldContract", isDirectory: true)
+        try fm.createDirectory(at: moduleDir, withIntermediateDirectories: true)
+
+        // Mirrors the real prose comments found via
+        // `grep -n "@_exported import" Sources/**/*.swift` that are NOT
+        // themselves re-export statements.
+        try """
+            // `ManifoldContract` already `@_exported import`s (see
+            /// `ManifoldInference`'s `@_exported import` of `ManifoldContract`) gives
+            @_exported import ManifoldHardware
+            """.write(to: moduleDir.appendingPathComponent("BackendError.swift"), atomically: true, encoding: .utf8)
+
+        let found = try Self.scanReexports(sourcesRoot: tmp)
+        XCTAssertEqual(found.count, 1, "Only the real @_exported import statement counts; the two prose comment lines that contain the literal phrase must not")
+        XCTAssertEqual(found.first?.target, "ManifoldHardware")
     }
 
     // MARK: - Detection
 
-    /// Scans every `.swift` file directly under `sourcesRoot` for
-    /// `@_exported import <Module>` lines (optionally prefixed with
-    /// `@_documentation(visibility: internal)`) and returns the set of
-    /// re-exported module names. Commented-out lines are ignored.
-    static func reexportedModules(sourcesRoot: URL) throws -> Set<String> {
-        let fm = FileManager.default
-        var modules: Set<String> = []
+    /// One finding: `module` re-exports `target`, found in `file`.
+    struct ReexportFinding: Equatable {
+        let module: String
+        let target: String
+        let file: String
+    }
 
-        guard let entries = try? fm.contentsOfDirectory(
+    /// Recursively scans every `.swift` file under `sourcesRoot` for
+    /// `@_exported import <Module>` statements (optionally prefixed with
+    /// `@_documentation(visibility: internal)`), attributing each finding to
+    /// the module owning the file (its first path component under
+    /// `sourcesRoot`). Commented-out lines (trimmed text starting with `//`)
+    /// are ignored.
+    static func scanReexports(sourcesRoot: URL) throws -> [ReexportFinding] {
+        let fm = FileManager.default
+        var findings: [ReexportFinding] = []
+
+        guard let enumerator = fm.enumerator(
             at: sourcesRoot,
-            includingPropertiesForKeys: nil
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
         ) else {
-            return modules
+            return findings
         }
 
-        for entry in entries where entry.pathExtension == "swift" {
-            guard let content = try? String(contentsOf: entry, encoding: .utf8) else { continue }
+        let rootComponents = sourcesRoot.standardizedFileURL.pathComponents
+
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension == "swift" else { continue }
+            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+
+            let fileComponents = fileURL.standardizedFileURL.pathComponents
+            guard fileComponents.count > rootComponents.count else { continue }
+            let module = fileComponents[rootComponents.count]
+
             for rawLine in content.components(separatedBy: "\n") {
                 let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.hasPrefix("//") else { continue }
                 guard let range = trimmed.range(of: "@_exported import ") else { continue }
                 let rest = trimmed[range.upperBound...]
-                // Take the first whitespace-delimited token after "import ",
-                // then strip a trailing line comment if present.
-                let moduleToken = rest
-                    .split(separator: " ", maxSplits: 1)[0]
-                let moduleName = moduleToken.split(separator: "/")[0]
-                    .trimmingCharacters(in: .whitespaces)
-                if !moduleName.isEmpty {
-                    modules.insert(moduleName)
+                let moduleToken = rest.split(separator: " ", maxSplits: 1)[0]
+                let targetName = moduleToken.trimmingCharacters(in: .whitespaces)
+                if !targetName.isEmpty {
+                    findings.append(ReexportFinding(module: module, target: targetName, file: fileURL.path))
                 }
             }
         }
-        return modules
+        return findings
     }
 
-    /// Compares a scanned module set against the pinned baseline. Returns
-    /// modules present in `expected` but absent from `found` (a removal) and
-    /// modules present in `found` but absent from `expected` (an addition).
-    static func diff(found: Set<String>, expected: Set<String>) -> (missing: [String], added: [String]) {
-        let missing = expected.subtracting(found).sorted()
-        let added = found.subtracting(expected).sorted()
+    /// Folds per-file findings into one set of re-exported modules per
+    /// reexporting module.
+    static func groupByModule(_ findings: [ReexportFinding]) -> [String: Set<String>] {
+        var result: [String: Set<String>] = [:]
+        for finding in findings {
+            result[finding.module, default: []].insert(finding.target)
+        }
+        return result
+    }
+
+    /// Compares scanned findings against the pinned baseline map. `missing`
+    /// is every (module, target) pair present in `expected` but absent from
+    /// `found` — a removal, with no file to name since the file that
+    /// carried it is what changed. `added` is every (module, target) pair
+    /// present in `found` but absent from `expected`, each annotated with
+    /// the actual file it was found in (the first file encountered, if more
+    /// than one file in the module carries the same statement).
+    static func diff(
+        found: [ReexportFinding],
+        expected: [String: Set<String>]
+    ) -> (missing: [(module: String, target: String)], added: [(module: String, target: String, file: String)]) {
+        let foundMap = groupByModule(found)
+
+        var missing: [(module: String, target: String)] = []
+        for (module, targets) in expected {
+            let foundTargets = foundMap[module] ?? []
+            for target in targets.subtracting(foundTargets).sorted() {
+                missing.append((module, target))
+            }
+        }
+
+        var fileForPair: [String: String] = [:]
+        for finding in found {
+            let key = "\(finding.module)|\(finding.target)"
+            if fileForPair[key] == nil {
+                fileForPair[key] = finding.file
+            }
+        }
+
+        var added: [(module: String, target: String, file: String)] = []
+        for (module, targets) in foundMap {
+            let expectedTargets = expected[module] ?? []
+            for target in targets.subtracting(expectedTargets).sorted() {
+                let file = fileForPair["\(module)|\(target)"] ?? "Sources/\(module)/"
+                added.append((module, target, file))
+            }
+        }
+
+        missing.sort { $0.module == $1.module ? $0.target < $1.target : $0.module < $1.module }
+        added.sort { $0.module == $1.module ? $0.target < $1.target : $0.module < $1.module }
         return (missing, added)
     }
 }
