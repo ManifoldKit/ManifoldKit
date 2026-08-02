@@ -18,7 +18,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container and registers the compiled-in backends. On devices with an available Foundation Model, a stored local model, or a saved endpoint it selects that model; otherwise, configure a backend or use the optional GGUF starter below. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container and registers the compiled-in backends. On devices with an available Foundation Model, a stored local model that a registered backend can load, or a saved endpoint it selects that model; otherwise, configure a backend or use the optional GGUF starter below. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
 .package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.75.0"), // x-release-please-version
@@ -87,7 +87,7 @@ func oneShot(using kit: QuickStartResult) async throws -> String {
 
 > **About `seed:`** — with the `manifold-llama` companion's `LlamaBackends` registrar, `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. Without that registrar the GGUF seed is skipped. The download is also skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
-> **No starter download?** `quickStart` registers the backends but loads none when no Foundation / stored local / endpoint model is available, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or pass the `LlamaBackends` registrar with `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
+> **No starter download?** `quickStart` registers the backends but loads none when no Foundation Model, compatible stored local model, or saved endpoint is available, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or pass the `LlamaBackends` registrar with `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
 #### Value-typed front door: `LLM`
 
