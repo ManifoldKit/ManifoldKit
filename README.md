@@ -60,6 +60,8 @@ struct MyChatApp: App {
 }
 ```
 
+#### Optional: on-device GGUF starter
+
 Want the on-device GGUF starter model instead of relying on Foundation Models / a manually-loaded backend? Add the **manifold-llama** companion package and pass its registrar — otherwise `quickStart` logs and skips the GGUF seed, because no registered backend can load it:
 
 ```swift,no-build:pulls in the manifold-llama companion package, which is a separate SwiftPM dependency the snippet harness (core-only) does not resolve
