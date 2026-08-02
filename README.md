@@ -18,7 +18,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart(seed:)` builds the SwiftData container, registers the compiled-in backends, and seeds a curated ~400 MB starter model on first launch — one call to a live, generating chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+Add **ManifoldKit** (core), then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container and registers the compiled-in backends. On devices with an available Foundation Model, a stored local model, or a saved endpoint it selects that model; otherwise, configure a backend or use the optional GGUF starter below. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```text
 .package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.75.0"), // x-release-please-version
@@ -47,9 +47,7 @@ struct MyChatApp: App {
             } else {
                 ProgressView().task {
                     do {
-                        result = try await ManifoldKit.quickStart(
-                            seed: .recommendedSmallModel()
-                        )
+                        result = try await ManifoldKit.quickStart()
                     }
                     catch let e as ManifoldKitError { error = e }
                     catch { self.error = .from(error) }
@@ -77,36 +75,32 @@ result = try await ManifoldKit.quickStart(
 
 #### One-shot response
 
-Already have a `QuickStartResult` and just want one reply as a `String`? `respond(to:)` sends the message, drives the turn, and returns the assistant's text — no `inputText`/observation plumbing:
+Already have a `QuickStartResult` with a loaded model and just want one reply as a `String`? `respond(to:)` sends the message, drives the turn, and returns the assistant's text — no `inputText`/observation plumbing:
 
 ```swift
 import ManifoldKit
 
-func oneShot() async throws -> String {
-    let kit = try await ManifoldKit.quickStart(
-        seed: .recommendedSmallModel()
-    )
+func oneShot(using kit: QuickStartResult) async throws -> String {
     return try await kit.respond(to: "Explain monads in one sentence.")
 }
 ```
 
-> **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The GGUF seed needs the `manifold-llama` companion's `LlamaBackends` registrar (see above) or it is skipped. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
+> **About `seed:`** — with the `manifold-llama` companion's `LlamaBackends` registrar, `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. Without that registrar the GGUF seed is skipped. The download is also skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
-> **Don't want the starter download?** Drop `seed:` — the chat is then inert until you select a model. `quickStart` registers the backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or keep `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
+> **No starter download?** `quickStart` registers the backends but loads none when no Foundation / stored local / endpoint model is available, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or pass the `LlamaBackends` registrar with `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
 #### Value-typed front door: `LLM`
 
-Want the LLM.swift feel — construct a value, call `.respond(to:)`? `LLM(from:template:backends:)` wraps the same `quickStart` plumbing in a value type. `backends:` is a **required** parameter (no default — explicit registrars over implicit ones, see [docs/API-DESIGN.md](docs/API-DESIGN.md)); pass `ManifoldKit.defaultBackendRegistrars` for the compiled-in cloud + Foundation families:
+Want the LLM.swift feel — construct a value, call `.respond(to:)`? `LLM(from:template:backends:)` wraps the same `quickStart` plumbing in a value type. `backends:` is a **required** parameter (no default — explicit registrars over implicit ones, see [docs/API-DESIGN.md](docs/API-DESIGN.md)); pass a registrar that can load the seed type:
 
-```swift
+```swift,no-build:uses the manifold-llama companion package, which is not linked by the core-only snippet harness
 import ManifoldKit
-// + `import ManifoldLlama` for the local GGUF seed below (see the note above)
+import ManifoldLlama
 
 func twoLine() async throws -> String {
     let llm = try await LLM(
         from: .recommendedSmallModel(),
-        backends: ManifoldKit.defaultBackendRegistrars,
-        // backends: [LlamaBackends.self], ← swap in (+ import) for a LOCAL model
+        backends: [LlamaBackends.self]
     )
     return try await llm.respond(to: "Explain monads in one sentence.")
 }

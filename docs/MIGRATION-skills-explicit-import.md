@@ -19,7 +19,7 @@ Add the `ManifoldSkills` product to the target that uses skill discovery or
 .product(name: "ManifoldSkills", package: "ManifoldKit")
 ```
 
-```swift,no-build:imports ManifoldSkills, a product the snippet compile harness deliberately does not link
+```swift
 import ManifoldKit
 import ManifoldSkills
 ```

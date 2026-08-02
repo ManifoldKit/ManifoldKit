@@ -185,7 +185,6 @@ SNIPPET_GATE_OPT_OUT=(
     # construct MLXDiffusionBackend, which lives in the manifold-mlx companion
     # package and cannot be linked from core.
     "docs/QUICKSTART-IMAGE-GEN.md:snippets construct MLXDiffusionBackend — manifold-mlx type, not linkable from core"
-    "docs/MIGRATION-skills-explicit-import.md:both fences are a manifest fragment and an import of ManifoldSkills, a product the gate's test target does not link — neither can compile as a snippet"
 
     # ── Untriaged backlog ────────────────────────────────────────────────
     # These DO carry consumer-pasteable Swift and SHOULD be gated. They are

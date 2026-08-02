@@ -362,8 +362,8 @@ let package = Package(
         // ManifoldSkills: Claude-Code-compatible SKILL.md filesystem discovery
         // and `invoke_skill` dispatcher. Library target is unconditional
         // (the body is platform-gated with `#if os(macOS)`). The Skills trait
-        // was retired in v0.48 (PR A3) — the umbrella re-export and test edges
-        // are unconditional now.
+        // was retired in v0.48 (PR A3). The product builds unconditionally but
+        // remains an explicit import; the Core umbrella does not re-export it.
         .target(
             name: "ManifoldSkills",
             dependencies: [

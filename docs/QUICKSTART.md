@@ -200,7 +200,7 @@ struct MyChatApp: App {
 | No registered backend can load GGUF models | Skip — logged as `quickStart(seed:): no registered backend can load gguf models — seed skipped` |
 | Network failure during the download | Skip silently — app launches in empty state |
 
-**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README Hello World). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
+**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README's optional GGUF starter). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
 
 ### What "available immediately" actually means
 
