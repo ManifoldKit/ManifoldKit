@@ -40,18 +40,20 @@ public struct TemplateTokenInjectMutator: Mutator {
     /// a known chat-template delimiter (`TemplateTokenLeakDetector.templateFragments`
     /// — the canonical delimiter list; this mutator's own `tokens` is a
     /// deliberately narrower subset for injection, so the detector's list is
-    /// what "known template delimiter" means here). NOTE: this is a superset
-    /// of the detector's FRAGMENTS, not of this mutator's own `tokens` --
-    /// `<|user|>` is injectable but absent from `templateFragments`, so a
-    /// second chained application can still splice into one this mutator
-    /// injected. Harmless today (it is not a detector fragment, so it cannot
-    /// manufacture a leak finding); revisit if it ever becomes one.. Splicing a new token at
+    /// what "known template delimiter" means here). Splicing a new token at
     /// one of these indices corrupts the existing delimiter — e.g. injecting
     /// `<end_of_turn>` into the middle of a seed's `<|im_start|>` produces
     /// `<<|im_<end_of_turn>end|>|im_start|>`, which the model then "repairs" or
     /// mirrors, and `TemplateTokenLeakDetector` misreads that repair as a
     /// spontaneous leak. Boundary indices (immediately before/after an
     /// occurrence) are NOT forbidden — only indices that would land inside one.
+    ///
+    /// NOTE: `templateFragments` is a superset of the detector's FRAGMENTS,
+    /// not of this mutator's own `tokens` — `<|user|>` is injectable but
+    /// absent from `templateFragments`, so a second chained application can
+    /// still splice into one this mutator injected. Harmless today (it is not
+    /// a detector fragment, so it cannot manufacture a leak finding); revisit
+    /// if it ever becomes one.
     static func forbiddenInteriorIndices(in text: String) -> Set<Int> {
         let chars = Array(text)
         var forbidden: Set<Int> = []

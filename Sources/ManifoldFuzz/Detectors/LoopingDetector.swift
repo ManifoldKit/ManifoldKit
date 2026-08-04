@@ -143,27 +143,38 @@ public struct LoopingDetector: Detector {
     /// "the model echoed a repeat-request's own content" from "the model
     /// genuinely ran away looping on content the input never supplied".
     ///
+    /// Upper bound on the prompt text fed to the O(n·m) LCS.
+    ///
+    /// `LongestCommonSubstring.compute` documents its own safety premise as
+    /// "inputs are bounded by `maxOutputTokens`". That holds for the model's
+    /// OUTPUT (`FuzzRunner` caps `maxTokens` at 512, so ~2.5k chars) but NOT
+    /// for the prompt this detector now passes it: `LengthStretchMutator`
+    /// multiplies a user turn by up to 10x and `MutatorChain.allRandom`
+    /// samples with replacement up to 3 times, so a 152-char seed can reach
+    /// ~152,000 chars. Uncapped, one pass measured ~40s at 81k input.
+    ///
+    /// Truncation is lossless for echo-matching, and NOT because the real
+    /// records happen to be short (they are all under ~1k chars, so this cap
+    /// never engages on them — comparing cap values against them proves
+    /// nothing). It holds because every way a prompt grows repeats content
+    /// that is already present near the start: `LengthStretchMutator` repeats
+    /// the same text with a separator; `MultiTurnMutator` copies the first
+    /// user turn into every later turn, so later turns are duplicates rather
+    /// than new content; the largest seed in `seeds.json` is 152 chars, so a
+    /// 2,000-char prefix holds ~13 whole copies; and `entry.system` goes to
+    /// `config.systemPrompt`, not `prompt.messages`, so it cannot displace
+    /// the prefix. The span needed for matching is therefore always inside
+    /// the cap.
+    package static let echoMatchInputCap = 2_000
+
+    /// Removes every input-explained span from `text` and returns the residue,
+    /// so the caller can re-check whether what's LEFT still looks like looping.
+    ///
     /// `package`, not `private`: called directly by
     /// `LoopingDetectorResidueTests`, which pins the range-merge and
     /// index-mapping behaviour that `inspect`-level tests cannot reach (they
-    /// only observe the guard's boolean verdict, so a merge that removes too
-    /// much or too little is absorbed by both).
-    ///
-    /// `inputText` is capped at ``echoMatchInputCap`` before matching.
-    /// `LongestCommonSubstring.compute` is O(n·m) and documents its own
-    /// safety premise as "inputs are bounded by `maxOutputTokens`" — true of
-    /// the model's OUTPUT (`FuzzRunner` caps `maxTokens` at 512) but NOT of
-    /// the prompt: `LengthStretchMutator` multiplies a turn by up to 10x and
-    /// `MutatorChain.allRandom` samples with replacement up to 3 times, so a
-    /// 152-char seed can reach ~152,000 chars. Uncapped, that measured 0.47s
-    /// per record on a 320-char prompt and scales quadratically. Truncation
-    /// is lossless for this purpose: a length-stretched prompt is the same
-    /// content repeated, so the span needed for echo-matching is already
-    /// present in the first copy.
-    /// Upper bound on the prompt text fed to the O(n·m) LCS. See
-    /// `residueAfterRemovingInputEchoes` for why truncation is lossless here.
-    package static let echoMatchInputCap = 2_000
-
+    /// observe only the guard's boolean verdict, so a merge that removes too
+    /// much or too little is absorbed in both directions).
     package static func residueAfterRemovingInputEchoes(from text: String, inputText: String, minSpan: Int = 20) -> String {
         var chars = Array(text)
         let (normalizedInput, _) = normalizedForEchoMatching(Array(inputText.prefix(echoMatchInputCap)))
