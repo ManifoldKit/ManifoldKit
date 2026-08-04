@@ -93,15 +93,15 @@ public struct TemplateTokenLeakDetector: Detector {
 
     /// True when `fragment` (present in the model's output) is a near-miss
     /// echo of a delimiter that was already present in `inputText` — quoted
-    /// back verbatim in a different bracket style, or "repaired"/mirrored
-    /// into its matching open/close counterpart. Real observed shapes:
+    /// back verbatim, or "repaired"/mirrored into its matching open/close
+    /// counterpart WITHIN THE SAME bracket family. Real observed shapes:
     /// `[/INST]`→`[INST]`, `<|im_start|>`→`<|im_end|>`,
-    /// `<start_of_turn>`→`<end_of_turn>`, `<end_of_turn>`→`<|end_of_turn>`.
-    /// Exact-substring echoes are already handled by the `inputText.contains`
-    /// check at the call site; this guard only needs to catch the remaining
-    /// near-miss forms. Conservative in the direction of suppressing: a
-    /// fragment whose core identifier doesn't match ANY delimiter actually
-    /// present in the input still fires (the false-negative guard).
+    /// `<start_of_turn>`→`<end_of_turn>`. Exact-substring echoes are already
+    /// handled by the `inputText.contains` check at the call site; this
+    /// guard only needs to catch the remaining near-miss forms. Conservative
+    /// in the direction of suppressing: a fragment whose core identifier
+    /// doesn't match ANY delimiter actually present in the input still fires
+    /// (the false-negative guard).
     static func isNearMissEcho(of fragment: String, presentIn inputText: String) -> Bool {
         let targetCore = coreIdentifier(fragment)
         for candidate in templateFragments where inputText.contains(candidate) {
@@ -110,19 +110,50 @@ public struct TemplateTokenLeakDetector: Detector {
         return false
     }
 
-    /// Strips the delimiter punctuation shared across template families
-    /// (`<`, `>`, `|`, `/`) and then collapses a leading/trailing
-    /// open-vs-close marker (`start_`/`end_`/`begin_` prefixes,
-    /// `_start`/`_end` suffixes) so paired delimiters from the same family —
-    /// `im_start`/`im_end`, `start_of_turn`/`end_of_turn`,
-    /// `begin_of_text`/`end_of_text`, `start_header_id`/`end_header_id` —
-    /// reduce to the same core identifier. Delimiters with no such marker
-    /// (`[INST]`, `eot_id`, `turn`, the `tool…` trio) pass through unchanged.
+    /// Reduces a delimiter to a `"<bracket style>:<core>"` identifier so
+    /// paired delimiters from the SAME family — `im_start`/`im_end`,
+    /// `start_of_turn`/`end_of_turn`, `begin_of_text`/`end_of_text`,
+    /// `start_header_id`/`end_header_id`, `INST`/`/INST` — reduce to the same
+    /// identifier, while delimiters from DIFFERENT families never do, even
+    /// when their content looks similar once punctuation is stripped.
+    ///
+    /// The bracket style is load-bearing, not cosmetic: Gemma 1/2/3's
+    /// `<end_of_turn>` and Gemma 4's `<|end_of_turn>` are deliberately
+    /// distinct delimiters from different template generations (see the
+    /// `templateFragments` doc comment) — collapsing them here would
+    /// suppress a genuine Gemma-4 leak whenever a mutator happened to inject
+    /// the Gemma-1/2/3 form into the prompt. An earlier version of this
+    /// function stripped `<`, `>`, `|` indiscriminately and merged the two;
+    /// the one real false positive that shape ever caught (record
+    /// `6c9a7fd6dc32`) traced to the since-fixed `TemplateTokenInjectMutator`
+    /// splicing a token into the middle of another (Defect 1), not to a
+    /// backend legitimately reformatting `<x>` as `<|x|>` — so there was no
+    /// real echo shape left to justify the collapse.
     static func coreIdentifier(_ fragment: String) -> String {
         var s = fragment
-        for ch in ["<", ">", "|", "/"] {
-            s = s.replacingOccurrences(of: ch, with: "")
+        var style = "plain"
+        if s.hasPrefix("<|") {
+            style = "pipe"
+            s = String(s.dropFirst(2))
+            if s.hasSuffix("|>") {
+                s = String(s.dropLast(2))
+            } else if s.hasSuffix(">") {
+                s = String(s.dropLast())
+            }
+        } else if s.hasPrefix("<") {
+            style = "angle"
+            s = String(s.dropFirst())
+            if s.hasSuffix(">") {
+                s = String(s.dropLast())
+            }
+        } else if s.hasPrefix("[") {
+            style = "bracket"
+            s = String(s.dropFirst())
+            if s.hasSuffix("]") {
+                s = String(s.dropLast())
+            }
         }
+        s = s.replacingOccurrences(of: "/", with: "")
         if s.hasPrefix("start_") {
             s = String(s.dropFirst("start_".count))
         } else if s.hasPrefix("end_") {
@@ -134,7 +165,7 @@ public struct TemplateTokenLeakDetector: Detector {
         } else if s.hasSuffix("_end") {
             s = String(s.dropLast("_end".count))
         }
-        return s
+        return "\(style):\(s)"
     }
 
     /// Invisible/format Unicode scalars that `UnicodeInjectMutator` splices

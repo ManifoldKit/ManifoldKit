@@ -19,13 +19,23 @@ public struct LoopingDetector: Detector {
         // (e.g. `template-token-injection`'s "Repeat this string back to me
         // exactly: …") produce compliant, repetitive-looking output that
         // `RepetitionDetector.looksLikeLooping` can't distinguish from a
-        // genuine runaway loop. Suppress a trigger that is itself a
-        // substantial (>=20 char) substring of the input — a short repeated
-        // token ("cats cats cats") is still a real loop and must still fire.
+        // genuine runaway loop. `isEchoOfInput` decides this NOT by checking
+        // whether a 120-char tail substring literally appears in the input
+        // (a looping output's tail spans MULTIPLE repetitions, so it is
+        // almost never a literal substring of an input that contains the
+        // phrase only once or a handful of times — validated empirically
+        // against 29 real overnight-fuzz looping records, where that naive
+        // check suppressed only 2 of 58 sub-check hits). Instead it removes
+        // every input-explained span from the candidate text and re-checks
+        // whether the RESIDUE still looks like looping — a short repeated
+        // token ("cats cats cats") that isn't explained by the input still
+        // fires, and a genuine runaway loop on content the input never
+        // supplied (ASCII art, a code sample's own repeated output) still
+        // fires because nothing gets removed from it.
         let inputText = r.prompt.messages.map(\.text).joined()
-        func isEchoOfInput(_ trigger: String) -> Bool {
-            guard trigger.count >= 20 else { return false }
-            return inputText.contains(trigger)
+        func isEchoOfInput(_ text: String) -> Bool {
+            let residue = Self.residueAfterRemovingInputEchoes(from: text, inputText: inputText)
+            return !RepetitionDetector.looksLikeLooping(residue)
         }
 
         // Sub-check id stays `rendered-loop` for dedup stability across the
@@ -35,13 +45,12 @@ public struct LoopingDetector: Detector {
         // chrome and emphasis markers stripped). When the transform is a
         // no-op (empty/short string) `r.rendered` matches `r.raw` byte-for-byte.
         if r.rendered.count >= 100, RepetitionDetector.looksLikeLooping(r.rendered) {
-            let trigger = String(r.rendered.suffix(120))
-            if !isEchoOfInput(trigger) {
+            if !isEchoOfInput(r.rendered) {
                 findings.append(.init(
                     detectorId: id,
                     subCheck: "rendered-loop",
                     severity: .flaky,
-                    trigger: trigger,
+                    trigger: String(r.rendered.suffix(120)),
                     modelId: r.model.id
                 ))
             }
@@ -54,31 +63,126 @@ public struct LoopingDetector: Detector {
         if r.rendered != r.raw,
            r.raw.count >= 100,
            RepetitionDetector.looksLikeLooping(r.raw) {
-            let trigger = String(r.raw.suffix(120))
-            if !isEchoOfInput(trigger) {
+            if !isEchoOfInput(r.raw) {
                 findings.append(.init(
                     detectorId: id,
                     subCheck: "raw-loop",
                     severity: .flaky,
-                    trigger: trigger,
+                    trigger: String(r.raw.suffix(120)),
                     modelId: r.model.id
                 ))
             }
         }
 
         if r.thinkingRaw.count >= 100, RepetitionDetector.looksLikeLooping(r.thinkingRaw) {
-            let trigger = String(r.thinkingRaw.suffix(120))
-            if !isEchoOfInput(trigger) {
+            if !isEchoOfInput(r.thinkingRaw) {
                 findings.append(.init(
                     detectorId: id,
                     subCheck: "thinking-loop",
                     severity: .flaky,
-                    trigger: trigger,
+                    trigger: String(r.thinkingRaw.suffix(120)),
                     modelId: r.model.id
                 ))
             }
         }
 
         return findings
+    }
+
+    /// Characters stripped ONLY for the purpose of MATCHING an echoed
+    /// template-token span against the input across a markdown-mangled
+    /// reformatting — e.g. `AssistantMarkdownView`'s rendering treats `|` as
+    /// table syntax and `_x_` as italic emphasis, so a raw `<|im_start|>`
+    /// echo can surface in `rendered` as `<imstart>` or `<imstart|>`. Never
+    /// used to alter the text that's ultimately re-checked for loop
+    /// structure (that would corrupt unrelated repeated content, e.g. ASCII
+    /// art built from `|` box-drawing characters) — only to widen what
+    /// counts as a matched span for removal.
+    private static let echoMatchDroppedCharacters: Set<Character> = ["<", ">", "|", "_"]
+
+    /// Projects `chars` to a version with `echoMatchDroppedCharacters`
+    /// removed, returning the projection alongside a parallel array mapping
+    /// each projected character's index back to its index in `chars`.
+    private static func normalizedForEchoMatching(_ chars: [Character]) -> (projected: String, originalIndices: [Int]) {
+        var projected = ""
+        projected.reserveCapacity(chars.count)
+        var indices: [Int] = []
+        indices.reserveCapacity(chars.count)
+        for (i, ch) in chars.enumerated() where !echoMatchDroppedCharacters.contains(ch) {
+            projected.append(ch)
+            indices.append(i)
+        }
+        return (projected, indices)
+    }
+
+    /// Repeatedly finds the longest run shared between `text` and
+    /// `inputText` (matched in a projection tolerant of dropped template
+    /// punctuation) and removes every occurrence of that run — plus any
+    /// dropped punctuation immediately preceding it, so e.g. the `<|`
+    /// opening a delimiter doesn't survive as its own residue fragment —
+    /// from `text`, until no shared run of at least `minSpan` characters
+    /// remains. The residual text preserves everything NOT explained by the
+    /// input (whitespace/structure intact for unrelated content), so
+    /// re-running `RepetitionDetector.looksLikeLooping` on it distinguishes
+    /// "the model echoed a repeat-request's own content" from "the model
+    /// genuinely ran away looping on content the input never supplied".
+    ///
+    /// `package`, not `private`: exercised directly in tests and by the
+    /// real-overnight-record validation harness used to confirm this fix.
+    package static func residueAfterRemovingInputEchoes(from text: String, inputText: String, minSpan: Int = 20) -> String {
+        var chars = Array(text)
+        let (normalizedInput, _) = normalizedForEchoMatching(Array(inputText))
+        guard !normalizedInput.isEmpty else { return text }
+
+        var iterations = 0
+        while iterations < 25 {
+            iterations += 1
+            let (normalizedCurrent, originalIndices) = normalizedForEchoMatching(chars)
+            guard let match = LongestCommonSubstring.compute(normalizedCurrent, normalizedInput),
+                  match.count >= minSpan
+            else { break }
+
+            var ranges: [Range<Int>] = []
+            var searchRange = normalizedCurrent.startIndex..<normalizedCurrent.endIndex
+            while let found = normalizedCurrent.range(of: match, range: searchRange) {
+                let lower = normalizedCurrent.distance(from: normalizedCurrent.startIndex, to: found.lowerBound)
+                let upper = normalizedCurrent.distance(from: normalizedCurrent.startIndex, to: found.upperBound)
+                var origStart = originalIndices[lower]
+                // The position of the next KEPT character after the match can
+                // land past a run of dropped punctuation that belongs to the
+                // OPENING of the following match (e.g. two matches separated
+                // only by "<|" with no kept characters between them at all —
+                // back-to-back repeats with no other content). The following
+                // match's own left-extension (below) tries to swallow that
+                // same punctuation for itself, so the two ranges can overlap;
+                // the merge pass after this loop resolves that, rather than
+                // trying to divide the punctuation run between them here.
+                let origEnd = upper < originalIndices.count ? originalIndices[upper] : chars.count
+                while origStart > 0, echoMatchDroppedCharacters.contains(chars[origStart - 1]) {
+                    origStart -= 1
+                }
+                ranges.append(origStart..<origEnd)
+                searchRange = found.upperBound..<normalizedCurrent.endIndex
+            }
+            guard !ranges.isEmpty else { break }
+
+            // Adjacent/overlapping ranges (see the comment above) must be
+            // merged before removal — `removeSubrange` on unmerged
+            // overlapping ranges corrupts indices for whichever range is
+            // processed second.
+            ranges.sort { $0.lowerBound < $1.lowerBound }
+            var merged: [Range<Int>] = []
+            for range in ranges {
+                if let last = merged.last, range.lowerBound <= last.upperBound {
+                    merged[merged.count - 1] = last.lowerBound..<Swift.max(last.upperBound, range.upperBound)
+                } else {
+                    merged.append(range)
+                }
+            }
+            for range in merged.sorted(by: { $0.lowerBound > $1.lowerBound }) {
+                chars.removeSubrange(range)
+            }
+        }
+        return String(chars)
     }
 }
