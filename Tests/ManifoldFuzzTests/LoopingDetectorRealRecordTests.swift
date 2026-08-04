@@ -12,6 +12,11 @@ import ManifoldInference
 /// NOT represent the real seed shape: the first version of the echo guard was
 /// green against them while suppressing only 2 of 58 sub-check hits on real
 /// data. A guard for this class of defect is only proven by the real records.
+/// NOTE ON COUNTS: the 5 "genuine loop" cases are 3 DISTINCT shapes --
+/// `ea0f103ad1d8` == `def874a4c018` and `2cd9cb67e45b` == `aed3eb2e0336` are
+/// byte-identical (same prompt, raw and rendered); they were separate findings
+/// in the run, kept for provenance, but they add no discrimination. Real
+/// coverage is: weather/tool-call code block, ASCII cat, and `42cd85034da8`.
 final class LoopingDetectorRealRecordTests: XCTestCase {
 
     private func record(model: String, prompt: String, raw: String, rendered: String) -> RunRecord {

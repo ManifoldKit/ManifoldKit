@@ -32,6 +32,15 @@ public struct LoopingDetector: Detector {
         // fires, and a genuine runaway loop on content the input never
         // supplied (ASCII art, a code sample's own repeated output) still
         // fires because nothing gets removed from it.
+        //
+        // KNOWN LIMITATION (deliberate): removal is count-blind -- every
+        // occurrence of an input-explained span is stripped regardless of how
+        // many times it repeats, so 400 repeats and 1 repeat reduce
+        // identically. A genuine runaway that loops on the user's OWN words
+        // (>= `minSpan` chars) is therefore suppressed too. Accepted because
+        // the real-record data shows this shape is overwhelmingly the
+        // harness's own doing (`LengthStretchMutator` pre-repeats the turn);
+        // revisit if a count/ratio discriminator becomes available.
         let inputText = r.prompt.messages.map(\.text).joined()
         func isEchoOfInput(_ text: String) -> Bool {
             let residue = Self.residueAfterRemovingInputEchoes(from: text, inputText: inputText)
@@ -93,11 +102,18 @@ public struct LoopingDetector: Detector {
     /// template-token span against the input across a markdown-mangled
     /// reformatting — e.g. `AssistantMarkdownView`'s rendering treats `|` as
     /// table syntax and `_x_` as italic emphasis, so a raw `<|im_start|>`
-    /// echo can surface in `rendered` as `<imstart>` or `<imstart|>`. Never
-    /// used to alter the text that's ultimately re-checked for loop
-    /// structure (that would corrupt unrelated repeated content, e.g. ASCII
-    /// art built from `|` box-drawing characters) — only to widen what
-    /// counts as a matched span for removal.
+    /// echo can surface in `rendered` as `<imstart>` or `<imstart|>`.
+    ///
+    /// These characters are NOT purely a matching aid, and an earlier version
+    /// of this comment overclaimed that they never alter the re-checked text.
+    /// Removal ranges are in ORIGINAL index space and deliberately swallow
+    /// dropped punctuation *adjacent to a matched span* — the left-extension
+    /// walks back over it, and `origEnd` runs to the next KEPT character — so
+    /// that a delimiter's `<|` opener cannot survive as its own residue. What
+    /// does hold is the narrower invariant: punctuation that is not adjacent
+    /// to a matched span is never touched, which is what keeps unrelated
+    /// repeated content (ASCII art built from `|` box-drawing characters)
+    /// intact and still able to fire as a genuine loop.
     private static let echoMatchDroppedCharacters: Set<Character> = ["<", ">", "|", "_"]
 
     /// Projects `chars` to a version with `echoMatchDroppedCharacters`
@@ -127,13 +143,38 @@ public struct LoopingDetector: Detector {
     /// "the model echoed a repeat-request's own content" from "the model
     /// genuinely ran away looping on content the input never supplied".
     ///
-    /// `package`, not `private`: exercised directly in tests and by the
-    /// real-overnight-record validation harness used to confirm this fix.
+    /// `package`, not `private`: called directly by
+    /// `LoopingDetectorResidueTests`, which pins the range-merge and
+    /// index-mapping behaviour that `inspect`-level tests cannot reach (they
+    /// only observe the guard's boolean verdict, so a merge that removes too
+    /// much or too little is absorbed by both).
+    ///
+    /// `inputText` is capped at ``echoMatchInputCap`` before matching.
+    /// `LongestCommonSubstring.compute` is O(n·m) and documents its own
+    /// safety premise as "inputs are bounded by `maxOutputTokens`" — true of
+    /// the model's OUTPUT (`FuzzRunner` caps `maxTokens` at 512) but NOT of
+    /// the prompt: `LengthStretchMutator` multiplies a turn by up to 10x and
+    /// `MutatorChain.allRandom` samples with replacement up to 3 times, so a
+    /// 152-char seed can reach ~152,000 chars. Uncapped, that measured 0.47s
+    /// per record on a 320-char prompt and scales quadratically. Truncation
+    /// is lossless for this purpose: a length-stretched prompt is the same
+    /// content repeated, so the span needed for echo-matching is already
+    /// present in the first copy.
+    /// Upper bound on the prompt text fed to the O(n·m) LCS. See
+    /// `residueAfterRemovingInputEchoes` for why truncation is lossless here.
+    package static let echoMatchInputCap = 2_000
+
     package static func residueAfterRemovingInputEchoes(from text: String, inputText: String, minSpan: Int = 20) -> String {
         var chars = Array(text)
-        let (normalizedInput, _) = normalizedForEchoMatching(Array(inputText))
+        let (normalizedInput, _) = normalizedForEchoMatching(Array(inputText.prefix(echoMatchInputCap)))
         guard !normalizedInput.isEmpty else { return text }
 
+        // Bound, not the terminator: each iteration removes >= `minSpan`
+        // original characters, so the loop always converges on its own.
+        // Hitting the cap returns a PARTIALLY reduced residue, which is more
+        // likely to still look loop-shaped -- so the guard fires rather than
+        // suppresses. The cap fails toward false positives, the safe
+        // direction for a detector.
         var iterations = 0
         while iterations < 25 {
             iterations += 1

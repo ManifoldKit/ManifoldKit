@@ -39,8 +39,13 @@ public struct TemplateTokenInjectMutator: Mutator {
     /// Character indices in `text` that fall strictly INSIDE an occurrence of
     /// a known chat-template delimiter (`TemplateTokenLeakDetector.templateFragments`
     /// — the canonical delimiter list; this mutator's own `tokens` is a
-    /// deliberately narrower subset for injection, so the detector's superset
-    /// is what "known template delimiter" means here). Splicing a new token at
+    /// deliberately narrower subset for injection, so the detector's list is
+    /// what "known template delimiter" means here). NOTE: this is a superset
+    /// of the detector's FRAGMENTS, not of this mutator's own `tokens` --
+    /// `<|user|>` is injectable but absent from `templateFragments`, so a
+    /// second chained application can still splice into one this mutator
+    /// injected. Harmless today (it is not a detector fragment, so it cannot
+    /// manufacture a leak finding); revisit if it ever becomes one.. Splicing a new token at
     /// one of these indices corrupts the existing delimiter — e.g. injecting
     /// `<end_of_turn>` into the middle of a seed's `<|im_start|>` produces
     /// `<<|im_<end_of_turn>end|>|im_start|>`, which the model then "repairs" or
