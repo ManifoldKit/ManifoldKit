@@ -76,7 +76,8 @@ public struct TemplateTokenLeakDetector: Detector {
         for fragment in Self.templateFragments {
             guard !seen.contains(fragment),
                   normalizedScannable.contains(fragment),
-                  !inputText.contains(fragment)   // skip echoed-input fragments
+                  !inputText.contains(fragment),                           // exact echo
+                  !Self.isNearMissEcho(of: fragment, presentIn: inputText) // near-miss echo
             else { continue }
             seen.insert(fragment)
             findings.append(.init(
@@ -88,6 +89,52 @@ public struct TemplateTokenLeakDetector: Detector {
             ))
         }
         return findings
+    }
+
+    /// True when `fragment` (present in the model's output) is a near-miss
+    /// echo of a delimiter that was already present in `inputText` — quoted
+    /// back verbatim in a different bracket style, or "repaired"/mirrored
+    /// into its matching open/close counterpart. Real observed shapes:
+    /// `[/INST]`→`[INST]`, `<|im_start|>`→`<|im_end|>`,
+    /// `<start_of_turn>`→`<end_of_turn>`, `<end_of_turn>`→`<|end_of_turn>`.
+    /// Exact-substring echoes are already handled by the `inputText.contains`
+    /// check at the call site; this guard only needs to catch the remaining
+    /// near-miss forms. Conservative in the direction of suppressing: a
+    /// fragment whose core identifier doesn't match ANY delimiter actually
+    /// present in the input still fires (the false-negative guard).
+    static func isNearMissEcho(of fragment: String, presentIn inputText: String) -> Bool {
+        let targetCore = coreIdentifier(fragment)
+        for candidate in templateFragments where inputText.contains(candidate) {
+            if coreIdentifier(candidate) == targetCore { return true }
+        }
+        return false
+    }
+
+    /// Strips the delimiter punctuation shared across template families
+    /// (`<`, `>`, `|`, `/`) and then collapses a leading/trailing
+    /// open-vs-close marker (`start_`/`end_`/`begin_` prefixes,
+    /// `_start`/`_end` suffixes) so paired delimiters from the same family —
+    /// `im_start`/`im_end`, `start_of_turn`/`end_of_turn`,
+    /// `begin_of_text`/`end_of_text`, `start_header_id`/`end_header_id` —
+    /// reduce to the same core identifier. Delimiters with no such marker
+    /// (`[INST]`, `eot_id`, `turn`, the `tool…` trio) pass through unchanged.
+    static func coreIdentifier(_ fragment: String) -> String {
+        var s = fragment
+        for ch in ["<", ">", "|", "/"] {
+            s = s.replacingOccurrences(of: ch, with: "")
+        }
+        if s.hasPrefix("start_") {
+            s = String(s.dropFirst("start_".count))
+        } else if s.hasPrefix("end_") {
+            s = String(s.dropFirst("end_".count))
+        } else if s.hasPrefix("begin_") {
+            s = String(s.dropFirst("begin_".count))
+        } else if s.hasSuffix("_start") {
+            s = String(s.dropLast("_start".count))
+        } else if s.hasSuffix("_end") {
+            s = String(s.dropLast("_end".count))
+        }
+        return s
     }
 
     /// Invisible/format Unicode scalars that `UnicodeInjectMutator` splices
