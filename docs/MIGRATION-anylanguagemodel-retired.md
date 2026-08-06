@@ -10,6 +10,12 @@ package — has been removed outright ([#2435](https://github.com/ManifoldKit/Ma
 `AnyLanguageModel` package has left the dependency resolution graph
 (`Package.resolved`) entirely.
 
+> **If your app depends on ManifoldKit via `.package(path:)` (an unpinned
+> local checkout), a version tag does not insulate you from this** — you
+> reach this break on your next rebuild, not on your next deliberate version
+> bump. Check for `import ManifoldAnyLanguageModel` or `AnyLanguageModelBackend`
+> before pulling the latest core commit.
+
 ## Why
 
 Two independent reasons, either one sufficient on its own:
