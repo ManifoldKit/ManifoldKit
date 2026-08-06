@@ -212,15 +212,6 @@ public final class ManifoldBootstrap {
     /// path.
     public let conversationRuntime: ConversationRuntime
 
-    /// The accumulated set of session tool sources registered via
-    /// ``addToolSources(_:)``, seeded from the `sessionToolSources` parameter
-    /// passed at construction. Tracked separately from
-    /// ``ConversationRuntime/updateSessionToolSources(_:)``'s own storage
-    /// (`RuntimeBindingsBox`) because that method replaces wholesale — this
-    /// bootstrap-level accumulator is what lets ``addToolSources(_:)`` merge
-    /// instead of clobber. See #2440.
-    private var registeredToolSources: [any SessionToolSource]
-
     /// The image-generation service, when the host opted in to image generation.
     /// `nil` when ``ManifoldBootstrap`` was constructed without an
     /// `imageGenerationService` parameter.
@@ -409,7 +400,6 @@ public final class ManifoldBootstrap {
                 sessionToolSources: sessionToolSources,
                 hookRegistry: hookRegistry
             )
-            self.registeredToolSources = sessionToolSources
             self.imageGenerationService = imageGenerationService
             if let imageGenerationService {
                 self.imageRuntime = ImageGenerationRuntime(
@@ -481,7 +471,6 @@ public final class ManifoldBootstrap {
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry
         )
-        self.registeredToolSources = sessionToolSources
         self.imageGenerationService = imageGenerationService
         if let imageGenerationService {
             self.imageRuntime = ImageGenerationRuntime(
@@ -840,14 +829,30 @@ extension ManifoldBootstrap {
     /// Adds session tool sources to the conversation runtime, **merging** them
     /// into whatever is already registered — including sources passed to
     /// ``build(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:makeModelContainer:)``
-    /// at construction time. Tool sources added here are available to all
+    /// at construction time, and any source registered via a direct
+    /// ``ConversationRuntime/updateSessionToolSources(_:)`` call on
+    /// ``conversationRuntime``. Tool sources added here are available to all
     /// subsequent generation turns.
     ///
+    /// This is a thin forward to
+    /// ``ConversationRuntime/mergeSessionToolSources(_:)`` — the runtime is
+    /// the single source of truth for what's currently registered.
+    /// `ManifoldBootstrap` does not keep its own copy, so a source installed
+    /// or swapped directly on ``conversationRuntime`` (the per-turn *swap*
+    /// primitive, see that method's doc) is exactly what the next
+    /// `addToolSources(_:)` call merges into, not a stale bootstrap-local
+    /// snapshot. Two independent parts of a host app can each call
+    /// `addToolSources(_:)` once, in either order, without one silently
+    /// erasing the other — the defect #2440 reports.
+    ///
     /// Re-registering a source whose *dynamic type* already appears in the
-    /// accumulated set replaces only that entry — every other previously
-    /// registered source is left untouched. This is the fix for #2440: two
-    /// independent parts of a host app can each call `addToolSources(_:)`
-    /// once, in either order, without one silently erasing the other.
+    /// currently-registered set replaces only that entry — every other
+    /// registered source is left untouched. De-duplication only ever
+    /// consults sources registered by an *earlier* call: two sources of the
+    /// same dynamic type passed together in one `sources` array are both
+    /// kept (matching how a single call always behaved), so the "batch
+    /// everything into one call" workaround #2440 documents as safe on
+    /// `main` stays safe here too.
     ///
     /// ```swift
     /// await bootstrap.addToolSources([HandoffToolSource()])
@@ -863,19 +868,12 @@ extension ManifoldBootstrap {
     /// ``ConversationRuntime/updateSessionToolSources(_:)`` on
     /// ``conversationRuntime`` *replaces* the entire advertised set wholesale
     /// — it exists for hosts that need to reconfigure which sources are
-    /// active per turn (e.g. a demo's per-scenario source swap) and is left
-    /// untouched by this method's accumulator. Call `addToolSources(_:)` to
-    /// add without disturbing what's already registered; call the runtime's
-    /// method directly only when you want a wholesale swap.
+    /// active per turn (e.g. a demo's per-scenario source swap). Call
+    /// `addToolSources(_:)` to add without disturbing what's already
+    /// registered; call the runtime's method directly only when you want a
+    /// wholesale swap.
     public func addToolSources(_ sources: [any SessionToolSource]) async {
-        var merged = registeredToolSources
-        for source in sources {
-            let dynamicType = ObjectIdentifier(type(of: source))
-            merged.removeAll { ObjectIdentifier(type(of: $0)) == dynamicType }
-            merged.append(source)
-        }
-        registeredToolSources = merged
-        await conversationRuntime.updateSessionToolSources(merged)
+        await conversationRuntime.mergeSessionToolSources(sources)
     }
 }
 

@@ -450,15 +450,43 @@ public final class ConversationRuntime: Sendable {
     ///
     /// **Layer split (#2440):** this method *replaces* the full source list
     /// wholesale — it is the per-turn swap primitive for hosts driving
-    /// `ConversationRuntime` directly. `ManifoldBootstrap.addToolSources(_:)`
-    /// (in `ManifoldPersistenceSwiftData`, one layer up) *accumulates*
-    /// instead: it merges new sources into whatever is already registered,
-    /// de-duplicating by dynamic type, and calls this method with the merged
-    /// result. Call this method directly only when you want a wholesale
-    /// swap; call `ManifoldBootstrap.addToolSources(_:)` when you want to add
-    /// without disturbing what's already registered.
+    /// `ConversationRuntime` directly. ``mergeSessionToolSources(_:)`` below
+    /// is the sibling *accumulate* primitive that
+    /// `ManifoldBootstrap.addToolSources(_:)` (in `ManifoldPersistenceSwiftData`,
+    /// one layer up) forwards to. Call this method directly only when you
+    /// want a wholesale swap; call `ManifoldBootstrap.addToolSources(_:)` (or
+    /// ``mergeSessionToolSources(_:)`` directly) when you want to add without
+    /// disturbing what's already registered.
     public func updateSessionToolSources(_ sources: [any SessionToolSource]) async {
         await bindings.updateSessionToolSources(sources)
+    }
+
+    /// Merges `sources` into the currently registered session tool sources,
+    /// replacing only the entries whose *dynamic type* matches an incoming
+    /// source — every other currently-registered source is left untouched.
+    /// Two sources of the same dynamic type passed together in one `sources`
+    /// array are both kept (de-duplication only ever consults sources
+    /// registered by an *earlier* call).
+    ///
+    /// This is the **single source of truth** for "what's currently
+    /// registered" — there is no separate accumulator anywhere else. A
+    /// source installed or swapped via ``updateSessionToolSources(_:)``
+    /// directly (the wholesale-swap primitive above) is exactly what the
+    /// next `mergeSessionToolSources(_:)` call merges into, so the two
+    /// primitives never drift out of sync with each other (#2441).
+    ///
+    /// Runs atomically inside the `RuntimeBindingsBox` actor — read, merge,
+    /// and write happen in one hop, so two concurrent callers can't race
+    /// each other into a lost update the way a separate
+    /// read-then-compute-then-write across two actor calls could.
+    ///
+    /// `ManifoldBootstrap.addToolSources(_:)` (`ManifoldPersistenceSwiftData`)
+    /// is a thin public forward to this method — see that method's doc for
+    /// the accumulate-layer framing. `package`-scoped rather than `public`:
+    /// it is the plumbing `addToolSources(_:)` is built on, not a second
+    /// public entry point alongside it.
+    package func mergeSessionToolSources(_ sources: [any SessionToolSource]) async {
+        await bindings.mergeSessionToolSources(sources)
     }
 
     /// Replaces the ``HookRegistry`` used by subsequent turns. Pass `nil`

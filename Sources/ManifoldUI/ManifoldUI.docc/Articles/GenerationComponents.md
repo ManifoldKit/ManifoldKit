@@ -102,14 +102,23 @@ Like the image/video tool sources, ``WebSearchToolSource`` is a thin forwarder w
 > Important: `ManifoldKit.quickStart(...)` does **not** wire
 > `imageGenerationService`, `videoGenerationService`, or `webSearchRuntime` —
 > none of its overloads pass those parameters through to
-> `ManifoldBootstrap.build(...)` (tracked in #1903). If your bootstrap came
-> from `quickStart(...)`, registering ``ImageGenerationToolSource`` /
-> ``VideoGenerationToolSource`` / ``WebSearchToolSource`` via
-> `addToolSources(_:)` below still advertises the tool to the model, but
-> invoking it throws (`ChatViewModelImageError.notConfigured` and friends) —
-> there is no build-time or registration-time warning. To use these tool
-> sources, drop down to `ManifoldBootstrap.build(...)` directly and pass the
-> generation services you want, as shown below.
+> `ManifoldBootstrap.build(...)` (tracked in #1903). A tool source doesn't
+> know whether its backing service is wired, so registering one against an
+> unconfigured bootstrap still advertises the tool to the model — what
+> happens when the model actually calls it differs by source.
+> ``ImageGenerationToolSource`` / ``VideoGenerationToolSource`` preflight the
+> missing service and return a `ToolResult` with `errorKind: .permanent`
+> ("…is not configured in this build…") — a clear, non-retryable failure.
+> ``WebSearchToolSource`` does **not** preflight: it forwards straight to
+> ``ChatViewModel/searchWeb(query:)``, which throws
+> `ChatViewModelWebSearchError.notConfigured`; the source's catch-all reports
+> that as `errorKind: .transient` ("Search failed: …"), which reads to the
+> model as *retryable* rather than permanently broken. There is no
+> build-time or registration-time warning in any case — see "Gate on which
+> services are wired" below to avoid advertising a tool that can only ever
+> fail. To use these tool sources for real, drop down to
+> `ManifoldBootstrap.build(...)` directly and pass the generation services
+> you want, as shown below.
 
 Call `ManifoldBootstrap.build(...)` with the generation services your app supports:
 
@@ -125,23 +134,36 @@ for await _ in progress { /* drain milestones */ }
 let bootstrap = try await task.value
 ```
 
-Then register the sources you need with `addToolSources(_:)`:
+### Gate on which services are wired
+
+Register only the sources whose backing service is actually non-nil on this
+bootstrap. An unconfigured source still counts against the local-backend
+~5-tool budget (see "Tool calling" above) even though calling it always
+fails, so unconditionally registering all three is safe from crashing but
+wastes tool budget on an image-only or search-only app:
 
 ```swift,no-build
-await bootstrap.addToolSources([
-    ImageGenerationToolSource(viewModel: viewModel),
-    VideoGenerationToolSource(viewModel: viewModel),
-    WebSearchToolSource(viewModel: viewModel)
-])
+var sources: [any SessionToolSource] = []
+if bootstrap.imageGenerationService != nil {
+    sources.append(ImageGenerationToolSource(viewModel: viewModel))
+}
+if bootstrap.videoGenerationService != nil {
+    sources.append(VideoGenerationToolSource(viewModel: viewModel))
+}
+if bootstrap.webSearchRuntime != nil {
+    sources.append(WebSearchToolSource(viewModel: viewModel))
+}
+await bootstrap.addToolSources(sources)
 ```
 
 `addToolSources(_:)` **accumulates** — it merges the sources you pass into
 whatever is already registered (de-duplicating by dynamic type), so an
-earlier call from another part of the app is not disturbed. It replaces the
-more verbose `conversationRuntime.updateSessionToolSources(_:)` call, which
-still exists but *replaces* the full set wholesale — reach for it only when
-you deliberately want a per-turn swap (see that method's doc comment for the
-layer split).
+earlier call from another part of the app is not disturbed, and calling it
+with an empty array (e.g. all three services are nil) is a no-op. It
+replaces the more verbose `conversationRuntime.updateSessionToolSources(_:)`
+call, which still exists but *replaces* the full set wholesale — reach for
+it only when you deliberately want a per-turn swap (see that method's doc
+comment for the layer split).
 
 ### Prerequisites
 

@@ -32,9 +32,9 @@ writeup and a reachable-from-public-API failure scenario.
 
 | Symbol | Before | After |
 |---|---|---|
-| `ManifoldBootstrap.addToolSources(_:)` | Replaced the full session-tool-source set on every call. | **Merges** the passed sources into whatever is already registered — including sources passed to `ManifoldBootstrap.build(sessionToolSources:)` / `init(sessionToolSources:)` at construction. Re-registering a source whose *dynamic type* is already present replaces only that entry; every other registered source is untouched. |
+| `ManifoldBootstrap.addToolSources(_:)` | Replaced the full session-tool-source set on every call. | **Merges** the passed sources into whatever is currently registered — including sources passed to `ManifoldBootstrap.build(sessionToolSources:)` / `init(sessionToolSources:)` at construction, *and* any source installed or swapped via a direct `conversationRuntime.updateSessionToolSources(_:)` call. Re-registering a source whose *dynamic type* is already present replaces only that entry; every other registered source is untouched. Two sources of the same dynamic type passed together in one call are both kept — de-duplication only ever consults sources registered by an *earlier* call. |
 | `ManifoldBootstrap.addGenerationToolSources(viewModel:)` (`ManifoldKit` umbrella, `Sources/ManifoldKit/ManifoldBootstrap+GenerationToolSources.swift`) | Convenience wrapper registering `ImageGenerationToolSource` / `VideoGenerationToolSource` / `WebSearchToolSource`, skipping any source whose backing service was nil and logging a warning if it skipped all three. | **Removed.** With an additive primitive its batching rationale is gone — call `addToolSources(_:)` directly with the sources you want. |
-| `ConversationRuntime.updateSessionToolSources(_:)` | Replaced the full source list. | **Unchanged.** Still the per-turn wholesale-*swap* primitive (e.g. a demo's per-scenario source swap) — it now sits one layer below `addToolSources(_:)`, which is the accumulate layer. Call it directly only when you deliberately want a full-set replace. |
+| `ConversationRuntime.updateSessionToolSources(_:)` | Replaced the full source list. | **Unchanged.** Still the per-turn wholesale-*swap* primitive (e.g. a demo's per-scenario source swap) — it now sits one layer below `addToolSources(_:)`, which is the accumulate layer. Call it directly only when you deliberately want a full-set replace. `ConversationRuntime` (not `ManifoldBootstrap`) is the single source of truth for what's currently registered — `addToolSources(_:)` keeps no separate copy, so it always merges against the runtime's real current state, including any direct swap made through this method. |
 
 ## Migrating
 
@@ -75,16 +75,27 @@ Unlike the old wrapper, `addToolSources(_:)` does not skip a source whose
 backing service is nil and does not log a warning when it does — see
 [`GenerationComponents.md`](../Sources/ManifoldUI/ManifoldUI.docc/Articles/GenerationComponents.md)
 ("Registering tool sources") for the full recipe, including the
-`ManifoldKit.quickStart(...)` caveat (#1903): a source registered against a
-quickStart-built bootstrap is advertised to the model but throws when
-invoked, since the underlying generation service is nil.
+`ManifoldKit.quickStart(...)` caveat (#1903) and how to gate registration on
+which services are actually wired. A source registered against a bootstrap
+whose backing service is nil is still advertised to the model, but does not
+throw when invoked — each source reports the failure as a `ToolResult`
+instead: `ImageGenerationToolSource` / `VideoGenerationToolSource` preflight
+and return `errorKind: .permanent`, while `WebSearchToolSource` has no
+preflight and falls through its catch-all to `errorKind: .transient` (reads
+as retryable to the model). See `GenerationComponents.md` for the full
+breakdown.
 
 ## De-duplication
 
 `addToolSources(_:)` de-duplicates on the *dynamic type* of each source, not
 its identity or any `Equatable` conformance (`SessionToolSource` requires
 neither). Re-registering a new instance of an already-registered type
-replaces only that entry:
+replaces only that entry. De-duplication only ever consults sources
+registered by an *earlier* call — two sources of the same dynamic type
+passed together in a single `addToolSources(_:)` call are both kept, so
+batching independent sources into one call (the pattern the "Failure
+scenario" in #2440 calls out as the only safe usage on `main`) still works
+exactly as before:
 
 ```swift
 import ManifoldPersistenceSwiftData
