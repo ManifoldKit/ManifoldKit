@@ -15,4 +15,6 @@ AgentInstructionLoader.defaultFileName Var
 AgentInstructionLoader.discover(from:stoppingAt:) Func
 AgentInstructionLoader.init() Constructor
 AgentInstructionLoader.loadMerged(from:stoppingAt:) Func
+AgentInstructionLoader.maxFileSizeBytes Var
+AgentInstructionLoader.maxMergedSizeBytes Var
 AgentInstructionLoader.merged(_:) Func

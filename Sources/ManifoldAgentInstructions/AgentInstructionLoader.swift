@@ -11,6 +11,16 @@ import ManifoldInference
 ///
 /// **macOS-only in v1.** On other platforms `discover()` returns `[]` and logs
 /// a one-time warning.
+///
+/// **Security boundary, stated honestly (#2434 review R2-2):** a symlinked
+/// `AGENTS.md` resolving outside its directory is rejected (see
+/// `_discover(from:stoppingAt:)`'s symlink check); a **hard link** inside the
+/// walked directory pointing at an out-of-tree file is NOT rejected and
+/// cannot be by a path-resolution check — a hard link is indistinguishable
+/// from a real file at the filesystem level. This is an accepted gap, not an
+/// oversight: producing a hard link requires local write access to the
+/// directory already being walked, at which point an attacker gains nothing
+/// over writing the payload into `AGENTS.md` directly.
 public struct AgentInstructionLoader: Sendable {
 
     /// The cross-tool-standard filename; matches the Linux Foundation spec.
@@ -22,6 +32,18 @@ public struct AgentInstructionLoader: Sendable {
     /// it whole would otherwise block the calling thread on an unbounded
     /// read with no signal to the caller.
     public static let maxFileSizeBytes = 64 * 1024
+
+    /// Cap on the TOTAL size of ``merged(_:)``'s output across every
+    /// discovered `AGENTS.md`, independent of ``maxFileSizeBytes``'s
+    /// per-file cap. A monorepo with `AGENTS.md` at several levels is the
+    /// designed use of the closest-wins merge (see this type's doc comment),
+    /// not an edge case — ten individually-legal 64 KB files merge to over
+    /// 640 KB, injected into the system preamble of *every* turn, if nothing
+    /// bounds the total (#2434 review R2-3). Set to 4× ``maxFileSizeBytes``:
+    /// generous enough for a handful of maximally-sized files or many more
+    /// realistically-sized ones, while keeping the worst case a fixed,
+    /// auditable number instead of "unbounded × per-file cap."
+    public static let maxMergedSizeBytes = 4 * maxFileSizeBytes
 
     public init() {}
 
@@ -182,10 +204,44 @@ public struct AgentInstructionLoader: Sendable {
     /// from ``discover(from:stoppingAt:)``). Sections are separated by `---` so
     /// the LLM can distinguish instruction scopes.
     ///
-    /// Returns `nil` when `instructions` is empty.
+    /// The merged total is capped at ``maxMergedSizeBytes``. `instructions`
+    /// arrives root-to-leaf (most-specific/closest last); this accumulates
+    /// starting from the closest instruction outward, so a budget cut drops
+    /// the most distant ancestors first — preserving the closest-wins
+    /// recency weighting for whatever survives — and stops at the first
+    /// instruction that would push the total over the cap (every instruction
+    /// beyond that point is even more distant and equally subject to the
+    /// cut, so there is no reason to keep checking smaller ones further up).
+    /// Dropped ancestors are logged, not silently discarded.
+    ///
+    /// Returns `nil` when `instructions` is empty or every instruction is
+    /// dropped (only possible if the closest single instruction alone
+    /// exceeds ``maxMergedSizeBytes``, since each file is already bounded by
+    /// ``maxFileSizeBytes`` well under that cap by default).
     public func merged(_ instructions: [AgentInstruction]) -> String? {
         guard !instructions.isEmpty else { return nil }
-        return instructions.map(\.content).joined(separator: "\n\n---\n\n")
+
+        let separator = "\n\n---\n\n"
+        var kept: [AgentInstruction] = []
+        var runningSize = 0
+        var droppedCount = 0
+        for instruction in instructions.reversed() {
+            let size = instruction.content.utf8.count
+            let overhead = kept.isEmpty ? 0 : separator.utf8.count
+            guard runningSize + overhead + size <= Self.maxMergedSizeBytes else {
+                droppedCount = instructions.count - kept.count
+                break
+            }
+            runningSize += overhead + size
+            kept.append(instruction)
+        }
+        if droppedCount > 0 {
+            Log.inference.warning(
+                "ManifoldAgentInstructions: dropped \(droppedCount) more-distant AGENTS.md file(s) — merged total would exceed the \(Self.maxMergedSizeBytes)-byte cap"
+            )
+        }
+        guard !kept.isEmpty else { return nil }
+        return kept.reversed().map(\.content).joined(separator: separator)
     }
 
     /// Convenience: discovers and merges in one call.

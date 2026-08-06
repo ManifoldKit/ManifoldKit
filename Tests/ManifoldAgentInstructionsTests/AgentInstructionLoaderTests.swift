@@ -325,6 +325,82 @@ final class AgentInstructionLoaderTests: XCTestCase {
         // M2 use "," as separator → equality fails.
     }
 
+    // MARK: - Merging: aggregate cap (#2434 review R2-3)
+
+    /// Ten individually-legal (each at `maxFileSizeBytes`) files is exactly
+    /// the shape the review measured unbounded at 655,423 bytes injected into
+    /// every turn's system preamble. `merged(_:)` must never exceed
+    /// `maxMergedSizeBytes` regardless of how many legal files are found.
+    func test_merged_manyLegalFiles_staysUnderAggregateCap() throws {
+        let url = URL(fileURLWithPath: "/fake/dir")
+        let instructions = (0..<10).map { _ in
+            AgentInstruction(directory: url, content: String(repeating: "X", count: AgentInstructionLoader.maxFileSizeBytes))
+        }
+        let loader = AgentInstructionLoader()
+
+        let result = try XCTUnwrap(loader.merged(instructions))
+
+        XCTAssertLessThanOrEqual(
+            result.utf8.count, AgentInstructionLoader.maxMergedSizeBytes,
+            "merged output must never exceed maxMergedSizeBytes regardless of how many individually-legal files are discovered"
+        )
+        // Sabotage-evidence: M1 remove the aggregate-cap check from merged(_:)
+        // → result.utf8.count becomes ~655,423, well over the cap, and this
+        // assertion fails.
+    }
+
+    /// When the aggregate must be cut, the most DISTANT ancestor is dropped
+    /// first — the closest instruction (highest recency weight per this
+    /// type's doc comment) always survives.
+    func test_merged_aggregateOverCap_dropsMostDistantAncestorFirst() throws {
+        let url = URL(fileURLWithPath: "/fake/dir")
+        // `distant` alone is already at the aggregate cap, so adding
+        // anything else must push the total over it.
+        let distant = AgentInstruction(
+            directory: url,
+            content: String(repeating: "A", count: AgentInstructionLoader.maxMergedSizeBytes)
+        )
+        let closest = AgentInstruction(directory: url, content: "closest content")
+        let loader = AgentInstructionLoader()
+
+        // root-to-leaf order: distant (ancestor) first, closest last.
+        let result = loader.merged([distant, closest])
+
+        XCTAssertEqual(
+            result, "closest content",
+            "the closest instruction must survive and the distant ancestor must be dropped when the aggregate exceeds the cap"
+        )
+        // Sabotage-evidence: M1 accumulate root-to-leaf instead of
+        // closest-first (reversed) → `distant` would be kept and `closest`
+        // dropped instead, inverting the closest-wins guarantee.
+    }
+
+    /// Surviving instructions must stay in root-to-leaf order in the output
+    /// even when an ancestor between them was dropped for budget — the cut
+    /// removes an item, it does not reorder what remains.
+    func test_merged_aggregateOverCap_survivingInstructionsStayInRootToLeafOrder() throws {
+        let url = URL(fileURLWithPath: "/fake/dir")
+        // Two of these fit under the cap; all three do not.
+        let each = AgentInstructionLoader.maxMergedSizeBytes / 2 - 50
+        let root = AgentInstruction(directory: url, content: String(repeating: "R", count: each))
+        let mid = AgentInstruction(directory: url, content: String(repeating: "M", count: each))
+        let leaf = AgentInstruction(directory: url, content: String(repeating: "L", count: each))
+        let loader = AgentInstructionLoader()
+
+        let result = try XCTUnwrap(loader.merged([root, mid, leaf]))
+
+        XCTAssertFalse(result.contains("R"), "the most distant ancestor (root) must be dropped first")
+        let midRange = try XCTUnwrap(result.range(of: "M"))
+        let leafRange = try XCTUnwrap(result.range(of: "L"))
+        XCTAssertTrue(
+            midRange.lowerBound < leafRange.lowerBound,
+            "surviving instructions must stay in root-to-leaf order (mid before leaf)"
+        )
+        // Sabotage-evidence: M1 append kept instructions in accumulation
+        // (closest-first) order instead of reversing back to root-to-leaf →
+        // leaf would appear before mid, and the ordering assertion fails.
+    }
+
     // MARK: - ContextProvider
 
     func test_contextProvider_returnsEmptySlots_whenNoAgentsMd() async throws {

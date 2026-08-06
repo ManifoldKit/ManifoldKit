@@ -56,7 +56,12 @@ extension ConversationRuntimeOptions {
     ///   it works the same way), not a defect, but it means a host pointing
     ///   `currentDirectory` at a directory it does not control (an
     ///   unreviewed clone, a user-selected folder) is choosing to trust
-    ///   whatever text is there.
+    ///   whatever text is there. `AgentInstructionLoader` bounds both a
+    ///   single file (``AgentInstructionLoader/maxFileSizeBytes``, 64 KB)
+    ///   and the merged total across every discovered file
+    ///   (``AgentInstructionLoader/maxMergedSizeBytes``, 256 KB, dropping
+    ///   the most distant ancestors first) — see its doc comment for the
+    ///   full set of guarantees, including the accepted hard-link gap.
     /// - Note: **Platform.** macOS-only in v1 — on iOS this call still
     ///   succeeds and `.pipeline` is non-nil, but
     ///   `AgentInstructionLoader.discover(from:stoppingAt:)` always returns

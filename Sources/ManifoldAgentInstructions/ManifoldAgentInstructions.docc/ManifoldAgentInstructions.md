@@ -97,15 +97,22 @@ specific to this module, but a host pointing `currentDirectory` at a
 directory it doesn't control (an unreviewed clone, a user-selected folder)
 is choosing to trust whatever `AGENTS.md` is found there.
 
-``AgentInstructionLoader`` still enforces three concrete boundaries: the
+``AgentInstructionLoader`` still enforces four concrete boundaries: the
 `stoppingAt` containment check compares resolved path **components** (a
 sibling directory sharing a string prefix, e.g. `proj-secrets` vs. `proj`,
 cannot escape the boundary); a candidate `AGENTS.md` that is or sits behind a
 symlink resolving outside its own directory is rejected rather than followed
 (opening an untrusted cloned repo is exactly the scenario a planted
-`AGENTS.md -> ~/.ssh/id_rsa` symlink would target); and a file larger than
+`AGENTS.md -> ~/.ssh/id_rsa` symlink would target); a file larger than
 ``AgentInstructionLoader/maxFileSizeBytes`` (64 KB) is skipped rather than
-read whole.
+read whole; and the MERGED total across every discovered file is separately
+capped at ``AgentInstructionLoader/maxMergedSizeBytes`` (256 KB) — a
+monorepo with `AGENTS.md` at several levels is the designed use of the
+closest-wins merge, so bounding only the per-file size still leaves the
+per-turn system-preamble injection unbounded; distant ancestors are dropped
+first when the aggregate is cut. A hard link (as opposed to a symlink)
+inside the walked directory pointing out-of-tree is NOT rejected — see
+``AgentInstructionLoader``'s own doc comment for why that gap is accepted.
 
 ## Platform and sandboxing caveats
 

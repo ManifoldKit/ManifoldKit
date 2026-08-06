@@ -149,8 +149,14 @@ directory it doesn't control (an unreviewed clone, a user-selected folder) is
 choosing to trust whatever `AGENTS.md` is found there. The loader also
 enforces path-containment (a `stoppingAt` boundary can't be escaped via a
 sibling directory sharing a string prefix), rejects a symlinked `AGENTS.md`
-that resolves outside its directory, and caps file size at 64 KB — see
-`AgentInstructionLoader`'s doc comments for the exact guarantees.
+that resolves outside its directory, caps individual file size at 64 KB, and
+separately caps the MERGED total across every discovered file at 256 KB
+(dropping the most distant ancestors first) — a monorepo with `AGENTS.md` at
+several levels is the designed multi-file use case, so the per-file cap
+alone does not bound what reaches the model on every turn. A hard link
+(unlike a symlink) inside the walked directory pointing out-of-tree is not
+rejected — see `AgentInstructionLoader`'s doc comments for the exact
+guarantees and that accepted gap.
 
 **If you linked `ManifoldSkills` for `SKILL.md` discovery or
 `invoke_skill`:** there is no ManifoldKit replacement (see "Why it was
