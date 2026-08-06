@@ -834,25 +834,31 @@ extension ManifoldBootstrap {
     /// ``conversationRuntime``. Tool sources added here are available to all
     /// subsequent generation turns.
     ///
-    /// This is a thin forward to
-    /// ``ConversationRuntime/mergeSessionToolSources(_:)`` — the runtime is
-    /// the single source of truth for what's currently registered.
-    /// `ManifoldBootstrap` does not keep its own copy, so a source installed
-    /// or swapped directly on ``conversationRuntime`` (the per-turn *swap*
-    /// primitive, see that method's doc) is exactly what the next
-    /// `addToolSources(_:)` call merges into, not a stale bootstrap-local
-    /// snapshot. Two independent parts of a host app can each call
-    /// `addToolSources(_:)` once, in either order, without one silently
-    /// erasing the other — the defect #2440 reports.
+    /// This is a thin forward to an internal merge primitive on
+    /// ``ConversationRuntime`` — the runtime is the single source of truth
+    /// for what's currently registered. `ManifoldBootstrap` does not keep
+    /// its own copy, so a source installed or swapped directly on
+    /// ``conversationRuntime`` (the per-turn *swap* primitive, see
+    /// ``ConversationRuntime/updateSessionToolSources(_:)``'s doc) is
+    /// exactly what the next `addToolSources(_:)` call merges into, not a
+    /// stale bootstrap-local snapshot. Two independent parts of a host app
+    /// can each call `addToolSources(_:)` once, in either order, without one
+    /// silently erasing the other — the defect #2440 reports.
     ///
-    /// Re-registering a source whose *dynamic type* already appears in the
-    /// currently-registered set replaces only that entry — every other
-    /// registered source is left untouched. De-duplication only ever
-    /// consults sources registered by an *earlier* call: two sources of the
+    /// De-duplication is keyed on *dynamic type*, not per-instance identity:
+    /// re-registering a source removes **every** currently-registered source
+    /// of that same type, not just the one it's implicitly "replacing" —
+    /// every other registered source (of a *different* type) is left
+    /// untouched. Concretely: if two `MCPToolSource` instances (for
+    /// different servers) were registered together, a later call that
+    /// registers a third `MCPToolSource` removes both earlier ones, not just
+    /// the one you meant to reconfigure. De-duplication only ever consults
+    /// sources registered by an *earlier* call, though: two sources of the
     /// same dynamic type passed together in one `sources` array are both
     /// kept (matching how a single call always behaved), so the "batch
     /// everything into one call" workaround #2440 documents as safe on
-    /// `main` stays safe here too.
+    /// `main` stays safe here too — it's only a *later, separate* call
+    /// registering that type again that collapses every prior instance.
     ///
     /// ```swift
     /// await bootstrap.addToolSources([HandoffToolSource()])

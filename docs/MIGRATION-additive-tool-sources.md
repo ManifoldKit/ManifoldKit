@@ -32,7 +32,7 @@ writeup and a reachable-from-public-API failure scenario.
 
 | Symbol | Before | After |
 |---|---|---|
-| `ManifoldBootstrap.addToolSources(_:)` | Replaced the full session-tool-source set on every call. | **Merges** the passed sources into whatever is currently registered — including sources passed to `ManifoldBootstrap.build(sessionToolSources:)` / `init(sessionToolSources:)` at construction, *and* any source installed or swapped via a direct `conversationRuntime.updateSessionToolSources(_:)` call. Re-registering a source whose *dynamic type* is already present replaces only that entry; every other registered source is untouched. Two sources of the same dynamic type passed together in one call are both kept — de-duplication only ever consults sources registered by an *earlier* call. |
+| `ManifoldBootstrap.addToolSources(_:)` | Replaced the full session-tool-source set on every call. | **Merges** the passed sources into whatever is currently registered — including sources passed to `ManifoldBootstrap.build(sessionToolSources:)` / `init(sessionToolSources:)` at construction, *and* any source installed or swapped via a direct `conversationRuntime.updateSessionToolSources(_:)` call. Re-registering a source whose *dynamic type* is already present replaces **every** currently-registered source of that type (de-dup is type-keyed, not per-instance); every registered source of a *different* type is untouched. Two sources of the same dynamic type passed together in one call are both kept — de-duplication only ever consults sources registered by an *earlier*, separate call. |
 | `ManifoldBootstrap.addGenerationToolSources(viewModel:)` (`ManifoldKit` umbrella, `Sources/ManifoldKit/ManifoldBootstrap+GenerationToolSources.swift`) | Convenience wrapper registering `ImageGenerationToolSource` / `VideoGenerationToolSource` / `WebSearchToolSource`, skipping any source whose backing service was nil and logging a warning if it skipped all three. | **Removed.** With an additive primitive its batching rationale is gone — call `addToolSources(_:)` directly with the sources you want. |
 | `ConversationRuntime.updateSessionToolSources(_:)` | Replaced the full source list. | **Unchanged.** Still the per-turn wholesale-*swap* primitive (e.g. a demo's per-scenario source swap) — it now sits one layer below `addToolSources(_:)`, which is the accumulate layer. Call it directly only when you deliberately want a full-set replace. `ConversationRuntime` (not `ManifoldBootstrap`) is the single source of truth for what's currently registered — `addToolSources(_:)` keeps no separate copy, so it always merges against the runtime's real current state, including any direct swap made through this method. |
 
@@ -90,21 +90,34 @@ breakdown.
 `addToolSources(_:)` de-duplicates on the *dynamic type* of each source, not
 its identity or any `Equatable` conformance (`SessionToolSource` requires
 neither). Re-registering a new instance of an already-registered type
-replaces only that entry. De-duplication only ever consults sources
-registered by an *earlier* call — two sources of the same dynamic type
-passed together in a single `addToolSources(_:)` call are both kept, so
-batching independent sources into one call (the pattern the "Failure
-scenario" in #2440 calls out as the only safe usage on `main`) still works
-exactly as before:
+removes **every** currently-registered source of that same type, not just
+"the one it's implicitly replacing" — every registered source of a
+*different* type is left untouched.
+
+Two sources of the same dynamic type passed together in a **single**
+`addToolSources(_:)` call are both kept — de-duplication only ever consults
+sources registered by an *earlier, separate* call. So batching independent
+sources into one call (the pattern the "Failure scenario" in #2440 calls out
+as the only safe usage on `main`) still works exactly as before **for that
+one call**. This does not extend across calls: if you batch two
+`MCPToolSource` instances for different servers in one call, then later make
+a *separate* call that registers a third, reconfigured `MCPToolSource`, that
+later call removes **both** earlier instances — not just the one you meant
+to reconfigure — because de-dup only ever sees "is this the same type",
+never "is this the same logical entry". If your source type can represent
+more than one independent registration (multiple MCP servers, multiple
+per-feature sources of the same class), batch every instance you want to
+keep into each call rather than relying on earlier calls to still be there:
 
 ```swift
 import ManifoldPersistenceSwiftData
 import ManifoldRuntime
 
-/// Re-registering a source of a type that is already present (e.g. a
-/// reconfigured `HandoffToolSource`) swaps only that entry — any other
-/// previously registered source (Skills, generation tools, a custom
-/// source) is left untouched.
+/// Re-registering a source of a type that is already present removes EVERY
+/// currently-registered source of that type — here, any existing
+/// `HandoffToolSource` (there is normally only one). Any other previously
+/// registered source (Skills, generation tools, a custom source) is left
+/// untouched.
 func rewireHandoff(bootstrap: ManifoldBootstrap, replacement: any SessionToolSource) async {
     await bootstrap.addToolSources([replacement])
 }

@@ -202,12 +202,14 @@ final class ManifoldBootstrapAddToolSourcesTests: XCTestCase {
             "second addToolSources(_:) call's source must be advertised; got: \(advertised)")
     }
 
-    // MARK: - De-dup: same dynamic type replaces its own prior entry only
+    // MARK: - De-dup: same dynamic type removes every prior instance of that type
 
     /// Registering a new instance of a type that is already registered
-    /// replaces only that entry — the de-duplication key is the source's
-    /// *dynamic type*, not its identity. A different, previously-registered
-    /// type must be untouched by the dedup.
+    /// removes every currently-registered source of that same type — here,
+    /// the single existing `StubToolSourceA` instance — because the
+    /// de-duplication key is the source's *dynamic type*, not its identity
+    /// or any per-instance key. A different, previously-registered type
+    /// (`StubToolSourceB`) must be untouched by the dedup.
     func test_addToolSources_deduplicatesByDynamicType() async throws {
         let mock = makeMockBackend()
         let bootstrap = try makeBootstrap(sessionToolSources: [], mock: mock, label: "dedup")

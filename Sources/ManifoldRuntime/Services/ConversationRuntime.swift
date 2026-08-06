@@ -450,12 +450,13 @@ public final class ConversationRuntime: Sendable {
     ///
     /// **Layer split (#2440):** this method *replaces* the full source list
     /// wholesale — it is the per-turn swap primitive for hosts driving
-    /// `ConversationRuntime` directly. ``mergeSessionToolSources(_:)`` below
+    /// `ConversationRuntime` directly. `mergeSessionToolSources(_:)` below
     /// is the sibling *accumulate* primitive that
     /// `ManifoldBootstrap.addToolSources(_:)` (in `ManifoldPersistenceSwiftData`,
-    /// one layer up) forwards to. Call this method directly only when you
-    /// want a wholesale swap; call `ManifoldBootstrap.addToolSources(_:)` (or
-    /// ``mergeSessionToolSources(_:)`` directly) when you want to add without
+    /// one layer up) forwards to — that primitive is `package`-scoped
+    /// plumbing, not part of this type's public surface. Call this method
+    /// directly only when you want a wholesale swap; call
+    /// `ManifoldBootstrap.addToolSources(_:)` when you want to add without
     /// disturbing what's already registered.
     public func updateSessionToolSources(_ sources: [any SessionToolSource]) async {
         await bindings.updateSessionToolSources(sources)
