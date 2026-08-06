@@ -117,7 +117,7 @@ management, with no backend code written by the consumer. The turn loop
 
 *This diagram predates [#2435](https://github.com/ManifoldKit/ManifoldKit/issues/2435)
 and still shows a "via bridge → AnyLanguageModel bridge" lane — that lane is
-retired; there is no PNG source to regenerate it from. See
+retired. See
 [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).*
 
 MLX, llama.cpp / GGUF, Apple Foundation Models, and cloud (OpenAI Chat

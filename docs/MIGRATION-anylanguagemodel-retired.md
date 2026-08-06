@@ -118,10 +118,16 @@ func addOpenRouterEndpoint(bootstrap: ManifoldBootstrap, vm: ChatViewModel) asyn
     try await bootstrap.endpointStore.insertEndpoint(endpoint)
 
     // 4. Certificate pinning is NOT automatic for this host — see the next
-    //    section. Skipping this step means step 5 throws
-    //    CloudBackendError.unpinnedCredentialedHost, not a network error.
+    //    section. Skipping this step does NOT fail here or at step 5: both
+    //    loadModel and loadCloudEndpoint below only check that a baseURL is
+    //    configured and never touch the network. The pinning gate fires on
+    //    the FIRST GENERATION REQUEST (the first sendMessage), not at load —
+    //    so an app that skips this step looks fully configured until a user
+    //    actually sends a message.
 
-    // 5. Route the chat view model to the new backend.
+    // 5. Route the chat view model to the new backend. loadCloudEndpoint is
+    //    NOT throws — a load failure is reported via the view model's own
+    //    error state, not by throwing here.
     await vm.loadCloudEndpoint(endpoint)
 }
 ```
@@ -152,9 +158,17 @@ non-loopback host with no configured SPKI pins
 `api.openai.com`, `api.anthropic.com`, `api.jina.ai`, `api.cohere.com`
 (`Sources/ManifoldCloudCore/PinnedSessionDelegate.swift`). **None of the
 providers in this doc — OpenRouter, xAI, Groq, Mistral — are in that set.**
-Skip this step and step 5 above throws `CloudBackendError.unpinnedCredentialedHost`
-before any request reaches the network; see `CloudBackendError.swift`'s
-`errorDescription` for the exact message.
+
+**Skipping this step does not fail at setup — it fails on the first message.**
+Neither `OpenAIBackend.loadModel` nor `ChatViewModel.loadCloudEndpoint(_:)`
+(which isn't `throws`; a load failure surfaces through the view model's own
+error state, not a thrown error) ever touch the network or check pinning —
+both only confirm a `baseURL` is configured. `CredentialedHostTrustGate` is
+wired into `SSEGenerationTaskRunner`'s per-generation `validateEndpoint()`
+step, called immediately before the connection opens for each request. So an
+app that skips pinning looks fully configured through setup, and the first
+`sendMessage` throws `CloudBackendError.unpinnedCredentialedHost` — see
+`CloudBackendError.swift`'s `errorDescription` for the exact message.
 
 Two ways to satisfy the gate, in order of preference.
 
@@ -169,15 +183,24 @@ openssl s_client -connect openrouter.ai:443 </dev/null 2>/dev/null | \
   openssl dgst -sha256 -binary | base64
 ```
 
-Prefer pinning the intermediate/root CA over the leaf certificate — leaf pins
-break on every certificate renewal, intermediate pins survive it (see the
-rotation procedure in `PinnedSessionDelegate`'s doc comment). Then, before
-any network request:
+**This command yields the LEAF certificate's pin.** Prefer pinning the
+intermediate or root CA instead — leaf pins break on every certificate
+renewal (60–90 days for most issuers); intermediate/root pins survive it,
+because `PinnedSessionDelegate` checks every certificate in the chain against
+the pin set, not just the leaf. To get the intermediate, add `-showcerts` to
+`s_client` (it prints the full chain, leaf first), then run the `openssl x509
+… | openssl pkey … | openssl dgst …` portion of the pipeline above against the
+**second** certificate block, not the first. Pin more than one hash per host —
+`PinnedSessionDelegate`'s own doc comment recommends at least one backup pin
+to avoid lockout during rotation. Then, before any network request:
 
-```swift,no-build:API-shape excerpt — <base64 SPKI hash> is a placeholder for the output of the openssl pipeline above, not literal Swift
+```swift,no-build:API-shape excerpt — the two <...> entries are placeholders for real openssl pipeline output, not literal Swift
 import ManifoldCloudCore
 
-PinnedSessionDelegate.pinnedHosts["openrouter.ai"] = ["<base64 SPKI hash>"]
+PinnedSessionDelegate.pinnedHosts["openrouter.ai"] = [
+    "<intermediate SPKI hash>",
+    "<root SPKI hash — backup pin, avoids lockout on rotation>",
+]
 ```
 
 **Option 2 — opt out** (accepts residual DNS-rebinding risk — read
