@@ -89,7 +89,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact for the remaining opt-in traits (`Server`, `Macros`). Heavy ML checkouts are companion-optional since v0.48. |
 | [COMPANION-BACKENDS.md](COMPANION-BACKENDS.md) | Building or consuming a companion backend package (manifold-mlx / manifold-llama). |
 | [ANATOMY-OF-ONE-TURN.md](ANATOMY-OF-ONE-TURN.md) | File:line walk of one message turn — send → runtime → engine → backend → UI. |
-| [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md) | The AnyLanguageModel bridge was retired (#2435) — Gemini, xAI, Groq, Mistral, OpenRouter now reach ManifoldKit via `APIProvider.custom` + `OpenAIBackend`. |
+| [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md) | The AnyLanguageModel bridge was retired (#2435) — xAI, Groq, Mistral, OpenRouter (and Gemini via OpenRouter) now reach ManifoldKit via `APIProvider.custom` + `OpenAIBackend`. |
 | [CLOUD-OAUTH.md](CLOUD-OAUTH.md) | OAuth flows for cloud providers. |
 | [LOCAL-GGUF.md](LOCAL-GGUF.md) | Local model storage contract and discovery. |
 | [LLAMA_CONTRACT.md](LLAMA_CONTRACT.md) | Tombstone — the llama.cpp C-API contract moved to [manifold-llama](https://github.com/ManifoldKit/manifold-llama). |

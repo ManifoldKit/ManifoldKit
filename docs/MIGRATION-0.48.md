@@ -67,10 +67,12 @@ as an always-compiled module or as a product you import explicitly:
 
 For the AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter, …):
 the v0.48-era `ManifoldAnyLanguageModel` product named in the table above was
-itself retired outright in #2435 (zero adoption). Those providers are
-OpenAI-compatible endpoints, reachable the same way any custom cloud endpoint
-is — via `APIProvider.custom` + the native `OpenAIBackend` pointed at the
-provider's base URL. See
+itself retired outright in #2435 (zero adoption). Most of those providers —
+xAI, Groq, Mistral, OpenRouter — are OpenAI-compatible endpoints, reachable
+the same way any custom cloud endpoint is: via `APIProvider.custom` + the
+native `OpenAIBackend` pointed at the provider's base URL. Gemini is the
+exception — its own endpoint is not reachable this way; reach Gemini models
+through OpenRouter instead. See
 [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md)
 for the full replacement recipe.
 

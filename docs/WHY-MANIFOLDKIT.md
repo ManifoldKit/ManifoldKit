@@ -110,11 +110,16 @@ form to keep correct. From there:
 
 ![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, and OpenAI/Claude/Ollama](images/product/generationstream-backends-fan.png)
 
+*This diagram predates [#2435](https://github.com/ManifoldKit/ManifoldKit/issues/2435)
+and still shows a "via bridge → AnyLanguageModel bridge" lane — that lane is
+retired; there is no PNG source to regenerate it from. See
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).*
+
 - **One protocol, every backend.** MLX, llama.cpp/GGUF, Apple Foundation Models,
-  OpenAI, Anthropic, Ollama, LAN — plus Gemini / xAI / Groq / Mistral / OpenRouter
-  as OpenAI-compatible custom endpoints. Streaming, tool calling, structured output,
-  and thinking tokens work the same across all of them because they live above the
-  protocol.
+  OpenAI, Anthropic, Ollama, LAN — plus xAI / Groq / Mistral / OpenRouter
+  (including Gemini models via OpenRouter) as OpenAI-compatible custom
+  endpoints. Streaming, tool calling, structured output, and thinking tokens
+  work the same across all of them because they live above the protocol.
 - **The whole turn loop, owned.** `ConversationRuntime` is the single path for
   send / regenerate / edit / cancel / branch. No second path to keep consistent.
 - **Already in the box:** streaming, MCP (client *and* server), RAG with citations,

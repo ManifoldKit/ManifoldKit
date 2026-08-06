@@ -32,12 +32,15 @@ only ever need the system model and no persistence/UI.
 
 ManifoldKit no longer wraps AnyLanguageModel as a dependency — the bridge
 product (`ManifoldAnyLanguageModel`) was retired in #2435 for zero adoption.
-Providers without a native ManifoldKit backend (Gemini, xAI, Groq, Mistral,
-OpenRouter) are OpenAI-compatible endpoints, so they reach ManifoldKit the same
-way any custom cloud endpoint does: `APIProvider.custom` + the native
-`OpenAIBackend` pointed at the provider's base URL. See
+Providers without a native ManifoldKit backend — xAI, Groq, Mistral,
+OpenRouter — reach ManifoldKit the same way any custom cloud endpoint does:
+`APIProvider.custom` + the native `OpenAIBackend` pointed at the provider's
+base URL. **Gemini is the exception**: its own OpenAI-compatible endpoint
+uses a completions path `OpenAIBackend` cannot reach (no `baseURL` fixes
+this — see the migration note), so Gemini models are reached through
+OpenRouter instead, not directly. See
 [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md)
-for the full recipe.
+for the full recipe and the pinning step every one of these hosts also needs.
 
 ---
 
@@ -114,17 +117,23 @@ natively, configure it as a custom OpenAI-compatible endpoint — see
 ```swift,no-build
 import ManifoldInference
 
-// Gemini's OpenAI-compatible endpoint — same recipe for xAI, Groq, Mistral,
-// OpenRouter, or any other OpenAI-compatible provider. One InferenceBackend,
-// same turn loop.
+// OpenRouter's OpenAI-compatible endpoint — same recipe for xAI, Groq,
+// Mistral, or any other OpenAI-compatible provider. NOTE: no trailing /v1 —
+// OpenAIBackend appends `v1/chat/completions` itself. (Gemini's own endpoint
+// is NOT reachable this way — its completions path doesn't match; reach
+// Gemini models through OpenRouter instead. See the migration note.)
+// One InferenceBackend, same turn loop.
 let endpoint = APIEndpointRecord(
-    name: "Gemini",
+    name: "OpenRouter",
     provider: .custom,
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-    modelName: "gemini-2.0-flash"
+    baseURL: "https://openrouter.ai/api",
+    modelName: "openai/gpt-4o-mini"
 )
-try KeychainService.store(key: "GEMINI_API_KEY", account: endpoint.keychainAccount)
+try KeychainService.store(key: "sk-or-v1-...", account: endpoint.keychainAccount)
 try await bootstrap.endpointStore.insertEndpoint(endpoint)
+// Also required before the first request: certificate pinning
+// (PinnedSessionDelegate.pinnedHosts) or the documented opt-out — see
+// MIGRATION-anylanguagemodel-retired.md § Certificate pinning.
 ```
 
 ---

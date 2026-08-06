@@ -115,10 +115,16 @@ management, with no backend code written by the consumer. The turn loop
 
 ![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, and OpenAI/Claude/Ollama](images/product/generationstream-backends-fan.png)
 
+*This diagram predates [#2435](https://github.com/ManifoldKit/ManifoldKit/issues/2435)
+and still shows a "via bridge → AnyLanguageModel bridge" lane — that lane is
+retired; there is no PNG source to regenerate it from. See
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).*
+
 MLX, llama.cpp / GGUF, Apple Foundation Models, and cloud (OpenAI Chat
 Completions, OpenAI Responses, Anthropic, Ollama, LAN, and any
-OpenAI-compatible endpoint — Gemini, xAI, Groq, Mistral, OpenRouter via
-`APIProvider.custom`) all implement the same `InferenceBackend` protocol.
+OpenAI-compatible endpoint — xAI, Groq, Mistral, OpenRouter (including Gemini
+models via OpenRouter) — via `APIProvider.custom`) all implement the same
+`InferenceBackend` protocol.
 Features — streaming, tool calling, structured
 output, cancellation — work *identically* across all of them because they're
 implemented above the protocol, not per backend.
@@ -362,11 +368,17 @@ AnyLanguageModel as a dependency. It previously did, via a bridge product
 (`ManifoldAnyLanguageModel`), retired in
 [#2435](https://github.com/ManifoldKit/ManifoldKit/issues/2435) for zero
 adoption: the bridge advertised no tool calling, no structured output, and no
-thinking-token support, and every provider it named (Gemini, xAI, Groq,
-Mistral, OpenRouter) is an OpenAI-compatible endpoint reachable through
-ManifoldKit's own `APIProvider.custom` + `OpenAIBackend` — with tool calling,
-structured output, cert pinning, retry, and circuit breaking the bridge never
-had. See
+thinking-token support. Most of the providers it named (xAI, Groq, Mistral,
+OpenRouter — Gemini's own OpenAI-compatible endpoint is not reachable this
+way, but its models are available through OpenRouter) are OpenAI-compatible
+endpoints reachable through ManifoldKit's own `APIProvider.custom` +
+`OpenAIBackend`, with tool calling, structured output, retry, and circuit
+breaking the bridge never had. Certificate pinning is not automatic for these
+hosts, though: they aren't in the default pin set, and ManifoldKit fails a
+credentialed request closed rather than sending it unpinned — populate
+`PinnedSessionDelegate.pinnedHosts` or opt out via
+`ManifoldConfiguration.allowUnpinnedCredentialedHosts` before the first
+request. See
 [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).
 
 If your problem is "give me clean access to many models with a familiar,

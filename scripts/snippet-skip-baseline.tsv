@@ -56,7 +56,7 @@ Sources/ManifoldUIModelManagement/ManifoldUIModelManagement.docc/ModelPickerSamp
 Sources/ManifoldVoice/ManifoldVoice.docc/ManifoldVoice.md	3	3
 Sources/ManifoldVoice/ManifoldVoice.docc/StandaloneSpeechRecognition.md	2	2
 docs/MIGRATION-additive-tool-sources.md	0	0
-docs/MIGRATION-anylanguagemodel-retired.md	0	1
+docs/MIGRATION-anylanguagemodel-retired.md	0	3
 docs/MIGRATION-api-demotions-0.71.md	0	0
 docs/MIGRATION-background-task-scheduler-removed.md	0	0
 docs/MIGRATION-cloudbackenderror-missingRequiredOverride.md	0	0

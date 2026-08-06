@@ -70,9 +70,10 @@ ChatbotUI-iOS migrates its single-field usage from the old context property to t
 # Scope Decision — Gemini: bridge, not native backend (2026-06)
 
 > **Superseded (2026-08, #2435).** The AnyLanguageModel bridge named throughout this
-> decision (`ManifoldAnyLanguageModel`) was retired outright for zero adoption. Gemini
-> and the other bridged providers now reach ManifoldKit via `APIProvider.custom` +
-> the native `OpenAIBackend` — see
+> decision (`ManifoldAnyLanguageModel`) was retired outright for zero adoption. The
+> other bridged providers (xAI, Groq, Mistral, OpenRouter) now reach ManifoldKit via
+> `APIProvider.custom` + the native `OpenAIBackend`; Gemini's own endpoint is not
+> reachable that way — Gemini models are reached through OpenRouter instead. See
 > [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).
 > The "bridge vs. native backend" tradeoff below is a historical record of why a
 > native Gemini backend wasn't written in 2026-06; it no longer describes the

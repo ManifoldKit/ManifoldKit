@@ -28,8 +28,8 @@ import ManifoldUI
 /// longer part of the escapable set this test guards.
 ///
 /// Honest scope: this test guards the KNOWN set — it fails when a case is
-/// added to or removed from one of the nine named types (the per-type
-/// instance counts drift), but it cannot detect a genuinely NEW tenth
+/// added to or removed from one of the eight named types (the per-type
+/// instance counts drift), but it cannot detect a genuinely NEW ninth
 /// escapable type introduced at a boundary, because nothing forces such a
 /// PR to touch this file. The DocC article is the human-maintained registry;
 /// extending the escapable set means updating both it and this checklist. This test lives in
