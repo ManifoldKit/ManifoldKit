@@ -4,9 +4,8 @@ import ManifoldRuntime
 
 /// Actor-backed registry that mutates under load while readers ask the
 /// source for its tool definitions. The shape mirrors how production
-/// sources will look in Wave 2 (Skills' `SkillRegistry`, the
-/// `MCPToolSource` precedent): mutable storage owned by an actor, read
-/// through a `Sendable` source value.
+/// sources look elsewhere (the `MCPToolSource` precedent): mutable storage
+/// owned by an actor, read through a `Sendable` source value.
 private actor MutableToolRegistry {
     private var definitions: [ToolDefinition] = []
 

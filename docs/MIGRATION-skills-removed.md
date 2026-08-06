@@ -70,6 +70,18 @@ and `docs/plans/api-v1-rationalisation-2026-07.md` are left as-is (closed,
 historical planning records — not rewritten to describe a state that didn't
 exist when they were written).
 
+## What was deliberately NOT removed
+
+`ChatSession.activeSkillName` (`Sources/ManifoldInference/Models/ConversationRecords.swift`,
+the mirrored SwiftData column in `Sources/ManifoldPersistenceSwiftData/Schema/ManifoldSchemaV9.swift`)
+is retained, still `public`, still persisted, and still round-tripped by
+`SwiftDataPersistenceProvider`. `SkillToolSource` was its only reader and
+writer on `main`; both are gone with this removal, so the field is now dead —
+nothing sets it to a non-`nil` value and nothing reads it. It is kept rather
+than dropped because removing a SwiftData column is a schema migration
+decision, not something this removal PR makes unilaterally; a future PR that
+actually designs that migration can retire it deliberately.
+
 ## Symptoms
 
 ```
@@ -109,12 +121,14 @@ import ManifoldAgentInstructions
 opt-in link. The recommended way to turn it on is the one-call recipe in
 `ManifoldKit`'s `ConversationRuntimeOptions+AgentInstructions.swift`, wired
 through the same `ConversationRuntimeOptions.pipeline` seam every other
-`PromptContextPipeline` customization uses:
+`PromptContextPipeline` customization uses. It is a `mutating func` that
+**adds** to any pipeline you already configured — the same shape as
+`ManifoldBootstrap.addGenerationToolSources(viewModel:)` — not a factory that
+replaces your options wholesale:
 
 ```swift,no-build:API-shape excerpt for assistants; intentionally terse, no imports or surrounding context
-let options = ConversationRuntimeOptions.withAgentInstructions(
-    currentDirectory: projectRoot
-)
+var options = ConversationRuntimeOptions()
+options.addAgentInstructions(currentDirectory: projectRoot)
 let (progress, task) = ManifoldBootstrap.build(
     configuration: configuration,
     runtimeOptions: options
@@ -125,6 +139,18 @@ This is opt-in by design — `ManifoldKit.quickStart(...)` does not call it, so
 `AGENTS.md` loading only turns on when a host builds its own
 `ConversationRuntimeOptions` this way and passes it through the manual
 `ManifoldBootstrap.build(...)` path.
+
+**Security note.** `AGENTS.md` files are untrusted on-disk content: whatever
+text is in them is merged verbatim into the model's system preamble and
+treated as an instruction. That is inherent to the ambient-instruction format
+(every major agent tool that reads `AGENTS.md` works the same way), not a
+defect specific to this module — but a host pointing `currentDirectory` at a
+directory it doesn't control (an unreviewed clone, a user-selected folder) is
+choosing to trust whatever `AGENTS.md` is found there. The loader also
+enforces path-containment (a `stoppingAt` boundary can't be escaped via a
+sibling directory sharing a string prefix), rejects a symlinked `AGENTS.md`
+that resolves outside its directory, and caps file size at 64 KB — see
+`AgentInstructionLoader`'s doc comments for the exact guarantees.
 
 **If you linked `ManifoldSkills` for `SKILL.md` discovery or
 `invoke_skill`:** there is no ManifoldKit replacement (see "Why it was

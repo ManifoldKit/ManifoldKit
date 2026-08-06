@@ -10,10 +10,10 @@ import ManifoldRuntime
 /// type existed, ``DemoScenario/configure`` could only install variant
 /// tool executors against a `ToolRegistry` — there was no path to attach
 /// the per-session ``SessionToolSource``, ``HookRegistry``, agent roster,
-/// or active-agent pointer that Wave 2 introduced. As a result, the three
-/// W3B demo cards (`skill-explain`, `handoff-research-write`,
-/// `hook-input-sanitize`) compiled but did not actually exercise the
-/// Wave 2 surfaces against a live runtime.
+/// or active-agent pointer that Wave 2 introduced. As a result, the W3B
+/// demo cards (`handoff-research-write`, `hook-input-sanitize`) compiled
+/// but did not actually exercise the Wave 2 surfaces against a live
+/// runtime.
 ///
 /// The runner builds a fresh context per invocation, lets the scenario
 /// mutate it in-place, then:
@@ -39,8 +39,7 @@ public struct DemoScenarioRuntimeContext {
 
     /// Append-friendly list of per-session tool sources. A scenario that
     /// needs `transfer_to_<agent>` synthesis adds a ``HandoffToolSource``
-    /// here; one that wants skills adds a ``SkillToolSource``. Empty by
-    /// default.
+    /// here. Empty by default.
     public var sessionToolSources: [any SessionToolSource]
 
     /// Optional hook registry the scenario wants installed (e.g. a

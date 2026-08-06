@@ -19,7 +19,7 @@ import ManifoldInference
 /// ```
 ///
 /// A host wiring `ManifoldBootstrap` can skip composing the pipeline by hand —
-/// `ManifoldKit`'s `ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:)`
+/// `ManifoldKit`'s `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)`
 /// is the supported one-call recipe (see `Sources/ManifoldKit/ConversationRuntimeOptions+AgentInstructions.swift`).
 ///
 /// The slot is placed at ``PromptSlotPosition/systemPreamble`` so it sits

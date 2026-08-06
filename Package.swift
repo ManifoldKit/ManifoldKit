@@ -369,8 +369,8 @@ let package = Package(
         // ManifoldInference ONLY (not ManifoldRuntime): it conforms to
         // PromptContextProvider (ManifoldInference) directly, so it stays a
         // leaf-ish module a host can link without pulling in the runtime.
-        // `ManifoldKit`'s ManifoldBootstrap+AgentInstructions.swift is the
-        // wiring bridge that needs both — see that file's header comment.
+        // `ManifoldKit`'s ConversationRuntimeOptions+AgentInstructions.swift
+        // is the wiring bridge that needs both — see that file's header comment.
         // Library target is unconditional (the body is platform-gated with
         // `#if os(macOS)`, same contract as the old SkillLoader).
         .target(
@@ -589,8 +589,8 @@ let package = Package(
                 // trait retired in v0.48, PR C2).
                 "ManifoldHuggingFace",
                 // AGENTS.md ambient-instruction wiring bridge
-                // (ManifoldBootstrap+AgentInstructions.swift) — same "linked but
-                // not @_exported" shape as ManifoldHuggingFace above: hosts that
+                // (ConversationRuntimeOptions+AgentInstructions.swift) — same
+                // "linked but not @_exported" shape as ManifoldHuggingFace above: hosts that
                 // want the AgentInstruction* types import ManifoldAgentInstructions
                 // explicitly (#2434).
                 "ManifoldAgentInstructions",

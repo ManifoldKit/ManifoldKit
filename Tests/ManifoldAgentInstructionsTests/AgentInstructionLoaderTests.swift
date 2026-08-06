@@ -9,13 +9,13 @@ final class AgentInstructionLoaderTests: XCTestCase {
     private var tempRoots: [URL] = []
 
     override func tearDownWithError() throws {
+        // Best-effort cleanup — a temp dir another test already removed, or a
+        // transient permission hiccup, must not fail an otherwise-passing
+        // test. Matches the established convention elsewhere in the suite
+        // (e.g. DownloadHygieneJanitorTests.tearDownWithError).
         let fm = FileManager.default
         for root in tempRoots {
-            do {
-                try fm.removeItem(at: root)
-            } catch {
-                XCTAssertNotNil(error as Error?, "tear-down cleanup error captured")
-            }
+            try? fm.removeItem(at: root)
         }
         tempRoots = []
     }
@@ -180,6 +180,114 @@ final class AgentInstructionLoaderTests: XCTestCase {
         // root → / and may pick up AGENTS.md files along the way, making
         // found non-empty; M2 fix the guard to only warn without returning
         // early → found would contain root's file.
+        #endif
+    }
+
+    // MARK: - Security (#2434 review findings 2–4)
+
+    /// Finding 2: `stoppingAt` containment was a raw string-prefix check
+    /// (`leaf.path.hasPrefix(stop.path)`), so a sibling directory whose name
+    /// happens to start with the stop directory's path string (`proj-secrets`
+    /// vs. `proj`) was treated as contained. Confirmed against the real
+    /// loader before this fix: the walk then never matches `stop` and reads
+    /// every `AGENTS.md` up to the filesystem root.
+    func test_discover_siblingDirectorySharingStringPrefix_isNotTreatedAsContained() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let stopDir = root.appendingPathComponent("proj", isDirectory: true)
+        let siblingDir = root.appendingPathComponent("proj-secrets", isDirectory: true)
+        try FileManager.default.createDirectory(at: stopDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: siblingDir, withIntermediateDirectories: true)
+        try writeAgentsMd(content: "SECRET — must never be read", in: siblingDir)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: siblingDir, stoppingAt: stopDir)
+
+        XCTAssertTrue(found.isEmpty, "a sibling directory sharing a string prefix with stopDirectory must not be treated as contained")
+        // Sabotage-evidence (verified locally): the fix is two independent
+        // layers — the pathComponents containment guard above the walk, and
+        // a fail-closed check after it (the walk never matches `stop`, so it
+        // would otherwise fall through to the filesystem-root break and
+        // return whatever was collected). Reverting EITHER layer alone still
+        // leaves this test green, because the other layer still catches the
+        // escape — that redundancy is the intended defense-in-depth, not a
+        // weak test. Reverting BOTH together (containment back to
+        // `leaf.path.hasPrefix(stop.path)` AND dropping the `reachedStop`
+        // check) reproduces the finding-2 escape: found becomes non-empty
+        // and includes the SECRET content.
+        #endif
+    }
+
+    /// Finding 3: a symlinked `AGENTS.md` resolving outside its directory
+    /// was followed and read — `fileExists`/`String(contentsOf:)` both
+    /// transparently follow symlinks. Confirmed against the real loader
+    /// before this fix: a planted `AGENTS.md -> ~/.ssh/id_rsa`-shaped
+    /// symlink in an untrusted cloned repo was read and merged into the
+    /// system preamble.
+    func test_discover_symlinkedAgentsMd_resolvingOutsideDirectory_isSkipped() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let outside = root.appendingPathComponent("outside", isDirectory: true)
+        let repo = root.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let secretFile = outside.appendingPathComponent("secret.md")
+        try "SECRET FILE OUTSIDE THE TREE".write(to: secretFile, atomically: true, encoding: .utf8)
+        let symlinkedAgentsMd = repo.appendingPathComponent(AgentInstructionLoader.defaultFileName)
+        try FileManager.default.createSymbolicLink(at: symlinkedAgentsMd, withDestinationURL: secretFile)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: repo, stoppingAt: repo)
+
+        XCTAssertTrue(found.isEmpty, "a symlinked AGENTS.md resolving outside its directory must be skipped")
+        // Sabotage-evidence: M1 remove the resolvedCandidate containment
+        // check → found becomes non-empty and includes the outside-tree
+        // secret content, reproducing the finding-3 escape.
+        #endif
+    }
+
+    /// Finding 4: no cap was enforced on `AGENTS.md` size — a multi-megabyte
+    /// file was read whole and merged into the system preamble with no
+    /// truncation or signal. Confirmed against the real loader before this
+    /// fix with an 8 MB planted file.
+    func test_discover_oversizedAgentsMd_isSkipped() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let oversized = String(repeating: "X", count: AgentInstructionLoader.maxFileSizeBytes + 1)
+        try writeAgentsMd(content: oversized, in: root)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: root, stoppingAt: root)
+
+        XCTAssertTrue(found.isEmpty, "a file exceeding maxFileSizeBytes must be skipped, not read whole")
+        // Sabotage-evidence: M1 remove the size-cap check → found becomes
+        // non-empty and includes the full oversized content.
+        #endif
+    }
+
+    /// Boundary check for the size cap: a file exactly at the limit must
+    /// still be read (the cap rejects files STRICTLY larger than the limit).
+    func test_discover_fileAtSizeCapBoundary_isIncluded() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let atCap = String(repeating: "X", count: AgentInstructionLoader.maxFileSizeBytes)
+        try writeAgentsMd(content: atCap, in: root)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: root, stoppingAt: root)
+
+        XCTAssertEqual(found.count, 1, "a file exactly at the cap must still be read")
+        // Sabotage-evidence: M1 use `>=` instead of `>` in the cap check →
+        // this exactly-at-cap file is incorrectly skipped, found becomes
+        // empty.
         #endif
     }
 

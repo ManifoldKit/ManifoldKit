@@ -10,24 +10,31 @@ import ManifoldKit
 /// name.
 ///
 /// This test drives the real, documented recipe —
-/// `ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:)`
+/// `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)`
 /// (`Sources/ManifoldKit/ConversationRuntimeOptions+AgentInstructions.swift`)
 /// — against a real `AGENTS.md` on disk, through the real
-/// `PromptContextPipeline.assemble(messageCount:)`, and asserts the actual
-/// file content lands in the `.systemPreamble` slot. A no-op wiring (empty
-/// pipeline, wrong slot position, or swallowed content) cannot pass this.
+/// `PromptContextPipeline.assemble(totalBudget:contextSize:context:)` — the
+/// SAME three-arg overload `TurnPreparation.swift` calls on the live turn
+/// path (`totalBudget: Int.max, contextSize: 0`, since `addAgentInstructions`
+/// only ever populates `.pipeline`, never `.budgetPlanner`) — and asserts the
+/// actual file content lands in the `.systemPreamble` slot. The two-arg
+/// `assemble(messageCount:)` overload converges with this one only via
+/// `PromptContextProvider`'s protocol-extension default, so calling it here
+/// would not catch a future provider override of the budget-aware path. A
+/// no-op wiring (empty pipeline, wrong slot position, or swallowed content)
+/// cannot pass this.
 final class AgentInstructionsWiringLivenessTest: XCTestCase {
 
     private var tempRoots: [URL] = []
 
     override func tearDownWithError() throws {
+        // Best-effort cleanup — a temp dir another test already removed, or a
+        // transient permission hiccup, must not fail an otherwise-passing
+        // test. Matches the established convention elsewhere in the suite
+        // (e.g. DownloadHygieneJanitorTests.tearDownWithError).
         let fm = FileManager.default
         for root in tempRoots {
-            do {
-                try fm.removeItem(at: root)
-            } catch {
-                XCTAssertNotNil(error as Error?, "tear-down cleanup error captured")
-            }
+            try? fm.removeItem(at: root)
         }
         tempRoots = []
     }
@@ -40,10 +47,22 @@ final class AgentInstructionsWiringLivenessTest: XCTestCase {
         return root
     }
 
+    private func assembledSlots(_ options: ConversationRuntimeOptions) async throws -> [PromptSlot] {
+        let pipeline = try XCTUnwrap(
+            options.pipeline,
+            "addAgentInstructions(...) must populate .pipeline — a nil pipeline is a silent no-op"
+        )
+        // Matches TurnPreparation.swift's live-turn call exactly: totalBudget
+        // Int.max / contextSize 0 is what it passes when only `.pipeline` is
+        // set (no `.budgetPlanner`) — the shape addAgentInstructions produces.
+        let turnContext = TurnContext(sessionID: UUID(), messageCount: 0)
+        return try await pipeline.assemble(totalBudget: Int.max, contextSize: 0, context: turnContext)
+    }
+
     /// A real `AGENTS.md`, discovered, merged, and observably present in the
     /// assembled prompt's `.systemPreamble` slot — the exact shape #2434
     /// required for the extraction to count as live rather than merely wired.
-    func test_withAgentInstructions_injectsRealFileContentIntoSystemPreamble() async throws {
+    func test_addAgentInstructions_injectsRealFileContentIntoSystemPreamble() async throws {
         #if !os(macOS)
         throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
         #else
@@ -56,16 +75,9 @@ final class AgentInstructionsWiringLivenessTest: XCTestCase {
             encoding: .utf8
         )
 
-        let options = ConversationRuntimeOptions.withAgentInstructions(
-            currentDirectory: projectRoot,
-            stoppingAt: projectRoot
-        )
-        let pipeline = try XCTUnwrap(
-            options.pipeline,
-            "withAgentInstructions(...) must populate .pipeline — a nil pipeline is a silent no-op"
-        )
-
-        let slots = try await pipeline.assemble(messageCount: 0)
+        var options = ConversationRuntimeOptions()
+        options.addAgentInstructions(currentDirectory: projectRoot, stoppingAt: projectRoot)
+        let slots = try await assembledSlots(options)
 
         XCTAssertEqual(slots.count, 1, "exactly one AGENTS.md on disk must produce exactly one slot")
         let slot = try XCTUnwrap(slots.first)
@@ -88,21 +100,72 @@ final class AgentInstructionsWiringLivenessTest: XCTestCase {
     /// Negative control: no `AGENTS.md` on disk must produce zero slots, not a
     /// slot with placeholder/empty content. Without this, a provider hardcoded
     /// to always emit one slot would pass the positive test above too.
-    func test_withAgentInstructions_noFileOnDisk_producesNoSlots() async throws {
+    func test_addAgentInstructions_noFileOnDisk_producesNoSlots() async throws {
         #if !os(macOS)
         throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
         #else
         let projectRoot = try makeTempDir()
         // Deliberately no AGENTS.md written here.
 
-        let options = ConversationRuntimeOptions.withAgentInstructions(
-            currentDirectory: projectRoot,
-            stoppingAt: projectRoot
-        )
-        let pipeline = try XCTUnwrap(options.pipeline)
-        let slots = try await pipeline.assemble(messageCount: 0)
+        var options = ConversationRuntimeOptions()
+        options.addAgentInstructions(currentDirectory: projectRoot, stoppingAt: projectRoot)
+        let slots = try await assembledSlots(options)
 
         XCTAssertTrue(slots.isEmpty, "no AGENTS.md on disk must yield zero slots")
         #endif
+    }
+
+    /// `addAgentInstructions` must ADD to a pipeline the host already
+    /// configured, not silently discard it (#2434 review finding 9). A
+    /// static factory returning a fresh `ConversationRuntimeOptions()` would
+    /// drop both the host's other option fields and any provider already
+    /// registered on `.pipeline`.
+    func test_addAgentInstructions_preservesOtherOptionsAndComposesWithExistingPipeline() async throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let projectRoot = try makeTempDir()
+        try "AGENTS instructions.".write(
+            to: projectRoot.appendingPathComponent("AGENTS.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        struct HostProvider: PromptContextProvider {
+            func contributeSlots(messageCount: Int) async throws -> [PromptSlot] {
+                [PromptSlot(id: "host-slot", content: "host content", position: .contextSetup, label: "host")]
+            }
+        }
+        let hostHook = FirstMessageOnlyHook()
+
+        var options = ConversationRuntimeOptions()
+        options.pipeline = PromptContextPipeline(providers: [HostProvider()])
+        options.generationHooks = [hostHook]
+        options.addAgentInstructions(currentDirectory: projectRoot, stoppingAt: projectRoot)
+
+        // The host's non-pipeline field must survive untouched.
+        XCTAssertEqual(options.generationHooks.count, 1,
+            "addAgentInstructions must not discard other ConversationRuntimeOptions fields set beforehand")
+
+        // Both the host's own provider and AGENTS.md must contribute slots —
+        // composed, not one replacing the other.
+        let slots = try await assembledSlots(options)
+        XCTAssertEqual(slots.count, 2,
+            "addAgentInstructions must compose with an existing pipeline, not replace it")
+        XCTAssertTrue(slots.contains { $0.id == "host-slot" },
+            "the host's pre-existing provider must still contribute after addAgentInstructions")
+        XCTAssertTrue(slots.contains { $0.content.contains("AGENTS instructions.") },
+            "AGENTS.md must still contribute after composing with an existing pipeline")
+        // Sabotage-evidence (verified locally, removed before commit):
+        //   M1 revert to a static factory returning ConversationRuntimeOptions()
+        //      → generationHooks.count becomes 0, first assertion fails.
+        //   M2 have addAgentInstructions replace .pipeline outright instead of
+        //      wrapping the existing one → slots.count becomes 1 and the
+        //      host-slot assertion fails.
+        #endif
+    }
+
+    private struct FirstMessageOnlyHook: GenerationHook {
+        func postGeneration(_ turn: CompletedTurn) async {}
     }
 }

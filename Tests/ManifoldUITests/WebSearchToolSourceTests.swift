@@ -32,8 +32,8 @@ final class WebSearchToolSourceTests: XCTestCase, SessionToolSourceContract {
     // carries no `@MainActor` annotation of its own — unlike
     // `ImageGenerationToolSourceTests`/`VideoGenerationToolSourceTests`,
     // which retain a pre-existing `@MainActor` on the class for their other
-    // (non-contract) tests — so the shape here matches the two existing
-    // adopters (`SkillToolSourceTests`, `HandoffToolSourceContractTests`):
+    // (non-contract) tests — so the shape here matches the existing
+    // adopter (`HandoffToolSourceContractTests`):
     // build the `@MainActor`-isolated source once in `setUp()` via
     // `MainActor.run`, store it, and hand it back synchronously from the
     // nonisolated `makeSource()`. `setUp()` and the test method run
@@ -68,10 +68,10 @@ final class WebSearchToolSourceTests: XCTestCase, SessionToolSourceContract {
     // always constructs sources with an advertised `definition` and forwards
     // the result unexamined — so an actual unadvertised-name call is not a
     // reachable production path for this executor. It's a genuine encoding
-    // split across `SessionToolSource` conformers (`SkillToolSource` /
-    // `HandoffToolSource` throw; the three UI tool sources return a
-    // structured error), not a defect this PR should paper over by forcing
-    // the throw-based assertion. Pinned instead as the actual behavior:
+    // split across `SessionToolSource` conformers (`HandoffToolSource`
+    // throws; the three UI tool sources return a structured error), not a
+    // defect this PR should paper over by forcing the throw-based assertion.
+    // Pinned instead as the actual behavior:
     func test_resolve_unadvertisedToolName_returnsUnknownToolErrorInsteadOfThrowing() async throws {
         let source = makeSource()
         let session = makeSession()

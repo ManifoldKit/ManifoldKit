@@ -93,10 +93,10 @@ final class ImageGenerationToolSourceTests: XCTestCase, SessionToolSourceContrac
     // always constructs sources with an advertised `definition` and forwards
     // the result unexamined — so an actual unadvertised-name call is not a
     // reachable production path for this executor. It's a genuine encoding
-    // split across `SessionToolSource` conformers (`SkillToolSource` /
-    // `HandoffToolSource` throw; the three UI tool sources return a
-    // structured error), not a defect this PR should paper over by forcing
-    // the throw-based assertion. `test_resolve_unknownTool_stillReturnsUnknownToolError`
+    // split across `SessionToolSource` conformers (`HandoffToolSource`
+    // throws; the three UI tool sources return a structured error), not a
+    // defect this PR should paper over by forcing the throw-based assertion.
+    // `test_resolve_unknownTool_stillReturnsUnknownToolError`
     // below already pins this via a literal tool name; this one additionally
     // pins it through the shared contract fixtures for parity with the
     // other two adopters:

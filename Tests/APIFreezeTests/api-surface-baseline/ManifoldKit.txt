@@ -1,6 +1,6 @@
 ConversationRuntimeOptions Struct
 ConversationRuntimeOptions conformances: Copyable,Escapable
-ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:) Func
+ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:) Func
 FeatureMatrix Enum
 FeatureMatrix conformances: Copyable,Escapable
 FeatureMatrix.capabilities(for:) Func

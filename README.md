@@ -419,7 +419,7 @@ Two session-scoped extension points complement MCP for non-MCP hosts:
 - **Agent handoffs** — multi-persona sessions where the model emits `transfer_to_<name>` to swap the active agent. See `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/AgentHandoffs.md`.
 - **Hook system** — synchronous `preToolUse` (sanitize/block) and `preCompact` (observe) hooks distinct from the observational event stream. See `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/HookSystem.md`.
 
-`ManifoldSkills` (filesystem-discovered Claude-Code-compatible `SKILL.md` skills) was retired 2026-08-06 for zero adoption — see [docs/MIGRATION-skills-removed.md](docs/MIGRATION-skills-removed.md). Its `AGENTS.md` ambient-instruction loading survives as the separate `ManifoldAgentInstructions` product, wired via `ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:)` — see the migration note for the recipe.
+`ManifoldSkills` (filesystem-discovered Claude-Code-compatible `SKILL.md` skills) was retired 2026-08-06 for zero adoption — see [docs/MIGRATION-skills-removed.md](docs/MIGRATION-skills-removed.md). Its `AGENTS.md` ambient-instruction loading survives as the separate `ManifoldAgentInstructions` product, wired via `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)` — see the migration note for the recipe.
 
 ## Custom Backends
 

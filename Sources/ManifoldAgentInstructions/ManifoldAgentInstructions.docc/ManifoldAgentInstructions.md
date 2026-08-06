@@ -62,15 +62,18 @@ LLM can distinguish instruction scopes; it returns `nil` for an empty input.
 ## Wiring into a bootstrap
 
 A host wiring `ManifoldBootstrap` doesn't need to compose the pipeline by
-hand. `ManifoldKit`'s `ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:)`
-is the supported one-call recipe:
+hand. `ManifoldKit`'s
+`ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)`
+is the supported one-call recipe — a `mutating func` that **adds** to any
+pipeline already configured, the same shape as
+`ManifoldBootstrap.addGenerationToolSources(viewModel:)`, not a factory that
+replaces your options wholesale:
 
 ```swift,no-build:host-context (projectRoot, configuration) is illustrative, not defined in this snippet
 import ManifoldKit
 
-let options = ConversationRuntimeOptions.withAgentInstructions(
-    currentDirectory: projectRoot
-)
+var options = ConversationRuntimeOptions()
+options.addAgentInstructions(currentDirectory: projectRoot)
 let (progress, task) = ManifoldBootstrap.build(
     configuration: configuration,
     runtimeOptions: options
@@ -84,12 +87,43 @@ so `AGENTS.md` loading only turns on when a host builds its own
 `ConversationRuntime` construction, so this must be set **before** bootstrap
 runs, not after.
 
-## Platform availability
+## Security
+
+`AGENTS.md` files are untrusted on-disk content: whatever text they contain
+is merged verbatim into the model's system preamble and treated as an
+instruction. That is inherent to the ambient-instruction format — every
+major agent tool that reads `AGENTS.md` works the same way — not a defect
+specific to this module, but a host pointing `currentDirectory` at a
+directory it doesn't control (an unreviewed clone, a user-selected folder)
+is choosing to trust whatever `AGENTS.md` is found there.
+
+``AgentInstructionLoader`` still enforces three concrete boundaries: the
+`stoppingAt` containment check compares resolved path **components** (a
+sibling directory sharing a string prefix, e.g. `proj-secrets` vs. `proj`,
+cannot escape the boundary); a candidate `AGENTS.md` that is or sits behind a
+symlink resolving outside its own directory is rejected rather than followed
+(opening an untrusted cloned repo is exactly the scenario a planted
+`AGENTS.md -> ~/.ssh/id_rsa` symlink would target); and a file larger than
+``AgentInstructionLoader/maxFileSizeBytes`` (64 KB) is skipped rather than
+read whole.
+
+## Platform and sandboxing caveats
 
 ``AgentInstructionLoader/discover(from:stoppingAt:)`` is **macOS-only in v1**.
 On other platforms it returns `[]` and logs a one-time warning — the same
 contract the module's SKILL.md-discovery predecessor used, carried forward
-because the underlying filesystem-walk constraint is unchanged.
+because the underlying filesystem-walk constraint is unchanged. This means
+`addAgentInstructions(currentDirectory:stoppingAt:)` still succeeds on iOS
+(`.pipeline` is non-nil, the turn loop runs normally) but never loads
+anything — there is no error or signal at the call site distinguishing "no
+`AGENTS.md` found" from "unsupported platform."
+
+The default `stoppingAt` (the current user's home directory) resolves to the
+app's **container** directory in a sandboxed macOS app, not the real `$HOME`
+a user would expect. A `currentDirectory` outside the container (a
+user-selected folder reached via an open panel / security-scoped bookmark)
+fails the containment check and yields `[]` with only a log line — pass an
+explicit `stopDirectory` that actually bounds the intended tree in that case.
 
 ## Topics
 

@@ -75,18 +75,6 @@ final class DemoScenarioUITests: XCTestCase {
             assistantAnswer: "The MCP echo server replied: 'Hello from ManifoldKit'."
         ),
         // MARK: W3B scenarios
-        // skill-explain: scripted invoke_skill dispatch via bundled SKILL.md.
-        // The scripted backend treats unregistered tool names as failed
-        // invocations so we assert against tool-invocation-failed-invoke_skill
-        // — same shape as `mcp-echo` whose `everything__echo` only exists
-        // after the user connects. The scripted answer is what matters here.
-        ScenarioExpectation(
-            id: "skill-explain",
-            cardID: "demo-card-skill-explain",
-            completedTools: [],
-            failedTools: ["invoke_skill"],
-            assistantAnswer: "An actor in Swift is a reference type that protects its mutable state behind an isolation boundary."
-        ),
         // handoff-research-write: transfer_to_writer is a genuine handoff
         // (Researcher's session carries a real agent roster via
         // configureContext, so ConversationTurnExecutor's handoffDetector
@@ -167,11 +155,6 @@ final class DemoScenarioUITests: XCTestCase {
 
     // MARK: - W3B scenarios
 
-    func test_skillExplain_launchArg_rendersInvokeSkillAndScriptedAnswer() {
-        // scenarioExpectations[7] = skill-explain
-        assertLaunchArgScenario(scenarioExpectations[7])
-    }
-
     func test_handoffResearchWrite_launchArg_rendersTransferToWriterAndScriptedAnswer() {
         // The loud-failure contract this test enforces is encoded as a
         // completedTools assertion: if the scripted `transfer_to_writer`
@@ -182,7 +165,7 @@ final class DemoScenarioUITests: XCTestCase {
         // read by any live code path; this test's own assertions are the
         // actual contract.) The answer assertion covers the runner's
         // automatic follow-up turn (see `DemoScenario.handoffFollowUpPrompt`).
-        assertLaunchArgScenario(scenarioExpectations[8])
+        assertLaunchArgScenario(scenarioExpectations[7])
     }
 
     func test_hookInputSanitize_launchArg_rendersSanitisedPathAndScriptedAnswer() {
@@ -191,7 +174,7 @@ final class DemoScenarioUITests: XCTestCase {
         // tool-invocation-completed-read_file element confirms the executor
         // saw the post-hook arguments; the assistant bubble describes the
         // rewrite.
-        assertLaunchArgScenario(scenarioExpectations[9])
+        assertLaunchArgScenario(scenarioExpectations[8])
     }
 
     func test_journalWrite_launchArg_approvesToolCallAndWritesFile() {
