@@ -128,7 +128,10 @@ public enum ManifoldKit {
     /// ### Example
     ///
     /// ```swift
+    /// import ManifoldLlama
+    ///
     /// let kit = try await ManifoldKit.quickStart(
+    ///     backends: [LlamaBackends.self],
     ///     seed: .recommendedSmallModel { progress in
     ///         print("Downloading: \(Int(progress * 100))%")
     ///     }

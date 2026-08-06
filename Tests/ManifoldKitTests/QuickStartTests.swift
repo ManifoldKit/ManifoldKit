@@ -26,7 +26,9 @@ final class QuickStartTests: XCTestCase {
     func test_quickStart_returnsBootstrappedViewModelAndSessionManager() async throws {
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            foundationAvailableOverride: false,
+            selectionPolicy: { _ in nil }
         )
 
         // Session-manager side (#1425/#1447): `sessionManager` is wired and

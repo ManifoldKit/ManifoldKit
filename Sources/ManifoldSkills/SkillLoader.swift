@@ -18,8 +18,8 @@ public struct SkillLoader: Sendable {
     /// on iOS, so the body must be gated, not merely the runtime probe. On iOS
     /// this returns `[]` to match `discover()`, which is itself `#if os(macOS)`
     /// (iOS skill discovery requires an entitlement / app-group design that
-    /// hasn't shipped). Without this gate the `ManifoldKit` umbrella — which
-    /// re-exports `ManifoldSkills` — won't build for iOS at all.
+    /// hasn't shipped). Without this gate the `ManifoldSkills` product won't
+    /// build for iOS at all.
     public static var defaultClaudeCodePaths: [URL] {
         #if os(macOS)
         let fm = FileManager.default

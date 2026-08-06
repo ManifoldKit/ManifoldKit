@@ -137,13 +137,17 @@ When none of those apply, the composer is enabled (a session exists) but inert �
 
 This section covers the paths that fill that gap on first launch (starter seed download, post-return Ollama seed, manual Foundation re-enable). To react to the user's choice or populate your own discovery list, see the `ModelRegistry.onSelectionChanged` / `foundationModelProvider` and `CuratedModel.all` rows in [Host configuration seams](#host-configuration-seams).
 
-### Seeding a starter model (recommended for new apps)
+### Seeding a starter model (recommended for local-first apps)
 
-Pass `seed: .recommendedSmallModel()` and ManifoldKit handles the rest: it downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and dispatches the load before returning. No model-management UI required.
+The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and dispatches the load before returning. Without the registrar the seed is deliberately skipped and no model loads (see `QuickStartSeed`).
 
 That dispatch is fire-and-forget (`dispatchSelectedLoad()`), so the load is typically still in flight when `quickStart()` returns and the view appears — `ChatViewModel.isModelLoaded` is not guaranteed `true` on the first observation. Read `viewModel.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(error)`) to drive an accurate "starting up" indicator instead of assuming the composer is immediately live (#2222).
 
 ```swift,no-build
+import SwiftUI
+import ManifoldKit
+import ManifoldLlama
+
 @main
 struct MyChatApp: App {
     @State private var result: QuickStartResult?
@@ -172,6 +176,7 @@ struct MyChatApp: App {
                 .task {
                     do {
                         result = try await ManifoldKit.quickStart(
+                            backends: [LlamaBackends.self],
                             seed: .recommendedSmallModel { progress in
                                 downloadProgress = progress
                             }
@@ -195,7 +200,7 @@ struct MyChatApp: App {
 | No registered backend can load GGUF models | Skip — logged as `quickStart(seed:): no registered backend can load gguf models — seed skipped` |
 | Network failure during the download | Skip silently — app launches in empty state |
 
-**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README Hello World). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
+**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/ManifoldKit/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README's optional GGUF starter). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
 
 ### What "available immediately" actually means
 

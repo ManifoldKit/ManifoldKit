@@ -156,6 +156,9 @@ for snippet in "${snippets[@]}"; do
                 // weeks (PR #2007 deleted the subsystem, the doc kept
                 // advertising it) precisely because nothing there compiled.
                 .product(name: \"ManifoldVoice\", package: \"ManifoldKit\"),
+                // ManifoldSkills is an explicit experimental import, so the
+                // migration snippet must compile against the product directly.
+                .product(name: \"ManifoldSkills\", package: \"ManifoldKit\"),
             ],
             path: \"Sources/$target\"
         ),
