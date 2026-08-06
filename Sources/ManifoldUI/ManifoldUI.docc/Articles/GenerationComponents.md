@@ -103,11 +103,13 @@ Like the image/video tool sources, ``WebSearchToolSource`` is a thin forwarder w
 > `imageGenerationService`, `videoGenerationService`, or `webSearchRuntime` —
 > none of its overloads pass those parameters through to
 > `ManifoldBootstrap.build(...)` (tracked in #1903). If your bootstrap came
-> from `quickStart(...)`, calling `addGenerationToolSources(viewModel:)`
-> below registers zero tool sources; the call now logs a warning explaining
-> why instead of doing nothing silently. To use these tool sources, drop down
-> to `ManifoldBootstrap.build(...)` directly and pass the generation services
-> you want, as shown below.
+> from `quickStart(...)`, registering ``ImageGenerationToolSource`` /
+> ``VideoGenerationToolSource`` / ``WebSearchToolSource`` via
+> `addToolSources(_:)` below still advertises the tool to the model, but
+> invoking it throws (`ChatViewModelImageError.notConfigured` and friends) —
+> there is no build-time or registration-time warning. To use these tool
+> sources, drop down to `ManifoldBootstrap.build(...)` directly and pass the
+> generation services you want, as shown below.
 
 Call `ManifoldBootstrap.build(...)` with the generation services your app supports:
 
@@ -123,16 +125,7 @@ for await _ in progress { /* drain milestones */ }
 let bootstrap = try await task.value
 ```
 
-When importing `ManifoldKit` (the umbrella module), use the one-liner convenience against a bootstrap built this way:
-
-```swift,no-build
-// One call registers whichever generation services were passed to
-// ManifoldBootstrap.build(...) above. Sources for services that are still
-// nil are skipped (with a logged warning if none are wired at all).
-await bootstrap.addGenerationToolSources(viewModel: viewModel)
-```
-
-For apps that import `ManifoldPersistenceSwiftData` directly (without the umbrella), use `addToolSources(_:)`:
+Then register the sources you need with `addToolSources(_:)`:
 
 ```swift,no-build
 await bootstrap.addToolSources([
@@ -142,7 +135,13 @@ await bootstrap.addToolSources([
 ])
 ```
 
-Both calls replace the more verbose `conversationRuntime.updateSessionToolSources(_:)` call.
+`addToolSources(_:)` **accumulates** — it merges the sources you pass into
+whatever is already registered (de-duplicating by dynamic type), so an
+earlier call from another part of the app is not disturbed. It replaces the
+more verbose `conversationRuntime.updateSessionToolSources(_:)` call, which
+still exists but *replaces* the full set wholesale — reach for it only when
+you deliberately want a per-turn swap (see that method's doc comment for the
+layer split).
 
 ### Prerequisites
 
@@ -153,8 +152,6 @@ Each tool source requires its corresponding generation runtime to be wired into 
 - ``WebSearchToolSource`` — requires a ``WebSearchRuntime`` (e.g. `DefaultWebSearchRuntime` from `ManifoldCloudCore`) wired via `ManifoldBootstrap.build(webSearchRuntime:)` or ``ChatViewModel/configure(webSearchRuntime:)``.
 
 None of these three parameters are reachable through `ManifoldKit.quickStart(...)` today — only through `ManifoldBootstrap.build(...)` directly.
-
-`addGenerationToolSources(viewModel:)` silently skips sources whose corresponding service is absent, but logs a warning when it skips *all three* — that is the signal that no generation surfaces were wired on this bootstrap.
 
 ## Context Menu Items
 

@@ -1284,6 +1284,12 @@ let package = Package(
                 // above), not the ManifoldTestSupport free function, so this
                 // target does NOT need ManifoldPersistenceTestSupport (4.4 split).
                 "ManifoldTestSupport",
+                // Direct edge for ImageGenerationToolSource / VideoGenerationToolSource /
+                // WebSearchToolSource, used by GenerationComponentsDocLivenessTest.swift
+                // since the retirement of the ManifoldKit-local
+                // addGenerationToolSources(viewModel:) wrapper (#2440) — the doc-liveness
+                // test now constructs the generation tool sources directly.
+                "ManifoldUI",
             ]
         ),
         .testTarget(

@@ -84,6 +84,7 @@ HandoffToolSource  # reason: host-facing library surface — public reference ty
 HistoryShapingResult  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
 IMessageMessageBubbleStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 IdentityHistoryProvider  # reason: host-facing library surface — public value type consumed downstream or via tests; no in-repo (Sources/) reference.
+ImageGenerationToolSource  # reason: host-facing library surface — SessionToolSource conformer constructed by host apps via ManifoldBootstrap.addToolSources(_:) (#2440 retired the in-repo ManifoldKit wrapper that used to reference it); no in-repo (Sources/) reference.
 ImageModelLoadPlan  # reason: companion/host-facing — image-model load plan consumed by the image backends (manifold-mlx).
 ImageModelManagementSheet  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 IngestionIntent  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
@@ -184,9 +185,11 @@ ToolCallMarker  # reason: companion/host-facing — tool-call transform marker t
 ToolInvocationStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
 VLModelDetector  # reason: dev-tool (ManifoldTools) — tool-validation harness surface exercised by the manifold-tools CLI / tests.
 VectorStoreError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+VideoGenerationToolSource  # reason: host-facing library surface — SessionToolSource conformer constructed by host apps via ManifoldBootstrap.addToolSources(_:) (#2440 retired the in-repo ManifoldKit wrapper that used to reference it); no in-repo (Sources/) reference.
 VisionInputButton  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 VoiceComposerAccessory  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 VoiceDraftMergeStrategy  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 VoicePickerView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 WebSearchRuntimeError  # reason: host-facing error — thrown by public API; caught by downstream consumers, not in-repo.
+WebSearchToolSource  # reason: host-facing library surface — SessionToolSource conformer constructed by host apps via ManifoldBootstrap.addToolSources(_:) (#2440 retired the in-repo ManifoldKit wrapper that used to reference it); no in-repo (Sources/) reference.
 withFallbacks  # reason: host-facing reliability wrapper — free function a host composes over backends (documented in ReliabilityWrappers.md); no in-repo caller.

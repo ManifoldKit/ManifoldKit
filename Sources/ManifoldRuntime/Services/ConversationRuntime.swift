@@ -447,6 +447,16 @@ public final class ConversationRuntime: Sendable {
     /// new sources take effect on the next turn without an executor
     /// rebuild. In-flight streams are not reconfigured — cancel and
     /// resend if mid-stream rebind is required.
+    ///
+    /// **Layer split (#2440):** this method *replaces* the full source list
+    /// wholesale — it is the per-turn swap primitive for hosts driving
+    /// `ConversationRuntime` directly. `ManifoldBootstrap.addToolSources(_:)`
+    /// (in `ManifoldPersistenceSwiftData`, one layer up) *accumulates*
+    /// instead: it merges new sources into whatever is already registered,
+    /// de-duplicating by dynamic type, and calls this method with the merged
+    /// result. Call this method directly only when you want a wholesale
+    /// swap; call `ManifoldBootstrap.addToolSources(_:)` when you want to add
+    /// without disturbing what's already registered.
     public func updateSessionToolSources(_ sources: [any SessionToolSource]) async {
         await bindings.updateSessionToolSources(sources)
     }

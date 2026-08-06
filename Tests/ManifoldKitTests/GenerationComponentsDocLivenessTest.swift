@@ -1,20 +1,24 @@
 // GenerationComponentsDocLivenessTest.swift
 //
-// Tripwire for the "quickStart() + addGenerationToolSources(viewModel:) is a
-// silent no-op" trap (audit item #41 in docs/plans/inert-code-audit-2026-07.md,
-// tracked under #2128 / #1903).
+// Tripwire for the "quickStart() + addToolSources(_:) silently registers a
+// non-functional generation tool" trap (audit item #41 in
+// docs/plans/inert-code-audit-2026-07.md, tracked under #2128 / #1903).
 //
 // `ManifoldKit.quickStart(...)` never passes `imageGenerationService` /
 // `videoGenerationService` / `webSearchRuntime` through to
 // `ManifoldBootstrap.build(...)`, so a bootstrap built via quickStart always
-// has all three nil. `ManifoldBootstrap.addGenerationToolSources(viewModel:)`
-// only registers a tool source when its corresponding service is non-nil, so
-// calling it against a quickStart bootstrap registers zero sources. Two
-// things must stay true together:
+// has all three nil. Registering `ImageGenerationToolSource` /
+// `VideoGenerationToolSource` / `WebSearchToolSource` against such a
+// bootstrap via `addToolSources(_:)` still advertises the tool to the model
+// — it just throws when invoked, since the underlying service is nil. (The
+// wrapper that used to skip-and-warn on this case,
+// `addGenerationToolSources(viewModel:)`, was retired in #2440 along with
+// the clobbering bug it was hiding — see docs/MIGRATION-additive-tool-sources.md.)
+// Two things must stay true together:
 //
 //   1. That behavior is real (verified against source, not assumed).
 //   2. GenerationComponents.md's "Registering tool sources" recipe does not
-//      claim the bare `quickStart()` + `addGenerationToolSources` combination
+//      claim the bare `quickStart()` + `addToolSources(_:)` combination
 //      works — it must carry the caveat.
 //
 // If a future edit "simplifies" the doc back to the bare recipe without the
@@ -23,6 +27,7 @@
 import XCTest
 import SwiftData
 import ManifoldRuntime
+import ManifoldUI
 import ManifoldPersistenceSwiftData
 @testable import ManifoldKit
 
@@ -34,11 +39,12 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
     /// A bootstrap built the way `quickStart()` builds one — no
     /// `imageGenerationService` / `videoGenerationService` / `webSearchRuntime`
     /// passed to `ManifoldBootstrap.build(...)` — must have all three nil.
-    /// `addGenerationToolSources(viewModel:)`'s mapping is exactly
-    /// `service != nil ? append : skip` for each of the three, so this proves
-    /// the call registers zero tool sources without requiring a new
-    /// tool-source-count accessor on `ConversationRuntime` (out of scope here
-    /// per the "no new public API" guard).
+    /// Registering the three generation tool sources via `addToolSources(_:)`
+    /// against such a bootstrap must not crash — it just registers tools that
+    /// throw when invoked, since each source's backing service is nil. Proven
+    /// without requiring a new tool-source-count accessor on
+    /// `ConversationRuntime` (out of scope here per the "no new public API"
+    /// guard).
     func test_plainQuickStartBootstrap_hasNoGenerationSurfacesWired() async throws {
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
@@ -46,33 +52,37 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
         )
 
         XCTAssertNil(result.bootstrap.imageGenerationService,
-            "quickStart() must not wire imageGenerationService (see #1903) — if this now passes, addGenerationToolSources is live for image gen and GenerationComponents.md's caveat needs updating.")
+            "quickStart() must not wire imageGenerationService (see #1903) — if this now passes, the generation tool sources are live for image gen and GenerationComponents.md's caveat needs updating.")
         XCTAssertNil(result.bootstrap.videoGenerationService,
-            "quickStart() must not wire videoGenerationService (see #1903) — if this now passes, addGenerationToolSources is live for video gen and GenerationComponents.md's caveat needs updating.")
+            "quickStart() must not wire videoGenerationService (see #1903) — if this now passes, the generation tool sources are live for video gen and GenerationComponents.md's caveat needs updating.")
         XCTAssertNil(result.bootstrap.webSearchRuntime,
-            "quickStart() must not wire webSearchRuntime (see #1903) — if this now passes, addGenerationToolSources is live for web search and GenerationComponents.md's caveat needs updating.")
+            "quickStart() must not wire webSearchRuntime (see #1903) — if this now passes, the generation tool sources are live for web search and GenerationComponents.md's caveat needs updating.")
 
-        // Exercise the real call path — must not crash, and (per the source
-        // above) resolves to the empty-sources branch that now logs a
-        // warning instead of returning silently.
-        await result.bootstrap.addGenerationToolSources(viewModel: result.viewModel)
+        // Exercise the real call path — the documented recipe, against a
+        // quickStart bootstrap where every backing service is nil. Must not
+        // crash; the resulting sources are inert until their service is wired.
+        await result.bootstrap.addToolSources([
+            ImageGenerationToolSource(viewModel: result.viewModel),
+            VideoGenerationToolSource(viewModel: result.viewModel),
+            WebSearchToolSource(viewModel: result.viewModel)
+        ])
     }
 
     // MARK: - Doc-scan: GenerationComponents.md must not claim the bare recipe works
 
-    /// Detects the trap pattern: an `addGenerationToolSources` recipe with no
-    /// caveat telling the reader that `quickStart(...)` does not wire the
-    /// generation services the call depends on. Deliberately a coarse,
-    /// whole-document substring check (mirrors `AgentsMdAuditTest`'s
-    /// philosophy: greppy checks survive markdown reflow; a doc parser would
-    /// couple the test to layout).
+    /// Detects the trap pattern: an `addToolSources(_:)` generation-tool
+    /// recipe with no caveat telling the reader that `quickStart(...)` does
+    /// not wire the generation services those tool sources depend on.
+    /// Deliberately a coarse, whole-document substring check (mirrors
+    /// `AgentsMdAuditTest`'s philosophy: greppy checks survive markdown
+    /// reflow; a doc parser would couple the test to layout).
     ///
     /// Returns a non-nil violation message when the doc mentions
-    /// `addGenerationToolSources` without ALSO carrying a caveat that names
+    /// `addToolSources` without ALSO carrying a caveat that names
     /// both `quickStart` and an explicit "does not wire" / "no parameter"
     /// style disclaimer.
     static func bareQuickStartRecipeViolation(in body: String) -> String? {
-        guard body.contains("addGenerationToolSources") else {
+        guard body.contains("addToolSources") else {
             // Nothing to check — the doc doesn't mention the API at all.
             return nil
         }
@@ -83,7 +93,7 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
         let mentionsNoWiring = stripped.contains("does not wire") || stripped.contains("not wired")
             || stripped.contains("no parameter")
         guard mentionsQuickStart, mentionsNoWiring else {
-            return "documents addGenerationToolSources(viewModel:) without a caveat stating that ManifoldKit.quickStart(...) does not wire imageGenerationService/videoGenerationService/webSearchRuntime — the recipe reads as if plain quickStart() output works, but it silently (now: loudly) registers zero tool sources. See #1903 / docs/plans/inert-code-audit-2026-07.md #41."
+            return "documents addToolSources(_:) with generation tool sources without a caveat stating that ManifoldKit.quickStart(...) does not wire imageGenerationService/videoGenerationService/webSearchRuntime — the recipe reads as if plain quickStart() output works, but the registered sources throw when invoked with no build-time or registration-time warning. See #1903 / docs/plans/inert-code-audit-2026-07.md #41."
         }
         return nil
     }
@@ -128,21 +138,23 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
 
     // MARK: - Sabotage (exercises the shared detection function above)
 
-    /// The old (pre-fix) recipe text — bare `addGenerationToolSources` call
-    /// with no caveat — must be flagged.
+    /// The old (pre-fix) recipe text — bare `addToolSources` call with the
+    /// generation tool sources and no caveat — must be flagged.
     func test_sabotage_bareQuickStartRecipeViolationDetectsPlantedTrap() {
         let trap = """
-        When importing `ManifoldKit` (the umbrella module), use the one-liner convenience:
+        When importing `ManifoldKit` (the umbrella module), register the generation tool sources:
 
         ```swift,no-build
-        // One call registers whichever generation services are wired in the bootstrap.
-        // Sources for nil services are silently skipped.
-        await kit.bootstrap.addGenerationToolSources(viewModel: kit.viewModel)
+        await kit.bootstrap.addToolSources([
+            ImageGenerationToolSource(viewModel: kit.viewModel),
+            VideoGenerationToolSource(viewModel: kit.viewModel),
+            WebSearchToolSource(viewModel: kit.viewModel)
+        ])
         ```
         """
         XCTAssertNotNil(
             Self.bareQuickStartRecipeViolation(in: trap),
-            "Detection function must flag addGenerationToolSources documented with no quickStart caveat."
+            "Detection function must flag addToolSources documented with no quickStart caveat."
         )
     }
 
@@ -155,7 +167,9 @@ final class GenerationComponentsDocLivenessTest: XCTestCase {
         > `ManifoldBootstrap.build(...)` (tracked in #1903).
 
         ```swift,no-build
-        await bootstrap.addGenerationToolSources(viewModel: viewModel)
+        await bootstrap.addToolSources([
+            ImageGenerationToolSource(viewModel: viewModel)
+        ])
         ```
         """
         XCTAssertNil(
