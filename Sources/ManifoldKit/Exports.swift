@@ -14,8 +14,6 @@
 //     `HuggingFace`, but exposed only via `ManifoldUIModelManagement` UI hooks).
 //   - `ManifoldTools`, `ManifoldAppIntents`, `ManifoldServer`,
 //     `ManifoldFuzz` — specialised opt-in modules.
-//   - `ManifoldAnyLanguageModel` — the AnyLanguageModel provider bridge
-//     (its own product since v0.48; the `AnyLanguageModel` trait is retired).
 //   - `ManifoldAgentInstructions` — AGENTS.md ambient-instruction discovery,
 //     extracted from the retired ManifoldSkills (#2434). Linked (not
 //     `@_exported`) so ConversationRuntimeOptions+AgentInstructions.swift can

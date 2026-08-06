@@ -17,6 +17,7 @@ are indexed by the literal compiler diagnostic you'll hit.
 | Release | Migration note | What changed |
 |---------|----------------|--------------|
 | next | [`MIGRATION-additive-tool-sources.md`](MIGRATION-additive-tool-sources.md) | `ManifoldBootstrap.addToolSources(_:)` now accumulates instead of clobbering (#2440); `addGenerationToolSources(viewModel:)` removed. |
+| next | [`MIGRATION-anylanguagemodel-retired.md`](MIGRATION-anylanguagemodel-retired.md) | `ManifoldAnyLanguageModel` retired outright (zero adoption + dependency coupling); its providers reach ManifoldKit via `APIProvider.custom` + `OpenAIBackend`. |
 | next | [`MIGRATION-skills-removed.md`](MIGRATION-skills-removed.md) | `ManifoldSkills` retired (zero adopters, #2434); `AGENTS.md` loading survives as `ManifoldAgentInstructions`. Also removes `ConversationEvent.skillInvoked`. |
 | next | [`MIGRATION-manifest-context-window-optional.md`](MIGRATION-manifest-context-window-optional.md) | `ModelManifest.contextWindow` is now `Int?`; `.unknown(...)` no longer fabricates an `8192` window. |
 | next | [`MIGRATION-llama-vision-probe.md`](MIGRATION-llama-vision-probe.md) | `BackendVisionCapability.llamaSupportsImageInput` Bool property → probed function `(projectorStaged:engineSupportsImageEmbedding:)` (#2381 / #2401). |

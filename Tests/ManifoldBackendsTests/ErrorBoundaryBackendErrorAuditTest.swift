@@ -2,7 +2,6 @@ import XCTest
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldUI
-import ManifoldAnyLanguageModel
 
 /// Checklist guard for the error-boundary audit (docs/plans/api-review-2026-07.md
 /// item 1.2 / symptom S6) — see the DocC article "Error handling at the
@@ -18,13 +17,15 @@ import ManifoldAnyLanguageModel
 /// the same service) — as opposed to being caught and wrapped (or reduced to
 /// a `ToolResult`) before crossing that boundary.
 ///
-/// Nine types survive that trace as the escapable set: three already
+/// Eight types survive that trace as the escapable set: three already
 /// conformed to `BackendError` before this audit (``InferenceError``,
-/// ``CloudBackendError``, ``FallbackExhaustedError``) and six gained the
+/// ``CloudBackendError``, ``FallbackExhaustedError``) and five gained the
 /// conformance in this pass (``RetryExhaustedError``,
-/// ``AnyLanguageModelBridgeError``, ``StructuredOutputError``,
-/// ``ConversationError``, ``SendMessageError``, ``ManifoldKitError`` —
-/// the DocC article has the precise table).
+/// ``StructuredOutputError``, ``ConversationError``, ``SendMessageError``,
+/// ``ManifoldKitError`` — the DocC article has the precise table).
+/// A ninth, `AnyLanguageModelBridgeError`, gained the conformance in the
+/// same pass but its type was retired in #2435 (zero adoption); it is no
+/// longer part of the escapable set this test guards.
 ///
 /// Honest scope: this test guards the KNOWN set — it fails when a case is
 /// added to or removed from one of the nine named types (the per-type
@@ -34,7 +35,7 @@ import ManifoldAnyLanguageModel
 /// extending the escapable set means updating both it and this checklist. This test lives in
 /// `ManifoldBackendsTests` because it is the one test target that already
 /// depends on every module the escapable set spans (`ManifoldInference`,
-/// `ManifoldRuntime`, `ManifoldUI`, `ManifoldAnyLanguageModel`) with zero new
+/// `ManifoldRuntime`, `ManifoldUI`) with zero new
 /// Package.swift edges; `ManifoldKitError` (defined in `ManifoldModelCatalog`)
 /// and `CloudBackendError` (same) are reachable through `ManifoldInference`'s
 /// `@_exported import` chain without an explicit import.
@@ -77,16 +78,6 @@ final class ErrorBoundaryBackendErrorAuditTest: XCTestCase {
             "RetryExhaustedError",
             RetryExhaustedError(lastError: InferenceError.inferenceFailure("last"), attempts: 3)
         ))
-
-        // AnyLanguageModelBridgeError — new conformance (opt-in,
-        // AnyLanguageModelBackend composition). One instance per case
-        // (exhaustive; small enum).
-        instances.append(("AnyLanguageModelBridgeError.unsupportedURLScheme", AnyLanguageModelBridgeError.unsupportedURLScheme(URL(string: "ftp://test")!)))
-        instances.append(("AnyLanguageModelBridgeError.missingModelIdentifier", AnyLanguageModelBridgeError.missingModelIdentifier(provider: "test")))
-        instances.append(("AnyLanguageModelBridgeError.missingQueryItem", AnyLanguageModelBridgeError.missingQueryItem(name: "model", provider: "test")))
-        instances.append(("AnyLanguageModelBridgeError.modelNotLoaded", AnyLanguageModelBridgeError.modelNotLoaded))
-        instances.append(("AnyLanguageModelBridgeError.unsupportedToolCalling", AnyLanguageModelBridgeError.unsupportedToolCalling))
-        instances.append(("AnyLanguageModelBridgeError.unsupportedStructuredOutput", AnyLanguageModelBridgeError.unsupportedStructuredOutput))
 
         // StructuredOutputError — new conformance. One instance per case
         // (exhaustive; small enum).
@@ -135,10 +126,10 @@ final class ErrorBoundaryBackendErrorAuditTest: XCTestCase {
     func test_everyEscapableCaseConformsToBackendErrorAndReportsIsRetryable() {
         let instances = allEscapableInstances()
         XCTAssertEqual(
-            instances.count, 39,
+            instances.count, 33,
             "Update this test's case list when adding or removing a case on any " +
             "escapable type (InferenceError, CloudBackendError, FallbackExhaustedError, " +
-            "RetryExhaustedError, AnyLanguageModelBridgeError, StructuredOutputError, " +
+            "RetryExhaustedError, StructuredOutputError, " +
             "ManifoldKitError, ConversationError, SendMessageError)."
         )
         for (name, error) in instances {

@@ -217,7 +217,6 @@ API breakage: constructor ChatView.init(showModelManagement:linkPreviewProvider:
 API breakage: constructor ChatView.init(showModelManagement:linkPreviewProvider:emptyState:contextMenuItems:composerAccessory:) has been removed
 API breakage: constructor GenerationConfig.init(temperature:topP:repeatPenalty:topK:minP:repetitionPenalty:repetitionContextSize:presencePenalty:presenceContextSize:frequencyPenalty:frequencyContextSize:llamaDRY:llamaXTC:llamaMirostatV2:seed:maxOutputTokens:tools:toolChoice:documents:maxThinkingTokens:jsonMode:streamPrefillProgress:thinkingMarkers:maxToolIterations:maxRunTokens:grammar:stopSequences:structuredOutput:yieldEveryNTokens:requiredCapabilities:) has been removed
 API breakage: constructor OllamaStreamEventExtractor.init(config:autoDetectedMarkers:) has been removed
-API breakage: func AnyLanguageModelBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
 API breakage: func ChaosBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
 API breakage: func FallbackBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
 API breakage: func FoundationBackend.generate(prompt:systemPrompt:config:) has been renamed to func generate(prompt:systemPrompt:config:hints:)
@@ -498,3 +497,5 @@ API breakage: enumelement CloudBackendError.missingRequiredOverride has been add
 API breakage: enumelement ConversationEvent.skillInvoked has been removed
 API breakage: enumelement ConversationEventKind.skillInvoked has been removed
 API breakage: func ManifoldBootstrap.addGenerationToolSources(viewModel:) has been removed
+API breakage: enumelement ManifoldCapability.providerBridge has been removed
+>>>>>>> 504156ba (feat!: retire ManifoldAnyLanguageModel and drop the AnyLanguageModel dependency)

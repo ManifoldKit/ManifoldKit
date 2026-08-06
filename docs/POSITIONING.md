@@ -113,12 +113,13 @@ management, with no backend code written by the consumer. The turn loop
 
 ### Pillar 2 — Backend portability behind one protocol
 
-![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, OpenAI/Claude/Ollama, and the opt-in AnyLanguageModel bridge](images/product/generationstream-backends-fan.png)
+![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, and OpenAI/Claude/Ollama](images/product/generationstream-backends-fan.png)
 
 MLX, llama.cpp / GGUF, Apple Foundation Models, and cloud (OpenAI Chat
-Completions, OpenAI Responses, Anthropic, Ollama, LAN) all implement the same
-`InferenceBackend` protocol. The `AnyLanguageModel` bridge adds Gemini, xAI,
-Groq, and Mistral on top. Features — streaming, tool calling, structured
+Completions, OpenAI Responses, Anthropic, Ollama, LAN, and any
+OpenAI-compatible endpoint — Gemini, xAI, Groq, Mistral, OpenRouter via
+`APIProvider.custom`) all implement the same `InferenceBackend` protocol.
+Features — streaming, tool calling, structured
 output, cancellation — work *identically* across all of them because they're
 implemented above the protocol, not per backend.
 
@@ -205,8 +206,8 @@ their own axis. **LocalLLMClient** is the closest multi-engine Swift analog —
 same three local backends, plus Linux — but it stops at the engine (no cloud,
 persistence, UI, MCP) and is explicitly experimental. **AnyLanguageModel** has
 the broadest provider coverage and the most familiar API for anyone who knows
-Apple's `FoundationModels` — ManifoldKit *consumes it* rather than competing
-with it (see §9). **SpeziLLM** is real engineering with one feature ManifoldKit
+Apple's `FoundationModels` — an adjacent niche, not a rival (see §9).
+**SpeziLLM** is real engineering with one feature ManifoldKit
 lacks (fog-node inference over mDNS), but it is a module for a healthcare
 ecosystem, not a standalone toolkit. The **UI kits** are excellent at the thing
 they do. The **cloud clients** are the right call when you've committed to one
@@ -344,7 +345,7 @@ needs above the model layer — on the OSes people actually run today.**
 
 ---
 
-## 9. AnyLanguageModel — complementary, not competitive
+## 9. AnyLanguageModel — adjacent, not competitive
 
 AnyLanguageModel and ManifoldKit are at **different altitudes**, and conflating
 them does both a disservice.
@@ -356,17 +357,22 @@ them does both a disservice.
 - **ManifoldKit is an application framework.** Its axis is the assembled product
   — UI, turn loop, persistence, reliability — and the wiring between layers.
 
-These are adjacent niches, not rivals. ManifoldKit **consumes AnyLanguageModel
-as a backend** via a bridge, picking up Gemini, xAI, Groq, and Mistral provider
-coverage for free. AnyLanguageModel makes ManifoldKit's backend list longer;
-ManifoldKit gives AnyLanguageModel's providers a UI, a database, and a
-production reliability layer.
+These are adjacent niches, not rivals — but ManifoldKit does not wrap
+AnyLanguageModel as a dependency. It previously did, via a bridge product
+(`ManifoldAnyLanguageModel`), retired in
+[#2435](https://github.com/ManifoldKit/ManifoldKit/issues/2435) for zero
+adoption: the bridge advertised no tool calling, no structured output, and no
+thinking-token support, and every provider it named (Gemini, xAI, Groq,
+Mistral, OpenRouter) is an OpenAI-compatible endpoint reachable through
+ManifoldKit's own `APIProvider.custom` + `OpenAIBackend` — with tool calling,
+structured output, cert pinning, retry, and circuit breaking the bridge never
+had. See
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).
 
-If your problem is "give me clean access to many models," AnyLanguageModel is an
-excellent answer. If your problem is "give me a shippable chat app," reach for
-ManifoldKit — and notice that AnyLanguageModel is one of the engines under the
-hood. (Tracked: [#1638](https://github.com/ManifoldKit/ManifoldKit/issues/1638)
-graduates the bridge to a documented provider-breadth path.)
+If your problem is "give me clean access to many models with a familiar,
+`FoundationModels`-shaped API," AnyLanguageModel is an excellent answer. If
+your problem is "give me a shippable chat app," reach for ManifoldKit — its
+own cloud backends already cover AnyLanguageModel's provider list.
 
 ---
 

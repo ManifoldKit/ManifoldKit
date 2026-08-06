@@ -23,7 +23,6 @@ ManifoldCloudCore
 ManifoldFoundation
 ManifoldOllama
 ManifoldCloudSaaS
-ManifoldAnyLanguageModel
 ManifoldUI
 ManifoldUIModelManagement
 ManifoldHuggingFace

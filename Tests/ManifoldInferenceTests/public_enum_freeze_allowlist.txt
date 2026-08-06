@@ -14,9 +14,6 @@
 #
 # Format: relative/path/from/Sources.swift:trimmed declaration line.
 # Blank lines and #-prefixed lines are ignored.
-ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift:public enum AnyLanguageModelBridgeCapabilities {
-ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift:public enum AnyLanguageModelBridgeError: LocalizedError, Sendable {
-ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift:public enum AnyLanguageModelURLResolver {
 ManifoldAppEval/Judge/CachingJudge.swift:public enum JudgeCacheKey {
 ManifoldAppEval/Report/AppEvalHistoryLedger.swift:public enum AppEvalHistoryLedger {
 ManifoldAppEval/Report/AppEvalHistoryLedger.swift:public enum LedgerError: Error, CustomStringConvertible {

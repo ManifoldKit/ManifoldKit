@@ -108,12 +108,13 @@ canonical place — [`docs/QUICKSTART.md` → Hello World](QUICKSTART.md#hello-w
 (mirrored in the [README](../README.md#hello-world)) — so there is exactly one
 form to keep correct. From there:
 
-![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, OpenAI/Claude/Ollama, and the opt-in AnyLanguageModel bridge](images/product/generationstream-backends-fan.png)
+![One GenerationStream protocol fans out to companion on-device engines (MLX, llama.cpp), Apple Foundation Models, and OpenAI/Claude/Ollama](images/product/generationstream-backends-fan.png)
 
 - **One protocol, every backend.** MLX, llama.cpp/GGUF, Apple Foundation Models,
-  OpenAI, Anthropic, Ollama, LAN — plus Gemini / xAI / Groq / Mistral through the
-  AnyLanguageModel bridge. Streaming, tool calling, structured output, and thinking
-  tokens work the same across all of them because they live above the protocol.
+  OpenAI, Anthropic, Ollama, LAN — plus Gemini / xAI / Groq / Mistral / OpenRouter
+  as OpenAI-compatible custom endpoints. Streaming, tool calling, structured output,
+  and thinking tokens work the same across all of them because they live above the
+  protocol.
 - **The whole turn loop, owned.** `ConversationRuntime` is the single path for
   send / regenerate / edit / cancel / branch. No second path to keep consistent.
 - **Already in the box:** streaming, MCP (client *and* server), RAG with citations,

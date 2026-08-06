@@ -177,7 +177,6 @@ SNIPPET_GATE_OPT_OUT=(
     "docs/APP-EVAL.md:ManifoldAppEval is not linked by the gate's test target"
     "docs/QUICKSTART-SERVER.md:server binary usage; shell not Swift"
     "docs/CLOUD-OAUTH.md:host-side OAuth patterns; snippets reference host-defined types"
-    "docs/PROVIDER-BRIDGE.md:AnyLanguageModel bridge; not linked by the gate's test target"
     # Previously omitted by accident: the workflow `paths:` filter globbed
     # docs/QUICKSTART*.md while the extractor used an explicit list this file
     # was missing from, so editing it triggered a ~14-min run that compiled
