@@ -231,7 +231,7 @@ public enum ConversationEvent: Sendable {
     /// payload or error classification).
     case toolCallCompleted(ToolCall.ID, ToolResult)
 
-    // MARK: Multi-agent + skills + hooks (W2B / W2C / W3A telemetry)
+    // MARK: Multi-agent + hooks (W2B / W2C / W3A telemetry)
 
     /// The active agent for a session changed via a ``HandoffDetector``
     /// detection. `from` is `nil` when the session had no prior active
@@ -239,20 +239,6 @@ public enum ConversationEvent: Sendable {
     /// boundary message into the next turn's structured history by the
     /// time this event fires.
     case agentHandoff(from: UUID?, to: UUID)
-
-    /// A skill was invoked.
-    ///
-    /// Emission is deferred — there is no producer for this case today, and
-    /// none is planned in this PR. Skills currently surface as ordinary tools
-    /// via `ManifoldSkills` / `SkillToolSource`, so a skill invocation reaches
-    /// the runtime as a `.toolCallRequested` / `.toolCallApproved` /
-    /// `.toolCallCompleted` sequence rather than as a distinct skill event. No
-    /// skill identity is threaded through the dispatch loop, so the runtime
-    /// cannot honestly distinguish a skill-backed tool from any other tool at
-    /// the emission boundary. The case is retained so host adapters may
-    /// pattern-match it once skill identity is plumbed through; until then it
-    /// is a known non-emitted case.
-    case skillInvoked(name: String, sessionID: UUID)
 
     /// A registered hook fired in response to an internal event boundary
     /// (preToolUse / preCompact for now). Stub for observational adapters
@@ -302,7 +288,6 @@ extension ConversationEvent {
         case .toolCallApproved:         return .toolCallApproved
         case .toolCallCompleted:        return .toolCallCompleted
         case .agentHandoff:             return .agentHandoff
-        case .skillInvoked:             return .skillInvoked
         case .hookFired:                return .hookFired
         }
     }

@@ -31,9 +31,8 @@ import ManifoldInference
 /// reference tools (`now`, `calc`, `read_file`, `list_dir`,
 /// `sample_repo_search`, `http_get_fixture`) AND every model-facing tool
 /// defined elsewhere under `Sources/` that is actually advertised to a live
-/// model — e.g. `search_web` (`ManifoldUI/Tools/WebSearchToolSource.swift`),
-/// `invoke_skill` (`ManifoldSkills/SkillToolSource.swift`), and
-/// `get_weather`/`schedule_alarm` (`ManifoldFuzz/SyntheticToolset.swift`,
+/// model — e.g. `search_web` (`ManifoldUI/Tools/WebSearchToolSource.swift`)
+/// and `get_weather`/`schedule_alarm` (`ManifoldFuzz/SyntheticToolset.swift`,
 /// passed as `GenerationConfig.tools` by the fuzz harness) — so a decoy call
 /// is never a defensible substitution for a built-in scenario's real tool,
 /// and padding a toolset that already contains one of those tools via

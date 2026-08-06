@@ -656,11 +656,6 @@ final class ChatGenerationCoordinator {
             // is observational — no UI mutation here.
             break
 
-        case .skillInvoked(let name, let sessionID):
-            // v1 has no skill UI; log so the dispatch is visible during
-            // debugging. UI surfaces for skill invocation are deferred.
-            Log.ui.info("Skill invoked: \(name, privacy: .public) (session: \(sessionID.uuidString, privacy: .public))")
-
         case .hookFired:
             // Hooks are diagnostic; no UI changes in v1.
             break

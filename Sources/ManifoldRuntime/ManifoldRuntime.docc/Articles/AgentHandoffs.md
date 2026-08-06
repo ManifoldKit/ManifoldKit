@@ -94,4 +94,4 @@ Agents don't carry a `modelID` field in v1; the active model is the session's se
 
 ## Telemetry
 
-Subscribe to ``ConversationRuntime/events`` and filter on ``ConversationEvent/agentHandoff(from:to:)`` for UI handoff chips or analytics. Combine with ``ConversationEvent/hookFired(event:sessionID:)`` and ``ConversationEvent/skillInvoked(name:sessionID:)`` for a full picture of which session-scoped sources fired this turn.
+Subscribe to ``ConversationRuntime/events`` and filter on ``ConversationEvent/agentHandoff(from:to:)`` for UI handoff chips or analytics. Combine with ``ConversationEvent/hookFired(event:sessionID:)`` for a full picture of which session-scoped sources fired this turn.

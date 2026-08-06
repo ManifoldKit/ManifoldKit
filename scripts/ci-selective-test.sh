@@ -76,7 +76,7 @@ for suite in "$@"; do
     ManifoldBackendsTests)
       run_swift_test "$suite" --parallel
       ;;
-    ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldFuzzTests|ManifoldAppIntentsTests|ManifoldAppEvalTests|APIFreezeTests|ManifoldSnapshotTests|ManifoldTelemetryOTLPTests|ManifoldKitTests|ManifoldHuggingFaceTests)
+    ManifoldVoiceTests|ManifoldAgentInstructionsTests|ManifoldToolsTests|ManifoldFuzzTests|ManifoldAppIntentsTests|ManifoldAppEvalTests|APIFreezeTests|ManifoldSnapshotTests|ManifoldTelemetryOTLPTests|ManifoldKitTests|ManifoldHuggingFaceTests)
       # No .xcscheme for these suites; their traits were retired in v0.48
       # (PR A3) so they compile under the shared core lane shape and reuse
       # its .build. swift test routing avoids the no-scheme failure path.

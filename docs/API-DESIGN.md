@@ -116,9 +116,10 @@ decided 2026-07-06, pending) or a consumer app conforms to, calls, or constructs
   which have app-side conformers (plan Part B.2).
 - **In-repo counts must be verified per-protocol, not assumed.** `SessionToolSource`
   (`Sources/ManifoldRuntime/Services/SessionToolSource.swift`) looks like the same shape
-  but has 5+ in-repo production conformers (`SkillToolSource`, `WebSearchToolSource`,
+  but has 4+ in-repo production conformers (`WebSearchToolSource`,
   `ImageGenerationToolSource`, `VideoGenerationToolSource`, `HandoffToolSource`) — plus
-  app-side ones.
+  app-side ones. (`SkillToolSource` was a fifth conformer before `ManifoldSkills`
+  retired, #2434.)
 
 Before any demotion: grep the companion checkouts and the local consumer apps, per-protocol.
 
@@ -264,9 +265,9 @@ The fifth is exempt for a different reason — a leaked *dependency* type, not d
 
 Products with **zero real adopters** do not enter the 1.0 stability promise. They may
 break in any minor, always migration-noted — pre-1.0 rules (§4) continue to apply to
-them after core 1.0. Roster: `ManifoldMCP`, `ManifoldMCPHost`, `ManifoldSkills`,
-`ManifoldAppIntents`, `ManifoldAnyLanguageModel` (additionally dependency-coupled per
-§7 above), `ManifoldTelemetryOTLP`, `ManifoldAppEval`.
+them after core 1.0. Roster: `ManifoldMCP`, `ManifoldMCPHost`,
+`ManifoldAppIntents`, `ManifoldAgentInstructions`, `ManifoldAnyLanguageModel`
+(additionally dependency-coupled per §7 above), `ManifoldTelemetryOTLP`, `ManifoldAppEval`.
 
 - **Adopter** = a shipping app or companion package that pins the product AND imports
   it from non-test code, verified by grep — not documentation, not examples, not

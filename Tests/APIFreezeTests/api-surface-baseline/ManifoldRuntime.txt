@@ -152,7 +152,6 @@ ConversationEvent.messageRemoved EnumElement
 ConversationEvent.messageUpdated EnumElement
 ConversationEvent.sessionBranched EnumElement
 ConversationEvent.sessionTouchFailed EnumElement
-ConversationEvent.skillInvoked EnumElement
 ConversationEvent.streamFinished EnumElement
 ConversationEvent.streamStarted EnumElement
 ConversationEvent.thinkingFinalized EnumElement
@@ -185,7 +184,6 @@ ConversationEventKind.messageUpdated EnumElement
 ConversationEventKind.rawValue Var
 ConversationEventKind.sessionBranched EnumElement
 ConversationEventKind.sessionTouchFailed EnumElement
-ConversationEventKind.skillInvoked EnumElement
 ConversationEventKind.streamFinished EnumElement
 ConversationEventKind.streamStarted EnumElement
 ConversationEventKind.thinkingFinalized EnumElement

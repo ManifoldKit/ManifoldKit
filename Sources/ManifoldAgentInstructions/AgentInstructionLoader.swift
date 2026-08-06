@@ -10,7 +10,7 @@ import ManifoldInference
 /// semantic used by every major agent tool that reads the format.
 ///
 /// **macOS-only in v1.** On other platforms `discover()` returns `[]` and logs
-/// a one-time warning (same contract as ``SkillLoader``).
+/// a one-time warning.
 public struct AgentInstructionLoader: Sendable {
 
     /// The cross-tool-standard filename; matches the Linux Foundation spec.
@@ -41,7 +41,7 @@ public struct AgentInstructionLoader: Sendable {
         return _discover(from: currentDirectory, stoppingAt: stopDirectory)
         #else
         Log.inference.warning(
-            "ManifoldSkills: AgentInstructionLoader.discover() is macOS-only in v1; returning empty array"
+            "ManifoldAgentInstructions: AgentInstructionLoader.discover() is macOS-only in v1; returning empty array"
         )
         return []
         #endif
@@ -50,7 +50,7 @@ public struct AgentInstructionLoader: Sendable {
     #if os(macOS)
     private func _discover(from currentDirectory: URL, stoppingAt stopDirectory: URL?) -> [AgentInstruction] {
         let fm = FileManager.default
-        // Resolve symlinks on both sides for reliable equality (matches SkillReferenceResolver pattern).
+        // Resolve symlinks on both sides for reliable equality.
         let stop = (stopDirectory ?? fm.homeDirectoryForCurrentUser)
             .resolvingSymlinksInPath().standardizedFileURL
 
@@ -63,7 +63,7 @@ public struct AgentInstructionLoader: Sendable {
         // returning nothing.
         if !leaf.path.hasPrefix(stop.path) {
             Log.inference.warning(
-                "ManifoldSkills: currentDirectory '\(leaf.path, privacy: .public)' is not under stopDirectory '\(stop.path, privacy: .public)'; returning empty"
+                "ManifoldAgentInstructions: currentDirectory '\(leaf.path, privacy: .public)' is not under stopDirectory '\(stop.path, privacy: .public)'; returning empty"
             )
             return []
         }
@@ -93,7 +93,7 @@ public struct AgentInstructionLoader: Sendable {
                 content = try String(contentsOf: candidate, encoding: .utf8)
             } catch {
                 Log.inference.warning(
-                    "ManifoldSkills: cannot read \(candidate.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "ManifoldAgentInstructions: cannot read \(candidate.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
                 continue
             }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldSkills
+@testable import ManifoldAgentInstructions
 
 /// Tests for `AgentInstructionLoader` filesystem discovery and merging.
 ///

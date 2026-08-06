@@ -58,7 +58,7 @@ final class ManifoldContractNoEngineDependencyTests: XCTestCase {
         "ManifoldUI",
         "ManifoldUIModelManagement",
         "ManifoldKit",
-        "ManifoldSkills",
+        "ManifoldAgentInstructions",
     ]
 
     func testManifoldContractTargetDependsOnNoEngineModule() throws {

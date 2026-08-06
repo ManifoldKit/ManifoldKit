@@ -15,7 +15,6 @@
 #
 # Format: <SymbolName>  # reason: <one line>
 APIConfigurationView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
-AgentInstructionContextProvider  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
 AnyLanguageModelBackend  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
 AppEvalHistoryLedger  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
 AppEvalLedgerEntry  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
@@ -167,10 +166,6 @@ SendMessageError  # reason: host-facing error — thrown by a public view-model 
 SessionListView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 SessionRowStyle  # reason: host-facing style protocol — hosts supply conformers to theme the chat UI; no in-repo external conformer.
 ShimmerThinkingBlockStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
-SkillDispatchError  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
-SkillLoader  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
-SkillReferenceError  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
-SkillToolSource  # reason: experimental (ManifoldSkills) — SKILL.md discovery/dispatch surface; host-consumed.
 SpotlightIndexer  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 StandardBenchmarkRunner  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
 StorageManagementView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.

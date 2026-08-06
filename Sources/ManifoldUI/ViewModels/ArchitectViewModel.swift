@@ -36,7 +36,7 @@ public enum ArchitectEventCategory: Sendable, Equatable {
             return .error
         case .toolCallRequested, .toolCallApproved, .toolCallCompleted:
             return .tool
-        case .agentHandoff, .skillInvoked, .hookFired:
+        case .agentHandoff, .hookFired:
             return .agent
         case .thinkingStarted, .thinkingUpdated, .thinkingFinalized:
             return .thinking
@@ -274,9 +274,6 @@ public struct ArchitectEventEntry: Identifiable, Sendable {
         case .agentHandoff(let from, let to):
             let fromStr = from.map { $0.uuidString.prefix(8).description } ?? "nil"
             return "from:\(fromStr) to:\(to.uuidString.prefix(8))"
-
-        case .skillInvoked(let name, _):
-            return name
 
         case .hookFired(let hookEvent, _):
             return hookEvent

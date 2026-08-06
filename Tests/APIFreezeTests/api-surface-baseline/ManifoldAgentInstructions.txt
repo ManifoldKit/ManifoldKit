@@ -1,0 +1,18 @@
+AgentInstruction Struct
+AgentInstruction conformances: Copyable,Equatable,Escapable,Sendable,SendableMetatype
+AgentInstruction.__derived_struct_equals(_:_:) Func
+AgentInstruction.content Var
+AgentInstruction.directory Var
+AgentInstruction.init(directory:content:) Constructor
+AgentInstruction.sourcePath Var
+AgentInstructionContextProvider Struct
+AgentInstructionContextProvider conformances: Copyable,Escapable,PromptContextProvider,Sendable,SendableMetatype
+AgentInstructionContextProvider.contributeSlots(messageCount:) Func
+AgentInstructionContextProvider.init(currentDirectory:stoppingAt:loader:) Constructor
+AgentInstructionLoader Struct
+AgentInstructionLoader conformances: Copyable,Escapable,Sendable,SendableMetatype
+AgentInstructionLoader.defaultFileName Var
+AgentInstructionLoader.discover(from:stoppingAt:) Func
+AgentInstructionLoader.init() Constructor
+AgentInstructionLoader.loadMerged(from:stoppingAt:) Func
+AgentInstructionLoader.merged(_:) Func

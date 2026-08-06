@@ -16,9 +16,12 @@
 //     `ManifoldFuzz` — specialised opt-in modules.
 //   - `ManifoldAnyLanguageModel` — the AnyLanguageModel provider bridge
 //     (its own product since v0.48; the `AnyLanguageModel` trait is retired).
-//   - `ManifoldSkills` — experimental Claude-Code-compatible SKILL.md
-//     discovery and invocation. Keeping it explicit preserves the umbrella's
-//     Core compatibility promise.
+//   - `ManifoldAgentInstructions` — AGENTS.md ambient-instruction discovery,
+//     extracted from the retired ManifoldSkills (#2434). Linked (not
+//     `@_exported`) so ConversationRuntimeOptions+AgentInstructions.swift can
+//     wire it into ConversationRuntimeOptions.pipeline; consumers who want the
+//     AgentInstruction* types directly still `import ManifoldAgentInstructions`
+//     explicitly, same shape as `ManifoldHuggingFace` above.
 //
 // `ManifoldInference` is re-exported explicitly because consumers who write a
 // custom backend, register a factory, or read `BackendName` need its surface

@@ -113,8 +113,6 @@ struct EventTraceCanonicalizer {
             return "toolCallCompleted  callId:\(callID) status:\(result.errorKind == nil ? "ok" : "err")"
         case let .agentHandoff(from, to):
             return "agentHandoff  from:\(from.map { label($0) } ?? "nil") to:\(label(to))"
-        case let .skillInvoked(name, _):
-            return "skillInvoked  name:\(name)"
         case let .hookFired(event, _):
             return "hookFired  event:\(event)"
         }

@@ -10,6 +10,11 @@
 > umbrella "still compiles in v0.48" is **historical only** (true at the 0.48 cut, false now).
 > For the current import/registrar model use the shims-retired guide. This document stays as the
 > canonical v0.47 → v0.48 trait/companion map; treat every shim example as historical.
+>
+> **The `Skills` row below is additionally superseded — `ManifoldSkills` itself was retired
+> 2026-08-06** (zero adopters, #2434), not just its trait. Read
+> [MIGRATION-skills-removed.md](MIGRATION-skills-removed.md); its `AGENTS.md` ambient-instruction
+> loading survives as `ManifoldAgentInstructions`.
 
 v0.48 retires the SwiftPM trait architecture in favour of **library products**, and moves
 the heavy local-inference backends (MLX, llama.cpp) into **companion packages**:

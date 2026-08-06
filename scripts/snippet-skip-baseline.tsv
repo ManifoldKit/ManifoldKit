@@ -2,7 +2,7 @@
 # path	bare-no-build	total-skipped
 AGENTS.md	0	13
 README.md	4	8
-docs/MIGRATION-skills-explicit-import.md	0	1
+Sources/ManifoldAgentInstructions/ManifoldAgentInstructions.docc/ManifoldAgentInstructions.md	0	1
 Sources/ManifoldAnyLanguageModel/ManifoldAnyLanguageModel.docc/ManifoldAnyLanguageModel.md	0	0
 Sources/ManifoldAppEval/ManifoldAppEval.docc/ManifoldAppEval.md	0	0
 Sources/ManifoldAppIntents/ManifoldAppIntents.docc/ManifoldAppIntents.md	3	3
@@ -39,10 +39,6 @@ Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/ErrorHandlingAtTheBoundary
 Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/HookSystem.md	7	7
 Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/ObservingATurn.md	8	8
 Sources/ManifoldRuntime/ManifoldRuntime.docc/ManifoldRuntime.md	5	5
-Sources/ManifoldSkills/ManifoldSkills.docc/Articles/ClaudeCodeInterop.md	1	1
-Sources/ManifoldSkills/ManifoldSkills.docc/Articles/SkillFileFormat.md	0	0
-Sources/ManifoldSkills/ManifoldSkills.docc/Articles/SkillsGettingStarted.md	4	4
-Sources/ManifoldSkills/ManifoldSkills.docc/ManifoldSkills.md	0	0
 Sources/ManifoldUI/ManifoldUI.docc/Articles/BootstrapLoadingScreen.md	1	1
 Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md	10	10
 Sources/ManifoldUI/ManifoldUI.docc/Articles/ComposerStyling.md	1	1
@@ -68,6 +64,7 @@ docs/MIGRATION-inert-surface-sweep-2026-07-22.md	0	0
 docs/MIGRATION-llama-vision-probe.md	0	1
 docs/MIGRATION-manifest-context-window-optional.md	0	2
 docs/MIGRATION-media-generation-seam-removed.md	0	0
+docs/MIGRATION-skills-removed.md	0	2
 docs/QUICKSTART-APPINTENTS.md	1	3
 docs/QUICKSTART-BRING-YOUR-OWN-UI.md	1	2
 docs/QUICKSTART-CLI.md	10	12

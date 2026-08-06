@@ -278,8 +278,6 @@ ManifoldSecrets/KeychainService.swift:public enum KeychainError: Error, Equatabl
 ManifoldSecrets/KeychainService.swift:public enum KeychainService {
 ManifoldSecrets/SecureEnclaveKeyManager.swift:public enum SecureEnclaveError: Error, Equatable, Sendable, LocalizedError {
 ManifoldServer/ManifoldServer.swift:public enum ManifoldServer {
-ManifoldSkills/SkillReferenceResolver.swift:public enum SkillReferenceError: Error, Equatable, Sendable {
-ManifoldSkills/SkillToolSource.swift:public enum SkillDispatchError: Error, Equatable, Sendable {
 ManifoldTestSupport/ChaosBackend.swift:public enum FailureMode: Sendable, Equatable {
 ManifoldTestSupport/HardwareRequirements.swift:public enum HardwareRequirements {
 ManifoldTestSupport/ImageFixtures.swift:public enum ImageFixtures {

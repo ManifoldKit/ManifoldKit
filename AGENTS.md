@@ -111,6 +111,7 @@ Specialised modules stay opt-in and are imported by name when you need them:
 | `ManifoldVoice` *(optional)* | Speech I/O composer accessory. |
 | `ManifoldMCP` *(optional, experimental¹)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
 | `ManifoldAppIntents` *(optional, experimental¹)* | AppIntent ↔ ToolDefinition bridge. |
+| `ManifoldAgentInstructions` *(optional, experimental¹)* | `AGENTS.md` ambient-instruction discovery — `AgentInstructionContextProvider` (a `PromptContextProvider`). Wire it via `ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:)`. |
 | `ManifoldMLX` / `ManifoldLlama` *(companion packages)* | MLX / llama.cpp local inference — add `manifold-mlx` / `manifold-llama` as separate package dependencies and pass `MLXBackends.self` / `LlamaBackends.self` to `quickStart(backends:)` (v0.48 split). |
 
 ¹ Experimental — may break in any minor, always migration-noted; graduates on first
@@ -576,7 +577,8 @@ left:
   `quickStart(backends:)`. A `traits: ["MLX"]` / `["Llama"]` array now
   hard-errors at resolve time — see docs/MIGRATION-0.48.md.
 - **Everything else compiles unconditionally** (cloud, MCP, Voice, Tools,
-  AppIntents, Skills, HuggingFace) — opt in by linking/importing the product.
+  AppIntents, AgentInstructions, HuggingFace) — opt in by linking/importing
+  the product.
 
 ## Concurrency
 
@@ -661,7 +663,7 @@ below point back to it.
 | `ManifoldMCPHost` **(Experimental¹)** | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. |
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. |
 | `ManifoldAppIntents` **(Experimental¹)** | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. |
-| `ManifoldSkills` **(Experimental¹)** | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. |
+| `ManifoldAgentInstructions` **(Experimental¹)** | `AGENTS.md` ambient-instruction filesystem discovery — `AgentInstructionLoader`/`AgentInstructionContextProvider`, a `PromptContextProvider` conformer (macOS-only via `#if os(macOS)`). Extracted from the retired `ManifoldSkills` (#2434) — the only half of that module with a real use case. Depends on `ManifoldInference` only. Wired via `ManifoldKit`'s `ConversationRuntimeOptions.withAgentInstructions(currentDirectory:stoppingAt:)`; see [docs/MIGRATION-skills-removed.md](docs/MIGRATION-skills-removed.md). |
 | `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. |
 | `ManifoldAppEval` **(Experimental¹)** | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. Depends on `ManifoldInference` + `ManifoldRuntime`. Not re-exported by the `ManifoldKit` umbrella — same precedent as `ManifoldTools`/`ManifoldFuzz`/`ManifoldTelemetryOTLP`; consumers import it explicitly from test targets or dedicated eval executables. See [docs/APP-EVAL.md](docs/APP-EVAL.md). |
 
@@ -704,7 +706,7 @@ published product (not just the Experimental ones), see
 
 | Target | Role |
 |--------|------|
-| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI`. `ManifoldModelCatalog` is deliberately *not* a direct edge — consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (`ManifoldUIModelManagement`, `ManifoldHuggingFace`, MCP, Voice, AppIntents, `ManifoldSkills`, …) stay explicit imports — HF is a dependency of the model-management UI / quickStart seed path, not an umbrella re-export. |
+| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS` / `ManifoldCloudCore`) + `ManifoldUI`. `ManifoldModelCatalog` is deliberately *not* a direct edge — consumers reach it transitively via `ManifoldInference`'s `@_exported import`. Specialised modules (`ManifoldUIModelManagement`, `ManifoldHuggingFace`, MCP, Voice, AppIntents, `ManifoldAgentInstructions`, …) stay explicit imports — HF and AgentInstructions are linked internally (seed path / bootstrap wiring bridge respectively) but not `@_exported`, so consumers still import them explicitly. |
 
 **Dependency rules:** Never import any backend family target (`ManifoldFoundation` / `ManifoldOllama` / `ManifoldCloudSaaS`) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. All backend-family edges are unconditional; the companion-package families (`ManifoldMLX`, `ManifoldLlama`) depend on this package's `ManifoldInference` from their own repos.
 
