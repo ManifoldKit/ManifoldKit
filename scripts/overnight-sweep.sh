@@ -55,9 +55,22 @@ resolve_repo() {
   done
   return 1
 }
-LLAMA_DIR="$(resolve_repo manifold-llama)" || LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
-MLX_DIR="$(resolve_repo manifold-mlx)"     || MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
-EVAL_DIR="$(resolve_repo manifold-eval)"   || EVAL_DIR="$COMPANIONS_DIR/manifold-eval"
+# Explicit caller override (LLAMA_DIR / MLX_DIR / EVAL_DIR set in env) always
+# wins — mirrors local-integration-sweep.sh's resolve_repo() override, needed
+# so both scripts point at the same WORKTREE when the caller wants to measure
+# an unmerged branch rather than whatever the shared checkout happens to be
+# parked on. Forwarded to the wrapped sweep below via the inherited environment.
+LLAMA_DIR="${LLAMA_DIR:-}"
+[ -n "$LLAMA_DIR" ] || LLAMA_DIR="$(resolve_repo manifold-llama)" || LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
+MLX_DIR="${MLX_DIR:-}"
+[ -n "$MLX_DIR" ] || MLX_DIR="$(resolve_repo manifold-mlx)" || MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
+EVAL_DIR="${EVAL_DIR:-}"
+[ -n "$EVAL_DIR" ] || EVAL_DIR="$(resolve_repo manifold-eval)" || EVAL_DIR="$COMPANIONS_DIR/manifold-eval"
+# Export the RESOLVED paths (not just a hint) so the wrapped sweep below
+# measures the exact same trees PREP just recorded branch/HEAD/dirty for,
+# rather than re-resolving independently and potentially landing on a
+# different checkout of the same repo.
+export LLAMA_DIR MLX_DIR EVAL_DIR
 
 log "=== overnight signal run START (lanes=$LANES, out=$OUT) ==="
 

@@ -21,6 +21,9 @@
 #   scripts/local-integration-sweep.sh --lanes core,llama
 #   scripts/local-integration-sweep.sh --out /path/to/report-dir
 #   COMPANIONS_DIR=~/src scripts/local-integration-sweep.sh   # where the companion repos live
+#   MLX_DIR=/path/to/mlx-worktree LLAMA_DIR=/path/to/llama-worktree \
+#     scripts/local-integration-sweep.sh --lanes collate     # pin exact worktrees, bypass the probe
+#   DECOY_LEVELS=0,5,20 SWEEP_REPEATS=2 scripts/local-integration-sweep.sh --lanes core,collate
 #
 # REQUIREMENTS
 # ------------
@@ -73,6 +76,24 @@ EVAL_INSTRUCT_MAX_BYTES="${EVAL_INSTRUCT_MAX_BYTES:-12000000000}"
 EVAL_MIN_COVERAGE_PCT="${EVAL_MIN_COVERAGE_PCT:-80}"
 SKIP_NEGATIVE_CONTROL="${SKIP_NEGATIVE_CONTROL:-0}"
 LANE_TIMEOUT="${LANE_TIMEOUT:-2400}"   # per-lane hard cap (s); a hung xctest must not eat the night
+# Decoy x repeat sweep matrix for the tool-selection degradation curve (F1 vs
+# advertised-tool count). `ConformanceRecord` has carried `decoyLevel` and
+# `repeatIndex` as first-class cell coordinates since #2041, and
+# `ScenarioCLIHarness` has parsed `--extra-tools N` since the decoy pool
+# landed — but until this change nothing in scripts/ ever varied either axis,
+# so every measurement ever taken was a single sample of the easiest cell
+# (decoyLevel 0, one rep). Both overridable so the night can degrade under
+# time pressure, e.g. `DECOY_LEVELS=0,5,20 SWEEP_REPEATS=2`.
+DECOY_LEVELS="${DECOY_LEVELS:-0,3,5,10,20}"
+SWEEP_REPEATS="${SWEEP_REPEATS:-3}"
+# DEPENDENCY (not yet on origin/main as of this writing): the sweep below
+# passes `--repeat-index` to the scenario CLIs. That flag is being added
+# concurrently to `ScenarioCLIHarness`/`manifold-tools` by a parallel lane and
+# does NOT exist on the core commit this script ships against. Until it lands,
+# every matrix/collate cell run below fails fast with "unexpected argument
+# '--repeat-index'" — a loud, visible failure (surfaced via lane_noop / the
+# per-level run log), never a silent mis-measurement. Do not remove
+# --repeat-index to work around that; land the CLI flag instead.
 # The eval lane drives hundreds of live generations (not xctest), so it gets its
 # OWN, larger per-command cap — the 40-min xctest cap would kill it mid-corpus.
 # It is resumable (generate skips keys already on disk), so a kill loses nothing.
@@ -141,9 +162,18 @@ resolve_repo() {
   done
   return 1
 }
-LLAMA_DIR="$(resolve_repo manifold-llama)" || LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
-MLX_DIR="$(resolve_repo manifold-mlx)"     || MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
-EVAL_DIR="$(resolve_repo manifold-eval)"   || EVAL_DIR="$COMPANIONS_DIR/manifold-eval"
+# An explicit caller override (LLAMA_DIR / MLX_DIR / EVAL_DIR set in env)
+# ALWAYS wins over the Package.swift probe below and is never overwritten by
+# it. This is load-bearing for a run against WORKTREES holding unmerged
+# branches: resolve_repo() would otherwise happily find the shared checkout
+# instead (e.g. manifold-mlx's shared checkout parked on an unrelated
+# branch) and silently measure the wrong tree.
+LLAMA_DIR="${LLAMA_DIR:-}"
+[ -n "$LLAMA_DIR" ] || LLAMA_DIR="$(resolve_repo manifold-llama)" || LLAMA_DIR="$COMPANIONS_DIR/manifold-llama"
+MLX_DIR="${MLX_DIR:-}"
+[ -n "$MLX_DIR" ] || MLX_DIR="$(resolve_repo manifold-mlx)" || MLX_DIR="$COMPANIONS_DIR/manifold-mlx"
+EVAL_DIR="${EVAL_DIR:-}"
+[ -n "$EVAL_DIR" ] || EVAL_DIR="$(resolve_repo manifold-eval)" || EVAL_DIR="$COMPANIONS_DIR/manifold-eval"
 
 # Record a requested lane that did NO work, with the cause. Keeps the existing
 # "<name>: ..." lane-line shape so overnight-sweep.sh's grep still matches.
@@ -489,9 +519,26 @@ log "=== [preflight] $(date +%H:%M:%S) done (failed=$PREFLIGHT_FAILED) -> $PREFL
   # Print the RESOLVED paths, not the COMPANIONS_DIR hint — they differ whenever
   # the probe found the family somewhere other than the hint, and printing the
   # hint made a correct resolution look like it had searched the wrong place.
-  echo "- companion repos (resolved by Package.swift probe; hint was \`$COMPANIONS_DIR\`):"
+  echo "- companion repos (resolved by Package.swift probe, or LLAMA_DIR/MLX_DIR/EVAL_DIR override; hint was \`$COMPANIONS_DIR\`):"
   for _p in "llama:$LLAMA_DIR" "mlx:$MLX_DIR" "eval:$EVAL_DIR"; do
-    echo "    - ${_p%%:*}: \`${_p#*:}\` ($([ -f "${_p#*:}/Package.swift" ] && echo present || echo MISSING))"
+    _pd="${_p#*:}"
+    if [ -f "$_pd/Package.swift" ]; then
+      # -e, not -d: a git WORKTREE's `.git` is a FILE (gitdir pointer), not a
+      # directory — `-d` would report a valid worktree as having no git state.
+      # PREP must record the tree it actually measured, never switch branches
+      # or stash to get there (2026-06-29 stashed edits and measured a
+      # diverged HEAD, corrupting attribution) — this is read-only.
+      if [ -e "$_pd/.git" ]; then
+        _pbr="$(git -C "$_pd" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        _psha="$(git -C "$_pd" rev-parse --short HEAD 2>/dev/null)"
+        _pdirty="$(git -C "$_pd" status --porcelain 2>/dev/null | grep -c .)"
+        echo "    - ${_p%%:*}: \`$_pd\` (present; branch=$_pbr head=$_psha dirty_paths=$_pdirty — MEASURING THIS TREE AS-IS)"
+      else
+        echo "    - ${_p%%:*}: \`$_pd\` (present; not a git checkout — no branch/HEAD attribution)"
+      fi
+    else
+      echo "    - ${_p%%:*}: \`$_pd\` (MISSING)"
+    fi
   done
   echo "- models dir: \`$MODELS_DIR\`"
   echo "- lanes: \`$LANES\`"
@@ -659,42 +706,174 @@ fi
 # companion llama/mlx legs emit the same record shape from their own repos, so a
 # cross-leg collation can later concatenate the JSON arrays before `matrix`.
 # Bash 3.2 safe — no associative arrays.
+# Merge every per-cell records-*.json array under DIR matching PREFIX* into one
+# JSON array at OUT. Bash-3.2-safe (no associative arrays); python3 is already
+# a hard dependency of this script (see _resolve_roles above).
+# args: out-path  glob-dir  glob-prefix
+merge_records_json() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import glob, json, os, sys
+out_path, dir_, prefix = sys.argv[1], sys.argv[2], sys.argv[3]
+merged = []
+for f in sorted(glob.glob(os.path.join(dir_, prefix + "*.json"))):
+    try:
+        with open(f) as fh:
+            data = json.load(fh)
+        if isinstance(data, list):
+            merged.extend(data)
+    except Exception:
+        pass  # a cell that failed to score contributes no records, not a crash
+with open(out_path, "w") as fh:
+    json.dump(merged, fh)
+print(len(merged))
+PY
+}
+
+# Append one row per (scenario, model) cell to CELL_STATS: the prompt size and
+# the advertised-tool count the transcript's own `prompt` record carried for
+# that cell. THIS IS NOT OPTIONAL BOOKKEEPING: 20 tool schemas is a lot of
+# prompt, and if PromptAssembler/context-window trimming drops tools before
+# the request reaches the backend, the resulting F1-vs-tool-count curve
+# measures context overflow, not model capability, and looks exactly like
+# graceful degradation. Caveat, stated plainly rather than hidden: this reads
+# `advertisedTools`/system+user text from the TRANSCRIPT, i.e. what
+# ManifoldKit's own ToolRegistry handed to `GenerationConfig.tools` and the
+# prompt strings it assembled — the closest signal observable without
+# instrumenting the wire. `promptTokenEstimate` is a chars/4 heuristic, NOT a
+# real tokenizer count (no wire-level capture from this shell-only lane) —
+# treat it as directional, not authoritative.
+# args: transcript-jsonl  decoyLevel  repeatIndex  cell-stats-tsv
+append_cell_stats() {
+  python3 - "$1" "$2" "$3" "$4" <<'PY'
+import json, sys
+transcript, level, rep, out_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+rows = []
+try:
+    with open(transcript) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if obj.get("kind") != "prompt":
+                continue
+            system = obj.get("system", "") or ""
+            user = obj.get("user", "") or ""
+            advertised = obj.get("advertisedTools", []) or []
+            chars = len(system) + len(user)
+            rows.append((obj.get("scenario", "?"), level, rep, chars, chars // 4, len(advertised)))
+except FileNotFoundError:
+    pass
+with open(out_path, "a") as fh:
+    for r in rows:
+        fh.write("\t".join(str(x) for x in r) + "\n")
+PY
+}
+
 if have_lane core; then
   MATRIX_DIR="$OUT/matrix"
   mkdir -p "$MATRIX_DIR"
-  TRANSCRIPT="$MATRIX_DIR/transcript.jsonl"
   RECORDS="$MATRIX_DIR/records.json"
   MATRIX_MD="$OUT/MATRIX.md"
+  CELL_STATS="$MATRIX_DIR/cell-stats.tsv"
+  printf 'scenario\tdecoyLevel\trepeatIndex\tpromptChars\tpromptTokenEstimate\tadvertisedToolCount\n' > "$CELL_STATS"
   CORE_COMMIT="$(git -C "$CORE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   log "=== [matrix] $(date +%H:%M:%S) building manifold-tools ==="
   if ( cd "$CORE_DIR" && swift build --product manifold-tools ) >"$MATRIX_DIR/build.log" 2>&1; then
     TOOL_BIN="$(cd "$CORE_DIR" && swift build --product manifold-tools --show-bin-path 2>/dev/null)/manifold-tools"
     if curl -s --max-time 3 localhost:11434/api/tags >/dev/null 2>&1; then
-      # Optional model override: MATRIX_MODELS="m1,m2". Unset -> scenario defaults.
+      # Optional model override: MATRIX_MODELS="m1,m2". Unset -> scenario defaults
+      # (in which case MODEL_COUNT below is a lower-bound placeholder of 1 — the
+      # coverage denominator cannot know a per-scenario default model count
+      # without running the harness, so an unset MATRIX_MODELS makes the
+      # coverage assertion advisory rather than exact; the auto-selection above
+      # normally sets MATRIX_MODELS from installed tags, so this is the rare path).
       MATRIX_MODEL_ARGS=""
       if [ -n "${MATRIX_MODELS:-}" ]; then MATRIX_MODEL_ARGS="--model ${MATRIX_MODELS}"; fi
-      # A non-zero exit means some scenarios failed — that is data, not a script
-      # error; score the transcript regardless (word-split MODEL_ARGS on purpose).
-      # fail-open-ok: scenario failures are data, scored from the transcript below
-      ( cd "$CORE_DIR" && "$TOOL_BIN" --backend ollama --scenario all --output "$TRANSCRIPT" ${MATRIX_MODEL_ARGS} ) \
-        >"$MATRIX_DIR/run.log" 2>&1 || true
-      if [ -s "$TRANSCRIPT" ]; then
-        "$TOOL_BIN" score "$TRANSCRIPT" --emit-records "$RECORDS" \
-          --renderer ollama-server --core-commit "$CORE_COMMIT" \
-          >/dev/null 2>"$MATRIX_DIR/score.log" || true  # fail-open-ok: scorer failures land in score.log and surface via SUMMARY_LANES below
-        if [ -s "$RECORDS" ]; then
-          if "$TOOL_BIN" matrix "$RECORDS" --out "$MATRIX_MD" 2>>"$MATRIX_DIR/score.log"; then
-            SUMMARY_LANES="${SUMMARY_LANES}matrix: rendered -> $(basename "$MATRIX_MD")\n"
-            log "=== [matrix] $(date +%H:%M:%S) rendered $MATRIX_MD ==="
-          else
-            SUMMARY_LANES="${SUMMARY_LANES}matrix: render failed -> matrix/score.log\n"
-            FAILED_LANES="${FAILED_LANES}matrix: render failed\n"
-          fi
+      SCENARIO_COUNT="$("$TOOL_BIN" --list 2>/dev/null | grep -c .)"
+      MODEL_COUNT=1
+      [ -n "${MATRIX_MODELS:-}" ] && MODEL_COUNT="$(printf '%s' "$MATRIX_MODELS" | tr ',' '\n' | grep -c .)"
+      LEVEL_COUNT="$(printf '%s' "$DECOY_LEVELS" | tr ',' '\n' | grep -c .)"
+      MATRIX_LEVEL_TIMEOUT=0
+      for LEVEL in $(printf '%s' "$DECOY_LEVELS" | tr ',' ' '); do
+        log "=== [matrix] $(date +%H:%M:%S) decoyLevel=$LEVEL x ${SWEEP_REPEATS} repeat(s) ==="
+        # ONE run_capped_lane invocation per (leg=ollama x decoyLevel) — this is
+        # load-bearing: run_capped_lane kills at LANE_TIMEOUT (2400s) and reports
+        # "records partial or absent"; a single invocation covering every level
+        # AND every repeat would blow the cap and lose the ENTIRE leg. Scoped per
+        # level (repeats run inside), a hang costs one cell-group, not the night.
+        run_capped_lane "$MATRIX_DIR/run-L${LEVEL}.log" bash -c "
+          set -uo pipefail
+          for REP in \$(seq 1 '$SWEEP_REPEATS'); do
+            T=\"$MATRIX_DIR/transcript-L${LEVEL}-R\${REP}.jsonl\"
+            R=\"$MATRIX_DIR/records-L${LEVEL}-R\${REP}.json\"
+            cd '$CORE_DIR' && '$TOOL_BIN' --backend ollama --scenario all \
+              --extra-tools '$LEVEL' --repeat-index \"\$REP\" \
+              --output \"\$T\" $MATRIX_MODEL_ARGS
+            # A non-zero exit means some scenarios failed — that is DATA (a
+            # decoy-pressure regression is exactly what this sweep hunts), so
+            # score the transcript regardless of the run's own exit code.
+            if [ -s \"\$T\" ]; then
+              '$TOOL_BIN' score \"\$T\" --emit-records \"\$R\" \
+                --renderer ollama-server --core-commit '$CORE_COMMIT' \
+                >/dev/null 2>>\"$MATRIX_DIR/score-L${LEVEL}.log\"
+            fi
+          done
+        "
+        LEVEL_RC=$?
+        if [ "$LEVEL_RC" -eq 143 ] || [ "$LEVEL_RC" -eq 137 ]; then
+          MATRIX_LEVEL_TIMEOUT=1
+          SUMMARY_LANES="${SUMMARY_LANES}matrix: decoyLevel=$LEVEL TIMEOUT/killed (rc=$LEVEL_RC, cap ${LANE_TIMEOUT}s) — records for this level are partial or absent\n"
+          FAILED_LANES="${FAILED_LANES}matrix: decoyLevel=$LEVEL TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
+        fi
+        for REP in $(seq 1 "$SWEEP_REPEATS"); do
+          append_cell_stats "$MATRIX_DIR/transcript-L${LEVEL}-R${REP}.jsonl" "$LEVEL" "$REP" "$CELL_STATS"
+        done
+      done
+      RECORD_COUNT="$(merge_records_json "$RECORDS" "$MATRIX_DIR" "records-L")"
+      if [ -s "$RECORDS" ] && [ "${RECORD_COUNT:-0}" -gt 0 ]; then
+        # ---- coverage-denominator assertion -------------------------------
+        # measured + notMeasured + loadFail + renderFail MUST equal
+        # scenarios x levels x repeats x models. A short matrix that renders
+        # cleanly is the "empty CSV reads as measured" defect — count every
+        # cell, not just the ones that happened to render a row.
+        EXPECTED_CELLS=$(( SCENARIO_COUNT * LEVEL_COUNT * SWEEP_REPEATS * MODEL_COUNT ))
+        COVERAGE_REPORT="$MATRIX_DIR/coverage.txt"
+        python3 - "$RECORDS" "$EXPECTED_CELLS" > "$COVERAGE_REPORT" <<'PY'
+import json, sys
+records_path, expected = sys.argv[1], int(sys.argv[2])
+with open(records_path) as fh:
+    records = json.load(fh)
+counts = {}
+for r in records:
+    kind = (r.get("status") or {}).get("kind", "unknown")
+    counts[kind] = counts.get(kind, 0) + 1
+total = sum(counts.values())
+for k in ("measured", "notMeasured", "loadFail", "renderFail"):
+    counts.setdefault(k, 0)
+print("expected_cells=%d actual_records=%d" % (expected, total))
+for k, v in sorted(counts.items()):
+    print("  %s=%d" % (k, v))
+print("MATCH" if total == expected else "MISMATCH")
+PY
+        if grep -q '^MATCH$' "$COVERAGE_REPORT"; then
+          SUMMARY_LANES="${SUMMARY_LANES}matrix: coverage OK — $(grep '^expected_cells' "$COVERAGE_REPORT") -> $(basename "$COVERAGE_REPORT")\n"
         else
-          lane_noop "matrix" "no records emitted -> matrix/score.log"
+          SUMMARY_LANES="${SUMMARY_LANES}matrix: COVERAGE MISMATCH — $(grep '^expected_cells' "$COVERAGE_REPORT")$([ "$MATRIX_LEVEL_TIMEOUT" -eq 1 ] && echo ' (expected: a level TIMEOUT above already explains a shortfall)') -> $(basename "$COVERAGE_REPORT")\n"
+          FAILED_LANES="${FAILED_LANES}matrix: coverage mismatch — see $(basename "$COVERAGE_REPORT")\n"
+        fi
+        if "$TOOL_BIN" matrix "$RECORDS" --out "$MATRIX_MD" 2>"$MATRIX_DIR/matrix-render.log"; then
+          SUMMARY_LANES="${SUMMARY_LANES}matrix: rendered $RECORD_COUNT record(s) across decoyLevels={$DECOY_LEVELS} x ${SWEEP_REPEATS} repeat(s) -> $(basename "$MATRIX_MD")\n"
+          log "=== [matrix] $(date +%H:%M:%S) rendered $MATRIX_MD ==="
+        else
+          SUMMARY_LANES="${SUMMARY_LANES}matrix: render failed -> matrix/matrix-render.log\n"
+          FAILED_LANES="${FAILED_LANES}matrix: render failed\n"
         fi
       else
-        lane_noop "matrix" "empty transcript — Ollama models absent?"
+        lane_noop "matrix" "no records emitted across any decoyLevel — Ollama models absent, or every cell errored (see matrix/run-L*.log, matrix/score-L*.log)"
       fi
     else
       lane_noop "matrix" "Ollama down at localhost:11434"
@@ -755,21 +934,45 @@ if have_lane collate; then
     if ( cd "$MLX_DIR" && swift build --product manifold-tools-mlx ) >"$COLLATE_DIR/mlx-build.log" 2>&1; then
       MLX_TOOL_BIN="$(cd "$MLX_DIR" && swift build --product manifold-tools-mlx --show-bin-path 2>/dev/null)/manifold-tools-mlx"
       MLX_RECORDS="$COLLATE_DIR/mlx-records.json"
-      log "=== [collate] $(date +%H:%M:%S) running MLX leg on $COLLATE_MLX_MODEL ==="
-      # A non-zero exit means some scenarios failed — that is DATA (it is exactly
-      # the divergence this lane hunts), so collate the records regardless.
-      # fail-open-ok: scenario failures are the measurement, not a script error; the records are checked for emptiness below
-      run_capped_lane "$COLLATE_DIR/mlx-run.log" \
-        "$MLX_TOOL_BIN" --model "$COLLATE_MLX_MODEL" --scenario all \
-          --output "$COLLATE_DIR/mlx-transcript.jsonl" --emit-records "$MLX_RECORDS"
-      MLX_LEG_RC=$?
-      # A watchdog kill (143/137) must be visible; run_capped_lane returns it for
-      # exactly this reason and every other caller classifies it.
-      if [ "$MLX_LEG_RC" -eq 143 ] || [ "$MLX_LEG_RC" -eq 137 ]; then
-        SUMMARY_LANES="${SUMMARY_LANES}collate: MLX leg TIMEOUT/killed (rc=$MLX_LEG_RC, cap ${LANE_TIMEOUT}s) — records below are partial or absent\n"
-        FAILED_LANES="${FAILED_LANES}collate: MLX leg TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
-      fi
-      if [ -s "$MLX_RECORDS" ]; then
+      MLX_LEVEL_TIMEOUT=0
+      # DEPENDENCY: `--extra-tools`/`--repeat-index` are `ScenarioCLIHarness`
+      # common flags — manifold-tools-mlx gets them for free once manifold-mlx
+      # pins a core commit that carries both (--extra-tools already does;
+      # --repeat-index does not exist on core as of this writing, see the
+      # DECOY_LEVELS/SWEEP_REPEATS comment near the top of this script). Until
+      # that pin bump lands, every cell below fails fast with a CLI parse
+      # error rather than silently measuring the wrong thing.
+      for LEVEL in $(printf '%s' "$DECOY_LEVELS" | tr ',' ' '); do
+        log "=== [collate] $(date +%H:%M:%S) MLX leg decoyLevel=$LEVEL x ${SWEEP_REPEATS} repeat(s) on $COLLATE_MLX_MODEL ==="
+        # ONE run_capped_lane invocation per (leg=mlx x decoyLevel) — same
+        # reasoning as the matrix lane above: scoping the watchdog per level
+        # means a hang costs one cell-group, not the whole collate leg.
+        run_capped_lane "$COLLATE_DIR/mlx-run-L${LEVEL}.log" bash -c "
+          set -uo pipefail
+          for REP in \$(seq 1 '$SWEEP_REPEATS'); do
+            T=\"$COLLATE_DIR/mlx-transcript-L${LEVEL}-R\${REP}.jsonl\"
+            R=\"$COLLATE_DIR/mlx-records-L${LEVEL}-R\${REP}.json\"
+            # A non-zero exit means some scenarios failed — that is DATA (it is
+            # exactly the divergence this lane hunts), so keep going.
+            '$MLX_TOOL_BIN' --model '$COLLATE_MLX_MODEL' --scenario all \
+              --extra-tools '$LEVEL' --repeat-index \"\$REP\" \
+              --output \"\$T\" --emit-records \"\$R\"
+          done
+        "
+        MLX_LEVEL_RC=$?
+        # A watchdog kill (143/137) must be visible; run_capped_lane returns it
+        # for exactly this reason and every other caller classifies it.
+        if [ "$MLX_LEVEL_RC" -eq 143 ] || [ "$MLX_LEVEL_RC" -eq 137 ]; then
+          MLX_LEVEL_TIMEOUT=1
+          SUMMARY_LANES="${SUMMARY_LANES}collate: MLX leg decoyLevel=$LEVEL TIMEOUT/killed (rc=$MLX_LEVEL_RC, cap ${LANE_TIMEOUT}s) — records for this level are partial or absent\n"
+          FAILED_LANES="${FAILED_LANES}collate: MLX leg decoyLevel=$LEVEL TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
+        fi
+        for REP in $(seq 1 "$SWEEP_REPEATS"); do
+          append_cell_stats "$COLLATE_DIR/mlx-transcript-L${LEVEL}-R${REP}.jsonl" "$LEVEL" "$REP" "$CELL_STATS"
+        done
+      done
+      MLX_RECORD_COUNT="$(merge_records_json "$MLX_RECORDS" "$COLLATE_DIR" "mlx-records-L")"
+      if [ -s "$MLX_RECORDS" ] && [ "${MLX_RECORD_COUNT:-0}" -gt 0 ]; then
         if ( cd "$EVAL_DIR" && swift build ) >"$COLLATE_DIR/eval-build.log" 2>&1; then
           EVAL_BIN_C="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
           if "$EVAL_BIN_C" collate "$OLLAMA_RECORDS" "$MLX_RECORDS" \
@@ -818,7 +1021,7 @@ if have_lane collate; then
           lane_noop "collate" "manifold-eval build failed -> collate/eval-build.log"
         fi
       else
-        lane_noop "collate" "MLX leg emitted no records -> collate/mlx-run.log"
+        lane_noop "collate" "MLX leg emitted no records across any decoyLevel -> collate/mlx-run-L*.log"
       fi
     else
       lane_noop "collate" "manifold-tools-mlx build failed -> collate/mlx-build.log"
@@ -1130,8 +1333,33 @@ fi
   echo "## Conformance matrix"
   if [ -s "$OUT/MATRIX.md" ]; then
     echo "- rendered from \`ConformanceRecord\`s: \`$OUT/MATRIX.md\` (records: \`matrix/records.json\`)"
+    echo "- decoyLevels swept: \`{$DECOY_LEVELS}\`, repeats: \`$SWEEP_REPEATS\` (override via DECOY_LEVELS / SWEEP_REPEATS)"
+    if [ -s "$OUT/matrix/coverage.txt" ]; then
+      echo "- coverage (measured+notMeasured+loadFail+renderFail vs scenarios x levels x repeats x models):"
+      echo '```'
+      sed 's/^/  /' "$OUT/matrix/coverage.txt"
+      echo '```'
+    fi
   else
     echo "- not rendered this run (see Lane summary for why)"
+  fi
+  echo
+  echo "## Per-cell prompt size / advertised-tool count"
+  echo "Interprets the F1-vs-decoy-count curve honestly: if the advertised-tool"
+  echo "count a cell actually saw was truncated below the requested decoyLevel,"
+  echo "or the prompt is close to the model's context ceiling, a degradation"
+  echo "there measures context overflow, not tool-selection capability."
+  echo "\`promptTokenEstimate\` is a chars/4 heuristic (script-side, not a real"
+  echo "tokenizer count) — directional, not authoritative."
+  # Ollama (matrix) and MLX (collate) legs both append into the same TSV
+  # (CELL_STATS is set once, in the matrix block) so the two legs' per-cell
+  # numbers sit side by side for comparison.
+  if [ -s "$OUT/matrix/cell-stats.tsv" ] && [ "$(grep -c . "$OUT/matrix/cell-stats.tsv")" -gt 1 ]; then
+    echo '```'
+    cat "$OUT/matrix/cell-stats.tsv"
+    echo '```'
+  else
+    echo "- no cell stats recorded this run (matrix lane did not run, or no cells produced a prompt record)"
   fi
   echo
   echo "## Performance signals"
@@ -1299,6 +1527,45 @@ if [ "$SKIP_NEGATIVE_CONTROL" != "1" ]; then
     echo '[]' > "$NEG_DIR/empty-records.json"
     neg_check "collate-empty-corpus" "collate exits non-zero on an empty corpus" \
       "$EVAL_BIN_C" collate "$NEG_DIR/empty-records.json" --out "$NEG_DIR/empty.md"
+  fi
+  # 6. A cell wired to a NONEXISTENT tool must land a `fail` verdict, not
+  #    `pass` — the decoy-sweep's own positive control. A hand-crafted
+  #    transcript (no live model needed) exercises the scorer directly: the
+  #    scenario calls only a tool that was never its required tool, so a
+  #    scorer stuck reporting `pass` regardless of tool identity would be
+  #    exactly the false-confidence class this whole change exists to end.
+  if [ -n "${TOOL_BIN:-}" ] && [ -x "${TOOL_BIN:-}" ]; then
+    NEG_TRANSCRIPT="$NEG_DIR/wrong-tool-transcript.jsonl"
+    NEG_RECORDS="$NEG_DIR/wrong-tool-records.json"
+    cat > "$NEG_TRANSCRIPT" <<'JSONL'
+{"ts":"2026-01-01T00:00:00Z","kind":"prompt","scenario":"neg-control-wrong-tool","backend":"mock","model":"neg-control-model","system":"s","user":"u","requiredTools":["real_tool"],"advertisedTools":["real_tool","ghost_tool_does_not_exist"]}
+{"ts":"2026-01-01T00:00:01Z","kind":"tool_call","scenario":"neg-control-wrong-tool","backend":"mock","model":"neg-control-model","name":"ghost_tool_does_not_exist","arguments":"{}"}
+{"ts":"2026-01-01T00:00:02Z","kind":"assertion","scenario":"neg-control-wrong-tool","backend":"mock","model":"neg-control-model","passed":false,"message":"Scenario requires `real_tool` to be dispatched — never dispatched"}
+JSONL
+    # fail-open-ok: the scorer's own exit code is not the assertion here — the emitted verdict (checked below) is
+    "$TOOL_BIN" score "$NEG_TRANSCRIPT" --emit-records "$NEG_RECORDS" \
+      --renderer neg-control --core-commit test >/dev/null 2>"$NEG_DIR/wrong-tool-score.log" || true
+    if [ -s "$NEG_RECORDS" ]; then
+      NEG_VERDICT="$(python3 - "$NEG_RECORDS" <<'PY'
+import json, sys
+with open(sys.argv[1]) as fh:
+    records = json.load(fh)
+match = [r for r in records if r.get("scenario") == "neg-control-wrong-tool"]
+print(match[0].get("verdict", "<missing>") if match else "<no-record>")
+PY
+)"
+      if [ "$NEG_VERDICT" != "pass" ] && [ "$NEG_VERDICT" != "<missing>" ] && [ "$NEG_VERDICT" != "<no-record>" ]; then
+        NEG_RESULTS="${NEG_RESULTS}  OK   wrong-tool-scored-fail — a cell that called only a wrong tool scored verdict='$NEG_VERDICT', not pass\n"
+      else
+        NEG_RESULTS="${NEG_RESULTS}  DEAD wrong-tool-scored-fail — a cell that called ONLY a wrong tool scored verdict='$NEG_VERDICT'; a matrix built on this is not discriminating wrong-tool calls\n"
+        NEG_FAILED=1
+      fi
+    else
+      NEG_RESULTS="${NEG_RESULTS}  DEAD wrong-tool-scored-fail — scorer emitted no record for the synthetic transcript -> wrong-tool-score.log\n"
+      NEG_FAILED=1
+    fi
+  else
+    NEG_RESULTS="${NEG_RESULTS}  n/a  wrong-tool-scored-fail — SKIPPED (manifold-tools was not built this run; matrix lane did not run)\n"
   fi
 
   {
