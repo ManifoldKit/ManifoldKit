@@ -271,19 +271,139 @@ public enum MatrixRenderer {
     static func normalizedModelKey(_ model: String) -> String {
         let lower = model.lowercased()
         let tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
-        let dropped: Set<String> = ["tools", "tool", "instruct", "it", "chat", "gguf", "mlx", "tooltmpl"]
-        let kept = tokens.filter { !$0.isEmpty && !dropped.contains($0) && !isQuantToken($0) }
-        return kept.isEmpty ? lower : kept.joined(separator: "-")
+        let keptAsIs = filterModelTokens(tokens)
+
+        // HuggingFace repo filenames repeat the vendor-org token as a LEADING
+        // prefix (e.g. "google_gemma-3-4b-it-Q4_K_M.gguf", "Meta-Llama-3.1-8B-
+        // Instruct-Q4_K_M.gguf", "Qwen_Qwen3.5-2B-Q4_K_M.gguf"), but the MLX/
+        // Ollama-side identifier for the same weights usually doesn't carry it
+        // ("gemma-3-4b-it-4bit", "Llama-3.1-8B-Instruct-4bit", Ollama tag
+        // "qwen3.5:2b") — a second, independent residue on top of the quant
+        // one, and it also blocks pairing (#2411 follow-up). Drop it ONLY at
+        // the leading token position, and only an exact match against this
+        // bounded literal set — not "drop any token that also appears as a
+        // vendor name" and not a prefix/substring match — so a genuine model
+        // name is never mangled. This is why "qwen" (bare) is safe to drop
+        // here while "qwen3" (a real model-family token) is untouched: they
+        // arrive as distinct tokens after the split, and only the exact
+        // leading "qwen" token matches.
+        let vendorOrgPrefixes: Set<String> = [
+            "google", "meta", "qwen", "mistralai", "deepseek", "unsloth", "bartowski", "nvidia", "microsoft",
+        ]
+        guard let first = tokens.first, vendorOrgPrefixes.contains(first) else {
+            return keptAsIs.isEmpty ? lower : keptAsIs.joined(separator: "-")
+        }
+        let keptWithVendorDropped = filterModelTokens(Array(tokens.dropFirst()))
+        // Some Ollama legacy tags are ONLY a vendor token plus a bare size
+        // ("qwen:7b", "qwen:14b", "qwen:72b-chat" -> after the filter above,
+        // "chat" is already gone too). Dropping the vendor there leaves
+        // nothing but a size token, e.g. "7b" — a key so generic it would
+        // pair with any other unrelated model reduced the same way. That's a
+        // FALSE pair (silently averages two different models into one row),
+        // strictly worse than the residue this whole fix exists to remove (a
+        // missing row is visible; a false pair is not). So the degeneracy
+        // check runs on the ALREADY-FILTERED result (post dropped-set/quant
+        // removal) — checking the raw post-drop token count would miss
+        // "qwen:72b-chat", since "chat" is only removed by the filter below,
+        // not before it.
+        if keptWithVendorDropped.isEmpty || keptWithVendorDropped.allSatisfy(isSizeLikeToken) {
+            return keptAsIs.isEmpty ? lower : keptAsIs.joined(separator: "-")
+        }
+        return keptWithVendorDropped.joined(separator: "-")
     }
 
-    /// Conservative quant-token detector: `q4_K_M`-style (after the split, `q4`,
-    /// `k`, `m` arrive separately so we match the `q<digit>` head), bit-width
+    /// Runs the (non-vendor-prefix) token filter shared by both the with- and
+    /// without-vendor-drop candidates in `normalizedModelKey`: drops the
+    /// well-known role/format suffixes and absorbs GGUF quant heads + their
+    /// suffix tokens. See `normalizedModelKey`'s doc for why quant labels like
+    /// "Q4_K_M" split into multiple tokens ("q4", "k", "m") that
+    /// `quantSuffixTokenCount` must absorb together.
+    private static func filterModelTokens(_ tokens: [String]) -> [String] {
+        let dropped: Set<String> = ["tools", "tool", "instruct", "it", "chat", "gguf", "mlx", "tooltmpl"]
+        var kept: [String] = []
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            guard !token.isEmpty else { index += 1; continue }
+            if dropped.contains(token) {
+                index += 1
+                continue
+            }
+            if isQuantToken(token) {
+                index += 1
+                index += quantSuffixTokenCount(tokens, at: index)
+                continue
+            }
+            kept.append(token)
+            index += 1
+        }
+        return kept
+    }
+
+    /// A bare model-size marker ("7b", "14b", "72b", "135m") — digits followed
+    /// by exactly one size-unit letter — OR a bare numeric fragment ("0", "5"),
+    /// which is what a DECIMAL size splits into after tokenization (e.g.
+    /// "0.5b" -> ["0", "5b"], "1.8b" -> ["1", "8b"]). Without the bare-numeric
+    /// case, "qwen:0.5b" -> ["0", "5b"] post-drop wasn't caught as degenerate
+    /// ("0" isn't itself size-like under the digits+unit-letter rule), so the
+    /// vendor drop went through and produced "0-5b" — which collides with any
+    /// OTHER vendor's "X:0.5b" tag reduced the same way (#2411 follow-up).
+    /// Used only to detect a DEGENERATE post-vendor-drop key (nothing left but
+    /// size), never to strip these tokens themselves — a size marker is real
+    /// signal in a logical-model key (it's what keeps "Llama-3.1-8B" and
+    /// "Llama-3.1-70B" from colliding). Widening this predicate can only make
+    /// the guard refuse MORE drops (the safe, missing-row direction) — it is
+    /// never used to remove a token, so it can never eat a real name token.
+    private static func isSizeLikeToken(_ token: String) -> Bool {
+        if token.allSatisfy(\.isNumber) { return !token.isEmpty }
+        guard let last = token.last, last == "b" || last == "m" else { return false }
+        let digits = token.dropLast()
+        return !digits.isEmpty && digits.allSatisfy(\.isNumber)
+    }
+
+    /// Conservative quant-token detector: `q4_K_M`/`iq4_XS`-style heads (after
+    /// the split, the head token arrives alone — e.g. `q4`, `iq4` — with its
+    /// suffix tokens handled separately by `quantSuffixTokenCount`), bit-width
     /// labels, and the common float markers. Anything ambiguous is kept.
     private static func isQuantToken(_ token: String) -> Bool {
+        if token.hasPrefix("iq"), let third = token.dropFirst(2).first, third.isNumber { return true }
         if token.hasPrefix("q"), let second = token.dropFirst().first, second.isNumber { return true }
-        if ["fp16", "fp32", "bf16", "f16", "f32", "4bit", "8bit"].contains(token) { return true }
+        // "<digit>bit" (1bit/2bit/3bit/4bit/6bit/8bit/…) — MLX sub-4-bit and
+        // ternary quant labels (e.g. Bonsai's 1bit/2bit) are otherwise not
+        // recognized as quant at all, so they never pair against their GGUF
+        // counterpart. Digit-prefix-exact, not "contains bit", so a genuine
+        // model-name token is never mistaken for a bit-width label.
+        if token.hasSuffix("bit") {
+            let digits = token.dropLast(3)
+            if !digits.isEmpty, digits.allSatisfy(\.isNumber) { return true }
+        }
+        if ["fp16", "fp32", "bf16", "f16", "f32"].contains(token) { return true }
         if token.hasPrefix("int"), token.count > 3, token.dropFirst(3).allSatisfy(\.isNumber) { return true }
         return false
+    }
+
+    /// How many tokens starting at `index` are trailing GGUF quant-suffix
+    /// markers for the head token that was just matched by `isQuantToken`
+    /// (called with `index` pointing at the token immediately after the head).
+    /// Matches literal, bounded token shapes only:
+    ///   - a bare "0" or "1"        (Q4_0 / Q5_0 / Q5_1 — the non-K legacy quants)
+    ///   - a bare "xs" or "xxs"     (IQ4_XS / IQ2_XS / IQ2_XXS)
+    ///   - "k" alone, or "k" followed by one of "s"/"m"/"l" (Q4_K / Q4_K_S /
+    ///     Q4_K_M / Q4_K_L — the K-quant family)
+    /// Deliberately NOT "absorb any digit" or "absorb any letter" — a literal
+    /// digit-only match would also eat shard suffixes like "-00001-of-00002",
+    /// and an open-ended letter chain would eat a genuine trailing model-name
+    /// token appended after an already-complete quant label (e.g.
+    /// "Model-Q4_K_M-S" must keep its trailing "S", not read as a second K
+    /// variant of an already-closed "Q4_K_M").
+    private static func quantSuffixTokenCount(_ tokens: [String], at index: Int) -> Int {
+        guard index < tokens.count else { return 0 }
+        let bareSuffixes: Set<String> = ["0", "1", "xs", "xxs"]
+        if bareSuffixes.contains(tokens[index]) { return 1 }
+        guard tokens[index] == "k" else { return 0 }
+        guard index + 1 < tokens.count else { return 1 }
+        let kVariants: Set<String> = ["s", "m", "l"]
+        return kVariants.contains(tokens[index + 1]) ? 2 : 1
     }
 
     // MARK: - Verdict + status labels
