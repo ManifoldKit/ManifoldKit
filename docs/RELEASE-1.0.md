@@ -144,7 +144,7 @@ page.
 
 The seven zero-adopter Experimental products
 ([`API-DESIGN.md` § 7b](API-DESIGN.md#7b-experimental-products-declared-2026-07-13-v1-rationalisation-plan-phase-c)
-— `ManifoldMCP`, `ManifoldMCPHost`, `ManifoldSkills`, `ManifoldAppIntents`,
+— `ManifoldMCP`, `ManifoldMCPHost`, `ManifoldAppIntents`, `ManifoldAgentInstructions`,
 `ManifoldAnyLanguageModel`, `ManifoldTelemetryOTLP`, `ManifoldAppEval`) are
 outside the freeze for the same reason, until each graduates on a real
 adopter. **This "1.0 release criteria" section covers what freezes; it does

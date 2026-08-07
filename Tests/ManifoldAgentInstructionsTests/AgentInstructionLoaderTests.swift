@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldSkills
+@testable import ManifoldAgentInstructions
 
 /// Tests for `AgentInstructionLoader` filesystem discovery and merging.
 ///
@@ -9,13 +9,13 @@ final class AgentInstructionLoaderTests: XCTestCase {
     private var tempRoots: [URL] = []
 
     override func tearDownWithError() throws {
+        // Best-effort cleanup — a temp dir another test already removed, or a
+        // transient permission hiccup, must not fail an otherwise-passing
+        // test. Matches the established convention elsewhere in the suite
+        // (e.g. DownloadHygieneJanitorTests.tearDownWithError).
         let fm = FileManager.default
         for root in tempRoots {
-            do {
-                try fm.removeItem(at: root)
-            } catch {
-                XCTAssertNotNil(error as Error?, "tear-down cleanup error captured")
-            }
+            try? fm.removeItem(at: root)
         }
         tempRoots = []
     }
@@ -183,6 +183,114 @@ final class AgentInstructionLoaderTests: XCTestCase {
         #endif
     }
 
+    // MARK: - Security (#2434 review findings 2–4)
+
+    /// Finding 2: `stoppingAt` containment was a raw string-prefix check
+    /// (`leaf.path.hasPrefix(stop.path)`), so a sibling directory whose name
+    /// happens to start with the stop directory's path string (`proj-secrets`
+    /// vs. `proj`) was treated as contained. Confirmed against the real
+    /// loader before this fix: the walk then never matches `stop` and reads
+    /// every `AGENTS.md` up to the filesystem root.
+    func test_discover_siblingDirectorySharingStringPrefix_isNotTreatedAsContained() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let stopDir = root.appendingPathComponent("proj", isDirectory: true)
+        let siblingDir = root.appendingPathComponent("proj-secrets", isDirectory: true)
+        try FileManager.default.createDirectory(at: stopDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: siblingDir, withIntermediateDirectories: true)
+        try writeAgentsMd(content: "SECRET — must never be read", in: siblingDir)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: siblingDir, stoppingAt: stopDir)
+
+        XCTAssertTrue(found.isEmpty, "a sibling directory sharing a string prefix with stopDirectory must not be treated as contained")
+        // Sabotage-evidence (verified locally): the fix is two independent
+        // layers — the pathComponents containment guard above the walk, and
+        // a fail-closed check after it (the walk never matches `stop`, so it
+        // would otherwise fall through to the filesystem-root break and
+        // return whatever was collected). Reverting EITHER layer alone still
+        // leaves this test green, because the other layer still catches the
+        // escape — that redundancy is the intended defense-in-depth, not a
+        // weak test. Reverting BOTH together (containment back to
+        // `leaf.path.hasPrefix(stop.path)` AND dropping the `reachedStop`
+        // check) reproduces the finding-2 escape: found becomes non-empty
+        // and includes the SECRET content.
+        #endif
+    }
+
+    /// Finding 3: a symlinked `AGENTS.md` resolving outside its directory
+    /// was followed and read — `fileExists`/`String(contentsOf:)` both
+    /// transparently follow symlinks. Confirmed against the real loader
+    /// before this fix: a planted `AGENTS.md -> ~/.ssh/id_rsa`-shaped
+    /// symlink in an untrusted cloned repo was read and merged into the
+    /// system preamble.
+    func test_discover_symlinkedAgentsMd_resolvingOutsideDirectory_isSkipped() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let outside = root.appendingPathComponent("outside", isDirectory: true)
+        let repo = root.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let secretFile = outside.appendingPathComponent("secret.md")
+        try "SECRET FILE OUTSIDE THE TREE".write(to: secretFile, atomically: true, encoding: .utf8)
+        let symlinkedAgentsMd = repo.appendingPathComponent(AgentInstructionLoader.defaultFileName)
+        try FileManager.default.createSymbolicLink(at: symlinkedAgentsMd, withDestinationURL: secretFile)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: repo, stoppingAt: repo)
+
+        XCTAssertTrue(found.isEmpty, "a symlinked AGENTS.md resolving outside its directory must be skipped")
+        // Sabotage-evidence: M1 remove the resolvedCandidate containment
+        // check → found becomes non-empty and includes the outside-tree
+        // secret content, reproducing the finding-3 escape.
+        #endif
+    }
+
+    /// Finding 4: no cap was enforced on `AGENTS.md` size — a multi-megabyte
+    /// file was read whole and merged into the system preamble with no
+    /// truncation or signal. Confirmed against the real loader before this
+    /// fix with an 8 MB planted file.
+    func test_discover_oversizedAgentsMd_isSkipped() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let oversized = String(repeating: "X", count: AgentInstructionLoader.maxFileSizeBytes + 1)
+        try writeAgentsMd(content: oversized, in: root)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: root, stoppingAt: root)
+
+        XCTAssertTrue(found.isEmpty, "a file exceeding maxFileSizeBytes must be skipped, not read whole")
+        // Sabotage-evidence: M1 remove the size-cap check → found becomes
+        // non-empty and includes the full oversized content.
+        #endif
+    }
+
+    /// Boundary check for the size cap: a file exactly at the limit must
+    /// still be read (the cap rejects files STRICTLY larger than the limit).
+    func test_discover_fileAtSizeCapBoundary_isIncluded() throws {
+        #if !os(macOS)
+        throw XCTSkip("AgentInstructionLoader.discover() is macOS-only in v1")
+        #else
+        let root = try makeTempDir()
+        let atCap = String(repeating: "X", count: AgentInstructionLoader.maxFileSizeBytes)
+        try writeAgentsMd(content: atCap, in: root)
+
+        let loader = AgentInstructionLoader()
+        let found = loader.discover(from: root, stoppingAt: root)
+
+        XCTAssertEqual(found.count, 1, "a file exactly at the cap must still be read")
+        // Sabotage-evidence: M1 use `>=` instead of `>` in the cap check →
+        // this exactly-at-cap file is incorrectly skipped, found becomes
+        // empty.
+        #endif
+    }
+
     // MARK: - Merging
 
     func test_merged_returnsNilForEmptyInput() {
@@ -215,6 +323,82 @@ final class AgentInstructionLoaderTests: XCTestCase {
         XCTAssertEqual(result, "A\n\n---\n\nB\n\n---\n\nC")
         // Sabotage-evidence: M1 change separator to "\n---\n" → equality fails;
         // M2 use "," as separator → equality fails.
+    }
+
+    // MARK: - Merging: aggregate cap (#2434 review R2-3)
+
+    /// Ten individually-legal (each at `maxFileSizeBytes`) files is exactly
+    /// the shape the review measured unbounded at 655,423 bytes injected into
+    /// every turn's system preamble. `merged(_:)` must never exceed
+    /// `maxMergedSizeBytes` regardless of how many legal files are found.
+    func test_merged_manyLegalFiles_staysUnderAggregateCap() throws {
+        let url = URL(fileURLWithPath: "/fake/dir")
+        let instructions = (0..<10).map { _ in
+            AgentInstruction(directory: url, content: String(repeating: "X", count: AgentInstructionLoader.maxFileSizeBytes))
+        }
+        let loader = AgentInstructionLoader()
+
+        let result = try XCTUnwrap(loader.merged(instructions))
+
+        XCTAssertLessThanOrEqual(
+            result.utf8.count, AgentInstructionLoader.maxMergedSizeBytes,
+            "merged output must never exceed maxMergedSizeBytes regardless of how many individually-legal files are discovered"
+        )
+        // Sabotage-evidence: M1 remove the aggregate-cap check from merged(_:)
+        // → result.utf8.count becomes ~655,423, well over the cap, and this
+        // assertion fails.
+    }
+
+    /// When the aggregate must be cut, the most DISTANT ancestor is dropped
+    /// first — the closest instruction (highest recency weight per this
+    /// type's doc comment) always survives.
+    func test_merged_aggregateOverCap_dropsMostDistantAncestorFirst() throws {
+        let url = URL(fileURLWithPath: "/fake/dir")
+        // `distant` alone is already at the aggregate cap, so adding
+        // anything else must push the total over it.
+        let distant = AgentInstruction(
+            directory: url,
+            content: String(repeating: "A", count: AgentInstructionLoader.maxMergedSizeBytes)
+        )
+        let closest = AgentInstruction(directory: url, content: "closest content")
+        let loader = AgentInstructionLoader()
+
+        // root-to-leaf order: distant (ancestor) first, closest last.
+        let result = loader.merged([distant, closest])
+
+        XCTAssertEqual(
+            result, "closest content",
+            "the closest instruction must survive and the distant ancestor must be dropped when the aggregate exceeds the cap"
+        )
+        // Sabotage-evidence: M1 accumulate root-to-leaf instead of
+        // closest-first (reversed) → `distant` would be kept and `closest`
+        // dropped instead, inverting the closest-wins guarantee.
+    }
+
+    /// Surviving instructions must stay in root-to-leaf order in the output
+    /// even when an ancestor between them was dropped for budget — the cut
+    /// removes an item, it does not reorder what remains.
+    func test_merged_aggregateOverCap_survivingInstructionsStayInRootToLeafOrder() throws {
+        let url = URL(fileURLWithPath: "/fake/dir")
+        // Two of these fit under the cap; all three do not.
+        let each = AgentInstructionLoader.maxMergedSizeBytes / 2 - 50
+        let root = AgentInstruction(directory: url, content: String(repeating: "R", count: each))
+        let mid = AgentInstruction(directory: url, content: String(repeating: "M", count: each))
+        let leaf = AgentInstruction(directory: url, content: String(repeating: "L", count: each))
+        let loader = AgentInstructionLoader()
+
+        let result = try XCTUnwrap(loader.merged([root, mid, leaf]))
+
+        XCTAssertFalse(result.contains("R"), "the most distant ancestor (root) must be dropped first")
+        let midRange = try XCTUnwrap(result.range(of: "M"))
+        let leafRange = try XCTUnwrap(result.range(of: "L"))
+        XCTAssertTrue(
+            midRange.lowerBound < leafRange.lowerBound,
+            "surviving instructions must stay in root-to-leaf order (mid before leaf)"
+        )
+        // Sabotage-evidence: M1 append kept instructions in accumulation
+        // (closest-first) order instead of reversing back to root-to-leaf →
+        // leaf would appear before mid, and the ordering assertion fails.
     }
 
     // MARK: - ContextProvider

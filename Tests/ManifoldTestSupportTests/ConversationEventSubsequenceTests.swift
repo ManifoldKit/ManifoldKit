@@ -157,7 +157,6 @@ final class ConversationEventSubsequenceTests: XCTestCase {
             (.toolCallApproved(toolCall.id), .toolCallApproved),
             (.toolCallCompleted(toolCall.id, toolResult), .toolCallCompleted),
             (.agentHandoff(from: nil, to: sessionID), .agentHandoff),
-            (.skillInvoked(name: "summarise", sessionID: sessionID), .skillInvoked),
             (.hookFired(event: "preToolUse", sessionID: sessionID), .hookFired),
         ]
 

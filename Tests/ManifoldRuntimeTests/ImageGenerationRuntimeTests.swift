@@ -593,7 +593,6 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             .toolCallApproved(""),
             .toolCallCompleted("", ToolResult(callId: "", content: "")),
             .agentHandoff(from: nil, to: UUID()),
-            .skillInvoked(name: "", sessionID: UUID()),
             .hookFired(event: "", sessionID: UUID())
         ]
         // The exhaustive switch below is the actual test — if any new
@@ -607,13 +606,13 @@ final class ImageGenerationRuntimeTests: XCTestCase {
                  .beforeContextAssembly, .historyShaped, .contextAssembled, .afterGeneration,
                  .compressionTriggered, .historyCompressed, .toolCallRequested, .toolCallApproved,
                  .toolCallCompleted,
-                 .agentHandoff, .skillInvoked, .hookFired:
+                 .agentHandoff, .hookFired:
                 continue
             }
         }
         // Pin the exact case count as a runtime assertion too — the
-        // sample list is the source of truth. Runtime history shaping added
-        // one more context-side case (25 → 26).
-        XCTAssertEqual(samples.count, 26, "ConversationEvent case count drifted — image-side cases may have leaked in")
+        // sample list is the source of truth. skillInvoked removed with
+        // ManifoldSkills (#2434): 26 → 25.
+        XCTAssertEqual(samples.count, 25, "ConversationEvent case count drifted — image-side cases may have leaked in")
     }
 }

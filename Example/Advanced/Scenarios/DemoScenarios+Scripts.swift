@@ -121,19 +121,6 @@ extension DemoScenarios {
                 ])
             ]
 
-        case skillExplain.id:
-            // The scripted backend emits the `invoke_skill` dispatch tool W2A
-            // ships. The bundled `explain` skill's template gets rendered into
-            // the tool result; the scripted second turn confirms in prose.
-            return [
-                .toolCall(name: "invoke_skill", arguments: #"{"skill_name":"explain","args":"Swift's actor keyword"}"#),
-                .tokens([
-                    "An ", "actor ", "in ", "Swift ", "is ", "a ", "reference ",
-                    "type ", "that ", "protects ", "its ", "mutable ", "state ",
-                    "behind ", "an ", "isolation ", "boundary."
-                ])
-            ]
-
         case handoffResearchWrite.id:
             // Researcher emits transfer_to_writer with an outline payload;
             // under the live runtime path the executor would swap

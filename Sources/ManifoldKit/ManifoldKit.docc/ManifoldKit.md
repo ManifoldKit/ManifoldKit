@@ -19,7 +19,7 @@ Foundation Models, OpenAI, Anthropic, Ollama / LAN) — all behind one
 UI. Specialised modules stay explicit imports: `ManifoldUIModelManagement`
 (model browser / download UI), `ManifoldMCP` (Model Context Protocol),
 `ManifoldVoice` (speech I/O), `ManifoldAppIntents`, and experimental
-`ManifoldSkills`. On-device MLX and
+`ManifoldAgentInstructions` (`AGENTS.md` ambient-instruction loading). On-device MLX and
 llama.cpp inference ship as the separate `manifold-mlx` / `manifold-llama`
 companion packages — add the package and pass its registrar to
 `quickStart(backends:)`; they are not pulled in by the umbrella import alone.

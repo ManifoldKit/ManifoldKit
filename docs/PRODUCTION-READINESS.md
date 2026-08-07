@@ -75,7 +75,7 @@ stability promise, because "no real adopter has been built against it yet"
 
 | Product | Role | Why Core |
 |---|---|---|
-| `ManifoldKit` | Umbrella re-export (`ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families + `ManifoldUI`). | The canonical one-import consumer entry point; carries the aggregate stability promise of everything it re-exports at Core or Supported tier. Experimental products, including `ManifoldSkills`, require an explicit import. |
+| `ManifoldKit` | Umbrella re-export (`ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + the backend families + `ManifoldUI`). | The canonical one-import consumer entry point; carries the aggregate stability promise of everything it re-exports at Core or Supported tier. Experimental products, including `ManifoldAgentInstructions`, require an explicit import. |
 | `ManifoldContract` | Backend protocols (`InferenceBackend`, `EmbeddingBackend`), value/stream types (`GenerationConfig`, `GenerationEvent`, `Message`) — the inference contract every backend compiles against. | Literally "the inference contract" named in the tier definition. |
 | `ManifoldInference` | Inference orchestration engine: `InferenceService`, `GenerationQueue`, `ModelRegistry`, tool subsystem, `PromptAssembler`, `ContextWindowManager`. | The engine the contract and runtime both depend on; no persistence ports, backend-agnostic. |
 | `ManifoldRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, …), `ConversationRuntime` — the single send/regenerate/edit/cancel/branch turn loop (Principle 8). | Literally "the conversation runtime" named in the tier definition. |
@@ -139,7 +139,7 @@ graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
 - `ManifoldMCP`
 - `ManifoldMCPHost`
 - `ManifoldAppIntents`
-- `ManifoldSkills`
+- `ManifoldAgentInstructions`
 - `ManifoldAnyLanguageModel`
 - `ManifoldTelemetryOTLP`
 - `ManifoldAppEval`
@@ -150,7 +150,7 @@ graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
 | `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge. | Zero-adopter — "the best-documented module of the set" per § 7b, still experimental because no consumer app has been built and tested against it. |
 | `ManifoldMCPHost` | Runtime-backed MCP server boundary exposing sessions/messages/RAG/send-message as MCP tools. | Zero-adopter; depends on the still-experimental `ManifoldMCP`. |
 | `ManifoldAppIntents` | AppIntent ↔ `ToolDefinition` bridge. | Zero-adopter. |
-| `ManifoldSkills` | Claude-Code-compatible `SKILL.md` discovery + `invoke_skill` dispatcher (macOS-only). | Zero-adopter. Requires explicit `import ManifoldSkills`; it is not re-exported by the Tier-1 `ManifoldKit` umbrella. |
+| `ManifoldAgentInstructions` | `AGENTS.md` ambient-instruction filesystem discovery (macOS-only), extracted from the retired `ManifoldSkills` (#2434). | Zero-adopter by the external-consumer bar (no shipping app or companion pins it yet) — but not inert: `ManifoldKit`'s `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)` gives it a real in-repo caller and an integration test exercises the full discover → merge → `.systemPreamble` path. Requires explicit `import ManifoldAgentInstructions`; it is not re-exported by the Tier-1 `ManifoldKit` umbrella. |
 | `ManifoldAnyLanguageModel` | AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter). | Zero-adopter **and** § 7 dependency-coupled: its surface can only ever be as stable as the external, pre-1.0 `AnyLanguageModel` package it wraps. |
 | `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. | Zero-adopter. |
 | `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1). | Zero-adopter. |

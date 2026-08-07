@@ -81,14 +81,13 @@ import Darwin
 /// audits (`SilentCatchAuditTest`, `TrappingConstructAuditTest`). It only
 /// sees STATIC string-literal tool names (`name: "X"` / `def("X"`). A tool
 /// name or description assembled at runtime is invisible to it — e.g.
-/// `SkillToolSource`'s `invoke_skill` description (built per-registry from
-/// discovered `SkillDefinition`s), `HandoffToolSource`'s
-/// `"\(HandoffDetector.transferToolPrefix)\(agent.name)"`, `MCPToolSource`'s
-/// namespaced tool names, and `AppIntentToolExecutor`'s bridged names. This
-/// audit would NOT have caught this same PR's `SkillToolSource` bug (every
-/// skill's arguments described using only the first exposed skill's hint) —
-/// that is a parameter-description authoring bug, not a name collision, and
-/// lives entirely inside a per-call runtime string this audit never inspects.
+/// `HandoffToolSource`'s `"\(HandoffDetector.transferToolPrefix)\(agent.name)"`,
+/// `MCPToolSource`'s namespaced tool names, and `AppIntentToolExecutor`'s
+/// bridged names. A parameter-description authoring bug living entirely
+/// inside a per-call runtime string (built per-registry from
+/// discovered/dynamic definitions, the shape that motivated this note) is
+/// invisible to this audit for the same reason — it inspects declared
+/// names only, never runtime-assembled description text.
 ///
 /// ## Approval shape
 ///

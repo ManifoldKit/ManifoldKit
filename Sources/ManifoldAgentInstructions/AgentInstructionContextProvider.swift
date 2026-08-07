@@ -4,17 +4,23 @@ import ManifoldInference
 /// A ``PromptContextProvider`` that injects merged ``AGENTS.md`` ambient
 /// instructions into the system preamble at turn assembly time.
 ///
-/// Wire this into a ``PromptContextPipeline`` to give every session transparent
-/// access to project- and user-level `AGENTS.md` instructions:
+/// Wire this into a `PromptContextPipeline` (`ManifoldRuntime`) to give every
+/// session transparent access to project- and user-level `AGENTS.md`
+/// instructions:
 ///
 /// ```swift
-/// // swift,no-build
+/// import ManifoldAgentInstructions
+/// import ManifoldRuntime
+///
 /// let agentsProvider = AgentInstructionContextProvider(
-///     currentDirectory: projectRoot,
-///     stoppingAt: homeDirectory
+///     currentDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 /// )
 /// let pipeline = PromptContextPipeline(providers: [agentsProvider])
 /// ```
+///
+/// A host wiring `ManifoldBootstrap` can skip composing the pipeline by hand —
+/// `ManifoldKit`'s `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)`
+/// is the supported one-call recipe (see `Sources/ManifoldKit/ConversationRuntimeOptions+AgentInstructions.swift`).
 ///
 /// The slot is placed at ``PromptSlotPosition/systemPreamble`` so it sits
 /// before conversation history and after any host-supplied system prompt.

@@ -211,10 +211,12 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldAppIntentsTests
     ManifoldServerTests
     ManifoldTurnLoopCharacterizationTests
-    # Voice / Skills / Tools traits retired in v0.48 (PR A3): these suites
+    # Voice / Tools traits retired in v0.48 (PR A3): these suites
     # compile in every trait shape now, so they run in the CI shape too.
     ManifoldVoiceTests
-    ManifoldSkillsTests
+    # ManifoldSkills retired 2026-08-06 (#2434); the AGENTS.md loader half
+    # survives as ManifoldAgentInstructions.
+    ManifoldAgentInstructionsTests
     ManifoldToolsTests
     # Fuzz harness unit/integration tests (corpus, detectors, sink, the
     # fuzz-ci-gate.sh contract). Unconditional since the Fuzz trait retired

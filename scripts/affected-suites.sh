@@ -59,7 +59,7 @@ TEST_JOB_SUITES=(
   ManifoldTestSupportTests
   ManifoldAppIntentsTests
   ManifoldVoiceTests
-  ManifoldSkillsTests
+  ManifoldAgentInstructionsTests
   ManifoldToolsTests
   ManifoldFuzzTests
   ManifoldInferenceTests

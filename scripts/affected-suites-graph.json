@@ -73,12 +73,11 @@
         "ManifoldInference"
       ]
     },
-    "ManifoldSkills": {
+    "ManifoldAgentInstructions": {
       "type": "regular",
-      "path": "Sources/ManifoldSkills",
+      "path": "Sources/ManifoldAgentInstructions",
       "deps": [
-        "ManifoldInference",
-        "ManifoldRuntime"
+        "ManifoldInference"
       ]
     },
     "ManifoldPersistenceSwiftData": {
@@ -158,6 +157,7 @@
       "type": "regular",
       "path": "Sources/ManifoldKit",
       "deps": [
+        "ManifoldAgentInstructions",
         "ManifoldCloudCore",
         "ManifoldCloudSaaS",
         "ManifoldFoundation",
@@ -236,14 +236,11 @@
         "ManifoldTestSupport"
       ]
     },
-    "ManifoldSkillsTests": {
+    "ManifoldAgentInstructionsTests": {
       "type": "test",
-      "path": "Tests/ManifoldSkillsTests",
+      "path": "Tests/ManifoldAgentInstructionsTests",
       "deps": [
-        "ManifoldContractTestSupport",
-        "ManifoldInference",
-        "ManifoldRuntime",
-        "ManifoldSkills"
+        "ManifoldAgentInstructions"
       ]
     },
     "ManifoldPersistenceSwiftDataTests": {

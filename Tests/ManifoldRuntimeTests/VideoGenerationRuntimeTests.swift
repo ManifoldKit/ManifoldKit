@@ -494,7 +494,6 @@ final class VideoGenerationRuntimeTests: XCTestCase {
             .toolCallApproved(""),
             .toolCallCompleted("", ToolResult(callId: "", content: "")),
             .agentHandoff(from: nil, to: UUID()),
-            .skillInvoked(name: "", sessionID: UUID()),
             .hookFired(event: "", sessionID: UUID())
         ]
         // Exhaustive switch is the actual gate — adding a video case here
@@ -507,11 +506,12 @@ final class VideoGenerationRuntimeTests: XCTestCase {
                  .loopDetected, .streamFinished, .errorRaised, .sessionTouchFailed,
                  .beforeContextAssembly, .historyShaped, .contextAssembled, .afterGeneration,
                  .compressionTriggered, .historyCompressed, .toolCallRequested, .toolCallApproved,
-                 .toolCallCompleted, .agentHandoff, .skillInvoked, .hookFired:
+                 .toolCallCompleted, .agentHandoff, .hookFired:
                 continue
             }
         }
-        XCTAssertEqual(samples.count, 26,
+        // skillInvoked removed with ManifoldSkills (#2434): 26 → 25.
+        XCTAssertEqual(samples.count, 25,
             "ConversationEvent case count drifted — video-side cases may have leaked in")
     }
 }

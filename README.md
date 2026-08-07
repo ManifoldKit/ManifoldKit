@@ -412,13 +412,14 @@ Honest expectations — ManifoldKit's MCP surface is **tool-and-resource first**
 | **Elicitation** (`elicitation/create`) | ✅ | ❌ | Client parses the request off the wire and routes it through the host-supplied `MCPClientConfiguration.elicitationHandler`; `ManifoldMCP` itself renders no UI. Host-side (accepting elicitation requests from external MCP clients) not implemented. Closes [#1926](https://github.com/ManifoldKit/ManifoldKit/issues/1926). |
 | **Transports** | stdio, streamable-HTTP (SSE) | stdio, streamable-HTTP | Both client and host support both transports. |
 
-## Skills, Handoffs, and Hooks
+## Handoffs and Hooks
 
-Three session-scoped extension points complement MCP for non-MCP hosts:
+Two session-scoped extension points complement MCP for non-MCP hosts:
 
-- **ManifoldSkills** *(experimental, explicit import)* — filesystem-discovered Claude-Code-compatible `SKILL.md` skills, exposed to the model via a single `invoke_skill` dispatch tool. Add the `ManifoldSkills` product and `import ManifoldSkills`; it is intentionally not re-exported by the Core `ManifoldKit` umbrella. See `Sources/ManifoldSkills/ManifoldSkills.docc/Articles/SkillsGettingStarted.md`.
 - **Agent handoffs** — multi-persona sessions where the model emits `transfer_to_<name>` to swap the active agent. See `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/AgentHandoffs.md`.
 - **Hook system** — synchronous `preToolUse` (sanitize/block) and `preCompact` (observe) hooks distinct from the observational event stream. See `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/HookSystem.md`.
+
+`ManifoldSkills` (filesystem-discovered Claude-Code-compatible `SKILL.md` skills) was retired 2026-08-06 for zero adoption — see [docs/MIGRATION-skills-removed.md](docs/MIGRATION-skills-removed.md). Its `AGENTS.md` ambient-instruction loading survives as the separate `ManifoldAgentInstructions` product, wired via `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)` — see the migration note for the recipe.
 
 ## Custom Backends
 

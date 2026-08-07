@@ -45,6 +45,5 @@ public enum ConversationEventKind: String, Codable, Sendable, CaseIterable {
     case toolCallApproved
     case toolCallCompleted
     case agentHandoff
-    case skillInvoked
     case hookFired
 }

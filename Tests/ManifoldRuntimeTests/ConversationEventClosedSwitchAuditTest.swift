@@ -71,9 +71,8 @@ final class ConversationEventClosedSwitchAuditTest: XCTestCase {
         "toolCallRequested",
         "toolCallApproved",
         "toolCallCompleted",
-        // Multi-agent / skills / hooks
+        // Multi-agent / hooks
         "agentHandoff",
-        "skillInvoked",
         "hookFired",
     ]
 
@@ -108,7 +107,6 @@ final class ConversationEventClosedSwitchAuditTest: XCTestCase {
         case .toolCallApproved:      return "toolCallApproved"
         case .toolCallCompleted:     return "toolCallCompleted"
         case .agentHandoff:          return "agentHandoff"
-        case .skillInvoked:          return "skillInvoked"
         case .hookFired:             return "hookFired"
         }
     }
@@ -147,7 +145,6 @@ final class ConversationEventClosedSwitchAuditTest: XCTestCase {
             .toolCallApproved("t"),
             .toolCallCompleted("t", ToolResult(callId: "t", content: "")),
             .agentHandoff(from: nil, to: UUID()),
-            .skillInvoked(name: "s", sessionID: sessionID),
             .hookFired(event: "preToolUse", sessionID: sessionID),
         ]
     }

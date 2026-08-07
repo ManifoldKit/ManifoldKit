@@ -125,7 +125,11 @@ let package = Package(
         .library(name: "ManifoldTools", targets: ["ManifoldTools"]),
         .executable(name: "manifold-tools", targets: ["manifold-tools"]),
         .library(name: "ManifoldAppIntents", targets: ["ManifoldAppIntents"]),
-        .library(name: "ManifoldSkills", targets: ["ManifoldSkills"]),
+        // ManifoldSkills (SKILL.md filesystem discovery + invoke_skill dispatch)
+        // retired 2026-08-06 (#2434, zero adopters). The AGENTS.md ambient-
+        // instruction half survives as ManifoldAgentInstructions below — see
+        // docs/MIGRATION-skills-removed.md.
+        .library(name: "ManifoldAgentInstructions", targets: ["ManifoldAgentInstructions"]),
         // The `manifold-server` CLI binary. Product name stays `ManifoldServer`
         // (docs/QUICKSTART-SERVER.md and scripts/benchmark.sh both build
         // `--product ManifoldServer`) even though it now points at the
@@ -359,18 +363,22 @@ let package = Package(
             ],
             path: "Sources/ManifoldRuntime"
         ),
-        // ManifoldSkills: Claude-Code-compatible SKILL.md filesystem discovery
-        // and `invoke_skill` dispatcher. Library target is unconditional
-        // (the body is platform-gated with `#if os(macOS)`). The Skills trait
-        // was retired in v0.48 (PR A3). The product builds unconditionally but
-        // remains an explicit import; the Core umbrella does not re-export it.
+        // ManifoldAgentInstructions: AGENTS.md ambient-instruction filesystem
+        // discovery, extracted out of the retired ManifoldSkills (#2434) — the
+        // only half of that module with a real use case. Depends on
+        // ManifoldInference ONLY (not ManifoldRuntime): it conforms to
+        // PromptContextProvider (ManifoldInference) directly, so it stays a
+        // leaf-ish module a host can link without pulling in the runtime.
+        // `ManifoldKit`'s ConversationRuntimeOptions+AgentInstructions.swift
+        // is the wiring bridge that needs both — see that file's header comment.
+        // Library target is unconditional (the body is platform-gated with
+        // `#if os(macOS)`, same contract as the old SkillLoader).
         .target(
-            name: "ManifoldSkills",
+            name: "ManifoldAgentInstructions",
             dependencies: [
                 "ManifoldInference",
-                "ManifoldRuntime",
             ],
-            path: "Sources/ManifoldSkills"
+            path: "Sources/ManifoldAgentInstructions"
         ),
         // PersistenceSwiftData: SwiftData schema (@Model types), container factory,
         // SwiftData adapter implementations, and the full-stack bootstrap class.
@@ -580,6 +588,12 @@ let package = Package(
                 // ManifoldHuggingFace (unconditional since the HuggingFace
                 // trait retired in v0.48, PR C2).
                 "ManifoldHuggingFace",
+                // AGENTS.md ambient-instruction wiring bridge
+                // (ConversationRuntimeOptions+AgentInstructions.swift) — same
+                // "linked but not @_exported" shape as ManifoldHuggingFace above: hosts that
+                // want the AgentInstruction* types import ManifoldAgentInstructions
+                // explicitly (#2434).
+                "ManifoldAgentInstructions",
             ],
             path: "Sources/ManifoldKit"
         ),
@@ -716,12 +730,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "ManifoldSkillsTests",
+            name: "ManifoldAgentInstructionsTests",
             dependencies: [
-                "ManifoldSkills",
-                "ManifoldInference",
-                "ManifoldRuntime",
-                "ManifoldContractTestSupport",
+                "ManifoldAgentInstructions",
             ]
         ),
         // ManifoldPersistenceSwiftData-only tests: SwiftData @Model schema,

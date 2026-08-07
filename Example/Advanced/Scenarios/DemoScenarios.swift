@@ -118,22 +118,6 @@ enum DemoScenarios {
 
     // MARK: - W3B scenarios (Wave 3B of put-an-implementation-plan-reactive-penguin)
 
-    /// Exercises the bundled `Example/Advanced/SampleSkills/explain/SKILL.md`
-    /// via the `invoke_skill` dispatcher shipped in W2A. Hosts can drop a real
-    /// `SKILL.md` into `~/.claude/skills/<name>/` and it shows up the same way.
-    static let skillExplain = DemoScenario(
-        id: "skill-explain",
-        title: "Skill: explain a concept",
-        blurb: "Use a bundled SKILL.md to coach the model into a plain-language explanation.",
-        systemImage: "lightbulb",
-        prompt: "Explain Swift's `actor` keyword.",
-        systemPrompt: "You are a helpful assistant. When the user asks for an explanation, call `invoke_skill` with `skill_name: \"explain\"` and the topic as `args`.",
-        expectedTools: ["invoke_skill"],
-        autoSend: true,
-        accessibilityID: "demo-card-skill-explain",
-        configure: nil
-    )
-
     /// Two-agent session (Researcher → Writer). Researcher emits
     /// `transfer_to_writer` with an outline payload; the runtime swaps agents
     /// and Writer produces the final prose. The `expectedHandoffs` assertion
@@ -224,7 +208,6 @@ enum DemoScenarios {
         rateLimitedRetry,
         mcpToolFailure,
         mcpEcho,
-        skillExplain,
         handoffResearchWrite,
         hookInputSanitize
     ]
