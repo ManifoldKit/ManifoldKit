@@ -341,11 +341,21 @@ public enum MatrixRenderer {
     }
 
     /// A bare model-size marker ("7b", "14b", "72b", "135m") — digits followed
-    /// by exactly one size-unit letter. Used only to detect a DEGENERATE
-    /// post-vendor-drop key (nothing left but size), never to strip these
-    /// tokens themselves — a size marker is real signal in a logical-model key
-    /// (it's what keeps "Llama-3.1-8B" and "Llama-3.1-70B" from colliding).
+    /// by exactly one size-unit letter — OR a bare numeric fragment ("0", "5"),
+    /// which is what a DECIMAL size splits into after tokenization (e.g.
+    /// "0.5b" -> ["0", "5b"], "1.8b" -> ["1", "8b"]). Without the bare-numeric
+    /// case, "qwen:0.5b" -> ["0", "5b"] post-drop wasn't caught as degenerate
+    /// ("0" isn't itself size-like under the digits+unit-letter rule), so the
+    /// vendor drop went through and produced "0-5b" — which collides with any
+    /// OTHER vendor's "X:0.5b" tag reduced the same way (#2411 follow-up).
+    /// Used only to detect a DEGENERATE post-vendor-drop key (nothing left but
+    /// size), never to strip these tokens themselves — a size marker is real
+    /// signal in a logical-model key (it's what keeps "Llama-3.1-8B" and
+    /// "Llama-3.1-70B" from colliding). Widening this predicate can only make
+    /// the guard refuse MORE drops (the safe, missing-row direction) — it is
+    /// never used to remove a token, so it can never eat a real name token.
     private static func isSizeLikeToken(_ token: String) -> Bool {
+        if token.allSatisfy(\.isNumber) { return !token.isEmpty }
         guard let last = token.last, last == "b" || last == "m" else { return false }
         let digits = token.dropLast()
         return !digits.isEmpty && digits.allSatisfy(\.isNumber)

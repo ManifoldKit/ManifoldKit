@@ -490,6 +490,26 @@ final class MatrixRendererTests: XCTestCase {
             MatrixRenderer.normalizedModelKey("qwen:72b-chat"), "qwen-72b",
             "the trap case: 'chat' is only removed by the token filter, not visible in the raw post-vendor-drop token count — the degeneracy check must account for it"
         )
+        // Decimal sizes split into TWO tokens at tokenization ("0.5b" ->
+        // ["0", "5b"]) — the bare "0"/"1" survivor isn't itself size-like
+        // under the digits+unit-letter rule, so without the bare-numeric case
+        // in isSizeLikeToken, allSatisfy(isSizeLikeToken) was false and the
+        // guard didn't fire, letting "qwen:0.5b"/"google:0.5b" both collapse
+        // to "0-5b" — the same false-pair failure mode as the integer case,
+        // one decimal notch smaller. Real Ollama legacy tags.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("qwen:0.5b"), "qwen-0-5b",
+            "decimal size 0.5b splits into ['0','5b'] — the vendor drop must be refused here too, not just for integer sizes"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("qwen:1.8b"), "qwen-1-8b",
+            "decimal size 1.8b splits into ['1','8b'] — the vendor drop must be refused here too"
+        )
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("qwen:0.5b"),
+            MatrixRenderer.normalizedModelKey("google:0.5b"),
+            "two different vendors' decimal-size tags must not collide after the vendor drop is refused for both"
+        )
 
         // Positive control: a legitimate vendor drop (real family/size tokens
         // remain) must still happen — this guard must not regress the fix
