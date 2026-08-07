@@ -322,7 +322,5 @@ This recipe deliberately does not cover Gemma, for two reasons that both reduce 
 
 - [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md) — `ToolDefinition`, `ToolRegistry`,
   `TypedToolExecutor`, approval gates, the backend-agnostic dispatch loop.
-- [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) — tool calling on bridged cloud
-  providers.
 - [manifold-llama](https://github.com/ManifoldKit/manifold-llama) — the llama.cpp
   backend and the `LlamaToolMarkers` envelope parser.

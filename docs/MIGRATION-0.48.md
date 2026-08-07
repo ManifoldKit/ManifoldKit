@@ -53,7 +53,7 @@ as an always-compiled module or as a product you import explicitly:
 | `Skills` | `ManifoldSkills` product — link/import it, drop the trait. |
 | `Ollama` | **`ManifoldOllama` product** — always compiled into core / the `ManifoldKit` umbrella; link just `ManifoldOllama` if you want only that family. (`ManifoldBackends` is gone — see [MIGRATION-shims-retired.md](MIGRATION-shims-retired.md).) |
 | `CloudSaaS` | **`ManifoldCloudSaaS` product** (OpenAI Chat + Responses, Anthropic, LM Studio / custom endpoints) — always compiled into core / the `ManifoldKit` umbrella; link just `ManifoldCloudSaaS` for the single family. |
-| `AnyLanguageModel` | **`ManifoldAnyLanguageModel` product** — opt in by importing it (see below). Not part of the `ManifoldKit` umbrella; consumers that never import it never link it. |
+| `AnyLanguageModel` | **`ManifoldAnyLanguageModel` product** at v0.48 — that product was itself retired in #2435; see the note below. |
 
 ```swift,no-build
 // Before (v0.47):
@@ -65,21 +65,16 @@ as an always-compiled module or as a product you import explicitly:
 .package(url: "https://github.com/ManifoldKit/ManifoldKit.git", from: "0.48.0")
 ```
 
-For the AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter, …),
-add the product to your target and import the module:
-
-```swift,no-build
-// target dependencies:
-.product(name: "ManifoldAnyLanguageModel", package: "ManifoldKit")
-```
-
-```swift,no-build
-import ManifoldAnyLanguageModel
-
-let backend = AnyLanguageModelBackend()
-```
-
-See [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) for provider URLs and capability limits.
+For the AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter, …):
+the v0.48-era `ManifoldAnyLanguageModel` product named in the table above was
+itself retired outright in #2435 (zero adoption). Most of those providers —
+xAI, Groq, Mistral, OpenRouter — are OpenAI-compatible endpoints, reachable
+the same way any custom cloud endpoint is: via `APIProvider.custom` + the
+native `OpenAIBackend` pointed at the provider's base URL. Gemini is the
+exception — its own endpoint is not reachable this way; reach Gemini models
+through OpenRouter instead. See
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md)
+for the full replacement recipe.
 
 ---
 

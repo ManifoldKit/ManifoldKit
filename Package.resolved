@@ -1,15 +1,6 @@
 {
-  "originHash" : "ffa70290d5a8f12fcc64bfe0a49c5ee72af5ec1a353b5cbe0c5cd2ddc8940fbc",
+  "originHash" : "38a3576f8948211070b0db093f772d9b2b6102a31c3c4431811546b6fc6e06bc",
   "pins" : [
-    {
-      "identity" : "anylanguagemodel",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/huggingface/AnyLanguageModel",
-      "state" : {
-        "revision" : "f22b78e6b10f67e7d46c67dc59a8a35bc259fbce",
-        "version" : "0.9.0"
-      }
-    },
     {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
@@ -17,24 +8,6 @@
       "state" : {
         "revision" : "a3a85a85214caf642abaa96ae664e4c772a59f6e",
         "version" : "1.4.1"
-      }
-    },
-    {
-      "identity" : "jsonschema",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mattt/JSONSchema",
-      "state" : {
-        "revision" : "4c6f2467d5bc72b062c7a9b7e4cd77a09635ea8b",
-        "version" : "1.3.1"
-      }
-    },
-    {
-      "identity" : "partialjsondecoder",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mattt/PartialJSONDecoder",
-      "state" : {
-        "revision" : "e4d389e6bcc6771bb988d1a8a17695d8bfa97172",
-        "version" : "1.0.0"
       }
     },
     {

@@ -69,6 +69,16 @@ ChatbotUI-iOS migrates its single-field usage from the old context property to t
 
 # Scope Decision — Gemini: bridge, not native backend (2026-06)
 
+> **Superseded (2026-08, #2435).** The AnyLanguageModel bridge named throughout this
+> decision (`ManifoldAnyLanguageModel`) was retired outright for zero adoption. The
+> other bridged providers (xAI, Groq, Mistral, OpenRouter) now reach ManifoldKit via
+> `APIProvider.custom` + the native `OpenAIBackend`; Gemini's own endpoint is not
+> reachable that way — Gemini models are reached through OpenRouter instead. See
+> [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).
+> The "bridge vs. native backend" tradeoff below is a historical record of why a
+> native Gemini backend wasn't written in 2026-06; it no longer describes the
+> current path to Gemini.
+
 **Decision: reach Gemini through the AnyLanguageModel bridge. Do not write a native Gemini backend at this time.**
 
 Context: graduating the AnyLanguageModel bridge to the documented provider-breadth path (issue #1638) raised the question of whether Gemini specifically warrants a native backend. Gemini is high-demand, and its API surfaces thinking/reasoning tokens that the generic bridge flattens (the bridge advertises `supportsThinking = false` and streams plain text only).
@@ -76,7 +86,7 @@ Context: graduating the AnyLanguageModel bridge to the documented provider-bread
 Why bridge:
 
 - **Provider breadth is the goal, not per-provider depth.** The bridge unlocks Gemini, xAI, Groq, Mistral, OpenRouter, and others through one adapter. A native Gemini backend buys depth for one provider at the cost of an Nth cloud backend to maintain (auth, retry, pinning, streaming wire format, tool-call dialect, capability probe, conformance suite).
-- **The current gap is bounded and documented.** Bridged Gemini loses reasoning-token fidelity and ManifoldKit's operational guarantees (pinning, retry, circuit breaker, latest-wins cancellation). Both are stated in [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) so the limitation is visible, not silent.
+- **The current gap is bounded and documented.** Bridged Gemini loses reasoning-token fidelity and ManifoldKit's operational guarantees (pinning, retry, circuit breaker, latest-wins cancellation). Both were stated in the now-removed `docs/PROVIDER-BRIDGE.md` so the limitation was visible, not silent.
 - **No measured consumer demand for native Gemini yet.** Consistent with the "delete what nobody used" discipline of 0.6.0, a native backend is speculative surface area until demand is observed.
 
 Revisit trigger — promote Gemini to a native backend when **either** holds:

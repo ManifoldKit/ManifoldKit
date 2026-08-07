@@ -3,7 +3,6 @@
 AGENTS.md	0	13
 README.md	4	8
 Sources/ManifoldAgentInstructions/ManifoldAgentInstructions.docc/ManifoldAgentInstructions.md	0	1
-Sources/ManifoldAnyLanguageModel/ManifoldAnyLanguageModel.docc/ManifoldAnyLanguageModel.md	0	0
 Sources/ManifoldAppEval/ManifoldAppEval.docc/ManifoldAppEval.md	0	0
 Sources/ManifoldAppIntents/ManifoldAppIntents.docc/ManifoldAppIntents.md	3	3
 Sources/ManifoldBackendTestKit/ManifoldBackendTestKit.docc/ManifoldBackendTestKit.md	2	2
@@ -57,6 +56,7 @@ Sources/ManifoldUIModelManagement/ManifoldUIModelManagement.docc/ModelPickerSamp
 Sources/ManifoldVoice/ManifoldVoice.docc/ManifoldVoice.md	3	3
 Sources/ManifoldVoice/ManifoldVoice.docc/StandaloneSpeechRecognition.md	2	2
 docs/MIGRATION-additive-tool-sources.md	0	0
+docs/MIGRATION-anylanguagemodel-retired.md	0	3
 docs/MIGRATION-api-demotions-0.71.md	0	0
 docs/MIGRATION-background-task-scheduler-removed.md	0	0
 docs/MIGRATION-cloudbackenderror-missingRequiredOverride.md	0	0

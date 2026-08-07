@@ -32,7 +32,6 @@ ManifoldCapability.mcpHost EnumElement
 ManifoldCapability.mlxBackend EnumElement
 ManifoldCapability.modelDownload EnumElement
 ManifoldCapability.ollama EnumElement
-ManifoldCapability.providerBridge EnumElement
 ManifoldCapability.ragKnowledgeBase EnumElement
 ManifoldCapability.rawValue Var
 ManifoldCapability.toolCalling EnumElement

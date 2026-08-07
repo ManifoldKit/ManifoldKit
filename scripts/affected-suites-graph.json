@@ -120,13 +120,6 @@
         "ManifoldContract"
       ]
     },
-    "ManifoldAnyLanguageModel": {
-      "type": "regular",
-      "path": "Sources/ManifoldAnyLanguageModel",
-      "deps": [
-        "ManifoldInference"
-      ]
-    },
     "ManifoldUI": {
       "type": "regular",
       "path": "Sources/ManifoldUI",
@@ -344,7 +337,6 @@
       "type": "test",
       "path": "Tests/ManifoldBackendsTests",
       "deps": [
-        "ManifoldAnyLanguageModel",
         "ManifoldBackendTestKit",
         "ManifoldCloudCore",
         "ManifoldCloudSaaS",

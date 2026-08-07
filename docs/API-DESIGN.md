@@ -205,7 +205,7 @@ seams instead of the type system enforcing it universally.
 > This section stays the source of truth for *why* they're exempt; that page
 > is the source of truth for the assignment itself.
 
-Five products **may break in any minor release, always migration-noted.** This is
+Four products **may break in any minor release, always migration-noted.** This is
 not "internal use only" — they have real external consumers and published surfaces. Breaking
 changes receive the same delete-and-note treatment as everything else pre-1.0, without
 deprecation cycles or api-digester gates slowing removal. The exemption is **documentation-only**:
@@ -218,7 +218,7 @@ catching *accidental* breaks. What the exemption removes is the ceremony around 
 "removed" reports) and a changelog note, same as any other pre-1.0 delete-don't-deprecate
 change (Part 0, principle 9).
 
-Four of the five are exempt because of their **purpose** (developer tooling), not their
+All four are exempt because of their **purpose** (developer tooling), not their
 reachability — an app CAN link them from any target (the surveyed consumers below all link
 from test targets), it just accepts the looser stability promise when it does:
 
@@ -244,17 +244,13 @@ from test targets), it just accepts the looser stability promise when it does:
 (`ManifoldContractTestSupport` is deliberately absent from this list: it is a target, not a
 published product — external pins cannot reach it, so it needs no exemption.)
 
-The fifth is exempt for a different reason — a leaked *dependency* type, not developer tooling:
-
-- **`ManifoldAnyLanguageModel`** — the AnyLanguageModel provider bridge (Gemini, xAI, Groq,
-  Mistral, OpenRouter). `AnyLanguageModelDescriptor.model: any LanguageModel`
-  (`Sources/ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift`) names a protocol
-  owned by the external [AnyLanguageModel](https://github.com/huggingface/AnyLanguageModel)
-  package, pinned pre-1.0 (`from: "0.8.0"`, Package.swift). The module's entire purpose is
-  bridging that dependency, so its public surface can only ever be as stable as the upstream
-  package — a wrapper around `any LanguageModel` would insulate nothing (it breaks whenever
-  the protocol does) while adding a layer every consumer must learn. Its stability tracks
-  AnyLanguageModel's, not ManifoldKit's release cadence (#2209).
+A fifth product, `ManifoldAnyLanguageModel`, was exempt for a different reason — a leaked
+*dependency* type, not developer tooling: its `AnyLanguageModelDescriptor.model: any LanguageModel`
+named a protocol owned by the external, pre-1.0 `AnyLanguageModel` package, so its public
+surface could only ever be as stable as that upstream package (#2209). The product was retired
+outright in #2435 (zero adoption) rather than carried forward, which also retires this
+exemption — see
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).
 
 ## 7b. Experimental products (declared 2026-07-13, v1-rationalisation plan Phase C)
 
@@ -266,8 +262,8 @@ The fifth is exempt for a different reason — a leaked *dependency* type, not d
 Products with **zero real adopters** do not enter the 1.0 stability promise. They may
 break in any minor, always migration-noted — pre-1.0 rules (§4) continue to apply to
 them after core 1.0. Roster: `ManifoldMCP`, `ManifoldMCPHost`,
-`ManifoldAppIntents`, `ManifoldAgentInstructions`, `ManifoldAnyLanguageModel`
-(additionally dependency-coupled per §7 above), `ManifoldTelemetryOTLP`, `ManifoldAppEval`.
+`ManifoldAppIntents`, `ManifoldAgentInstructions`, `ManifoldTelemetryOTLP`,
+`ManifoldAppEval`.
 
 - **Adopter** = a shipping app or companion package that pins the product AND imports
   it from non-test code, verified by grep — not documentation, not examples, not

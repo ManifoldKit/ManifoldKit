@@ -914,7 +914,6 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldOllama",
         "ManifoldCloudSaaS",
         "ManifoldFoundation",
-        "ManifoldAnyLanguageModel",
         "ManifoldMLX",
         "ManifoldLlama",
     ]

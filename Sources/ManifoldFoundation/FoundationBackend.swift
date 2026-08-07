@@ -430,7 +430,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // honoured — silently dropping it would turn a guaranteed-valid
         // expectation into an unchecked one (see the InferenceBackend contract
         // on `GenerationConfig.grammar`). Mirrors the central SSECloudBackend
-        // check and AnyLanguageModelBackend's manual one. Checked before the
+        // check. Checked before the
         // model-loaded guard so a misconfigured request fails fast regardless of
         // load state, and gated on the capability flag so a future SDK that adds
         // grammar support relaxes this automatically when the flag flips true.

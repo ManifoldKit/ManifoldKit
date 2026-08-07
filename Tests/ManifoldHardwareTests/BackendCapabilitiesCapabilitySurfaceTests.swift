@@ -8,9 +8,10 @@ import XCTest
 /// "touch every field" surfaces (`union(_:)`, `updating(...)`) plus
 /// `CodingKeys`/`encode`/`init(from:)`. Nothing in Swift enforces that a
 /// newly added stored field gets threaded through all of them — that's
-/// exactly the bug class that let `AnyLanguageModelBackend.loadModel` silently
-/// zero 7 of 25 fields for months. This file is the enforcement mechanism:
-/// it converts "remember to update N sites" into test truth.
+/// exactly the bug class that let `AnyLanguageModelBackend.loadModel`
+/// (the backend was retired in #2435) silently zero 7 of 25 fields for
+/// months. This file is the enforcement mechanism: it converts "remember to
+/// update N sites" into test truth.
 final class BackendCapabilitiesFieldCompletenessTests: XCTestCase {
 
     /// Every stored property `BackendCapabilities` currently declares.
@@ -102,8 +103,8 @@ final class BackendCapabilitiesUnionAndUpdatingTests: XCTestCase {
 
         XCTAssertEqual(updated.maxContextTokens, 999)
         // Every other field must survive untouched — this is the exact
-        // property `AnyLanguageModelBackend.loadModel` needed and the
-        // fresh-literal rebuild broke.
+        // property the retired `AnyLanguageModelBackend.loadModel` needed
+        // and the fresh-literal rebuild broke.
         var expected = fixture
         expected = BackendCapabilities(
             supportedParameters: expected.supportedParameters,

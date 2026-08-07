@@ -6,7 +6,9 @@
 //     plus the two WWDC 2026 stubs (SystemAIProviderExtension, CoreAI).
 //   - Retired in v0.48: MCP, MCPBuiltinCatalog (PR A2); Voice, Tools,
 //     AppIntents, Skills (PR A3); Ollama, CloudSaaS (PR A4); AnyLanguageModel
-//     (PR A5 — now the always-compiled ManifoldAnyLanguageModel product);
+//     (PR A5 — became the always-compiled ManifoldAnyLanguageModel product,
+//     itself retired outright in #2435 for zero adoption; see
+//     docs/MIGRATION-anylanguagemodel-retired.md);
 //     MLX, Llama, HuggingFace, Fuzz, FoundationOnly (PR C2 — the MLX and
 //     llama.cpp backend families moved to the manifold-mlx / manifold-llama
 //     companion packages, #1749). See docs/MIGRATION-0.48.md.
@@ -84,13 +86,9 @@ let package = Package(
         // family without traits.
         .library(name: "ManifoldOllama", targets: ["ManifoldOllama"]),
         .library(name: "ManifoldCloudSaaS", targets: ["ManifoldCloudSaaS"]),
-        // v0.48 (PR A5): the AnyLanguageModel bridge graduated from the
-        // retired `AnyLanguageModel` trait to a standalone product. The
-        // external AnyLanguageModel package was always resolved (traits gate
-        // compilation, not resolution), so making the edge unconditional
-        // costs consumers nothing; opting in is now an `import
-        // ManifoldAnyLanguageModel` instead of a trait flag.
-        .library(name: "ManifoldAnyLanguageModel", targets: ["ManifoldAnyLanguageModel"]),
+        // ManifoldAnyLanguageModel product removed (#2435): zero adoption
+        // plus dependency coupling to the pre-1.0 external AnyLanguageModel
+        // package. See docs/MIGRATION-anylanguagemodel-retired.md.
         .library(name: "ManifoldUI", targets: ["ManifoldUI"]),
         .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
         .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
@@ -186,7 +184,6 @@ let package = Package(
         // (OrderedCollections); tools-version 6.0 / macOS 13 / iOS 16 all sit below
         // this package's floor. Pin to the 2.x line to track swift-transformers 1.x.
         .package(url: "https://github.com/huggingface/swift-jinja.git", from: "2.0.0"),
-        .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.
@@ -490,22 +487,8 @@ let package = Package(
         // registrar lists (`OllamaBackends` + `CloudSaaSBackends` +
         // `FoundationBackends`). See docs/MIGRATION-shims-retired.md.
 
-        // AnyLanguageModel provider bridge (v0.48, PR A5 — formerly gated by
-        // the retired `AnyLanguageModel` trait inside the umbrella target).
-        // The dependency on the external AnyLanguageModel package is
-        // deliberately UNCONDITIONAL: the package was always resolved even
-        // when the trait was off, and the compiled library is lightweight.
-        // Consumers opt in by linking/importing this product; nothing else
-        // in the package depends on it, so a consumer that never imports it
-        // never links it. See docs/PROVIDER-BRIDGE.md.
-        .target(
-            name: "ManifoldAnyLanguageModel",
-            dependencies: [
-                "ManifoldInference",
-                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
-            ],
-            path: "Sources/ManifoldAnyLanguageModel"
-        ),
+        // ManifoldAnyLanguageModel target removed (#2435): zero adoption
+        // plus dependency coupling. See docs/MIGRATION-anylanguagemodel-retired.md.
         // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
         .target(
             name: "ManifoldUI",
@@ -895,12 +878,6 @@ let package = Package(
                 // use makeInMemoryContainer(), moved here in the 4.4 TestSupport split.
                 "ManifoldPersistenceTestSupport",
                 "ManifoldBackendTestKit",
-                // AnyLanguageModel bridge suites — unconditional since the
-                // trait was retired in v0.48 (PR A5). The direct edge to the
-                // external AnyLanguageModel package supplies the
-                // LanguageModel protocol the test doubles conform to.
-                "ManifoldAnyLanguageModel",
-                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
             ]
         ),
         .testTarget(

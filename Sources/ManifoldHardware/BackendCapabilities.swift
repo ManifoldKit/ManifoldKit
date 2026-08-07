@@ -449,8 +449,10 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// clamping `maxContextTokens` to a runtime-derived plan value) don't
     /// hand-rebuild the full ~25-field literal — a fresh-literal rebuild
     /// silently zeroes every field the call site doesn't list, which is
-    /// exactly the bug this method exists to make impossible (see
-    /// `AnyLanguageModelBackend.loadModel`, which now calls this instead).
+    /// exactly the bug this method exists to make impossible (the backend
+    /// whose `loadModel` motivated this method, `AnyLanguageModelBackend`,
+    /// was retired in #2435; the field-completeness contract stays load-bearing
+    /// for every backend that still hand-assembles `BackendCapabilities`).
     ///
     /// The two `Optional`-typed stored fields (`maxAdvertisedToolCount`,
     /// `toolDialect`) take a double-optional parameter, the standard

@@ -30,10 +30,17 @@ approval, RAG, and cloud providers. You migrate when you outgrow "one model, one
 session" and want a product surface; you stay on raw `FoundationModels` if you
 only ever need the system model and no persistence/UI.
 
-ManifoldKit does not *replace* AnyLanguageModel — it **consumes** it. Providers
-without a native ManifoldKit backend (Gemini, xAI, Groq, Mistral, OpenRouter)
-arrive through the [AnyLanguageModel bridge](PROVIDER-BRIDGE.md), so your
-AnyLanguageModel knowledge transfers directly to configuring those providers.
+ManifoldKit no longer wraps AnyLanguageModel as a dependency — the bridge
+product (`ManifoldAnyLanguageModel`) was retired in #2435 for zero adoption.
+Providers without a native ManifoldKit backend — xAI, Groq, Mistral,
+OpenRouter — reach ManifoldKit the same way any custom cloud endpoint does:
+`APIProvider.custom` + the native `OpenAIBackend` pointed at the provider's
+base URL. **Gemini is the exception**: its own OpenAI-compatible endpoint
+uses a completions path `OpenAIBackend` cannot reach (no `baseURL` fixes
+this — see the migration note), so Gemini models are reached through
+OpenRouter instead, not directly. See
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md)
+for the full recipe and the pinning step every one of these hosts also needs.
 
 ---
 
@@ -44,7 +51,7 @@ AnyLanguageModel knowledge transfers directly to configuring those providers.
 | `LanguageModelSession` | `ChatViewModel` (UI) or `ConversationRuntime` (headless) | Persisted, multi-turn, multi-backend |
 | `session.respond(to:)` / `streamResponse(to:)` | `chatVM.sendMessage(_:)` | Streaming is built into the turn loop |
 | `SystemLanguageModel` (the model) | `InferenceBackend` (the protocol) + `FoundationBackend` (that model) | One of many backends |
-| AnyLanguageModel `LanguageModel` (provider abstraction) | `InferenceBackend` + the AnyLanguageModel **bridge** | MK consumes AnyLanguageModel as a backend |
+| AnyLanguageModel `LanguageModel` (provider abstraction) | `InferenceBackend` + `OpenAIBackend` via `APIProvider.custom` | Not a wrapped dependency — a native client pointed at the provider's OpenAI-compatible endpoint |
 | `Tool` protocol / tool calling | `ToolDefinition` + `ToolRegistry` + `ToolExecutor` | Local **and** cloud, with approval gating |
 | `@Generable` / guided generation | `GenerationRuntimeHints.structuredOutput` (`.gbnf` / `.jsonSchema` / `.guided` / `.jsonPrompting`) | **No `@Generable` macro** — see below. (Pre-v0.69 this lived on `GenerationConfig`; that placement is retired.) |
 | `GenerationOptions` (temperature, etc.) | `GenerationConfig` (temperature, topP, topK, …) | Same knobs, one struct; pass per-request extras via `GenerationRuntimeHints` |
@@ -104,14 +111,29 @@ on older OSes, so it's safe to list unconditionally. Add other registrars
 `MLXBackends`) to the array to offer more models behind the same `ChatViewModel`.
 
 To reach a provider AnyLanguageModel supports but ManifoldKit doesn't implement
-natively, add the bridge product and configure by URL scheme — see
-[PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md):
+natively, configure it as a custom OpenAI-compatible endpoint — see
+[MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md):
 
 ```swift,no-build
-import ManifoldAnyLanguageModel
+import ManifoldInference
 
-// gemini://gemini-2.0-flash?apiKey=KEY  →  one InferenceBackend, same turn loop.
-let backend = AnyLanguageModelBackend()
+// OpenRouter's OpenAI-compatible endpoint — same recipe for xAI, Groq,
+// Mistral, or any other OpenAI-compatible provider. NOTE: no trailing /v1 —
+// OpenAIBackend appends `v1/chat/completions` itself. (Gemini's own endpoint
+// is NOT reachable this way — its completions path doesn't match; reach
+// Gemini models through OpenRouter instead. See the migration note.)
+// One InferenceBackend, same turn loop.
+let endpoint = APIEndpointRecord(
+    name: "OpenRouter",
+    provider: .custom,
+    baseURL: "https://openrouter.ai/api",
+    modelName: "openai/gpt-4o-mini"
+)
+try KeychainService.store(key: "sk-or-v1-...", account: endpoint.keychainAccount)
+try await bootstrap.endpointStore.insertEndpoint(endpoint)
+// Also required before the first request: certificate pinning
+// (PinnedSessionDelegate.pinnedHosts) or the documented opt-out — see
+// MIGRATION-anylanguagemodel-retired.md § Certificate pinning.
 ```
 
 ---
@@ -222,8 +244,9 @@ constrains the *generation*, but does not hand you a typed instance.
 4. Port `Tool`s to `ToolDefinition` + a `ToolRegistry` executor.
 5. Port `@Generable` to `GenerationRuntimeHints.structuredOutput` (raw strategy)
    + manual `JSONDecoder` — no typed-instance API yet ([#1915]).
-6. For a non-native provider AnyLanguageModel supports, add the
-   [AnyLanguageModel bridge](PROVIDER-BRIDGE.md) and configure by URL scheme.
+6. For a non-native provider AnyLanguageModel supports, configure it as a
+   custom OpenAI-compatible endpoint (`APIProvider.custom` + `OpenAIBackend`) —
+   see [MIGRATION-anylanguagemodel-retired.md](MIGRATION-anylanguagemodel-retired.md).
 
 [#1915]: https://github.com/ManifoldKit/ManifoldKit/issues/1915
 
@@ -232,6 +255,6 @@ constrains the *generation*, but does not hand you a typed instance.
 ## See also
 
 - [`QUICKSTART.md`](QUICKSTART.md) — the `quickStart()` and bootstrap paths.
-- [`PROVIDER-BRIDGE.md`](PROVIDER-BRIDGE.md) — AnyLanguageModel configuration.
+- [`MIGRATION-anylanguagemodel-retired.md`](MIGRATION-anylanguagemodel-retired.md) — reaching AnyLanguageModel's providers via a custom OpenAI-compatible endpoint.
 - [`QUICKSTART-TOOLS.md`](QUICKSTART-TOOLS.md) — tool registry + executor.
 - [`POSITIONING.md`](POSITIONING.md) §9 — ManifoldKit vs. AnyLanguageModel.

@@ -44,11 +44,13 @@ public enum ManifoldCapability: String, CaseIterable, Sendable {
     case imageGeneration
     case modelDownload           // HuggingFace background download
     case embeddings
-    // providerBridge is no longer unlocked by any trait — the AnyLanguageModel
-    // bridge is the always-compiled ManifoldAnyLanguageModel product as of
-    // v0.48 (AnyLanguageModel trait retired in PR A5). Case stays: removing
-    // public enum cases is a separate API break with no consumer benefit.
-    case providerBridge          // additional providers via the AnyLanguageModel bridge
+    // providerBridge (the AnyLanguageModel bridge) was removed in #2435:
+    // zero adoption, and the capability it named no longer exists at all —
+    // unlike the cloudOpenAI/mcpClient precedent above, there is no
+    // still-shipping feature this case could describe under a different
+    // access path, so the "removing a case has no consumer benefit" argument
+    // that kept those cases does not apply here. See
+    // docs/MIGRATION-anylanguagemodel-retired.md.
 }
 
 /// A SwiftPM trait declared in `Package.swift` and the capabilities it unlocks.

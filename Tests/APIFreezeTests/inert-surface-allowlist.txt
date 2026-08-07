@@ -15,7 +15,6 @@
 #
 # Format: <SymbolName>  # reason: <one line>
 APIConfigurationView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
-AnyLanguageModelBackend  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
 AppEvalHistoryLedger  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
 AppEvalLedgerEntry  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.
 AppEvalMarkdownRenderer  # reason: experimental (ManifoldAppEval) — golden-eval harness surface consumed by app eval suites; no first-party adopter yet.

@@ -128,10 +128,6 @@ ALLOWLIST_PATHS=(
     # The swiftlint:disable:this force_cast annotation documents the review.
     "ManifoldSecrets/SecureEnclaveKeyManager.swift"
 
-    # URL(string: "https://openrouter.ai/api/v1/")! — compile-time constant
-    # fallback URL for OpenRouter in AnyLanguageModelCapabilities.
-    "ManifoldAnyLanguageModel/AnyLanguageModelCapabilities.swift"
-
     # manifold-tools CLI: URL(string: "http://localhost:11434")! default Ollama
     # base URL; hard-coded constant, always valid.  CLI binary, not SDK product.
     "manifold-tools/main.swift"
@@ -142,7 +138,7 @@ ALLOWLIST_PATHS=(
     "manifold-tools/BFCLCLI.swift"
 
     # URL(string: "https://…")! compile-time-constant API endpoints — the same
-    # reviewed-safe pattern as the HuggingFace/AnyLanguageModel entries above
+    # reviewed-safe pattern as the HuggingFace entry above
     # (HuggingFaceProbe.defaultURL; CloudReranker cohere/jina rerank presets,
     # which already carry an inline "safe: constant literal URL" comment). These
     # were only invisible to the detector before the `://` comment-regex
