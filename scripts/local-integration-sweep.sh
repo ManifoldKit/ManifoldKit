@@ -787,14 +787,29 @@ PY
 # specification of every decoy tool in DecoyTools.swift. For each `def(name,
 # description, [(param, paramDescription), ...], required: [...])` call, the
 # byte length of the ENTIRE Swift literal span (name + description + every
-# param name/description) is used as a size proxy — not a byte-perfect
-# reconstruction of the JSON schema `--extra-tools` actually sends (that would
-# require touching Sources/ or wire-capturing live Ollama traffic mid-sweep,
-# both out of scope for a shell-only lane), but a real, per-tool, monotonic-
-# with-complexity number derived from the SHIPPED spec, not a guess. This is
-# what makes the estimate actually VARY across decoy levels — see the
-# comment on `append_cell_stats` below for why a flat guess wouldn't. The six
-# built-in reference tools (now/calc/read_file/list_dir/sample_repo_search/
+# param name/description) is used as a size proxy.
+#
+# HONESTY DISCLOSURE — this is a MODELED estimate, NOT captured at emission.
+# The rigorous fix is to capture the actual serialized tool-schema payload at
+# the moment it is handed to the backend (a wire-level capture between
+# manifold-tools and Ollama, or an instrumentation point inside Sources/).
+# Both were deliberately NOT built here: a hand-written proxy sitting in the
+# live request path is exactly the kind of untested machinery that could
+# corrupt tonight's actual measurement run if it mishandles Ollama's
+# streaming NDJSON response, and Sources/ is out of this scripts-only lane's
+# scope. This static, per-tool, source-derived number is real (it reads the
+# SHIPPED spec, not a flat guess) and DOES genuinely vary with decoy level —
+# verified: a synthetic 1-tool vs 4-tool cell held promptTextTokenEstimate
+# constant (4 vs 4) while promptTokenEstimateTotal moved 59 -> 198 — but it
+# is a model of the payload, not a measurement of it, and will silently drift
+# from the real wire size if a tool's schema changes shape (e.g. adds an enum
+# constraint) without a corresponding change to this proxy's byte-length
+# logic. Treat every `*SchemaBytesEstimate`/`*SchemaTokenEstimate` column as
+# directional evidence that the confound moves with level, not as the
+# request's true size. A wire-capture is the tracked follow-up. This is what
+# makes the estimate actually VARY across decoy levels — see the comment on
+# `append_cell_stats` below for why a flat guess wouldn't. The six built-in
+# reference tools (now/calc/read_file/list_dir/sample_repo_search/
 # http_get_fixture) get a flat documented constant: they are the scenario's
 # REQUIRED set, constant per scenario regardless of decoy level, so their
 # precision doesn't affect whether the curve varies with level — only its
@@ -912,6 +927,44 @@ with open(out_path, "a") as fh:
     for r in rows:
         fh.write("\t".join(str(x) for x in r) + "\n")
 PY
+}
+
+# Assert the CELL_STATS header's column count equals every DATA row's column
+# count. A silent header/row arity mismatch (the header changed without
+# updating append_cell_stats' tuple, or vice versa) still renders as a
+# well-formed TSV and still passes a bare "more than 1 line" liveness check —
+# every column after the divergence point silently shifts, with no error.
+# Checked EXACTLY, not merely "columns exist".
+# args: cell-stats-tsv-path
+assert_cell_stats_arity() {
+  local path="$1"
+  [ -s "$path" ] || return 0
+  local result
+  result="$(python3 - "$path" <<'PY'
+import sys
+path = sys.argv[1]
+with open(path) as fh:
+    lines = [ln.rstrip("\n") for ln in fh if ln.strip()]
+if not lines:
+    print("OK:0:0")
+    raise SystemExit
+header_n = len(lines[0].split("\t"))
+bad = [i for i, ln in enumerate(lines[1:], start=2) if len(ln.split("\t")) != header_n]
+if bad:
+    print("MISMATCH:%d:%s" % (header_n, ",".join(str(i) for i in bad[:10])))
+else:
+    print("OK:%d:%d" % (header_n, len(lines) - 1))
+PY
+)"
+  case "$result" in
+    OK:*)
+      SUMMARY_LANES="${SUMMARY_LANES}cell-stats: arity OK — header and all $( printf '%s' "$result" | cut -d: -f3 ) data row(s) have $( printf '%s' "$result" | cut -d: -f2 ) columns\n"
+      ;;
+    MISMATCH:*)
+      SUMMARY_LANES="${SUMMARY_LANES}cell-stats: ARITY MISMATCH — header has $( printf '%s' "$result" | cut -d: -f2 ) columns but row(s) [$( printf '%s' "$result" | cut -d: -f3 )] do not; every column after the divergence is silently shifted -> $path\n"
+      FAILED_LANES="${FAILED_LANES}cell-stats: header/row arity mismatch\n"
+      ;;
+  esac
 }
 
 # Assert no emitted record still carries the "unknown" coreCommit placeholder.
@@ -1042,6 +1095,87 @@ for key in sorted(per_cell, key=lambda k: (str(k[0]), str(k[1]), str(k[2]), str(
     lo, hi, mean = min(vals), max(vals), sum(vals) / len(vals)
     print("%s\t%s\t%s\t%s\t%s\t%d\t%.3f\t%.3f\t%.3f\t%.3f" % (
         key[0], key[1], key[2], key[3], key[4], len(vals), lo, hi, hi - lo, mean))
+PY
+}
+
+# Decoy-grab IDENTITY vs decoyLevel — WHICH tool got grabbed on an
+# abstention-class scenario (requiredTools == []), not just whether one did.
+# `ConformanceRecord` has no `calledTools` field, so this reads `tool_call`
+# events straight off the raw per-cell transcripts (encoded L<level>-R<rep>
+# in the filename), independent of report_degradation_curves' grab-RATE
+# series above.
+#
+# REPORTING CONSTRAINT, from an early live check: abstention can have a
+# NON-ZERO d0 BASELINE — a model can grab a real (non-decoy) tool even with
+# ZERO decoys advertised, so the grab-rate curve is NOT anchored at an
+# implied zero. Report every level this data covers, d0 included, as an
+# explicit point in the series — never let a reader infer a "0% at d0" that
+# wasn't measured. Because the level can change WHICH tool gets grabbed
+# rather than WHETHER one does, the identity breakdown is often the more
+# interesting result than the rate alone (e.g. d0 grabs a different tool
+# than d20) — printing only "grabbed=1.0" at every level would throw that
+# finding away.
+# args: label  transcript-glob-dir  transcript-glob-pattern
+report_decoy_grab_identity() {
+  local label="$1" dir="$2" pattern="$3"
+  python3 - "$label" "$dir" "$pattern" <<'PY'
+import glob, json, os, re, sys
+from collections import defaultdict
+label, dir_, pattern = sys.argv[1], sys.argv[2], sys.argv[3]
+by_level = defaultdict(lambda: {"n": 0, "grabbed": 0, "tools": defaultdict(int)})
+for f in sorted(glob.glob(os.path.join(dir_, pattern))):
+    m = re.search(r"-L(\d+)-R\d+\.jsonl$", f)
+    if not m:
+        continue
+    level = int(m.group(1))
+    abstention_scenarios = set()
+    called = defaultdict(set)
+    try:
+        with open(f) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                kind = obj.get("kind")
+                scenario = obj.get("scenario")
+                if kind == "prompt" and obj.get("requiredTools") == []:
+                    abstention_scenarios.add(scenario)
+                elif kind == "tool_call":
+                    called[scenario].add(obj.get("name", "?"))
+    except FileNotFoundError:
+        continue
+    for scenario in abstention_scenarios:
+        d = by_level[level]
+        d["n"] += 1
+        names = called.get(scenario, set())
+        if names:
+            d["grabbed"] += 1
+            for nm in names:
+                d["tools"][nm] += 1
+if by_level:
+    print("-- %s: decoy-grab IDENTITY vs decoyLevel (abstention scenarios; WHICH tool, not just whether) --" % label)
+    print("decoyLevel\tn_abstention_runs\tgrabRate\ttoolsGrabbed(name:count,...)")
+    for level in sorted(by_level):
+        d = by_level[level]
+        if d["n"] == 0:
+            continue
+        rate = d["grabbed"] / d["n"]
+        tools_str = ",".join("%s:%d" % (nm, c) for nm, c in sorted(d["tools"].items(), key=lambda kv: -kv[1])) or "(none)"
+        print("%s\t%d\t%.3f\t%s" % (level, d["n"], rate, tools_str))
+    print("NOTE: report every level's value explicitly, d0 included -- a d0 grab")
+    print("means a REAL (non-decoy) tool was called with ZERO decoys advertised;")
+    print("do not read a missing/blank d0 as an assumed 0%. The decoy pool is")
+    print("FIXED-ORDER and not reworded to dodge lexical overlap with scenario")
+    print("prompts (e.g. 'define'/'non-native English speaker' sits near")
+    print("get_definition/translate_text in the pool) -- WHICH decoy gets")
+    print("grabbed at a level may reflect lexical proximity to the prompt as")
+    print("much as decoy pressure. Per-repeatIndex pool shuffling would remove")
+    print("this confound; it needs CLI support across all three tool CLIs and")
+    print("is tracked as a follow-up, not implemented here.")
 PY
 }
 
@@ -1231,9 +1365,18 @@ if have_lane collate; then
       # that pin bump lands, every cell below fails fast with a CLI parse
       # error rather than silently measuring the wrong thing.
       # `--core-commit` is manifold-mlx#178's fix (flag -> $MANIFOLD_CORE_COMMIT
-      # env var, exported at the top of this script -> a documented "unknown"
-      # placeholder) — passed explicitly here rather than relying on the env
-      # fallback so the value this leg stamps is unambiguous.
+      # env var -> a documented "unknown" placeholder). CONFIRMED (by live
+      # execution against the real binary) NOT YET PRESENT on the
+      # manifold-tools-mlx this run builds: passing `--core-commit` there
+      # hard-fails every cell with rc=2 "unknown argument: --core-commit",
+      # zeroing the whole MLX leg (SKIP-NO-WORK) — a functional regression,
+      # not a documentation gap. DELIBERATELY NOT passing the flag here.
+      # MANIFOLD_CORE_COMMIT is still `export`ed at the top of this script, so
+      # once manifold-mlx#182 lands and this leg's binary reads either the
+      # flag OR the env var, real records start flowing with no script change
+      # needed. Until then this leg's records legitimately carry the
+      # "unknown" placeholder — assert_no_placeholder_core_commit (below)
+      # is expected to flag it, which is the honest state, not a bug.
       for LEVEL in $(printf '%s' "$DECOY_LEVELS" | tr ',' ' '); do
         log "=== [collate] $(date +%H:%M:%S) MLX leg decoyLevel=$LEVEL x ${SWEEP_REPEATS} repeat(s) on $COLLATE_MLX_MODEL ==="
         # ONE run_capped_lane invocation per (leg=mlx x decoyLevel) — same
@@ -1248,7 +1391,6 @@ if have_lane collate; then
             # exactly the divergence this lane hunts), so keep going.
             '$MLX_TOOL_BIN' --model '$COLLATE_MLX_MODEL' --scenario all \
               --extra-tools '$LEVEL' --repeat-index \"\$REP\" \
-              --core-commit '$MANIFOLD_CORE_COMMIT' \
               --output \"\$T\" --emit-records \"\$R\"
           done
         "
@@ -1279,24 +1421,34 @@ if have_lane collate; then
           if "$EVAL_BIN_C" collate "$OLLAMA_RECORDS" "$MLX_RECORDS" \
                --out "$XRUNTIME_MD" --title "Runtime comparison — $COLLATE_FAMILY" \
                >"$COLLATE_DIR/collate.log" 2>&1; then
-            # CAVEAT (not this lane's own defect — flagged pending a companion
-            # fix): core's DecoyTools pool has 46 entries; the manifold-mlx /
-            # manifold-llama companions still carry their own stale ~24-entry
-            # local copies with only partial overlap (confirmed on the llama
-            # side: `--extra-tools 10` there actually advertises decoyLevel=7,
-            # because 4 of core's first 10 decoy names aren't in its local
-            # pool). Until the companions migrate to consuming core's shared
-            # DecoyTools, this ladder's "same nominal decoyLevel" label does
-            # NOT mean "same advertised tool set" across legs — remove this
-            # note once that migration lands.
+            # CAVEAT (not this lane's own defect — flagged pending companion
+            # version-pin advances): even after a companion migrates to
+            # consuming core's shared DecoyTools (llama has: decoyLevel went
+            # 7 -> 10, correct), the pool can still diverge whenever the
+            # companion's pinned core version predates a name change on core
+            # main — llama pins ManifoldKit v0.75.0, whose DecoyTools names
+            # positions 1/3 differently than core's live main after a rename
+            # (get_weather/search_web -> get_air_quality/get_movie_showtimes),
+            # so 8/10 of its first-10 names match, not 10/10. This SELF-HEALS
+            # when the companion's pin advances — no code change needed — but
+            # it means legs can still advertise non-identical distractors at
+            # the same nominal decoyLevel. State the mechanism, not just the
+            # symptom: remove/narrow this note once every leg's pinned core
+            # version matches (verify per-run, not assumed fixed).
             {
               echo
-              echo "> **Caveat:** the Ollama and MLX legs above may advertise DIFFERENT"
-              echo "> decoy tool sets at the same nominal \`decoyLevel\` — core's shared"
-              echo "> \`DecoyTools\` pool and the companion repos' local copies have not yet"
-              echo "> converged. Level-for-level comparison across legs is NOT yet honest;"
-              echo "> treat each leg's own within-leg curve as the reliable signal until"
-              echo "> the companions migrate."
+              echo "> **Caveat:** the Ollama and MLX/llama legs above may advertise"
+              echo "> DIFFERENT decoy tool sets at the same nominal \`decoyLevel\` —"
+              echo "> even where a companion consumes core's shared \`DecoyTools\`,"
+              echo "> its PINNED core version can differ from the core commit this"
+              echo "> sweep measures, and a decoy-name rename on core main between"
+              echo "> those two points changes which names appear at a given pool"
+              echo "> position (observed: llama pinned v0.75.0 vs core main —"
+              echo "> positions 1/3 of the first 10 names differ). Level-for-level"
+              echo "> comparison across legs is NOT yet guaranteed honest; treat"
+              echo "> each leg's own within-leg curve as the reliable signal, and"
+              echo "> check each leg's pinned core version before trusting a"
+              echo "> cross-leg comparison at a specific decoyLevel."
             } >> "$XRUNTIME_MD"
             # Rendering is NOT the same as comparing. The renderer only emits a
             # cross-runtime section when >=2 legs share a normalized model key,
@@ -1681,6 +1833,12 @@ fi
   echo "scenario's system/user text is fixed — only the tool array grows), so"
   echo "watch \`promptTokenEstimateTotal\` = text + \`toolSchemaTokenEstimate\`,"
   echo "the latter built from each tool's real shipped spec in DecoyTools.swift."
+  echo "HONESTY: \`toolSchema*Estimate\` is a MODELED size (a static per-tool"
+  echo "proxy derived from the Swift source), NOT CAPTURED AT EMISSION — it is"
+  echo "not a wire-level measurement of what Ollama actually received. A wire"
+  echo "capture is the rigorous fix and is tracked as a follow-up, deliberately"
+  echo "not attempted here to avoid putting untested proxy machinery in"
+  echo "tonight's live request path."
   echo "All \`*TokenEstimate\` columns are chars/4 heuristics over real source"
   echo "content (script-side, not a real tokenizer count, not a wire capture)"
   echo "— directional, not authoritative. \`backend\`/\`model\` are read straight"
@@ -1691,6 +1849,11 @@ fi
   # numbers sit side by side for comparison — now genuinely distinguishable
   # by the backend/model columns rather than colliding on (scenario,
   # decoyLevel, repeatIndex) alone.
+  # A bare "more than 1 line" check would pass even with a header/row arity
+  # mismatch (every column silently shifted past the divergence point) — the
+  # real liveness check is assert_cell_stats_arity, called once the file is
+  # complete, whose result lands in the Lane summary below.
+  assert_cell_stats_arity "$OUT/matrix/cell-stats.tsv"
   if [ -s "$OUT/matrix/cell-stats.tsv" ] && [ "$(grep -c . "$OUT/matrix/cell-stats.tsv")" -gt 1 ]; then
     echo '```'
     cat "$OUT/matrix/cell-stats.tsv"
@@ -1710,11 +1873,13 @@ fi
   if [ -s "$OUT/matrix/records.json" ]; then
     echo '```'
     report_degradation_curves "matrix(ollama)" "$OUT/matrix/records.json"
+    report_decoy_grab_identity "matrix(ollama)" "$OUT/matrix" "transcript-L*-R*.jsonl"
     echo '```'
   fi
   if [ -s "$OUT/collate/mlx-records.json" ]; then
     echo '```'
     report_degradation_curves "collate(mlx)" "$OUT/collate/mlx-records.json"
+    report_decoy_grab_identity "collate(mlx)" "$OUT/collate" "mlx-transcript-L*-R*.jsonl"
     echo '```'
   fi
   if [ ! -s "$OUT/matrix/records.json" ] && [ ! -s "$OUT/collate/mlx-records.json" ]; then
