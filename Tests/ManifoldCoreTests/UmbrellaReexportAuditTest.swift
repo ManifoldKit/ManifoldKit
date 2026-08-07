@@ -10,13 +10,15 @@ import Foundation
 /// only symbols *declared* in a module. A module that re-exports another via
 /// `@_exported import` exposes the re-exported module's public surface too,
 /// but none of it is *declared* there, so none of it lands in that module's
-/// `api-surface-baseline/*.txt`. `grep -ic skill
-/// Tests/APIFreezeTests/api-surface-baseline/ManifoldKit.txt` returns 0 even
-/// though `ManifoldSkills` has been re-exported via `ManifoldKit` for
-/// months. So deleting an `@_exported import` line — an instant source
+/// `api-surface-baseline/*.txt`. The motivating case: `ManifoldSkills` was
+/// re-exported via `ManifoldKit` for months, yet `grep -ic skill
+/// Tests/APIFreezeTests/api-surface-baseline/ManifoldKit.txt` returned 0 the
+/// whole time. So deleting an `@_exported import` line — an instant source
 /// break for every consumer that reaches the re-exported module's symbols
 /// through the re-exporting one — sails past api-digester untouched. Found
-/// reviewing PR #2419, which deletes `Sources/ManifoldKit/Exports+Skills.swift`.
+/// reviewing PR #2419, which deleted
+/// `Sources/ManifoldKit/Exports+Skills.swift` with no gate objecting; the
+/// module itself was then retired in #2434.
 ///
 /// This is not only a `ManifoldKit`-umbrella problem. `ManifoldContract`
 /// re-exports the tool-calling value types from `ManifoldHardware` (and
@@ -34,7 +36,8 @@ import Foundation
 /// `@_exported import <Module>` statements, grouping findings by the
 /// re-exporting module (the first path component under `Sources/`) rather
 /// than by file — the same module's re-export set can be spread across
-/// multiple files (`ManifoldKit/Exports.swift` + `Exports+Skills.swift`).
+/// multiple files (e.g. `ManifoldKit/Exports.swift`'s `#if BUILDING_DOCC`
+/// and `#else` branches).
 /// The resulting `[reexportingModule: Set<reexportedModule>]` map is
 /// compared against ``expectedReexports``, the pinned baseline. A module
 /// that stops re-exporting something in the baseline, or starts re-exporting
@@ -94,7 +97,10 @@ final class UmbrellaReexportAuditTest: XCTestCase {
             "ManifoldCloudSaaS",
             "ManifoldCloudCore",
             "ManifoldUI",
-            "ManifoldSkills",
+            // `ManifoldSkills` was re-exported here until #2434 retired the
+            // module outright; its surviving AGENTS.md loader ships as
+            // `ManifoldAgentInstructions`, which is deliberately *linked*
+            // rather than re-exported (see Sources/ManifoldKit/Exports.swift).
         ],
         // Re-exports ManifoldInference so DefaultWebSearchRuntime's port
         // conformance (an un-gated library->library edge, see Package.swift)
