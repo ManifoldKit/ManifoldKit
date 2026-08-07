@@ -112,6 +112,58 @@ final class ConformanceRecordEmitTests: XCTestCase {
         XCTAssertEqual(rec.decoyLevel, n, "pool-named decoys must count toward decoy pressure")
     }
 
+    // MARK: (b.2) --repeat-index recovery
+
+    /// `repeatIndex` must flow from the transcript's per-record stamp into the
+    /// emitted record instead of the pre-#2450 hardcoded `0`.
+    func testRepeatIndexFlowsFromTranscriptStampIntoRecord() throws {
+        let jsonl = """
+        {"kind":"prompt","scenario":"rep","user":"x","requiredTools":["now"],"repeatIndex":2}
+        {"kind":"tool_call","scenario":"rep","name":"now","arguments":"{}","repeatIndex":2}
+        {"kind":"assertion","scenario":"rep","passed":true,"message":"Scenario requires `now` to actually be dispatched — dispatched","repeatIndex":2}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "rep")
+        XCTAssertEqual(rec.repeatIndex, 2)
+    }
+
+    /// A transcript that never stamps `repeatIndex` (older runs, or a caller
+    /// that didn't pass `--repeat-index`) must still resolve to `0` — the
+    /// pre-existing default, preserved for backward compatibility.
+    func testMissingRepeatIndexDefaultsToZero() throws {
+        let jsonl = """
+        {"kind":"prompt","scenario":"rep-default","user":"x","requiredTools":["now"]}
+        {"kind":"tool_call","scenario":"rep-default","name":"now","arguments":"{}"}
+        {"kind":"assertion","scenario":"rep-default","passed":true,"message":"Scenario requires `now` to actually be dispatched — dispatched"}
+        """
+        let rec = try record(ConformanceScorer.records(jsonl: jsonl, context: context()), scenario: "rep-default")
+        XCTAssertEqual(rec.repeatIndex, 0)
+    }
+
+    /// Two repeats of the same (backend × model × quant × scenario) cell
+    /// appended into ONE transcript — exactly what `--append` + `--repeat-index`
+    /// produces across a sweep — must resolve to two SEPARATE records, not
+    /// collapse into a single merged accumulator. This is the test that
+    /// matters: without `repeatIndex` in the grouping key, repeat 1's tool
+    /// call and repeat 2's assertion would silently merge into one row.
+    func testDistinctRepeatIndicesInOneTranscriptStayAsSeparateRecords() throws {
+        let jsonl = """
+        {"kind":"prompt","scenario":"rep-multi","backend":"ollama","model":"m","requiredTools":["now"],"repeatIndex":0}
+        {"kind":"tool_call","scenario":"rep-multi","backend":"ollama","model":"m","name":"now","arguments":"{}","repeatIndex":0}
+        {"kind":"assertion","scenario":"rep-multi","backend":"ollama","model":"m","passed":true,"message":"Scenario requires `now` to actually be dispatched — dispatched","repeatIndex":0}
+        {"kind":"prompt","scenario":"rep-multi","backend":"ollama","model":"m","requiredTools":["now"],"repeatIndex":1}
+        {"kind":"assertion","scenario":"rep-multi","backend":"ollama","model":"m","passed":false,"message":"Scenario requires `now` to actually be dispatched — never dispatched","repeatIndex":1}
+        """
+        let records = ConformanceScorer.records(jsonl: jsonl, context: context())
+        let matching = records.filter { $0.scenario == "rep-multi" }
+        XCTAssertEqual(matching.count, 2, "distinct repeat indices must resolve to distinct records")
+
+        let repeat0 = try XCTUnwrap(matching.first { $0.repeatIndex == 0 })
+        XCTAssertEqual(repeat0.verdict, .pass, "repeat 0 dispatched the tool and should read as pass")
+
+        let repeat1 = try XCTUnwrap(matching.first { $0.repeatIndex == 1 })
+        XCTAssertEqual(repeat1.verdict, .fail, "repeat 1 never dispatched — must NOT inherit repeat 0's pass")
+    }
+
     // MARK: (c) #2087 — a run that never produced a model turn is a hole, not a zero
 
     /// A backend-rejected run (nonexistent model → 404) leaves a transcript with

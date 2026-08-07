@@ -39,6 +39,34 @@ public struct Scenario: Codable, Sendable, Equatable {
         /// - `"toolInvoked"` — the scenario must have dispatched the tool named `value` at least once.
         ///   This is the honesty gate: a scenario that only asserts `containsLiteral` can silently
         ///   pass when a model hallucinates the expected answer without actually calling the tool.
+        /// - `"toolNotInvoked"` — the inverse honesty gate, for scenarios where the *correct*
+        ///   behaviour is abstention. When `value` names a tool, that specific tool must never have
+        ///   been dispatched (useful for asserting a decoy was never called — the sharpest signal
+        ///   in a distractor sweep, since it measures precision directly). When `value` is omitted,
+        ///   NO tool at all — real or decoy — may have been dispatched; use this for a scenario whose
+        ///   correct answer requires no tool call, so a model that reaches for anything (including a
+        ///   distractor it was never asked about) fails loudly instead of the failure being invisible
+        ///   behind a passing `containsLiteral`.
+        ///
+        ///   **`requiredTools` trap (no compiler catches this):** `requiredTools` does double duty
+        ///   as both the advertisement filter (`ScenarioRunner` only forwards those tool
+        ///   definitions when decoy pressure is off) AND the confusion-matrix expected-positives
+        ///   set (`ConformanceScorer`'s TP/FP/FN). A tool named in a `toolNotInvoked` assertion is
+        ///   a NEGATIVE and must NEVER also appear in `requiredTools` — putting it there scores the
+        ///   scenario's own correct trajectory (never calling it) as a false negative, and a model
+        ///   that takes the bait as a clean true positive, which inverts the verdict/F1 relationship
+        ///   the scenario exists to measure. (`schema-beats-prose-resistance` is the worked example
+        ///   — see #2450.)
+        ///
+        ///   **Message-wording trap:** never phrase a `toolNotInvoked` message starting with
+        ///   `"Scenario requires "` — `ConformanceScorer.expectedToolsFromAssertion` recovers
+        ///   backtick-quoted tool names from any assertion message with that prefix (a fallback for
+        ///   companion transcripts that omit `requiredTools`), so a message like `"Scenario requires
+        ///   `get_current_date` to never be dispatched"` gets the negated tool parsed straight into
+        ///   the expected-POSITIVES set — the opposite of what the assertion means. Core is immune
+        ///   (it always emits `requiredTools` explicitly, so the recovery fallback never triggers),
+        ///   but a companion transcript that omits it is not. `ScenarioRecoveryTests` asserts every
+        ///   built-in `toolNotInvoked` message yields nothing from `expectedToolsFromAssertion`.
         /// - `"toolResultContains"` — at least one result for tool `value` must contain every
         ///   string in `values`.
         /// - `"toolResultErrorKind"` — at least one result for tool `value` must have errorKind
@@ -129,6 +157,19 @@ public enum AssertionEvaluator {
             let detail = passed ? "dispatched" : "never dispatched — final answer may be hallucinated"
             let label = assertion.message ?? "tool '\(name)' invoked"
             return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
+
+        case "toolNotInvoked":
+            if let name = assertion.value {
+                let passed = !toolsInvoked.contains(name)
+                let detail = passed ? "correctly withheld" : "dispatched — should have been withheld"
+                let label = assertion.message ?? "tool '\(name)' not invoked"
+                return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
+            } else {
+                let passed = toolsInvoked.isEmpty
+                let detail = passed ? "no tool dispatched" : "dispatched \(toolsInvoked) — expected total abstention"
+                let label = assertion.message ?? "no tool invoked"
+                return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
+            }
 
         case "toolResultContains":
             guard let name = assertion.value else {

@@ -47,6 +47,7 @@ struct CLI {
     var list: Bool { common.list }
     var extraTools: Int { common.extraTools }
     var fixturesRoot: URL? { common.fixturesRoot }
+    var repeatIndex: Int { common.repeatIndex }
 
     static func defaultOutputURL() -> URL {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -170,6 +171,10 @@ struct CLI {
           --extra-tools <N>     Register N additional plausible-but-irrelevant decoy tools so the
                                 model must select the correct tool under distractor pressure.
                                 Default: 0 (no decoys). Decoys are recorded in the transcript prompt.
+          --repeat-index <N>    Which repetition of an otherwise-identical (decoy level × scenario)
+                                cell this invocation is. Stamped on every transcript record (like
+                                backend/model/quant) so `score --emit-records` recovers it instead of
+                                collating repeats by hand. Default: 0 (a single, unrepeated run).
           --list                Print available scenarios and exit.
           --help                Show this text.
 
@@ -646,6 +651,7 @@ func runCLI() async -> Int32 {
             backend: cli.backend.rawValue,
             model: resolvedModel,
             quant: quantLabel(from: resolvedModel),
+            repeatIndex: cli.repeatIndex,
             append: cli.append || !isFirstRun
         )
         isFirstRun = false
@@ -768,6 +774,13 @@ enum MockFactory {
                 .tokens(["apples and rice cost 19.75; do not buy saffron."])
             ])
         }
+        // schema-beats-prose-resistance needs no special case: requiredTools
+        // is ["now"] only (get_current_date must stay OUT of requiredTools —
+        // it's the negative the toolNotInvoked assertion checks, not an
+        // expected positive), so toolName resolves to "now" and the `default:`
+        // arm below already scripts exactly the correct trajectory (a single
+        // `now` call, quoting the fixture verbatim) — no attempt at the
+        // nonexistent nudged name at all.
         switch toolName {
         case "calc":
             args = #"{"a":7823,"op":"*","b":41}"#
@@ -795,6 +808,15 @@ enum MockFactory {
                     .toolCall(name: "read_file", arguments: #"{"path":"notes/standup.md"}"#),
                     .tokens(["Aurora shipped the tool harness; Beacon is blocked on MCP credentials."])
                 ])
+            } else if scenario.id == "handoff-note-lookup" {
+                // The mock can't discover the filename from a real list_dir call, so
+                // it scripts the exact sequence a correct model produces: list, then
+                // read the name the list revealed, then quote the seeded nonce.
+                return ScriptedBackend(turns: [
+                    .toolCall(name: "list_dir", arguments: #"{"dir":"handoff"}"#),
+                    .toolCall(name: "read_file", arguments: #"{"path":"handoff/note-7f3a91.md"}"#),
+                    .tokens(["The handoff code is HANDOFF-CODE-93217."])
+                ])
             } else {
                 args = #"{"dir":"."}"#
                 finalAnswer = "a.txt b.txt c.txt example.txt"
@@ -812,6 +834,9 @@ enum MockFactory {
     private static func toolFreeAnswer(for scenario: Scenario) -> String {
         if scenario.id == "structured-json-extraction" {
             return #"{"invoice_id":"INV-754-CORE","total":123.45,"currency":"USD"}"#
+        }
+        if scenario.id == "abstention-definition" {
+            return "Ubiquitous means present or found everywhere at once."
         }
         return ""
     }

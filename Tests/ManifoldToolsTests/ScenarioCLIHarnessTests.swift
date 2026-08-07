@@ -16,6 +16,7 @@ final class ScenarioCLIHarnessTests: XCTestCase {
         XCTAssertNil(options.fixturesRoot)
         XCTAssertEqual(options.extraTools, 0)
         XCTAssertFalse(options.list)
+        XCTAssertEqual(options.repeatIndex, 0)
         XCTAssertTrue(remainder.isEmpty)
     }
 
@@ -25,6 +26,7 @@ final class ScenarioCLIHarnessTests: XCTestCase {
             "--output", "/tmp/out.jsonl",
             "--fixtures-root", "/tmp/fixtures",
             "--extra-tools", "3",
+            "--repeat-index", "2",
             "--list",
         ]
         guard case .options(let options, let remainder) = ScenarioCLIHarness.parseCommonFlags(
@@ -36,8 +38,25 @@ final class ScenarioCLIHarnessTests: XCTestCase {
         XCTAssertEqual(options.output, URL(fileURLWithPath: "/tmp/out.jsonl"))
         XCTAssertEqual(options.fixturesRoot, URL(fileURLWithPath: "/tmp/fixtures", isDirectory: true))
         XCTAssertEqual(options.extraTools, 3)
+        XCTAssertEqual(options.repeatIndex, 2)
         XCTAssertTrue(options.list)
         XCTAssertTrue(remainder.isEmpty)
+    }
+
+    func test_parseCommonFlags_missingRepeatIndexValueFails() {
+        guard case .failure = ScenarioCLIHarness.parseCommonFlags(
+            ["--repeat-index"], defaultOutput: URL(fileURLWithPath: "/tmp/default.jsonl")
+        ) else {
+            return XCTFail("expected .failure for --repeat-index with no value")
+        }
+    }
+
+    func test_parseCommonFlags_negativeRepeatIndexFails() {
+        guard case .failure = ScenarioCLIHarness.parseCommonFlags(
+            ["--repeat-index", "-1"], defaultOutput: URL(fileURLWithPath: "/tmp/default.jsonl")
+        ) else {
+            return XCTFail("expected .failure for negative --repeat-index")
+        }
     }
 
     func test_parseCommonFlags_passesThroughUnknownFlagsInOrder() {

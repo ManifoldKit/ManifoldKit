@@ -53,6 +53,47 @@ final class ScenarioRecoveryTests: XCTestCase {
         }
     }
 
+    /// Mirror guard, opposite direction (#2450): a `toolNotInvoked` assertion
+    /// message must NOT be recoverable as an expected-POSITIVE tool by
+    /// `expectedToolsFromAssertion`. That recovery fallback pattern-matches
+    /// any message starting with "Scenario requires " — a `toolNotInvoked`
+    /// message worded that way (e.g. "Scenario requires `x` to never be
+    /// dispatched") would get its named tool parsed straight into the
+    /// expected-positives set, which is the OPPOSITE of what the assertion
+    /// means. Core is unaffected in practice (it always emits `requiredTools`
+    /// explicitly, so the fallback never triggers here), but a companion
+    /// transcript that omits `requiredTools` is not — this is a real
+    /// landmine for a future built-in scenario or a companion's own corpus.
+    func testEveryBuiltInToolNotInvokedAssertionIsNotMisrecoveredAsAPositive() throws {
+        let scenarios = try ScenarioLoader.loadBuiltIn()
+        XCTAssertFalse(scenarios.isEmpty, "no built-in scenarios loaded")
+
+        var sawAtLeastOneToolNotInvoked = false
+        for scenario in scenarios {
+            for assertion in scenario.assertions where assertion.kind == "toolNotInvoked" {
+                sawAtLeastOneToolNotInvoked = true
+                // Reproduce the message the runner actually logs for the FAIL
+                // case (the bait-taken outcome) — the shape that would be most
+                // tempting to word with "Scenario requires ... never/not ...".
+                let name = assertion.value ?? "some_decoy"
+                let logged = AssertionEvaluator.evaluate(
+                    assertion,
+                    finalAnswer: "",
+                    toolsInvoked: [name]
+                ).message
+
+                let recovered = ConformanceScorer.expectedToolsFromAssertion(logged)
+                XCTAssertTrue(
+                    recovered.isEmpty,
+                    "\(scenario.id): toolNotInvoked message for '\(name)' is recoverable as an "
+                        + "expected POSITIVE — reword away from the 'Scenario requires' prefix. "
+                        + "Logged: \(logged)"
+                )
+            }
+        }
+        XCTAssertTrue(sawAtLeastOneToolNotInvoked, "test precondition: no built-in scenario uses toolNotInvoked")
+    }
+
     // MARK: - Bug A: containsAny assertion kind
 
     func testContainsAnyPassesWhenAnyValuePresent() {

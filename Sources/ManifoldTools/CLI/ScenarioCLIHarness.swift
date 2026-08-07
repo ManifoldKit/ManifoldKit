@@ -24,7 +24,40 @@ public enum ScenarioCLIHarness {
         public var fixturesRoot: URL?
         public var extraTools: Int
         public var list: Bool
+        /// Which repetition of an otherwise-identical (decoy level × scenario)
+        /// cell this invocation represents. Threaded verbatim into every
+        /// ``TranscriptLogger`` record this run writes (mirrors the existing
+        /// per-record `backend`/`model`/`quant` attribution) so
+        /// ``ConformanceScorer`` can recover it later instead of collating
+        /// repeats by hand. Default `0` — a single, unrepeated run.
+        public var repeatIndex: Int
 
+        public init(
+            scenarioFilter: String = "all",
+            output: URL,
+            fixturesRoot: URL? = nil,
+            extraTools: Int = 0,
+            list: Bool = false,
+            repeatIndex: Int = 0
+        ) {
+            self.scenarioFilter = scenarioFilter
+            self.output = output
+            self.fixturesRoot = fixturesRoot
+            self.extraTools = extraTools
+            self.list = list
+            self.repeatIndex = repeatIndex
+        }
+
+        /// Pre-`repeatIndex` signature, kept alongside the current initializer
+        /// so `swift-api-digester` sees an addition rather than a removal.
+        /// Source compatibility alone isn't enough here: adding a defaulted
+        /// parameter to an existing public initializer still retires the old
+        /// *interface* symbol the digester compares against, even though every
+        /// existing call site keeps compiling (#2450 CI: `constructor
+        /// ScenarioCLIHarness.Options.init(scenarioFilter:output:
+        /// fixturesRoot:extraTools:list:) has been removed`). Swift resolves a
+        /// call omitting `repeatIndex` to this narrower overload rather than
+        /// defaulting it on the six-parameter one, so this isn't dead code.
         public init(
             scenarioFilter: String = "all",
             output: URL,
@@ -32,11 +65,14 @@ public enum ScenarioCLIHarness {
             extraTools: Int = 0,
             list: Bool = false
         ) {
-            self.scenarioFilter = scenarioFilter
-            self.output = output
-            self.fixturesRoot = fixturesRoot
-            self.extraTools = extraTools
-            self.list = list
+            self.init(
+                scenarioFilter: scenarioFilter,
+                output: output,
+                fixturesRoot: fixturesRoot,
+                extraTools: extraTools,
+                list: list,
+                repeatIndex: 0
+            )
         }
     }
 
@@ -57,7 +93,7 @@ public enum ScenarioCLIHarness {
     }
 
     /// Parses `--scenario`, `--output`, `--fixtures-root`, `--extra-tools`,
-    /// `--list`, and `--help`/`-h`. Any other token — flag or value — is
+    /// `--repeat-index`, `--list`, and `--help`/`-h`. Any other token — flag or value — is
     /// appended to `remainder` untouched, so a caller with its own additional
     /// flags can run a second pass over `remainder` to parse them, regardless
     /// of how the two flag sets are interleaved on the command line (each
@@ -91,6 +127,13 @@ public enum ScenarioCLIHarness {
                     return .failure("--extra-tools value '\(argv[i])' must be a non-negative integer")
                 }
                 options.extraTools = n
+            case "--repeat-index":
+                i += 1
+                guard i < argv.count else { return .failure("--repeat-index requires a value") }
+                guard let n = Int(argv[i]), n >= 0 else {
+                    return .failure("--repeat-index value '\(argv[i])' must be a non-negative integer")
+                }
+                options.repeatIndex = n
             case "--list":
                 options.list = true
             case "--help", "-h":

@@ -1,0 +1,26 @@
+{
+  "id": "abstention-definition",
+  "description": "Abstention probe — a plain-knowledge question answerable with no tool call at all. The sharpest signal under a decoy sweep: requiredTools is empty, so ScenarioRunner advertises every registered tool (including any --extra-tools decoys), and the correct move is to call none of them. KNOWN CONFOUND (found in live validation 2026-08-07, #2450 — kept deliberately, not reworded): this prompt uses the word 'define' and mentions 'non-native English speaker', which lexically overlaps two DecoyTools pool entries (`get_definition` — 'Returns the dictionary definition of a word'; `translate_text`). Because DecoyTools.take(_:) is a FIXED-ORDER pool (not shuffled), whichever of those two entries falls within the current --extra-tools N determines WHICH tool llama3.1:8b reaches for at that N, not WHETHER it reaches for one — at --extra-tools 0 (no decoys at all) it already calls read_file, so the abstention failure is a baseline model-precision result, independent of this confound. qwen3.5:9b abstains cleanly at N=0/10/20 on the identical prompt and tool list, so the pass/fail split is a real model difference, not a prompt artifact. Do not reword this prompt to dodge the lexical overlap — that is tuning the probe until the reading is comfortable (see #2426). The principled fix is shuffling the decoy pool per repeatIndex with a seed, so lexical proximity becomes noise averaged over repeats instead of a systematic bias at each N — tracked as a follow-up, needs --repeat-index-aware shuffling support across manifold-tools/manifold-tools-mlx/manifold-tools-llama, too big for one PR.",
+  "systemPrompt": "You have tools available. Only call a tool when the question genuinely requires one — for a question you can answer directly from general knowledge, answer directly and do not call any tool.",
+  "userPrompt": "In one plain sentence, define the word 'ubiquitous' for a non-native English speaker.",
+  "requiredTools": [],
+  "assertions": [
+    {
+      "kind": "toolNotInvoked",
+      "message": "This is answerable from general knowledge — no tool (real or decoy) should ever be dispatched"
+    },
+    {
+      "kind": "containsAny",
+      "values": ["everywhere", "widespread", "present in many places", "found everywhere", "omnipresent", "all places", "universal", "all around", "commonly", "very common"],
+      "message": "Final answer should give a plain-language definition of 'ubiquitous'"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

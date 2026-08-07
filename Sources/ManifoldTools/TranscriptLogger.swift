@@ -43,6 +43,13 @@ public final class TranscriptLogger {
     private let backend: String?
     private let model: String?
     private let quant: String?
+    /// Which repetition of an otherwise-identical (decoy level × scenario) cell
+    /// this run represents — stamped per record exactly like `backend`/`model`/
+    /// `quant` so ``ConformanceScorer`` can recover it from the transcript
+    /// instead of the record emitter hardcoding `0`. `nil` (the default) keeps
+    /// transcripts written by callers that don't supply a repeat index
+    /// shape-identical to their pre-repeat form.
+    private let repeatIndex: Int?
 
     /// - Parameters:
     ///   - url: Destination path. Parents are created on demand.
@@ -50,6 +57,9 @@ public final class TranscriptLogger {
     ///     existing callers keep compiling; when set, every record carries it.
     ///   - model: Model id driving the run (e.g. "qwen3.5-9b"). Optional.
     ///   - quant: Quantization label when derivable (e.g. "Q4_K_M"). May be nil.
+    ///   - repeatIndex: Which repeat of an otherwise-identical cell this run is
+    ///     (see ``ScenarioCLIHarness/Options/repeatIndex``). Optional so
+    ///     existing callers keep compiling; when set, every record carries it.
     ///   - append: When `false` (the default) the destination is truncated to
     ///     empty on open so a re-run overwrites rather than concatenates (#2088).
     ///     When `true`, existing content is preserved and writes seek to the end.
@@ -58,12 +68,14 @@ public final class TranscriptLogger {
         backend: String? = nil,
         model: String? = nil,
         quant: String? = nil,
+        repeatIndex: Int? = nil,
         append: Bool = false
     ) throws {
         self.url = url
         self.backend = backend
         self.model = model
         self.quant = quant
+        self.repeatIndex = repeatIndex
         let parent = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         if append {
@@ -87,6 +99,33 @@ public final class TranscriptLogger {
         self.isoFormatter = ISO8601DateFormatter()
     }
 
+    /// Pre-`repeatIndex` signature, kept alongside the current initializer so
+    /// `swift-api-digester` sees an addition rather than a removal. Source
+    /// compatibility alone isn't enough here: adding a defaulted parameter to
+    /// an existing public initializer still retires the old *interface*
+    /// symbol the digester compares against, even though every existing call
+    /// site keeps compiling (#2450 CI: `constructor TranscriptLogger.init(url:
+    /// backend:model:quant:append:) has been removed`). Swift resolves a call
+    /// omitting `repeatIndex` to this narrower overload rather than
+    /// defaulting it on the six-parameter designated initializer, so this
+    /// isn't dead code.
+    public convenience init(
+        url: URL,
+        backend: String? = nil,
+        model: String? = nil,
+        quant: String? = nil,
+        append: Bool = false
+    ) throws {
+        try self.init(
+            url: url,
+            backend: backend,
+            model: model,
+            quant: quant,
+            repeatIndex: nil,
+            append: append
+        )
+    }
+
     deinit {
         // deinit can't propagate; explicit do/catch avoids a bare `try?` and
         // documents that a failed close is non-actionable (the file is about
@@ -108,6 +147,7 @@ public final class TranscriptLogger {
         if let backend { dict["backend"] = backend }
         if let model { dict["model"] = model }
         if let quant { dict["quant"] = quant }
+        if let repeatIndex { dict["repeatIndex"] = repeatIndex }
         let data: Data
         do {
             data = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])

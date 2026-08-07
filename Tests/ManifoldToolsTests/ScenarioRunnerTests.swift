@@ -76,6 +76,53 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertTrue(outcome.message.contains("never dispatched"))
     }
 
+    func test_toolNotInvokedAssertion_namedForm_passesWhenToolWithheld() {
+        let assertion = Scenario.Assertion(kind: "toolNotInvoked", value: "decoy_tool", values: nil, message: nil)
+        XCTAssertTrue(
+            AssertionEvaluator.evaluate(assertion, finalAnswer: "anything", toolsInvoked: ["now"]).passed,
+            "toolNotInvoked should pass when the named tool never appears in toolsInvoked"
+        )
+    }
+
+    /// The test that matters: a no-op evaluator (or one that ignores
+    /// `toolsInvoked`) would pass this too — the assertion must actually go
+    /// red when the forbidden tool WAS dispatched, which is the whole reason
+    /// this assertion kind exists (catching a decoy call under a distractor
+    /// sweep).
+    func test_toolNotInvokedAssertion_namedForm_failsWhenToolWasInvoked() {
+        let assertion = Scenario.Assertion(kind: "toolNotInvoked", value: "decoy_tool", values: nil, message: nil)
+        let outcome = AssertionEvaluator.evaluate(
+            assertion,
+            finalAnswer: "anything",
+            toolsInvoked: ["now", "decoy_tool"]
+        )
+        XCTAssertFalse(outcome.passed, "toolNotInvoked must fail when the forbidden tool was dispatched")
+        XCTAssertTrue(outcome.message.contains("should have been withheld"))
+    }
+
+    func test_toolNotInvokedAssertion_unnamedForm_passesOnTotalAbstention() {
+        let assertion = Scenario.Assertion(kind: "toolNotInvoked", value: nil, values: nil, message: nil)
+        XCTAssertTrue(
+            AssertionEvaluator.evaluate(assertion, finalAnswer: "a direct answer", toolsInvoked: []).passed,
+            "value-omitted toolNotInvoked should pass when zero tools were dispatched"
+        )
+    }
+
+    /// Sabotage check for the unnamed (abstention) form: if the evaluator
+    /// ignored `toolsInvoked` entirely (a no-op that always passes), this
+    /// would stay green. It must go red the moment ANY tool — including one
+    /// never named by the scenario, i.e. a decoy — was dispatched.
+    func test_toolNotInvokedAssertion_unnamedForm_failsWhenAnyToolWasInvoked() {
+        let assertion = Scenario.Assertion(kind: "toolNotInvoked", value: nil, values: nil, message: nil)
+        let outcome = AssertionEvaluator.evaluate(
+            assertion,
+            finalAnswer: "a direct answer",
+            toolsInvoked: ["some_unrelated_decoy"]
+        )
+        XCTAssertFalse(outcome.passed, "value-omitted toolNotInvoked must fail when any tool was dispatched")
+        XCTAssertTrue(outcome.message.contains("expected total abstention"))
+    }
+
     func test_toolResultContainsAssertion_requiresToolOutput() {
         let assertion = Scenario.Assertion(
             kind: "toolResultContains",
@@ -115,25 +162,44 @@ final class ScenarioRunnerTests: XCTestCase {
 
     func test_scenarioLoader_decodesAllBuiltIn() throws {
         let scenarios = try ScenarioLoader.loadBuiltIn()
-        XCTAssertEqual(scenarios.count, 9, "expected nine built-in scenarios")
+        XCTAssertEqual(scenarios.count, 12, "expected twelve built-in scenarios")
         let ids = scenarios.map(\.id).sorted()
         XCTAssertEqual(ids, [
             "01-now",
             "02-calc",
             "03-read",
             "04-list",
+            "abstention-definition",
+            "handoff-note-lookup",
             "meeting-notes-summary",
             "oversize-tool-output",
             "parallel-readme-comparison",
+            "schema-beats-prose-resistance",
             "shopping-list-budget",
             "structured-json-extraction",
         ])
+        let toolFreeIds: Set<String> = ["structured-json-extraction", "abstention-definition"]
         for s in scenarios {
             XCTAssertFalse(s.systemPrompt.isEmpty, "\(s.id) missing systemPrompt")
             XCTAssertFalse(s.assertions.isEmpty, "\(s.id) missing assertions")
             if s.requiredTools.isEmpty {
-                XCTAssertEqual(s.id, "structured-json-extraction", "only structured JSON is currently tool-free")
+                XCTAssertTrue(toolFreeIds.contains(s.id), "\(s.id) unexpectedly tool-free")
             }
+        }
+    }
+
+    /// Honesty-gate coverage for the three new decoy-degradation scenarios
+    /// specifically (see `Scenario.Assertion.kind` doc comment on
+    /// `toolInvoked`/`toolNotInvoked`) — every one of them must be able to
+    /// catch a hallucinated final answer, not just a plausible one.
+    func test_newDecoyDegradationScenarios_carryHonestyGateAssertion() throws {
+        let scenarios = try ScenarioLoader.loadBuiltIn()
+        for id in ["abstention-definition", "schema-beats-prose-resistance", "handoff-note-lookup"] {
+            let scenario = try XCTUnwrap(scenarios.first { $0.id == id })
+            XCTAssertTrue(
+                scenario.assertions.contains { $0.kind == "toolInvoked" || $0.kind == "toolNotInvoked" },
+                "\(id) has no toolInvoked/toolNotInvoked honesty-gate assertion"
+            )
         }
     }
 
@@ -163,7 +229,7 @@ final class ScenarioRunnerTests: XCTestCase {
         )
 
         let scenarios = try ScenarioLoader.loadBuiltIn()
-        XCTAssertEqual(scenarios.count, 9, "full corpus must load from Bundle.module under a foreign CWD")
+        XCTAssertEqual(scenarios.count, 12, "full corpus must load from Bundle.module under a foreign CWD")
     }
 
     // MARK: - Runner happy paths (scripted backend + real registry)
@@ -270,6 +336,134 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertEqual(outcome.toolCallsExecuted, ["read_file", "read_file"])
         XCTAssertEqual(outcome.toolResults.filter { $0.toolName == "read_file" }.count, 2)
         XCTAssertTrue(outcome.finalAnswer.contains("DEMO-README-NONCE"))
+    }
+
+    // MARK: - Decoy-degradation scenarios (abstention / schema-vs-prose resistance / output-fed argument)
+
+    func test_runner_abstentionScenario_passesOnTrueAbstention() async throws {
+        let scenario = try builtInScenario("abstention-definition")
+        // Register the whole reference toolset so we're exercising the real
+        // "requiredTools: [] advertises everything" path the decoy sweep
+        // depends on, not an empty-registry vacuous pass.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor(), CalcTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .tokens(["Ubiquitous means present or found everywhere at once."])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertTrue(outcome.toolCallsExecuted.isEmpty)
+    }
+
+    /// The test that matters for this scenario: a model that reaches for a
+    /// tool it was never asked about (the exact decoy-precision failure the
+    /// scenario exists to catch) must fail, not silently pass because the
+    /// final-answer text still happens to look right.
+    func test_runner_abstentionScenario_failsWhenModelCallsUnnecessaryTool() async throws {
+        let scenario = try builtInScenario("abstention-definition")
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor(), CalcTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "now", arguments: "{}"),
+            .tokens(["Ubiquitous means present or found everywhere at once."])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertFalse(outcome.passed, "an unnecessary tool call must fail the abstention scenario")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["now"])
+    }
+
+    /// Reframed 2026-08-07 after live validation (#2450): the scenario no
+    /// longer tries to provoke a hallucinated call — neither llama3.1:8b nor
+    /// qwen3.5:9b ever attempted the nudged name, both deferred to the real
+    /// schema. It now measures that resistance directly via `toolNotInvoked`.
+    func test_runner_schemaBeatsProse_passesWhenModelResistsTheNudge() async throws {
+        let scenario = try builtInScenario("schema-beats-prose-resistance")
+        // Only `now` is registered — `get_current_date` (what the system
+        // prompt nudges toward) has no executor at all.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "now", arguments: "{}"),
+            .tokens([NowTool.defaultFixture])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["now"])
+    }
+
+    /// The test that matters: a model that DOES take the bait and calls the
+    /// nudged, never-registered name must fail — proves `toolNotInvoked` is
+    /// load-bearing here, not decorative. The dispatch loop still rejects the
+    /// call cleanly (an `unknownTool` result, not a crash), but that clean
+    /// rejection is no longer sufficient to pass — taking the bait at all is
+    /// the failure this scenario now measures.
+    func test_runner_schemaBeatsProse_failsWhenModelTakesTheBait() async throws {
+        let scenario = try builtInScenario("schema-beats-prose-resistance")
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "get_current_date", arguments: "{}"),
+            .toolCall(name: "now", arguments: "{}"),
+            .tokens([NowTool.defaultFixture])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertFalse(outcome.passed, "taking the bait must fail the scenario even though now was also called")
+        XCTAssertTrue(
+            outcome.toolResults.contains { $0.toolName == "get_current_date" && $0.errorKind == "unknownTool" },
+            "the dispatch loop must still reject the nudged name cleanly, even though doing so no longer saves the scenario"
+        )
+    }
+
+    func test_runner_handoffNoteLookup_argumentComesFromListDirOutput() async throws {
+        let scenario = try builtInScenario("handoff-note-lookup")
+        let registry = ToolRegistry(tools: [ListDirTool.makeExecutor(), ReadFileTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "list_dir", arguments: #"{"dir":"handoff"}"#),
+            .toolCall(name: "read_file", arguments: #"{"path":"handoff/note-7f3a91.md"}"#),
+            .tokens(["The handoff code is HANDOFF-CODE-93217."])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["list_dir", "read_file"])
+        XCTAssertTrue(
+            outcome.toolResults.contains { $0.toolName == "list_dir" && $0.content.contains("note-7f3a91.md") },
+            "list_dir result should reveal the un-guessable filename"
+        )
+        XCTAssertTrue(
+            outcome.toolResults.contains { $0.toolName == "read_file" && $0.content.contains("HANDOFF-CODE-93217") },
+            "read_file's argument must have matched the discovered filename to recover the nonce"
+        )
+    }
+
+    /// The test that proves the chain is load-bearing: a model that skips
+    /// `list_dir` and guesses a plausible filename directly cannot recover
+    /// the nonce — `read_file` reports `notFound` and the final answer never
+    /// contains the seeded code, so both `toolResultContains` assertions and
+    /// the final `containsLiteral` fail. Without this the scenario would be
+    /// no different from `meeting-notes-summary`, where the guessed filename
+    /// happens to work.
+    func test_runner_handoffNoteLookup_failsWhenModelSkipsListDirAndGuesses() async throws {
+        let scenario = try builtInScenario("handoff-note-lookup")
+        let registry = ToolRegistry(tools: [ListDirTool.makeExecutor(), ReadFileTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "read_file", arguments: #"{"path":"handoff/note.md"}"#),
+            .tokens(["I couldn't find the handoff code."])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertFalse(outcome.passed, "a guessed filename must not be able to recover the seeded nonce")
+        XCTAssertFalse(outcome.toolCallsExecuted.contains("list_dir"))
+        XCTAssertTrue(
+            outcome.toolResults.contains { $0.toolName == "read_file" && $0.errorKind == "notFound" },
+            "the guessed filename should not exist in the sandbox"
+        )
     }
 
     func test_runner_surfacesOversizeToolOutputPolicy() async throws {
@@ -595,6 +789,35 @@ final class ScenarioRunnerTests: XCTestCase {
         }
     }
 
+    /// `--repeat-index` (`ScenarioCLIHarness.Options.repeatIndex`) must reach
+    /// every transcript record exactly like `backend`/`model`/`quant` — this
+    /// is the whole mechanism `ConformanceScorer` later reads back to settle
+    /// `ConformanceRecord.repeatIndex` instead of hardcoding `0`.
+    func test_transcriptLogger_stampsRepeatIndexOnEveryRecord() throws {
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("repeat-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let logger = try TranscriptLogger(url: path, backend: "ollama", model: "m", quant: nil, repeatIndex: 2)
+        logger.append(.prompt(scenarioId: "t", system: "sys", user: "u", requiredTools: ["now"]))
+        logger.append(.final(scenarioId: "t", text: "done"))
+
+        let data = try Data(contentsOf: path)
+        let lines = data.split(separator: 0x0A).map { Data($0) }
+        XCTAssertEqual(lines.count, 2)
+        for line in lines {
+            let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: line) as? [String: Any])
+            XCTAssertEqual(object["repeatIndex"] as? Int, 2, "every record must carry its repeat index when set")
+        }
+    }
+
     func test_transcriptLogger_omitsQuantWhenNil_andKeepsRecordShapeBackwardCompatible() throws {
         let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("tmp", isDirectory: true)
@@ -618,6 +841,7 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertNil(bareObject["backend"], "no attribution → no backend key")
         XCTAssertNil(bareObject["model"])
         XCTAssertNil(bareObject["quant"])
+        XCTAssertNil(bareObject["repeatIndex"], "no --repeat-index → no repeatIndex key")
         XCTAssertEqual(bareObject["kind"] as? String, "final", "existing field names must be unchanged")
     }
 
