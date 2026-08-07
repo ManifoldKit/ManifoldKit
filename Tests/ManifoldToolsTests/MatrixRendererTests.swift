@@ -190,6 +190,74 @@ final class MatrixRendererTests: XCTestCase {
                        "role/format suffixes are stripped so the twin groups together")
     }
 
+    /// #2411: `normalizedModelKey` split GGUF quant labels like "Q4_K_M" on the
+    /// underscore into three tokens ("q4", "k", "m"); only the "q4" head matched
+    /// `isQuantToken`, so "k"/"m" survived as residue and the GGUF key never
+    /// matched its MLX counterpart ("4bit") for the same weights. Table-drives
+    /// real observed identifiers from both runtimes with EXACT expected keys —
+    /// not a "no underscore remains" or "non-empty" check, either of which a
+    /// broken normalizer could still satisfy.
+    func testNormalizedModelKeyExactValues() throws {
+        let cases: [(input: String, expected: String, why: String)] = [
+            ("Llama-3.1-8B-Instruct-Q4_K_M", "llama-3-1-8b",
+             "GGUF quant with K/M residue must fully strip to the bare family/size"),
+            ("Llama-3.1-8B-Instruct-4bit", "llama-3-1-8b",
+             "MLX quant label strips cleanly (this side never regressed)"),
+            ("Mistral-7B-Instruct-v0.3-Q4_K_S", "mistral-7b-v0-3",
+             "Q4_K_S (not just _M) must also fully absorb"),
+            ("Mistral-7B-Instruct-v0.3-4bit", "mistral-7b-v0-3",
+             "MLX counterpart for the v0.3 mistral case"),
+            ("gemma-3-4b-it-Q4_K_L", "gemma-3-4b",
+             "Q4_K_L (the third K-suffix variant) must also fully absorb"),
+            ("gemma-3-4b-it-8bit", "gemma-3-4b",
+             "MLX counterpart for gemma-3-4b"),
+        ]
+        for c in cases {
+            XCTAssertEqual(
+                MatrixRenderer.normalizedModelKey(c.input), c.expected,
+                "\(c.why) — input: \(c.input)"
+            )
+        }
+
+        // Cross-runtime pairs for the same logical weights must land on the SAME key.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-Q4_K_M"),
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-4bit"),
+            "GGUF Q4_K_M and MLX 4bit of the same weights must normalize identically"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-Q4_K_S"),
+            MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-4bit"),
+            "GGUF Q4_K_S and MLX 4bit of the same weights must normalize identically"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("gemma-3-4b-it-Q4_K_L"),
+            MatrixRenderer.normalizedModelKey("gemma-3-4b-it-8bit"),
+            "GGUF Q4_K_L and MLX 8bit of the same weights must normalize identically"
+        )
+
+        // Negative: genuinely different models/sizes must NOT collide. An
+        // over-eager normalizer that collapses everything to the family name
+        // would "pair" rows that are not comparable and silently fabricate a
+        // cross-runtime comparison — this is the failure mode the brief warns
+        // about, and it is the opposite defect from #2411's residue bug.
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-Q4_K_M"),
+            MatrixRenderer.normalizedModelKey("Llama-3.1-70B-Instruct-Q4_K_M"),
+            "different parameter counts (8B vs 70B) of the same family must NOT collide"
+        )
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-Q4_K_S"),
+            MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.1-Q4_K_S"),
+            "different checkpoint versions (v0.3 vs v0.1) must NOT collide"
+        )
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-Q4_K_M"),
+            MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-Q4_K_M"),
+            "different model families must NOT collide"
+        )
+    }
+
     // MARK: Verdict label is F1-aware, not failure-subtype-dominant
 
     /// Reproduces the live-soak shape that mislabeled `llama3.1-8b` d0: 27 records,

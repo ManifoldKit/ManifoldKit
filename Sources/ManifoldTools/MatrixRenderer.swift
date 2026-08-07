@@ -272,7 +272,34 @@ public enum MatrixRenderer {
         let lower = model.lowercased()
         let tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
         let dropped: Set<String> = ["tools", "tool", "instruct", "it", "chat", "gguf", "mlx", "tooltmpl"]
-        let kept = tokens.filter { !$0.isEmpty && !dropped.contains($0) && !isQuantToken($0) }
+        // GGUF quant labels like "Q4_K_M" split (on the underscore) into separate
+        // tokens — "q4", "k", "m" — because `isQuantToken` only recognizes the
+        // "q<digit>" head. Left unhandled, the trailing "k"/"m" survive as residue
+        // and the same weights measured on llama.cpp (GGUF, "Q4_K_M") vs MLX
+        // ("4bit") normalize to different keys, so no cross-runtime row ever pairs
+        // (#2411). Absorb single-letter suffix tokens (k/s/m/l, any combination —
+        // GGUF quant variants are Q4_K_S / Q4_K_M / Q4_K_L etc.) immediately after
+        // a recognized quant head into the same dropped run, instead of treating
+        // them as independent model-name tokens.
+        let quantSuffixLetters: Set<String> = ["k", "s", "m", "l"]
+        var kept: [String] = []
+        var precededByQuantHead = false
+        for token in tokens {
+            guard !token.isEmpty else { continue }
+            if dropped.contains(token) {
+                precededByQuantHead = false
+                continue
+            }
+            if isQuantToken(token) {
+                precededByQuantHead = true
+                continue
+            }
+            if precededByQuantHead, quantSuffixLetters.contains(token) {
+                continue
+            }
+            precededByQuantHead = false
+            kept.append(token)
+        }
         return kept.isEmpty ? lower : kept.joined(separator: "-")
     }
 
