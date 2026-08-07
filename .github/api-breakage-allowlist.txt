@@ -498,4 +498,3 @@ API breakage: enumelement ConversationEvent.skillInvoked has been removed
 API breakage: enumelement ConversationEventKind.skillInvoked has been removed
 API breakage: func ManifoldBootstrap.addGenerationToolSources(viewModel:) has been removed
 API breakage: enumelement ManifoldCapability.providerBridge has been removed
->>>>>>> 504156ba (feat!: retire ManifoldAnyLanguageModel and drop the AnyLanguageModel dependency)
