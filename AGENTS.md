@@ -15,6 +15,45 @@ coding assistant (Claude Code, Cursor, Copilot, codex, …). It has three parts:
 `CLAUDE.md` is a stub that imports this file (`@AGENTS.md`) and adds only
 Claude-harness-specific notes — never duplicate content between the two.
 
+## Session bootstrap (any harness)
+
+1. Read `~/Repos/roryford/estate/policies/DIGEST.md` — the standing policies,
+   compiled to one page.
+2. Read this repo's known-issues buffer — solved non-obvious failures.
+   **Check it before diagnosing**, and append to it when you solve one.
+   Which file (canonical source: `~/Repos/roryford/estate/estate.yaml`
+   `conventions.memory_files.known_issues` / `known_issues_legacy`):
+   - `.agents/known-issues.md` if present; otherwise `.claude/known-issues.md`
+     (the older path, still in use in most repos). "Present" means it has
+     content — a file that is empty, or only newlines and spaces, does not
+     count. (Claude's hook prefers the committed copy on the default branch
+     when *choosing* which file to read, then injects the **union** of that
+     copy and yours — so an entry you wrote locally and have not pushed is
+     normally still shown. Not always: if the union cannot be computed — a
+     buffer with no entry markers, an unbalanced code fence, awk missing — the
+     hook says so and withholds your local-only entries. A `NOTE` mentioning
+     either is the hook refusing to guess, not a bug. Read the file yourself
+     and you are never subject to any of this.)
+   - **Append to the one that exists; never create the other.** Two files means
+     half the entries stop being injected.
+   - If **both** exist the buffer is already forked — **report it, don't repair
+     it here.** Which half is dark depends on the machine's hook, so the repair
+     has a per-machine precondition: see
+     `~/Repos/roryford/estate/policies/knowledge-capture.md`, "Both files
+     present".
+   - If **neither** exists, create `.agents/known-issues.md` — the neutral
+     path. (You are reading this section, so you will find it next time
+     regardless of what any harness hook does.)
+3. Then follow this file's Running tests / Coding conventions / Pre-push checklist.
+
+**If you are not Claude Code, none of the above happens for you automatically —
+just do steps 1-3.** Claude Code *may* have injected 1 and 2 already via its
+own SessionStart hook, but that hook is installed per machine and does not run
+for Grok, Codex, Cursor or OpenCode whatever is on the box. Reading the files
+yourself is always correct and never wrong, which is why the steps say "read".
+
+Pointers only — this section never restates DIGEST content.
+
 # Part 0 — Principles
 
 These are the things that must stay true as everything else changes. Parts 1
