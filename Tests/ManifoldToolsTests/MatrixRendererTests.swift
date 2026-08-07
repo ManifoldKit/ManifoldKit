@@ -461,6 +461,55 @@ final class MatrixRendererTests: XCTestCase {
         )
     }
 
+    /// #2411 follow-up: some Ollama legacy tags are ONLY a vendor token plus a
+    /// bare size ("qwen:7b", "qwen:14b", "qwen:72b-chat" ships today).
+    /// Dropping the leading vendor token there would leave nothing but a size
+    /// marker ("7b"/"14b"/"72b") — a key so generic it would FALSELY pair with
+    /// any other unrelated model reduced the same way, silently averaging two
+    /// different models into one row. That's strictly worse than the residue
+    /// this fix exists to remove: a missing row is visible (empty
+    /// cross-runtime section, investigate); a false pair is not (a confident,
+    /// wrong number). So the vendor drop must be refused when the result is
+    /// degenerate, and "qwen-7b"/"qwen-14b"/"qwen-72b" (NOT stripped further,
+    /// visibly non-pairing) is the correct, safe output.
+    ///
+    /// The trap: "chat" in "qwen:72b-chat" is only removed by the token
+    /// filter, not before it — a naive `tokens.count >= 2` check on the raw
+    /// post-vendor-drop array would see `["72b", "chat"]` (length 2) and miss
+    /// the degeneracy. The check must run on the ALREADY-FILTERED result.
+    func testNormalizedModelKeyRefusesDegenerateVendorDrop() throws {
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("qwen:7b"), "qwen-7b",
+            "vendor drop must be refused when only a bare size remains — false-pairing on '7b' is worse than not pairing at all"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("qwen:14b"), "qwen-14b",
+            "vendor drop must be refused when only a bare size remains"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("qwen:72b-chat"), "qwen-72b",
+            "the trap case: 'chat' is only removed by the token filter, not visible in the raw post-vendor-drop token count — the degeneracy check must account for it"
+        )
+
+        // Positive control: a legitimate vendor drop (real family/size tokens
+        // remain) must still happen — this guard must not regress the fix
+        // that shipped in the previous round.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("google_gemma-3-4b-it-Q4_K_M.gguf"),
+            "gemma-3-4b",
+            "a legitimate vendor drop (real tokens remain after stripping 'google') must still happen"
+        )
+
+        // Two DIFFERENT models that would both degenerate to a bare size must
+        // NOT collide with each other post-refusal — each keeps its own
+        // vendor-qualified key.
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("qwen:7b"),
+            MatrixRenderer.normalizedModelKey("meta:7b"),
+            "two different vendors' bare-size tags must not collide after the vendor drop is refused for both"
+        )
+    }
+
     // MARK: Verdict label is F1-aware, not failure-subtype-dominant
 
     /// Reproduces the live-soak shape that mislabeled `llama3.1-8b` d0: 27 records,

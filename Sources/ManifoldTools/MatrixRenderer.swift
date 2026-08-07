@@ -270,7 +270,9 @@ public enum MatrixRenderer {
     /// as approximate, so over- or under-merging never asserts a backend bug.
     static func normalizedModelKey(_ model: String) -> String {
         let lower = model.lowercased()
-        var tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        let tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        let keptAsIs = filterModelTokens(tokens)
+
         // HuggingFace repo filenames repeat the vendor-org token as a LEADING
         // prefix (e.g. "google_gemma-3-4b-it-Q4_K_M.gguf", "Meta-Llama-3.1-8B-
         // Instruct-Q4_K_M.gguf", "Qwen_Qwen3.5-2B-Q4_K_M.gguf"), but the MLX/
@@ -288,21 +290,36 @@ public enum MatrixRenderer {
         let vendorOrgPrefixes: Set<String> = [
             "google", "meta", "qwen", "mistralai", "deepseek", "unsloth", "bartowski", "nvidia", "microsoft",
         ]
-        if let first = tokens.first, vendorOrgPrefixes.contains(first) {
-            tokens.removeFirst()
+        guard let first = tokens.first, vendorOrgPrefixes.contains(first) else {
+            return keptAsIs.isEmpty ? lower : keptAsIs.joined(separator: "-")
         }
+        let keptWithVendorDropped = filterModelTokens(Array(tokens.dropFirst()))
+        // Some Ollama legacy tags are ONLY a vendor token plus a bare size
+        // ("qwen:7b", "qwen:14b", "qwen:72b-chat" -> after the filter above,
+        // "chat" is already gone too). Dropping the vendor there leaves
+        // nothing but a size token, e.g. "7b" — a key so generic it would
+        // pair with any other unrelated model reduced the same way. That's a
+        // FALSE pair (silently averages two different models into one row),
+        // strictly worse than the residue this whole fix exists to remove (a
+        // missing row is visible; a false pair is not). So the degeneracy
+        // check runs on the ALREADY-FILTERED result (post dropped-set/quant
+        // removal) — checking the raw post-drop token count would miss
+        // "qwen:72b-chat", since "chat" is only removed by the filter below,
+        // not before it.
+        if keptWithVendorDropped.isEmpty || keptWithVendorDropped.allSatisfy(isSizeLikeToken) {
+            return keptAsIs.isEmpty ? lower : keptAsIs.joined(separator: "-")
+        }
+        return keptWithVendorDropped.joined(separator: "-")
+    }
+
+    /// Runs the (non-vendor-prefix) token filter shared by both the with- and
+    /// without-vendor-drop candidates in `normalizedModelKey`: drops the
+    /// well-known role/format suffixes and absorbs GGUF quant heads + their
+    /// suffix tokens. See `normalizedModelKey`'s doc for why quant labels like
+    /// "Q4_K_M" split into multiple tokens ("q4", "k", "m") that
+    /// `quantSuffixTokenCount` must absorb together.
+    private static func filterModelTokens(_ tokens: [String]) -> [String] {
         let dropped: Set<String> = ["tools", "tool", "instruct", "it", "chat", "gguf", "mlx", "tooltmpl"]
-        // GGUF quant labels split (on the underscore) into separate tokens, e.g.
-        // "Q4_K_M" -> ["q4", "k", "m"], "Q8_0" -> ["q8", "0"], "IQ4_XS" ->
-        // ["iq4", "xs"]. `isQuantToken` only recognizes the head ("q4"/"iq4");
-        // left unhandled, the trailing tokens survive as residue and the same
-        // weights measured on llama.cpp (GGUF, "Q4_K_M") vs MLX ("4bit") never
-        // land on the same key, so no cross-runtime row ever pairs (#2411).
-        // `quantSuffixTokenCount` absorbs the trailing tokens for a *bounded,
-        // pattern-exact* set of known GGUF suffix shapes — not "any letter/digit
-        // that follows a quant head" — so a genuine trailing model-name token
-        // (e.g. a hand-appended "-S" *after* an already-complete "Q4_K_M") is
-        // never swallowed. See `quantSuffixTokenCount`'s doc for the exact shapes.
         var kept: [String] = []
         var index = 0
         while index < tokens.count {
@@ -320,7 +337,18 @@ public enum MatrixRenderer {
             kept.append(token)
             index += 1
         }
-        return kept.isEmpty ? lower : kept.joined(separator: "-")
+        return kept
+    }
+
+    /// A bare model-size marker ("7b", "14b", "72b", "135m") — digits followed
+    /// by exactly one size-unit letter. Used only to detect a DEGENERATE
+    /// post-vendor-drop key (nothing left but size), never to strip these
+    /// tokens themselves — a size marker is real signal in a logical-model key
+    /// (it's what keeps "Llama-3.1-8B" and "Llama-3.1-70B" from colliding).
+    private static func isSizeLikeToken(_ token: String) -> Bool {
+        guard let last = token.last, last == "b" || last == "m" else { return false }
+        let digits = token.dropLast()
+        return !digits.isEmpty && digits.allSatisfy(\.isNumber)
     }
 
     /// Conservative quant-token detector: `q4_K_M`/`iq4_XS`-style heads (after
