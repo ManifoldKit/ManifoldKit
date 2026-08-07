@@ -316,6 +316,19 @@ done
 # Required Test Shim reported `test` green in 4s, and the audit's first real
 # execution was the merge queue's full run — where a failure would have poisoned
 # the batch of up to 5 PRs (the #2306 / #2212 shape).
+#
+# KNOWN HOLE, deliberately left open (#2446). This rule matches `.sh` only, so a
+# NON-shell file under scripts/ that a suite executes still maps to NONE —
+# concretely scripts/changelog-parser-check/{package.json,package-lock.json},
+# which ChangelogParserCheckScriptTests runs `npm ci` against. Adding a case
+# entry for it HERE ALONE WOULD BE INERT: this resolver runs only inside ci.yml's
+# `changes` job, and ci.yml's pull_request paths don't list those files either,
+# so the job never triggers to consult it. The fix is both together — and editing
+# ci.yml's paths compels a lockstep edit to ci-required-test-shim.yml's
+# paths-ignore, which lint.yml's `shim-drift` step enforces as exact set
+# equality. Do that as its own change; don't add a mapping here and call it
+# fixed. Mitigation today: `lint` is required, has no paths filter, and runs
+# scripts/changelog-parser-check.sh directly.
 if printf '%s\n' "${CHANGED[@]}" | grep -qE '^scripts/.*\.sh$'; then
   affected_add "ManifoldCoreTests"
   log "force-include ManifoldCoreTests: scripts/*.sh changed (ScriptFailOpenAuditTest scans scripts/)"

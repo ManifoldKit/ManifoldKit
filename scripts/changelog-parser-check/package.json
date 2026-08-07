@@ -7,11 +7,13 @@
     "release-please": "17.6.0"
   },
   "overridesNote": "Each override pins a transitive dep of release-please to its GitHub-advisory first_patched_version (dependency-review, a required check, reds on anything less). None are reachable from what this tool calls -- it only runs parseConventionalCommits(), never an Octokit/network path -- but a future advisory in release-please's tree will still red an unrelated PR here until these are refreshed; that's the fix when it happens, not a real vulnerability in this tool.",
+  "overridesHazardNote": "The 'none are reachable' sentence above is load-bearing, not a nicety. npm overrides bypass declared ranges with no ERESOLVE, so a major-version jump silently breaks any package that declared the old range. This has already happened here: minimatch@3.1.5 (under glob@7.2.3) declares brace-expansion ^1.1.7 and calls it as a function, but v5's CJS export is an object -- `require('glob/node_modules/minimatch').braceExpand('a{b,c}')` throws 'expand is not a function' in the installed tree today. It is inert only because check.mjs never loads glob/minimatch (verified under a module-load probe, not assumed). Before adding an override that crosses a major, check whether anything on the execution path actually loads it.",
   "overrides": {
-    "brace-expansion": "5.0.8",
+    "brace-expansion": "5.0.9",
     "@octokit/plugin-paginate-rest": "9.2.2",
     "@octokit/request": "8.4.1",
     "@octokit/request-error": "5.1.1",
-    "diff": "8.0.3"
+    "diff": "8.0.3",
+    "js-yaml": "4.3.1"
   }
 }
