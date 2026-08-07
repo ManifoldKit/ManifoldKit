@@ -156,8 +156,13 @@ log "=== sweep exited rc=$SWEEP_RC ==="
   if [ -n "$BASELINE" ] && [ -f "$BASELINE/sweep/REPORT.md" ]; then
     echo "Comparing lane lines vs \`$(basename "$BASELINE")\`:"
     echo '```diff'
-    diff <(grep -hE '^(core|llama|mlx[-a-z]*|eval[:a-z-]*): ' "$BASELINE/sweep/REPORT.md" 2>/dev/null) \
-         <(grep -hE '^(core|llama|mlx[-a-z]*|eval[:a-z-]*): ' "$OUT/sweep/REPORT.md" 2>/dev/null) || true
+    # Kept in lockstep with the "## Per-lane result" grep above (:133) — that
+    # pattern already includes matrix|collate; this one had drifted without
+    # them, so tonight's headline lanes (the decoy x repeat sweep) never
+    # showed up in the morning baseline diff even though they render in the
+    # Per-lane block right above it.
+    diff <(grep -hE '^(core|llama|mlx[-a-z]*|matrix|collate|eval[:a-z-]*): ' "$BASELINE/sweep/REPORT.md" 2>/dev/null) \
+         <(grep -hE '^(core|llama|mlx[-a-z]*|matrix|collate|eval[:a-z-]*): ' "$OUT/sweep/REPORT.md" 2>/dev/null) || true
     echo '```'
   else
     echo "No prior overnight baseline — this run becomes the baseline."

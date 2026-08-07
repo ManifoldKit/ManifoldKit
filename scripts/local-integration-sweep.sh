@@ -153,6 +153,26 @@ for _l in $(printf '%s' "$LANES" | tr ',' ' '); do
   esac
 done
 
+# DECOY_LEVELS / SWEEP_REPEATS get the same allowlist-style validation as
+# LANES above — unlike LANES, an invalid value here doesn't error visibly on
+# its own: a non-numeric SWEEP_REPEATS silently resolves `$(( … ))` to 0,
+# EXPECTED_CELLS becomes 0, and the coverage assertion MISMATCHes for a reason
+# that has nothing to do with real coverage.
+case "$SWEEP_REPEATS" in
+  ''|*[!0-9]*) echo "SWEEP_REPEATS must be a positive integer, got '$SWEEP_REPEATS'" >&2; exit 2 ;;
+esac
+if [ "$SWEEP_REPEATS" -lt 1 ]; then
+  echo "SWEEP_REPEATS must be >= 1, got '$SWEEP_REPEATS'" >&2; exit 2
+fi
+if [ -z "$DECOY_LEVELS" ]; then
+  echo "DECOY_LEVELS must not be empty (e.g. '0,3,5,10,20')" >&2; exit 2
+fi
+for _dl in $(printf '%s' "$DECOY_LEVELS" | tr ',' ' '); do
+  case "$_dl" in
+    ''|*[!0-9]*) echo "DECOY_LEVELS entries must be non-negative integers, got '$_dl' in '$DECOY_LEVELS'" >&2; exit 2 ;;
+  esac
+done
+
 mkdir -p "$OUT"
 REPORT="$OUT/REPORT.md"
 PREFLIGHT="$OUT/PREFLIGHT.md"
@@ -762,24 +782,105 @@ print(len(merged))
 PY
 }
 
-# Append one row per (scenario, model) cell to CELL_STATS: the prompt size and
-# the advertised-tool count the transcript's own `prompt` record carried for
-# that cell. THIS IS NOT OPTIONAL BOOKKEEPING: 20 tool schemas is a lot of
-# prompt, and if PromptAssembler/context-window trimming drops tools before
-# the request reaches the backend, the resulting F1-vs-tool-count curve
-# measures context overflow, not model capability, and looks exactly like
-# graceful degradation. Caveat, stated plainly rather than hidden: this reads
-# `advertisedTools`/system+user text from the TRANSCRIPT, i.e. what
-# ManifoldKit's own ToolRegistry handed to `GenerationConfig.tools` and the
-# prompt strings it assembled — the closest signal observable without
-# instrumenting the wire. `promptTokenEstimate` is a chars/4 heuristic, NOT a
-# real tokenizer count (no wire-level capture from this shell-only lane) —
-# treat it as directional, not authoritative.
-# args: transcript-jsonl  decoyLevel  repeatIndex  cell-stats-tsv
+# Build a tool-name -> approximate-schema-byte-size lookup table, ONCE per
+# run (tool definitions are static within a run), from the REAL source
+# specification of every decoy tool in DecoyTools.swift. For each `def(name,
+# description, [(param, paramDescription), ...], required: [...])` call, the
+# byte length of the ENTIRE Swift literal span (name + description + every
+# param name/description) is used as a size proxy — not a byte-perfect
+# reconstruction of the JSON schema `--extra-tools` actually sends (that would
+# require touching Sources/ or wire-capturing live Ollama traffic mid-sweep,
+# both out of scope for a shell-only lane), but a real, per-tool, monotonic-
+# with-complexity number derived from the SHIPPED spec, not a guess. This is
+# what makes the estimate actually VARY across decoy levels — see the
+# comment on `append_cell_stats` below for why a flat guess wouldn't. The six
+# built-in reference tools (now/calc/read_file/list_dir/sample_repo_search/
+# http_get_fixture) get a flat documented constant: they are the scenario's
+# REQUIRED set, constant per scenario regardless of decoy level, so their
+# precision doesn't affect whether the curve varies with level — only its
+# constant offset, which doesn't need per-tool fidelity.
+# args: core-dir  out-tsv-path
+build_tool_schema_size_table() {
+  python3 - "$1" "$2" <<'PY'
+import re, sys
+core_dir, out_path = sys.argv[1], sys.argv[2]
+decoy_path = core_dir + "/Sources/ManifoldTools/ReferenceTools/DecoyTools.swift"
+sizes = {}
+try:
+    with open(decoy_path) as fh:
+        text = fh.read()
+except FileNotFoundError:
+    text = ""
+i, n = 0, len(text)
+while True:
+    idx = text.find('def("', i)
+    if idx == -1:
+        break
+    open_paren = text.find("(", idx)
+    depth, in_str, j = 0, False, open_paren
+    while j < n:
+        c = text[j]
+        if c == '"' and text[j - 1] != "\\":
+            in_str = not in_str
+        elif not in_str:
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+        j += 1
+    span = text[idx:j + 1]
+    m = re.match(r'def\("([^"]+)"', span)
+    if m:
+        sizes[m.group(1)] = len(span)
+    i = j + 1 if j < n else n
+for ref_tool in ("now", "calc", "read_file", "list_dir", "sample_repo_search", "http_get_fixture"):
+    sizes.setdefault(ref_tool, 220)
+with open(out_path, "w") as fh:
+    for name, size in sorted(sizes.items()):
+        fh.write("%s\t%d\n" % (name, size))
+print(len(sizes))
+PY
+}
+
+# Append one row per (scenario, model, backend) cell to CELL_STATS: the
+# prompt-text size, the advertised-tool count, AND the tool-SCHEMA size
+# estimate — all the transcript's own `prompt` record carried for that cell.
+# THIS IS NOT OPTIONAL BOOKKEEPING: `promptTextTokenEstimate` alone is
+# INVARIANT with decoy level (scenario.systemPrompt/userPrompt never change —
+# only the tool array does), so a column that never moves across levels
+# cannot distinguish "context overflow" from "tool-selection capability",
+# which was the whole point (found in review of an earlier revision of this
+# file). `toolSchemaTokenEstimate` (built from `build_tool_schema_size_table`
+# above) is what actually grows with decoy level, so `promptTokenEstimateTotal`
+# — the sum of both — is the number a reader should actually watch move.
+# `model`/`backend` are read straight off the SAME transcript record
+# (TranscriptLogger stamps both on every event) so multi-model /
+# multi-backend runs stay attributable per row instead of collapsing N
+# models' worth of cells into unattributable duplicates (both legs append
+# into the same CELL_STATS file — see the matrix/collate call sites).
+# Caveat, stated plainly: `advertisedTools`/prompt text are read from what
+# ManifoldKit's own ToolRegistry/PromptAssembler HANDED TO the backend, not a
+# wire capture of what the backend actually parsed off the socket — the
+# closest signal observable without instrumenting the wire from a
+# shell-only lane. `*TokenEstimate` columns are chars/4 heuristics over real
+# source content, NOT a real tokenizer count — directional, not authoritative.
+# args: transcript-jsonl  decoyLevel  repeatIndex  cell-stats-tsv  schema-size-tsv
 append_cell_stats() {
-  python3 - "$1" "$2" "$3" "$4" <<'PY'
+  python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
 import json, sys
-transcript, level, rep, out_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+transcript, level, rep, out_path, sizes_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+sizes = {}
+try:
+    with open(sizes_path) as fh:
+        for line in fh:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) == 2:
+                sizes[parts[0]] = int(parts[1])
+except FileNotFoundError:
+    pass
+DEFAULT_TOOL_SIZE = 150  # fallback for a name absent from the table — should not normally hit
 rows = []
 try:
     with open(transcript) as fh:
@@ -796,8 +897,15 @@ try:
             system = obj.get("system", "") or ""
             user = obj.get("user", "") or ""
             advertised = obj.get("advertisedTools", []) or []
-            chars = len(system) + len(user)
-            rows.append((obj.get("scenario", "?"), level, rep, chars, chars // 4, len(advertised)))
+            text_chars = len(system) + len(user)
+            schema_bytes = sum(sizes.get(name, DEFAULT_TOOL_SIZE) for name in advertised)
+            text_tok = text_chars // 4
+            schema_tok = schema_bytes // 4
+            rows.append((
+                obj.get("scenario", "?"), obj.get("backend", "?"), obj.get("model", "?"),
+                level, rep, text_chars, text_tok, len(advertised), schema_bytes, schema_tok,
+                text_tok + schema_tok,
+            ))
 except FileNotFoundError:
     pass
 with open(out_path, "a") as fh:
@@ -836,13 +944,116 @@ PY
   fi
 }
 
+# LOAD-BEARING INVARIANT, invisible from the scorer side: `decoyLevel` is NOT
+# part of ConformanceScorer's grouping key (backend x model x quant x
+# scenario) — it's derived post-hoc from `advertisedTools` on the transcript's
+# `prompt` record. The per-level loops below are safe ONLY because they write
+# exactly ONE transcript per (decoyLevel, repeatIndex) cell. If anything ever
+# appends two decoy levels into the SAME transcript file, the scorer silently
+# merges them into a single accumulator keyed on the LAST prompt record's
+# advertised set — one plausible-looking row that is actually two levels
+# averaged together, with no error and no warning. Never change either loop to
+# append multiple levels into one `--output` path. `assert_transcript_count`
+# below is the only thing that would catch a regression here.
+# args: label  dir  glob-pattern  expected-count
+assert_transcript_count() {
+  local label="$1" dir="$2" pattern="$3" expected="$4"
+  local actual
+  actual="$(find "$dir" -maxdepth 1 -type f -name "$pattern" 2>/dev/null | grep -c .)"
+  if [ "${actual:-0}" -eq "$expected" ]; then
+    SUMMARY_LANES="${SUMMARY_LANES}${label}: transcript count OK — $actual/$expected distinct (decoyLevel x repeatIndex) transcripts\n"
+  else
+    SUMMARY_LANES="${SUMMARY_LANES}${label}: TRANSCRIPT COUNT MISMATCH — $actual/$expected distinct transcripts; a missing/merged file means decoyLevel attribution for that leg may be silently wrong (see the invariant comment above the sweep loop) -> $dir\n"
+    FAILED_LANES="${FAILED_LANES}${label}: transcript count mismatch ($actual/$expected)\n"
+  fi
+}
+
+# Prints two labeled, EXPLICITLY SEPARATE series from a merged records.json:
+#   1. F1 vs decoyLevel, over TOOL-BEARING scenarios only (toolSelection != null).
+#   2. Decoy-grab rate vs decoyLevel, over ABSTENTION-CLASS scenarios only
+#      (toolSelection == null, i.e. requiredTools was empty) — the fraction of
+#      those runs where the model called a tool anyway (failureClass ==
+#      "lowPrecision", which fires exactly when confusion.fp > 0 on a
+#      non-tool-bearing row).
+# These MUST stay separate: a non-tool-bearing row's toolSelection is nil
+# because precision/recall/F1 are mathematically undefined with zero expected
+# positives — averaging a naive 0-for-nil into the F1 series would read as a
+# dramatic precision collapse that is entirely an artifact of the averaging,
+# not a real degradation.
+# args: label  records-json-path
+report_degradation_curves() {
+  local label="$1" path="$2"
+  [ -s "$path" ] || return 0
+  python3 - "$label" "$path" <<'PY'
+import json, sys
+from collections import defaultdict
+label, path = sys.argv[1], sys.argv[2]
+with open(path) as fh:
+    records = json.load(fh)
+by_level = defaultdict(lambda: {"f1_sum": 0.0, "f1_n": 0, "abst_n": 0, "abst_grab": 0})
+for r in records:
+    if (r.get("status") or {}).get("kind") != "measured":
+        continue  # holes carry no toolSelection/failureClass signal
+    level = r.get("decoyLevel")
+    ts = r.get("toolSelection")
+    d = by_level[level]
+    if ts is not None:
+        d["f1_sum"] += ts["f1"]
+        d["f1_n"] += 1
+    else:
+        # Non-tool-bearing (abstention-class): toolSelection is nil BY DESIGN,
+        # never averaged as a 0. failureClass == "lowPrecision" is the only
+        # signal that survives for these rows (confusion.fp > 0).
+        d["abst_n"] += 1
+        if r.get("failureClass") == "lowPrecision":
+            d["abst_grab"] += 1
+print("-- %s: F1-vs-decoyLevel (tool-bearing scenarios only) --" % label)
+print("decoyLevel\tmeanF1\tn_tool_bearing_measurements")
+for level in sorted(k for k in by_level if by_level[k]["f1_n"] > 0):
+    d = by_level[level]
+    print("%s\t%.3f\t%d" % (level, d["f1_sum"] / d["f1_n"], d["f1_n"]))
+print("-- %s: decoy-grab-rate-vs-decoyLevel (abstention scenarios only, NOT part of the F1 curve above) --" % label)
+print("decoyLevel\tdecoyGrabRate\tn_abstention_measurements")
+for level in sorted(k for k in by_level if by_level[k]["abst_n"] > 0):
+    d = by_level[level]
+    print("%s\t%.3f\t%d" % (level, d["abst_grab"] / d["abst_n"], d["abst_n"]))
+
+# Repeat spread: `MatrixRenderer` keys on (backend, model, quant, renderer)
+# and reports count + MEAN F1 across repeats — but the documented reason
+# repeats exist at all is to see the run-to-run F1 SWING (a 0.10-0.12 F1
+# range observed historically), which a mean alone hides. Group by the full
+# cell coordinate MINUS repeatIndex and report min/max/spread over the
+# repeats actually gathered for that cell.
+per_cell = defaultdict(list)
+for r in records:
+    if (r.get("status") or {}).get("kind") != "measured":
+        continue
+    ts = r.get("toolSelection")
+    if ts is None:
+        continue  # spread is only meaningful on the F1 series (tool-bearing)
+    key = (r.get("backend"), r.get("model"), r.get("quant"), r.get("scenario"), r.get("decoyLevel"))
+    per_cell[key].append(ts["f1"])
+print("-- %s: repeat spread (min/max F1 across repeatIndex, per cell; NOT the same as MatrixRenderer's mean) --" % label)
+print("backend\tmodel\tquant\tscenario\tdecoyLevel\tn_repeats\tminF1\tmaxF1\tspread\tmeanF1")
+for key in sorted(per_cell, key=lambda k: (str(k[0]), str(k[1]), str(k[2]), str(k[3]), k[4] if k[4] is not None else -1)):
+    vals = per_cell[key]
+    if len(vals) < 2:
+        continue  # a spread over one sample is not a spread
+    lo, hi, mean = min(vals), max(vals), sum(vals) / len(vals)
+    print("%s\t%s\t%s\t%s\t%s\t%d\t%.3f\t%.3f\t%.3f\t%.3f" % (
+        key[0], key[1], key[2], key[3], key[4], len(vals), lo, hi, hi - lo, mean))
+PY
+}
+
 if have_lane core; then
   MATRIX_DIR="$OUT/matrix"
   mkdir -p "$MATRIX_DIR"
   RECORDS="$MATRIX_DIR/records.json"
   MATRIX_MD="$OUT/MATRIX.md"
   CELL_STATS="$MATRIX_DIR/cell-stats.tsv"
-  printf 'scenario\tdecoyLevel\trepeatIndex\tpromptChars\tpromptTokenEstimate\tadvertisedToolCount\n' > "$CELL_STATS"
+  printf 'scenario\tbackend\tmodel\tdecoyLevel\trepeatIndex\tpromptTextChars\tpromptTextTokenEstimate\tadvertisedToolCount\ttoolSchemaBytesEstimate\ttoolSchemaTokenEstimate\tpromptTokenEstimateTotal\n' > "$CELL_STATS"
+  TOOL_SCHEMA_SIZES="$MATRIX_DIR/tool-schema-sizes.tsv"
+  build_tool_schema_size_table "$CORE_DIR" "$TOOL_SCHEMA_SIZES" >/dev/null
   # MANIFOLD_CORE_COMMIT is resolved ONCE, at the top of this script, and
   # exported — every leg passes the SAME value rather than each computing its
   # own (see the preflight "core-commit" check for loud failure reporting).
@@ -858,7 +1069,13 @@ if have_lane core; then
       # normally sets MATRIX_MODELS from installed tags, so this is the rare path).
       MATRIX_MODEL_ARGS=""
       if [ -n "${MATRIX_MODELS:-}" ]; then MATRIX_MODEL_ARGS="--model ${MATRIX_MODELS}"; fi
-      SCENARIO_COUNT="$("$TOOL_BIN" --list 2>/dev/null | grep -c .)"
+      # `--list` prints a "Available scenarios:" HEADER line before the
+      # per-scenario lines (each indented "  <id> — <description>") — a bare
+      # `grep -c .` over-counts by exactly 1, which made the coverage
+      # assertion below FAIL EVERY RUN regardless of actual coverage (a
+      # permanent false alarm indistinguishable from a real shortfall).
+      # Anchor on the two-space indent every scenario line actually has.
+      SCENARIO_COUNT="$("$TOOL_BIN" --list 2>/dev/null | grep -c '^  ')"
       MODEL_COUNT=1
       [ -n "${MATRIX_MODELS:-}" ] && MODEL_COUNT="$(printf '%s' "$MATRIX_MODELS" | tr ',' '\n' | grep -c .)"
       LEVEL_COUNT="$(printf '%s' "$DECOY_LEVELS" | tr ',' '\n' | grep -c .)"
@@ -895,9 +1112,10 @@ if have_lane core; then
           FAILED_LANES="${FAILED_LANES}matrix: decoyLevel=$LEVEL TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
         fi
         for REP in $(seq 1 "$SWEEP_REPEATS"); do
-          append_cell_stats "$MATRIX_DIR/transcript-L${LEVEL}-R${REP}.jsonl" "$LEVEL" "$REP" "$CELL_STATS"
+          append_cell_stats "$MATRIX_DIR/transcript-L${LEVEL}-R${REP}.jsonl" "$LEVEL" "$REP" "$CELL_STATS" "$TOOL_SCHEMA_SIZES"
         done
       done
+      assert_transcript_count "matrix" "$MATRIX_DIR" "transcript-L*-R*.jsonl" $(( LEVEL_COUNT * SWEEP_REPEATS ))
       RECORD_COUNT="$(merge_records_json "$RECORDS" "$MATRIX_DIR" "records-L")"
       if [ -s "$RECORDS" ] && [ "${RECORD_COUNT:-0}" -gt 0 ]; then
         assert_no_placeholder_core_commit "matrix" "$RECORDS"
@@ -1043,9 +1261,16 @@ if have_lane collate; then
           FAILED_LANES="${FAILED_LANES}collate: MLX leg decoyLevel=$LEVEL TIMEOUT/killed after ${LANE_TIMEOUT}s\n"
         fi
         for REP in $(seq 1 "$SWEEP_REPEATS"); do
-          append_cell_stats "$COLLATE_DIR/mlx-transcript-L${LEVEL}-R${REP}.jsonl" "$LEVEL" "$REP" "$CELL_STATS"
+          append_cell_stats "$COLLATE_DIR/mlx-transcript-L${LEVEL}-R${REP}.jsonl" "$LEVEL" "$REP" "$CELL_STATS" "$TOOL_SCHEMA_SIZES"
         done
       done
+      # LEVEL_COUNT is normally already set by the matrix block above (this
+      # lane only reaches here once OLLAMA_RECORDS exists, which requires
+      # `have_lane core` to have run) — recomputed defensively so this
+      # assertion never reads an unset/stale value if that assumption ever
+      # changes.
+      COLLATE_LEVEL_COUNT="$(printf '%s' "$DECOY_LEVELS" | tr ',' '\n' | grep -c .)"
+      assert_transcript_count "collate:mlx" "$COLLATE_DIR" "mlx-transcript-L*-R*.jsonl" $(( COLLATE_LEVEL_COUNT * SWEEP_REPEATS ))
       MLX_RECORD_COUNT="$(merge_records_json "$MLX_RECORDS" "$COLLATE_DIR" "mlx-records-L")"
       if [ -s "$MLX_RECORDS" ] && [ "${MLX_RECORD_COUNT:-0}" -gt 0 ]; then
         assert_no_placeholder_core_commit "collate:mlx" "$MLX_RECORDS"
@@ -1054,6 +1279,25 @@ if have_lane collate; then
           if "$EVAL_BIN_C" collate "$OLLAMA_RECORDS" "$MLX_RECORDS" \
                --out "$XRUNTIME_MD" --title "Runtime comparison — $COLLATE_FAMILY" \
                >"$COLLATE_DIR/collate.log" 2>&1; then
+            # CAVEAT (not this lane's own defect — flagged pending a companion
+            # fix): core's DecoyTools pool has 46 entries; the manifold-mlx /
+            # manifold-llama companions still carry their own stale ~24-entry
+            # local copies with only partial overlap (confirmed on the llama
+            # side: `--extra-tools 10` there actually advertises decoyLevel=7,
+            # because 4 of core's first 10 decoy names aren't in its local
+            # pool). Until the companions migrate to consuming core's shared
+            # DecoyTools, this ladder's "same nominal decoyLevel" label does
+            # NOT mean "same advertised tool set" across legs — remove this
+            # note once that migration lands.
+            {
+              echo
+              echo "> **Caveat:** the Ollama and MLX legs above may advertise DIFFERENT"
+              echo "> decoy tool sets at the same nominal \`decoyLevel\` — core's shared"
+              echo "> \`DecoyTools\` pool and the companion repos' local copies have not yet"
+              echo "> converged. Level-for-level comparison across legs is NOT yet honest;"
+              echo "> treat each leg's own within-leg curve as the reliable signal until"
+              echo "> the companions migrate."
+            } >> "$XRUNTIME_MD"
             # Rendering is NOT the same as comparing. The renderer only emits a
             # cross-runtime section when >=2 legs share a normalized model key,
             # and the two legs name the same weights differently — Ollama by tag
@@ -1433,17 +1677,48 @@ fi
   echo "count a cell actually saw was truncated below the requested decoyLevel,"
   echo "or the prompt is close to the model's context ceiling, a degradation"
   echo "there measures context overflow, not tool-selection capability."
-  echo "\`promptTokenEstimate\` is a chars/4 heuristic (script-side, not a real"
-  echo "tokenizer count) — directional, not authoritative."
+  echo "\`promptTextTokenEstimate\` alone does NOT vary with decoyLevel (the"
+  echo "scenario's system/user text is fixed — only the tool array grows), so"
+  echo "watch \`promptTokenEstimateTotal\` = text + \`toolSchemaTokenEstimate\`,"
+  echo "the latter built from each tool's real shipped spec in DecoyTools.swift."
+  echo "All \`*TokenEstimate\` columns are chars/4 heuristics over real source"
+  echo "content (script-side, not a real tokenizer count, not a wire capture)"
+  echo "— directional, not authoritative. \`backend\`/\`model\` are read straight"
+  echo "off the transcript so every row stays attributable across legs and"
+  echo "across a multi-model MATRIX_MODELS run."
   # Ollama (matrix) and MLX (collate) legs both append into the same TSV
   # (CELL_STATS is set once, in the matrix block) so the two legs' per-cell
-  # numbers sit side by side for comparison.
+  # numbers sit side by side for comparison — now genuinely distinguishable
+  # by the backend/model columns rather than colliding on (scenario,
+  # decoyLevel, repeatIndex) alone.
   if [ -s "$OUT/matrix/cell-stats.tsv" ] && [ "$(grep -c . "$OUT/matrix/cell-stats.tsv")" -gt 1 ]; then
     echo '```'
     cat "$OUT/matrix/cell-stats.tsv"
     echo '```'
   else
     echo "- no cell stats recorded this run (matrix lane did not run, or no cells produced a prompt record)"
+  fi
+  echo
+  echo "## Tool-selection degradation curves"
+  echo "Two DELIBERATELY SEPARATE series — do not fold one into the other (a"
+  echo "non-tool-bearing / abstention row's toolSelection is nil BECAUSE"
+  echo "precision/recall/F1 are mathematically undefined with zero expected"
+  echo "positives; averaging a naive 0-for-nil into the F1 series reads as a"
+  echo "dramatic collapse that is entirely an averaging artifact, not signal)."
+  echo "Also includes per-cell repeat spread — a MEAN over repeats hides the"
+  echo "run-to-run F1 swing repeats exist to surface."
+  if [ -s "$OUT/matrix/records.json" ]; then
+    echo '```'
+    report_degradation_curves "matrix(ollama)" "$OUT/matrix/records.json"
+    echo '```'
+  fi
+  if [ -s "$OUT/collate/mlx-records.json" ]; then
+    echo '```'
+    report_degradation_curves "collate(mlx)" "$OUT/collate/mlx-records.json"
+    echo '```'
+  fi
+  if [ ! -s "$OUT/matrix/records.json" ] && [ ! -s "$OUT/collate/mlx-records.json" ]; then
+    echo "- no records available this run (see Lane summary)"
   fi
   echo
   echo "## Performance signals"
