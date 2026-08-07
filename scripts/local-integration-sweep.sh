@@ -24,6 +24,7 @@
 #   MLX_DIR=/path/to/mlx-worktree LLAMA_DIR=/path/to/llama-worktree \
 #     scripts/local-integration-sweep.sh --lanes collate     # pin exact worktrees, bypass the probe
 #   DECOY_LEVELS=0,5,20 SWEEP_REPEATS=2 scripts/local-integration-sweep.sh --lanes core,collate
+#   MANIFOLD_CORE_COMMIT=abc1234 scripts/local-integration-sweep.sh   # pin the value every leg stamps, instead of auto-resolving CORE_DIR's HEAD
 #
 # REQUIREMENTS
 # ------------
@@ -55,6 +56,27 @@ CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # the family one level deeper (`~/Repos/ManifoldKit/manifold-*`), reporting
 # `skip (repo absent)` for llama+mlx+eval while the run still exited 0.
 COMPANIONS_DIR="${COMPANIONS_DIR:-$HOME/Repos}"
+# The core commit under measurement — resolved ONCE, here, from the tree
+# actually checked out (tonight that is frequently an unmerged worktree
+# branch, NOT origin/main), and exported so every leg that can accept a
+# core-commit value receives the SAME one. Without this, `manifold-tools
+# score`'s Ollama leg and `manifold-tools-mlx`'s MLX leg each independently
+# fell back to their own "unknown" placeholder, and collate's cross-leg
+# comparability guard — the entire reason to run collate over
+# `cat *.json | matrix` — stayed structurally inert (manifold-mlx#178).
+# A caller-set MANIFOLD_CORE_COMMIT always wins. Resolution failure is
+# recorded LOUDLY (preflight FAIL + summary line), never a silent fall-through
+# to the placeholder — a silent one would look identical to success.
+MANIFOLD_CORE_COMMIT="${MANIFOLD_CORE_COMMIT:-}"
+CORE_COMMIT_RESOLVED=1
+if [ -z "$MANIFOLD_CORE_COMMIT" ]; then
+  MANIFOLD_CORE_COMMIT="$(git -C "$CORE_DIR" rev-parse --short HEAD 2>/dev/null)"
+fi
+if [ -z "$MANIFOLD_CORE_COMMIT" ]; then
+  CORE_COMMIT_RESOLVED=0
+  MANIFOLD_CORE_COMMIT="unknown"
+fi
+export MANIFOLD_CORE_COMMIT
 LANES="core,llama,mlx,eval,collate,evalmain"
 # Preflight knobs. OLLAMA_START_TIMEOUT bounds the wait for a daemon we start
 # ourselves; EVAL_TOOL_MAX_BYTES caps the model chosen for the BFCL role (the
@@ -403,6 +425,17 @@ PY
 }
 
 log "=== [preflight] $(date +%H:%M:%S) starting ==="
+
+# -- core commit ----------------------------------------------------------
+# Resolved once, at the top of this script (see MANIFOLD_CORE_COMMIT above).
+# Surfaced here so an operator reads the FAIL before trusting any downstream
+# cross-leg comparison — a resolution failure that only showed up as a quiet
+# "unknown" in a records.json field would be indistinguishable from success.
+if [ "$CORE_COMMIT_RESOLVED" -eq 1 ]; then
+  pf PASS "core-commit" "$MANIFOLD_CORE_COMMIT (resolved from $CORE_DIR HEAD)"
+else
+  pf FAIL "core-commit" "could not resolve HEAD at $CORE_DIR — every emitted record will carry the 'unknown' placeholder coreCommit, and collate's cross-leg comparability guard cannot verify anything this run"
+fi
 
 # -- repos --------------------------------------------------------------------
 # A repo is needed if ITS OWN lane is requested, or if a lane that DEPENDS on it
@@ -773,6 +806,36 @@ with open(out_path, "a") as fh:
 PY
 }
 
+# Assert no emitted record still carries the "unknown" coreCommit placeholder.
+# The whole point of resolving MANIFOLD_CORE_COMMIT once at the top of this
+# script is to give collate's cross-leg comparability guard a real, shared
+# value; a leg that silently fell back to the placeholder recreates the exact
+# inert-guard state manifold-mlx#178 exists to close — and because the run
+# still exits clean otherwise, it would look identical to success. Only
+# asserted when resolution itself succeeded; when it did NOT (see the loud
+# preflight FAIL above), "unknown" is the honest, already-announced value,
+# not a silent wiring defect.
+# args: label  records-json-path
+assert_no_placeholder_core_commit() {
+  local label="$1" path="$2"
+  [ "$CORE_COMMIT_RESOLVED" -eq 1 ] || return 0
+  [ -s "$path" ] || return 0
+  local bad
+  bad="$(python3 - "$path" <<'PY'
+import json, sys
+with open(sys.argv[1]) as fh:
+    records = json.load(fh)
+print(sum(1 for r in records if r.get("coreCommit") == "unknown"))
+PY
+)"
+  if [ "${bad:-0}" -gt 0 ]; then
+    SUMMARY_LANES="${SUMMARY_LANES}${label}: CORE-COMMIT WIRING DEAD — $bad record(s) carry the placeholder 'unknown' coreCommit despite MANIFOLD_CORE_COMMIT=$MANIFOLD_CORE_COMMIT resolving cleanly; collate's comparability guard is inert for this leg (manifold-mlx#178) -> $path\n"
+    FAILED_LANES="${FAILED_LANES}${label}: core-commit wiring dead ($bad placeholder record(s))\n"
+  else
+    SUMMARY_LANES="${SUMMARY_LANES}${label}: core-commit wiring OK — no record carries the placeholder (coreCommit=$MANIFOLD_CORE_COMMIT)\n"
+  fi
+}
+
 if have_lane core; then
   MATRIX_DIR="$OUT/matrix"
   mkdir -p "$MATRIX_DIR"
@@ -780,7 +843,9 @@ if have_lane core; then
   MATRIX_MD="$OUT/MATRIX.md"
   CELL_STATS="$MATRIX_DIR/cell-stats.tsv"
   printf 'scenario\tdecoyLevel\trepeatIndex\tpromptChars\tpromptTokenEstimate\tadvertisedToolCount\n' > "$CELL_STATS"
-  CORE_COMMIT="$(git -C "$CORE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  # MANIFOLD_CORE_COMMIT is resolved ONCE, at the top of this script, and
+  # exported — every leg passes the SAME value rather than each computing its
+  # own (see the preflight "core-commit" check for loud failure reporting).
   log "=== [matrix] $(date +%H:%M:%S) building manifold-tools ==="
   if ( cd "$CORE_DIR" && swift build --product manifold-tools ) >"$MATRIX_DIR/build.log" 2>&1; then
     TOOL_BIN="$(cd "$CORE_DIR" && swift build --product manifold-tools --show-bin-path 2>/dev/null)/manifold-tools"
@@ -818,7 +883,7 @@ if have_lane core; then
             # score the transcript regardless of the run's own exit code.
             if [ -s \"\$T\" ]; then
               '$TOOL_BIN' score \"\$T\" --emit-records \"\$R\" \
-                --renderer ollama-server --core-commit '$CORE_COMMIT' \
+                --renderer ollama-server --core-commit '$MANIFOLD_CORE_COMMIT' \
                 >/dev/null 2>>\"$MATRIX_DIR/score-L${LEVEL}.log\"
             fi
           done
@@ -835,6 +900,7 @@ if have_lane core; then
       done
       RECORD_COUNT="$(merge_records_json "$RECORDS" "$MATRIX_DIR" "records-L")"
       if [ -s "$RECORDS" ] && [ "${RECORD_COUNT:-0}" -gt 0 ]; then
+        assert_no_placeholder_core_commit "matrix" "$RECORDS"
         # ---- coverage-denominator assertion -------------------------------
         # measured + notMeasured + loadFail + renderFail MUST equal
         # scenarios x levels x repeats x models. A short matrix that renders
@@ -895,16 +961,20 @@ fi
 # actually ran the comparison, and this script's own comment said cross-runtime
 # collation was "deferred".
 #
-# TWO KNOWN LIMITATIONS, both surfaced in the output rather than hidden:
-#   1. There is NO llama leg. `manifold-tools-llama` parses only --model/--bench/
-#      --flash/--describe — it has no --emit-records path, unlike its MLX sibling.
-#      Nothing emits a placeholder record for it, so the matrix simply has no
-#      llama row; the absence is carried in this lane's summary line instead. A
-#      missing row is NOT a measured zero — do not read it as one.
-#   2. `manifold-tools-mlx` hardcodes `coreCommit: "unknown"`, so collate's
-#      comparability guard cannot actually verify the MLX leg and will emit an
-#      advisory mixed-commit diagnostic every run. Recorded here so the operator
-#      does not learn to ignore a guard that is structurally inert.
+# ONE KNOWN LIMITATION, surfaced in the output rather than hidden:
+#   There is NO llama leg. `manifold-tools-llama` parses only --model/--bench/
+#   --flash/--describe — it has no --emit-records path, unlike its MLX sibling.
+#   Nothing emits a placeholder record for it, so the matrix simply has no
+#   llama row; the absence is carried in this lane's summary line instead. A
+#   missing row is NOT a measured zero — do not read it as one.
+#
+# `manifold-tools-mlx` previously hardcoded `coreCommit: "unknown"` (manifold-mlx#178),
+# which made collate's comparability guard structurally inert for the MLX leg.
+# Fixed there (flag -> $MANIFOLD_CORE_COMMIT env var -> placeholder) and wired
+# here via the explicit `--core-commit` passed to manifold-tools-mlx below,
+# plus assert_no_placeholder_core_commit's post-merge check. UNTESTED
+# end-to-end from this worktree: manifold-mlx's fix is on an unmerged branch
+# (manifold-mlx#182) not reachable from origin/main.
 if have_lane collate; then
   COLLATE_DIR="$OUT/collate"; mkdir -p "$COLLATE_DIR"
   XRUNTIME_MD="$OUT/XRUNTIME_MATRIX.md"
@@ -942,6 +1012,10 @@ if have_lane collate; then
       # DECOY_LEVELS/SWEEP_REPEATS comment near the top of this script). Until
       # that pin bump lands, every cell below fails fast with a CLI parse
       # error rather than silently measuring the wrong thing.
+      # `--core-commit` is manifold-mlx#178's fix (flag -> $MANIFOLD_CORE_COMMIT
+      # env var, exported at the top of this script -> a documented "unknown"
+      # placeholder) — passed explicitly here rather than relying on the env
+      # fallback so the value this leg stamps is unambiguous.
       for LEVEL in $(printf '%s' "$DECOY_LEVELS" | tr ',' ' '); do
         log "=== [collate] $(date +%H:%M:%S) MLX leg decoyLevel=$LEVEL x ${SWEEP_REPEATS} repeat(s) on $COLLATE_MLX_MODEL ==="
         # ONE run_capped_lane invocation per (leg=mlx x decoyLevel) — same
@@ -956,6 +1030,7 @@ if have_lane collate; then
             # exactly the divergence this lane hunts), so keep going.
             '$MLX_TOOL_BIN' --model '$COLLATE_MLX_MODEL' --scenario all \
               --extra-tools '$LEVEL' --repeat-index \"\$REP\" \
+              --core-commit '$MANIFOLD_CORE_COMMIT' \
               --output \"\$T\" --emit-records \"\$R\"
           done
         "
@@ -973,6 +1048,7 @@ if have_lane collate; then
       done
       MLX_RECORD_COUNT="$(merge_records_json "$MLX_RECORDS" "$COLLATE_DIR" "mlx-records-L")"
       if [ -s "$MLX_RECORDS" ] && [ "${MLX_RECORD_COUNT:-0}" -gt 0 ]; then
+        assert_no_placeholder_core_commit "collate:mlx" "$MLX_RECORDS"
         if ( cd "$EVAL_DIR" && swift build ) >"$COLLATE_DIR/eval-build.log" 2>&1; then
           EVAL_BIN_C="$(cd "$EVAL_DIR" && swift build --show-bin-path 2>/dev/null)/manifold-eval"
           if "$EVAL_BIN_C" collate "$OLLAMA_RECORDS" "$MLX_RECORDS" \
@@ -1014,8 +1090,16 @@ if have_lane collate; then
           # ManifoldKit core commits (...)". The previous pattern (coreCommit/
           # mixed/drift) matched none of those words, so the NOTE this lane
           # promises "every run" could never fire once.
+          #
+          # Both legs now receive the SAME resolved MANIFOLD_CORE_COMMIT (see
+          # the top of this script + assert_no_placeholder_core_commit above),
+          # so this diagnostic firing is NO LONGER an accepted, expected
+          # every-run state — it means the two legs genuinely disagree on
+          # coreCommit (a real drift) or one leg is still on old wiring
+          # (manifold-mlx#178 not yet merged). Report it as a live signal, not
+          # a shrug.
           if grep -qiE '\[warning\]|core commits?' "$COLLATE_DIR/collate.log" 2>/dev/null; then
-            SUMMARY_LANES="${SUMMARY_LANES}collate: NOTE comparability diagnostic emitted (expected — manifold-tools-mlx hardcodes coreCommit \"unknown\") -> collate/collate.log\n"
+            SUMMARY_LANES="${SUMMARY_LANES}collate: NOTE comparability diagnostic emitted — legs disagree on coreCommit (real drift, or manifold-mlx#178's fix isn't on the pinned commit this run built) -> collate/collate.log\n"
           fi
         else
           lane_noop "collate" "manifold-eval build failed -> collate/eval-build.log"
