@@ -360,6 +360,7 @@ ScenarioCLIHarness.Options Struct
 ScenarioCLIHarness.Options conformances: Copyable,Escapable,Sendable,SendableMetatype
 ScenarioCLIHarness.Options.extraTools Var
 ScenarioCLIHarness.Options.fixturesRoot Var
+ScenarioCLIHarness.Options.init(scenarioFilter:output:fixturesRoot:extraTools:list:) Constructor
 ScenarioCLIHarness.Options.init(scenarioFilter:output:fixturesRoot:extraTools:list:repeatIndex:) Constructor
 ScenarioCLIHarness.Options.list Var
 ScenarioCLIHarness.Options.output Var
@@ -455,6 +456,7 @@ TranscriptLogger.Event.toolResult EnumElement
 TranscriptLogger.append(_:) Func
 TranscriptLogger.defaultFilename() Func
 TranscriptLogger.destination Var
+TranscriptLogger.init(url:backend:model:quant:append:) Constructor
 TranscriptLogger.init(url:backend:model:quant:repeatIndex:append:) Constructor
 VLModelDetector Enum
 VLModelDetector conformances: Copyable,Escapable

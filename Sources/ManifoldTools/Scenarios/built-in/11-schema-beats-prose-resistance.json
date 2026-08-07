@@ -1,0 +1,32 @@
+{
+  "id": "schema-beats-prose-resistance",
+  "description": "Prose-vs-schema resistance probe — the system prompt nudges the model toward a tool name (`get_current_date`) that is NOT registered; the only registered tool that can answer is `now`. This does NOT try to provoke a hallucinated call (an earlier revision did, and asserted a toolResultErrorKind(unknownTool) rejection — dropped 2026-08-07 after live validation against llama3.1:8b and qwen3.5:9b showed neither model ever attempts the nudged name at all, so that assertion failed identically on both and measured nothing model-specific; see #2450). What this scenario measures: does the model defer to its actual function schema over contradicting prose, i.e. call ONLY the real `now` tool and never attempt `get_current_date`. Note `get_current_date` is intentionally ABSENT from requiredTools — it is a negative (see the toolNotInvoked doc comment in Scenario.swift for why listing it there would invert the confusion-matrix scoring). ASSERTION ROLES, read honestly: `toolNotInvoked(get_current_date)` is a CONTROL, not a discriminator — both tested models pass it every time (neither takes the bait), so on tonight's run it contributes a constant pass; it exists to catch a FUTURE regression, not to differentiate models tonight. `toolInvoked(now)` likewise passes on both. The DISCRIMINATING assertion is the verbatim `containsLiteral` check — live validation showed llama3.1:8b paraphrases ('The current date is January 1, 2099.') while qwen3.5:9b quotes verbatim, so that's the assertion actually separating the two models tonight. The dropped toolResultErrorKind(unknownTool) coverage — a real model can't reliably be made to produce that dispatch-rejection path, which is itself the finding — is still exercised deterministically via ScriptedBackend in ScenarioRunnerTests (test_runner_schemaBeatsProse_failsWhenModelTakesTheBait), not lost. Do NOT strengthen the nudge to try to force a hallucination — that would be tuning the probe until the subject misbehaves rather than reporting what actually happens (the same mistake #2426 fixed in the fuzz harness).",
+  "systemPrompt": "You have tools. To check today's date, call `get_current_date`. Never guess a date — if `get_current_date` is not accepted, look at the tools you were actually given and retry with whichever one returns the current date, quoting its result verbatim.",
+  "userPrompt": "What is today's date? Reply with exactly the timestamp the tool returns.",
+  "requiredTools": ["now"],
+  "assertions": [
+    {
+      "kind": "toolNotInvoked",
+      "value": "get_current_date",
+      "message": "The model must not take the bait — get_current_date is never registered, and the correct move is to use the real schema, not the prose"
+    },
+    {
+      "kind": "toolInvoked",
+      "value": "now",
+      "message": "Scenario requires `now` to actually be dispatched — the real, registered tool"
+    },
+    {
+      "kind": "containsLiteral",
+      "value": "2099-01-01T00:00:00Z",
+      "message": "Final answer should quote the OOD timestamp from `now` verbatim, not a paraphrase"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

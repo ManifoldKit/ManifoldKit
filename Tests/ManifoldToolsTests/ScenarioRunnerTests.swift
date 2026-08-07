@@ -170,11 +170,11 @@ final class ScenarioRunnerTests: XCTestCase {
             "03-read",
             "04-list",
             "abstention-definition",
-            "hallucinated-tool-name-recovery",
             "handoff-note-lookup",
             "meeting-notes-summary",
             "oversize-tool-output",
             "parallel-readme-comparison",
+            "schema-beats-prose-resistance",
             "shopping-list-budget",
             "structured-json-extraction",
         ])
@@ -194,7 +194,7 @@ final class ScenarioRunnerTests: XCTestCase {
     /// catch a hallucinated final answer, not just a plausible one.
     func test_newDecoyDegradationScenarios_carryHonestyGateAssertion() throws {
         let scenarios = try ScenarioLoader.loadBuiltIn()
-        for id in ["abstention-definition", "hallucinated-tool-name-recovery", "handoff-note-lookup"] {
+        for id in ["abstention-definition", "schema-beats-prose-resistance", "handoff-note-lookup"] {
             let scenario = try XCTUnwrap(scenarios.first { $0.id == id })
             XCTAssertTrue(
                 scenario.assertions.contains { $0.kind == "toolInvoked" || $0.kind == "toolNotInvoked" },
@@ -338,7 +338,7 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertTrue(outcome.finalAnswer.contains("DEMO-README-NONCE"))
     }
 
-    // MARK: - Decoy-degradation scenarios (abstention / hallucinated tool / output-fed argument)
+    // MARK: - Decoy-degradation scenarios (abstention / schema-vs-prose resistance / output-fed argument)
 
     func test_runner_abstentionScenario_passesOnTrueAbstention() async throws {
         let scenario = try builtInScenario("abstention-definition")
@@ -374,12 +374,34 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertEqual(outcome.toolCallsExecuted, ["now"])
     }
 
-    func test_runner_hallucinatedToolName_rejectedCleanlyThenRecovers() async throws {
-        let scenario = try builtInScenario("hallucinated-tool-name-recovery")
+    /// Reframed 2026-08-07 after live validation (#2450): the scenario no
+    /// longer tries to provoke a hallucinated call — neither llama3.1:8b nor
+    /// qwen3.5:9b ever attempted the nudged name, both deferred to the real
+    /// schema. It now measures that resistance directly via `toolNotInvoked`.
+    func test_runner_schemaBeatsProse_passesWhenModelResistsTheNudge() async throws {
+        let scenario = try builtInScenario("schema-beats-prose-resistance")
         // Only `now` is registered — `get_current_date` (what the system
-        // prompt nudges toward) has no executor, so the dispatch loop must
-        // synthesize an `unknownTool` result for it rather than crashing or
-        // silently dropping the call.
+        // prompt nudges toward) has no executor at all.
+        let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "now", arguments: "{}"),
+            .tokens([NowTool.defaultFixture])
+        ])
+
+        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["now"])
+    }
+
+    /// The test that matters: a model that DOES take the bait and calls the
+    /// nudged, never-registered name must fail — proves `toolNotInvoked` is
+    /// load-bearing here, not decorative. The dispatch loop still rejects the
+    /// call cleanly (an `unknownTool` result, not a crash), but that clean
+    /// rejection is no longer sufficient to pass — taking the bait at all is
+    /// the failure this scenario now measures.
+    func test_runner_schemaBeatsProse_failsWhenModelTakesTheBait() async throws {
+        let scenario = try builtInScenario("schema-beats-prose-resistance")
         let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
         let backend = ScriptedBackend(turns: [
             .toolCall(name: "get_current_date", arguments: "{}"),
@@ -389,29 +411,11 @@ final class ScenarioRunnerTests: XCTestCase {
 
         let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
 
-        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
-        XCTAssertEqual(outcome.toolCallsExecuted, ["get_current_date", "now"])
+        XCTAssertFalse(outcome.passed, "taking the bait must fail the scenario even though now was also called")
         XCTAssertTrue(
             outcome.toolResults.contains { $0.toolName == "get_current_date" && $0.errorKind == "unknownTool" },
-            "the hallucinated tool name must be dispatched to a synthesized unknownTool result, not dropped"
+            "the dispatch loop must still reject the nudged name cleanly, even though doing so no longer saves the scenario"
         )
-    }
-
-    /// Sabotage-style negative: a model that hallucinates the tool name and
-    /// never recovers (wedges) must fail the scenario — proves the
-    /// `toolInvoked("now")` assertion is load-bearing, not just decorative.
-    func test_runner_hallucinatedToolName_failsWhenModelNeverRecovers() async throws {
-        let scenario = try builtInScenario("hallucinated-tool-name-recovery")
-        let registry = ToolRegistry(tools: [NowTool.makeExecutor()])
-        let backend = ScriptedBackend(turns: [
-            .toolCall(name: "get_current_date", arguments: "{}"),
-            .tokens(["I couldn't check the date."])
-        ])
-
-        let outcome = try await makeRunner(backend: backend, registry: registry).run(scenario)
-
-        XCTAssertFalse(outcome.passed, "a model that never recovers with the real tool must fail")
-        XCTAssertFalse(outcome.toolCallsExecuted.contains("now"))
     }
 
     func test_runner_handoffNoteLookup_argumentComesFromListDirOutput() async throws {

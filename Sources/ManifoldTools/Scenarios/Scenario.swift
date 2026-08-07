@@ -47,6 +47,26 @@ public struct Scenario: Codable, Sendable, Equatable {
         ///   correct answer requires no tool call, so a model that reaches for anything (including a
         ///   distractor it was never asked about) fails loudly instead of the failure being invisible
         ///   behind a passing `containsLiteral`.
+        ///
+        ///   **`requiredTools` trap (no compiler catches this):** `requiredTools` does double duty
+        ///   as both the advertisement filter (`ScenarioRunner` only forwards those tool
+        ///   definitions when decoy pressure is off) AND the confusion-matrix expected-positives
+        ///   set (`ConformanceScorer`'s TP/FP/FN). A tool named in a `toolNotInvoked` assertion is
+        ///   a NEGATIVE and must NEVER also appear in `requiredTools` — putting it there scores the
+        ///   scenario's own correct trajectory (never calling it) as a false negative, and a model
+        ///   that takes the bait as a clean true positive, which inverts the verdict/F1 relationship
+        ///   the scenario exists to measure. (`schema-beats-prose-resistance` is the worked example
+        ///   — see #2450.)
+        ///
+        ///   **Message-wording trap:** never phrase a `toolNotInvoked` message starting with
+        ///   `"Scenario requires "` — `ConformanceScorer.expectedToolsFromAssertion` recovers
+        ///   backtick-quoted tool names from any assertion message with that prefix (a fallback for
+        ///   companion transcripts that omit `requiredTools`), so a message like `"Scenario requires
+        ///   `get_current_date` to never be dispatched"` gets the negated tool parsed straight into
+        ///   the expected-POSITIVES set — the opposite of what the assertion means. Core is immune
+        ///   (it always emits `requiredTools` explicitly, so the recovery fallback never triggers),
+        ///   but a companion transcript that omits it is not. `ScenarioRecoveryTests` asserts every
+        ///   built-in `toolNotInvoked` message yields nothing from `expectedToolsFromAssertion`.
         /// - `"toolResultContains"` — at least one result for tool `value` must contain every
         ///   string in `values`.
         /// - `"toolResultErrorKind"` — at least one result for tool `value` must have errorKind

@@ -774,17 +774,13 @@ enum MockFactory {
                 .tokens(["apples and rice cost 19.75; do not buy saffron."])
             ])
         }
-        if scenario.id == "hallucinated-tool-name-recovery" {
-            // `get_current_date` has no registered executor — the real dispatch
-            // loop synthesizes an `unknownTool` result for it, exactly like the
-            // live path — so scripting the call here (rather than skipping it)
-            // exercises the same rejection-then-recovery sequence offline.
-            return ScriptedBackend(turns: [
-                .toolCall(name: "get_current_date", arguments: "{}"),
-                .toolCall(name: "now", arguments: "{}"),
-                .tokens([NowTool.defaultFixture])
-            ])
-        }
+        // schema-beats-prose-resistance needs no special case: requiredTools
+        // is ["now"] only (get_current_date must stay OUT of requiredTools —
+        // it's the negative the toolNotInvoked assertion checks, not an
+        // expected positive), so toolName resolves to "now" and the `default:`
+        // arm below already scripts exactly the correct trajectory (a single
+        // `now` call, quoting the fixture verbatim) — no attempt at the
+        // nonexistent nudged name at all.
         switch toolName {
         case "calc":
             args = #"{"a":7823,"op":"*","b":41}"#

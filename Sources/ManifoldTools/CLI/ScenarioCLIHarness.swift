@@ -47,6 +47,33 @@ public enum ScenarioCLIHarness {
             self.list = list
             self.repeatIndex = repeatIndex
         }
+
+        /// Pre-`repeatIndex` signature, kept alongside the current initializer
+        /// so `swift-api-digester` sees an addition rather than a removal.
+        /// Source compatibility alone isn't enough here: adding a defaulted
+        /// parameter to an existing public initializer still retires the old
+        /// *interface* symbol the digester compares against, even though every
+        /// existing call site keeps compiling (#2450 CI: `constructor
+        /// ScenarioCLIHarness.Options.init(scenarioFilter:output:
+        /// fixturesRoot:extraTools:list:) has been removed`). Swift resolves a
+        /// call omitting `repeatIndex` to this narrower overload rather than
+        /// defaulting it on the six-parameter one, so this isn't dead code.
+        public init(
+            scenarioFilter: String = "all",
+            output: URL,
+            fixturesRoot: URL? = nil,
+            extraTools: Int = 0,
+            list: Bool = false
+        ) {
+            self.init(
+                scenarioFilter: scenarioFilter,
+                output: output,
+                fixturesRoot: fixturesRoot,
+                extraTools: extraTools,
+                list: list,
+                repeatIndex: 0
+            )
+        }
     }
 
     /// Result of ``parseCommonFlags(_:defaultOutput:)``.

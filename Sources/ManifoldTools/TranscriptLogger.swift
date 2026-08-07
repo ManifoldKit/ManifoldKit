@@ -99,6 +99,33 @@ public final class TranscriptLogger {
         self.isoFormatter = ISO8601DateFormatter()
     }
 
+    /// Pre-`repeatIndex` signature, kept alongside the current initializer so
+    /// `swift-api-digester` sees an addition rather than a removal. Source
+    /// compatibility alone isn't enough here: adding a defaulted parameter to
+    /// an existing public initializer still retires the old *interface*
+    /// symbol the digester compares against, even though every existing call
+    /// site keeps compiling (#2450 CI: `constructor TranscriptLogger.init(url:
+    /// backend:model:quant:append:) has been removed`). Swift resolves a call
+    /// omitting `repeatIndex` to this narrower overload rather than
+    /// defaulting it on the six-parameter designated initializer, so this
+    /// isn't dead code.
+    public convenience init(
+        url: URL,
+        backend: String? = nil,
+        model: String? = nil,
+        quant: String? = nil,
+        append: Bool = false
+    ) throws {
+        try self.init(
+            url: url,
+            backend: backend,
+            model: model,
+            quant: quant,
+            repeatIndex: nil,
+            append: append
+        )
+    }
+
     deinit {
         // deinit can't propagate; explicit do/catch avoids a bare `try?` and
         // documents that a failed close is non-actionable (the file is about
