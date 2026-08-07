@@ -270,7 +270,27 @@ public enum MatrixRenderer {
     /// as approximate, so over- or under-merging never asserts a backend bug.
     static func normalizedModelKey(_ model: String) -> String {
         let lower = model.lowercased()
-        let tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        var tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
+        // HuggingFace repo filenames repeat the vendor-org token as a LEADING
+        // prefix (e.g. "google_gemma-3-4b-it-Q4_K_M.gguf", "Meta-Llama-3.1-8B-
+        // Instruct-Q4_K_M.gguf", "Qwen_Qwen3.5-2B-Q4_K_M.gguf"), but the MLX/
+        // Ollama-side identifier for the same weights usually doesn't carry it
+        // ("gemma-3-4b-it-4bit", "Llama-3.1-8B-Instruct-4bit", Ollama tag
+        // "qwen3.5:2b") — a second, independent residue on top of the quant
+        // one, and it also blocks pairing (#2411 follow-up). Drop it ONLY at
+        // the leading token position, and only an exact match against this
+        // bounded literal set — not "drop any token that also appears as a
+        // vendor name" and not a prefix/substring match — so a genuine model
+        // name is never mangled. This is why "qwen" (bare) is safe to drop
+        // here while "qwen3" (a real model-family token) is untouched: they
+        // arrive as distinct tokens after the split, and only the exact
+        // leading "qwen" token matches.
+        let vendorOrgPrefixes: Set<String> = [
+            "google", "meta", "qwen", "mistralai", "deepseek", "unsloth", "bartowski", "nvidia", "microsoft",
+        ]
+        if let first = tokens.first, vendorOrgPrefixes.contains(first) {
+            tokens.removeFirst()
+        }
         let dropped: Set<String> = ["tools", "tool", "instruct", "it", "chat", "gguf", "mlx", "tooltmpl"]
         // GGUF quant labels split (on the underscore) into separate tokens, e.g.
         // "Q4_K_M" -> ["q4", "k", "m"], "Q8_0" -> ["q8", "0"], "IQ4_XS" ->
@@ -310,7 +330,16 @@ public enum MatrixRenderer {
     private static func isQuantToken(_ token: String) -> Bool {
         if token.hasPrefix("iq"), let third = token.dropFirst(2).first, third.isNumber { return true }
         if token.hasPrefix("q"), let second = token.dropFirst().first, second.isNumber { return true }
-        if ["fp16", "fp32", "bf16", "f16", "f32", "4bit", "8bit"].contains(token) { return true }
+        // "<digit>bit" (1bit/2bit/3bit/4bit/6bit/8bit/…) — MLX sub-4-bit and
+        // ternary quant labels (e.g. Bonsai's 1bit/2bit) are otherwise not
+        // recognized as quant at all, so they never pair against their GGUF
+        // counterpart. Digit-prefix-exact, not "contains bit", so a genuine
+        // model-name token is never mistaken for a bit-width label.
+        if token.hasSuffix("bit") {
+            let digits = token.dropLast(3)
+            if !digits.isEmpty, digits.allSatisfy(\.isNumber) { return true }
+        }
+        if ["fp16", "fp32", "bf16", "f16", "f32"].contains(token) { return true }
         if token.hasPrefix("int"), token.count > 3, token.dropFirst(3).allSatisfy(\.isNumber) { return true }
         return false
     }

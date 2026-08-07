@@ -344,6 +344,123 @@ final class MatrixRendererTests: XCTestCase {
         )
     }
 
+    /// #2411 follow-up: a live 2-leg collate (llama.cpp + Ollama, real model
+    /// files) found a SECOND, independent residue on top of the quant-suffix
+    /// one above — HuggingFace repo filenames repeat the vendor-org as a
+    /// LEADING token ("google_gemma-3-4b-it-Q4_K_M.gguf", "Meta-Llama-3.1-8B-
+    /// Instruct-Q4_K_M.gguf", "Qwen_Qwen3.5-2B-Q4_K_M.gguf"), while the MLX/
+    /// Ollama-side identifier for the same weights usually doesn't carry it.
+    /// Table-drives the actual filenames from that collate. Mistral is
+    /// deliberately included as a control: it's the one row that already
+    /// paired before this fix (no vendor prefix in its filename), so it
+    /// proves the new code path doesn't regress the case that already worked.
+    func testNormalizedModelKeyDropsLeadingVendorOrgPrefix() throws {
+        let cases: [(ggufFilename: String, otherSideIdentifier: String, why: String)] = [
+            ("google_gemma-3-4b-it-Q4_K_M.gguf", "gemma-3-4b-it-4bit",
+             "google/ vendor-org prefix must be dropped so gemma pairs"),
+            ("Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf", "Llama-3.1-8B-Instruct-4bit",
+             "meta/ vendor-org prefix must be dropped so llama pairs"),
+            ("Qwen_Qwen3.5-2B-Q4_K_M.gguf", "qwen3.5:2b",
+             "bare leading qwen must drop while qwen3 (the real family token) survives, pairing against the Ollama tag"),
+            ("Mistral-7B-Instruct-v0.3-Q4_K_M.gguf", "Mistral-7B-Instruct-v0.3-4bit",
+             "control: no vendor-org prefix in this filename — must keep pairing exactly as before this fix"),
+        ]
+        for c in cases {
+            XCTAssertEqual(
+                MatrixRenderer.normalizedModelKey(c.ggufFilename),
+                MatrixRenderer.normalizedModelKey(c.otherSideIdentifier),
+                "\(c.why) — GGUF: \(c.ggufFilename), other side: \(c.otherSideIdentifier)"
+            )
+        }
+
+        // AC-equivalent negative: a non-leading occurrence of a vendor token
+        // must NOT be dropped — only the leading position is stripped.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("SomeModel-google-net"),
+            "somemodel-google-net",
+            "a vendor-org token that is NOT in leading position must survive untouched"
+        )
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("SomeModel-google-net"),
+            MatrixRenderer.normalizedModelKey("SomeModel-net"),
+            "stripping the non-leading 'google' would silently merge two different identifiers"
+        )
+
+        // Negative: dropping the vendor prefix must not make genuinely
+        // different models collide with each other.
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("google_gemma-3-4b-it-Q4_K_M.gguf"),
+            MatrixRenderer.normalizedModelKey("Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"),
+            "different model families must NOT collide after vendor-prefix stripping"
+        )
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Qwen_Qwen3.5-2B-Q4_K_M.gguf"),
+            MatrixRenderer.normalizedModelKey("Qwen_Qwen2.5-2B-Q4_K_M.gguf"),
+            "different Qwen generations (3.5 vs 2.5) must NOT collide after the bare-qwen prefix is dropped"
+        )
+
+        // Fallback guard: a model genuinely named only after its vendor
+        // (kept.isEmpty case) must still fall back to the original lowercased
+        // string, not collapse to the empty string.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Google"),
+            "google",
+            "a model named ONLY after its vendor must still fall back to the lowercased original, not empty"
+        )
+    }
+
+    /// Reviewer follow-up on the vendor-prefix fix: `isQuantToken` recognized
+    /// only the literal `4bit`/`8bit`, so any other bit-width label wasn't a
+    /// quant token at all and survived as residue — sub-4-bit and ternary MLX
+    /// quant labels (this machine has a real Bonsai comparison set: 1-bit
+    /// GGUF vs 2-bit MLX) never paired. Generalized to "<digit>bit" (digit
+    /// prefix exact, not "contains bit"). Table-drives 1bit/2bit/3bit/6bit
+    /// plus the real Bonsai pairing, and pins that `Bonsai-8B` and
+    /// `Ternary-Bonsai-8B` — a DIFFERENT model family that happens to share
+    /// the "bonsai-8b" tail — stay distinct through both this change and the
+    /// vendor-prefix change landing in the same round.
+    func testNormalizedModelKeyGeneralizesBitWidthQuantLabels() throws {
+        let cases: [(input: String, expected: String, why: String)] = [
+            ("Model-1bit", "model", "1bit (not just 4bit/8bit) must be recognized as a quant token"),
+            ("Model-2bit", "model", "2bit must be recognized as a quant token"),
+            ("Model-3bit", "model", "3bit must be recognized as a quant token"),
+            ("Model-6bit", "model", "6bit must be recognized as a quant token"),
+        ]
+        for c in cases {
+            XCTAssertEqual(MatrixRenderer.normalizedModelKey(c.input), c.expected, "\(c.why) — input: \(c.input)")
+        }
+
+        // Real Bonsai comparison: 1-bit GGUF vs 2-bit MLX for the SAME family.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Bonsai-1.7B-1bit"),
+            MatrixRenderer.normalizedModelKey("Bonsai-1.7B-Q4_K_M"),
+            "1bit MLX and GGUF Q4_K_M of the same Bonsai family must normalize to the same logical-model key"
+        )
+        // Multi-token model name (vendor-prefix machinery must not interfere
+        // with a non-vendor leading token like "Ternary") combined with a
+        // sub-4-bit label in the SAME identifier, per the coordinator's ask —
+        // an explicit row, not an assumption that composition works.
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Ternary-Bonsai-8B-2bit"),
+            MatrixRenderer.normalizedModelKey("Ternary-Bonsai-8B-Q4_K_M"),
+            "2bit MLX and GGUF Q4_K_M of the same Ternary-Bonsai family must normalize to the same logical-model key"
+        )
+
+        // Negative: Bonsai-8B and Ternary-Bonsai-8B are DIFFERENT model
+        // families that happen to share a "bonsai-8b" tail — must NOT
+        // collide, before or after this change.
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Bonsai-8B-Q4_K_M"),
+            MatrixRenderer.normalizedModelKey("Ternary-Bonsai-8B-Q4_K_M"),
+            "Bonsai-8B and Ternary-Bonsai-8B are different families and must NOT collide"
+        )
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Bonsai-8B-1bit"),
+            MatrixRenderer.normalizedModelKey("Ternary-Bonsai-8B-1bit"),
+            "Bonsai-8B and Ternary-Bonsai-8B must stay distinct with bit-width labels too"
+        )
+    }
+
     // MARK: Verdict label is F1-aware, not failure-subtype-dominant
 
     /// Reproduces the live-soak shape that mislabeled `llama3.1-8b` d0: 27 records,
