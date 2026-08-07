@@ -255,7 +255,14 @@ findings — zero overlap with this list.
 - **Evidence:** `grep -rn "\.calibrate" Sources/ Tests/` finds only the property declaration and the `self.calibrate = calibrate` assignment in FuzzConfig.swift — `config.calibrate` is never referenced in FuzzRunner.swift, SessionFuzzRunner.swift, or any detector/sink. The sole call site, Sources/fuzz-chat/FuzzChatCLI.swift line 283, passes the literal `calibrate: false`. `grep -n "calibrat" Sources/fuzz-chat/FuzzChatCLI.swift` shows no `--calibrate` CLI flag exists to even attempt setting it true.
 
 ### 41. `ManifoldBootstrap.addGenerationToolSources(viewModel:)`
-- **File:** `Sources/ManifoldKit/ManifoldBootstrap+GenerationToolSources.swift`  ·  **Kind:** partial-wiring  ·  **Severity:** partial
+- **Resolved in #2441** (2026-08): `addGenerationToolSources(viewModel:)` and its
+  file were removed entirely rather than fixed — see
+  `docs/MIGRATION-additive-tool-sources.md`. The file path below no longer
+  exists; the entry stays as the historical evidence record. The underlying
+  quickStart-wiring gap this item describes (no parameter to supply the
+  generation services) is unchanged by #2441 and is still tracked under
+  #1903 W2.
+- **File:** `Sources/ManifoldKit/ManifoldBootstrap+GenerationToolSources.swift` (removed)  ·  **Kind:** partial-wiring  ·  **Severity:** partial
 - **Claim:** The documented one-liner for enabling image/video/web-search tool-calling on a ManifoldKit.quickStart() runtime silently does nothing, because quickStart's facade has no parameter through which to supply imageGenerationService / videoGenerationService / webSearchRuntime.
 - **Evidence:** addGenerationToolSources(viewModel:) only appends a tool source when the corresponding bootstrap property (imageGenerationService / videoGenerationService / webSearchRuntime) is non-nil, else it silently returns (guard !sources.isEmpty else { return }). Sources/ManifoldUI/ManifoldUI.docc/Articles/GenerationComponents.md's canonical example is `await kit.bootstrap.addGenerationToolSources(viewModel: kit.viewModel)` where `kit` is the result of ManifoldKit.quickStart(...) (this variable-naming convention is used throughout docs/QUICKSTART.md for quickStart's return value). But every overload of ManifoldKit.quickStart (Sources/ManifoldKit/QuickStart.swift, all four public entry points plus the …
 

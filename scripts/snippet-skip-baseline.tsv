@@ -42,7 +42,7 @@ Sources/ManifoldRuntime/ManifoldRuntime.docc/ManifoldRuntime.md	5	5
 Sources/ManifoldUI/ManifoldUI.docc/Articles/BootstrapLoadingScreen.md	1	1
 Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md	10	10
 Sources/ManifoldUI/ManifoldUI.docc/Articles/ComposerStyling.md	1	1
-Sources/ManifoldUI/ManifoldUI.docc/Articles/GenerationComponents.md	11	11
+Sources/ManifoldUI/ManifoldUI.docc/Articles/GenerationComponents.md	10	10
 Sources/ManifoldUI/ManifoldUI.docc/Articles/PartRendering.md	0	0
 Sources/ManifoldUI/ManifoldUI.docc/Articles/SessionRowStyling.md	0	0
 Sources/ManifoldUI/ManifoldUI.docc/Articles/Theming.md	0	0
@@ -56,6 +56,7 @@ Sources/ManifoldUIModelManagement/ManifoldUIModelManagement.docc/ManifoldUIModel
 Sources/ManifoldUIModelManagement/ManifoldUIModelManagement.docc/ModelPickerSample.md	0	0
 Sources/ManifoldVoice/ManifoldVoice.docc/ManifoldVoice.md	3	3
 Sources/ManifoldVoice/ManifoldVoice.docc/StandaloneSpeechRecognition.md	2	2
+docs/MIGRATION-additive-tool-sources.md	0	0
 docs/MIGRATION-api-demotions-0.71.md	0	0
 docs/MIGRATION-background-task-scheduler-removed.md	0	0
 docs/MIGRATION-cloudbackenderror-missingRequiredOverride.md	0	0

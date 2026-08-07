@@ -497,3 +497,4 @@ API breakage: constructor ModelManifest.init(contextWindow:supportsTools:support
 API breakage: enumelement CloudBackendError.missingRequiredOverride has been added as a new enum case
 API breakage: enumelement ConversationEvent.skillInvoked has been removed
 API breakage: enumelement ConversationEventKind.skillInvoked has been removed
+API breakage: func ManifoldBootstrap.addGenerationToolSources(viewModel:) has been removed
