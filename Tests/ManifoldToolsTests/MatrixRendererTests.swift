@@ -211,6 +211,20 @@ final class MatrixRendererTests: XCTestCase {
              "Q4_K_L (the third K-suffix variant) must also fully absorb"),
             ("gemma-3-4b-it-8bit", "gemma-3-4b",
              "MLX counterpart for gemma-3-4b"),
+            // #2411 names the fuller suffix vocabulary explicitly: k, m, s, l,
+            // xs, xxs, 0, 1. Q8_0 is the ONLY 8-bit GGUF spelling (there is no
+            // "Q8_K_M"), so without these the entire 8-bit cross-runtime
+            // comparison stays dead even after the k/m/s/l fix above.
+            ("Llama-3.1-8B-Instruct-Q8_0", "llama-3-1-8b",
+             "Q8_0 (bare-'0' legacy quant, the only 8-bit GGUF spelling) must fully absorb"),
+            ("Llama-3.1-8B-Instruct-Q4_0", "llama-3-1-8b",
+             "Q4_0 (bare-'0' legacy quant) must fully absorb"),
+            ("Llama-3.1-8B-Instruct-Q5_1", "llama-3-1-8b",
+             "Q5_1 (bare-'1' legacy quant) must fully absorb"),
+            ("Llama-3.1-8B-Instruct-IQ4_XS", "llama-3-1-8b",
+             "IQ4_XS (the 'iq' head family) must fully absorb"),
+            ("Llama-3.1-8B-Instruct-IQ2_XS", "llama-3-1-8b",
+             "IQ2_XS (a different iq bit-width) must fully absorb"),
         ]
         for c in cases {
             XCTAssertEqual(
@@ -219,21 +233,39 @@ final class MatrixRendererTests: XCTestCase {
             )
         }
 
-        // Cross-runtime pairs for the same logical weights must land on the SAME key.
+        // Cross-runtime pairs for the same logical weights must land on the SAME
+        // normalized *model* key. Note the key deliberately excludes quant —
+        // MatrixRenderer keeps a separate "Quant" column (see the cross-runtime
+        // table header) — so these assertions are about the logical model
+        // identity, not a claim that a 4-bit and an 8-bit quant ARE the same
+        // weights.
         XCTAssertEqual(
             MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-Q4_K_M"),
             MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-4bit"),
-            "GGUF Q4_K_M and MLX 4bit of the same weights must normalize identically"
+            "GGUF Q4_K_M and MLX 4bit must normalize to the same logical-model key"
         )
         XCTAssertEqual(
             MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-Q4_K_S"),
             MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-4bit"),
-            "GGUF Q4_K_S and MLX 4bit of the same weights must normalize identically"
+            "GGUF Q4_K_S and MLX 4bit must normalize to the same logical-model key"
         )
         XCTAssertEqual(
             MatrixRenderer.normalizedModelKey("gemma-3-4b-it-Q4_K_L"),
             MatrixRenderer.normalizedModelKey("gemma-3-4b-it-8bit"),
-            "GGUF Q4_K_L and MLX 8bit of the same weights must normalize identically"
+            "GGUF Q4_K_L and MLX 8bit must normalize to the same logical-model key "
+            + "despite the quant precision differing — the key intentionally omits "
+            + "quant, which is why the cross-runtime table carries it in its own column"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-Q8_0"),
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-8bit"),
+            "GGUF Q8_0 (the only 8-bit GGUF spelling) and MLX 8bit must normalize "
+            + "to the same logical-model key"
+        )
+        XCTAssertEqual(
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-IQ4_XS"),
+            MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-4bit"),
+            "GGUF IQ4_XS and MLX 4bit must normalize to the same logical-model key"
         )
 
         // Negative: genuinely different models/sizes must NOT collide. An
@@ -255,6 +287,60 @@ final class MatrixRendererTests: XCTestCase {
             MatrixRenderer.normalizedModelKey("Llama-3.1-8B-Instruct-Q4_K_M"),
             MatrixRenderer.normalizedModelKey("Mistral-7B-Instruct-v0.3-Q4_K_M"),
             "different model families must NOT collide"
+        )
+        // AC2 guard rail: a genuine trailing model-name token that happens to be
+        // a single letter used elsewhere as a K-quant suffix must survive intact
+        // when it appears AFTER an already-complete quant label, not be read as
+        // a continuation of that label. Contrived, but it's the input shape
+        // where "absorb suffix letters after a quant head" is genuinely wrong if
+        // the absorption isn't bounded to the known K_S/K_M/K_L/bare-K shapes.
+        XCTAssertNotEqual(
+            MatrixRenderer.normalizedModelKey("Model-Q4_K_M-S"),
+            MatrixRenderer.normalizedModelKey("Model"),
+            "a trailing name token after an already-complete Q4_K_M must not be swallowed as a second K variant"
+        )
+    }
+
+    /// #2411 AC3: the pre-existing end-to-end test
+    /// (`testCrossRuntimeViewIsHonestlyLabeledAndGroupsByLogicalModel` above)
+    /// passes the quant through a SEPARATE `quant:` field on the fixture
+    /// builder — so the quant string never actually reaches
+    /// `normalizedModelKey`, which is exactly how the K/M-residue defect
+    /// shipped green in the first place. Real llama.cpp/Ollama identifiers
+    /// carry the quant IN the model string itself (e.g.
+    /// "mistral:7b-instruct-v0.3-q4_K_M"), so this fixture puts it there too,
+    /// through the full `render()` pipeline — not a direct
+    /// `normalizedModelKey` call — to prove the fix is live end-to-end, not
+    /// just at the unit level.
+    func testCrossRuntimeGroupingWithQuantEmbeddedInModelString() throws {
+        let records = [
+            record(backend: "ollama", model: "mistral:7b-instruct-v0.3-q4_K_M", quant: "n/a",
+                   renderer: "ollama-server",
+                   toolSelection: Scores(precision: 0.8, recall: 0.8, f1: 0.8)),
+            record(backend: "mlx", model: "mistral-7b-instruct-v0.3-4bit", quant: "n/a",
+                   renderer: "swift-transformers",
+                   status: .measured, verdict: .fail,
+                   toolSelection: Scores(precision: 0, recall: 0, f1: 0), failureClass: .noCall)
+        ]
+        let markdown = MatrixRenderer.render(records)
+        XCTAssertTrue(
+            markdown.contains("## Cross-runtime view"),
+            "the two backends must pair into a cross-runtime group even with the quant embedded in the model string (not a separate field)"
+        )
+        let normalized = MatrixRenderer.normalizedModelKey("mistral:7b-instruct-v0.3-q4_K_M")
+        XCTAssertEqual(
+            normalized,
+            MatrixRenderer.normalizedModelKey("mistral-7b-instruct-v0.3-4bit"),
+            "GGUF and MLX identifiers with quant embedded in the model string must still normalize identically"
+        )
+        // Both backends' rows must render under the SAME logical-model column
+        // value — a no-op fix (or one that only works via the separate `quant:`
+        // field) would render the two rows in ungrouped/unpaired cells instead.
+        let rowPrefix = "| \(normalized) |"
+        let occurrences = markdown.components(separatedBy: rowPrefix).count - 1
+        XCTAssertEqual(
+            occurrences, 2,
+            "expected exactly 2 rows (one per backend) under the shared logical-model key '\(normalized)' in:\n\(markdown)"
         )
     }
 

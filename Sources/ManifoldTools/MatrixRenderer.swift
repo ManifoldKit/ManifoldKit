@@ -272,45 +272,71 @@ public enum MatrixRenderer {
         let lower = model.lowercased()
         let tokens = lower.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
         let dropped: Set<String> = ["tools", "tool", "instruct", "it", "chat", "gguf", "mlx", "tooltmpl"]
-        // GGUF quant labels like "Q4_K_M" split (on the underscore) into separate
-        // tokens — "q4", "k", "m" — because `isQuantToken` only recognizes the
-        // "q<digit>" head. Left unhandled, the trailing "k"/"m" survive as residue
-        // and the same weights measured on llama.cpp (GGUF, "Q4_K_M") vs MLX
-        // ("4bit") normalize to different keys, so no cross-runtime row ever pairs
-        // (#2411). Absorb single-letter suffix tokens (k/s/m/l, any combination —
-        // GGUF quant variants are Q4_K_S / Q4_K_M / Q4_K_L etc.) immediately after
-        // a recognized quant head into the same dropped run, instead of treating
-        // them as independent model-name tokens.
-        let quantSuffixLetters: Set<String> = ["k", "s", "m", "l"]
+        // GGUF quant labels split (on the underscore) into separate tokens, e.g.
+        // "Q4_K_M" -> ["q4", "k", "m"], "Q8_0" -> ["q8", "0"], "IQ4_XS" ->
+        // ["iq4", "xs"]. `isQuantToken` only recognizes the head ("q4"/"iq4");
+        // left unhandled, the trailing tokens survive as residue and the same
+        // weights measured on llama.cpp (GGUF, "Q4_K_M") vs MLX ("4bit") never
+        // land on the same key, so no cross-runtime row ever pairs (#2411).
+        // `quantSuffixTokenCount` absorbs the trailing tokens for a *bounded,
+        // pattern-exact* set of known GGUF suffix shapes — not "any letter/digit
+        // that follows a quant head" — so a genuine trailing model-name token
+        // (e.g. a hand-appended "-S" *after* an already-complete "Q4_K_M") is
+        // never swallowed. See `quantSuffixTokenCount`'s doc for the exact shapes.
         var kept: [String] = []
-        var precededByQuantHead = false
-        for token in tokens {
-            guard !token.isEmpty else { continue }
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            guard !token.isEmpty else { index += 1; continue }
             if dropped.contains(token) {
-                precededByQuantHead = false
+                index += 1
                 continue
             }
             if isQuantToken(token) {
-                precededByQuantHead = true
+                index += 1
+                index += quantSuffixTokenCount(tokens, at: index)
                 continue
             }
-            if precededByQuantHead, quantSuffixLetters.contains(token) {
-                continue
-            }
-            precededByQuantHead = false
             kept.append(token)
+            index += 1
         }
         return kept.isEmpty ? lower : kept.joined(separator: "-")
     }
 
-    /// Conservative quant-token detector: `q4_K_M`-style (after the split, `q4`,
-    /// `k`, `m` arrive separately so we match the `q<digit>` head), bit-width
+    /// Conservative quant-token detector: `q4_K_M`/`iq4_XS`-style heads (after
+    /// the split, the head token arrives alone — e.g. `q4`, `iq4` — with its
+    /// suffix tokens handled separately by `quantSuffixTokenCount`), bit-width
     /// labels, and the common float markers. Anything ambiguous is kept.
     private static func isQuantToken(_ token: String) -> Bool {
+        if token.hasPrefix("iq"), let third = token.dropFirst(2).first, third.isNumber { return true }
         if token.hasPrefix("q"), let second = token.dropFirst().first, second.isNumber { return true }
         if ["fp16", "fp32", "bf16", "f16", "f32", "4bit", "8bit"].contains(token) { return true }
         if token.hasPrefix("int"), token.count > 3, token.dropFirst(3).allSatisfy(\.isNumber) { return true }
         return false
+    }
+
+    /// How many tokens starting at `index` are trailing GGUF quant-suffix
+    /// markers for the head token that was just matched by `isQuantToken`
+    /// (called with `index` pointing at the token immediately after the head).
+    /// Matches literal, bounded token shapes only:
+    ///   - a bare "0" or "1"        (Q4_0 / Q5_0 / Q5_1 — the non-K legacy quants)
+    ///   - a bare "xs" or "xxs"     (IQ4_XS / IQ2_XS / IQ2_XXS)
+    ///   - "k" alone, or "k" followed by one of "s"/"m"/"l" (Q4_K / Q4_K_S /
+    ///     Q4_K_M / Q4_K_L — the K-quant family)
+    /// Deliberately NOT "absorb any digit" or "absorb any letter" — a literal
+    /// digit-only match would also eat shard suffixes like "-00001-of-00002",
+    /// and an open-ended letter chain would eat a genuine trailing model-name
+    /// token appended after an already-complete quant label (e.g.
+    /// "Model-Q4_K_M-S" must keep its trailing "S", not read as a second K
+    /// variant of an already-closed "Q4_K_M").
+    private static func quantSuffixTokenCount(_ tokens: [String], at index: Int) -> Int {
+        guard index < tokens.count else { return 0 }
+        let bareSuffixes: Set<String> = ["0", "1", "xs", "xxs"]
+        if bareSuffixes.contains(tokens[index]) { return 1 }
+        guard tokens[index] == "k" else { return 0 }
+        guard index + 1 < tokens.count else { return 1 }
+        let kVariants: Set<String> = ["s", "m", "l"]
+        return kVariants.contains(tokens[index + 1]) ? 2 : 1
     }
 
     // MARK: - Verdict + status labels
