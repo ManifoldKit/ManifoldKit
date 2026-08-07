@@ -1,9 +1,9 @@
 {
   "id": "hallucinated-tool-name-recovery",
-  "description": "Hallucinated-tool-name probe — the system prompt nudges the model toward a tool name (`get_current_date`) that is not registered; the only registered tool that can answer is `now`. Asserts the dispatch loop rejects the hallucinated call cleanly (unknownTool) and the model recovers by calling the real tool rather than wedging or fabricating an answer.",
+  "description": "Hallucinated-tool-name probe — the system prompt nudges the model toward a tool name (`get_current_date`) that is not registered; the only registered tool that can answer is `now`. Asserts the dispatch loop rejects the hallucinated call cleanly (unknownTool) and the model recovers by calling the real tool rather than wedging or fabricating an answer. `get_current_date` is listed in requiredTools (even though it is never advertised — ScenarioRunner filters advertisedTools to requiredTools ∩ registered, and it has no registered executor) so the confusion-matrix denominator matches the scenario's own intended-correct trajectory: calling both is the CORRECT path here, not a false positive.",
   "systemPrompt": "You have tools. To check today's date, call `get_current_date`. Never guess a date — if `get_current_date` is not accepted, look at the tools you were actually given and retry with whichever one returns the current date, quoting its result verbatim.",
   "userPrompt": "What is today's date? Reply with exactly the timestamp the tool returns.",
-  "requiredTools": ["now"],
+  "requiredTools": ["now", "get_current_date"],
   "assertions": [
     {
       "kind": "toolResultErrorKind",

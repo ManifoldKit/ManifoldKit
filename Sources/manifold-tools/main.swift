@@ -774,6 +774,17 @@ enum MockFactory {
                 .tokens(["apples and rice cost 19.75; do not buy saffron."])
             ])
         }
+        if scenario.id == "hallucinated-tool-name-recovery" {
+            // `get_current_date` has no registered executor — the real dispatch
+            // loop synthesizes an `unknownTool` result for it, exactly like the
+            // live path — so scripting the call here (rather than skipping it)
+            // exercises the same rejection-then-recovery sequence offline.
+            return ScriptedBackend(turns: [
+                .toolCall(name: "get_current_date", arguments: "{}"),
+                .toolCall(name: "now", arguments: "{}"),
+                .tokens([NowTool.defaultFixture])
+            ])
+        }
         switch toolName {
         case "calc":
             args = #"{"a":7823,"op":"*","b":41}"#

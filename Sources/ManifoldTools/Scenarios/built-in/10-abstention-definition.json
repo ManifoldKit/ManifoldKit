@@ -11,7 +11,7 @@
     },
     {
       "kind": "containsAny",
-      "values": ["everywhere", "widespread", "common", "present in many places", "found everywhere"],
+      "values": ["everywhere", "widespread", "common", "present in many places", "found everywhere", "omnipresent", "all places", "universal", "all around"],
       "message": "Final answer should give a plain-language definition of 'ubiquitous'"
     }
   ],

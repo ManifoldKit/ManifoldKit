@@ -55,6 +55,7 @@ Supported assertion kinds:
 | `containsAll` | `"values": [String]` | Every entry in `values` is present |
 | `containsAny` | `"values": [String]` | At least one entry in `values` is present (use for contracts a correct model can paraphrase) |
 | `toolInvoked` | `"value": String` | Tool `value` was dispatched at least once |
+| `toolNotInvoked` | `"value": String` (optional) | Named form: tool `value` was NEVER dispatched. Value-omitted form: NO tool at all was dispatched — use for a scenario whose correct answer requires zero tool calls (abstention) |
 | `toolResultContains` | `"value": String`, `"values": [String]` | At least one result for tool `value` contains every entry in `values` |
 | `toolResultErrorKind` | `"value": String`, `"values": [String]` | At least one result for tool `value` has `errorKind` equal to the first entry in `values` |
 
