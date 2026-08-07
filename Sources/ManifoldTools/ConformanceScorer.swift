@@ -187,6 +187,11 @@ public enum ConformanceScorer {
         let advertisedTools: [String]
         let calledTools: [String]
         let confusion: ConfusionCounts
+        /// Which repetition of an otherwise-identical cell this row came from
+        /// (see ``TranscriptLogger``'s `repeatIndex` stamp / `--repeat-index`).
+        /// `0` when the transcript never stamped one — matches the record
+        /// emitter's pre-existing hardcoded default for older transcripts.
+        let repeatIndex: Int
 
         var verdict: Verdict {
             ConformanceScorer.verdict(passed: assertionsPassed, failed: assertionsFailed, errored: errored)
@@ -206,6 +211,11 @@ public enum ConformanceScorer {
             var model: String?
             var quant: String?
             var scenario: String
+            /// Repeat index this group's records were stamped with. Grouped
+            /// into the key exactly like `backend`/`model`/`quant` so distinct
+            /// repeats of the same cell (appended into one transcript) never
+            /// collapse into a single merged accumulator.
+            var repeatIndex: Int = 0
             var assertionsPassed = 0
             var assertionsFailed = 0
             var errored = false
@@ -257,11 +267,12 @@ public enum ConformanceScorer {
             let backend = object["backend"] as? String
             let model = object["model"] as? String
             let quant = object["quant"] as? String
+            let repeatIndex = object["repeatIndex"] as? Int ?? 0
 
-            let key = [backend ?? "", model ?? "", quant ?? "", scenario].joined(separator: "\u{1F}")
+            let key = [backend ?? "", model ?? "", quant ?? "", scenario, String(repeatIndex)].joined(separator: "\u{1F}")
             if groups[key] == nil {
                 order.append(key)
-                groups[key] = Accumulator(backend: backend, model: model, quant: quant, scenario: scenario)
+                groups[key] = Accumulator(backend: backend, model: model, quant: quant, scenario: scenario, repeatIndex: repeatIndex)
             }
 
             switch kind {
@@ -358,7 +369,8 @@ public enum ConformanceScorer {
                 expectedTools: expectedTools,
                 advertisedTools: acc.advertisedTools,
                 calledTools: acc.calledTools.sorted(),
-                confusion: confusion
+                confusion: confusion,
+                repeatIndex: acc.repeatIndex
             )
         }
     }

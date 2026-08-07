@@ -1,0 +1,26 @@
+{
+  "id": "abstention-definition",
+  "description": "Abstention probe — a plain-knowledge question answerable with no tool call at all. The sharpest signal under a decoy sweep: requiredTools is empty, so ScenarioRunner advertises every registered tool (including any --extra-tools decoys), and the correct move is to call none of them.",
+  "systemPrompt": "You have tools available. Only call a tool when the question genuinely requires one — for a question you can answer directly from general knowledge, answer directly and do not call any tool.",
+  "userPrompt": "In one plain sentence, define the word 'ubiquitous' for a non-native English speaker.",
+  "requiredTools": [],
+  "assertions": [
+    {
+      "kind": "toolNotInvoked",
+      "message": "This is answerable from general knowledge — no tool (real or decoy) should ever be dispatched"
+    },
+    {
+      "kind": "containsAny",
+      "values": ["everywhere", "widespread", "common", "present in many places", "found everywhere"],
+      "message": "Final answer should give a plain-language definition of 'ubiquitous'"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

@@ -180,10 +180,14 @@ extension ConformanceScorer {
 
     /// Maps one measured ``ResolvedRow`` to a `.measured` ``ConformanceRecord``.
     ///
-    /// `repeatIndex` is fixed at `0`: the scorer groups by
-    /// (backend × model × quant × scenario) and has no repeat dimension, so a
-    /// single transcript yields one row per cell. A caller running repeats writes
-    /// separate transcripts and stamps the index at collation time.
+    /// `repeatIndex` comes from `row.repeatIndex`, which the scorer recovers
+    /// from the transcript's per-record `repeatIndex` stamp (written by
+    /// ``TranscriptLogger`` when the CLI's `--repeat-index` flag is set) —
+    /// the grouping key includes it alongside backend/model/quant/scenario, so
+    /// repeats of the same cell appended into one transcript resolve to
+    /// separate rows instead of merging. A transcript that never stamped a
+    /// repeat index (older runs, or callers that don't pass `--repeat-index`)
+    /// resolves to `0`, matching the field's pre-repeat default.
     static func record(from row: ResolvedRow, context: RecordContext) -> ConformanceRecord {
         // Decoy pressure = the count of decoy distractors advertised this run.
         // Current transcripts advertise decoys under their real names, so
@@ -215,7 +219,7 @@ extension ConformanceScorer {
                 quant: row.quant ?? "unknown",
                 scenario: row.scenario,
                 decoyLevel: decoyLevel,
-                repeatIndex: 0
+                repeatIndex: row.repeatIndex
             )
             // An explicit `error` event is a positive infra-failure signal → a
             // `loadFail` (💥) hole, unless the message carries the one
@@ -253,7 +257,7 @@ extension ConformanceScorer {
             renderer: context.renderer,
             scenario: row.scenario,
             decoyLevel: decoyLevel,
-            repeatIndex: 0,
+            repeatIndex: row.repeatIndex,
             status: .measured,
             verdict: verdict,
             toolSelection: toolSelection,

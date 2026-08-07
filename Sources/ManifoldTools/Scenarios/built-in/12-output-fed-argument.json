@@ -1,0 +1,44 @@
+{
+  "id": "handoff-note-lookup",
+  "description": "Output-fed-argument probe — the second tool call's argument (the exact filename) is only knowable from the first tool's output. Unlike meeting-notes-summary, the filename here is never stated or guessable from the prompt: a model that skips `list_dir` cannot construct a correct `read_file` path and will fail (notFound or no call at all), so the chain is genuinely load-bearing.",
+  "systemPrompt": "You have tools. There is exactly one file inside the `handoff` directory, but its name is not given to you — you must call `list_dir` first to discover the exact filename, then call `read_file` with that exact name. Never guess a filename.",
+  "userPrompt": "There is exactly one file in the 'handoff' directory. Find its name, read it, and tell me the handoff code it contains.",
+  "requiredTools": ["list_dir", "read_file"],
+  "assertions": [
+    {
+      "kind": "toolInvoked",
+      "value": "list_dir",
+      "message": "Scenario requires `list_dir` to discover the filename before it can be read"
+    },
+    {
+      "kind": "toolResultContains",
+      "value": "list_dir",
+      "values": ["note-7f3a91.md"],
+      "message": "list_dir result should expose the seeded filename the second call must use as its argument"
+    },
+    {
+      "kind": "toolInvoked",
+      "value": "read_file",
+      "message": "Scenario requires `read_file` to actually be dispatched with the discovered filename"
+    },
+    {
+      "kind": "toolResultContains",
+      "value": "read_file",
+      "values": ["HANDOFF-CODE-93217"],
+      "message": "read_file's argument must have matched the discovered filename — a guessed path cannot return the seeded nonce"
+    },
+    {
+      "kind": "containsLiteral",
+      "value": "HANDOFF-CODE-93217",
+      "message": "Final answer should report the handoff code recovered from the discovered file"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

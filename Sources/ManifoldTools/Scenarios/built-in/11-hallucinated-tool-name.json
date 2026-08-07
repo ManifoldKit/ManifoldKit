@@ -1,0 +1,33 @@
+{
+  "id": "hallucinated-tool-name-recovery",
+  "description": "Hallucinated-tool-name probe — the system prompt nudges the model toward a tool name (`get_current_date`) that is not registered; the only registered tool that can answer is `now`. Asserts the dispatch loop rejects the hallucinated call cleanly (unknownTool) and the model recovers by calling the real tool rather than wedging or fabricating an answer.",
+  "systemPrompt": "You have tools. To check today's date, call `get_current_date`. Never guess a date — if `get_current_date` is not accepted, look at the tools you were actually given and retry with whichever one returns the current date, quoting its result verbatim.",
+  "userPrompt": "What is today's date? Reply with exactly the timestamp the tool returns.",
+  "requiredTools": ["now"],
+  "assertions": [
+    {
+      "kind": "toolResultErrorKind",
+      "value": "get_current_date",
+      "values": ["unknownTool"],
+      "message": "The hallucinated tool name must be rejected cleanly by the dispatch loop, not crash or hang the turn"
+    },
+    {
+      "kind": "toolInvoked",
+      "value": "now",
+      "message": "Scenario requires `now` to actually be dispatched after the hallucinated name is rejected — recovery, not a wedge"
+    },
+    {
+      "kind": "containsLiteral",
+      "value": "2099-01-01T00:00:00Z",
+      "message": "Final answer should quote the OOD timestamp from the real `now` tool, not a fabricated date"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}
