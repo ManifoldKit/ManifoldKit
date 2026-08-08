@@ -13,6 +13,7 @@ public struct ModelManagementSheet: View {
     #endif
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+    // compile-time-capability-ok: raw holder — every read below that decides model-type availability is ALSO ORed with a runtime `modelRegistry` check (see the markers further down).
     private var compiledBackends: CompiledBackends { .current }
     private let initialTab: Tab
     private let recommendedModelIDs: Set<String>?
@@ -42,6 +43,7 @@ public struct ModelManagementSheet: View {
     /// `@testable import` reaches it from the gated suite.
     static func availableTabs(
         features: ManifoldConfiguration.Features,
+        // compile-time-capability-ok: parameter type only — its value is always ORed with the `modelRegistry` runtime check below before deciding any model-type availability.
         compiledBackends: CompiledBackends,
         modelRegistry: ModelRegistry
     ) -> [Tab] {
@@ -56,7 +58,9 @@ public struct ModelManagementSheet: View {
         // reflects runtime registration (see InferenceService.compatibility).
         let runtimeDownloadable = modelRegistry.compatibility(for: .mlx).isSupported
             || modelRegistry.compatibility(for: .gguf).isSupported
+        // compile-time-capability-ok: ORed with runtimeDownloadable above — a compile-time-only "no" is overridden by a runtime "yes".
         let canDownload = compiledBackends.shouldPresentModelDownloads || runtimeDownloadable
+        // compile-time-capability-ok: `.huggingFace` gates whether the HF browser UI is even linked in — a genuine build-time fact; `canDownload` (the runtime-aware half) still gates it too.
         if features.showModelDownload && compiledBackends.traits.contains(.huggingFace) && canDownload {
             tabs.append(.download)
         }
@@ -65,6 +69,7 @@ public struct ModelManagementSheet: View {
     }
 
     private func availableTabs(for modelRegistry: ModelRegistry) -> [Tab] {
+        // compile-time-capability-ok: forwards to the runtime-aware `availableTabs(features:compiledBackends:modelRegistry:)` above — see its markers.
         Self.availableTabs(features: features, compiledBackends: compiledBackends, modelRegistry: modelRegistry)
     }
 

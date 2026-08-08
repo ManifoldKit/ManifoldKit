@@ -24,27 +24,51 @@ package struct DownloadableModelRow: View {
     /// on every row. Honest by construction — see `ModelFitScore.rationale`.
     private let rationale: String?
 
+    /// Runtime backend-availability source. Threaded explicitly from
+    /// `HuggingFaceBrowserView` (which already holds the host's registry) rather than
+    /// read from `CompiledBackends.current`: MLX / llama.cpp register at RUNTIME from
+    /// the companion packages and are NEVER in `CompiledBackends.detected()` by
+    /// construction, so a compile-time read reports every GGUF/MLX row unavailable
+    /// even when the companion is installed and registered. Same fix, same reason as
+    /// `ModelManagementSheet.availableTabs`' `runtimeDownloadable` check (#1749).
+    private let modelRegistry: ModelRegistry
+
     @Environment(ModelManagementViewModel.self) private var viewModel
     @Environment(FrameworkCapabilityService.self) private var capabilityService: FrameworkCapabilityService?
     @Environment(\.manifoldTheme) private var theme
 
     package init(
         model: DownloadableModel,
+        modelRegistry: ModelRegistry,
         showFitGuidance: Bool = false,
         rationale: String? = nil
     ) {
         self.model = model
+        self.modelRegistry = modelRegistry
         self.showFitGuidance = showFitGuidance
         self.rationale = rationale
     }
 
     /// Resolves backend compatibility from the injected `FrameworkCapabilityService`
-    /// when one is in the environment; otherwise falls back to the compiled-backend
-    /// contract via `CompiledBackends.current.compatibility(for:)`, which can return
-    /// `.unsupported` for backends that were not compiled into the current build.
+    /// when one is in the environment; otherwise from `modelRegistry`, which reflects
+    /// RUNTIME backend registration (see the `modelRegistry` property doc comment
+    /// above for why `CompiledBackends.current` must never be used here).
+    @MainActor
+    static func resolveCompatibility(
+        for modelType: ModelType,
+        capabilityService: FrameworkCapabilityService?,
+        modelRegistry: ModelRegistry
+    ) -> ModelCompatibilityResult {
+        capabilityService?.compatibility(for: modelType)
+            ?? modelRegistry.compatibility(for: modelType)
+    }
+
     private var backendCompatibility: ModelCompatibilityResult {
-        capabilityService?.compatibility(for: model.modelType)
-            ?? CompiledBackends.current.compatibility(for: model.modelType)
+        Self.resolveCompatibility(
+            for: model.modelType,
+            capabilityService: capabilityService,
+            modelRegistry: modelRegistry
+        )
     }
 
     package var body: some View {
@@ -305,19 +329,35 @@ package struct DownloadableModelRow: View {
 
 // MARK: - Preview
 
-#Preview {
-    List {
-        DownloadableModelRow(
-            model: DownloadableModel(
-                repoID: "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
-                fileName: "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
-                displayName: "Mistral 7B Instruct v0.3",
-                modelType: .gguf,
-                sizeBytes: 4_100_000_000,
-                isCurated: true,
-                description: "Balanced 7B model, good storytelling quality"
-            )
+private struct DownloadableModelRowPreviewHost: View {
+    let inferenceService = InferenceService()
+    var modelRegistry: ModelRegistry {
+        ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: ModelStorageService(baseDirectory: FileManager.default.temporaryDirectory)
         )
     }
-    .environment(ModelManagementViewModel())
+
+    var body: some View {
+        List {
+            DownloadableModelRow(
+                model: DownloadableModel(
+                    repoID: "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+                    fileName: "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+                    displayName: "Mistral 7B Instruct v0.3",
+                    modelType: .gguf,
+                    sizeBytes: 4_100_000_000,
+                    isCurated: true,
+                    description: "Balanced 7B model, good storytelling quality"
+                ),
+                modelRegistry: modelRegistry
+            )
+        }
+        .environment(ModelManagementViewModel())
+        .task { inferenceService.declareSupport(for: .gguf) }
+    }
+}
+
+#Preview {
+    DownloadableModelRowPreviewHost()
 }

@@ -145,7 +145,11 @@ public enum ModelSwitcher {
     ///   - physicalMemoryBytes: Device RAM, for the fit-dot estimate
     ///     (``ModelLoadPlan/canRunModel(sizeBytes:physicalMemoryBytes:)``).
     ///   - compatibility: Per-``ModelType`` backend-availability query —
-    ///     typically `FrameworkCapabilityService.compatibility(for:)`.
+    ///     typically `ModelRegistry.compatibility(for:)`, which reflects RUNTIME
+    ///     backend registration (a host-held `FrameworkCapabilityService.compatibility(for:)`
+    ///     also works, when injected). Never `CompiledBackends.current` — MLX /
+    ///     llama.cpp register at runtime from the companion packages and are
+    ///     never visible to a compile-time read (#1749).
     ///   - downloadStatus: Inline download progress for a model not yet on
     ///     disk. Defaults to "no download in flight."
     ///   - endpointFault: A faulted endpoint's error message, when known.
