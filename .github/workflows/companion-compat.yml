@@ -15,6 +15,64 @@ name: Companion compat (pre-release)
 #
 # All three repos are public, so cross-repo checkout needs no token — the
 # default GITHUB_TOKEN suffices.
+#
+# CodeQL `actions/untrusted-checkout/medium` fires on the `ref: ${{ inputs.core_ref }}`
+# checkout below. It is ACCEPTED AS LOW IMPACT — not a false positive. Be precise
+# about why, because the tempting argument is wrong:
+#
+#   WRONG: "workflow_dispatch means only someone with write access supplies the ref,
+#   so the code is trusted." Write access to *supply* a ref does not make the ref's
+#   *contents* trusted. This repo is public, so `refs/pull/<N>/head` is a fetchable
+#   ref that `actions/checkout` supports — a maintainer pressing the button with
+#   `core_ref: refs/pull/9999/head` checks out a fork contributor's code, and the
+#   `swift build` below then executes that ref's `Package.swift` manifest and any
+#   build plugins it declares. Fork code CAN reach this job.
+#
+#   The actual reason it is accepted is impact, not reachability:
+#     * `permissions: contents: read`, on a repo that is already public — the token
+#       grants nothing the attacker does not already have.
+#     * GitHub-hosted `macos-15`, never self-hosted: the runner is ephemeral, so
+#       there is no persistent host to establish a foothold on.
+#     * no `actions/cache` and no artifact upload anywhere in this file, so the
+#       query's real secondary vector — poisoning a cache or artifact that a
+#       privileged workflow later consumes — has nothing to poison.
+#     * it takes a deliberate press by a maintainer, aimed at a ref they chose;
+#       it is not reachable by an attacker on their own initiative.
+#
+#   So the residual risk is "a maintainer can run untrusted code on a throwaway
+#   runner with a read-only token on a public repo". That is worth accepting for
+#   this workflow's purpose. If any of those four facts ever changes — a cache
+#   step, an artifact upload, a write permission, a self-hosted runner — this
+#   adjudication expires and the alert must be re-evaluated rather than
+#   re-dismissed.
+#
+# The same finding has been filed three times on `main` (alerts #54, #55, #56 —
+# plus #53, whose only instance is the PR ref that introduced this file) and will
+# be filed again. It was never fixed in between — each alert was auto-closed as
+# "fixed" and an identical one opened in the same second. What retires one is a
+# dependabot bump of this file's `actions/checkout` SHA, and the tightest
+# evidence is that each retired alert's last observed instance on `main` is
+# exactly the PARENT of the bump commit — present at the parent, gone at the
+# bump, with nothing else touching this file in between:
+#   #54 last seen at dcd0116c, the parent of 55e6fb1c (#2020, checkout 6.0.3→7.0.0)
+#   #55 last seen at 9e2e9e12, the parent of 6b052079 (#2399, checkout 7.0.0→7.0.1)
+# (The close/open timestamps — 2026-06-22T07:57:04Z and 2026-07-27T03:58:24Z —
+# trail their bump commits by 39s and ~19m respectively. That is CodeQL analysis
+# latency, not a mismatch; the parent-commit evidence above is what to check.)
+# So expect a fresh alert whenever this file's text moves — the next
+# `actions/checkout` bump, and quite possibly the commit adding this very comment
+# block, which pushes the flagged step well down the file. Dismiss whichever
+# alert is currently open as "won't fix" citing this block; do not go looking for
+# the specific number named above, it will have rotated. (Deliberately no line
+# count here: an earlier draft carried one, it was stale within two commits, and
+# a block arguing for precision cannot afford a wrong checkable number.)
+# Do NOT instead add a `query-filters` exclusion to
+# a CodeQL config: those match on rule id/tags/severity and never on path, so it
+# would be repo-wide — blinding the repo to a genuinely unsafe
+# `pull_request_target` checkout later, which is this rule's whole point. CodeQL
+# has no per-line suppression to scope it more narrowly (github/codeql#11427, open
+# since 2022), and `paths-ignore` on this file would drop every Actions query on
+# it, not just this one.
 
 on:
   workflow_dispatch:

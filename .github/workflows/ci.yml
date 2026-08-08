@@ -9,6 +9,13 @@ on:
       - "Package.swift"
       - "Package.resolved"
       - ".github/workflows/ci.yml"
+      # CompanionCompatAdjudicationAuditTest (ManifoldCoreTests) reads this
+      # file at runtime to check the four premises its checked-in CodeQL
+      # adjudication rests on. Without this entry a workflow-only edit to it
+      # never triggers ci.yml, the shim reports `test` green in ~4s, and the
+      # audit first reds inside a merge_group batch — the #2306 shape, and
+      # the guard would be inert on exactly its own subject matter (#2446).
+      - ".github/workflows/companion-compat.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
@@ -71,6 +78,13 @@ on:
       - "Package.swift"
       - "Package.resolved"
       - ".github/workflows/ci.yml"
+      # CompanionCompatAdjudicationAuditTest (ManifoldCoreTests) reads this
+      # file at runtime to check the four premises its checked-in CodeQL
+      # adjudication rests on. Without this entry a workflow-only edit to it
+      # never triggers ci.yml, the shim reports `test` green in ~4s, and the
+      # audit first reds inside a merge_group batch — the #2306 shape, and
+      # the guard would be inert on exactly its own subject matter (#2446).
+      - ".github/workflows/companion-compat.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
