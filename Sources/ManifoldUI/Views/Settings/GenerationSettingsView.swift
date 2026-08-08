@@ -16,6 +16,7 @@ public struct GenerationSettingsView<APIConfig: View>: View {
     @Environment(\.dismiss) private var dismiss
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
+    // compile-time-capability-ok: cloud families compile unconditionally since v0.48 (no companion package, no runtime registration gap), so `shouldPresentCloudAPIManagement` is a build-time constant.
     private var compiledBackends: CompiledBackends { .current }
 
     @AppStorage("showAdvancedSettings") private var showAdvancedSettings = false
@@ -170,6 +171,7 @@ public struct GenerationSettingsView<APIConfig: View>: View {
                         }
                     }
 
+                    // compile-time-capability-ok: same build-time constant as the `compiledBackends` property above — cloud families are always linked.
                     if features.showCloudAPIManagement && compiledBackends.shouldPresentCloudAPIManagement {
                         Section("Cloud APIs") {
                             Button {

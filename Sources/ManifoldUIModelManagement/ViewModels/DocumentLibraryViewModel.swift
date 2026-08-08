@@ -20,6 +20,13 @@ public final class DocumentLibraryViewModel {
     /// `true` when the active retrieval path uses an embedding backend.
     /// Drives the "Using keyword fallback" banner in the view — keyword
     /// fallback works but isn't obvious to users without this signal.
+    ///
+    /// Derived from ``RAGService/usesSemanticRetrieval`` when the caller
+    /// doesn't pass an explicit override to ``init(ragService:hasEmbeddingBackend:)``
+    /// — `ManifoldBootstrap` falls back to the bundled `NLEmbeddingBackend`
+    /// (always loaded) when the host injects no embedding backend, so this
+    /// must reflect the service's actual state rather than a caller-supplied
+    /// constant that can silently disagree with it.
     public let hasEmbeddingBackend: Bool
 
     /// Current list of ingested documents, sorted newest-first.
@@ -34,9 +41,9 @@ public final class DocumentLibraryViewModel {
     /// Last user-facing error from ingest or delete. Cleared when set to `nil`.
     public var errorMessage: String?
 
-    public init(ragService: RAGService?, hasEmbeddingBackend: Bool = false) {
+    public init(ragService: RAGService?, hasEmbeddingBackend: Bool? = nil) {
         self.ragService = ragService
-        self.hasEmbeddingBackend = hasEmbeddingBackend
+        self.hasEmbeddingBackend = hasEmbeddingBackend ?? (ragService?.usesSemanticRetrieval ?? false)
     }
 
     // MARK: - Refresh

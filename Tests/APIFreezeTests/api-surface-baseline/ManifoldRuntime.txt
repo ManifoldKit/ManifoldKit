@@ -624,6 +624,7 @@ RAGService.retrieve(query:limit:) Func
 RAGService.retrieve(query:tokenBudget:tokenizer:) Func
 RAGService.retrieveSlots(query:limit:) Func
 RAGService.unownedExecutor Var
+RAGService.usesSemanticRetrieval Var
 RetrievalStrategy Enum
 RetrievalStrategy conformances: Copyable,Equatable,Escapable,Hashable,Sendable,SendableMetatype
 RetrievalStrategy.__derived_enum_equals(_:_:) Func

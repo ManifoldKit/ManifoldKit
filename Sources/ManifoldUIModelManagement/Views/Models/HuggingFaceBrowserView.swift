@@ -197,7 +197,7 @@ struct HuggingFaceBrowserView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(viewModel.recommendedModels) { model in
-                    DownloadableModelRow(model: model)
+                    DownloadableModelRow(model: model, modelRegistry: modelRegistry)
                 }
             }
         }
@@ -265,6 +265,7 @@ struct HuggingFaceBrowserView: View {
             let variant = group.variants[0]
             DownloadableModelRow(
                 model: variant,
+                modelRegistry: modelRegistry,
                 showFitGuidance: true,
                 rationale: rationale(for: variant, topModelID: topModelID)
             )
@@ -288,6 +289,7 @@ struct HuggingFaceBrowserView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     DownloadableModelRow(
                         model: variant,
+                        modelRegistry: modelRegistry,
                         showFitGuidance: true,
                         rationale: variant.id == recommended?.id
                             ? viewModel.fitScore(for: variant)?.rationale
