@@ -498,3 +498,6 @@ API breakage: enumelement ConversationEvent.skillInvoked has been removed
 API breakage: enumelement ConversationEventKind.skillInvoked has been removed
 API breakage: func ManifoldBootstrap.addGenerationToolSources(viewModel:) has been removed
 API breakage: enumelement ManifoldCapability.providerBridge has been removed
+API breakage: constructor DocumentLibraryViewModel.init(ragService:hasEmbeddingBackend:) has parameter 1 type change from Swift.Bool to Swift.Bool?
+API breakage: constructor DocumentLibrarySheet.init(ragService:hasEmbeddingBackend:) has parameter 1 type change from Swift.Bool to Swift.Bool?
+API breakage: constructor DownloadableModelRow.init(model:showFitGuidance:rationale:) has been removed

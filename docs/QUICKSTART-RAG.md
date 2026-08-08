@@ -216,10 +216,11 @@ struct DocumentsButton: View {
     var body: some View {
         Button("Documents") { showLibrary = true }
             .sheet(isPresented: $showLibrary) {
-                DocumentLibrarySheet(
-                    ragService: ragService,
-                    hasEmbeddingBackend: true   // false → UI hints keyword-only mode
-                )
+                // `hasEmbeddingBackend` defaults to `nil`, in which case the sheet
+                // derives the "Using keyword fallback" banner from
+                // `RAGService.usesSemanticRetrieval` — pass an explicit `true`/`false`
+                // only to override that derivation.
+                DocumentLibrarySheet(ragService: ragService)
             }
     }
 }

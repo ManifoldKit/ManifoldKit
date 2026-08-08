@@ -117,6 +117,20 @@ public actor RAGService {
         self.fullContextBudgetTokens = max(1, fullContextBudgetTokens)
     }
 
+    /// `true` when retrieval actually takes the semantic/vector path rather
+    /// than the keyword fallback — mirrors the exact predicate ``denseHits``
+    /// and ``ingestParsedText`` branch on, so a host-rendered "semantic vs.
+    /// keyword fallback" signal (e.g. `DocumentLibraryViewModel.hasEmbeddingBackend`)
+    /// can never disagree with what retrieval actually does.
+    ///
+    /// `nonisolated` and safe to read without `await`: ``embeddingBackend`` is
+    /// an immutable `let` of `Sendable` type (`EmbeddingBackend: AnyObject,
+    /// Sendable`), and its `isModelLoaded` protocol requirement carries no
+    /// actor annotation, so this is a data-race-free synchronous read.
+    public nonisolated var usesSemanticRetrieval: Bool {
+        embeddingBackend?.isModelLoaded == true
+    }
+
     // MARK: - Ingestion
 
     /// Parses, chunks, embeds, and persists the document at `url`.

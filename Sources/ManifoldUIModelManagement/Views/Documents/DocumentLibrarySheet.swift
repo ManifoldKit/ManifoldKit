@@ -18,10 +18,12 @@ public struct DocumentLibrarySheet: View {
     }
 
     /// Convenience overload that builds the view model from a ``RAGService``
-    /// reference. `hasEmbeddingBackend` defaults to `false` because the
-    /// service exposes no public read for its embedding backend — the host
-    /// supplies this signal so the keyword-fallback banner stays accurate.
-    public init(ragService: RAGService?, hasEmbeddingBackend: Bool = false) {
+    /// reference. `hasEmbeddingBackend` defaults to `nil`, in which case
+    /// ``DocumentLibraryViewModel`` derives it from
+    /// ``RAGService/usesSemanticRetrieval`` — pass an explicit value only to
+    /// override that derivation (e.g. a host that knows something the
+    /// service's live state doesn't yet reflect).
+    public init(ragService: RAGService?, hasEmbeddingBackend: Bool? = nil) {
         self.viewModel = DocumentLibraryViewModel(
             ragService: ragService,
             hasEmbeddingBackend: hasEmbeddingBackend

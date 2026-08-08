@@ -103,14 +103,13 @@ struct DemoContentView: View {
             )
         }
         .sheet(isPresented: $isDocumentLibraryPresented) {
-            // The demo wires `RAGConfiguration()` (no embedding backend) so
-            // retrieval falls back to keyword search — `hasEmbeddingBackend`
-            // is `false` and the sheet renders the "Using keyword fallback"
-            // banner.
-            DocumentLibrarySheet(
-                ragService: ragService,
-                hasEmbeddingBackend: false
-            )
+            // The demo wires `RAGConfiguration()` with no host-injected embedding
+            // backend, so `ManifoldBootstrap` falls back to the bundled
+            // `NLEmbeddingBackend` — retrieval is actually semantic, not
+            // keyword-fallback. Omit `hasEmbeddingBackend` entirely so the sheet
+            // derives the banner from `RAGService.usesSemanticRetrieval` instead
+            // of asserting the opposite of what the code does.
+            DocumentLibrarySheet(ragService: ragService)
         }
         .sheet(isPresented: approvalSheetIsPresented) {
             if let call = viewModel.toolApprovalGate?.pending.first {
