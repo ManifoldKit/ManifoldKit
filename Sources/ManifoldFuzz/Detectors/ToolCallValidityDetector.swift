@@ -171,9 +171,10 @@ public struct ToolCallValidityDetector: Detector {
 }
 
 /// Encodes a `ToolChoice` as the string form persisted on `ConfigSnapshot`.
-/// Public so `FuzzRunner` and CLI tooling can write it without re-implementing
-/// the mapping.
-public func encodeToolChoice(_ choice: ToolChoice) -> String {
+/// `package` so `FuzzRunner` and same-package CLI tooling (`fuzz-chat`) can
+/// write it without re-implementing the mapping — zero cross-package
+/// consumers as of the A.0 demotion screen (M1, #2453).
+package func encodeToolChoice(_ choice: ToolChoice) -> String {
     switch choice {
     case .auto: return "auto"
     case .none: return "none"

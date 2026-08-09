@@ -32,8 +32,6 @@ CancellationStyle  # reason: host-facing capability vocabulary — `BackendCapab
 CardMessageBubbleStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 CardToolInvocationStyle  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
 CatalogEntry  # reason: host-facing catalog value type — a `ModelCatalog` result row (sibling of the #2351-demoted ModelCatalog); consumed downstream, not in-repo.
-ChatExporter  # reason: host-facing UI surface (style / theme / composer value type) — consumer-composed; no in-repo reference.
-ChatExporterError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
 ChatView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 ChatViewModelAudioError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.
 ChatViewModelImageError  # reason: host-facing error — thrown by a public view-model method; caught by consumer apps, not in-repo.

@@ -27,14 +27,14 @@ public extension SessionDetector {
 /// Session-aware counterpart to ``DetectorRegistry``. Held separately so the
 /// single-turn registry stays source-compatible with callers that iterate
 /// `DetectorRegistry.all`.
-public enum SessionDetectorRegistry {
-    public static let all: [any SessionDetector] = [
+package enum SessionDetectorRegistry {
+    package static let all: [any SessionDetector] = [
         TurnBoundaryKVStateDetector(),
         CancellationRaceDetector(),
         SessionContextLeakDetector(),
     ]
 
-    public static func resolve(_ filter: Set<String>?) -> [any SessionDetector] {
+    package static func resolve(_ filter: Set<String>?) -> [any SessionDetector] {
         guard let filter else { return all }
         return all.filter { filter.contains($0.id) }
     }

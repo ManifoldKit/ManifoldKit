@@ -70,13 +70,13 @@ public enum FindingsIndexCodec {
     }
 }
 
-public enum FindingsArtifactRenderer {
-    public static func summary(for row: FindingsIndexRow) -> String {
+package enum FindingsArtifactRenderer {
+    package static func summary(for row: FindingsIndexRow) -> String {
         let finding = row.finding
         return "\(finding.severity.rawValue) | \(finding.detectorId)/\(finding.subCheck) | \(row.modelId) | count=\(finding.count)\nTrigger: \(finding.trigger)\n"
     }
 
-    public static func reproScript(hash: String, seed: UInt64, modelId: String, outputDir: URL? = nil) -> String {
+    package static func reproScript(hash: String, seed: UInt64, modelId: String, outputDir: URL? = nil) -> String {
         """
         #!/bin/sh
         # Preferred: bit-level replay against the recorded prompt/config.
@@ -87,7 +87,7 @@ public enum FindingsArtifactRenderer {
         """
     }
 
-    public static func markdown(totalRuns: Int, rows: [FindingsIndexRow], outputDir: URL? = nil) -> String {
+    package static func markdown(totalRuns: Int, rows: [FindingsIndexRow], outputDir: URL? = nil) -> String {
         var md = "# Fuzz findings\n\n"
         md += "_\(totalRuns) total runs, \(rows.count) unique findings._\n\n"
         md += "| Severity | Detector / sub-check | Model | Hash | First seen | Count | Trigger | Replay |\n"
@@ -100,7 +100,7 @@ public enum FindingsArtifactRenderer {
         return md
     }
 
-    public static func reproCommand(seed: UInt64, modelId: String, outputDir: URL? = nil) -> String {
+    package static func reproCommand(seed: UInt64, modelId: String, outputDir: URL? = nil) -> String {
         var command = "swift run fuzz-chat --seed \(seed) --model \(modelId) --single"
         if let outputDir {
             command += " --output-dir \(shellEscaped(outputDir.path))"
@@ -108,7 +108,7 @@ public enum FindingsArtifactRenderer {
         return command
     }
 
-    public static func replayCommand(hash: String, outputDir: URL? = nil) -> String {
+    package static func replayCommand(hash: String, outputDir: URL? = nil) -> String {
         var command = "swift run fuzz-chat --replay \(hash)"
         if let outputDir {
             command += " --output-dir \(shellEscaped(outputDir.path))"
