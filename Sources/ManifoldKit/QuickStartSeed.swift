@@ -90,15 +90,20 @@ public struct QuickStartSeed: Sendable {
 
     // MARK: - Factory
 
-    /// The ManifoldKit-curated starter model: Qwen3-0.6B-Instruct Q4_K_M (~400 MB).
+    /// The ManifoldKit-curated starter model: Qwen3-0.6B-Instruct Q4_K_M (~484 MB).
     ///
     /// Qwen3-0.6B fits comfortably in 1 GB of physical RAM and runs at
     /// acceptable speed on the iPhone 16 / M-series Mac range that represents
     /// the typical ManifoldKit developer device. Q4_K_M gives a reasonable
     /// quality / size trade-off without requiring a second "projector" file.
     ///
-    /// The model is downloaded from the `bartowski/Qwen3-0.6B-GGUF` HuggingFace
-    /// repo — a widely-used, well-maintained GGUF quantization set.
+    /// The model is downloaded from the `bartowski/Qwen_Qwen3-0.6B-GGUF` HuggingFace
+    /// repo — a widely-used, well-maintained GGUF quantization set. (This value was
+    /// previously `bartowski/Qwen3-0.6B-GGUF` — unprefixed — which does not resolve.
+    /// There is no evidence it ever did: the prefixed repo used here was created in
+    /// April 2025, over a year before the unprefixed ID was written in, and every
+    /// other unprefixed `bartowski` repo this file uses is still live, so a rename
+    /// does not fit either. See #2453.)
     ///
     /// - Parameter onProgress: Optional closure called on the main actor each
     ///   time download progress updates. Receives a value in `[0, 1]` where
@@ -109,12 +114,12 @@ public struct QuickStartSeed: Sendable {
         onProgress: (@Sendable @MainActor (Double) -> Void)? = nil
     ) -> QuickStartSeed {
         QuickStartSeed(
-            modelID: "bartowski/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf",
-            repoID: "bartowski/Qwen3-0.6B-GGUF",
-            fileName: "Qwen3-0.6B-Q4_K_M.gguf",
+            modelID: "bartowski/Qwen_Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf",
+            repoID: "bartowski/Qwen_Qwen3-0.6B-GGUF",
+            fileName: "Qwen_Qwen3-0.6B-Q4_K_M.gguf",
             displayName: "Qwen3 0.6B (Q4_K_M)",
             modelType: .gguf,
-            sizeBytes: 416_000_000,
+            sizeBytes: 484_220_320,
             promptTemplate: .chatML,
             onProgress: onProgress
         )
@@ -133,36 +138,36 @@ public struct QuickStartSeed: Sendable {
     /// `ModelLoadPlan`-backed fit dimension, so an over-budget candidate is
     /// collapsed below every runnable one and the floor wins by construction.
     static let seedCandidates: [QuickStartSeed] = [
-        // Floor — the existing recommendedSmallModel(). ~0.4 GB, runs anywhere.
+        // Floor — the existing recommendedSmallModel(). ~0.5 GB, runs anywhere.
         QuickStartSeed(
-            modelID: "bartowski/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf",
-            repoID: "bartowski/Qwen3-0.6B-GGUF",
-            fileName: "Qwen3-0.6B-Q4_K_M.gguf",
+            modelID: "bartowski/Qwen_Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf",
+            repoID: "bartowski/Qwen_Qwen3-0.6B-GGUF",
+            fileName: "Qwen_Qwen3-0.6B-Q4_K_M.gguf",
             displayName: "Qwen3 0.6B (Q4_K_M)",
             modelType: .gguf,
-            sizeBytes: 416_000_000,
+            sizeBytes: 484_220_320,
             promptTemplate: .chatML,
             onProgress: nil
         ),
-        // ~2.0 GB — comfortable on a modern phone / base Mac.
+        // ~2.5 GB — comfortable on a modern phone / base Mac.
         QuickStartSeed(
-            modelID: "bartowski/Qwen3-4B-GGUF/Qwen3-4B-Q4_K_M.gguf",
-            repoID: "bartowski/Qwen3-4B-GGUF",
-            fileName: "Qwen3-4B-Q4_K_M.gguf",
+            modelID: "bartowski/Qwen_Qwen3-4B-GGUF/Qwen_Qwen3-4B-Q4_K_M.gguf",
+            repoID: "bartowski/Qwen_Qwen3-4B-GGUF",
+            fileName: "Qwen_Qwen3-4B-Q4_K_M.gguf",
             displayName: "Qwen3 4B (Q4_K_M)",
             modelType: .gguf,
-            sizeBytes: 2_500_000_000,
+            sizeBytes: 2_497_280_960,
             promptTemplate: .chatML,
             onProgress: nil
         ),
-        // ~4.7 GB — a capable 8B for machines with headroom.
+        // ~4.9 GB — a capable 8B for machines with headroom.
         QuickStartSeed(
             modelID: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
             repoID: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
             fileName: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
             displayName: "Llama 3.1 8B (Q4_K_M)",
             modelType: .gguf,
-            sizeBytes: 4_900_000_000,
+            sizeBytes: 4_920_739_232,
             promptTemplate: .llama3,
             onProgress: nil
         ),
@@ -173,7 +178,7 @@ public struct QuickStartSeed: Sendable {
             fileName: "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
             displayName: "Qwen2.5 14B (Q4_K_M)",
             modelType: .gguf,
-            sizeBytes: 9_000_000_000,
+            sizeBytes: 8_988_110_976,
             promptTemplate: .chatML,
             onProgress: nil
         ),

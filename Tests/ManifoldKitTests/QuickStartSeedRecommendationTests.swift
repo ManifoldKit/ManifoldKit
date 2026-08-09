@@ -28,7 +28,7 @@ final class QuickStartSeedRecommendationTests: XCTestCase {
         )
     }
 
-    private let floorModelID = "bartowski/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf"
+    private let floorModelID = "bartowski/Qwen_Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf"
 
     // MARK: - Seed differs by device profile
 

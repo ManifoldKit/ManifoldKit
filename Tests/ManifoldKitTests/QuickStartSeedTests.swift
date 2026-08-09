@@ -58,8 +58,8 @@ final class QuickStartSeedTests: XCTestCase {
 
     func test_recommendedSmallModel_hasExpectedFields() {
         let seed = QuickStartSeed.recommendedSmallModel()
-        XCTAssertEqual(seed.repoID, "bartowski/Qwen3-0.6B-GGUF")
-        XCTAssertEqual(seed.fileName, "Qwen3-0.6B-Q4_K_M.gguf")
+        XCTAssertEqual(seed.repoID, "bartowski/Qwen_Qwen3-0.6B-GGUF")
+        XCTAssertEqual(seed.fileName, "Qwen_Qwen3-0.6B-Q4_K_M.gguf")
         XCTAssertEqual(seed.modelType, .gguf)
         XCTAssertGreaterThan(seed.sizeBytes, 0)
         XCTAssertNil(seed.onProgress)
@@ -207,7 +207,7 @@ final class QuickStartSeedTests: XCTestCase {
         let model = makeModel(for: seed)
         // Start in downloading state.
         let progressState = DownloadState(model: model)
-        progressState.updateProgress(bytesDownloaded: 100_000, totalBytes: 416_000_000)
+        progressState.updateProgress(bytesDownloaded: 100_000, totalBytes: 484_220_320)
         manager.activeDownloads[model.id] = progressState
 
         // Flip to completed after a short delay on the main actor so the poll

@@ -172,7 +172,7 @@ final class QuickStartBackendsTests: XCTestCase {
     }
 
     /// Without any GGUF-capable backend registered, the seed must skip —
-    /// downloading ~400 MB nothing can load is the silent-failure trap this
+    /// downloading ~484 MB nothing can load is the silent-failure trap this
     /// gate exists to close.
     func test_seed_skips_whenNoRegisteredBackendCanLoadGGUF() async throws {
         try XCTSkipIf(buildHasCompiledInGGUFBackend,

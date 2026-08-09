@@ -483,7 +483,7 @@ public enum ManifoldKit {
             if let seed {
                 // Foundation check: if the Foundation backend is already
                 // available there is a zero-cost model — skip the download so
-                // we never fetch ~400 MB unnecessarily.
+                // we never fetch ~484 MB unnecessarily.
                 // `foundationAvailableOverride` is a test seam: the live
                 // probe depends on the host's Apple Intelligence state, which
                 // would make seed-path tests skip on capable machines.

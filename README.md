@@ -85,7 +85,7 @@ func oneShot(using kit: QuickStartResult) async throws -> String {
 }
 ```
 
-> **About `seed:`** — with the `manifold-llama` companion's `LlamaBackends` registrar, `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. Without that registrar the GGUF seed is skipped. The download is also skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
+> **About `seed:`** — with the `manifold-llama` companion's `LlamaBackends` registrar, `.recommendedSmallModel()` downloads Qwen3-0.6B (~484 MB) in the background before returning, so the composer is generating the moment the view appears. Without that registrar the GGUF seed is skipped. The download is also skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
 > **No starter download?** `quickStart` registers the backends but loads none when no Foundation Model, compatible stored local model, or saved endpoint is available, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or pass the `LlamaBackends` registrar with `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 

@@ -139,7 +139,7 @@ This section covers the paths that fill that gap on first launch (starter seed d
 
 ### Seeding a starter model (recommended for local-first apps)
 
-The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and dispatches the load before returning. Without the registrar the seed is deliberately skipped and no model loads (see `QuickStartSeed`).
+The curated starter is a GGUF, so add the `manifold-llama` companion package and pass `backends: [LlamaBackends.self]`. ManifoldKit downloads Qwen3-0.6B-Instruct Q4\_K\_M (~484 MB) before returning, runs the selection policy, and dispatches the load before returning. Without the registrar the seed is deliberately skipped and no model loads (see `QuickStartSeed`).
 
 That dispatch is fire-and-forget (`dispatchSelectedLoad()`), so the load is typically still in flight when `quickStart()` returns and the view appears — `ChatViewModel.isModelLoaded` is not guaranteed `true` on the first observation. Read `viewModel.modelLoadState` (`.idle` / `.loading` / `.loaded` / `.failed(error)`) to drive an accurate "starting up" indicator instead of assuming the composer is immediately live (#2222).
 
