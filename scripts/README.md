@@ -87,6 +87,7 @@ snippet. At the next UTC day, an old build directory is ineligible.
 |--------|---------|---------------------|
 | `demo-apps-build.sh` | Pre-release gate: builds both example apps (Advanced iOS, Minimal iOS + macOS) and prints a pass/fail summary. Mandatory before bumping the release version (`CLAUDE.md` "Pre-bump demo-app gate"). | Manual / operational (release-time only, not per-PR) |
 | `generate-sbom.sh` | Emits a CycloneDX 1.5 SBOM for the ManifoldKit Swift package (hand-rolled — SwiftPM has no machine-readable dependency surface `cyclonedx-bom`/`swift-sbom-action` can consume directly). | CI-only (`release-provenance.yml`, `release-provenance-rehearsal.yml`) |
+| `migration-index-check.sh` | Two-mode gate over `docs/MIGRATION-INDEX.md`: completeness (every `docs/MIGRATION-*.md` has a table row) always; `--release` additionally fails on any row still marked `next` in the Release column, which must be flipped to the version being shipped. The completeness half is the cheap mirror of the authoritative `MigrationIndexAuditTest`; the `--release` half is release-gated only, not an in-suite audit. | Manual / operational (release-time gate; completeness half also enforced per-PR by `MigrationIndexAuditTest`) |
 
 ## Fuzz harness
 
