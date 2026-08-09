@@ -28,6 +28,6 @@ share-action-extensions	1	1	0
 benchmarking	0	0	0
 web-search	0	0	0
 fuzzing	1	1	1
-app-eval	0	1	0
+app-eval	0	1	1
 test-support-kits	1	1	1
 macos-native-experience	0	0	0
