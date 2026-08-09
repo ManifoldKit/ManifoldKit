@@ -52,7 +52,6 @@ ConversationImporter  # reason: host-facing library surface — public value typ
 CuratedModelCapabilities  # reason: host-facing model-info value type — curated capability flags consumed downstream.
 DefaultWebSearchRuntime  # reason: host-facing library surface — public reference type consumed downstream or via tests; no in-repo (Sources/) reference.
 DetectorContract  # reason: dev-tool (ManifoldFuzz) — fuzz-harness surface exercised by fuzz-chat / fuzz tests, not a .library consumer.
-DiagnosticsDisclosure  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 DiagnosticsView  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.
 DiscoverableAppIntent  # reason: experimental (ManifoldAppIntents) — AppIntent bridge surface consumed by host App Intents; no first-party adopter yet.
 DocumentLibrarySheet  # reason: host-facing SwiftUI view — instantiated by consumer apps; never referenced within this package.

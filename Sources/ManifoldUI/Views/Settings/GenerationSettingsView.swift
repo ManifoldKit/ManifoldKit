@@ -7,13 +7,25 @@ import ManifoldInference
 /// Presented as a `.sheet` from the chat toolbar. Shows a basic section
 /// (temperature, system prompt, appearance) always visible, and an advanced
 /// section (top-p, repeat penalty, prompt template, presets, backend info,
-/// cloud APIs) hidden behind a `DisclosureGroup` that is collapsed by default.
-/// The disclosure state is persisted via `@AppStorage` so power users who
-/// expand it once keep it expanded.
+/// diagnostics, cloud APIs) hidden behind a `DisclosureGroup` that is
+/// collapsed by default. The disclosure state is persisted via `@AppStorage`
+/// so power users who expand it once keep it expanded.
+///
+/// The Diagnostics row embeds ``DiagnosticsDisclosure`` when a
+/// `SessionManagerViewModel` carrying a `DiagnosticsService` is in the
+/// environment; it is omitted entirely for hosts that never wire one (see
+/// ``DiagnosticsDisclosure`` for the standalone-embedding alternative).
 public struct GenerationSettingsView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
+
+    /// Optional session manager, read only for its `diagnostics` store (see
+    /// the Diagnostics row in the Advanced section below). Declared optional
+    /// — not every host environs a `SessionManagerViewModel` (`quickStart()`'s
+    /// single-session recipe never does — see `docs/QUICKSTART.md`), and this
+    /// view must not require one just to render sampling controls.
+    @Environment(SessionManagerViewModel.self) private var sessionManager: SessionManagerViewModel?
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
     // compile-time-capability-ok: cloud families compile unconditionally since v0.48 (no companion package, no runtime registration gap), so `shouldPresentCloudAPIManagement` is a build-time constant.
@@ -182,6 +194,18 @@ public struct GenerationSettingsView<APIConfig: View>: View {
                         }
                     }
 
+                    // Diagnostics — inside advanced, alongside Backend Info
+                    // and Cloud APIs. Visible whenever a `DiagnosticsService`
+                    // actually reaches this view (via the environed
+                    // `SessionManagerViewModel`, wired by `configure(bootstrap:)`
+                    // / `configureAndLoad(bootstrap:)`); silently absent
+                    // otherwise rather than gated by its own feature flag —
+                    // `showAdvancedSettings` already governs whether this
+                    // whole tier of debug-ish content is shown.
+                    if let diagnostics = sessionManager?.diagnostics {
+                        DiagnosticsDisclosure(diagnostics: diagnostics)
+                    }
+
                     // No "Debug" / Prompt Inspector entry point here: it
                     // hardcoded `PromptInspectorView(assembledPrompt: nil, ...)`,
                     // so the sheet always rendered its empty state — see the
@@ -220,6 +244,12 @@ public struct GenerationSettingsView<APIConfig: View>: View {
 // MARK: - Preview
 
 #Preview("Generation Settings") {
+    // Deliberately no SessionManagerViewModel here: previewing the Diagnostics
+    // row needs one configured against a real (SwiftData-backed) persistence
+    // store, disproportionate for a canvas preview — see
+    // ModelAndSettingsControlTests for the configured-SessionManagerViewModel
+    // case that actually exercises the row. This canvas renders the
+    // no-sessionManager variant on purpose.
     GenerationSettingsView { EmptyView() }
         .environment(ChatViewModel())
 }
