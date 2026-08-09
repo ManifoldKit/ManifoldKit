@@ -1,0 +1,18 @@
+# scripts/demo-coverage-product-allowlist.txt — companion to the demo-coverage
+# completeness audit in scripts/demo-coverage.sh.
+#
+# Every `.library(` / `.executable(` product name declared in Package.swift
+# must appear in some manifest row's `products` column, OR be listed here.
+# Every entry MUST carry a `# reason:` annotation.
+#
+# The audit fails if an entry here is stale (the product no longer exists in
+# Package.swift, or it has since gained a manifest-row reference) — prune it
+# then, same convention as Tests/APIFreezeTests/inert-surface-allowlist.txt.
+#
+# Format: <ProductName>  # reason: <one line>
+ManifoldContract  # reason: leaf/infrastructure module (backend protocols, value/stream types) — consumed transitively by every other row's capability; not itself a distinct end-user capability.
+ManifoldNetworking  # reason: leaf/infrastructure module (NetworkActivity funnel, PrivateIPClassifier) — consumed transitively; not itself a distinct end-user capability.
+ManifoldSecrets  # reason: leaf/infrastructure module (KeychainService, SecureEnclaveKeyManager) — consumed transitively (e.g. by cloud-backends' credential storage); not itself a distinct end-user capability.
+ManifoldHardware  # reason: leaf/infrastructure module (device probing, GGUF parsing, tool-calling value types) — consumed transitively; not itself a distinct end-user capability.
+manifold-tools  # reason: exercised by scripts/local-integration-sweep.sh (manual real-model QA sweep, docs/QA-PRACTICES.md §5), not a demo-coverage row — it is a maintainer QA vehicle, not a reader-facing demo. The tool-calling capability itself is covered by the tool-calling row's Example app vehicle.
+ManifoldServerKit  # reason: embeddable-library variant of the ManifoldServer executable already covered by the openai-compat-server row (M3); no separate demo planned for the embeddable/custom-ServerBackendProvider form.

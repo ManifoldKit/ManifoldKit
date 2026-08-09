@@ -7,22 +7,35 @@
 #
 #   R1  demonstrated by a runnable vehicle   (vehicle_kind != none)
 #   R2  documented with a link that can't drift  (doc set AND the file exists)
-#   R3  actually EXECUTED, not just labelled executed. lane must be one of
-#       the executed lanes (per-pr, release-gate, live-e2e, weekly,
-#       external — NOT "manual", NOT "none") AND exec_kind must be `live` or
-#       `scripted` — NOT `compile`. A row whose lane fires per-pr but whose
-#       invocation only compiles (e.g. `xcodebuild build-for-testing`, never
-#       `test`) is NOT executed: nobody would notice the whole suite going
-#       red. exec_kind is a promise about what the row's OWN lane_ref
-#       actually does when it fires — read the workflow/script, don't infer.
+#   R3  a declared execution route, not just a labelled one — method-bound
+#       where the lane is a test. lane must be one of the executed lanes
+#       (per-pr, release-gate, live-e2e, weekly, external — NOT "manual",
+#       NOT "none") AND exec_kind must be `live` or `scripted` — NOT
+#       `compile`. A row whose lane fires per-pr but whose invocation only
+#       compiles (e.g. `xcodebuild build-for-testing`, never `test`) is NOT
+#       executed: nobody would notice the whole suite going red. exec_kind is
+#       a promise about what the row's OWN lane_ref actually does when it
+#       fires — read the workflow/script, don't infer. Where the lane names a
+#       test file or workflow, `lane_methods` binds R3 to the exact method(s)
+#       that exercise the capability — see below. R3 does NOT assert the lane
+#       ran recently or is currently green; last-run/staleness evidence is a
+#       later milestone (M5).
 #
-# exec_kind (new column, between lane_ref and notes) is one of:
+# exec_kind (column between lane_ref/lane_methods and notes) is one of:
 #   live      drives real backends/system (a real Ollama server, a real MCP
 #             subprocess, a human doing ad hoc QA against the real app)
 #   scripted  executes with scripted/mock backends (a UI test against canned
 #             demo scenarios, a deterministic-lane golden-scenario replay)
 #   compile   build-only — compiles/links but asserts nothing ever runs
 #   (empty)   only valid when lane=none — nothing fires at all
+#
+# lane_methods (column between lane_ref and exec_kind) is a comma-separated
+# list of "Suite/method" entries — the exact XCTest methods that exercise the
+# capability, for rows whose lane_ref names a test file or a workflow that
+# runs named methods. Empty is allowed for non-test lanes (a generic script, a
+# companion/external CI system this repo can't see into, prose-manual QA).
+# Required (non-empty) when exec_kind is live|scripted AND lane_ref contains a
+# bare `.swift` test-file path — see check_manifest_integrity.
 #
 # Modes:
 #   scripts/demo-coverage.sh                  human scoreboard (stdout)
@@ -33,18 +46,27 @@
 # --manifest / --baseline (or the DEMO_COVERAGE_MANIFEST / DEMO_COVERAGE_BASELINE
 # env vars) override the default paths — used by DemoCoverageGateAuditTest's
 # sabotage tests, which point this script at a planted fixture tree rather
-# than the real manifest/baseline.
+# than the real manifest/baseline. The product-completeness audit (see
+# check_product_completeness) reads $REPO_ROOT/Package.swift and
+# $REPO_ROOT/scripts/demo-coverage-product-allowlist.txt directly — a sabotage
+# fixture that wants to exercise it plants its own Package.swift at the
+# fixture root (REPO_ROOT resolves there once demo-coverage.sh is copied in);
+# a fixture that doesn't create one skips the audit entirely (see the
+# function), so it never affects sabotage tests unrelated to it.
 #
 # The ratchet baseline (scripts/demo-coverage-baseline.tsv) holds ONLY the
-# per-row R1/R2/R3 states — NOT the aggregate public-type-coverage percentage.
-# That percentage is reported in the scoreboard as an informational signal but
-# deliberately is NOT ratcheted: it legitimately moves in both directions for
-# reasons that have nothing to do with a demo-coverage regression (deleting an
-# undemonstrated public type raises it; adding one new public type anywhere in
-# the package lowers it, e.g. 104/910 -> 104/911), so gating on it would
-# produce a false red on an unrelated PR that merely adds API surface, and
-# every routine `--update-baseline` call would silently re-baseline away the
-# "regression" it just caused — neutering the ratchet rather than enforcing it.
+# per-row R1/R2/R3 states — NOT the aggregate lexical-public-type-mentions
+# percentage. That percentage is reported in the scoreboard as an
+# informational signal but deliberately is NOT ratcheted: it legitimately
+# moves in both directions for reasons that have nothing to do with a demo-
+# coverage regression (deleting an unmentioned public type raises it; adding
+# one new public type anywhere in the package lowers it, e.g. 104/910 ->
+# 104/911), so gating on it would produce a false red on an unrelated PR that
+# merely adds API surface, and every routine `--update-baseline` call would
+# silently re-baseline away the "regression" it just caused — neutering the
+# ratchet rather than enforcing it. The ratchet's actual job, precisely
+# stated: prevent an UNACCOMPANIED regression — an R1/R2/R3 flag flipping
+# from met to unmet with no corresponding manifest edit acknowledging it.
 #
 # One scoring implementation: `current_state` is the ONLY place R1/R2/R3 are
 # computed. --check and both scoreboard renderers all consume its output and
@@ -109,9 +131,16 @@ BASELINE="${BASELINE_OVERRIDE:-${DEMO_COVERAGE_BASELINE:-$REPO_ROOT/scripts/demo
 TYPES_SCRIPT="$REPO_ROOT/scripts/_lib/demo-coverage-types.py"
 API_BASELINE_DIR="$REPO_ROOT/Tests/APIFreezeTests/api-surface-baseline"
 EXAMPLE_ROOT="$REPO_ROOT/Example"
+PACKAGE_SWIFT="$REPO_ROOT/Package.swift"
+PRODUCT_ALLOWLIST="$REPO_ROOT/scripts/demo-coverage-product-allowlist.txt"
+# Hardcoded convention: every lane_methods "Suite/method" entry names a suite
+# file at this path. True for every row today (all UI-test-bound capabilities
+# live in the one Example app's UI test target) — if a future capability's
+# tests live elsewhere, this is the one place to generalize.
+UI_TEST_SUITE_DIR="$REPO_ROOT/Example/AdvancedUITests"
 
-EXPECTED_HEADER=$'id\ttitle\tproducts\tvehicle_kind\tvehicle_path\tdoc\tlane\tlane_ref\texec_kind\tnotes'
-EXPECTED_COLUMN_COUNT=10
+EXPECTED_HEADER=$'id\ttitle\tproducts\tvehicle_kind\tvehicle_path\tdoc\tlane\tlane_ref\tlane_methods\texec_kind\tnotes'
+EXPECTED_COLUMN_COUNT=11
 VALID_VEHICLE_KINDS="example-app focused-example script scenario external none"
 VALID_LANES="per-pr release-gate live-e2e weekly manual external none"
 VALID_EXEC_KINDS="live scripted compile"
@@ -155,9 +184,20 @@ is_path_shaped() {
     esac
 }
 
-count_tabs() {
-    # $1: a raw line. Echoes the number of literal tab characters in it.
-    printf '%s' "$1" | tr -cd '\t' | wc -c | tr -d ' '
+comma_list_elements() {
+    # $1: a comma-separated value. Prints each trimmed, non-empty element on
+    # its own line. Shared by lane_ref, lane_methods, and products parsing —
+    # tab is unsafe as an internal delimiter here (see current_state's header
+    # comment for the bash IFS-whitespace collapse bug this sidesteps), but
+    # comma is not "IFS whitespace" so plain `IFS=',' for` splitting is safe.
+    local value="$1" old_ifs="$IFS" elem
+    IFS=','
+    for elem in $value; do
+        IFS="$old_ifs"
+        elem="$(echo "$elem" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [[ -n "$elem" ]] && printf '%s\n' "$elem"
+    done
+    IFS="$old_ifs"
 }
 
 # ---- Manifest integrity (part a of --check; also run before every mode so ----
@@ -201,8 +241,8 @@ check_manifest_integrity() {
         fi
     done < <(tail -n +2 "$MANIFEST")
 
-    local id title products vehicle_kind vehicle_path doc lane lane_ref exec_kind notes
-    while IFS=$'\036' read -r id title products vehicle_kind vehicle_path doc lane lane_ref exec_kind notes; do
+    local id title products vehicle_kind vehicle_path doc lane lane_ref lane_methods exec_kind notes
+    while IFS=$'\036' read -r id title products vehicle_kind vehicle_path doc lane lane_ref lane_methods exec_kind notes; do
         [[ -z "$id" ]] && continue
 
         # `title` is the only column with no other constraint that would
@@ -259,24 +299,184 @@ check_manifest_integrity() {
             add_integrity_violation "$id: exec_kind is 'compile' but notes is empty — say where real execution would come from (or '-')"
         fi
 
+        # lane_methods: forbidden when lane=none or exec_kind=compile (nothing
+        # executes, so no method can be named); required when exec_kind is
+        # live|scripted AND lane_ref names a bare .swift test file; when
+        # present, every "Suite/method" entry must resolve to a real method in
+        # a real suite file, and (for a workflow lane_ref) also appear in that
+        # workflow's -only-testing list.
+        if [[ "$lane" == "none" && -n "$lane_methods" ]]; then
+            add_integrity_violation "$id: lane is 'none' but lane_methods is set ('$lane_methods')"
+        fi
+        if [[ "$exec_kind" == "compile" && -n "$lane_methods" ]]; then
+            add_integrity_violation "$id: exec_kind is 'compile' but lane_methods is set ('$lane_methods') — nothing executes, so no method can be listed"
+        fi
+
+        if in_list "$exec_kind" "$EXECUTED_EXEC_KINDS"; then
+            local lane_ref_has_swift=0 lr_elem_a
+            while IFS= read -r lr_elem_a; do
+                case "$lr_elem_a" in
+                    *.swift) lane_ref_has_swift=1 ;;
+                esac
+            done < <(comma_list_elements "$lane_ref")
+            if [[ "$lane_ref_has_swift" -eq 1 && -z "$lane_methods" ]]; then
+                add_integrity_violation "$id: exec_kind is '$exec_kind' with a test-file lane_ref but lane_methods is empty"
+            fi
+        fi
+
+        if [[ -n "$lane_methods" ]]; then
+            local lm_entry
+            while IFS= read -r lm_entry; do
+                if [[ "$lm_entry" != */* ]]; then
+                    add_integrity_violation "$id: lane_methods entry '$lm_entry' is not in 'Suite/method' form"
+                    continue
+                fi
+                local lm_suite="${lm_entry%%/*}" lm_method="${lm_entry#*/}"
+                if [[ -z "$lm_suite" || -z "$lm_method" ]]; then
+                    add_integrity_violation "$id: lane_methods entry '$lm_entry' is not in 'Suite/method' form"
+                    continue
+                fi
+
+                local suite_file="$UI_TEST_SUITE_DIR/${lm_suite}.swift"
+                if [[ ! -e "$suite_file" ]]; then
+                    add_integrity_violation "$id: lane_methods entry '$lm_entry' names suite file Example/AdvancedUITests/${lm_suite}.swift, which does not exist"
+                # Anchored so a commented-out declaration (`// func testFoo()`)
+                # can't false-accept: an unanchored `grep -q "func X("` matches
+                # a substring anywhere on the line, including inside a `//`
+                # comment. Requires the `func` keyword to start the (optional
+                # access-modifier-prefixed) declaration at the start of the
+                # line, modulo leading whitespace.
+                elif ! grep -qE "^[[:space:]]*(@[A-Za-z_]+[[:space:]]+)?(public |package |internal |private )?func ${lm_method}\\(" "$suite_file"; then
+                    add_integrity_violation "$id: lane_methods entry '$lm_entry' — no 'func ${lm_method}(' found in Example/AdvancedUITests/${lm_suite}.swift"
+                # Bare .swift lane_ref (not a workflow) is a stronger promise
+                # than "this method exists somewhere in AdvancedUITests" — it
+                # says THIS method lives in THIS suite file. Catch drift where
+                # lane_methods names a real method that has since moved to a
+                # different suite than the row's lane_ref claims.
+                elif [[ -n "$lane_ref" ]]; then
+                    local lr_elem_c lr_has_matching_bare_swift=0 lr_has_any_bare_swift=0
+                    while IFS= read -r lr_elem_c; do
+                        case "$lr_elem_c" in
+                            */AdvancedUITests/*.swift)
+                                lr_has_any_bare_swift=1
+                                if [[ "$lr_elem_c" == */AdvancedUITests/${lm_suite}.swift ]]; then
+                                    lr_has_matching_bare_swift=1
+                                fi
+                                ;;
+                        esac
+                    done < <(comma_list_elements "$lane_ref")
+                    if [[ "$lr_has_any_bare_swift" -eq 1 && "$lr_has_matching_bare_swift" -eq 0 ]]; then
+                        add_integrity_violation "$id: lane_methods entry '$lm_entry' names suite '${lm_suite}', which does not match the bare .swift file(s) in lane_ref ('$lane_ref')"
+                    fi
+                fi
+
+                # If lane_ref names a workflow, the method must ALSO appear in
+                # that workflow's -only-testing list — otherwise lane_methods
+                # could claim CI coverage the workflow doesn't actually give it.
+                local lr_elem_b
+                while IFS= read -r lr_elem_b; do
+                    case "$lr_elem_b" in
+                        *.yml)
+                            if [[ -e "$REPO_ROOT/$lr_elem_b" ]] && ! grep -q "AdvancedUITests/${lm_suite}/${lm_method}" "$REPO_ROOT/$lr_elem_b"; then
+                                add_integrity_violation "$id: lane_methods entry '$lm_entry' does not appear in ${lr_elem_b}'s -only-testing list"
+                            fi
+                            ;;
+                    esac
+                done < <(comma_list_elements "$lane_ref")
+            done < <(comma_list_elements "$lane_methods")
+        fi
+
         # Path-shaped lane_ref elements are a promise the file exists, unless
         # the lane is manual/external (where lane_ref is routinely prose).
         if [[ -n "$lane_ref" ]] && ! in_list "$lane" "$PATH_EXEMPT_LANES"; then
-            local old_ifs="$IFS" elem
-            IFS=','
-            for elem in $lane_ref; do
-                IFS="$old_ifs"
-                elem="$(echo "$elem" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            local elem
+            while IFS= read -r elem; do
                 if is_path_shaped "$elem" && [[ ! -e "$REPO_ROOT/$elem" ]]; then
                     add_integrity_violation "$id: lane_ref element does not exist: $elem"
                 fi
-            done
-            IFS="$old_ifs"
+            done < <(comma_list_elements "$lane_ref")
         fi
     done < <(tail -n +2 "$MANIFEST" | tr '\t' '\036')
 }
 
+count_tabs() {
+    # $1: a raw line. Echoes the number of literal tab characters in it.
+    printf '%s' "$1" | tr -cd '\t' | wc -c | tr -d ' '
+}
+
+# ---- Product completeness audit --------------------------------------------
+#
+# Every `.library(`/`.executable(` product Package.swift declares must be
+# named in some manifest row's `products` column, or listed with a reason in
+# scripts/demo-coverage-product-allowlist.txt — otherwise a whole product can
+# ship with zero demo-coverage tracking and nobody notices. Skips entirely
+# when $REPO_ROOT/Package.swift doesn't exist (every existing sabotage
+# fixture has no Package.swift and must stay unaffected by this audit; the
+# one fixture that exercises it plants its own).
+
+check_product_completeness() {
+    [[ -f "$PACKAGE_SWIFT" ]] || return 0
+
+    local pkg_products
+    pkg_products="$(grep -oE '\.(library|executable)\(name: *"[^"]+"' "$PACKAGE_SWIFT" | sed -E 's/.*name: *"([^"]+)"/\1/')"
+    [[ -n "$pkg_products" ]] || return 0
+
+    # Fail-closed guard against the extraction regex itself going dormant. The
+    # regex above requires `name:` on the SAME line as `.library(`/
+    # `.executable(` — a multi-line declaration (name: on its own line) would
+    # silently extract zero names for that product and the loop below would
+    # never see it, passing clean while a whole product goes untracked. Count
+    # non-comment `.library(`/`.executable(` occurrences independently (a
+    # naive `//`-to-end-of-line strip — good enough for this file's product
+    # list, which never puts a URL literal on a product-declaration line) and
+    # compare against the extracted-name count; a mismatch means the
+    # extraction regex missed something and the check can't be trusted, so it
+    # fails closed with a named error instead of silently under-counting.
+    local product_decl_count product_name_count
+    product_decl_count="$(sed -E 's|//.*$||' "$PACKAGE_SWIFT" | grep -oE '\.(library|executable)\(' | wc -l | tr -d ' ')"
+    product_name_count="$(awk 'END{print NR}' <<< "$pkg_products")"
+    if [[ "$product_decl_count" -ne "$product_name_count" ]]; then
+        add_integrity_violation "product completeness: found $product_decl_count non-comment .library(/.executable( declaration(s) in Package.swift but only extracted $product_name_count product name(s) — a product declaration likely splits 'name:' onto its own line, which the extraction regex can't see; fix the regex (or the declaration) before trusting this audit"
+        return
+    fi
+
+    local all_referenced="" id title products vehicle_kind vehicle_path doc lane lane_ref lane_methods exec_kind notes
+    while IFS=$'\036' read -r id title products vehicle_kind vehicle_path doc lane lane_ref lane_methods exec_kind notes; do
+        [[ -z "$id" ]] && continue
+        local p
+        while IFS= read -r p; do
+            all_referenced="${all_referenced} ${p}"
+        done < <(comma_list_elements "$products")
+    done < <(tail -n +2 "$MANIFEST" | tr '\t' '\036')
+
+    local allowlist_names=""
+    if [[ -f "$PRODUCT_ALLOWLIST" ]]; then
+        local raw allow_prod
+        while IFS= read -r raw; do
+            allow_prod="${raw%%#*}"
+            allow_prod="$(echo "$allow_prod" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            [[ -z "$allow_prod" ]] && continue
+            allowlist_names="${allowlist_names} ${allow_prod}"
+            if ! printf '%s\n' "$pkg_products" | grep -qx "$allow_prod"; then
+                add_integrity_violation "product completeness: allowlist entry '$allow_prod' is not a Package.swift .library/.executable product — stale, remove it from scripts/demo-coverage-product-allowlist.txt"
+            fi
+            if in_list "$allow_prod" "$all_referenced"; then
+                add_integrity_violation "product completeness: allowlist entry '$allow_prod' is now referenced by a manifest row's products column — remove the stale line from scripts/demo-coverage-product-allowlist.txt"
+            fi
+        done < "$PRODUCT_ALLOWLIST"
+    fi
+
+    local prod
+    while IFS= read -r prod; do
+        [[ -z "$prod" ]] && continue
+        if ! in_list "$prod" "$all_referenced" && ! in_list "$prod" "$allowlist_names"; then
+            add_integrity_violation "product completeness: '$prod' (Package.swift .library/.executable product) is not referenced by any manifest row's products column and is not in scripts/demo-coverage-product-allowlist.txt"
+        fi
+    done <<< "$pkg_products"
+}
+
 check_manifest_integrity
+check_product_completeness
 
 if [[ -n "$INTEGRITY_VIOLATIONS" ]]; then
     echo "demo-coverage.sh: manifest integrity violations in $MANIFEST:" >&2
@@ -304,8 +504,8 @@ fi
 # the whole class, defense-in-depth on top of the title-non-empty check.
 
 current_state() {
-    local id title products vehicle_kind vehicle_path doc lane lane_ref exec_kind notes
-    while IFS=$'\036' read -r id title products vehicle_kind vehicle_path doc lane lane_ref exec_kind notes; do
+    local id title products vehicle_kind vehicle_path doc lane lane_ref lane_methods exec_kind notes
+    while IFS=$'\036' read -r id title products vehicle_kind vehicle_path doc lane lane_ref lane_methods exec_kind notes; do
         [[ -z "$id" ]] && continue
         local r1=0 r2=0 r3=0
         [[ "$vehicle_kind" != "none" ]] && r1=1
@@ -318,10 +518,11 @@ current_state() {
 }
 
 # ---- Type-coverage table (module\ttotal\tnamed, plus a TOTAL line) ----
-# Informational only — see the header comment for why this is NOT ratcheted.
-# NOTE: --check never calls this — it only reads current_state's R1/R2/R3
-# output, so a type-coverage-helper failure can never affect --check or its
-# sabotage fixtures. Only the scoreboard (default / --markdown) renders it.
+# "Lexical public-type mentions" — informational only — see the header
+# comment for why this is NOT ratcheted. NOTE: --check never calls this — it
+# only reads current_state's R1/R2/R3 output, so a type-coverage-helper
+# failure can never affect --check or its sabotage fixtures. Only the
+# scoreboard (default / --markdown) renders it.
 
 type_coverage_table() {
     python3 "$TYPES_SCRIPT" "$API_BASELINE_DIR" "$EXAMPLE_ROOT"
@@ -355,7 +556,8 @@ run_check() {
 
     # Baseline rows: every id present in the baseline must still exist in the
     # current manifest, and none of R1/R2/R3 may regress from 1 (met) to 0
-    # (unmet). New ids (not in baseline) are allowed.
+    # (unmet) with no corresponding manifest acknowledgement — an
+    # UNACCOMPANIED regression. New ids (not in baseline) are allowed.
     local bid br1 br2 br3
     while IFS=$'\t' read -r bid br1 br2 br3; do
         [[ -z "$bid" ]] && continue
@@ -386,7 +588,7 @@ run_check() {
         exit 1
     fi
 
-    echo "demo-coverage.sh --check: OK — manifest integrity clean, no ratchet regressions vs $BASELINE"
+    echo "demo-coverage.sh --check: OK — manifest integrity clean, no unaccompanied ratchet regressions vs $BASELINE"
 }
 
 # ============================ --update-baseline =============================
@@ -427,7 +629,7 @@ render_scoreboard_text() {
     echo "Summary: $total capabilities — R1 (vehicle): $r1_pass/$total, R2 (doc): $r2_pass/$total, R3 (executed): $r3_pass/$total"
     echo "  ($manual_only row(s) are lane=manual — a human can run them, but R3 counts live/scripted execution only, never manual or compile-only.)"
     echo ""
-    echo "=== Public-type coverage (informational only — not ratcheted; see script header) ==="
+    echo "=== Lexical public-type mentions (informational only — not ratcheted; see script header) ==="
     echo ""
     local type_table_output
     if ! type_table_output="$(type_coverage_table)"; then
@@ -469,7 +671,7 @@ render_scoreboard_markdown() {
     echo ""
     echo "($manual_only row(s) are lane=manual — a human can run them, but R3 counts live/scripted execution only, never manual or compile-only.)"
     echo ""
-    echo "## Public-type coverage (informational only — not ratcheted)"
+    echo "## Lexical public-type mentions (informational only — not ratcheted)"
     echo ""
     local type_table_output
     if ! type_table_output="$(type_coverage_table)"; then

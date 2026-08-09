@@ -34,10 +34,23 @@ jobs:
         run: scripts/example-ui-tests.sh build-for-testing
 
       - name: Run Example UI smoke tests
+        # Widened from 2 to 4 methods (external review, demo-coverage-hardening,
+        # #2453): the original 2 only proved compile+launch+one static state.
+        # testSendMessageFlow and testSwitchBetweenSessions are the chat-ui
+        # row's real send/session-switch evidence in scripts/demo-coverage-
+        # manifest.tsv (lane_methods). testCreateNewSession was tried first
+        # (the more natural "create" session-lifecycle candidate) and dropped
+        # after a real local failure (ambiguous "New Chat" button match,
+        # AdvancedUITests/SessionManagementUITests.swift:83) — not wired in
+        # per the "verify locally or don't wire it in" rule. The same
+        # findNewChatButton helper succeeds in testSwitchBetweenSessions, so
+        # the ambiguity appears state-dependent, not inherent to the helper.
         run: |
           scripts/example-ui-tests.sh test-without-building \
             -only-testing:AdvancedUITests/ChatFlowUITests/testEmptyStateShowsWelcome \
-            -only-testing:AdvancedUITests/ModelSwitcherChipUITests/testSwitcherChipReachableAndOpensSwitcherOnCompactWidth
+            -only-testing:AdvancedUITests/ChatFlowUITests/testSendMessageFlow \
+            -only-testing:AdvancedUITests/ModelSwitcherChipUITests/testSwitcherChipReachableAndOpensSwitcherOnCompactWidth \
+            -only-testing:AdvancedUITests/SessionManagementUITests/testSwitchBetweenSessions
 
       - name: Open GitHub issue on failure
         # Creates a tracking issue so an advisory smoke failure is visible

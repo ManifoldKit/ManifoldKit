@@ -19,16 +19,27 @@ Every capability in `scripts/demo-coverage-manifest.tsv` is scored against:
 - **R2 — documented with a link that can't drift.** `doc` names a repo-relative
   file that exists on disk right now. A doc reference that has rotted away
   fails this the moment the file is deleted or moved, not months later.
-- **R3 — actually EXECUTED, not just labelled executed.** Two conditions,
-  both required: `lane` is one of the *executed* lanes — `per-pr`,
-  `release-gate`, `live-e2e`, `weekly`, `external` — naming the CI workflow,
-  script, or test (`lane_ref`) that fires the vehicle, **AND** `exec_kind` is
-  `live` or `scripted` (never `compile`). A row whose lane fires per-pr but
-  whose own invocation only *compiles* the vehicle (e.g.
+- **R3 — a declared execution route, not just a labelled one.** Two
+  conditions, both required: `lane` is one of the *executed* lanes —
+  `per-pr`, `release-gate`, `live-e2e`, `weekly`, `external` — naming the CI
+  workflow, script, or test (`lane_ref`) that fires the vehicle, **AND**
+  `exec_kind` is `live` or `scripted` (never `compile`). A row whose lane
+  fires per-pr but whose own invocation only *compiles* the vehicle (e.g.
   `xcodebuild build-for-testing`, never `test`) is NOT executed — the whole
   test suite it compiles could go red and this row would still read green.
   `exec_kind` is the fix: it names what the row's OWN `lane_ref` actually
-  *does* when it fires, not just when it fires. See "exec_kind" below.
+  *does* when it fires, not just when it fires. Where the lane names a test
+  file or a workflow, R3 is further **method-bound**: `lane_methods` records
+  the exact method(s) that exercise the capability, so the route is a named,
+  checkable claim — not a suite-level assumption. See "exec_kind" and
+  "lane_methods" below.
+
+  **R3 is a declared route, not a freshness signal.** It does not assert the
+  lane ran recently, or that it's currently green — only that a real
+  execution path is named and (where method-bound) that the named methods
+  exist and are wired where claimed. Last-run / staleness evidence (did this
+  lane actually run in the last N days, and did it pass) is a later
+  milestone (M5).
 
   **`manual` does NOT satisfy R3** (its `exec_kind` is irrelevant to the
   score — `lane` alone excludes it). "A human can run this" is real signal —
@@ -37,30 +48,46 @@ Every capability in `scripts/demo-coverage-manifest.tsv` is scored against:
   between runs. The scoreboard reports the R3 (executed) count and the
   manual-only count as two separate numbers so the difference stays visible.
 
-  **`exec_kind`** (the column between `lane_ref` and `notes`) names what the
-  invocation actually does when it fires:
+  **`exec_kind`** (the column between `lane_methods` and `notes`) names what
+  the invocation actually does when it fires:
   - `live` — drives a real backend or system (a real Ollama server, a real
     MCP subprocess, a human doing ad hoc QA against the real app).
   - `scripted` — executes with scripted/mock backends (a UI test against
     canned demo scenarios, a deterministic-lane golden-scenario replay).
   - `compile` — build-only; compiles/links but asserts nothing ever runs.
     Requires a `notes` entry saying where real execution would come from (or
-    `-` if there's no path to it today) — `--check` enforces this.
+    `-` if there's no path to it today) — `--check` enforces this, and
+    forbids a non-empty `lane_methods` on a `compile` row (nothing executes,
+    so no method can be listed).
   - *(empty)* — valid only when `lane` is `none`; nothing fires at all.
 
   Re-auditing `exec_kind` means reading the actual workflow/script `lane_ref`
   names, not inferring from the row's title — `scripts/demo-coverage-manifest.tsv`
   records the specific evidence per row (e.g. "DemoScenarioUITests methods
-  are not among example-ui-smoke.yml's 2 weekly `-only-testing` entries").
+  are not among example-ui-smoke.yml's weekly `-only-testing` entries").
+
+  **`lane_methods`** (the column between `lane_ref` and `exec_kind`) is a
+  comma-separated list of `Suite/method` entries — the exact XCTest methods
+  that exercise the capability. Empty is allowed for non-test lanes (a
+  generic runner script, a companion/external CI system this repo can't see
+  into, prose-manual QA). It is **required** (non-empty) when `exec_kind` is
+  `live`/`scripted` and `lane_ref` contains a bare `.swift` test-file path —
+  R3 for a test-file row must be method-bound, not a suite-level assumption.
+  When present, every entry is checked: the method must exist in its suite
+  file (`Example/AdvancedUITests/<Suite>.swift`, `grep 'func <method>('`),
+  and if `lane_ref` names a workflow, the entry must ALSO appear in that
+  workflow's `-only-testing` list — otherwise a row could claim CI coverage
+  the workflow doesn't actually give it.
 
 A fourth signal, not per-row and **not ratcheted** (see `--check` below):
-**public-type coverage** — of every public type ManifoldKit ships (per
-module, read from the API-freeze baseline under
+**lexical public-type mentions** — of every public type ManifoldKit ships
+(per module, read from the API-freeze baseline under
 `Tests/APIFreezeTests/api-surface-baseline/`), how many are ever named by an
 identifier somewhere under `Example/**/*.swift`. A type nobody's example code
-ever spells is a type no demo vehicle can be proving works. This is computed
-by `scripts/_lib/demo-coverage-types.py` and reported as an aggregate
-percentage alongside the per-capability table, informationally.
+ever spells is a type no demo vehicle can be proving works — this is a
+lexical (textual-mention) signal, not a proof of execution, hence the name.
+This is computed by `scripts/_lib/demo-coverage-types.py` and reported as an
+aggregate percentage alongside the per-capability table, informationally.
 `scripts/demo-coverage.sh --check` never invokes this helper at all — R1/R2/R3
 come entirely from the manifest — so a defect in the helper can never affect
 `--check`. The helper itself fails closed: a missing/empty api-surface-baseline
@@ -74,7 +101,7 @@ unreadable input file, or a baseline line that doesn't parse are all fatal
 capability:
 
 ```text
-id  title  products  vehicle_kind  vehicle_path  doc  lane  lane_ref  exec_kind  notes
+id  title  products  vehicle_kind  vehicle_path  doc  lane  lane_ref  lane_methods  exec_kind  notes
 ```
 
 - `vehicle_kind` is one of: `example-app`, `focused-example`, `script`,
@@ -85,6 +112,7 @@ id  title  products  vehicle_kind  vehicle_path  doc  lane  lane_ref  exec_kind 
   directory); `lane_ref` names the workflow, script, or test that executes the
   vehicle. `lane_ref` must be empty when `lane` is `none`, and set (non-empty)
   for every other lane.
+- `lane_methods` is a comma-separated `Suite/method` list — see above.
 - `exec_kind` is one of: `live`, `scripted`, `compile` — empty if and only if
   `lane` is `none`. See "R3" above for the definitions and the R3 formula.
 
@@ -112,6 +140,18 @@ retired outright (e.g. `ManifoldSkills`, `ManifoldAnyLanguageModel`) and has
 no vehicle planned at all. The gate's job is to keep the roster **honest**,
 not to force every row green immediately.
 
+## Product completeness
+
+`--check` also audits `Package.swift`: every `.library(`/`.executable(`
+product it declares must be named in some manifest row's `products` column,
+or listed — with a `# reason:` — in
+`scripts/demo-coverage-product-allowlist.txt`. Without this, a whole product
+could ship with zero demo-coverage tracking and nobody would notice. The
+allowlist follows the same convention as
+`Tests/APIFreezeTests/inert-surface-allowlist.txt`: every entry needs a
+reason, and a stale entry (the product no longer exists, or it's since
+gained a manifest-row reference) fails the audit too.
+
 ## Running it
 
 ```bash
@@ -119,7 +159,7 @@ scripts/demo-coverage.sh
 ```
 
 prints a human-readable scoreboard: the R1/R2/R3 table, then the per-module
-public-type-coverage table with a `TOTAL` row.
+lexical-public-type-mentions table with a `TOTAL` row.
 
 ```bash
 scripts/demo-coverage.sh --markdown /path/to/scoreboard.md
@@ -131,35 +171,40 @@ writes the same content as a markdown file.
 scripts/demo-coverage.sh --check
 ```
 
-is the CI gate: it first checks manifest integrity — exact header (now 10
-columns, `exec_kind` included), unique ids, non-empty `title` (the one
-column with no other constraint that would otherwise catch an empty value),
-valid enum values, every non-empty `vehicle_path`/`doc` exists on disk,
-`vehicle_path` never equals `doc` (a doc is not a runnable vehicle — this
-caught a real defect in the `app-eval` row, which originally claimed
-`docs/APP-EVAL.md` as both its own doc and its own vehicle), `lane` is
-`none` if and only if `lane_ref` is empty, `exec_kind` is `none` if and only
-if `lane` is `none`, `exec_kind: compile` requires a non-empty `notes`,
-every path-shaped `lane_ref` element exists (see the convention above), and
-every data row has exactly 10 tab-separated columns (a wrong count silently
-folds two columns together via `read`, which the column-count check catches
-directly rather than relying on garbled output downstream) — then compares
-the current R1/R2/R3 state against `scripts/demo-coverage-baseline.tsv`. It
-fails, naming the offending capability id, if any row's R1, R2, or R3
-regressed from met to unmet, or if a baseline capability disappeared from
-the manifest outright. New rows are always allowed — the gate is a ratchet,
-not a fixed target.
+is the CI gate: it first checks manifest integrity — exact header (now 11
+columns, `lane_methods` and `exec_kind` included), unique ids, non-empty
+`title` (the one column with no other constraint that would otherwise catch
+an empty value), valid enum values, every non-empty `vehicle_path`/`doc`
+exists on disk, `vehicle_path` never equals `doc` (a doc is not a runnable
+vehicle — this caught a real defect in the `app-eval` row, which originally
+claimed `docs/APP-EVAL.md` as both its own doc and its own vehicle), `lane`
+is `none` if and only if `lane_ref` is empty, `exec_kind` is `none` if and
+only if `lane` is `none`, `exec_kind: compile` requires a non-empty `notes`
+and forbids `lane_methods`, `lane_methods` is required when `exec_kind` is
+live/scripted with a test-file `lane_ref` and every entry resolves (see
+above), every path-shaped `lane_ref` element exists (see the convention
+above), every data row has exactly 11 tab-separated columns (a wrong count
+silently folds two columns together via `read`, which the column-count
+check catches directly rather than relying on garbled output downstream),
+and the product-completeness audit above — then compares the current
+R1/R2/R3 state against `scripts/demo-coverage-baseline.tsv`. It fails,
+naming the offending capability id, if any row's R1, R2, or R3 regressed
+from met to unmet with no corresponding manifest edit (an **unaccompanied
+regression**), or if a baseline capability disappeared from the manifest
+outright. New rows are always allowed — the gate is a ratchet, not a fixed
+target: its job is to catch a flag flipping silently, not to forbid a
+flag flipping at all.
 
 `current_state` is the single place R1/R2/R3 are scored — `--check` and both
 scoreboard renderers (text, markdown) all consume its output and only
 format, so the markdown scoreboard can never disagree with what the gate
 itself enforces.
 
-**The public-type-coverage percentage is NOT part of this ratchet** — it is
-scoreboard-only. It legitimately moves in both directions for reasons that
-have nothing to do with a demo-coverage regression: deleting an
-undemonstrated public type *raises* it, and adding one new public type
-anywhere in the package *lowers* it (e.g. 104/910 → 104/911). Ratcheting a
+**The lexical-public-type-mentions percentage is NOT part of this ratchet**
+— it is scoreboard-only. It legitimately moves in both directions for
+reasons that have nothing to do with a demo-coverage regression: deleting an
+unmentioned public type *raises* it, and adding one new public type
+anywhere in the package *lowers* it (e.g. 104/905 → 104/906). Ratcheting a
 number that any unrelated API-surface PR can push either way would produce
 false reds and would make every routine `--update-baseline` call silently
 neuter the ratchet rather than enforce it — so `scripts/demo-coverage-baseline.tsv`

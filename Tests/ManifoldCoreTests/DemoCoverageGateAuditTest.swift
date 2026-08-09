@@ -3,17 +3,24 @@ import XCTest
 /// Gate test for the M0 demo-coverage instrument (issue #2453):
 /// `scripts/demo-coverage.sh --check` enforces that every capability in
 /// `scripts/demo-coverage-manifest.tsv` still meets R1 (a runnable vehicle),
-/// R2 (a doc that exists on disk), and R3 (actually EXECUTED, not merely
-/// compiled — `lane` in the executed-lane set AND `exec_kind` in
-/// `{live, scripted}`; `exec_kind=compile` and `lane=manual` both score
-/// R3=0, see the script header), and that none of the three has regressed
-/// against `scripts/demo-coverage-baseline.tsv`. The aggregate public-type-
-/// coverage percentage is reported in the scoreboard but deliberately NOT
+/// R2 (a doc that exists on disk), and R3 (a declared execution route, not
+/// just a labelled one — `lane` in the executed-lane set AND `exec_kind` in
+/// `{live, scripted}`, method-bound via `lane_methods` where the lane is a
+/// test; `exec_kind=compile` and `lane=manual` both score R3=0, see the
+/// script header), and that none of the three has regressed against
+/// `scripts/demo-coverage-baseline.tsv` without a corresponding manifest
+/// edit (an "unaccompanied regression"). The aggregate lexical-public-type-
+/// mentions percentage is reported in the scoreboard but deliberately NOT
 /// part of this ratchet — it moves in both directions for reasons unrelated
 /// to a demo-coverage regression (see the script header), and `--check`
 /// never even invokes the Python helper that computes it (only the
 /// scoreboard renderers do) — a defect in that helper cannot affect `--check`
 /// or any sabotage test below that exercises `--check`.
+///
+/// `--check` also runs a product-completeness audit: every `.library`/
+/// `.executable` product `Package.swift` declares must be named in some
+/// manifest row's `products` column or listed (with a reason) in
+/// `scripts/demo-coverage-product-allowlist.txt`.
 ///
 /// This target (`ManifoldCoreTests`) is the same one `ScriptFailOpenAuditTest`
 /// lives in, and is force-included by `scripts/affected-suites.sh` whenever
@@ -105,7 +112,7 @@ final class DemoCoverageGateAuditTest: XCTestCase {
     /// exactly the defect `row()` cannot produce.
     func test_sabotage_flagsAnEmptyTitle() throws {
         let malformedRow = ["demo-cap", "", "SomeModule", "example-app",
-                             "App/Vehicle.swift", "README.md", "per-pr", "some-test", "scripted", "—"]
+                             "App/Vehicle.swift", "README.md", "per-pr", "some-test", "", "scripted", "—"]
             .joined(separator: "\t")  // empty title (2nd column)
         let fixture = try Self.plantFixture(
             manifestRows: [malformedRow],
@@ -150,15 +157,15 @@ final class DemoCoverageGateAuditTest: XCTestCase {
         )
     }
 
-    /// A row with the wrong number of tab-separated columns (9 instead of
-    /// 10 — missing `notes`) must fail manifest integrity and name the
+    /// A row with the wrong number of tab-separated columns (10 instead of
+    /// 11 — missing `notes`) must fail manifest integrity and name the
     /// offending row. Constructed by hand (bypassing the `row()` helper,
     /// which always emits a well-formed row) since this is exactly the
     /// defect `row()` cannot produce.
     func test_sabotage_flagsAWrongColumnCountRow() throws {
         let malformedRow = ["demo-cap", "demo-cap title", "SomeModule", "example-app",
-                             "App/Vehicle.swift", "README.md", "per-pr", "some-test", "scripted"]
-            .joined(separator: "\t")  // 9 columns: missing `notes`
+                             "App/Vehicle.swift", "README.md", "per-pr", "some-test", "", "scripted"]
+            .joined(separator: "\t")  // 10 columns: missing `notes`
         let fixture = try Self.plantFixture(
             manifestRows: [malformedRow],
             baselineRows: ["demo-cap\t1\t1\t1"],
@@ -171,7 +178,7 @@ final class DemoCoverageGateAuditTest: XCTestCase {
         )
         XCTAssertNotEqual(status, 0, "A wrong-column-count row must fail the gate. Output:\n\(output)")
         XCTAssertTrue(
-            output.contains("demo-cap") && output.contains("expected 10 tab-separated columns"),
+            output.contains("demo-cap") && output.contains("expected 11 tab-separated columns"),
             "The error must name the offending row id and the column-count defect. Output:\n\(output)"
         )
     }
@@ -235,6 +242,248 @@ final class DemoCoverageGateAuditTest: XCTestCase {
         )
     }
 
+    /// A `lane_methods` entry naming a method that does not exist in its
+    /// suite file must fail manifest integrity and name the offending row
+    /// and the specific dangling entry.
+    func test_sabotage_flagsANonexistentLaneMethod() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "per-pr", laneRef: "Example/AdvancedUITests/DemoSuite.swift",
+                         laneMethods: "DemoSuite/test_thisMethodDoesNotExist", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "App/Vehicle.swift": "// vehicle\n",
+                "Example/AdvancedUITests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A dangling lane_methods entry must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("test_thisMethodDoesNotExist"),
+            "The error must name the offending row id and the specific dangling method. Output:\n\(output)"
+        )
+    }
+
+    /// A `lane_methods` entry naming a method that exists ONLY inside a `//`
+    /// comment in its suite file (never a real declaration) must fail
+    /// manifest integrity — an unanchored `grep -q "func X("` would
+    /// false-accept this, since the substring "func testCommentedOut("
+    /// appears on the commented-out line regardless of the leading `//`.
+    func test_sabotage_flagsACommentedOutLaneMethod() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "per-pr", laneRef: "Example/AdvancedUITests/DemoSuite.swift",
+                         laneMethods: "DemoSuite/testCommentedOut", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "App/Vehicle.swift": "// vehicle\n",
+                "Example/AdvancedUITests/DemoSuite.swift":
+                    "final class DemoSuite: XCTestCase {\n" +
+                    "    // func testCommentedOut() throws {\n" +
+                    "    //     XCTFail()\n" +
+                    "    // }\n" +
+                    "    func test_realMethod() {}\n" +
+                    "}\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A lane_methods entry that exists only in a comment must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("testCommentedOut"),
+            "The error must name the offending row id and the commented-out method. Output:\n\(output)"
+        )
+    }
+
+    /// A row with `exec_kind: scripted` and a bare `.swift` test-file
+    /// `lane_ref` but an EMPTY `lane_methods` must fail manifest integrity
+    /// and name the offending row — R3 for a test-file row must be
+    /// method-bound, not just labelled.
+    func test_sabotage_flagsARequiredButEmptyLaneMethods() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "per-pr", laneRef: "Example/AdvancedUITests/DemoSuite.swift",
+                         laneMethods: "", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "App/Vehicle.swift": "// vehicle\n",
+                "Example/AdvancedUITests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "An empty lane_methods on a test-file+scripted row must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("lane_methods is empty"),
+            "The error must name the offending row id and say lane_methods is required. Output:\n\(output)"
+        )
+    }
+
+    /// A `lane_methods` entry that is a real method in a real suite file, but
+    /// does NOT appear in its workflow `lane_ref`'s `-only-testing` list,
+    /// must fail manifest integrity and name the offending row — otherwise a
+    /// row could claim CI coverage the workflow doesn't actually give it.
+    func test_sabotage_flagsALaneMethodNotInWorkflowOnlyTestingList() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "weekly", laneRef: ".github/workflows/fake-smoke.yml",
+                         laneMethods: "DemoSuite/test_realMethod", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "App/Vehicle.swift": "// vehicle\n",
+                "Example/AdvancedUITests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+                ".github/workflows/fake-smoke.yml": "run: scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/DemoSuite/test_someOtherMethod\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A lane_methods entry absent from the workflow's -only-testing list must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("does not appear in") && output.contains("fake-smoke.yml"),
+            "The error must name the offending row id and the workflow. Output:\n\(output)"
+        )
+    }
+
+    /// A `lane_methods` entry naming a real method in a real suite file, but
+    /// whose `lane_ref` is a BARE `.swift` file naming a DIFFERENT suite,
+    /// must fail manifest integrity and name the offending row — a bare
+    /// `.swift` `lane_ref` is a stronger promise than "this method exists
+    /// somewhere in AdvancedUITests": it says the method lives in exactly
+    /// this suite file.
+    func test_sabotage_flagsALaneMethodSuiteMismatchWithBareSwiftLaneRef() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "per-pr", laneRef: "Example/AdvancedUITests/SuiteA.swift",
+                         laneMethods: "SuiteB/testB", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "App/Vehicle.swift": "// vehicle\n",
+                "Example/AdvancedUITests/SuiteA.swift": "final class SuiteA: XCTestCase {\n    func testA() {}\n}\n",
+                "Example/AdvancedUITests/SuiteB.swift": "final class SuiteB: XCTestCase {\n    func testB() {}\n}\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A lane_methods suite that doesn't match a bare .swift lane_ref must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("SuiteB") && output.contains("does not match"),
+            "The error must name the offending row id and the suite mismatch. Output:\n\(output)"
+        )
+    }
+
+    /// A `Package.swift` `.library`/`.executable` product not referenced by
+    /// any manifest row's `products` column, and not in
+    /// `scripts/demo-coverage-product-allowlist.txt`, must fail manifest
+    /// integrity and name the offending product.
+    func test_sabotage_flagsAnUnmappedPackageProduct() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "per-pr", laneRef: "some-test", execKind: "scripted",
+                         products: "SomeModule"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: ["App/Vehicle.swift": "// vehicle\n"],
+            packageSwift: """
+                // swift-tools-version:6.0
+                import PackageDescription
+                let package = Package(
+                    name: "Fixture",
+                    products: [
+                        .library(name: "SomeModule", targets: ["SomeModule"]),
+                        .library(name: "UnmappedProduct", targets: ["UnmappedProduct"]),
+                    ]
+                )
+                """
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "An unmapped Package.swift product must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("UnmappedProduct") && output.contains("product completeness"),
+            "The error must name the offending product. Output:\n\(output)"
+        )
+    }
+
+    /// A `Package.swift` whose product list contains a MULTI-LINE
+    /// declaration (`name:` on its own line, not on the same line as
+    /// `.library(`) must fail the product-completeness audit closed, not
+    /// silently skip the product it can't extract a name from — the
+    /// extraction regex requires `name:` on the same line as `.library(`/
+    /// `.executable(`, so a multi-line declaration would otherwise vanish
+    /// from `pkg_products` with no signal.
+    func test_sabotage_flagsAPackageSwiftMultiLineProductDeclaration() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "per-pr", laneRef: "some-test", execKind: "scripted",
+                         products: "SomeModule"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: ["App/Vehicle.swift": "// vehicle\n"],
+            packageSwift: """
+                // swift-tools-version:6.0
+                import PackageDescription
+                let package = Package(
+                    name: "Fixture",
+                    products: [
+                        .library(name: "SomeModule", targets: ["SomeModule"]),
+                        .library(
+                            name: "MultiLineProduct",
+                            targets: ["MultiLineProduct"]
+                        ),
+                    ]
+                )
+                """
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A multi-line product declaration must fail closed. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("product completeness") && output.contains("declaration"),
+            "The error must name the product-completeness check and describe the extraction mismatch. Output:\n\(output)"
+        )
+    }
+
     /// A clean fixture (manifest + baseline agree, everything referenced
     /// exists) must pass — proves the sabotage tests above are actually
     /// detecting their planted defect, not failing on fixture scaffolding.
@@ -256,6 +505,46 @@ final class DemoCoverageGateAuditTest: XCTestCase {
         XCTAssertEqual(status, 0, "A clean fixture must pass. Output:\n\(output)")
     }
 
+    /// A clean fixture that DOES exercise the lane_methods + product-
+    /// completeness machinery (a real suite file, a real workflow whose
+    /// -only-testing list matches, a Package.swift whose only product is
+    /// referenced) must also pass — proves the four new sabotage tests above
+    /// are detecting their planted defect specifically, not failing on any
+    /// use of these features at all.
+    func test_sabotage_cleanFixtureWithLaneMethodsAndProductsPasses() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "example-app",
+                         vehiclePath: "App/Vehicle.swift", doc: "README.md",
+                         lane: "weekly", laneRef: ".github/workflows/fake-smoke.yml",
+                         laneMethods: "DemoSuite/test_realMethod", execKind: "scripted",
+                         products: "SomeModule"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "App/Vehicle.swift": "// vehicle\n",
+                "Example/AdvancedUITests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+                ".github/workflows/fake-smoke.yml": "run: scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/DemoSuite/test_realMethod\n",
+            ],
+            packageSwift: """
+                // swift-tools-version:6.0
+                import PackageDescription
+                let package = Package(
+                    name: "Fixture",
+                    products: [
+                        .library(name: "SomeModule", targets: ["SomeModule"]),
+                    ]
+                )
+                """
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertEqual(status, 0, "A clean lane_methods+product fixture must pass. Output:\n\(output)")
+    }
+
     // MARK: - Fixture construction
 
     private struct Fixture {
@@ -268,15 +557,20 @@ final class DemoCoverageGateAuditTest: XCTestCase {
     /// derived from `BASH_SOURCE`, resolves to the temp tree), a manifest, a
     /// baseline, and a `README.md` every row's `doc` column can point at.
     /// `Tests/APIFreezeTests/api-surface-baseline/` and `Example/` are left
-    /// absent by default (added via `extraFiles` only by the one test that
-    /// needs them) — safe for every `--check`-only sabotage test above
-    /// because `--check` scores R1/R2/R3 entirely from `current_state`,
-    /// which reads only the manifest, and NEVER invokes the Python
-    /// type-coverage helper (only the scoreboard renderers do).
+    /// absent by default (added via `extraFiles` only by the tests that need
+    /// them) — safe for every `--check`-only sabotage test above because
+    /// `--check` scores R1/R2/R3 entirely from `current_state`, which reads
+    /// only the manifest, and NEVER invokes the Python type-coverage helper
+    /// (only the scoreboard renderers do). `Package.swift` is likewise left
+    /// absent unless `packageSwift` is passed — `check_product_completeness`
+    /// skips entirely when it finds no `Package.swift`, so every existing
+    /// sabotage test above is unaffected by the product-completeness audit.
     private static func plantFixture(
         manifestRows: [String],
         baselineRows: [String],
-        extraFiles: [String: String] = [:]
+        extraFiles: [String: String] = [:],
+        packageSwift: String? = nil,
+        productAllowlist: String? = nil
     ) throws -> Fixture {
         let fm = FileManager.default
         let root = fm.temporaryDirectory
@@ -293,7 +587,7 @@ final class DemoCoverageGateAuditTest: XCTestCase {
             to: root.appendingPathComponent("scripts/_lib/demo-coverage-types.py")
         )
 
-        let header = "id\ttitle\tproducts\tvehicle_kind\tvehicle_path\tdoc\tlane\tlane_ref\texec_kind\tnotes\n"
+        let header = "id\ttitle\tproducts\tvehicle_kind\tvehicle_path\tdoc\tlane\tlane_ref\tlane_methods\texec_kind\tnotes\n"
         try (header + manifestRows.joined(separator: "\n") + "\n")
             .write(to: root.appendingPathComponent("scripts/demo-coverage-manifest.tsv"), atomically: true, encoding: .utf8)
 
@@ -302,6 +596,16 @@ final class DemoCoverageGateAuditTest: XCTestCase {
             .write(to: root.appendingPathComponent("scripts/demo-coverage-baseline.tsv"), atomically: true, encoding: .utf8)
 
         try "# Fixture README\n".write(to: root.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        if let packageSwift {
+            try packageSwift.write(to: root.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        }
+        if let productAllowlist {
+            try productAllowlist.write(
+                to: root.appendingPathComponent("scripts/demo-coverage-product-allowlist.txt"),
+                atomically: true, encoding: .utf8
+            )
+        }
 
         for (relativePath, content) in extraFiles {
             let fileURL = root.appendingPathComponent(relativePath)
@@ -312,14 +616,14 @@ final class DemoCoverageGateAuditTest: XCTestCase {
         return Fixture(root: root, scriptPath: root.appendingPathComponent("scripts/demo-coverage.sh").path)
     }
 
-    /// One manifest data row, tab-joined in column order
-    /// (id/title/products/vehicle_kind/vehicle_path/doc/lane/lane_ref/exec_kind/notes).
+    /// One manifest data row, tab-joined in column order (id/title/products/
+    /// vehicle_kind/vehicle_path/doc/lane/lane_ref/lane_methods/exec_kind/notes).
     private static func row(
         id: String, vehicleKind: String, vehiclePath: String, doc: String,
-        lane: String, laneRef: String, execKind: String,
+        lane: String, laneRef: String, laneMethods: String = "", execKind: String,
         products: String = "SomeModule", notes: String = "—"
     ) -> String {
-        [id, "\(id) title", products, vehicleKind, vehiclePath, doc, lane, laneRef, execKind, notes]
+        [id, "\(id) title", products, vehicleKind, vehiclePath, doc, lane, laneRef, laneMethods, execKind, notes]
             .joined(separator: "\t")
     }
 
