@@ -18,7 +18,7 @@ model-management-ui	1	1	0
 local-inference-mlx	0	1	1
 local-inference-llama	0	1	1
 media-generation	0	0	0
-openai-compat-server	0	1	0
+openai-compat-server	1	1	1
 skills	0	1	0
 anylanguagemodel	0	1	0
 telemetry-otlp	0	1	0
