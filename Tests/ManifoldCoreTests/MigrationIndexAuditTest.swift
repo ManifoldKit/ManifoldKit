@@ -106,8 +106,13 @@ final class MigrationIndexAuditTest: XCTestCase {
             violations.contains { $0.contains("MIGRATION-planted-covered.md") },
             "A migration note with an index row must not be flagged; got \(violations)"
         )
+        // Match on the violation's SUBJECT, not the whole message. Every
+        // violation reads "docs/<name> has no row in docs/MIGRATION-INDEX.md",
+        // so a `contains("MIGRATION-INDEX.md")` check matches the trailing
+        // reference in every message and can never pass — it asserted nothing
+        // about the index being exempt and failed on a correct result.
         XCTAssertFalse(
-            violations.contains { $0.contains("MIGRATION-INDEX.md") },
+            violations.contains { $0.hasPrefix("docs/MIGRATION-INDEX.md ") },
             "The index file itself must never be required to reference itself; got \(violations)"
         )
     }
