@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      #2453 M4: macOS Debug entitlements — deliberately WITHOUT
+      com.apple.security.application-groups.
+
+      The iOS entitlements file (ManifoldDemo.entitlements) declares
+      group.com.manifoldkit.demo. It has two consumers, not one:
+        1. Share/Action Extension -> host app handoff (see
+           Example/Advanced/Extensions/). Both extensions are iOS-only
+           (SUPPORTED_PLATFORMS = "iphoneos iphonesimulator" on their
+           targets), so on macOS nothing ever writes their App-Group keys —
+           ManifoldDemoApp.swift's checkForPendingSharePayload reads back
+           nil for a structural reason (no extension runs here), not
+           because of this entitlement.
+        2. AskManifoldDemoIntent (Intents/AskManifoldDemoIntent.swift), an
+           App Intent compiled into this app target (not an extension) with
+           a real #elseif canImport(AppKit) branch — it DOES run on macOS
+           (Shortcuts/Spotlight), writes to the App-Group UserDefaults, then
+           opens manifolddemo://ingest for ManifoldDemoApp.swift's
+           handleOpenURL to read back. This is a live macOS consumer.
+
+      Declaring the entitlement here would require a Mac App Development
+      provisioning profile bound to a registered Mac, which is exactly the
+      CI/local-dev blocker this file exists to avoid — see
+      Example/README.md "Running on macOS — unregistered Macs".
+
+      Why dropping it doesn't break consumer #2: this app has never enabled
+      App Sandbox (com.apple.security.app-sandbox appears nowhere in either
+      entitlements file). com.apple.security.application-groups only governs
+      cross-container access *under* App Sandbox; unsandboxed,
+      `UserDefaults(suiteName:)` is an ordinary shared preferences domain
+      regardless of entitlement, and `init?(suiteName:)` only returns nil
+      when the suite name equals the caller's bundle identifier or the
+      global domain — never for a missing entitlement. So the App-Intent
+      round trip is expected to keep working as-is, not because a nil guard
+      catches its absence. If App Sandbox is ever enabled on this macOS
+      Debug config, this reasoning stops holding — restore the App Group
+      entitlement here first, or the round trip breaks for real (a genuinely
+      nil `defaults.data(forKey:)`, not the extension-absence case above).
+    -->
+</dict>
+</plist>

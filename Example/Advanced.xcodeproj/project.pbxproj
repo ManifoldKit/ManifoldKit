@@ -110,6 +110,7 @@
 		F10009000000000000000000 /* AskManifoldDemoIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents/AskManifoldDemoIntent.swift; sourceTree = "<group>"; };
 		F10010000000000000000000 /* ManifoldDemoShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents/ManifoldDemoShortcuts.swift; sourceTree = "<group>"; };
 		F10011000000000000000000 /* ManifoldDemo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ManifoldDemo.entitlements; sourceTree = "<group>"; };
+		E0C12F619B4CBAFC5CD155CF /* ManifoldDemo-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "ManifoldDemo-macOS.entitlements"; sourceTree = "<group>"; };
 		F11009000000000000000000 /* AppIntentUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentUITests.swift; sourceTree = "<group>"; };
 		F11010000000000000000000 /* DemoScenarioUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoScenarioUITests.swift; sourceTree = "<group>"; };
 		F10012000000000000000000 /* WriteFileTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteFileTool.swift; sourceTree = "<group>"; };
@@ -223,6 +224,7 @@
 				F10009000000000000000000 /* AskManifoldDemoIntent.swift */,
 				F10010000000000000000000 /* ManifoldDemoShortcuts.swift */,
 				F10011000000000000000000 /* ManifoldDemo.entitlements */,
+				E0C12F619B4CBAFC5CD155CF /* ManifoldDemo-macOS.entitlements */,
 				F10021000000000000000000 /* Info.plist */,
 				F10012000000000000000000 /* WriteFileTool.swift */,
 				F10040000000000000000000 /* FailureDemoTools.swift */,
@@ -567,6 +569,14 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = YHX2HHZ52Y;
+				// #2453 M4: this Mac's only signing identity belongs to a
+				// different team and is not registered under YHX2HHZ52Y, so
+				// Automatic signing with a team requirement cannot produce a
+				// Mac provisioning profile. macOS Debug drops the team
+				// requirement entirely (ad-hoc "Sign to Run Locally" below);
+				// iOS Debug/Simulator and every Release config are untouched.
+				// See Example/README.md "Running on macOS — unregistered Macs".
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -653,7 +663,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Advanced/ManifoldDemo.entitlements;
+				// #2453 M4: macOS Debug drops the App Groups entitlement (it
+				// requires a Mac provisioning profile) and ad-hoc signs
+				// locally instead of Automatic+team. iOS/Release untouched.
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Advanced/ManifoldDemo-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_PREVIEWS = YES;
@@ -721,6 +737,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				// #2453 M4: mirrors the Advanced target's macOS Debug override —
+				// see Example/README.md "Running on macOS — unregistered Macs".
+				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
