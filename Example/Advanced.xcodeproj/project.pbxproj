@@ -48,6 +48,7 @@
 		BF1011000000000000000000 /* InboundPayloadEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11011000000000000000000 /* InboundPayloadEnvelopeTests.swift */; };
 		BFA112000000000000000000 /* ArchitectInspectorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11012000000000000000000 /* ArchitectInspectorUITests.swift */; };
 		BFA113000000000000000000 /* VisualWalkthroughUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11013000000000000000000 /* VisualWalkthroughUITests.swift */; };
+		BF1014000000000000000000 /* TurnLoopActionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11014000000000000000000 /* TurnLoopActionUITests.swift */; };
 		BF1012000000000000000000 /* ManifoldInference in Frameworks */ = {isa = PBXBuildFile; productRef = F30007000000000000000000 /* ManifoldInference */; };
 		BF0026000000000000000000 /* SetReminderIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10022000000000000000000 /* SetReminderIntent.swift */; };
 		BF0027000000000000000000 /* AppIntentToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10023000000000000000000 /* AppIntentToolsView.swift */; };
@@ -125,6 +126,7 @@
 		F11011000000000000000000 /* InboundPayloadEnvelopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboundPayloadEnvelopeTests.swift; sourceTree = "<group>"; };
 		F11012000000000000000000 /* ArchitectInspectorUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectInspectorUITests.swift; sourceTree = "<group>"; };
 		F11013000000000000000000 /* VisualWalkthroughUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualWalkthroughUITests.swift; sourceTree = "<group>"; };
+		F11014000000000000000000 /* TurnLoopActionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnLoopActionUITests.swift; sourceTree = "<group>"; };
 		F10021000000000000000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F10022000000000000000000 /* SetReminderIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents/SetReminderIntent.swift; sourceTree = "<group>"; };
 		F10023000000000000000000 /* AppIntentToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentToolsView.swift; sourceTree = "<group>"; };
@@ -308,6 +310,7 @@
 				F11011000000000000000000 /* InboundPayloadEnvelopeTests.swift */,
 				F11012000000000000000000 /* ArchitectInspectorUITests.swift */,
 				F11013000000000000000000 /* VisualWalkthroughUITests.swift */,
+				F11014000000000000000000 /* TurnLoopActionUITests.swift */,
 			);
 			path = AdvancedUITests;
 			sourceTree = "<group>";
@@ -487,6 +490,7 @@
 				BF1011000000000000000000 /* InboundPayloadEnvelopeTests.swift in Sources */,
 				BFA112000000000000000000 /* ArchitectInspectorUITests.swift in Sources */,
 				BFA113000000000000000000 /* VisualWalkthroughUITests.swift in Sources */,
+				BF1014000000000000000000 /* TurnLoopActionUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

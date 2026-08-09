@@ -407,11 +407,27 @@ struct ManifoldDemoApp: App {
             }
         }
 
-        // Branch-origin chip (#2307) — same wiring `quickStart()` does
-        // automatically; this app bootstraps manually so it wires the
-        // one-liner itself.
+        // Branch-origin chip (#2307) — resolves the display title once the
+        // user is looking AT a branched session. `quickStart()` wires this
+        // same one-liner; this app bootstraps manually so it wires it itself.
         vm.resolveBranchOriginTitle = { [weak sessionManager] session in
             await sessionManager?.branchOriginTitle(for: session)
+        }
+
+        // Session branching (#2453 turn-loop coverage): `ChatViewModel.branch(from:)`
+        // creates and persists the new session but never switches the app TO
+        // it — that's this closure's job. Without it, "Branch from here"
+        // silently strands the user on the source session and the new
+        // session only surfaces after an unrelated sidebar reload. Neither
+        // this app nor `quickStart()` wired `onSessionBranched` before this
+        // fix (`resolveBranchOriginTitle` above only renders the chip once
+        // a branched session is already active — it doesn't get you there).
+        vm.onSessionBranched = { [weak sessionManager] newSessionID in
+            guard let sessionManager else { return }
+            await sessionManager.loadSessions()
+            if let newSession = sessionManager.sessions.first(where: { $0.id == newSessionID }) {
+                sessionManager.activeSession = newSession
+            }
         }
 
         if !isUITesting {

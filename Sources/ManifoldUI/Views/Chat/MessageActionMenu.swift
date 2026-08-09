@@ -74,6 +74,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Pin", systemImage: "pin")
         }
+        .accessibilityIdentifier("message-action-pin")
     }
 
     private var unpinButton: some View {
@@ -82,6 +83,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Unpin", systemImage: "pin.slash")
         }
+        .accessibilityIdentifier("message-action-unpin")
     }
 
     private var copyButton: some View {
@@ -90,6 +92,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
+        .accessibilityIdentifier("message-action-copy")
     }
 
     private var retryButton: some View {
@@ -100,6 +103,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         }
         .accessibilityLabel("Retry sending message")
         .accessibilityHint("Re-attempts delivery of this failed message")
+        .accessibilityIdentifier("message-action-retry")
     }
 
     private var editButton: some View {
@@ -109,6 +113,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Edit", systemImage: "pencil")
         }
+        .accessibilityIdentifier("message-action-edit")
     }
 
     private var regenerateButton: some View {
@@ -119,6 +124,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Regenerate", systemImage: "arrow.counterclockwise")
         }
+        .accessibilityIdentifier("message-action-regenerate")
     }
 
     private var branchButton: some View {
@@ -127,6 +133,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Branch from here", systemImage: "arrow.triangle.branch")
         }
+        .accessibilityIdentifier("message-action-branch")
     }
 
     private var deleteButton: some View {
@@ -135,6 +142,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
         } label: {
             Label("Delete", systemImage: "trash")
         }
+        .accessibilityIdentifier("message-action-delete")
     }
 
     // MARK: - Edit Sheet
@@ -144,6 +152,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
             TextEditor(text: $editText)
                 .font(.body)
                 .padding()
+                .accessibilityIdentifier("message-edit-text-editor")
                 .navigationTitle("Edit Message")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
@@ -153,6 +162,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
                         Button("Cancel") {
                             isEditing = false
                         }
+                        .accessibilityIdentifier("message-edit-cancel")
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save") {
@@ -163,6 +173,7 @@ package struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
                             }
                         }
                         .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("message-edit-save")
                     }
                 }
         }

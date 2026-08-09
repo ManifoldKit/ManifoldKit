@@ -449,6 +449,52 @@ public enum ManifoldKit {
                 await sessionManager?.branchOriginTitle(for: session)
             }
 
+            // Session branching (#2453 turn-loop coverage): `ChatViewModel.branch(from:)`
+            // creates and persists the new session but never switches the app TO
+            // it — that's this closure's job. Without it, "Branch from here"
+            // silently strands the user on the source session and the new
+            // session only surfaces after an unrelated sidebar reload.
+            //
+            // Both `sessionManager.activeSession` AND `viewModel`'s own active
+            // session must move — `ChatView`'s transcript keys off
+            // `viewModel.activeSessionID` (`ChatHistoryView.swift`'s
+            // `.task(id: viewModel.activeSessionID)`), which `quickStart()`'s
+            // documented single-session recipe never bridges from
+            // `SessionManagerViewModel` the way a sidebar host would (see
+            // `ManifoldDemoApp`'s `.onChange(of: sessionManager.activeSession)`
+            // in `DemoContentView.swift`). Setting only `sessionManager.activeSession`
+            // moves a pointer nothing observes on this path — a write with no
+            // reader, the mirror image of the bug this closure exists to fix.
+            //
+            // `switchToSession` is deferred to its own `Task`, not awaited
+            // inline: this closure runs on `ChatGenerationCoordinator`'s own
+            // `for await event in runtime.events` drain
+            // (`ChatGenerationCoordinator.swift`'s `case .sessionBranched`),
+            // and `switchToSession` awaits `sessionManager.teardown(...)`,
+            // which cancels that same stream handle — awaiting it inline here
+            // would await the teardown of the task this code is running on.
+            // The deferred hop is also what `ManifoldDemoApp`'s own bridge
+            // does (`Task { await viewModel.switchToSession(...) }`), so this
+            // matches established precedent, not a new pattern.
+            //
+            // `[weak viewModel, weak sessionManager]`: `viewModel` cannot be
+            // captured strongly here — the closure is stored ON `viewModel`
+            // itself (`viewModel.onSessionBranched = ...`), so a strong
+            // capture would be a retain cycle. `resolveBranchOriginTitle` and
+            // `onFirstMessage` above only capture `sessionManager` because
+            // they never need to reach back into `viewModel`.
+            viewModel.onSessionBranched = { [weak viewModel, weak sessionManager] newSessionID in
+                guard let sessionManager else { return }
+                await sessionManager.loadSessions()
+                guard let newSession = sessionManager.sessions.first(where: { $0.id == newSessionID }) else {
+                    return
+                }
+                sessionManager.activeSession = newSession
+                Task { @MainActor [weak viewModel] in
+                    await viewModel?.switchToSession(newSession)
+                }
+            }
+
             // A2-F4 + #1464: ensure the documented `quickStart()` → `ChatView()`
             // path produces a usable chat surface on first launch, and that
             // relaunch restores the previously active conversation rather than
