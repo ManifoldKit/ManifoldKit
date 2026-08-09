@@ -17,7 +17,7 @@ huggingface-downloads	1	1	0
 model-management-ui	1	1	0
 local-inference-mlx	1	1	1
 local-inference-llama	1	1	1
-media-generation	1	1	1
+media-generation	1	1	0
 openai-compat-server	1	1	1
 skills	0	1	0
 anylanguagemodel	0	1	0
