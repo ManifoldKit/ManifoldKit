@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import SwiftData
 @testable import ManifoldUI
 @testable import ManifoldUIModelManagement
 import ManifoldRuntime
@@ -284,6 +285,53 @@ final class ModelAndSettingsControlTests: XCTestCase {
         XCTAssertTrue(
             dump.contains("showAdvancedSettings"),
             "Settings should reference the showAdvancedSettings AppStorage key"
+        )
+    }
+
+    // MARK: - GenerationSettingsView — Diagnostics (issue #2453)
+
+    /// `DiagnosticsDisclosure`'s own doc comment promised embedding in
+    /// `GenerationSettingsView` through two prior API-surface sweeps without
+    /// ever actually being wired in (#2453 M1 kill-list item 3) — zero call
+    /// sites anywhere in the repo. This test pins the embedding live: it
+    /// builds a real, hosted, laid-out `GenerationSettingsView` with a
+    /// `SessionManagerViewModel` carrying a configured `DiagnosticsService`
+    /// (the shape a real bootstrapped app produces — see
+    /// `SessionManagerViewModel.configure(bootstrap:)`) and asserts
+    /// `DiagnosticsDisclosure` participates in the composed view.
+    ///
+    /// Named for what it actually checks, not for the realistic setup used to
+    /// check it: like the sibling tests above (`test_generationSettings_hasSamplerPresetPicker`
+    /// / `_hasPersonaPicker`), `ViewHierarchyDumper.dump` reflects the *type*
+    /// of the hosted view's body, which for a `some View` return type is fixed
+    /// at compile time across every syntactic branch — so this cannot
+    /// distinguish "conditionally shown at these AppStorage/environment
+    /// values" from "unconditionally shown". What it verifies, and what
+    /// actually matters for #2453 (`DiagnosticsDisclosure` went from
+    /// *referenced by zero files* to *compiled into `GenerationSettingsView`'s
+    /// view graph*), is reachability: delete the
+    /// `if let diagnostics = sessionManager?.diagnostics { DiagnosticsDisclosure(...) }`
+    /// line in `GenerationSettingsView.body` and `DiagnosticsDisclosure` no
+    /// longer appears anywhere in the type, so this test fails — verified by
+    /// hand (temporarily removing that line reproduced the failure) before
+    /// this PR. The realistic `SessionManagerViewModel.configure(...)` setup is
+    /// kept anyway (over a bare unconfigured `SessionManagerViewModel()`) so
+    /// this test also documents the actual shape a bootstrapped host produces.
+    func test_generationSettings_compilesDiagnosticsDisclosureIntoBody() throws {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
+        let sessionManager = SessionManagerViewModel()
+        sessionManager.configure(persistence: persistence, autoLoad: false, diagnostics: DiagnosticsService())
+
+        let dump = ViewHierarchyDumper.dump(
+            GenerationSettingsView { EmptyView() }
+                .environment(makeChatViewModel())
+                .environment(sessionManager)
+        )
+
+        XCTAssertTrue(
+            dump.contains("DiagnosticsDisclosure"),
+            "GenerationSettingsView.body should compile in a reference to DiagnosticsDisclosure via the environed SessionManagerViewModel's DiagnosticsService (#2453)"
         )
     }
 }

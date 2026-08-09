@@ -56,7 +56,19 @@ public struct DiagnosticsView: View {
     }
 }
 
-/// A compact disclosure suitable for embedding in `GenerationSettingsView`.
+/// A compact disclosure showing the active operational warnings from a
+/// `DiagnosticsService`, rendered as one `Section` (header "Diagnostics")
+/// so it drops directly into a `Form`/`List` alongside sibling sections.
+///
+/// Embedded in ``GenerationSettingsView``'s Advanced section, wherever a
+/// `SessionManagerViewModel` carrying a `DiagnosticsService` reaches that
+/// view via the environment (`.environment(sessionManager)` from the
+/// canonical bootstrap recipe, or any host that calls
+/// `SessionManagerViewModel.configure(bootstrap:)` /
+/// `configureAndLoad(bootstrap:)`). Hosts that build their own settings
+/// surface — or want the row somewhere other than "Advanced" — can still
+/// construct it directly and embed it standalone; it needs nothing beyond
+/// the `DiagnosticsService` passed to `init(diagnostics:)`.
 public struct DiagnosticsDisclosure: View {
 
     @Bindable private var diagnostics: DiagnosticsService
