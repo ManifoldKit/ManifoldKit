@@ -3,7 +3,7 @@
 **Audience:** contributor
 **Status:** living
 
-Four cross-cutting QA practices guard ManifoldKit beyond its unit / integration / E2E test pyramid. Each one catches a class of regression that ordinary tests miss. This page is the discovery doc — what each practice is, why it exists, how to run it, and how to extend it.
+Five cross-cutting QA practices guard ManifoldKit beyond its unit / integration / E2E test pyramid. Each one catches a class of regression that ordinary tests miss. This page is the discovery doc — what each practice is, why it exists, how to run it, and how to extend it.
 
 For day-to-day test conventions (suites, traits, layering), see [`Tests/README.md`](../Tests/README.md). For module/architecture rules and pre-push gates, see [`CLAUDE.md`](../CLAUDE.md).
 
@@ -13,6 +13,7 @@ For day-to-day test conventions (suites, traits, layering), see [`Tests/README.m
 | Audit tests | File-walking discipline rules (19 files) | `Tests/*/Manifold*AuditTest*.swift` | this doc |
 | In-file sabotage tests | Verify the audit tests still catch what they claim | `test_sabotage_*` methods in each `Tests/**/*Audit*.swift` file | this doc |
 | Cold-start conformance gates | Public-surface tests run from a fresh consumer outside the repo | [`scripts/cold-start-*.sh`](../scripts/) | [Tests/README § Cold-start](../Tests/README.md#cold-start-conformance-gates) |
+| Demo coverage gate | Every capability has a runnable vehicle, a live doc link, and a named execution lane | [`scripts/demo-coverage.sh`](../scripts/demo-coverage.sh) | [DEMO-COVERAGE.md](DEMO-COVERAGE.md) |
 
 ---
 
@@ -232,6 +233,33 @@ Until then, `docs/QA-PRACTICES.md` (this section) and a comment on the `Manifold
 
 ---
 
+## 7. Demo coverage gate
+
+`scripts/demo-coverage.sh` is the instrument milestone M0 of the
+demonstration program
+([issue #2453](https://github.com/ManifoldKit/ManifoldKit/issues/2453))
+reports through. `scripts/demo-coverage-manifest.tsv` lists every ManifoldKit
+capability and scores it against three requirements: demonstrated by a
+runnable vehicle, documented with a link that can't drift, and actually
+EXECUTED, not just labelled executed — a row counts only when its `lane` is
+one of the executed lanes (`per-pr`/`release-gate`/`live-e2e`/`weekly`/
+`external`) AND its `exec_kind` is `live` or `scripted`; `manual` lanes and
+`compile`-only invocations are recorded (and shown in the scoreboard) but
+never counted. `scripts/demo-coverage.sh --check` is a ratchet
+against `scripts/demo-coverage-baseline.tsv` — none of the three may regress;
+new rows are always welcome. The aggregate public-type-coverage percentage
+(computed from `Example/**/*.swift` against the API-freeze baseline) is
+reported in the scoreboard but deliberately NOT ratcheted — it moves in both
+directions for reasons unrelated to a demo-coverage regression (adding any
+new public type anywhere in the package lowers it). `DemoCoverageGateAuditTest`
+(in `ManifoldCoreTests`) runs the gate per-PR.
+
+See [DEMO-COVERAGE.md](DEMO-COVERAGE.md) for the full schema, how to run and
+update it, and how it fits into `scripts/affected-suites.sh`'s selective-CI
+resolver.
+
+---
+
 ## When to use which
 
 - Public API or first-time-user friction → DX walkthrough (slow, high-signal) + cold-start gate (fast, narrow).
@@ -239,3 +267,4 @@ Until then, `docs/QA-PRACTICES.md` (this section) and a comment on the `Manifold
 - Architecture invariant (module layering, HTTP egress, persistence boundaries) → audit test, cited in [CONTRIBUTING.md § Architecture invariants](../CONTRIBUTING.md#architecture-invariants).
 - Real-model behaviour CI can't see (GBNF conformance per family, KV-cache reuse, vision input, decode throughput) → local integration + perf sweep (slow, hardware + models required, run by hand).
 - "Why does this suite always skip in CI, is that a bug?" → check § 6 Known coverage gaps before filing an issue; it may already be an accepted, documented gap (e.g. ManifoldFoundation / #2096).
+- "Is every capability demonstrated, documented, and actually exercised somewhere?" → § 7 Demo coverage gate.

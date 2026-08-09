@@ -63,6 +63,14 @@ on:
       # a 4s shim echo to a near-full macOS compile. That is the right trade
       # against poisoning a 5-PR merge-queue batch, but it is a real trade.
       - "scripts/**.sh"
+      # DemoCoverageGateAuditTest (ManifoldCoreTests) reads and executes both
+      # of these via `scripts/demo-coverage.sh --check` — neither is a `.sh`
+      # file, so the blanket scripts/**.sh entry above does not cover them.
+      # Without this pair, a manifest/baseline-only edit never triggers CI
+      # (the #2446 shape: affected-suites.sh's case mapping for these two
+      # files is inert unless ci.yml also lists them).
+      - "scripts/demo-coverage-manifest.tsv"
+      - "scripts/demo-coverage-baseline.tsv"
   pull_request:
     # `ready_for_review` is REQUIRED here: the default pull_request activity
     # types omit it, so without it a draft→ready transition would fire no event
@@ -124,6 +132,14 @@ on:
       # a 4s shim echo to a near-full macOS compile. That is the right trade
       # against poisoning a 5-PR merge-queue batch, but it is a real trade.
       - "scripts/**.sh"
+      # DemoCoverageGateAuditTest (ManifoldCoreTests) reads and executes both
+      # of these via `scripts/demo-coverage.sh --check` — neither is a `.sh`
+      # file, so the blanket scripts/**.sh entry above does not cover them.
+      # Without this pair, a manifest/baseline-only edit never triggers CI
+      # (the #2446 shape: affected-suites.sh's case mapping for these two
+      # files is inert unless ci.yml also lists them).
+      - "scripts/demo-coverage-manifest.tsv"
+      - "scripts/demo-coverage-baseline.tsv"
   # Merge queue: when a PR is queued, GitHub builds a temp branch
   # (main + earlier-queued PRs + this PR) and dispatches `merge_group`. The
   # required checks (`test`, `lint`) MUST run on it or the queue stalls forever.

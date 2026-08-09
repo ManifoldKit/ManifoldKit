@@ -282,6 +282,24 @@ for p in "${CHANGED[@]}"; do
       log "changed: $p → target ManifoldInferenceTests (AgentsMdAuditTest runs it)"
       continue
       ;;
+    # scripts/demo-coverage.sh itself is a `.sh` file, so it's already caught
+    # by the blanket scripts/*.sh force-include below. These two `.tsv` data
+    # files are NOT `.sh`, so without this case they'd fall through to the
+    # "only Sources/ and Tests/ paths map to a target" filter just below and
+    # resolve to NONE — the same shape as the package.json / package-lock.json
+    # hole documented at the force-include block (#2446): DemoCoverageGateAuditTest
+    # reads and executes both files (via scripts/demo-coverage.sh --check), so
+    # an edit to either must select the suite that runs that check.
+    # UNLIKE the still-open #2446 package.json case, this mapping is NOT inert:
+    # ci.yml's push/pull_request `paths:` (and the ci-required-test-shim.yml
+    # `paths-ignore` mirror, kept in lockstep by lint.yml's shim-drift check)
+    # both explicitly list these two files, so a manifest/baseline-only diff
+    # actually triggers ci.yml's `changes` job to consult this resolver.
+    scripts/demo-coverage-manifest.tsv|scripts/demo-coverage-baseline.tsv)
+      changed_targets_add "ManifoldCoreTests"
+      log "changed: $p → target ManifoldCoreTests (DemoCoverageGateAuditTest runs scripts/demo-coverage.sh --check against these)"
+      continue
+      ;;
   esac
   # Only Sources/ and Tests/ paths can map to a target. Anything else (docs,
   # READMEs, …) cannot affect compiled test outcomes and is ignored.
