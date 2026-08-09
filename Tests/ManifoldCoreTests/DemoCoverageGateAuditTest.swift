@@ -402,6 +402,140 @@ final class DemoCoverageGateAuditTest: XCTestCase {
         )
     }
 
+    /// A `lane_methods` entry whose suite resolves OUTSIDE
+    /// Example/AdvancedUITests — via a bare `.swift` element in the row's own
+    /// `lane_ref` (the toolschema-macro row's shape, #2453 M3) — but names a
+    /// method that does not exist in that file must fail manifest integrity
+    /// and name the offending row and method. Proves
+    /// `resolve_lane_method_suite_file`'s non-UI-test resolution path is
+    /// actually checked, not just resolved and trusted.
+    func test_sabotage_flagsANonexistentLaneMethodOutsideAdvancedUITests() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "focused-example",
+                         vehiclePath: "Tests/SomeModuleTests/DemoSuite.swift", doc: "README.md",
+                         lane: "per-pr",
+                         laneRef: "Tests/SomeModuleTests/DemoSuite.swift,.github/workflows/fake-non-ui.yml",
+                         laneMethods: "DemoSuite/test_bogusMethod", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "Tests/SomeModuleTests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+                ".github/workflows/fake-non-ui.yml": "run: scripts/test.sh --filter DemoSuite --skip-update\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A dangling lane_methods entry outside AdvancedUITests must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("test_bogusMethod")
+                && output.contains("Tests/SomeModuleTests/DemoSuite.swift"),
+            "The error must name the offending row id, the dangling method, AND the resolved suite file path — " +
+            "the last assertion is what actually exercises the new non-UI-test resolution path (without it, " +
+            "the old hardcoded-to-AdvancedUITests script would also fail this fixture with a message containing " +
+            "both other substrings, so the test wouldn't be discriminating). Output:\n\(output)"
+        )
+    }
+
+    /// A `lane_methods` entry that names a suite which resolves to NEITHER a
+    /// bare `.swift` element in the row's own `lane_ref` NOR the
+    /// Example/AdvancedUITests default must fail manifest integrity and name
+    /// the offending row and suite — this is the "does not resolve to a
+    /// suite file" branch of `resolve_lane_method_suite_file`.
+    func test_sabotage_flagsALaneMethodSuiteThatDoesNotResolveAnywhere() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "focused-example",
+                         vehiclePath: "Tests/SomeModuleTests/DemoSuite.swift", doc: "README.md",
+                         lane: "per-pr",
+                         laneRef: "Tests/SomeModuleTests/DemoSuite.swift,.github/workflows/fake-non-ui.yml",
+                         laneMethods: "NoSuchSuite/test_realMethod", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "Tests/SomeModuleTests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+                ".github/workflows/fake-non-ui.yml": "run: scripts/test.sh --filter DemoSuite --skip-update\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A lane_methods suite that resolves nowhere must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("NoSuchSuite") && output.contains("does not resolve to a suite file"),
+            "The error must name the offending row id and say the suite doesn't resolve. Output:\n\(output)"
+        )
+    }
+
+    /// A `lane_methods` entry whose suite resolves outside
+    /// Example/AdvancedUITests, naming a real method in a real suite file,
+    /// but whose workflow `lane_ref` has no `--filter` argument reaching that
+    /// suite (a real one, for an unrelated suite) must fail manifest
+    /// integrity and name the offending row — otherwise a row could claim CI
+    /// coverage a `swift test --filter`-based workflow doesn't actually give
+    /// it, the same hazard the `-only-testing` check guards against for UI
+    /// test suites.
+    func test_sabotage_flagsANonUITestWorkflowFilterMismatch() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "focused-example",
+                         vehiclePath: "Tests/SomeModuleTests/DemoSuite.swift", doc: "README.md",
+                         lane: "per-pr",
+                         laneRef: "Tests/SomeModuleTests/DemoSuite.swift,.github/workflows/fake-non-ui.yml",
+                         laneMethods: "DemoSuite/test_realMethod", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "Tests/SomeModuleTests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+                ".github/workflows/fake-non-ui.yml": "run: scripts/test.sh --filter SomeUnrelatedSuite --skip-update\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertNotEqual(status, 0, "A workflow --filter that doesn't reach the suite must fail the gate. Output:\n\(output)")
+        XCTAssertTrue(
+            output.contains("demo-cap") && output.contains("fake-non-ui.yml") && output.contains("no --filter argument matching"),
+            "The error must name the offending row id and the workflow. Output:\n\(output)"
+        )
+    }
+
+    /// A clean fixture whose `lane_methods` suite resolves OUTSIDE
+    /// Example/AdvancedUITests (via the row's own bare `.swift` `lane_ref`
+    /// element) and whose workflow `lane_ref` carries a `--filter` argument
+    /// that genuinely reaches the suite must pass — proves the three
+    /// sabotage tests above are detecting their specific planted defect, not
+    /// failing on any use of a non-UI-test `lane_methods` resolution at all.
+    func test_sabotage_cleanFixtureWithNonUITestLaneMethodsPasses() throws {
+        let fixture = try Self.plantFixture(
+            manifestRows: [
+                Self.row(id: "demo-cap", vehicleKind: "focused-example",
+                         vehiclePath: "Tests/SomeModuleTests/DemoSuite.swift", doc: "README.md",
+                         lane: "per-pr",
+                         laneRef: "Tests/SomeModuleTests/DemoSuite.swift,.github/workflows/fake-non-ui.yml",
+                         laneMethods: "DemoSuite/test_realMethod", execKind: "scripted"),
+            ],
+            baselineRows: ["demo-cap\t1\t1\t1"],
+            extraFiles: [
+                "Tests/SomeModuleTests/DemoSuite.swift": "final class DemoSuite: XCTestCase {\n    func test_realMethod() {}\n}\n",
+                ".github/workflows/fake-non-ui.yml": "run: scripts/test.sh --filter DemoSuite --skip-update\n",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let (status, output) = try Self.runScript(
+            scriptPath: fixture.scriptPath, arguments: ["--check"]
+        )
+        XCTAssertEqual(status, 0, "A clean non-UI-test lane_methods fixture must pass. Output:\n\(output)")
+    }
+
     /// A `Package.swift` `.library`/`.executable` product not referenced by
     /// any manifest row's `products` column, and not in
     /// `scripts/demo-coverage-product-allowlist.txt`, must fail manifest
