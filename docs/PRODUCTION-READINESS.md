@@ -3,7 +3,7 @@
 **Audience:** consumer, contributor
 **Status:** living
 
-Normative — states what is true today, dated 2026-07-25.
+Normative — states what is true today, dated 2026-08-09.
 
 This page is the single source of truth for ManifoldKit's maturity signal.
 Every published SwiftPM product — every `.library` and every executable in
@@ -57,6 +57,52 @@ on**, not its code quality or how well-tested it is internally — an
 Experimental product can be extensively unit-tested and still carry no
 stability promise, because "no real adopter has been built against it yet"
 (§ 7b's bar) is a fact about the ecosystem, not the code.
+
+## Demonstration signal (R1/R2/R3)
+
+A tier states the compatibility promise a product carries; it says nothing
+about whether a reader can actually see the product working today. That
+second question is answered by a separate, complementary instrument:
+[`docs/DEMO-COVERAGE.md`](DEMO-COVERAGE.md) and its live source,
+[`scripts/demo-coverage-manifest.tsv`](../scripts/demo-coverage-manifest.tsv)
+(the demonstration program tracked by
+[issue #2453](https://github.com/ManifoldKit/ManifoldKit/issues/2453)). That
+manifest scores every ManifoldKit **capability** — a finer grain than the
+`.library`/`.executable` products this page tiers, since one product can
+carry several capabilities and one capability can span several products —
+against three requirements, computed by `scripts/demo-coverage.sh`:
+
+- **R1 — demonstrated by a runnable vehicle.** An example app, a focused
+  example, a script, a scenario, or an external (companion-repo) vehicle
+  exists for the capability.
+- **R2 — documented with a link that can't drift.** The row's doc reference
+  names a file that exists on disk right now.
+- **R3 — a declared execution route, not just a labelled one.** The
+  capability fires on a named, *executed* CI lane (`per-pr`, `release-gate`,
+  `live-e2e`, `weekly`, or `external` — never `manual` or `none`) whose own
+  invocation actually runs the vehicle (`exec_kind: live` or `scripted`,
+  never a `compile`-only build). Where the lane names a test file or
+  workflow, R3 is further **method-bound**: the manifest records the exact
+  test method(s) that exercise the capability, not a suite-level assumption.
+  R3 is a declared route, not a freshness signal — it does not assert the
+  lane ran recently or is currently green; last-run/staleness evidence is a
+  later milestone (M5) of the same issue.
+
+This page does not restate the manifest's table here — a copied snapshot
+would drift the moment a row changed, and nothing on this page would catch
+that drift the way `DocClaimsAuditTest` catches a dead symbol or a broken
+link. Run `scripts/demo-coverage.sh` for the current scoreboard, or read the
+manifest directly.
+
+**The two signals are orthogonal, deliberately.** A Tier 1 Core capability
+can have an unmet R3 today (`turn-loop-actions`: regenerate/edit/branch have
+no exercising test anywhere, only send/clear do) while a Tier 3 Experimental
+capability can have a fully met R1/R2/R3 (`mcp-client`, scored live via
+`RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests`). A product's
+tier is not a proxy for its demonstration status, and this page does not
+attempt to derive one from the other — the tables below answer the
+compatibility-promise question; the manifest answers the demonstration
+question.
 
 ## Tier 1 — Core guarantees
 
@@ -247,4 +293,8 @@ settle — flagged rather than silently resolved:
   document [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211)
   ruled on — points here for the complete tier picture, not just the freeze
   exemptions; [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211)
-  itself carries a comment linking this page for the same reason.
+  itself carries a comment linking this page for the same reason. This page,
+  in turn, points to [`docs/DEMO-COVERAGE.md`](DEMO-COVERAGE.md) for the
+  complementary per-capability demonstration signal — see
+  [Demonstration signal](#demonstration-signal-r1r2r3) above; that page does
+  not carry tier assignments of its own.
