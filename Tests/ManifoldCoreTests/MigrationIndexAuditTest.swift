@@ -117,6 +117,53 @@ final class MigrationIndexAuditTest: XCTestCase {
         )
     }
 
+    /// A note mentioned only inside ANOTHER row's "What changed" cell has no
+    /// row of its own and must still be flagged.
+    ///
+    /// Regression test for a fail-open found in review: the parser used to
+    /// take every `MIGRATION-*.md` match on a `|`-prefixed line, so the
+    /// perfectly natural "Superseded by `MIGRATION-x.md`" phrasing silently
+    /// registered `MIGRATION-x.md` as covered. The audit passed on exactly
+    /// the defect it exists to catch, and diverged from
+    /// `scripts/migration-index-check.sh`, which takes only the first match.
+    func test_sabotage_completenessViolationsIgnoresNotesNamedInsideAnotherRowsProse() throws {
+        let tmp = try Self.makeTempRoot("migration-index-prose-mention")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let docsDir = tmp.appendingPathComponent("docs", isDirectory: true)
+        try FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true)
+
+        // One row, for alpha, whose prose cell also names beta. Only alpha
+        // has a row; beta does not.
+        try """
+        # Migration index
+
+        | Release | Migration note | What changed |
+        |---------|----------------|--------------|
+        | v0.76.0 | [`MIGRATION-alpha.md`](MIGRATION-alpha.md) | Supersedes `MIGRATION-beta.md`. |
+        """.write(to: docsDir.appendingPathComponent("MIGRATION-INDEX.md"), atomically: true, encoding: .utf8)
+
+        try "# Alpha".write(
+            to: docsDir.appendingPathComponent("MIGRATION-alpha.md"), atomically: true, encoding: .utf8
+        )
+        try "# Beta".write(
+            to: docsDir.appendingPathComponent("MIGRATION-beta.md"), atomically: true, encoding: .utf8
+        )
+
+        let violations = try Self.completenessViolations(repoRoot: tmp)
+        XCTAssertTrue(
+            violations.contains { $0.contains("MIGRATION-beta.md") },
+            """
+            A note named only inside another row's prose has no row of its own \
+            and must be flagged; got \(violations)
+            """
+        )
+        XCTAssertFalse(
+            violations.contains { $0.contains("MIGRATION-alpha.md") },
+            "The note the row is actually about must not be flagged; got \(violations)"
+        )
+    }
+
     /// A repo root with no readable `docs/MIGRATION-INDEX.md` must make
     /// ``completenessViolations(repoRoot:)`` **throw**, not quietly return
     /// zero violations — the sibling of `DocClaimsAuditTest`'s
@@ -224,9 +271,21 @@ final class MigrationIndexAuditTest: XCTestCase {
         return names
     }
 
-    /// The `MIGRATION-*.md` filename(s) referenced on a single line.
+    /// The `MIGRATION-*.md` filename a single table row is *about* — the
+    /// FIRST match on the line, never every match.
+    ///
+    /// A row's "What changed" cell can legitimately name another note
+    /// ("Superseded by `MIGRATION-x.md`"), which is a natural way to write
+    /// this table. Taking every match would treat that mention as though
+    /// `MIGRATION-x.md` had its own row, so the audit would pass while the
+    /// note it is supposed to protect has no row at all — failing open on the
+    /// precise defect it exists to catch. Taking the first match matches both
+    /// the table's shape (the note is the row's second column, before the
+    /// prose) and `scripts/migration-index-check.sh`, whose BASH_REMATCH
+    /// extraction is first-match-only; the two must not diverge or the
+    /// release gate can red where the per-PR audit was green.
     private static func migrationNoteReferences(in line: String) -> [String] {
-        matches(of: #"(MIGRATION-[A-Za-z0-9._-]+\.md)"#, in: line)
+        Array(matches(of: #"(MIGRATION-[A-Za-z0-9._-]+\.md)"#, in: line).prefix(1))
     }
 
     /// The first capture group of every match of `pattern` in `text`.

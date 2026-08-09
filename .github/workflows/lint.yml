@@ -23,21 +23,28 @@ name: Lint
 #   - secret-scan                   (was security-scans.yml: secret-scan)
 #   - dependency-review             (was security-scans.yml: dependency-review)
 #   - dep-budget                    (was ci.yml: dep-budget)
-#   - release-context                (detects whether version.txt is ahead
-#                                     of the latest published tag — gates
-#                                     the two release-only steps below;
-#                                     runs on pull_request + merge_group only)
-#   - companion-canary-gate          (release-only, event-split for freshness:
-#                                     --dispatch on pull_request (needs
-#                                     COMPANION_DISPATCH_TOKEN), read-only on
-#                                     merge_group — hard-blocks a release if
-#                                     manifold-mlx / manifold-llama don't
-#                                     build against core main; see step
-#                                     comments for why it's split)
+#   - release-context                (is this run validating a release? needs
+#                                     BOTH that the change modifies version.txt
+#                                     (checked first — purely local) and that
+#                                     version.txt is ahead of the latest
+#                                     published tag. Gates the two release-only
+#                                     steps; pull_request + merge_group only)
+#   - companion-canary-gate          (release-only, pull_request ONLY, with
+#                                     --dispatch so the evidence is fresh —
+#                                     needs COMPANION_DISPATCH_TOKEN. Blocks
+#                                     because `lint` is a required check, so
+#                                     the release PR cannot be queued until it
+#                                     is green. Deliberately does NOT run on
+#                                     merge_group — see the step comments)
 #   - migration-index-gate           (release-only: scripts/migration-index-
 #                                     check.sh --release — hard-blocks a
 #                                     release if any migration-note row still
 #                                     says "next")
+#   - migration-index-completeness   (EVERY run: the required `lint` mirror of
+#                                     MigrationIndexAuditTest, which is
+#                                     markdown-driven and so would otherwise
+#                                     first fire inside the merge queue on a
+#                                     docs-only PR)
 #
 # Why one job: each separate ubuntu-latest job paid ~10s of runner cold-start
 # overhead — ~50–70s aggregate per PR. Hoisting into a single runner removes
@@ -708,6 +715,10 @@ jobs:
         if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed via env rather than interpolated into the script: a branch
+          # name is attacker-controllable on a fork PR and inlining it is a
+          # script-injection vector (actionlint flags the inline form).
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           set -euo pipefail
 
@@ -721,17 +732,16 @@ jobs:
             exit 1
           fi
 
-          if ! latest_tag="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)"; then
-            echo "::error::Failed to query the latest published release via the GitHub API (repos/${{ github.repository }}/releases/latest)."
-            exit 1
-          fi
-          if [ -z "$latest_tag" ] || [ "$latest_tag" = "null" ]; then
-            echo "::error::Latest-release API call returned an empty/null tag_name — cannot determine release context."
-            exit 1
-          fi
-          latest_version="${latest_tag#v}"
-
-          # SECOND CONDITION — do not "simplify" this away. A bare
+          # CONDITION 2 IS EVALUATED FIRST, AND DELIBERATELY SO. It is purely
+          # local (a git diff), whereas condition 1 needs an external API call.
+          # Ordering them the other way put an unretried network call on the
+          # critical path of `lint` — one of three required contexts — for
+          # EVERY pull_request and merge_group run in the repo, so a transient
+          # 5xx would red a PR that has nothing to do with a release. Checking
+          # locally first confines the external dependency to the handful of
+          # runs that actually touch version.txt. Do not reorder these.
+          #
+          # Why condition 2 exists at all — do not "simplify" it away. A bare
           # version-vs-tag comparison has a false-positive window: once the
           # release PR merges, `main` carries the bumped version.txt for the
           # minutes before release-please creates the tag (longer if that job
@@ -740,8 +750,7 @@ jobs:
           # would red on `next` rows that are entirely legitimate on main
           # right after a release. A required check going spuriously red on an
           # unrelated change is precisely the failure this whole gate exists
-          # to remove. Only the release PR modifies version.txt, so requiring
-          # that too closes the window on both events.
+          # to remove. Only the release PR modifies version.txt.
           case "${{ github.event_name }}" in
             pull_request)
               if ! git fetch --no-tags -q origin "${{ github.base_ref }}"; then
@@ -778,31 +787,81 @@ jobs:
           if printf '%s\n' "$changed_files" | grep -qx 'version.txt'; then
             version_touched=true
           fi
-
           echo "version.txt:           $current_version"
-          echo "latest published tag:  $latest_tag (version $latest_version)"
           echo "version.txt modified:  $version_touched  (range: $diff_range)"
 
-          # Both conditions must hold. Logged independently above so a future
-          # reader can see which one decided the outcome.
-          if [ "$current_version" != "$latest_version" ] && [ "$version_touched" = true ]; then
+          # On the release PR itself we KNOW a release is in flight regardless
+          # of what any API says. Recording that up front lets us treat a
+          # "not a release" verdict there as a defect rather than a quiet skip
+          # — see the assertion at the end.
+          on_release_branch=false
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+             && [ "$HEAD_REF" = "release-please--branches--main" ]; then
+            on_release_branch=true
+          fi
+
+          # Condition 1, only now that condition 2 has already passed. If
+          # version.txt is untouched this run cannot be a release, so there is
+          # nothing the API could tell us and no reason to depend on it.
+          if [ "$version_touched" = false ]; then
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "→ Not a release: this change does not modify version.txt (no API call made)."
+            if [ "$on_release_branch" = true ]; then
+              echo "::error::On $HEAD_REF but version.txt is not modified — the release PR must bump it. Refusing to skip the release gates here."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if ! latest_tag="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)"; then
+            echo "::error::Failed to query the latest published release via the GitHub API (repos/${{ github.repository }}/releases/latest)."
+            exit 1
+          fi
+          if [ -z "$latest_tag" ] || [ "$latest_tag" = "null" ]; then
+            echo "::error::Latest-release API call returned an empty/null tag_name — cannot determine release context."
+            exit 1
+          fi
+          latest_version="${latest_tag#v}"
+          echo "latest published tag:  $latest_tag (version $latest_version)"
+
+          # Both conditions logged independently above, so a future reader can
+          # see which one decided the outcome.
+          if [ "$current_version" != "$latest_version" ]; then
             echo "is_release=true" >> "$GITHUB_OUTPUT"
             echo "→ Release in flight: version.txt ($current_version) is ahead of the latest published tag ($latest_version), and this change modifies it."
-          else
-            echo "is_release=false" >> "$GITHUB_OUTPUT"
-            if [ "$current_version" = "$latest_version" ]; then
-              echo "→ Not a release: version.txt matches the latest published tag."
-            else
-              echo "→ Not a release: version.txt is ahead of the latest tag, but this change does not modify it (post-release, pre-tag window)."
-            fi
+            exit 0
+          fi
+
+          # version.txt is touched but already matches the latest published
+          # tag. On an ordinary PR that is a legitimate no-op. On the release
+          # PR it means condition 1 — which depends on a mutable external API —
+          # has told us something that cannot be true, and silently skipping
+          # the gates is exactly the outcome this change exists to prevent.
+          echo "is_release=false" >> "$GITHUB_OUTPUT"
+          echo "→ Not a release: version.txt matches the latest published tag."
+          if [ "$on_release_branch" = true ]; then
+            echo "::error::On $HEAD_REF the release gates must run, but version.txt ($current_version) already matches the latest published tag ($latest_tag). Refusing to skip them silently — check whether a release was published out of band."
+            exit 1
           fi
 
       # ── companion-canary-gate ─────────────────────────────────────────────
-      - name: companion-canary-gate — skip (not a release)
-        if: always() && (github.event_name == 'push' || steps.release_context.outputs.is_release == 'false')
+      # Also fires on merge_group even for a real release: the canary gate runs
+      # only on pull_request by design (see the long comment below the dispatch
+      # step), so the queue run should say so rather than leaving a silent hole
+      # where a reader might expect a check.
+      - name: companion-canary-gate — skip (not a release, or not the pull_request run)
+        if: always() && (github.event_name != 'pull_request' || steps.release_context.outputs.is_release == 'false')
         run: |
-          echo "Not a release in this run (or release-context does not apply to this event)."
-          echo "The companion-canary gate does not apply here — no dispatch or check was performed."
+          if [ "${{ github.event_name }}" = "merge_group" ] && [ "${{ steps.release_context.outputs.is_release }}" = "true" ]; then
+            echo "Release detected, but the companion-canary gate runs only on the pull_request event."
+            echo "It already blocked there: \`lint\` is a required check, so this PR could not have been"
+            echo "queued without that run passing. Re-checking here would grade a fresh canary against a"
+            echo "main tip that moves with every unrelated merge, which reds the batch for reasons that"
+            echo "have nothing to do with the release."
+          else
+            echo "Not a release in this run (or release-context does not apply to this event)."
+            echo "The companion-canary gate does not apply here — no dispatch or check was performed."
+          fi
 
       # WHY THIS STEP IS SPLIT BY EVENT (pull_request vs. merge_group), not run
       # once in read-only mode. companion-canary-check.sh's PRIMARY check is
@@ -862,32 +921,33 @@ jobs:
           fi
           bash scripts/companion-canary-check.sh --dispatch
 
-      # merge_group is the run that actually blocks the queue. It runs
-      # READ-ONLY (no --dispatch): by the time the queue picks up the release
-      # PR, the runs dispatched above (pull_request) have had minutes to
-      # complete and already satisfy the freshness check, so this is a fast
-      # read. Do NOT use --dispatch here — its poll ceiling is 40 x 30s =
-      # 20 min PER companion (up to 40 min for both, sequential — see the
-      # script's POLL_SECONDS/POLL_MAX), which would hold a merge-queue slot
-      # for up to 40 minutes for no benefit. Pure `gh api` reads against the
-      # public manifold-mlx / manifold-llama repos — same precedent as
-      # release-train-tripwire.yml — so the default GITHUB_TOKEN suffices.
+      # THERE IS DELIBERATELY NO merge_group COMPANION-CANARY STEP. An earlier
+      # revision ran a read-only check here on the theory that merge_group is
+      # "the run that actually blocks". Review showed that gate cannot work,
+      # and would have re-created the exact pathology this whole change exists
+      # to remove:
       #
-      # IF THIS REDS ON STALENESS: it means the pull_request dispatch step
-      # above never ran — either COMPANION_DISPATCH_TOKEN was unset (and that
-      # step already failed loudly), or, the documented and EXPECTED case,
-      # nobody has force-pushed the changelog rewrite yet and only the
-      # CI-dark bot regenerations have touched the branch (AGENTS.md §
-      # "Release workflow" — bot-actor pull_request runs on that branch never
-      # execute). That is CORRECT behavior, not a bug: the fix is to run
-      # `bash scripts/companion-canary-check.sh --dispatch` locally, then
-      # re-push (which re-triggers this job and, once merged, this check
-      # again on the next merge_group run).
-      - name: "companion-canary-gate (merge_group) — manifold-mlx / manifold-llama must build against core main"
-        if: always() && github.event_name == 'merge_group' && steps.release_context.outputs.is_release == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/companion-canary-check.sh
+      # companion-canary-check.sh grades freshness LANDING-RELATIVE against
+      # origin/main's tip at the moment it runs. In a merge_group run that tip
+      # is main WITHOUT the release PR — a value that changes every time
+      # anything else merges. So: force-push at 09:45 dispatches fresh canaries
+      # at ~09:50; an unrelated batch merges at 10:25; the release batch
+      # validates at 10:30; the 09:50 canary now predates the 10:25 tip and
+      # reads STALE; `lint` reds and the batch is ejected. The documented
+      # remedy (re-dispatch, re-push) restarts the identical race. Main's
+      # median inter-commit gap is ~95 min with 44% of gaps under 60 min, so
+      # this is a routine outcome, not a corner case — and a hard-blocking gate
+      # that reds on unrelated merges is precisely the "red every time, so it
+      # gets routed around" failure warned about above.
+      #
+      # The pull_request dispatch step above is already blocking on its own:
+      # `lint` is a required status check, so the release PR cannot be queued
+      # until that run is green, and --dispatch makes its evidence genuinely
+      # fresh at that moment. Re-checking in the queue against a moving target
+      # adds no signal and subtracts reliability. What is NOT covered is main
+      # moving between the PR-event check and the merge; that is a real
+      # residual gap, accepted knowingly, and it is the same exposure every
+      # other pre-merge check in this repo carries.
 
       # ── migration-index-gate ──────────────────────────────────────────────
       - name: migration-index-gate — skip (not a release)
@@ -899,10 +959,29 @@ jobs:
       # Release-only, hard-blocking: fails if any docs/MIGRATION-INDEX.md row
       # still says "next" in the Release column while a version is shipping —
       # RELEASE.md's changelog-rewrite step is supposed to flip these by hand;
-      # this is what stops a forgotten row from shipping silently. The
-      # completeness half (no --release) already has its own in-suite Swift
-      # audit that runs per-PR via ci.yml's `test` job — do not duplicate that
-      # half here, only the release-only rule.
+      # this is what stops a forgotten row from shipping silently.
       - name: migration-index-gate — no migration-note row may still say "next"
         if: always() && steps.release_context.outputs.is_release == 'true'
         run: bash scripts/migration-index-check.sh --release
+
+      # ── migration-index-completeness (EVERY run, not release-only) ────────
+      # The cheap mirror of MigrationIndexAuditTest, and it is not optional.
+      # AGENTS.md § "Documentation gates": "A new markdown-driven audit ships
+      # with a `lint` mirror, or it does not block on the PRs that can break
+      # it." That audit reads docs/MIGRATION-INDEX.md and enumerates
+      # docs/MIGRATION-*.md, so a PR adding a migration note with no index row
+      # is exactly what breaks it — and such a PR is typically docs-only.
+      # ci.yml's pull_request paths carry no docs/** entry, so the required
+      # `test` job is satisfied by ci-required-test-shim.yml in seconds, and
+      # scripts/affected-suites.sh resolves a docs-only diff to NONE. The
+      # audit would therefore first execute in the merge queue and poison the
+      # batch — the #2306 shape that took #2212 down six times.
+      #
+      # lint.yml's pull_request trigger has no paths filter and its push paths
+      # already include docs/** and *.md, so this step runs on every PR that
+      # can break the audit. No `--release`: the "next"-row rule is release-only
+      # (a note legitimately sits at `next` from the PR that adds it until the
+      # release ships it), and running it here would red every such PR.
+      - name: "migration-index-completeness — every docs/MIGRATION-*.md has an index row"
+        if: always()
+        run: bash scripts/migration-index-check.sh
