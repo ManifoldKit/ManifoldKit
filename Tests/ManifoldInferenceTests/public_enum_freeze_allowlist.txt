@@ -65,7 +65,6 @@ ManifoldFoundation/FoundationBackends.swift:public enum FoundationBackends: Back
 ManifoldFuzz/Corpus.swift:public enum Corpus {
 ManifoldFuzz/Corpus.swift:public enum Subset: String, Sendable {
 ManifoldFuzz/Detectors/Detector.swift:public enum DetectorRegistry {
-ManifoldFuzz/Detectors/SessionDetector.swift:public enum SessionDetectorRegistry {
 ManifoldFuzz/Finding.swift:public enum Severity: String, Codable, Sendable, Comparable {
 ManifoldFuzz/FuzzConfig.swift:public enum BackendChoice: String, Sendable, CaseIterable {
 ManifoldFuzz/HarnessMetadata.swift:public enum HarnessMetadata {
@@ -81,7 +80,6 @@ ManifoldFuzz/RunRecord.swift:public enum SchemaError: Error, Equatable, Sendable
 ManifoldFuzz/Scenarios/FuzzScenario.swift:public enum ScenarioRegistry {
 ManifoldFuzz/SessionScript.swift:public enum Step: Codable, Sendable, Equatable {
 ManifoldFuzz/SessionScriptRunner.swift:public enum TimelineEvent: String, Sendable {
-ManifoldFuzz/Sink/FindingsIndex.swift:public enum FindingsArtifactRenderer {
 ManifoldFuzz/Sink/FindingsIndex.swift:public enum FindingsIndexCodec {
 ManifoldFuzz/Sink/FindingsMerger.swift:public enum FindingsMerger {
 ManifoldFuzz/SyntheticToolset.swift:public enum SyntheticToolset {
@@ -312,8 +310,6 @@ ManifoldTools/Scenarios/ScenarioLoader.swift:public enum ScenarioLoader {
 ManifoldTools/ScriptedBackend.swift:public enum Turn: Sendable {
 ManifoldTools/TranscriptLogger.swift:public enum Event {
 ManifoldTools/VLModelDetector.swift:public enum VLModelDetector {
-ManifoldUI/Utilities/ChatExporter.swift:public enum ChatExporter {
-ManifoldUI/Utilities/ChatExporter.swift:public enum ChatExporterError: Error, Equatable {
 ManifoldUI/Utilities/SpotlightIndexer.swift:public enum SpotlightIndexer {
 ManifoldUI/ViewModels/ArchitectViewModel.swift:public enum ArchitectEventCategory: Sendable, Equatable {
 ManifoldUI/ViewModels/ChatScrollToMessageRequest.swift:public enum ChatMessageScrollAnchor: Sendable, Hashable {

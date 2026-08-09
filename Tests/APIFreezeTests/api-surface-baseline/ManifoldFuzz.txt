@@ -1,4 +1,3 @@
-(top-level).encodeToolChoice(_:) Func
 AsyncSignal Class
 AsyncSignal attrs: Final
 AsyncSignal conformances: Copyable,Escapable,Sendable,SendableMetatype
@@ -148,13 +147,6 @@ Finding.modelId Var
 Finding.severity Var
 Finding.subCheck Var
 Finding.trigger Var
-FindingsArtifactRenderer Enum
-FindingsArtifactRenderer conformances: Copyable,Escapable
-FindingsArtifactRenderer.markdown(totalRuns:rows:outputDir:) Func
-FindingsArtifactRenderer.replayCommand(hash:outputDir:) Func
-FindingsArtifactRenderer.reproCommand(seed:modelId:outputDir:) Func
-FindingsArtifactRenderer.reproScript(hash:seed:modelId:outputDir:) Func
-FindingsArtifactRenderer.summary(for:) Func
 FindingsIndexCodec Enum
 FindingsIndexCodec conformances: Copyable,Escapable
 FindingsIndexCodec.load(from:) Func
@@ -576,10 +568,6 @@ SessionDetector.humanName Var
 SessionDetector.id Var
 SessionDetector.inspect(_:) Func
 SessionDetector.inspiredBy Var
-SessionDetectorRegistry Enum
-SessionDetectorRegistry conformances: Copyable,Escapable
-SessionDetectorRegistry.all Var
-SessionDetectorRegistry.resolve(_:) Func
 SessionFuzzRunner Class
 SessionFuzzRunner conformances: Actor,Copyable,Escapable,Sendable,SendableMetatype
 SessionFuzzRunner.defaultServiceFactory(_:_:) Func

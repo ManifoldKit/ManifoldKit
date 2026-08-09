@@ -83,14 +83,6 @@ ChatExportSheet conformances: Copyable,Escapable,Sendable,SendableMetatype,View
 ChatExportSheet.Body TypeAlias
 ChatExportSheet.body Var
 ChatExportSheet.init() Constructor
-ChatExporter Enum
-ChatExporter conformances: Copyable,Escapable
-ChatExporter.exportFile(title:messages:format:) Func
-ChatExporter.string(title:messages:format:) Func
-ChatExporterError Enum
-ChatExporterError conformances: Copyable,Equatable,Error,Escapable,Sendable,SendableMetatype
-ChatExporterError.__derived_enum_equals(_:_:) Func
-ChatExporterError.writeFailed EnumElement
 ChatInputBar Struct
 ChatInputBar attrs: Custom
 ChatInputBar conformances: Copyable,Escapable,Sendable,SendableMetatype,View

@@ -16,6 +16,7 @@ are indexed by the literal compiler diagnostic you'll hit.
 
 | Release | Migration note | What changed |
 |---------|----------------|--------------|
+| next | [`MIGRATION-chatexporter-removed.md`](MIGRATION-chatexporter-removed.md) | `ChatExporter` / `ChatExporterError` removed (zero adopters, M1 #2453); use `ExportButton` or `ConversationExporter` directly. |
 | next | [`MIGRATION-additive-tool-sources.md`](MIGRATION-additive-tool-sources.md) | `ManifoldBootstrap.addToolSources(_:)` now accumulates instead of clobbering (#2440); `addGenerationToolSources(viewModel:)` removed. |
 | next | [`MIGRATION-anylanguagemodel-retired.md`](MIGRATION-anylanguagemodel-retired.md) | `ManifoldAnyLanguageModel` retired outright (zero adoption + dependency coupling); its providers reach ManifoldKit via `APIProvider.custom` + `OpenAIBackend`. |
 | next | [`MIGRATION-skills-removed.md`](MIGRATION-skills-removed.md) | `ManifoldSkills` retired (zero adopters, #2434); `AGENTS.md` loading survives as `ManifoldAgentInstructions`. Also removes `ConversationEvent.skillInvoked`. |
