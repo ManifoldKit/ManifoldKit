@@ -147,7 +147,46 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    PR. A macOS 27 SDK compile on a macOS 26 host is compile evidence only; a
    macOS 27 runtime claim requires the same build on a macOS 27 host or VM.
 
-2. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
+2. **Companion-canary gate — CI-enforced, hard-blocking, no override flag.**
+   `.github/workflows/lint.yml`'s `lint` job now runs
+   `scripts/companion-canary-check.sh` automatically only when `version.txt`
+   is a valid SemVer version strictly newer than the latest published tag. The
+   mode depends on which event is firing (freshness, not just "is a release
+   happening", is why):
+   - On this step's **`pull_request` run** (i.e. right now, when you push the
+     changelog-rewrite commit below) it runs `--dispatch`, triggering fresh
+     canary runs on both companions and waiting for them — this is what makes
+     the later `merge_group` check meaningfully fresh instead of reading a
+     stale nightly result. It needs the `COMPANION_DISPATCH_TOKEN` repo
+     secret; if that's missing the step fails loudly rather than silently
+     downgrading to a read that could pass on stale evidence.
+   - On the **`merge_group` run** (step 4 below, when the queue actually
+     validates the merge) it reads the by-then-fresh result read-only — this
+     is the run that actually blocks.
+
+   So pushing the changelog rewrite in this step is not optional busywork —
+   it's what supplies the fresh canary evidence the blocking `merge_group`
+   check depends on. You can still check the state manually before pushing:
+
+   ```bash
+   bash scripts/companion-canary-check.sh                # check last known result
+   bash scripts/companion-canary-check.sh --dispatch      # trigger fresh runs and wait (slower, authoritative)
+   ```
+
+   A red or stale canary means core moved a seam a companion still depends
+   on. Land the companions' adaptation PRs in lockstep (§ "Companion
+   pin-bump releases" in AGENTS.md) before continuing — CI will refuse to
+   let the release PR merge otherwise.
+
+   **If the `merge_group` check reds on staleness** (not FAIL — STALE), it
+   almost always means no `pull_request` dispatch ever ran for this release —
+   e.g. only bot changelog regenerations have touched the branch so far, which
+   never execute (AGENTS.md § "Release workflow"). The fix is the same
+   `--dispatch` command above, run locally, followed by a push — that
+   re-triggers this step's `pull_request` run with fresh evidence for the next
+   `merge_group` attempt.
+
+3. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
    branch in its worktree (`release-please--branches--main`). CI's
    `changelog-parser-check` (any push, any actor) already re-runs Release
    Please's own commit parser and would have reported a red on this PR if
@@ -171,7 +210,22 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    Now rewrite the newest section's auto-generated bullets into
    **Prisma-style Highlights** (`### Highlights` with verb-led headlines,
    2–3 sentences of context, a runnable snippet for new/changed public
-   APIs). Validate the rewrite locally with:
+   APIs).
+
+   **Flip `docs/MIGRATION-INDEX.md`'s `next` rows to the version being
+   shipped.** Every migration note added since the last release lists
+   `next` in the Release column (see that file's own header) — replace each
+   `next` in a row whose linked note documents a change going out in this
+   release with the literal version, e.g. `v0.75.0`. `lint`'s
+   `migration-index-gate` step hard-fails the release PR if any row still
+   says `next` once a release is detected, so this is not optional. Validate
+   locally with:
+
+   ```bash
+   bash scripts/migration-index-check.sh --release   # must exit 0
+   ```
+
+   Validate the changelog rewrite locally with:
 
    ```bash
    bash scripts/changelog-lint.sh CHANGELOG.md   # must exit 0
@@ -181,7 +235,7 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    check CI runs in `.github/workflows/lint.yml`; running it locally avoids a
    red CI round-trip.
 
-3. **Enqueue the release PR.** ManifoldKit `main` **requires the merge
+4. **Enqueue the release PR.** ManifoldKit `main` **requires the merge
    queue**, so a direct `gh api -X PUT .../pulls/<N>/merge` returns HTTP 405
    ("Changes must be made through the merge queue"). Route it through the
    queue instead and wait for it to actually land:
@@ -191,7 +245,12 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    gh pr view <N> --json state -q .state   # poll until: MERGED
    ```
 
-4. **Verify the tag and post-merge jobs.** Once merged, Release Please pushes
+   The `lint` job's `companion-canary-gate` and `migration-index-gate` steps
+   (added above) run again here, on the `merge_group` validation — this is
+   the run that actually blocks the queue, since the release branch itself
+   is CI-dark for bot-triggered runs (AGENTS.md § "Release workflow").
+
+5. **Verify the tag and post-merge jobs.** Once merged, Release Please pushes
    the version tag and cuts the GitHub release:
 
    ```bash
@@ -205,7 +264,7 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    independent — a single failure no longer blocks the others, and the job
    summary names any that failed for a manual re-dispatch).
 
-5. **Companion releases.**
+6. **Companion releases.**
    - **MINOR bump:** each companion's `core-bump` workflow (triggered by the
      `repository_dispatch`) auto-merges its core-pin PR. Then rewrite + merge
      each companion's own release PR — **llama and mlx have release-please**, so
