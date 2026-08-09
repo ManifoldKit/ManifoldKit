@@ -151,6 +151,55 @@ extension DemoScenarios {
                 ])
             ]
 
+        // MARK: - Turn-loop action coverage (#2453)
+        //
+        // Deliberately NOT registered in `DemoScenarios.all` — these IDs only
+        // select a `ScriptedBackend` turn list via `--bck-demo-scenario`, they
+        // never appear as a card and never trigger `DemoScenarioRunner`'s
+        // auto-send. `TurnLoopActionUITests` types a prompt into the composer
+        // itself, exactly like `ChatFlowUITests`, then drives regenerate /
+        // edit / branch through the message context menu.
+
+        case "turn-loop-actions":
+            // `ChatViewModel.sendMessage`'s `onFirstMessage` hook fires
+            // synchronously alongside the FIRST user message of a session
+            // (`ChatViewModel+Messages.swift`) and — under `--uitesting`,
+            // where no `auxiliaryInferenceService` is configured — routes
+            // title classification through the SAME `ScriptedBackend`
+            // instance the real turn uses (`ConversationRuntime.classificationService`
+            // falls back to the primary service). Its own `generate()` call
+            // races the real turn's `generate()` call for the cursor: which
+            // one consumes script entry 0 vs. entry 1 is genuinely
+            // nondeterministic (observed both orderings locally). Making
+            // entries 0 and 1 IDENTICAL makes the outcome deterministic
+            // regardless of who wins — the visible reply is "This is the
+            // first reply." either way, and whichever entry the (discarded)
+            // title-classification call consumes doesn't matter. Only the
+            // FIRST user message races: `willBeFirstUserMessage` in
+            // `sendMessage` means `onFirstMessage` never fires again for
+            // this session, so entry 2 (used by the regenerate/edit
+            // follow-up turn) is consumed deterministically.
+            return [
+                .tokens(["This ", "is ", "the ", "first ", "reply."]),
+                .tokens(["This ", "is ", "the ", "first ", "reply."]),
+                .tokens(["This ", "is ", "a ", "different, ", "second ", "reply."])
+            ]
+
+        case "turn-loop-cancel":
+            // Two IDENTICAL long token streams — see the "turn-loop-actions"
+            // comment above for why the FIRST send needs two fungible
+            // entries (the `onFirstMessage` title-classification race).
+            // `ScriptedBackend` has no artificial delay between yields (see
+            // its doc comment), so 400 tokens maximises the wall-clock
+            // window in which the Stop-generation affordance is observably
+            // present — see `TurnLoopActionUITests.testCancelStopsGeneration`
+            // for why this is the strongest honest assertion available
+            // without adding delay support to the shared scripted backend.
+            return [
+                .tokens(Array(repeating: "word ", count: 400)),
+                .tokens(Array(repeating: "word ", count: 400))
+            ]
+
         default:
             return fallbackTurns
         }

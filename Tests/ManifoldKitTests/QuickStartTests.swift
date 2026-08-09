@@ -324,6 +324,92 @@ final class QuickStartTests: XCTestCase {
             "The wired closure must resolve the live source title through the real session store")
     }
 
+    /// Regression guard for #2453 — `quickStart()` must wire
+    /// `viewModel.onSessionBranched` so "Branch from here" actually switches
+    /// the app to the new session, not just create-and-strand it.
+    /// `ChatGenerationCoordinator` invokes this closure with the new
+    /// session's ID once `ConversationRuntime.branch(from:)` has persisted
+    /// it; before this fix `quickStart()` left the seam unwired (unlike its
+    /// `onFirstMessage` / `resolveBranchOriginTitle` siblings above), so the
+    /// source session stayed active and the branched session only surfaced
+    /// after an unrelated sidebar reload.
+    ///
+    /// The load-bearing assertion is on `result.viewModel.activeSession`, NOT
+    /// `result.sessionManager.activeSession`: `ChatView`'s transcript keys off
+    /// `viewModel.activeSessionID` (`ChatHistoryView`'s
+    /// `.task(id: viewModel.activeSessionID)`), which `quickStart()`'s
+    /// documented single-session recipe never bridges from
+    /// `SessionManagerViewModel` — a sidebar host (e.g. `ManifoldDemoApp`)
+    /// supplies that bridge itself. An earlier version of this test asserted
+    /// only `sessionManager.activeSession`, which the fix could satisfy while
+    /// leaving the actual chat surface stranded on the source session — a
+    /// write with no reader, the same defect class as the original bug in
+    /// the opposite direction. Asserting on `viewModel.activeSession` is what
+    /// catches that: a no-op (or sessionManager-only) implementation fails
+    /// this line.
+    func test_quickStart_wiresOnSessionBranched_switchesActiveSession() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        XCTAssertNotNil(result.viewModel.onSessionBranched,
+            "quickStart() must wire onSessionBranched so branching actually navigates (#2453)")
+
+        let source = try await result.sessionManager.createSession(title: "Root conversation")
+        result.sessionManager.activeSession = source
+        await result.viewModel.switchToSession(source)
+
+        // Simulate what `ConversationRuntime.branch(from:)` does: persist a
+        // new session directly (bypassing the closure under test), then
+        // invoke the closure the way `ChatGenerationCoordinator` does —
+        // with only the new session's ID, exactly as the real turn loop
+        // calls it.
+        var branched = ChatSession(title: "New Chat")
+        branched.branchOriginSessionID = source.id
+        branched.branchOriginTitleSnapshot = "Root conversation"
+        try await result.bootstrap.persistence.insertSession(branched)
+
+        await result.viewModel.onSessionBranched?(branched.id)
+
+        // The wired closure defers `viewModel.switchToSession(_:)` onto its
+        // own `Task` (see `QuickStart.swift`'s doc comment on
+        // `onSessionBranched` for why: awaiting it inline would await the
+        // teardown of the very stream-drain task this closure runs on) — so
+        // `viewModel.activeSession` is not guaranteed to have moved the
+        // instant `onSessionBranched?` returns. Poll rather than assume
+        // synchronous completion.
+        await waitUntil { result.viewModel.activeSession?.id == branched.id }
+
+        XCTAssertEqual(result.viewModel.activeSession?.id, branched.id,
+            "onSessionBranched must switch viewModel.activeSession to the newly branched session — ChatView's transcript reads viewModel.activeSessionID, not sessionManager.activeSession")
+
+        XCTAssertEqual(result.sessionManager.activeSession?.id, branched.id,
+            "onSessionBranched must also switch sessionManager.activeSession so a sidebar host's session list reflects the branch")
+    }
+
+    /// Bounded poll for a condition driven by a fire-and-forget `Task` (the
+    /// deferred `switchToSession` hop in `onSessionBranched`'s wiring), not a
+    /// fixed sleep — matches the established idiom in
+    /// `Tests/ManifoldUITests/LoadDispatchCoordinationTests.swift` and
+    /// siblings. `Task.yield()` between checks, never `Task.sleep`, so this
+    /// resolves as soon as the MainActor task actually runs rather than
+    /// waiting out a guessed delay.
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping @MainActor () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        if condition() { return }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            await Task.yield()
+            if condition() { return }
+        }
+        XCTFail("Condition not met before timeout", file: file, line: line)
+    }
+
     /// Compile-time check that `QuickStartResult` is `Sendable`. The README's
     /// snippet stores the result in a `@State` property or passes it across
     /// task boundaries; losing Sendability would silently break that.
