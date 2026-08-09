@@ -35,7 +35,31 @@
 # runs named methods. Empty is allowed for non-test lanes (a generic script, a
 # companion/external CI system this repo can't see into, prose-manual QA).
 # Required (non-empty) when exec_kind is live|scripted AND lane_ref contains a
-# bare `.swift` test-file path — see check_manifest_integrity.
+# bare `.swift` test-file path — see check_manifest_integrity. A "Suite" name
+# resolves against the row's OWN lane_ref first (any bare `.swift` element
+# whose basename matches), then falls back to the historical
+# Example/AdvancedUITests/<Suite>.swift convention — see
+# resolve_lane_method_suite_file. A workflow lane_ref is checked two ways
+# depending on where the suite resolved: an Example/AdvancedUITests/* suite
+# must appear in the workflow's exact `-only-testing:AdvancedUITests/Suite/
+# method` list; any other suite (e.g. Tests/**) must be reachable through a
+# `--filter <pattern>` argument in the workflow that matches "Suite/method"
+# as a substring (the real semantics of `swift test --filter`/`scripts/
+# test.sh --filter`, which is a regex over the qualified test name, not an
+# exact list) — matched against the full "Suite/method" pair, not just
+# Suite, so a filter naming one method doesn't also bind every other method
+# in the same suite. A non-UI-test workflow is ALSO checked for a `--skip
+# <pattern>` argument that would exclude the claimed Suite/method from an
+# already-`--filter`-matched set; an unparseable --skip value (quoted,
+# `--skip=value`, or a regex starting with punctuation — the extraction
+# regex only understands a bare unquoted identifier after `--skip `) fails
+# closed with a named "cannot verify" violation rather than silently
+# passing, the same discipline check_product_completeness's own
+# extraction-regex guard uses below. (Known, deliberately unfixed parallel
+# gap: xcodebuild's `-only-testing:` path is checked above only for
+# presence in the workflow, never for a co-occurring `-skip-testing:`
+# argument that could exclude the same Suite/method — no manifest row's
+# lane_ref uses `-skip-testing:` today, so there is no current exposure.)
 #
 # Modes:
 #   scripts/demo-coverage.sh                  human scoreboard (stdout)
@@ -133,10 +157,13 @@ API_BASELINE_DIR="$REPO_ROOT/Tests/APIFreezeTests/api-surface-baseline"
 EXAMPLE_ROOT="$REPO_ROOT/Example"
 PACKAGE_SWIFT="$REPO_ROOT/Package.swift"
 PRODUCT_ALLOWLIST="$REPO_ROOT/scripts/demo-coverage-product-allowlist.txt"
-# Hardcoded convention: every lane_methods "Suite/method" entry names a suite
-# file at this path. True for every row today (all UI-test-bound capabilities
-# live in the one Example app's UI test target) — if a future capability's
-# tests live elsewhere, this is the one place to generalize.
+# Default/fallback convention for lane_methods "Suite/method" resolution: a
+# suite named with no matching bare .swift element in the row's OWN lane_ref
+# (see resolve_lane_method_suite_file) is assumed to live here — true for
+# every UI-test-bound row, none of which lists its own suite file in lane_ref.
+# A row whose tests live elsewhere (e.g. Tests/**) names its suite file
+# directly in lane_ref instead; resolve_lane_method_suite_file tries that
+# first.
 UI_TEST_SUITE_DIR="$REPO_ROOT/Example/AdvancedUITests"
 
 EXPECTED_HEADER=$'id\ttitle\tproducts\tvehicle_kind\tvehicle_path\tdoc\tlane\tlane_ref\tlane_methods\texec_kind\tnotes'
@@ -198,6 +225,38 @@ comma_list_elements() {
         [[ -n "$elem" ]] && printf '%s\n' "$elem"
     done
     IFS="$old_ifs"
+}
+
+resolve_lane_method_suite_file() {
+    # $1: a row's raw lane_ref, $2: a lane_methods "Suite" name (no extension).
+    # Prints the repo-relative suite-file path a lane_methods entry's "Suite"
+    # should resolve to, on stdout, and returns 0 — or returns 1 with no
+    # output if it can't be resolved.
+    #
+    # Preferred: a bare `.swift` element in the row's OWN lane_ref whose
+    # basename (sans extension) matches Suite exactly — this is the general
+    # case, so a capability whose tests live outside Example/AdvancedUITests
+    # (e.g. an XCTest under Tests/) can still be method-bound (#2453 M3,
+    # toolschema-macro). Fallback: the historical hardcoded UI_TEST_SUITE_DIR
+    # convention, kept so every pre-existing UI-test row — which never lists
+    # its own suite file in lane_ref (see chat-ui/theming/tool-calling/
+    # appintents above) — keeps resolving exactly as before.
+    local lane_ref="$1" suite="$2" elem
+    while IFS= read -r elem; do
+        case "$elem" in
+            *.swift)
+                if [[ "$(basename "$elem" .swift)" == "$suite" ]]; then
+                    printf '%s\n' "$elem"
+                    return 0
+                fi
+                ;;
+        esac
+    done < <(comma_list_elements "$lane_ref")
+    if [[ -e "$UI_TEST_SUITE_DIR/${suite}.swift" ]]; then
+        printf '%s\n' "Example/AdvancedUITests/${suite}.swift"
+        return 0
+    fi
+    return 1
 }
 
 # ---- Manifest integrity (part a of --check; also run before every mode so ----
@@ -337,22 +396,25 @@ check_manifest_integrity() {
                     continue
                 fi
 
-                local suite_file="$UI_TEST_SUITE_DIR/${lm_suite}.swift"
-                if [[ ! -e "$suite_file" ]]; then
-                    add_integrity_violation "$id: lane_methods entry '$lm_entry' names suite file Example/AdvancedUITests/${lm_suite}.swift, which does not exist"
+                local suite_file_rel=""
+                if ! suite_file_rel="$(resolve_lane_method_suite_file "$lane_ref" "$lm_suite")"; then
+                    add_integrity_violation "$id: lane_methods entry '$lm_entry' names suite '${lm_suite}', which does not resolve to a suite file (checked lane_ref's own .swift path(s), then the Example/AdvancedUITests/${lm_suite}.swift default)"
                 # Anchored so a commented-out declaration (`// func testFoo()`)
                 # can't false-accept: an unanchored `grep -q "func X("` matches
                 # a substring anywhere on the line, including inside a `//`
                 # comment. Requires the `func` keyword to start the (optional
                 # access-modifier-prefixed) declaration at the start of the
                 # line, modulo leading whitespace.
-                elif ! grep -qE "^[[:space:]]*(@[A-Za-z_]+[[:space:]]+)?(public |package |internal |private )?func ${lm_method}\\(" "$suite_file"; then
-                    add_integrity_violation "$id: lane_methods entry '$lm_entry' — no 'func ${lm_method}(' found in Example/AdvancedUITests/${lm_suite}.swift"
+                elif ! grep -qE "^[[:space:]]*(@[A-Za-z_]+[[:space:]]+)?(public |package |internal |private )?func ${lm_method}\\(" "$REPO_ROOT/$suite_file_rel"; then
+                    add_integrity_violation "$id: lane_methods entry '$lm_entry' — no 'func ${lm_method}(' found in ${suite_file_rel}"
                 # Bare .swift lane_ref (not a workflow) is a stronger promise
                 # than "this method exists somewhere in AdvancedUITests" — it
                 # says THIS method lives in THIS suite file. Catch drift where
                 # lane_methods names a real method that has since moved to a
-                # different suite than the row's lane_ref claims.
+                # different suite than the row's lane_ref claims. (Only
+                # meaningful for the UI-test convention — a row that resolved
+                # its suite file directly from its own lane_ref, per
+                # resolve_lane_method_suite_file, can't drift from itself.)
                 elif [[ -n "$lane_ref" ]]; then
                     local lr_elem_c lr_has_matching_bare_swift=0 lr_has_any_bare_swift=0
                     while IFS= read -r lr_elem_c; do
@@ -370,16 +432,117 @@ check_manifest_integrity() {
                     fi
                 fi
 
-                # If lane_ref names a workflow, the method must ALSO appear in
-                # that workflow's -only-testing list — otherwise lane_methods
-                # could claim CI coverage the workflow doesn't actually give it.
+                # If lane_ref names a workflow, the method must ALSO be
+                # reachable through that workflow's invocation — otherwise
+                # lane_methods could claim CI coverage the workflow doesn't
+                # actually give it. Two shapes, because the invocation style
+                # differs by suite location:
+                #   - Example/AdvancedUITests/* suites run via xcodebuild's
+                #     exact `-only-testing:AdvancedUITests/Suite/method`, so
+                #     the workflow must name this exact Suite/method pair.
+                #   - Any other suite (e.g. Tests/**) runs via `swift test
+                #     --filter <pattern>` (scripts/test.sh's --filter is the
+                #     same flag), whose pattern is a regex matched against the
+                #     qualified name — a substring match, not an exact list —
+                #     so the check is "does some --filter value in this
+                #     workflow appear as a substring of Suite/method",
+                #     matched against the full pair (not just Suite) so a
+                #     filter naming one method can't also bind a sibling
+                #     method in the same suite.
                 local lr_elem_b
                 while IFS= read -r lr_elem_b; do
                     case "$lr_elem_b" in
                         *.yml)
-                            if [[ -e "$REPO_ROOT/$lr_elem_b" ]] && ! grep -q "AdvancedUITests/${lm_suite}/${lm_method}" "$REPO_ROOT/$lr_elem_b"; then
-                                add_integrity_violation "$id: lane_methods entry '$lm_entry' does not appear in ${lr_elem_b}'s -only-testing list"
-                            fi
+                            [[ -e "$REPO_ROOT/$lr_elem_b" ]] || continue
+                            case "$suite_file_rel" in
+                                Example/AdvancedUITests/*)
+                                    if ! grep -q "AdvancedUITests/${lm_suite}/${lm_method}" "$REPO_ROOT/$lr_elem_b"; then
+                                        add_integrity_violation "$id: lane_methods entry '$lm_entry' does not appear in ${lr_elem_b}'s -only-testing list"
+                                    fi
+                                    ;;
+                                *)
+                                    # The captured class includes `/` and the
+                                    # match target is "$lm_suite/$lm_method"
+                                    # (not just "$lm_suite") so a workflow
+                                    # filter of "Suite/test_a" doesn't also
+                                    # bind "Suite/test_b" — a bare `[A-Za-z0-9_]+`
+                                    # capture truncated at the `/`, so any
+                                    # method-scoped --filter value silently
+                                    # matched every method in the suite.
+                                    local wf_filter wf_filter_matched=0
+                                    while IFS= read -r wf_filter; do
+                                        if [[ -n "$wf_filter" && "${lm_suite}/${lm_method}" == *"$wf_filter"* ]]; then
+                                            wf_filter_matched=1
+                                            break
+                                        fi
+                                    done < <(grep -oE -- '--filter[[:space:]]+[A-Za-z0-9_/]+' "$REPO_ROOT/$lr_elem_b" | awk '{print $2}')
+                                    if [[ "$wf_filter_matched" -eq 0 ]]; then
+                                        add_integrity_violation "$id: lane_methods entry '$lm_entry' — ${lr_elem_b} has no --filter argument matching '${lm_suite}/${lm_method}'"
+                                    fi
+                                    # `swift test`/`scripts/test.sh` also
+                                    # accept `--skip <pattern>`, which excludes
+                                    # matches from an already-filtered set — a
+                                    # matching --filter is not the whole story
+                                    # if a --skip pattern also matches this
+                                    # exact Suite/method.
+                                    #
+                                    # The value-extraction regex below only
+                                    # parses a plain unquoted identifier
+                                    # (`--skip test_a`) — it can't see a
+                                    # quoted value (`--skip 'test_a'`/`--skip
+                                    # "test_a"`), the `--skip=test_a` equals
+                                    # form, or a regex value starting with
+                                    # punctuation (`--skip .*test_a`). A
+                                    # workflow using any of those would have a
+                                    # real --skip argument that this check
+                                    # can't parse, and treating "couldn't
+                                    # parse" as "no --skip" is EXACTLY the
+                                    # fail-open this whole mechanism exists to
+                                    # close — the inverted-polarity mirror of
+                                    # --filter's fail-CLOSED behavior above.
+                                    # So: count `--skip` tokens (excluding
+                                    # `--skip-update`, which has no
+                                    # whitespace/`=` right after `skip`)
+                                    # independently of what the
+                                    # value-extraction regex can parse — the
+                                    # same count-independently discipline
+                                    # check_product_completeness uses above
+                                    # for its own extraction regex. A
+                                    # mismatch means an unparseable --skip
+                                    # argument is present, so this fails
+                                    # closed with a named error instead of
+                                    # silently reporting clean.
+                                    local wf_skip_token_count wf_skip_parsed_count
+                                    # `|| true` inside the substitution (not
+                                    # after it): under `set -euo pipefail`, a
+                                    # workflow with NO --skip at all — the
+                                    # common case — makes grep exit 1 with
+                                    # zero matches; pipefail then propagates
+                                    # that 1 through the always-succeeding
+                                    # `wc -l`/`tr`, and `set -e` would abort
+                                    # the whole script right here instead of
+                                    # reporting a clean 0 count. grep/wc/tr
+                                    # are all ScriptFailOpenAuditTest tolerant
+                                    # commands, so this is the idiom, not an
+                                    # unapproved swallow.
+                                    wf_skip_token_count="$(grep -oE -- '--skip([[:space:]]|=)' "$REPO_ROOT/$lr_elem_b" | wc -l | tr -d ' ' || true)"
+                                    wf_skip_parsed_count="$(grep -oE -- '--skip[[:space:]]+[A-Za-z0-9_/]+' "$REPO_ROOT/$lr_elem_b" | wc -l | tr -d ' ' || true)"
+                                    if [[ "$wf_skip_token_count" -gt "$wf_skip_parsed_count" ]]; then
+                                        add_integrity_violation "$id: lane_methods entry '$lm_entry' — ${lr_elem_b} has a --skip argument this gate cannot parse (quoted, --skip=value, or a regex value) — cannot verify '${lm_suite}/${lm_method}' isn't excluded"
+                                    else
+                                        local wf_skip wf_skip_matched=0
+                                        while IFS= read -r wf_skip; do
+                                            if [[ -n "$wf_skip" && "${lm_suite}/${lm_method}" == *"$wf_skip"* ]]; then
+                                                wf_skip_matched=1
+                                                break
+                                            fi
+                                        done < <(grep -oE -- '--skip[[:space:]]+[A-Za-z0-9_/]+' "$REPO_ROOT/$lr_elem_b" | awk '{print $2}')
+                                        if [[ "$wf_skip_matched" -eq 1 ]]; then
+                                            add_integrity_violation "$id: lane_methods entry '$lm_entry' — ${lr_elem_b} has a --skip argument that excludes '${lm_suite}/${lm_method}'"
+                                        fi
+                                    fi
+                                    ;;
+                            esac
                             ;;
                     esac
                 done < <(comma_list_elements "$lane_ref")

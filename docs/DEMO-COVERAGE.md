@@ -73,11 +73,58 @@ Every capability in `scripts/demo-coverage-manifest.tsv` is scored against:
   into, prose-manual QA). It is **required** (non-empty) when `exec_kind` is
   `live`/`scripted` and `lane_ref` contains a bare `.swift` test-file path —
   R3 for a test-file row must be method-bound, not a suite-level assumption.
-  When present, every entry is checked: the method must exist in its suite
-  file (`Example/AdvancedUITests/<Suite>.swift`, `grep 'func <method>('`),
-  and if `lane_ref` names a workflow, the entry must ALSO appear in that
-  workflow's `-only-testing` list — otherwise a row could claim CI coverage
-  the workflow doesn't actually give it.
+  **This is a review convention, not something `--check` enforces.** The
+  trigger keys on a bare `.swift` element literally being present in
+  `lane_ref` — so a row can still leave the vehicle's own `.swift` path out
+  of `lane_ref`, naming only a workflow or generic script instead, and
+  `--check` will not flag the resulting empty `lane_methods`; nothing ties
+  "the vehicle is a test file" to "`lane_ref` must name it." Closing that gap
+  properly means keying the requirement off `vehicle_path` being test-shaped
+  instead of `lane_ref` containing a bare `.swift` element, and that is not a
+  one-line change (a naive version would newly misclassify existing rows,
+  e.g. `theming`) — out of scope here. Until it closes, treat an unbound
+  test-shaped vehicle as a real review finding, the same way `manual` not
+  satisfying R3 is a real review finding even though nothing computes it
+  automatically.
+
+  When present, every entry is checked. `Suite` resolves against a suite
+  *file*: first, a bare `.swift` element in the row's OWN `lane_ref` whose
+  basename matches `Suite` (a capability whose tests live outside
+  `Example/AdvancedUITests`, e.g. under `Tests/`, names its own suite file
+  this way — the `toolschema-macro` row is the first to do this, #2453 M3);
+  failing that, the historical `Example/AdvancedUITests/<Suite>.swift`
+  default (every UI-test-bound row, which never lists its own suite file in
+  `lane_ref`). Once resolved, the method must exist in that file
+  (`grep 'func <method>('`). If `lane_ref` also names a workflow (a `.yml`
+  element), the entry must ALSO be reachable through that workflow's
+  invocation — checked one of two ways depending on where the suite
+  resolved: an `Example/AdvancedUITests/*` suite must appear in the
+  workflow's exact `-only-testing:AdvancedUITests/Suite/method` list; any
+  other suite must be reachable through a `--filter <pattern>` argument in
+  the workflow that matches `Suite/method` (the full pair, not just `Suite`)
+  as a substring — the real semantics of `swift test --filter`/`scripts/
+  test.sh --filter`, which is a regex over the qualified test name, not an
+  exact list. Matching the full pair (rather than `Suite` alone) matters: a
+  workflow filter naming one method (`--filter Suite/testA`) must not also
+  bind a sibling method (`Suite/testB`) that the workflow never actually
+  runs. Otherwise a row could claim CI coverage the workflow doesn't
+  actually give it.
+
+  For a non-`Example/AdvancedUITests` suite, a matching `--filter` is not
+  the whole story: `swift test`/`scripts/test.sh` also accept `--skip
+  <pattern>`, which excludes matches from an already-filtered set, so the
+  check also verifies no `--skip` argument in the workflow matches the
+  claimed `Suite/method`. This check is itself **fail-closed**: it can only
+  parse a bare unquoted `--skip` value (`--skip test_a`), so a quoted value
+  (`--skip 'test_a'`/`--skip "test_a"`), the `--skip=test_a` equals form, or
+  a regex value starting with punctuation (`--skip .*test_a`) all count as
+  "an unparseable `--skip` is present" and fail the row with a named
+  "cannot verify" violation rather than silently reading as "not skipped."
+  (Known, deliberately unfixed parallel gap: the `-only-testing:` UI-test
+  path above is checked only for the claimed `Suite/method`'s presence, not
+  for a co-occurring `-skip-testing:` argument that could exclude it — no
+  manifest row's `lane_ref` uses `-skip-testing:` today, so there's no
+  current exposure.)
 
 A fourth signal, not per-row and **not ratcheted** (see `--check` below):
 **lexical public-type mentions** — of every public type ManifoldKit ships
