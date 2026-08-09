@@ -1101,17 +1101,32 @@ firing:
   cannot fire a cross-repo `workflow_dispatch` any more than it can a cross-repo
   `repository_dispatch`); if that secret is unset the step **fails outright** rather than silently
   falling back to a read-only check that would then pass on stale evidence.
-- **On `merge_group`** — the run that actually blocks the queue — it runs the script's default
-  read-only mode with the ordinary `GITHUB_TOKEN`. By then the dispatched runs from the
-  `pull_request` step have had minutes to complete and satisfy freshness, so this is a fast read; it
-  deliberately does **not** use `--dispatch` (its poll ceiling is 40 × 30s = 20 min per companion, up
-  to 40 min for both sequentially — that would hold a merge-queue slot for no benefit).
+- **On `merge_group` it deliberately does not run at all.** An earlier revision put a read-only
+  check here on the theory that `merge_group` is "the run that actually blocks". Review showed that
+  gate cannot work. Freshness is graded against `origin/main`'s tip *at the moment the script runs*,
+  and in a `merge_group` run that tip is main **without** the release PR — a value that changes every
+  time anything else merges. Concretely: force-push at 09:45 dispatches canaries at ~09:50; an
+  unrelated batch merges at 10:25; the release batch validates at 10:30; the 09:50 canary now
+  predates the 10:25 tip, reads STALE, and the batch is ejected — and re-dispatching restarts the
+  identical race. Main's median inter-commit gap is ~95 minutes with 44% of gaps under an hour, so
+  that is a routine outcome, not a corner case. It would have re-created the always-red gate this
+  design exists to avoid.
 
-**If the `merge_group` check reds on staleness, that is expected, not a bug, whenever nobody has
-force-pushed the changelog rewrite yet** — only the CI-dark bot regenerations have touched the
-branch, so the `pull_request` dispatch step never ran and no fresh evidence exists. The fix is the
-same either way: run `bash scripts/companion-canary-check.sh --dispatch` locally, then push (RELEASE.md
-step 2 covers this in the runbook).
+**The `pull_request` step is the blocking one, and that is sufficient.** `lint` is a required status
+check, so the release PR cannot be queued until that run is green, and `--dispatch` makes its
+evidence genuinely fresh at that moment. What is *not* covered is main moving between that check and
+the merge — a real residual gap, accepted knowingly, and the same exposure every other pre-merge
+check in this repo carries. Do not "fix" it by adding a `merge_group` canary step; that is the race
+above.
+
+**If the `pull_request` check reds on staleness**, the usual cause is that nobody has force-pushed
+the changelog rewrite yet — only the CI-dark bot regenerations have touched the branch, so the
+dispatch step never ran. Two other causes are now distinguishable rather than presenting as the same
+"STALE" message: the `COMPANION_DISPATCH_TOKEN` secret being unset (the step fails outright), and the
+token being present but under-scoped, which the script now reports as a named dispatch failure and
+exits non-zero on instead of quietly grading the previous run. `gh workflow run` needs **Actions:
+read+write** on the companion repos, which is a *different* permission from the `contents` scope
+`repository_dispatch` needs — a PAT minted only for `notify-companions` will 403 here.
 
 **Why this lives in `lint`'s `pull_request`/`merge_group` triggers, not a dedicated release
 workflow — a finding worth preserving, because the next reader will otherwise "simplify" this into
@@ -1171,10 +1186,28 @@ step output so a future reader can see which one decided the outcome.
 `scripts/migration-index-check.sh --release` whenever a release is detected, and fails if any row
 in `docs/MIGRATION-INDEX.md`'s Release column still says `next` — every migration note must have
 its `next` placeholder flipped to the real version before that version ships (RELEASE.md's
-changelog-rewrite step is where this happens by hand). The completeness half of that script (no
-`--release`, "every retired/breaking API has a migration-note row at all") already has its own
-in-suite Swift audit that runs per-PR via `ci.yml`'s `test` job — `lint` intentionally does not
-duplicate that half, only the release-only "no row still says `next`" rule.
+changelog-rewrite step is where this happens by hand).
+
+The completeness half (no `--release`) runs on **every** `lint` run, not just releases. Its
+authoritative tripwire is `MigrationIndexAuditTest`, but that audit is markdown-driven, and this
+file's own rule — "a new markdown-driven audit ships with a `lint` mirror, or it does not block on
+the PRs that can break it" (see "Documentation gates" above) — applies to it exactly. A PR adding a
+migration note with no index row is typically docs-only: `ci.yml`'s `pull_request` paths carry no
+`docs/**` entry, so the required `test` job is satisfied by the shim in seconds and
+`affected-suites.sh` resolves the diff to `NONE`. Without the mirror the audit would first execute
+inside the merge queue and poison the batch — the #2306 shape. Do not make the completeness step
+release-conditional to "save time"; it costs one shell invocation and it is the only thing that runs
+it on the PRs that break it.
+
+**Known accepted limitation — a release batched with a new migration note reds.** The `--release`
+check runs against the merge-queue candidate tree, and the queue batches up to 5 entries. If the
+release PR is batched with a PR that adds a note carrying a legitimate `| next |` row — the normal
+way to add one — the candidate contains both the flipped rows and that new `next` row, the gate
+fails, and the whole batch is ejected. There is nothing the release author can pre-satisfy. This is
+accepted rather than engineered around: releases are infrequent and deliberate, and the recovery is
+simply to re-queue the release PR on its own. If it ever bites twice, the fix is to scope the
+`--release` check to rows whose note file is not newly added in the same candidate — not to weaken
+the rule.
 
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 

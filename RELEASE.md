@@ -150,45 +150,50 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
 2. **Companion-canary gate — CI-enforced, hard-blocking, no override flag.**
    `.github/workflows/lint.yml`'s `lint` job now runs
    `scripts/companion-canary-check.sh` automatically once it detects a release
-   in flight — which needs **both** that `version.txt` is a valid SemVer version
-   strictly newer than the latest published tag **and** that the change being
-   validated modifies `version.txt` itself. The release PR satisfies the second
-   condition by construction, so this is invisible here; it exists to stop an
-   unrelated PR firing the gates in the window after the release PR merges but
-   before `release-please` cuts the tag. The mode then depends on which event
-   is firing (freshness, not just "is a release happening", is why):
-   - On this step's **`pull_request` run** (i.e. right now, when you push the
-     changelog-rewrite commit below) it runs `--dispatch`, triggering fresh
-     canary runs on both companions and waiting for them — this is what makes
-     the later `merge_group` check meaningfully fresh instead of reading a
-     stale nightly result. It needs the `COMPANION_DISPATCH_TOKEN` repo
-     secret; if that's missing the step fails loudly rather than silently
-     downgrading to a read that could pass on stale evidence.
-   - On the **`merge_group` run** (step 4 below, when the queue actually
-     validates the merge) it reads the by-then-fresh result read-only — this
-     is the run that actually blocks.
+   in flight — which needs **both** that `version.txt` is ahead of the latest
+   published tag **and** that the change being validated modifies `version.txt`
+   itself. The release PR satisfies the second condition by construction, so
+   this is invisible here; it exists to stop an unrelated PR firing the gates
+   in the window after the release PR merges but before `release-please` cuts
+   the tag.
 
-   So pushing the changelog rewrite in this step is not optional busywork —
-   it's what supplies the fresh canary evidence the blocking `merge_group`
-   check depends on. You can still check the state manually before pushing:
+   **It runs on the `pull_request` event only** — in practice, when you push
+   the changelog rewrite in step 3 — using `--dispatch`, which triggers fresh
+   canary runs on both companions and waits for them. It needs the
+   `COMPANION_DISPATCH_TOKEN` repo secret; if that is missing, or present but
+   lacking **Actions: read+write** on the companion repos, the step fails
+   loudly rather than grading a stale previous run.
+
+   That single run is what blocks: `lint` is a required status check, so the
+   release PR cannot be queued until it is green. There is deliberately no
+   second check on `merge_group` — freshness there is graded against a main tip
+   that moves with every unrelated merge, so it would red the batch for reasons
+   having nothing to do with the release (AGENTS.md § "Release workflow" has
+   the worked timeline).
+
+   **Sequencing, so this doesn't surprise you:** the dispatch happens when you
+   push in step 3, not now, and it can take **up to 45 minutes** (it waits for
+   both companion canaries). Budget for that before you expect to run step 4's
+   `--auto`. To front-run it, trigger the canaries by hand now and let them
+   build while you write the changelog:
 
    ```bash
-   bash scripts/companion-canary-check.sh                # check last known result
-   bash scripts/companion-canary-check.sh --dispatch      # trigger fresh runs and wait (slower, authoritative)
+   bash scripts/companion-canary-check.sh                # check last known result (fast, may read STALE)
+   bash scripts/companion-canary-check.sh --dispatch      # trigger fresh runs and wait (slow, authoritative)
    ```
 
-   A red or stale canary means core moved a seam a companion still depends
-   on. Land the companions' adaptation PRs in lockstep (§ "Companion
-   pin-bump releases" in AGENTS.md) before continuing — CI will refuse to
-   let the release PR merge otherwise.
+   A red canary means core moved a seam a companion still depends on. Land the
+   companions' adaptation PRs in lockstep (§ "Companion pin-bump releases" in
+   AGENTS.md) before continuing — CI will refuse to let the release PR merge
+   otherwise.
 
-   **If the `merge_group` check reds on staleness** (not FAIL — STALE), it
-   almost always means no `pull_request` dispatch ever ran for this release —
-   e.g. only bot changelog regenerations have touched the branch so far, which
-   never execute (AGENTS.md § "Release workflow"). The fix is the same
-   `--dispatch` command above, run locally, followed by a push — that
-   re-triggers this step's `pull_request` run with fresh evidence for the next
-   `merge_group` attempt.
+   **If it reds on STALE rather than FAIL**, the three causes, most to least
+   likely: (a) nobody has force-pushed yet, so no dispatch has run — only bot
+   changelog regenerations have touched the branch and those never execute
+   (AGENTS.md § "Release workflow"); (b) main moved after the canaries were
+   dispatched, which re-dispatching fixes; (c) the token could not dispatch at
+   all — that now surfaces as a named dispatch error and a non-zero exit, not
+   as a STALE reading.
 
 3. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
    branch in its worktree (`release-please--branches--main`). CI's
