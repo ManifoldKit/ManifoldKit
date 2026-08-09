@@ -797,8 +797,8 @@ jobs:
       - name: companion-canary-gate — skip (not a release)
         if: always() && (github.event_name == 'push' || steps.release_context.outputs.is_release == 'false')
         run: |
-          echo "Not a release in this run (or release-context does not apply to this event); the companion-canary gate is not required here."
-          echo "Passing companion-canary-gate to provide the required check context."
+          echo "Not a release in this run (or release-context does not apply to this event)."
+          echo "The companion-canary gate does not apply here — no dispatch or check was performed."
 
       # WHY THIS STEP IS SPLIT BY EVENT (pull_request vs. merge_group), not run
       # once in read-only mode. companion-canary-check.sh's PRIMARY check is
@@ -889,8 +889,8 @@ jobs:
       - name: migration-index-gate — skip (not a release)
         if: always() && (github.event_name == 'push' || steps.release_context.outputs.is_release == 'false')
         run: |
-          echo "Not a release in this run (or release-context does not apply to this event); the migration-index gate is not required here."
-          echo "Passing migration-index-gate to provide the required check context."
+          echo "Not a release in this run (or release-context does not apply to this event)."
+          echo "The migration-index gate does not apply here — no check was performed."
 
       # Release-only, hard-blocking: fails if any docs/MIGRATION-INDEX.md row
       # still says "next" in the Release column while a version is shipping —

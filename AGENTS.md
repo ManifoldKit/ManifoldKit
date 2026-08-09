@@ -1120,13 +1120,15 @@ something that never runs.** The release-please branch
 - **Zero `push`-event workflow runs have ever fired on it.** Nothing in this repo's workflow
   triggers on `push` to that branch, so a check gated on `push` would never execute.
 - **Every `github-actions[bot]`-actor `pull_request` run on it sits at conclusion
-  `action_required` and never executes.** Verified across all 6 workflows that trigger on that
-  branch (`Lint`, `CI`, `CI Required Test Shim`, `CodeQL`, `README Snippets`, `cold-start-human`),
-  94 runs total over the 0.73.0 and 0.74.0 cycles
-  (`gh api repos/ManifoldKit/ManifoldKit/actions/runs?branch=release-please--branches--main`). Only
-  `roryford`-actor pushes — i.e. the manual changelog-rewrite force-push — ever complete. A check
-  gated to fire only on a bot regeneration would silently never run under this repo's Actions
-  settings.
+  `action_required` and never executes.** Measured 2026-08-09 over the 500 most recent workflow
+  runs on that branch (2026-07-12 → 2026-08-09, `gh api 'repos/ManifoldKit/ManifoldKit/actions/runs?
+  branch=release-please--branches--main&per_page=100&page=N'`): 450 bot-actor runs sat at
+  `action_required`, only 5 bot-actor runs ever completed, and all 45 completed runs were
+  `roryford`-actor — i.e. the manual changelog-rewrite force-push is the only thing that has ever
+  made CI run there. (A narrower "94 runs total over the 0.73.0/0.74.0 cycles" figure appears
+  elsewhere in this doc, from an earlier, differently-scoped count across a fixed 6-workflow list —
+  both stand; this bullet's figure is the current, reproducible one.) A check gated to fire only on
+  a bot regeneration would silently never run under this repo's Actions settings.
 - **`merge_group` runs always execute to completion** (actor `roryford`, every recent run
   succeeded), and `lint` (the job, not a specific step) is one of exactly three required status
   contexts on `main` (`test`, `lint`, `api-digester-check`) under the merge queue's ALLGREEN
@@ -1136,10 +1138,34 @@ Given those three facts, a step added inside the existing `lint` job's `pull_req
 triggers is the *only* placement that both (a) actually executes on the release PR and (b) blocks
 the merge — with no new required-context registration needed. Registering a brand-new required
 context is a known trap in this repo: `readme-snippets` has sat un-required for exactly that
-reason (see "Documentation gates" above). Detection of "is this run validating a release" is a
-`release-context` step in that job (`version.txt` vs. the latest published tag via `gh api
-repos/.../releases/latest`) that **fails closed** — an API error or empty/missing `version.txt`
-fails the job rather than silently skipping the release-only gates.
+reason (see "Documentation gates" above).
+
+Detection of "is this run validating a release" is a `release-context` step in that job with **two
+necessary conditions**, not one — do not simplify this back to a bare version comparison, which
+reintroduces a real false-positive window (found in review):
+1. `version.txt` is ahead of the latest published tag (`gh api repos/.../releases/latest`).
+2. The change actually under validation modifies `version.txt` itself — diffed against
+   `github.event.merge_group.base_sha`/`head_sha` on `merge_group`, or against
+   `origin/${{ github.base_ref }}` on `pull_request` (same idiom as the `dep-budget`/
+   `large-file-guard` steps in the same job).
+
+**Why condition 2 exists**: after the release PR merges, `main`'s `version.txt` already reads the
+new version, but `releases/latest` still returns the previous tag until `release-please.yml`'s
+push-triggered run creates the new tag — a window of minutes, longer if that job queues or fails.
+Any unrelated PR whose `merge_group` run lands inside that window would satisfy condition 1 alone
+and wrongly fire both release-only gates on a change that has nothing to do with the release —
+`migration-index-gate` in particular would red on `next` rows that are entirely legitimate on
+`main` right after a release (new notes land right around when old ones get flipped). That is the
+flaky-required-gate pattern this whole change exists to eliminate; requiring condition 2 too closes
+the window, since only the actual release PR (and the merge-queue candidate built from it) ever
+modifies `version.txt`.
+
+The whole step **fails closed** on either condition: an API error, empty/missing `version.txt`, or
+an unresolvable diff (unresolvable `base_sha`/`head_sha`, a failed base-ref fetch, a diff that
+lists zero changed files when a real diff was expected) fails the job rather than guessing — never
+defaulting to "not a release" (which would silently disable the gates) and never defaulting to
+"is a release" (which would red an unrelated PR). Both signals are logged independently in the
+step output so a future reader can see which one decided the outcome.
 
 **Migration-index gate — CI-ENFORCED, release-only.** The same `lint` job runs
 `scripts/migration-index-check.sh --release` whenever a release is detected, and fails if any row

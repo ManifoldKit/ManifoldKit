@@ -148,12 +148,20 @@ while IFS= read -r line; do
 
     # Release column: the first field after the leading "|".
     release_field="$(printf '%s\n' "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')"
-    # The migration-note filename — grep is a tolerant command (repo
-    # convention; see ScriptFailOpenAuditTest's tolerantCommands), so a
-    # non-match here (which should not happen given the filter above) does
-    # not abort the script under pipefail.
-    filename="$(printf '%s\n' "$line" | grep -oE 'MIGRATION-[A-Za-z0-9._-]+\.md' | head -n1 || true)"
-    if [[ -z "$filename" ]]; then
+    # The migration-note filename. Matched natively rather than via
+    # `grep -oE ... | head -n1`: `head` closing the pipe early can SIGPIPE
+    # grep, which `pipefail` would then propagate, so that form needs a
+    # `|| true` to be safe — and a discarded failure is exactly what this
+    # repo's fail-open rules (and the estate lint) exist to stop. Bash's own
+    # `=~` has no pipe, no subprocess and no failure mode to discard.
+    # BASH_REMATCH is available in Bash 3.2, which is what CI runners ship.
+    # The regex must stay unquoted; a quoted one matches literally in 3.2.
+    if [[ "$line" =~ (MIGRATION-[A-Za-z0-9._-]+\.md) ]]; then
+        filename="${BASH_REMATCH[1]}"
+    else
+        # Unreachable given the filter above, which already required this
+        # token — kept so a future edit to that filter degrades to "skip the
+        # row" rather than to an unset variable under `set -u`.
         continue
     fi
 
