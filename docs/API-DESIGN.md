@@ -262,8 +262,7 @@ exemption — see
 Products with **zero real adopters** do not enter the 1.0 stability promise. They may
 break in any minor, always migration-noted — pre-1.0 rules (§4) continue to apply to
 them after core 1.0. Roster: `ManifoldMCP`, `ManifoldMCPHost`,
-`ManifoldAppIntents`, `ManifoldAgentInstructions`, `ManifoldTelemetryOTLP`,
-`ManifoldAppEval`.
+`ManifoldAppIntents`, `ManifoldAgentInstructions`, `ManifoldTelemetryOTLP`.
 
 - **Adopter** = a shipping app or companion package that pins the product AND imports
   it from non-test code, verified by grep — not documentation, not examples, not
@@ -272,6 +271,14 @@ them after core 1.0. Roster: `ManifoldMCP`, `ManifoldMCPHost`,
   experimental despite being the best-documented module of the set — decided
   2026-07-13: MCP graduates only when a consumer app has been built and tested
   against it.)
+- **`ManifoldAppEval` graduated out of this roster 2026-08-09** on two real
+  adopters passing the same bar: fireside (`Packages/FiresideEval/Package.swift`
+  declares the product for Sources+Tests; `FiresideGoldenTaskAdapter`/
+  `FiresideGraphCheckpointScorer` drive `GoldenTaskRunner`, exercised per-PR by
+  fireside's `macos-ci.yml`) and idlewick (`iwk` CLI target imports the product
+  from non-test code; `AppEvalReportBuilderTests` CI-executed). See
+  [`docs/PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md) Tier 2 for the
+  current placement.
 - **Not a parking lot:** each experimental product carries a graduate-or-delete
   decision point — at 1.0 + 2 minors or its named milestone, whichever comes first,
   it either has an adopter (graduates into the frozen contract, and its internals get

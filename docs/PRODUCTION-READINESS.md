@@ -3,7 +3,7 @@
 **Audience:** consumer, contributor
 **Status:** living
 
-Normative — states what is true today, dated 2026-07-25.
+Normative — states what is true today, dated 2026-08-09.
 
 This page is the single source of truth for ManifoldKit's maturity signal.
 Every published SwiftPM product — every `.library` and every executable in
@@ -58,6 +58,52 @@ Experimental product can be extensively unit-tested and still carry no
 stability promise, because "no real adopter has been built against it yet"
 (§ 7b's bar) is a fact about the ecosystem, not the code.
 
+## Demonstration signal (R1/R2/R3)
+
+A tier states the compatibility promise a product carries; it says nothing
+about whether a reader can actually see the product working today. That
+second question is answered by a separate, complementary instrument:
+[`docs/DEMO-COVERAGE.md`](DEMO-COVERAGE.md) and its live source,
+[`scripts/demo-coverage-manifest.tsv`](../scripts/demo-coverage-manifest.tsv)
+(the demonstration program tracked by
+[issue #2453](https://github.com/ManifoldKit/ManifoldKit/issues/2453)). That
+manifest scores every ManifoldKit **capability** — a finer grain than the
+`.library`/`.executable` products this page tiers, since one product can
+carry several capabilities and one capability can span several products —
+against three requirements, computed by `scripts/demo-coverage.sh`:
+
+- **R1 — demonstrated by a runnable vehicle.** An example app, a focused
+  example, a script, a scenario, or an external (companion-repo) vehicle
+  exists for the capability.
+- **R2 — documented with a link that can't drift.** The row's doc reference
+  names a file that exists on disk right now.
+- **R3 — a declared execution route, not just a labelled one.** The
+  capability fires on a named, *executed* CI lane (`per-pr`, `release-gate`,
+  `live-e2e`, `weekly`, or `external` — never `manual` or `none`) whose own
+  invocation actually runs the vehicle (`exec_kind: live` or `scripted`,
+  never a `compile`-only build). Where the lane names a test file or
+  workflow, R3 is further **method-bound**: the manifest records the exact
+  test method(s) that exercise the capability, not a suite-level assumption.
+  R3 is a declared route, not a freshness signal — it does not assert the
+  lane ran recently or is currently green; last-run/staleness evidence is a
+  later milestone (M5) of the same issue.
+
+This page does not restate the manifest's table here — a copied snapshot
+would drift the moment a row changed, and nothing on this page would catch
+that drift the way `DocClaimsAuditTest` catches a dead symbol or a broken
+link. Run `scripts/demo-coverage.sh` for the current scoreboard, or read the
+manifest directly.
+
+**The two signals are orthogonal, deliberately.** A Tier 1 Core capability
+can have an unmet R3 today (`turn-loop-actions`: regenerate/edit/branch have
+no exercising test anywhere, only send/clear do) while a Tier 3 Experimental
+capability can have a fully met R1/R2/R3 (`mcp-client`, scored live via
+`RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests`). A product's
+tier is not a proxy for its demonstration status, and this page does not
+attempt to derive one from the other — the tables below answer the
+compatibility-promise question; the manifest answers the demonstration
+question.
+
 ## Tier 1 — Core guarantees
 
 <!-- TIER-MANIFEST:core-guarantees -->
@@ -98,6 +144,7 @@ stability promise, because "no real adopter has been built against it yet"
 - `ManifoldVoice`
 - `ManifoldFuzz`
 - `ManifoldServerKit`
+- `ManifoldAppEval`
 <!-- /TIER-MANIFEST -->
 
 | Product | Role | Why Supported |
@@ -111,6 +158,7 @@ stability promise, because "no real adopter has been built against it yet"
 | `ManifoldVoice` | Speech I/O adapters, voice composer accessory. | Explicitly confirmed stable-tier in `API-DESIGN.md` § 7b: "a shipping first-party app pins and imports it, verified 2026-07-13" — the one product whose Tier 2 status is externally verified by the same adopter bar that keeps its siblings in Tier 3. |
 | `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic. | Not on `API-DESIGN.md` § 7's five-product semver-exemption roster, even though it looks like adjacent developer tooling — that roster is a curated, named list, not a blanket rule for anything test/fuzz-shaped. Its `Package.swift` product comment explains why it was published as a real `.library` in the first place: `manifold-mlx`'s `fuzz-mlx` driver needs to `import ManifoldFuzz` cross-package (a load-bearing dependency, not a test-target-only import), and doing so "re-widens the api-digester gate's product surface" — i.e. it is tracked by the same public-surface baseline as every other non-exempt product, the same gating `ManifoldFoundation`/`ManifoldOllama`/`ManifoldCloudSaaS` get. |
 | `ManifoldServerKit` (module `ManifoldServer`) | Embeddable OpenAI-compatible server library — `ManifoldServer.serve(configuration:backendProvider:)`. | A real public seam shipped in #2242, not test/dev tooling; absent from § 7's exemption list. **Caveat:** its api-digester coverage is structurally broken by a SwiftPM tooling limitation (traits don't reach the scratch-checkout build the digester dumps), not a scoping choice — see [Open questions](#open-questions). |
+| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1): scenario schema, turn-loop runner, `CheckpointScorer`, report generation. | Graduated from Tier 3a on the first-real-adopter rule (`AGENTS.md`; `API-DESIGN.md` § 7b) — the same adopter bar that keeps `ManifoldVoice` at this tier. Two real adopters: fireside declares the product for Sources+Tests (`Packages/FiresideEval/Package.swift`) and drives `GoldenTaskRunner` via `FiresideGoldenTaskAdapter`/`FiresideGraphCheckpointScorer`, exercised per-PR by fireside's `macos-ci.yml`; idlewick is a second adopter (its `iwk` CLI target imports the product from non-test code, with `AppEvalReportBuilderTests` CI-executed). See the `app-eval` row in `scripts/demo-coverage-manifest.tsv` for the full evidence chain. **Caveat:** unlike this tier's other members, `ManifoldAppEval` does not yet receive the full release-gated verification Tier 2's definition names (no demo-app link, no api-digester coverage) — the same gap the page's own [Open questions](#open-questions) already records for `ManifoldFuzz` and `ManifoldServerKit`; in-repo demonstration of the capability itself is still `vehicle: none` pending an example-app wire-up. |
 
 **Executables in this tier:** `ManifoldServer` (the `Server`-trait-gated
 OpenAI-compatible HTTP server CLI — pairs with `ManifoldServerKit` above) and
@@ -141,7 +189,6 @@ graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
 - `ManifoldAppIntents`
 - `ManifoldAgentInstructions`
 - `ManifoldTelemetryOTLP`
-- `ManifoldAppEval`
 <!-- /TIER-MANIFEST -->
 
 | Product | Role | Reason |
@@ -151,7 +198,6 @@ graduate-or-delete decision point at 1.0 + 2 minors or its named milestone.
 | `ManifoldAppIntents` | AppIntent ↔ `ToolDefinition` bridge. | Zero-adopter. |
 | `ManifoldAgentInstructions` | `AGENTS.md` ambient-instruction filesystem discovery (macOS-only), extracted from the retired `ManifoldSkills` (#2434). | Zero-adopter by the external-consumer bar (no shipping app or companion pins it yet) — but not inert: `ManifoldKit`'s `ConversationRuntimeOptions.addAgentInstructions(currentDirectory:stoppingAt:)` gives it a real in-repo caller and an integration test exercises the full discover → merge → `.systemPreamble` path. Requires explicit `import ManifoldAgentInstructions`; it is not re-exported by the Tier-1 `ManifoldKit` umbrella. |
 | `ManifoldTelemetryOTLP` | OTLP/HTTP trace exporter. | Zero-adopter. |
-| `ManifoldAppEval` | Golden-scenario eval harness for apps built on ManifoldKit (estate#1). | Zero-adopter. |
 
 ### 3b. Semver-exempt developer tooling
 
@@ -209,19 +255,22 @@ settle — flagged rather than silently resolved:
    its seam compiles unconditionally.
 2. **Tier 2's stated criterion isn't met by every Tier 2 member.** The tier
    is defined above as receiving "the same full release-gated verification
-   as Core," but two of its members don't, today: `ManifoldServerKit` has no
-   api-digester coverage at all (see item 2 above), and `ManifoldFuzz` is
+   as Core," but three of its members don't, today: `ManifoldServerKit` has no
+   api-digester coverage at all (see item 2 above), `ManifoldFuzz` is
    exercised by neither the cold-start gates nor the release-time demo-app
    build gate — nothing in the gate suite links or imports it the way the
-   demo app links `ManifoldUIModelManagement`/`ManifoldHuggingFace`/`ManifoldVoice`.
-   The property `ManifoldFuzz`'s row cites (tracked in the public-surface
+   demo app links `ManifoldUIModelManagement`/`ManifoldHuggingFace`/`ManifoldVoice`
+   — and `ManifoldAppEval` has no in-repo demo-app vehicle at all yet
+   (`vehicle: none` on the `app-eval` row of `scripts/demo-coverage-manifest.tsv`;
+   its adopter evidence is entirely external, in fireside's and idlewick's own
+   CI). The property `ManifoldFuzz`'s row cites (tracked in the public-surface
    baseline, not on the § 7 exemption roster) is real, but it doesn't
    discriminate Tier 2 from Tier 3b — every Tier 3b product is tracked in
    that same baseline too (§ 7 says so explicitly). So in practice, the
-   operative test this page actually applies for these two products is
+   operative test this page actually applies for these three products is
    **roster membership and absence from an exemption list**, not gate
    coverage — the tier's own stated bar. This is a gap in what the tier
-   promises versus what's verified, not a reason to move either product;
+   promises versus what's verified, not a reason to move any of the three;
    recorded here rather than silently glossed over.
 
 ## Derivation & governance
@@ -247,4 +296,8 @@ settle — flagged rather than silently resolved:
   document [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211)
   ruled on — points here for the complete tier picture, not just the freeze
   exemptions; [issue #2211](https://github.com/ManifoldKit/ManifoldKit/issues/2211)
-  itself carries a comment linking this page for the same reason.
+  itself carries a comment linking this page for the same reason. This page,
+  in turn, points to [`docs/DEMO-COVERAGE.md`](DEMO-COVERAGE.md) for the
+  complementary per-capability demonstration signal — see
+  [Demonstration signal](#demonstration-signal-r1r2r3) above; that page does
+  not carry tier assignments of its own.
