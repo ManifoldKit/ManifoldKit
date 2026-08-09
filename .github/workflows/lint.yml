@@ -135,6 +135,10 @@ jobs:
       #   - trufflehog (diffs git history for secret leakage)
       #   - dep-budget (`git diff base...HEAD -- Package.resolved`)
       #   - large-file-guard (`git merge-base` against the PR base)
+      #   - release-context (diffs the base ref against HEAD on pull_request,
+      #     and merge_group's base_sha against head_sha, to decide whether the
+      #     change modifies version.txt — a shallow checkout would leave those
+      #     unresolvable and, because that step fails closed, red the job)
       # The cost is small on Ubuntu so we pay it unconditionally rather than
       # checking out twice. Do NOT re-fetch the base with `--depth=1` later —
       # a shallow tip of origin/<base> has no merge-base with a long-lived PR
