@@ -71,6 +71,8 @@ on:
       - "scripts/api-digester-targets.sh"
       - "scripts/api-digester-targets.txt"
       - "scripts/**.sh"
+      - "scripts/demo-coverage-manifest.tsv"
+      - "scripts/demo-coverage-baseline.tsv"
       # ↑↑↑ MUST stay identical to ci.yml's pull_request `paths:` ↑↑↑
 
 permissions:

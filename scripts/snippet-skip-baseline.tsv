@@ -55,6 +55,7 @@ Sources/ManifoldUIModelManagement/ManifoldUIModelManagement.docc/ManifoldUIModel
 Sources/ManifoldUIModelManagement/ManifoldUIModelManagement.docc/ModelPickerSample.md	0	0
 Sources/ManifoldVoice/ManifoldVoice.docc/ManifoldVoice.md	3	3
 Sources/ManifoldVoice/ManifoldVoice.docc/StandaloneSpeechRecognition.md	2	2
+docs/DEMO-COVERAGE.md	0	0
 docs/MIGRATION-additive-tool-sources.md	0	0
 docs/MIGRATION-anylanguagemodel-retired.md	0	3
 docs/MIGRATION-api-demotions-0.71.md	0	0
