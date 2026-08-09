@@ -162,8 +162,13 @@ if [ "$DISPATCH" -eq 1 ]; then
     fi
 
     for repo in $COMPANIONS; do
-        # Don't wait on a repo whose dispatch failed — no new run can appear,
-        # so the poll would burn its full ceiling (20m each) for nothing.
+        # Belt-and-braces: any dispatch failure now exits 2 above, so by this
+        # point every repo is in $dispatched and this guard cannot fire. Kept
+        # deliberately rather than deleted — it is the thing that stops a poll
+        # burning its full 20-minute ceiling waiting for a run that can never
+        # appear, and if the exit above is ever softened (e.g. to tolerate one
+        # companion being temporarily unreachable) this becomes load-bearing
+        # again immediately.
         case " $dispatched " in
             *" $repo "*) ;;
             *) echo "  skipping wait for $repo (dispatch failed)"; continue ;;

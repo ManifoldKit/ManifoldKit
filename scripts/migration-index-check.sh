@@ -146,8 +146,25 @@ while IFS= read -r line; do
         continue
     fi
 
-    # Release column: the first field after the leading "|".
-    release_field="$(printf '%s\n' "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')"
+    # Release column: the first field after the leading "|", NORMALISED before
+    # it is compared. Markdown decoration and case are stripped — backticks,
+    # asterisks, underscores, surrounding whitespace — then lowercased.
+    #
+    # This is not defensive padding. The `next` test was exact string equality
+    # against the raw cell, and docs/MIGRATION-INDEX.md's own "Adding a note"
+    # section tells authors to "add a row here with `next` in the Release
+    # column" — where `next` renders BACKTICKED. An author copying the
+    # instruction literally writes `` | `next` | ``, a 6-character string that
+    # is not "next", so the gate found no pending rows and passed. The release
+    # would then ship with an un-flipped row: the exact defect this check
+    # exists to catch, missed by following the documented instructions.
+    # Verified against the real index — a backticked row was reported zero
+    # times before this normalisation and is caught after it.
+    release_field="$(printf '%s\n' "$line" \
+        | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' \
+        | tr -d '`*_' \
+        | tr '[:upper:]' '[:lower:]' \
+        | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); print}')"
     # The migration-note filename. Matched natively rather than via
     # `grep -oE ... | head -n1`: `head` closing the pipe early can SIGPIPE
     # grep, which `pipefail` would then propagate, so that form needs a
