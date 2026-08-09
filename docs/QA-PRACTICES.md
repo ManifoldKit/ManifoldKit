@@ -13,7 +13,7 @@ For day-to-day test conventions (suites, traits, layering), see [`Tests/README.m
 | Audit tests | File-walking discipline rules (19 files) | `Tests/*/Manifold*AuditTest*.swift` | this doc |
 | In-file sabotage tests | Verify the audit tests still catch what they claim | `test_sabotage_*` methods in each `Tests/**/*Audit*.swift` file | this doc |
 | Cold-start conformance gates | Public-surface tests run from a fresh consumer outside the repo | [`scripts/cold-start-*.sh`](../scripts/) | [Tests/README § Cold-start](../Tests/README.md#cold-start-conformance-gates) |
-| Demo coverage gate | Every capability has a runnable vehicle, a live doc link, and a named execution lane | [`scripts/demo-coverage.sh`](../scripts/demo-coverage.sh) | [DEMO-COVERAGE.md](DEMO-COVERAGE.md) |
+| Demo coverage gate | Every capability has a runnable vehicle, a live doc link, and a declared (method-bound where testable) execution route | [`scripts/demo-coverage.sh`](../scripts/demo-coverage.sh) | [DEMO-COVERAGE.md](DEMO-COVERAGE.md) |
 
 ---
 
@@ -240,19 +240,28 @@ demonstration program
 ([issue #2453](https://github.com/ManifoldKit/ManifoldKit/issues/2453))
 reports through. `scripts/demo-coverage-manifest.tsv` lists every ManifoldKit
 capability and scores it against three requirements: demonstrated by a
-runnable vehicle, documented with a link that can't drift, and actually
-EXECUTED, not just labelled executed — a row counts only when its `lane` is
-one of the executed lanes (`per-pr`/`release-gate`/`live-e2e`/`weekly`/
-`external`) AND its `exec_kind` is `live` or `scripted`; `manual` lanes and
+runnable vehicle, documented with a link that can't drift, and a **declared
+execution route, not just a labelled one** — a row counts only when its
+`lane` is one of the executed lanes (`per-pr`/`release-gate`/`live-e2e`/
+`weekly`/`external`) AND its `exec_kind` is `live` or `scripted`; where the
+lane names a test file or workflow, R3 is further method-bound via
+`lane_methods` (the exact `Suite/method` entries that exercise it, each
+checked to exist and be wired where claimed). `manual` lanes and
 `compile`-only invocations are recorded (and shown in the scoreboard) but
-never counted. `scripts/demo-coverage.sh --check` is a ratchet
-against `scripts/demo-coverage-baseline.tsv` — none of the three may regress;
-new rows are always welcome. The aggregate public-type-coverage percentage
-(computed from `Example/**/*.swift` against the API-freeze baseline) is
-reported in the scoreboard but deliberately NOT ratcheted — it moves in both
-directions for reasons unrelated to a demo-coverage regression (adding any
-new public type anywhere in the package lowers it). `DemoCoverageGateAuditTest`
-(in `ManifoldCoreTests`) runs the gate per-PR.
+never counted. R3 declares a route — it does not assert the lane ran
+recently or is currently green; last-run/staleness evidence is a later
+milestone (M5). `scripts/demo-coverage.sh --check` is a ratchet against
+`scripts/demo-coverage-baseline.tsv` — none of the three may regress
+*unaccompanied* (a flag flipping from met to unmet with no corresponding
+manifest edit); new rows are always welcome. `--check` also audits that
+every `Package.swift` `.library`/`.executable` product is named in some
+manifest row or in `scripts/demo-coverage-product-allowlist.txt` with a
+reason. The aggregate lexical-public-type-mentions percentage (computed from
+`Example/**/*.swift` against the API-freeze baseline) is reported in the
+scoreboard but deliberately NOT ratcheted — it moves in both directions for
+reasons unrelated to a demo-coverage regression (adding any new public type
+anywhere in the package lowers it). `DemoCoverageGateAuditTest` (in
+`ManifoldCoreTests`) runs the gate per-PR.
 
 See [DEMO-COVERAGE.md](DEMO-COVERAGE.md) for the full schema, how to run and
 update it, and how it fits into `scripts/affected-suites.sh`'s selective-CI
