@@ -195,7 +195,19 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
    all — that now surfaces as a named dispatch error and a non-zero exit, not
    as a STALE reading.
 
-3. **Rewrite the changelog (CHANGELOG.md only).** Check out the release
+3. **Rewrite the changelog (CHANGELOG.md only).**
+
+   > **If anything merges to `main` while this PR is open, expect to redo this
+   > step *and* the canary dispatch.** Release Please regenerates the branch on
+   > a new `feat:`/`fix:` (§ "Rewrite last, and merge promptly" below), which
+   > force-pushes a new head. Status checks are per-commit, so the green `lint`
+   > from your previous push no longer applies, and the regenerated head's own
+   > run is bot-actor and therefore never executes — so `lint` never reports and
+   > the PR is blocked until you push again. That re-run includes the canary
+   > dispatch wait. It stalls rather than bypasses anything, but it is not free:
+   > budget another dispatch cycle each time main moves.
+   
+   Check out the release
    branch in its worktree (`release-please--branches--main`). CI's
    `changelog-parser-check` (any push, any actor) already re-runs Release
    Please's own commit parser and would have reported a red on this PR if

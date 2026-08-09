@@ -167,6 +167,61 @@ final class MigrationIndexCheckScriptTests: XCTestCase {
         }
     }
 
+    /// A pending row must be caught however its cell is decorated.
+    ///
+    /// Regression test for a fail-open found in review: detection was exact
+    /// string equality against `next`, while `docs/MIGRATION-INDEX.md`'s own
+    /// "Adding a note" section tells authors to put `next` in the Release
+    /// column — where it renders backticked. An author copying the instruction
+    /// literally wrote a cell the gate could not see, so a release could ship
+    /// with an un-flipped row: the exact defect the gate exists to catch,
+    /// missed by following the documented instructions. Each spelling below is
+    /// a form a real author plausibly writes.
+    func test_release_catchesPendingRowRegardlessOfCellDecoration() throws {
+        for decorated in ["`next`", "**next**", "_next_", "Next", "NEXT", " next "] {
+            try withFixture(
+                rows: [(decorated, "MIGRATION-a.md"), ("v0.2.0", "MIGRATION-b.md")],
+                notes: ["MIGRATION-a.md", "MIGRATION-b.md"]
+            ) { root, fixture in
+                let (status, output) = try run(scriptRoot: root, args: [
+                    "--release", "--index", fixture.indexFile.path, "--docs-dir", fixture.docsDir.path,
+                ])
+
+                XCTAssertEqual(
+                    status, 1,
+                    "a pending row written as \(decorated) must still fail the release gate: \(output)"
+                )
+                XCTAssertTrue(
+                    output.contains("MIGRATION-a.md"),
+                    "the failure must name the note whose row reads \(decorated), got: \(output)"
+                )
+            }
+        }
+    }
+
+    /// A real version must NOT be mistaken for pending just because the
+    /// normalisation above strips decoration — the counterpart to the test
+    /// above, so normalising cannot degrade into "everything looks pending".
+    func test_release_passesWhenDecoratedCellHoldsARealVersion() throws {
+        try withFixture(
+            rows: [("`v0.76.0`", "MIGRATION-a.md"), ("**v0.75.0**", "MIGRATION-b.md")],
+            notes: ["MIGRATION-a.md", "MIGRATION-b.md"]
+        ) { root, fixture in
+            let (status, output) = try run(scriptRoot: root, args: [
+                "--release", "--index", fixture.indexFile.path, "--docs-dir", fixture.docsDir.path,
+            ])
+
+            XCTAssertEqual(
+                status, 0,
+                "decorated cells holding real versions are not pending rows: \(output)"
+            )
+            XCTAssertTrue(
+                output.contains("no pending \"next\" rows remain"),
+                "expected the release-mode success marker rather than a bare exit 0, got: \(output)"
+            )
+        }
+    }
+
     /// Several rows saying `next` at once must ALL be named, not just the
     /// first — a script that stops after the first offender would leave a
     /// release operator fixing one row, re-running, and finding another.

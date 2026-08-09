@@ -796,7 +796,7 @@ jobs:
           # — see the assertion at the end.
           on_release_branch=false
           if [ "${{ github.event_name }}" = "pull_request" ] \
-             && [ "$HEAD_REF" = "release-please--branches--main" ]; then
+             && [ "${HEAD_REF#release-please--}" != "$HEAD_REF" ]; then
             on_release_branch=true
           fi
 
@@ -961,27 +961,66 @@ jobs:
       # gets routed around" failure warned about above.
       #
       # The pull_request dispatch step above is already blocking on its own:
-      # `lint` is a required status check, so the release PR cannot be queued
-      # until that run is green, and --dispatch makes its evidence genuinely
-      # fresh at that moment. Re-checking in the queue against a moving target
-      # adds no signal and subtracts reliability. What is NOT covered is main
-      # moving between the PR-event check and the merge; that is a real
-      # residual gap, accepted knowingly, and it is the same exposure every
-      # other pre-merge check in this repo carries.
+      # `lint` is a required status check (branch protection on `main` lists
+      # test / lint / api-digester-check, strict), so the release PR cannot be
+      # queued until that run is green, and --dispatch makes its evidence
+      # genuinely fresh at that moment.
+      #
+      # BE PRECISE ABOUT WHAT THIS TRADE COSTS — an earlier version of this
+      # comment claimed the queue re-check "adds no signal" and that the
+      # residual gap "is the same exposure every other pre-merge check
+      # carries". Both were false, and both are the kind of claim a later
+      # reader acts on:
+      #   * It DID add signal — coverage of main moving between the PR-event
+      #     check and the merge. The honest reason to drop it is that its
+      #     false-positive rate swamps that signal, not that the signal is
+      #     zero.
+      #   * The exposure is NOT the same as other checks'. Every other required
+      #     check validates the PR's own content, and the queue re-validates it
+      #     against the true merged tree. This gate's subject is external repos
+      #     versus main — a target that moves independently of the PR — so
+      #     after this change it is the only release-relevant gate with no
+      #     merged-tree validation at all.
+      # The residual window is the incident class this gate exists for: on
+      # 2026-07-19 the last green canary ran 06:42Z and the seam-moving commit
+      # merged 06:58Z. A commit like that landing between the PR-event dispatch
+      # and the merge still ships a broken release. The window is narrowed from
+      # ~24h (nightly cadence) to the PR-check-to-merge gap. It is not closed,
+      # and this is a deliberate trade, not an oversight.
 
       # ── migration-index-gate ──────────────────────────────────────────────
-      - name: migration-index-gate — skip (not a release)
-        if: always() && (github.event_name == 'push' || steps.release_context.outputs.is_release == 'false')
+      - name: migration-index-gate — skip (not a release, or not the pull_request run)
+        if: always() && (github.event_name != 'pull_request' || steps.release_context.outputs.is_release == 'false')
         run: |
-          echo "Not a release in this run (or release-context does not apply to this event)."
-          echo "The migration-index gate does not apply here — no check was performed."
+          if [ "${{ github.event_name }}" = "merge_group" ] && [ "${{ steps.release_context.outputs.is_release }}" = "true" ]; then
+            echo "Release detected, but the migration-index gate runs only on the pull_request event."
+            echo "The release PR's own rows were already checked there; rows contributed by OTHER PRs in"
+            echo "this batch are legitimately \"next\" and are not this release's to flip."
+          else
+            echo "Not a release in this run (or release-context does not apply to this event)."
+            echo "The migration-index gate does not apply here — no check was performed."
+          fi
 
       # Release-only, hard-blocking: fails if any docs/MIGRATION-INDEX.md row
       # still says "next" in the Release column while a version is shipping —
       # RELEASE.md's changelog-rewrite step is supposed to flip these by hand;
       # this is what stops a forgotten row from shipping silently.
+      #
+      # pull_request ONLY, for the same reason the canary gate is (see above),
+      # and the argument is worth stating because the two were originally
+      # inconsistent. Ask what unique TRUE positive a merge_group run could
+      # produce that the pull_request run cannot: none. The release PR's own
+      # rows were already checked at PR time. The only rows a queue candidate
+      # adds are those contributed by OTHER PRs in the batch — and a new note
+      # carrying `| next |` is the normal, documented way to add one, so those
+      # rows are legitimate and are not this release's to flip. A merge_group
+      # invocation is therefore capable ONLY of false positives: it would fail
+      # the gate and eject an entire batch of up to 5 PRs for a row nobody did
+      # anything wrong with, and the release author could not pre-satisfy it.
+      # Restricting to pull_request removes that failure mode at zero cost to
+      # coverage. Do not "restore" the merge_group run for symmetry.
       - name: migration-index-gate — no migration-note row may still say "next"
-        if: always() && steps.release_context.outputs.is_release == 'true'
+        if: always() && github.event_name == 'pull_request' && steps.release_context.outputs.is_release == 'true'
         run: bash scripts/migration-index-check.sh --release
 
       # ── migration-index-completeness (EVERY run, not release-only) ────────

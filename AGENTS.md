@@ -1199,15 +1199,26 @@ inside the merge queue and poison the batch — the #2306 shape. Do not make the
 release-conditional to "save time"; it costs one shell invocation and it is the only thing that runs
 it on the PRs that break it.
 
-**Known accepted limitation — a release batched with a new migration note reds.** The `--release`
-check runs against the merge-queue candidate tree, and the queue batches up to 5 entries. If the
-release PR is batched with a PR that adds a note carrying a legitimate `| next |` row — the normal
-way to add one — the candidate contains both the flipped rows and that new `next` row, the gate
-fails, and the whole batch is ejected. There is nothing the release author can pre-satisfy. This is
-accepted rather than engineered around: releases are infrequent and deliberate, and the recovery is
-simply to re-queue the release PR on its own. If it ever bites twice, the fix is to scope the
-`--release` check to rows whose note file is not newly added in the same candidate — not to weaken
-the rule.
+**Both release-only gates run on `pull_request` only, never on `merge_group`** — and the reason is
+the same for each, so do not "restore" either one for symmetry. Ask what unique *true* positive a
+`merge_group` run could produce that the `pull_request` run cannot:
+
+- *Companion canary*: it could catch main moving between the PR check and the merge — a real signal,
+  but one swamped by false positives, because freshness is graded against a main tip that changes
+  with every unrelated merge (worked timeline above).
+- *Migration index*: none at all. The release PR's own rows were already checked at PR time, and the
+  only rows a queue candidate adds are those contributed by *other* PRs in the batch — where a new
+  note carrying `| next |` is the normal, documented way to add one. Those rows are legitimate and
+  are not this release's to flip. So a `merge_group` invocation there is capable *only* of false
+  positives: it would eject a batch of up to 5 PRs over a row nobody did anything wrong with, and
+  the release author could not pre-satisfy it.
+
+An earlier revision ran the migration-index check on `merge_group` and documented that batch
+ejection as an accepted limitation, while the canary next door had already been restricted for the
+identical reason. Restricting it too removed the limitation outright at no cost to coverage. The
+general lesson, worth keeping: when a gate's subject is something the merge queue does not
+re-validate, the queue run adds no signal — and a check that can only produce false positives is
+worse than no check.
 
 `README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
 
@@ -1228,7 +1239,7 @@ conflate them:
   cross-checks `CHANGELOG.md`'s newest section text against every non-hidden-type commit —
   useful only while that section still holds release-please's own generated bullets, never
   against the hand-rewritten Highlights (which is allowed to omit bullets editorially). Run it
-  by hand before starting the rewrite (RELEASE.md step 2); it is not a CI gate because it can't
+  by hand before starting the rewrite (RELEASE.md's changelog-rewrite step); it is not a CI gate because it can't
   reliably observe "still generated" state in CI on this branch — see the next paragraph.
 
 **Bot-triggered workflow runs on the release-please branch never execute** (found while building
