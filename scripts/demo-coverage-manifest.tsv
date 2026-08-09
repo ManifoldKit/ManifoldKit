@@ -28,6 +28,6 @@ share-action-extensions	Share/Action extension handoff	(app-level recipe)	exampl
 benchmarking	ModelBenchmarkRunner	ManifoldModelCatalog	none			none			M3
 web-search	WebSearchRuntime	ManifoldRuntime,ManifoldCloudCore	none			none			M3
 fuzzing	ManifoldFuzz harness	ManifoldFuzz	script	scripts/fuzz.sh	AGENTS.md	weekly	.github/workflows/fuzz-weekly.yml	live	—
-app-eval	Golden-scenario eval harness	ManifoldAppEval	none		docs/APP-EVAL.md	none			Experimental, no adopter yet — graduates on first real adopter (AGENTS.md); falsely claimed manifold-eval pre-M0
+app-eval	Golden-scenario eval harness	ManifoldAppEval	none		docs/APP-EVAL.md	external	fireside CI — macos-ci.yml runs FiresideEval swift test per-PR	scripted	adopter: fireside (FiresideEval declares the product for Sources+Tests; FiresideGoldenTaskAdapter/FiresideGraphCheckpointScorer + CannedGoldenLaneTests drive GoldenTaskRunner; verified 2026-08-09). First real adopter — Experimental graduation per AGENTS.md pending a PRODUCTION-READINESS decision. vehicle stays none pending an in-repo demonstration.
 test-support-kits	Published test-support libraries	ManifoldTestSupport,ManifoldBackendTestKit,ManifoldPersistenceTestSupport	external	Tests	Tests/README.md	external	companion CI	scripted	—
 macos-native-experience	Native macOS chrome + observed lane	ManifoldUI	none			none			M4
