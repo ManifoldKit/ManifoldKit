@@ -912,13 +912,33 @@ jobs:
           set -euo pipefail
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::COMPANION_DISPATCH_TOKEN secret is not set — cannot dispatch fresh companion canary runs."
-            echo "::error::Without a fresh dispatch here, the blocking merge_group check below will almost"
-            echo "::error::always read STALE (companions only canary nightly/on-demand, and main moves"
-            echo "::error::between nightlies), which routes the release around the check instead of through"
-            echo "::error::it. Create/restore the fine-grained PAT documented in release-please.yml's"
-            echo "::error::notify-companions job (contents read+write on manifold-mlx and manifold-llama)."
+            echo "::error::Without a fresh dispatch here this gate has no fresh evidence to grade, and a"
+            echo "::error::downgrade to reading the last nightly would pass on a tree it never tested."
+            echo "::error::Create/restore the fine-grained PAT documented in release-please.yml's"
+            echo "::error::notify-companions job — and note it needs Actions: read+write on manifold-mlx"
+            echo "::error::and manifold-llama for \`gh workflow run\`, which is a DIFFERENT scope from the"
+            echo "::error::contents scope repository_dispatch uses."
             exit 1
           fi
+
+          # PRE-FLIGHT: this token is handed to the whole script run, not just
+          # the dispatch calls, and the script also reads THIS repo to resolve
+          # the tip commit's true merge time (`/commits/{sha}/pulls`). That read
+          # is deliberately tolerant — it falls back to a +60-minute margin when
+          # the API is unavailable — which is right for a transient failure but
+          # wrong for a systematic one: a PAT scoped only to the companion repos
+          # would fail that read on EVERY run, silently swapping the exact
+          # landing-relative check for the coarse estimate precisely when the
+          # gate is being relied on. Prove the token can read this repo first,
+          # so that degradation can never happen quietly.
+          if ! gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq 'length' >/dev/null 2>&1; then
+            echo "::error::COMPANION_DISPATCH_TOKEN cannot read repos/${{ github.repository }}. The canary"
+            echo "::error::script needs that read to resolve when the main tip actually merged; without it"
+            echo "::error::it silently falls back to a +60min margin and can grade a stale canary as fresh."
+            echo "::error::Grant the PAT read access to this repository as well as the companion repos."
+            exit 1
+          fi
+
           bash scripts/companion-canary-check.sh --dispatch
 
       # THERE IS DELIBERATELY NO merge_group COMPANION-CANARY STEP. An earlier
