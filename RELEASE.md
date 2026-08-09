@@ -149,10 +149,14 @@ after a `feat:`/`fix:` merge; this runbook covers everything from there.
 
 2. **Companion-canary gate — CI-enforced, hard-blocking, no override flag.**
    `.github/workflows/lint.yml`'s `lint` job now runs
-   `scripts/companion-canary-check.sh` automatically only when `version.txt`
-   is a valid SemVer version strictly newer than the latest published tag. The
-   mode depends on which event is firing (freshness, not just "is a release
-   happening", is why):
+   `scripts/companion-canary-check.sh` automatically once it detects a release
+   in flight — which needs **both** that `version.txt` is a valid SemVer version
+   strictly newer than the latest published tag **and** that the change being
+   validated modifies `version.txt` itself. The release PR satisfies the second
+   condition by construction, so this is invisible here; it exists to stop an
+   unrelated PR firing the gates in the window after the release PR merges but
+   before `release-please` cuts the tag. The mode then depends on which event
+   is firing (freshness, not just "is a release happening", is why):
    - On this step's **`pull_request` run** (i.e. right now, when you push the
      changelog-rewrite commit below) it runs `--dispatch`, triggering fresh
      canary runs on both companions and waiting for them — this is what makes
