@@ -23,6 +23,21 @@ name: Lint
 #   - secret-scan                   (was security-scans.yml: secret-scan)
 #   - dependency-review             (was security-scans.yml: dependency-review)
 #   - dep-budget                    (was ci.yml: dep-budget)
+#   - release-context                (detects whether version.txt is ahead
+#                                     of the latest published tag — gates
+#                                     the two release-only steps below;
+#                                     runs on pull_request + merge_group only)
+#   - companion-canary-gate          (release-only, event-split for freshness:
+#                                     --dispatch on pull_request (needs
+#                                     COMPANION_DISPATCH_TOKEN), read-only on
+#                                     merge_group — hard-blocks a release if
+#                                     manifold-mlx / manifold-llama don't
+#                                     build against core main; see step
+#                                     comments for why it's split)
+#   - migration-index-gate           (release-only: scripts/migration-index-
+#                                     check.sh --release — hard-blocks a
+#                                     release if any migration-note row still
+#                                     says "next")
 #
 # Why one job: each separate ubuntu-latest job paid ~10s of runner cold-start
 # overhead — ~50–70s aggregate per PR. Hoisting into a single runner removes
@@ -105,6 +120,16 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    # This job had no explicit timeout and so inherited GitHub's 360-minute
+    # default — an unbounded default wastes a runner slot and delays detection
+    # of a hang (#2099's CI review makes the same point about release-please.yml).
+    # 60 is sized for the one genuinely slow step: companion-canary-gate's
+    # `--dispatch` path polls each companion for up to 20 min (POLL_SECONDS=30 ×
+    # POLL_MAX=40), so ~40 min worst case plus the ordinary lint steps. Every
+    # other run of this job finishes in a couple of minutes. The dispatch step
+    # carries its own tighter step-level timeout so a hang there is attributed
+    # to that step rather than reading as "lint hung".
+    timeout-minutes: 60
     steps:
       # Single checkout shared by every step. fetch-depth: 0 is required by:
       #   - trufflehog (diffs git history for secret leakage)
@@ -639,3 +664,241 @@ jobs:
           # Full (non-shallow) fetch of the base — see dep-budget comment.
           git fetch --no-tags origin "${{ github.base_ref }}"
           bash scripts/large-file-guard.sh "origin/${{ github.base_ref }}" "HEAD"
+
+      # ── release-context ───────────────────────────────────────────────────
+      # Detects whether THIS run is validating an in-flight release: version.txt
+      # bumped ahead of the latest published GitHub release tag. The two
+      # release-only gates below (companion-canary-gate, migration-index-gate)
+      # key off this step's `is_release` output.
+      #
+      # WHY THIS RUNS IN `lint`, NOT A DEDICATED RELEASE WORKFLOW: empirically,
+      # the release-please branch (release-please--branches--main) is CI-dark.
+      # Zero push-event workflow runs have ever fired on it (nothing in this
+      # repo triggers on `push` to that branch), and github-actions[bot]-actor
+      # `pull_request` runs on it sit at conclusion `action_required` and never
+      # execute. Measured 2026-08-09 over the 500 most recent runs on that
+      # branch (2026-07-12 -> 2026-08-09): 450 bot-actor runs `action_required`,
+      # only 5 bot-actor runs ever completed, and all 45 completed runs were
+      # roryford-actor — i.e. the manual changelog-rewrite force-push is the
+      # only thing that has ever made CI run there. (Reproduce with `gh api
+      # 'repos/ManifoldKit/ManifoldKit/actions/runs?branch=release-please--branches--main&per_page=100&page=N'`.
+      # The narrower 94-run figure quoted in the changelog-parser-check comment
+      # above and in AGENTS.md is an earlier, differently-scoped count over the
+      # 0.73.0/0.74.0 cycles — both stand.) `merge_group`, by
+      # contrast, always runs to completion, and `lint` is one of only three
+      # required status contexts on `main` (test, lint, api-digester-check) —
+      # so a step added to THIS job, gated on `pull_request`/`merge_group`, is
+      # the only placement that both (a) actually executes on the release PR
+      # and (b) blocks the merge, with no new required-context registration
+      # needed. Registering a brand-new required context is a known trap here:
+      # `readme-snippets` has sat un-required for exactly that reason. See
+      # AGENTS.md § "Release workflow" for the full writeup this paragraph
+      # summarizes — that section is authoritative if the two ever disagree.
+      #
+      # FAIL CLOSED: a lookup failure (API error, empty tag, missing/empty
+      # version.txt) fails the job outright. A release gate that silently
+      # resolves to "not a release" when its own precondition check fails
+      # would defeat the entire point of gating a release.
+      - name: "release-context — detect whether version.txt is ahead of the latest published tag"
+        id: release_context
+        if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -s version.txt ]; then
+            echo "::error::version.txt is missing or empty — cannot determine release context."
+            exit 1
+          fi
+          current_version="$(tr -d '[:space:]' < version.txt)"
+          if [ -z "$current_version" ]; then
+            echo "::error::version.txt is empty after trimming whitespace."
+            exit 1
+          fi
+
+          if ! latest_tag="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)"; then
+            echo "::error::Failed to query the latest published release via the GitHub API (repos/${{ github.repository }}/releases/latest)."
+            exit 1
+          fi
+          if [ -z "$latest_tag" ] || [ "$latest_tag" = "null" ]; then
+            echo "::error::Latest-release API call returned an empty/null tag_name — cannot determine release context."
+            exit 1
+          fi
+          latest_version="${latest_tag#v}"
+
+          # SECOND CONDITION — do not "simplify" this away. A bare
+          # version-vs-tag comparison has a false-positive window: once the
+          # release PR merges, `main` carries the bumped version.txt for the
+          # minutes before release-please creates the tag (longer if that job
+          # queues or fails). During that window an unrelated PR would
+          # evaluate as a release and fire both gates — and migration-index
+          # would red on `next` rows that are entirely legitimate on main
+          # right after a release. A required check going spuriously red on an
+          # unrelated change is precisely the failure this whole gate exists
+          # to remove. Only the release PR modifies version.txt, so requiring
+          # that too closes the window on both events.
+          case "${{ github.event_name }}" in
+            pull_request)
+              if ! git fetch --no-tags -q origin "${{ github.base_ref }}"; then
+                echo "::error::Could not fetch origin/${{ github.base_ref }} to determine whether version.txt changed."
+                exit 1
+              fi
+              diff_range="origin/${{ github.base_ref }}...HEAD"
+              ;;
+            merge_group)
+              diff_range="${{ github.event.merge_group.base_sha }} ${{ github.event.merge_group.head_sha }}"
+              ;;
+            *)
+              echo "::error::release-context ran on an unexpected event (${{ github.event_name }})."
+              exit 1
+              ;;
+          esac
+
+          # shellcheck disable=SC2086  # diff_range is deliberately two args on merge_group
+          if ! changed_files="$(git diff --name-only $diff_range)"; then
+            echo "::error::Could not diff $diff_range to determine whether version.txt changed."
+            exit 1
+          fi
+          # An empty diff means the refs above did not resolve to what we think
+          # they did — never a legitimate state for a change under validation.
+          # Fail rather than guess in either direction: defaulting to
+          # "not a release" would silently disable the gates, defaulting to
+          # "is a release" would red unrelated PRs.
+          if [ -z "$changed_files" ]; then
+            echo "::error::Diff of $diff_range listed zero changed files — refusing to guess release context."
+            exit 1
+          fi
+
+          version_touched=false
+          if printf '%s\n' "$changed_files" | grep -qx 'version.txt'; then
+            version_touched=true
+          fi
+
+          echo "version.txt:           $current_version"
+          echo "latest published tag:  $latest_tag (version $latest_version)"
+          echo "version.txt modified:  $version_touched  (range: $diff_range)"
+
+          # Both conditions must hold. Logged independently above so a future
+          # reader can see which one decided the outcome.
+          if [ "$current_version" != "$latest_version" ] && [ "$version_touched" = true ]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "→ Release in flight: version.txt ($current_version) is ahead of the latest published tag ($latest_version), and this change modifies it."
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            if [ "$current_version" = "$latest_version" ]; then
+              echo "→ Not a release: version.txt matches the latest published tag."
+            else
+              echo "→ Not a release: version.txt is ahead of the latest tag, but this change does not modify it (post-release, pre-tag window)."
+            fi
+          fi
+
+      # ── companion-canary-gate ─────────────────────────────────────────────
+      - name: companion-canary-gate — skip (not a release)
+        if: always() && (github.event_name == 'push' || steps.release_context.outputs.is_release == 'false')
+        run: |
+          echo "Not a release in this run (or release-context does not apply to this event); the companion-canary gate is not required here."
+          echo "Passing companion-canary-gate to provide the required check context."
+
+      # WHY THIS STEP IS SPLIT BY EVENT (pull_request vs. merge_group), not run
+      # once in read-only mode. companion-canary-check.sh's PRIMARY check is
+      # LANDING-RELATIVE: a canary run that started before the current
+      # `origin/main` tip actually merged is STALE regardless of wall-clock
+      # age (see the script's own FRESHNESS comment block). Each companion's
+      # `Canary (core main)` workflow runs nightly plus on `core-release` and
+      # on demand — at release time `main` has almost always received merges
+      # since the last nightly, so a pure read-only check would read STALE on
+      # nearly every release, not on real breakage. A gate that is red every
+      # time gets routed around — the exact failure this whole change exists
+      # to prevent (AGENTS.md § "Release workflow"). So: dispatch fresh runs
+      # on the one bot-independent PR-event moment (Rory's changelog-rewrite
+      # force-push — the only `pull_request` run on the release-please branch
+      # that actually executes; see the `release-context` step above), and
+      # only READ the by-then-fresh result on `merge_group`, which is the run
+      # that actually blocks.
+      #
+      # TIP-COMMIT DERIVATION UNDER merge_group (applies to both steps below):
+      # the script never reads the runner's checked-out HEAD (which, under
+      # merge_group, is the queue's candidate commit — not yet on main and not
+      # associated with any merged PR). It explicitly `git fetch`es `origin
+      # main` and diffs against the resulting `origin/main` ref, falling back
+      # to the local HEAD only if that fetch or ref resolution fails. Under
+      # this job's `actions/checkout` (fetch-depth: 0, default `origin`
+      # remote), that fetch resolves to the TRUE main tip in both
+      # pull_request and merge_group runs — so no explicit ref needs to be
+      # passed here.
+      #
+      # `--dispatch` needs COMPANION_DISPATCH_TOKEN — a fine-grained PAT with
+      # contents read+write on manifold-mlx / manifold-llama, the same secret
+      # release-please.yml's `notify-companions` job uses (see its header
+      # comment: "the default `secrets.GITHUB_TOKEN` is scoped to THIS
+      # repository and cannot fire [cross-repo requests]" — that constraint
+      # applies identically to `gh workflow run` here). FAIL, don't silently
+      # fall back to read-only, if the secret is unset: a downgrade that then
+      # reads a stale-but-green result is worse than an explicit failure.
+      - name: "companion-canary-gate (pull_request) — dispatch fresh companion canary runs and wait"
+        if: always() && github.event_name == 'pull_request' && steps.release_context.outputs.is_release == 'true'
+        # Bounds the one step that can legitimately run for tens of minutes, so
+        # a hang here is attributed to the dispatch wait rather than to `lint`
+        # as a whole. 45 = the script's own ~40-min worst-case poll ceiling
+        # (2 companions x 20 min) plus headroom for the freshness re-check.
+        timeout-minutes: 45
+        env:
+          GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::COMPANION_DISPATCH_TOKEN secret is not set — cannot dispatch fresh companion canary runs."
+            echo "::error::Without a fresh dispatch here, the blocking merge_group check below will almost"
+            echo "::error::always read STALE (companions only canary nightly/on-demand, and main moves"
+            echo "::error::between nightlies), which routes the release around the check instead of through"
+            echo "::error::it. Create/restore the fine-grained PAT documented in release-please.yml's"
+            echo "::error::notify-companions job (contents read+write on manifold-mlx and manifold-llama)."
+            exit 1
+          fi
+          bash scripts/companion-canary-check.sh --dispatch
+
+      # merge_group is the run that actually blocks the queue. It runs
+      # READ-ONLY (no --dispatch): by the time the queue picks up the release
+      # PR, the runs dispatched above (pull_request) have had minutes to
+      # complete and already satisfy the freshness check, so this is a fast
+      # read. Do NOT use --dispatch here — its poll ceiling is 40 x 30s =
+      # 20 min PER companion (up to 40 min for both, sequential — see the
+      # script's POLL_SECONDS/POLL_MAX), which would hold a merge-queue slot
+      # for up to 40 minutes for no benefit. Pure `gh api` reads against the
+      # public manifold-mlx / manifold-llama repos — same precedent as
+      # release-train-tripwire.yml — so the default GITHUB_TOKEN suffices.
+      #
+      # IF THIS REDS ON STALENESS: it means the pull_request dispatch step
+      # above never ran — either COMPANION_DISPATCH_TOKEN was unset (and that
+      # step already failed loudly), or, the documented and EXPECTED case,
+      # nobody has force-pushed the changelog rewrite yet and only the
+      # CI-dark bot regenerations have touched the branch (AGENTS.md §
+      # "Release workflow" — bot-actor pull_request runs on that branch never
+      # execute). That is CORRECT behavior, not a bug: the fix is to run
+      # `bash scripts/companion-canary-check.sh --dispatch` locally, then
+      # re-push (which re-triggers this job and, once merged, this check
+      # again on the next merge_group run).
+      - name: "companion-canary-gate (merge_group) — manifold-mlx / manifold-llama must build against core main"
+        if: always() && github.event_name == 'merge_group' && steps.release_context.outputs.is_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/companion-canary-check.sh
+
+      # ── migration-index-gate ──────────────────────────────────────────────
+      - name: migration-index-gate — skip (not a release)
+        if: always() && (github.event_name == 'push' || steps.release_context.outputs.is_release == 'false')
+        run: |
+          echo "Not a release in this run (or release-context does not apply to this event); the migration-index gate is not required here."
+          echo "Passing migration-index-gate to provide the required check context."
+
+      # Release-only, hard-blocking: fails if any docs/MIGRATION-INDEX.md row
+      # still says "next" in the Release column while a version is shipping —
+      # RELEASE.md's changelog-rewrite step is supposed to flip these by hand;
+      # this is what stops a forgotten row from shipping silently. The
+      # completeness half (no --release) already has its own in-suite Swift
+      # audit that runs per-PR via ci.yml's `test` job — do not duplicate that
+      # half here, only the release-only rule.
+      - name: migration-index-gate — no migration-note row may still say "next"
+        if: always() && steps.release_context.outputs.is_release == 'true'
+        run: bash scripts/migration-index-check.sh --release
