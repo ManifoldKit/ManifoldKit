@@ -46,8 +46,19 @@ removal version.
 ## Adding a note
 
 A retired API ships its migration note in the same PR as the removal, and adds
-a row here. `DocClaimsAuditTest.auditIndexCoverage` fails if a `docs/*.md` is
-reachable from no other Markdown file, so an unlisted note is a per-PR test
-failure rather than something a consumer discovers on upgrade — but the audit
-only proves the file is *mentioned* somewhere, not that this table is complete
-or its versions correct. Keep it honest by hand.
+a row here with `next` in the Release column. Two audits keep that honest, and
+they check different things:
+
+- `DocClaimsAuditTest.auditIndexCoverage` fails if a `docs/*.md` is reachable
+  from no other Markdown file. It only proves the file is *mentioned*
+  somewhere — a note linked from prose anywhere satisfies it without ever
+  appearing in this table.
+- `MigrationIndexAuditTest` parses this table itself and fails per-PR if any
+  `docs/MIGRATION-*.md` has no row. That is the completeness guarantee.
+
+**Flipping `next` is release-time work, not per-PR.** A note legitimately sits
+at `next` from the PR that adds it until the release that ships it, so no
+per-PR test can assert that column is accurate — which is why neither audit
+above does. `scripts/migration-index-check.sh --release` enforces it instead,
+and CI runs it on the release PR; see [`RELEASE.md`](../RELEASE.md) for where
+in the release sequence the flip happens.
