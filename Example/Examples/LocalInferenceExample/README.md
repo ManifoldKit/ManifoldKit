@@ -58,7 +58,7 @@ let configuration = ManifoldConfiguration(
     appName: "Local Inference (llama.cpp)",
     bundleIdentifier: "com.manifoldkit.local-inference-example-llama"
 )
-result = try await ManifoldKit.quickStart(
+let result = try await ManifoldKit.quickStart(
     backends: [LlamaBackends.self],
     configuration: configuration,
     seed: .recommendedSmallModel { progress in
