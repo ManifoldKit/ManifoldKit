@@ -8,8 +8,43 @@ options:
   generateEmptyDirectories: true
 
 packages:
+  # `path: ManifoldKit` resolves through the sibling symlink
+  # `ManifoldKit/` (checked into this directory, -> ../..) rather than a
+  # literal `../..`. XcodeGen's local-package spec has no `name:` override
+  # (verified against ProjectSpec/SwiftPackage.swift — only path/group/
+  # excludeFromProject/traits are read), and Xcode's package-graph "local
+  # override" mechanism — which is what lets this local checkout satisfy
+  # manifold-mlx's and manifold-llama's own remote dependency on
+  # `ManifoldKit` — keys off the LITERAL last path component of `path:`,
+  # not the identity `Package.swift` declares. A bare `../..` makes that
+  # component whatever the checkout directory happens to be named, so it
+  # only resolves when the checkout is literally named "ManifoldKit" (true
+  # for a normal clone, false for e.g. an agent worktree named
+  # `agent-<hash>`) — `xcodebuild` then fails package resolution with
+  # "unable to override package 'ManifoldKit' because its identity
+  # 'manifoldkit' doesn't match override's identity (directory name)
+  # '<checkout-dir>'". The symlink pins that last component to "ManifoldKit"
+  # regardless of the checkout's own directory name, so `xcodebuild`
+  # resolves and builds identically everywhere — confirmed via
+  # `-resolvePackageDependencies` and a full build of both
+  # LocalInferenceExample schemes from a non-"ManifoldKit"-named worktree.
+  # (`git status`/`add` never descend into it — it is a leaf symlink, not a
+  # directory tree — and `xcodegen generate` from the same input is
+  # byte-identical whether this points through the symlink or `../..`
+  # directly, so this is not a source of pbxproj churn on its own.)
   ManifoldKit:
-    path: ../..
+    path: ManifoldKit
+  # Companion packages for LocalInferenceExample (#2453 M2). Pinned by
+  # version (not path) per docs/COMPANION-BACKENDS.md § 4 — see that doc,
+  # and LocalInferenceExample/README.md, for the `swift package edit`
+  # workflow that switches either pin to a local checkout during companion
+  # development.
+  ManifoldMLX:
+    url: https://github.com/ManifoldKit/manifold-mlx
+    minorVersion: 0.5.0
+  ManifoldLlama:
+    url: https://github.com/ManifoldKit/manifold-llama
+    minorVersion: 0.4.3
 
 targets:
   MinimalExample:
@@ -33,4 +68,44 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         # Voice input is enabled in the demo config; without this key the
         # composer fault banner (Unit 2 §6A) fires on first launch.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Voice input transcribes your speech into the message composer."
+
+  # LocalInferenceExample (#2453 M2) — two targets, deliberately split so
+  # ManifoldMLX and ManifoldLlama are never linked into the same binary (the
+  # #982 dual-llama-in-one-process hazard). Both macOS-only: MLX/llama.cpp
+  # need Metal / native process lifecycle that the iOS Simulator doesn't
+  # provide (docs/HARDWARE-TOOLCHAIN.md). See
+  # LocalInferenceExample/README.md for the full writeup.
+  LocalInferenceExample_MLX:
+    type: application
+    platform: macOS
+    sources:
+      - LocalInferenceExample/MLX
+    dependencies:
+      - package: ManifoldKit
+        product: ManifoldKit
+      - package: ManifoldMLX
+        product: ManifoldMLX
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.manifoldkit.local-inference-example-mlx
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Voice input transcribes your speech into the message composer."
+
+  LocalInferenceExample_Llama:
+    type: application
+    platform: macOS
+    sources:
+      - LocalInferenceExample/Llama
+    dependencies:
+      - package: ManifoldKit
+        product: ManifoldKit
+      - package: ManifoldLlama
+        product: ManifoldLlama
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.manifoldkit.local-inference-example-llama
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Voice input transcribes your speech into the message composer."
