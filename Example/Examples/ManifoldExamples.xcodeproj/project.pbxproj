@@ -7,10 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		19088E461365CC96EAC0066A /* ManifoldKit in Frameworks */ = {isa = PBXBuildFile; productRef = 296DE89C73F58634AB1F14F0 /* ManifoldKit */; };
+		323F9DBE358E95A003E0C323 /* ManifoldLlama in Frameworks */ = {isa = PBXBuildFile; productRef = AE5931EA7BDD8C733B72570D /* ManifoldLlama */; };
+		33BEAF0746170FB7977D1EC5 /* LocalInferenceExampleLlamaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F67C4C82A9A3A531273A92 /* LocalInferenceExampleLlamaApp.swift */; };
 		4D3C850706E8802F450F8C26 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */; };
 		4EBEBAC08E9EE08238D3BB85 /* ManifoldKit in Frameworks */ = {isa = PBXBuildFile; productRef = 07C9B8F142E9995C1EF08253 /* ManifoldKit */; };
+		7780D8EEA252959B613916F4 /* ManifoldMLX in Frameworks */ = {isa = PBXBuildFile; productRef = 6786E6F525BE27104AF55B65 /* ManifoldMLX */; };
+		7B9F3F421C1B1E10A5A064EC /* LocalInferenceExampleMLXApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C39051B9A9010D46FF74D75 /* LocalInferenceExampleMLXApp.swift */; };
 		887949644309FE2DF3B10B3B /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = 6C1F61587777E2E027258989 /* ManifoldUI */; };
 		98509218DEE6BA99E087C18D /* ManifoldKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6CECC027D599FFC52C710341 /* ManifoldKit */; };
+		98C651ED0A18C4CABBAAEFF9 /* ManifoldKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2DE637627C247348B85251CE /* ManifoldKit */; };
 		AC054ED9C7CE70881CAF8B5A /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = B2AC4DF189F96757A85D15A9 /* ManifoldUI */; };
 		BC168A0C475876BD4A4188A6 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */; };
 		C01CDA558D6A24BB8C3A252D /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = B3806787FE090B303F615635 /* README.md */; };
@@ -18,20 +24,42 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		18F96B881C6C4A011E2F50F7 /* LocalInferenceExample_MLX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalInferenceExample_MLX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C74D1FF18E0994E77683D4A /* MinimalExample.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C41800E647F0DDB2BC0C50C /* LocalInferenceExample_Llama.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalInferenceExample_Llama.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C39051B9A9010D46FF74D75 /* LocalInferenceExampleMLXApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalInferenceExampleMLXApp.swift; sourceTree = "<group>"; };
 		88012A97C303F9C85A16B00C /* MinimalExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		91F67C4C82A9A3A531273A92 /* LocalInferenceExampleLlamaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalInferenceExampleLlamaApp.swift; sourceTree = "<group>"; };
 		9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalExampleApp.swift; sourceTree = "<group>"; };
 		B3806787FE090B303F615635 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		B4047E2314247C059F97F7C3 /* u2-int */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "u2-int"; path = ../..; sourceTree = SOURCE_ROOT; };
+		D1E1159CB70A62D1B9A6AE55 /* ManifoldKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ManifoldKit; path = ManifoldKit; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		47081B02BAD90930DF8C3B00 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				19088E461365CC96EAC0066A /* ManifoldKit in Frameworks */,
+				7780D8EEA252959B613916F4 /* ManifoldMLX in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		490FA3F59F50A5DA110D316C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				98509218DEE6BA99E087C18D /* ManifoldKit in Frameworks */,
 				887949644309FE2DF3B10B3B /* ManifoldUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7C0753A2D9161088E61C0A12 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				98C651ED0A18C4CABBAAEFF9 /* ManifoldKit in Frameworks */,
+				323F9DBE358E95A003E0C323 /* ManifoldLlama in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -50,15 +78,26 @@
 		497B212F402BE13398A3435D /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				B4047E2314247C059F97F7C3 /* u2-int */,
+				D1E1159CB70A62D1B9A6AE55 /* ManifoldKit */,
 			);
 			name = Packages;
+			sourceTree = "<group>";
+		};
+		6418504C63680DBC41CEA2DA /* Llama */ = {
+			isa = PBXGroup;
+			children = (
+				91F67C4C82A9A3A531273A92 /* LocalInferenceExampleLlamaApp.swift */,
+			);
+			name = Llama;
+			path = LocalInferenceExample/Llama;
 			sourceTree = "<group>";
 		};
 		75D9F8ED9BB1C49CF0434438 = {
 			isa = PBXGroup;
 			children = (
+				6418504C63680DBC41CEA2DA /* Llama */,
 				AA9704F2855B606C906769F9 /* MinimalExample */,
+				D38AEAE64CA0422AC03F92D5 /* MLX */,
 				497B212F402BE13398A3435D /* Packages */,
 				D489A83B94DC1BD0D6D026F1 /* Products */,
 			);
@@ -73,9 +112,20 @@
 			path = MinimalExample;
 			sourceTree = "<group>";
 		};
+		D38AEAE64CA0422AC03F92D5 /* MLX */ = {
+			isa = PBXGroup;
+			children = (
+				7C39051B9A9010D46FF74D75 /* LocalInferenceExampleMLXApp.swift */,
+			);
+			name = MLX;
+			path = LocalInferenceExample/MLX;
+			sourceTree = "<group>";
+		};
 		D489A83B94DC1BD0D6D026F1 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				5C41800E647F0DDB2BC0C50C /* LocalInferenceExample_Llama.app */,
+				18F96B881C6C4A011E2F50F7 /* LocalInferenceExample_MLX.app */,
 				1C74D1FF18E0994E77683D4A /* MinimalExample.app */,
 				88012A97C303F9C85A16B00C /* MinimalExample.app */,
 			);
@@ -85,6 +135,46 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		21E45D852E2AFD9717AEA9DF /* LocalInferenceExample_Llama */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C77A64B9EB406302466CC887 /* Build configuration list for PBXNativeTarget "LocalInferenceExample_Llama" */;
+			buildPhases = (
+				EC80766452160B1966FED083 /* Sources */,
+				7C0753A2D9161088E61C0A12 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LocalInferenceExample_Llama;
+			packageProductDependencies = (
+				2DE637627C247348B85251CE /* ManifoldKit */,
+				AE5931EA7BDD8C733B72570D /* ManifoldLlama */,
+			);
+			productName = LocalInferenceExample_Llama;
+			productReference = 5C41800E647F0DDB2BC0C50C /* LocalInferenceExample_Llama.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CDBB1B8FBBECA1BC54EC3B56 /* LocalInferenceExample_MLX */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6EEC8CD28E7AB61265B5D3B9 /* Build configuration list for PBXNativeTarget "LocalInferenceExample_MLX" */;
+			buildPhases = (
+				B2E412C3E2FBA35080095D4A /* Sources */,
+				47081B02BAD90930DF8C3B00 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LocalInferenceExample_MLX;
+			packageProductDependencies = (
+				296DE89C73F58634AB1F14F0 /* ManifoldKit */,
+				6786E6F525BE27104AF55B65 /* ManifoldMLX */,
+			);
+			productName = LocalInferenceExample_MLX;
+			productReference = 18F96B881C6C4A011E2F50F7 /* LocalInferenceExample_MLX.app */;
+			productType = "com.apple.product-type.application";
+		};
 		E5E9FF4635E50D287E9E93BC /* MinimalExample_macOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 64DE611EB8F7EBB77610277B /* Build configuration list for PBXNativeTarget "MinimalExample_macOS" */;
@@ -148,13 +238,17 @@
 			mainGroup = 75D9F8ED9BB1C49CF0434438;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				2013F4BD7CAAF1145D055CF1 /* XCLocalSwiftPackageReference "../.." */,
+				B1F9331173128ABA84FABC84 /* XCRemoteSwiftPackageReference "manifold-llama" */,
+				66FB6CFCBD7FD0DC21E7CDE2 /* XCRemoteSwiftPackageReference "manifold-mlx" */,
+				797C86244F6EAD8395524C47 /* XCLocalSwiftPackageReference "ManifoldKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D489A83B94DC1BD0D6D026F1 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				21E45D852E2AFD9717AEA9DF /* LocalInferenceExample_Llama */,
+				CDBB1B8FBBECA1BC54EC3B56 /* LocalInferenceExample_MLX */,
 				F4B070DBF9A547870F974788 /* MinimalExample_iOS */,
 				E5E9FF4635E50D287E9E93BC /* MinimalExample_macOS */,
 			);
@@ -194,6 +288,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D3C850706E8802F450F8C26 /* MinimalExampleApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B2E412C3E2FBA35080095D4A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B9F3F421C1B1E10A5A064EC /* LocalInferenceExampleMLXApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC80766452160B1966FED083 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				33BEAF0746170FB7977D1EC5 /* LocalInferenceExampleLlamaApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,6 +452,40 @@
 			};
 			name = Debug;
 		};
+		75212E6BAD8EF8678F02CDC2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice input transcribes your speech into the message composer.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.local-inference-example-mlx";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		837E734BBC5E58786101A4EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice input transcribes your speech into the message composer.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.local-inference-example-llama";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
 		8CCD1B3F62FD3BC970CBBB24 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -359,6 +503,23 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
 				PRODUCT_NAME = MinimalExample;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		8E2DEEA8BD5AE65722E1BD19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice input transcribes your speech into the message composer.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.local-inference-example-mlx";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
@@ -409,6 +570,23 @@
 			};
 			name = Release;
 		};
+		FCBBE3E63C0FE3352B6A4312 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice input transcribes your speech into the message composer.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.local-inference-example-llama";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -430,6 +608,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		6EEC8CD28E7AB61265B5D3B9 /* Build configuration list for PBXNativeTarget "LocalInferenceExample_MLX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				75212E6BAD8EF8678F02CDC2 /* Debug */,
+				8E2DEEA8BD5AE65722E1BD19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C77A64B9EB406302466CC887 /* Build configuration list for PBXNativeTarget "LocalInferenceExample_Llama" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				837E734BBC5E58786101A4EE /* Debug */,
+				FCBBE3E63C0FE3352B6A4312 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		D6FF3C6A4FAB5642753D744A /* Build configuration list for PBXProject "ManifoldExamples" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -442,16 +638,48 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		2013F4BD7CAAF1145D055CF1 /* XCLocalSwiftPackageReference "../.." */ = {
+		797C86244F6EAD8395524C47 /* XCLocalSwiftPackageReference "ManifoldKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../..;
+			relativePath = ManifoldKit;
 		};
 /* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		66FB6CFCBD7FD0DC21E7CDE2 /* XCRemoteSwiftPackageReference "manifold-mlx" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ManifoldKit/manifold-mlx";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.5.0;
+			};
+		};
+		B1F9331173128ABA84FABC84 /* XCRemoteSwiftPackageReference "manifold-llama" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ManifoldKit/manifold-llama";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.4.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		07C9B8F142E9995C1EF08253 /* ManifoldKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ManifoldKit;
+		};
+		296DE89C73F58634AB1F14F0 /* ManifoldKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ManifoldKit;
+		};
+		2DE637627C247348B85251CE /* ManifoldKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ManifoldKit;
+		};
+		6786E6F525BE27104AF55B65 /* ManifoldMLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 66FB6CFCBD7FD0DC21E7CDE2 /* XCRemoteSwiftPackageReference "manifold-mlx" */;
+			productName = ManifoldMLX;
 		};
 		6C1F61587777E2E027258989 /* ManifoldUI */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -460,6 +688,11 @@
 		6CECC027D599FFC52C710341 /* ManifoldKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ManifoldKit;
+		};
+		AE5931EA7BDD8C733B72570D /* ManifoldLlama */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F9331173128ABA84FABC84 /* XCRemoteSwiftPackageReference "manifold-llama" */;
+			productName = ManifoldLlama;
 		};
 		B2AC4DF189F96757A85D15A9 /* ManifoldUI */ = {
 			isa = XCSwiftPackageProductDependency;

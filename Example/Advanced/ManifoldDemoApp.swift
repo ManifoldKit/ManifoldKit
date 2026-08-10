@@ -72,8 +72,12 @@ struct ManifoldDemoApp: App {
         self.runtimeConfiguration = runtimeConfiguration
         ManifoldConfiguration.shared = runtimeConfiguration
 
-        // Populate curated model recommendations
-        CuratedModel.all = Self.curatedModels
+        // No curated model recommendations here: Advanced links no local-
+        // inference companion (ManifoldMLX / ManifoldLlama), so every GGUF/MLX
+        // curated entry that used to live here was unloadable — the model
+        // registry could never resolve a registered backend for it (#2453 M2).
+        // See Example/Examples/LocalInferenceExample/ for a curated MLX list
+        // that actually works, in an app that links ManifoldMLX.
 
         // Sandbox root: under --uitesting we route writes (notably WriteFileTool)
         // into a per-launch temp directory so XCUITests leave no residue in
@@ -141,80 +145,6 @@ struct ManifoldDemoApp: App {
         _modelManagementViewModel = State(initialValue: ModelManagementViewModel.live())
         #endif
     }
-
-    // MARK: - Curated Models
-
-    private static let curatedModels: [CuratedModel] = [
-        // Small — runs on any Apple Silicon device (≤ 2.5 GB)
-        CuratedModel(
-            id: "smollm2-360m",
-            displayName: "SmolLM2 360M (Q8)",
-            fileName: "smollm2-360m-instruct-q8_0.gguf",
-            repoID: "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF",
-            modelType: .gguf,
-            approximateSizeBytes: 386_000_000,
-            recommendedFor: [.small, .medium, .large, .xlarge],
-            contextSize: 2048,
-            promptTemplate: .chatML,
-            description: "Tiny but capable chat model, great for testing",
-            // SHA-256 from HuggingFace LFS pointer (x-linked-etag) on 2026-05-02.
-            // If the upstream file is republished, this hash will need to be
-            // refreshed (the download will fail-closed against the old digest).
-            expectedSHA256: "48ab3034d0dd401fbc721eb1df3217902fee7dab9078992d66431f09b7750201"
-        ),
-        CuratedModel(
-            id: "phi-4-mini-mlx",
-            displayName: "Phi-4 Mini (MLX, 4-bit)",
-            fileName: "Phi-4-mini-instruct-4bit",
-            repoID: "mlx-community/Phi-4-mini-instruct-4bit",
-            modelType: .mlx,
-            approximateSizeBytes: 2_400_000_000,
-            recommendedFor: [.small, .medium, .large, .xlarge],
-            contextSize: 4096,
-            promptTemplate: .phi,
-            description: "Microsoft's compact reasoning model, optimized for Apple Silicon"
-        ),
-        // Medium — 8 GB+ RAM devices (≤ 4.5 GB)
-        CuratedModel(
-            id: "mistral-7b-gguf",
-            displayName: "Mistral 7B Instruct v0.3 (Q4_K_M)",
-            fileName: "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
-            repoID: "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
-            modelType: .gguf,
-            approximateSizeBytes: 4_370_000_000,
-            recommendedFor: [.medium, .large, .xlarge],
-            contextSize: 4096,
-            promptTemplate: .mistral,
-            description: "Excellent general-purpose chat model",
-            // SHA-256 from HuggingFace LFS pointer (x-linked-etag) on 2026-05-02.
-            expectedSHA256: "1270d22c0fbb3d092fb725d4d96c457b7b687a5f5a715abe1e818da303e562b6"
-        ),
-        CuratedModel(
-            id: "llama-3.2-3b-mlx",
-            displayName: "Llama 3.2 3B Instruct (MLX, 4-bit)",
-            fileName: "Llama-3.2-3B-Instruct-4bit",
-            repoID: "mlx-community/Llama-3.2-3B-Instruct-4bit",
-            modelType: .mlx,
-            approximateSizeBytes: 1_800_000_000,
-            recommendedFor: [.small, .medium, .large, .xlarge],
-            contextSize: 8192,
-            promptTemplate: .llama3,
-            description: "Meta's efficient 3B model with 8K context"
-        ),
-        // Large — 16 GB+ RAM devices (≤ 6 GB)
-        CuratedModel(
-            id: "qwen-2.5-7b-mlx",
-            displayName: "Qwen 2.5 7B Instruct (MLX, 4-bit)",
-            fileName: "Qwen2.5-7B-Instruct-4bit",
-            repoID: "mlx-community/Qwen2.5-7B-Instruct-4bit",
-            modelType: .mlx,
-            approximateSizeBytes: 4_500_000_000,
-            recommendedFor: [.large, .xlarge],
-            contextSize: 8192,
-            promptTemplate: .chatML,
-            description: "Strong multilingual model from Alibaba"
-        ),
-    ]
 
     var body: some Scene {
         WindowGroup {
