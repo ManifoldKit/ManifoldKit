@@ -1,5 +1,6 @@
 import XCTest
 import ManifoldSecrets
+import ManifoldInference
 @testable import ManifoldUIModelManagement
 
 /// Covers the edit-path Keychain rollback (`APIEndpointEditorView.rollbackKeychainKey`).
@@ -14,20 +15,34 @@ import ManifoldSecrets
 ///   a key and then failing to save doesn't destroy the user's existing key.
 ///
 /// Uses a real Keychain account (unique per test) — `KeychainService` works
-/// under `swift test` on macOS (see `ManifoldSecretsTests`).
+/// under `swift test` on macOS (see `ManifoldSecretsTests`). A unique
+/// *account* is not enough isolation on its own (#2416): every write here
+/// still lands in the framework's default `com.manifoldkit.apikeys`
+/// namespace unless `ManifoldConfiguration.shared` is also scoped, since any
+/// other default-configuration bootstrap batched into the same `swift test
+/// --parallel` invocation (`ManifoldUIModelManagementTests` is in
+/// `scripts/test.sh`'s `PROFILE_CI_XCTEST_FILTERS`) can sweep that shared
+/// namespace out from under it.
 final class APIEndpointEditorKeychainRollbackTests: XCTestCase {
 
     private var account: String!
+    private var originalConfig: ManifoldConfiguration!
 
     override func setUp() {
         super.setUp()
         account = "manifoldkit.test.endpoint-rollback.\(UUID().uuidString)"
+        originalConfig = ManifoldConfiguration.shared
+        var config = ManifoldConfiguration.shared
+        config.bundleIdentifier = "com.manifoldkit.tests.endpoint-rollback.\(UUID().uuidString)"
+        ManifoldConfiguration.shared = config
     }
 
     override func tearDown() {
         // Best-effort cleanup so a failed assertion never leaks a Keychain item.
         try? KeychainService.delete(account: account)
         account = nil
+        ManifoldConfiguration.shared = originalConfig
+        originalConfig = nil
         super.tearDown()
     }
 

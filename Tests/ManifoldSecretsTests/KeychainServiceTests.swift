@@ -19,30 +19,43 @@ import Security
 /// in-process Swift statics like `ManifoldConfiguration.shared` can never be
 /// shared between two *test* processes. What **is** shared across every
 /// process on the machine is the real macOS Keychain itself. Per-account
-/// isolation (`uniqueAccount()` below) is normally enough — but
-/// `ManifoldKitTests.QuickStartTests` / `QuickStartSeedTests` /
-/// `QuickStartBackendsTests` call `ManifoldKit._quickStart(configuration:
-/// .default, ...)` in many test methods, and `.default` is literally
-/// `ManifoldConfiguration()` (`bundleIdentifier == "com.manifoldkit"`) — the
-/// exact same namespace this class's own default `ManifoldConfiguration`
-/// resolves to. `_quickStart` drives `ManifoldBootstrap.build`, which
-/// constructs a `SwiftDataPersistenceProvider`; that initializer
-/// unconditionally (by default `keychainReaperEnabled == true`) calls
-/// `ManifoldBootstrap.reapOrphanedKeychainItems(in:)` — a real boot-time
-/// sweep of the shared `"com.manifoldkit.apikeys"` namespace against
-/// whatever `APIEndpoint` rows exist (typically none, in a fresh in-memory
-/// store). `ManifoldSecretsTests` and `ManifoldKitTests` are batched into the
-/// same `swift test --parallel` invocation (`scripts/test.sh`'s
-/// `PROFILE_CI_XCTEST_FILTERS`), so one of those quickStart tests' own
-/// process can sweep the default namespace clean *while this class's test
-/// method — running concurrently, in its own process — has an item sitting
-/// in that same namespace between its `store()` and `retrieve()` calls.
+/// isolation (`uniqueAccount()` below) is normally enough — but any test
+/// that constructs `SwiftDataPersistenceProvider` under a *default*
+/// `ManifoldConfiguration` triggers a real boot-time Keychain sweep as a
+/// side effect of construction (`SwiftDataPersistenceProvider.init` →
+/// `ManifoldBootstrap.reapOrphanedKeychainItems(in:)` →
+/// `KeychainService.sweep`, unconditional whenever
+/// `keychainReaperEnabled == true`, the default). That happens through
+/// **any** default-configuration bootstrap, not one specific family:
+/// `ManifoldKit._quickStart(configuration: .default, ...)` (exercised by
+/// `ManifoldKitTests`' `QuickStartTests`/`QuickStartSeedTests`/
+/// `QuickStartBackendsTests`), a direct `ManifoldBootstrap.build(...)` call,
+/// or `InMemoryPersistenceHarness.make()` — the latter alone has 41 call
+/// sites across `Tests/` (verified by grep at the time of writing; re-check
+/// before trusting the number), spread across `ManifoldRuntimeTests`,
+/// `ManifoldPersistenceSwiftDataTests`, `ManifoldUITests`,
+/// `ManifoldTurnLoopCharacterizationTests`, `ManifoldCoreTests`, and
+/// `APIFreezeTests` — none of which scope `bundleIdentifier`. `.default` is
+/// literally `ManifoldConfiguration()` (`bundleIdentifier ==
+/// "com.manifoldkit"`) — the exact same namespace this class's own default
+/// `ManifoldConfiguration` resolves to. Every one of those targets is
+/// batched into the same `swift test --parallel` invocation as
+/// `ManifoldSecretsTests` (`scripts/test.sh`'s `PROFILE_CI_XCTEST_FILTERS`),
+/// so any of their test processes can sweep the shared default namespace
+/// clean *while this class's test method — running concurrently, in its own
+/// process — has an item sitting in that same namespace between its
+/// `store()` and `retrieve()` calls.
 ///
 /// The fix mirrors `KeychainServiceSweepTests`: scope every test in this
 /// class to a private, per-run `ManifoldConfiguration.shared` namespace that
 /// no other suite's default-configuration bootstrap can ever reach, rather
 /// than relying on account-name uniqueness inside the shared default
-/// namespace.
+/// namespace. `KeychainNamespaceIsolationAuditTest` (`ManifoldCoreTests`)
+/// enforces this same pattern on every test class that *writes* to the
+/// Keychain; it does not (and structurally cannot, without an enormous,
+/// out-of-scope change) enforce it on the *sweeper* side — the 41
+/// `InMemoryPersistenceHarness.make()` call sites above are a known,
+/// unfixed source of the same hazard, tracked separately from #2416.
 final class KeychainServiceTests: XCTestCase {
 
     /// Tracks accounts created during each test for cleanup.

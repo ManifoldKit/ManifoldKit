@@ -1,18 +1,37 @@
 import XCTest
 import Foundation
 @testable import ManifoldSecrets
+import ManifoldInference
 
 // Tests for KeychainService.retrieveSecure(account:).
 // These tests write a real Keychain item and verify that retrieveSecure returns
 // a SecureBytes containing the same UTF-8 bytes as retrieve returns a String.
-// Tests are integration tests — they write to the real Keychain under a
-// test-specific service name scoped to this test process.
+// Tests are integration tests — they write to the real Keychain.
+//
+// `testAccount` is a unique *account*, not a scoped service namespace — on
+// its own that is not enough isolation (#2416): every test method here still
+// writes under the framework's default `com.manifoldkit.apikeys` namespace,
+// which any other default-configuration bootstrap batched into the same
+// `swift test --parallel` invocation can sweep. `setUp`/`tearDown` below
+// additionally scope `ManifoldConfiguration.shared` to a private namespace
+// per KeychainNamespaceIsolationAuditTest's requirement.
 final class KeychainServiceSecureRetrieveTests: XCTestCase {
 
     private let testAccount = "com.manifoldkit.tests.secureretrieve.\(UUID().uuidString)"
+    private var originalConfig: ManifoldConfiguration!
+
+    override func setUp() {
+        super.setUp()
+        originalConfig = ManifoldConfiguration.shared
+        var config = ManifoldConfiguration.shared
+        config.bundleIdentifier = "com.manifoldkit.tests.secureretrieve.\(UUID().uuidString)"
+        ManifoldConfiguration.shared = config
+    }
 
     override func tearDown() async throws {
         try? KeychainService.delete(account: testAccount)
+        ManifoldConfiguration.shared = originalConfig
+        originalConfig = nil
         try await super.tearDown()
     }
 
