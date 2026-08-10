@@ -845,8 +845,19 @@ run_gate_lock_selftest() {
     # (no "scenario E: FAIL" line, F and G never ran). Copy the real wrapper
     # alongside, unmodified, so the temp package has the same sibling layout
     # the real repo does — never a second implementation of the wrapper.
-    cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_e_watchdog_copy"
-    chmod +x "$scenario_e_watchdog_copy"
+    #
+    # Guarded, not bare: a bare `cp`/`chmod` here under `set -euo pipefail`
+    # reinstates the EXACT failure shape this scenario exists to catch — if
+    # the wrapper is ever renamed, removed, or unreadable, the self-test
+    # aborts mid-scenario-E with no "scenario E: FAIL" line. The `wait`
+    # guard further down cannot cover this: that guard only protects the
+    # child's own exit code, and this failure happens before the child ever
+    # spawns.
+    local scenario_e_wrapper_ok=1
+    if ! cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_e_watchdog_copy" 2>/dev/null \
+        || ! chmod +x "$scenario_e_watchdog_copy" 2>/dev/null; then
+        scenario_e_wrapper_ok=0
+    fi
 
     cat > "$scenario_e_stub_dir/swift" <<'STUB'
 #!/usr/bin/env bash
@@ -867,8 +878,17 @@ STUB
 
     local scenario_e_log="$selftest_root/scenario-e.log"
     local scenario_e_stub_ok=1
-    assert_stub_swift_effective "$scenario_e_stub_dir" "E" || scenario_e_stub_ok=0
-    if [[ $scenario_e_stub_ok -eq 0 ]]; then
+    if [[ $scenario_e_wrapper_ok -eq 1 ]]; then
+        assert_stub_swift_effective "$scenario_e_stub_dir" "E" || scenario_e_stub_ok=0
+    else
+        scenario_e_stub_ok=0
+    fi
+
+    if [[ $scenario_e_wrapper_ok -eq 0 ]]; then
+        echo "[lock-selftest] scenario E: FAIL (could not stage ci-test-with-watchdog.sh from '$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh' into the temp package — missing, unreadable, or chmod failed; refusing to run the nested invocation unprotected)"
+        failures=$((failures + 1))
+        rm -rf "$scenario_e_root"
+    elif [[ $scenario_e_stub_ok -eq 0 ]]; then
         failures=$((failures + 1))
         rm -rf "$scenario_e_root"
     else
@@ -1768,9 +1788,23 @@ PROFILE_LOCAL_TRAITS="Macros"
 # or not executable, this refuses to run the invocation at all rather than
 # silently falling back to an unprotected `swift test` — a degraded
 # progress-detection path must be visible, never quietly absorbed.
+#
+# Poll interval: ci-test-with-watchdog.sh's own liveness check (`kill -0` on
+# the wrapped process) only fires once per POLL_INTERVAL — a hardcoded 15s
+# there, now overridable via WATCHDOG_POLL_INTERVAL (default unchanged, so
+# CI — which never sets this — is provably unaffected). A dev machine
+# running this local-gate driver pays that tax on EVERY wrapped invocation,
+# even when the wrapped process finished a fraction of a second after the
+# wrapper's last check: three invocations in the --profile local shape cost
+# up to ~45s of pure sleep for no reason CI's multi-minute real builds ever
+# have (CI's own 15s default is comparatively free against a build that
+# takes many minutes; --profile local's local iteration loop feels every
+# second of it). Setting it low here reclaims that time without touching
+# ci-test-with-watchdog.sh's CI-facing default.
 CI_TEST_WATCHDOG="$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh"
 LOCAL_STALL_SECONDS_DEFAULT=480
 CI_STALL_SECONDS_DEFAULT=240
+LOCAL_WATCHDOG_POLL_INTERVAL_DEFAULT=1
 
 # Runs one swift-test invocation (the remaining args, already fully resolved
 # — filters/traits/--skip-update/--parallel) through ci-test-with-watchdog.sh.
@@ -1811,8 +1845,10 @@ run_leaf_with_local_watchdog() {
     fi
 
     local stall="${STALL_SECONDS:-$default_stall}"
+    local poll_interval="${WATCHDOG_POLL_INTERVAL:-$LOCAL_WATCHDOG_POLL_INTERVAL_DEFAULT}"
     set +e
     STALL_SECONDS="$stall" \
+        WATCHDOG_POLL_INTERVAL="$poll_interval" \
         MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
         WATCHDOG_DIAGNOSTICS_DIR="$PACKAGE_DIR/test-diagnostics" \
         "$CI_TEST_WATCHDOG" "$@"

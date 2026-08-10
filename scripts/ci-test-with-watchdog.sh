@@ -56,6 +56,22 @@
 #   WATCHDOG_DIAGNOSTICS_DIR=path
 #                       Directory for watchdog-specific process snapshots.
 #                       Default: directory containing WATCHDOG_LOG.
+#   WATCHDOG_POLL_INTERVAL=N
+#                       Seconds between liveness checks (`kill -0` on the
+#                       wrapped process) and progress-count re-checks.
+#                       Default: 15, unchanged — CI never sets this, so CI's
+#                       own timing (and every threshold this file's header
+#                       comment and STALL_SECONDS reasoning is calibrated
+#                       against) is provably identical to before. A lower
+#                       value shrinks the "up to N seconds after the child
+#                       already exited before this loop notices" latency tax
+#                       every wrapped invocation pays — cheap to lower (one
+#                       extra `kill -0` + `grep -c` per tick), so a caller
+#                       driving many short-lived wrapped invocations back to
+#                       back (scripts/test.sh's local-gate driver) sets this
+#                       low instead of eating N seconds of pure sleep per
+#                       invocation for no reason a multi-minute CI build ever
+#                       has.
 #
 # Exit codes
 # ----------
@@ -102,7 +118,7 @@ TEST_PID=$!
 # progress line has appeared in the last $STALL_SECONDS. Using mtime is
 # deterministic across log rotations and survives the `tee` buffering that
 # would otherwise hide writes from `wc -l` polling.
-POLL_INTERVAL=15
+POLL_INTERVAL="${WATCHDOG_POLL_INTERVAL:-15}"
 LAST_PROGRESS_TS=$(date +%s)
 LAST_LINE_COUNT=0
 
