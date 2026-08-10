@@ -828,11 +828,25 @@ run_gate_lock_selftest() {
     echo "[lock-selftest] scenario E: the lock is actually WIRED into the --profile local three-invocation shape (not just a working, unused primitive)"
     local scenario_e_root="$selftest_root/scenario-e"
     local scenario_e_copy="$scenario_e_root/scripts/test.sh"
+    local scenario_e_watchdog_copy="$scenario_e_root/scripts/ci-test-with-watchdog.sh"
     local scenario_e_stub_dir="$scenario_e_root/stub-bin"
     local scenario_e_lock="$scenario_e_root/lock"
     mkdir -p "$scenario_e_root/scripts" "$scenario_e_stub_dir"
     cp "$0" "$scenario_e_copy"
     chmod +x "$scenario_e_copy"
+    # scripts/test.sh resolves ci-test-with-watchdog.sh relative to $0's own
+    # location (CI_TEST_WATCHDOG="$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh",
+    # PACKAGE_DIR derived from $0) — that resolution is correct, but scenario E
+    # used to copy ONLY $0 here, leaving the wrapper missing at the resolved
+    # path in this temp package. With the wrapper missing, the copy's own
+    # fail-closed branch returned 127 for EVERY invocation `--profile local`
+    # drives through run_leaf_with_local_watchdog(), and `wait` on that exit
+    # code under `set -euo pipefail` aborted this whole self-test mid-scenario
+    # (no "scenario E: FAIL" line, F and G never ran). Copy the real wrapper
+    # alongside, unmodified, so the temp package has the same sibling layout
+    # the real repo does — never a second implementation of the wrapper.
+    cp "$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh" "$scenario_e_watchdog_copy"
+    chmod +x "$scenario_e_watchdog_copy"
 
     cat > "$scenario_e_stub_dir/swift" <<'STUB'
 #!/usr/bin/env bash
@@ -1749,8 +1763,15 @@ run_leaf_with_local_watchdog() {
     if [[ "${MANIFOLD_DISABLE_LOCAL_WATCHDOG:-0}" == "1" ]]; then
         echo "⚠️⚠️⚠️  MANIFOLD_DISABLE_LOCAL_WATCHDOG=1 — running '${label}' WITHOUT the stall watchdog. ⚠️⚠️⚠️" >&2
         echo "⚠️⚠️⚠️  A hang here will NOT be caught the way CI would catch it. ⚠️⚠️⚠️" >&2
+        # Same per-label MANIFOLD_TEST_OUTPUT_FILE as the protected path below
+        # — this fallback used to omit it (three invocations sharing one
+        # test_output.txt, each truncating the last), which was fine before
+        # this file had a #2464-style ambient-inheritance hazard to avoid.
+        # The opt-out shouldn't be the one path lacking the isolation the
+        # protected path is careful about.
         set +e
-        "$SCRIPT_PATH" "$@"
+        MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
+            "$SCRIPT_PATH" "$@"
         rc=$?
         set -e
         return $rc
