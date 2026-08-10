@@ -20,10 +20,19 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
 
     /// Number of denoising steps the backend should run.
     ///
-    /// Typical ranges: 1–4 for distilled models (FLUX Schnell, SDXL Turbo),
-    /// 20–50 for full-precision diffusion. Backends that expose a fixed step
-    /// count (e.g. distilled-only conformers) clamp to their supported range.
-    public var steps: Int
+    /// `nil` (the default) means *backend's discretion* — the backend
+    /// resolves the loaded model's own preset default rather than the
+    /// caller guessing a number that fits every model. This matters because
+    /// distilled models (SDXL Turbo, FLUX Schnell) are trained for 1–4
+    /// steps; a caller-supplied default tuned for full diffusion (20–50)
+    /// makes a distilled model run 5–20x more denoise work than it needs
+    /// for no quality gain. Mirrors the ``GenerationConfig/maxThinkingTokens``
+    /// precedent: `nil` defers to a model-aware default instead of the type
+    /// hard-coding one value for every model shape.
+    ///
+    /// An explicit value always overrides the backend's preset and is
+    /// clamped to whatever range that backend supports.
+    public var steps: Int?
 
     /// Target output width in pixels. See ``resolution`` for the
     /// `CGSize`-shaped accessor.
@@ -105,7 +114,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     public var previewStride: Int?
 
     public init(
-        steps: Int = 20,
+        steps: Int? = nil,
         width: Int = 1024,
         height: Int = 1024,
         seed: UInt64? = nil,
@@ -128,7 +137,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     /// nearest integer pixels — backends operate on whole-pixel resolutions,
     /// never fractions.
     public init(
-        steps: Int = 20,
+        steps: Int? = nil,
         resolution: CGSize,
         seed: UInt64? = nil,
         guidanceScale: Float? = nil,
@@ -156,7 +165,10 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.steps = try c.decode(Int.self, forKey: .steps)
+        // An old persisted/wire payload still carries an explicit `steps`
+        // integer — decode it as present so pre-optional payloads round-trip.
+        // A new payload omits the key entirely when `steps` is `nil`.
+        self.steps = try c.decodeIfPresent(Int.self, forKey: .steps)
         self.width = try c.decode(Int.self, forKey: .width)
         self.height = try c.decode(Int.self, forKey: .height)
         self.seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
@@ -168,7 +180,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
 
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(steps, forKey: .steps)
+        try c.encodeIfPresent(steps, forKey: .steps)
         try c.encode(width, forKey: .width)
         try c.encode(height, forKey: .height)
         try c.encodeIfPresent(seed, forKey: .seed)

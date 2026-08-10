@@ -21,8 +21,13 @@ public enum ImageGenerationEvent: Sendable {
     /// Progress tick during the denoising loop.
     ///
     /// `step` is 1-indexed and monotonically increasing within a single
-    /// generation; `total` matches the value the caller passed in
-    /// ``ImageGenerationConfig/steps`` (after any backend-side clamping).
+    /// generation. `total` is the backend's *actually-resolved* step count:
+    /// the caller's ``ImageGenerationConfig/steps`` when it was non-`nil`
+    /// (after any backend-side clamping), or — when the caller left `steps`
+    /// `nil` — the loaded model's own preset default (see the "Step-count
+    /// resolution contract" on ``ImageGenerationBackend/generate(prompt:config:)``).
+    /// Conforming backends MUST report the real resolved count starting with
+    /// the first `.progress` event, never `0` as a placeholder.
     case progress(step: Int, total: Int)
 
     /// Intermediate preview of the in-progress denoise at step `step` of

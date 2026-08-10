@@ -25,7 +25,12 @@ import CoreFoundation
 /// touching ``ImageGenerationConfig``.
 public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
 
-    public var steps: Int
+    /// Mirrors ``ImageGenerationConfig/steps``. `nil` means the backend
+    /// resolved its own preset default at generation time rather than a
+    /// caller-supplied value — persisted as-is so a "regenerate with the
+    /// same settings" replay re-resolves the preset rather than baking in
+    /// whatever number happened to be in effect at capture time.
+    public var steps: Int?
     public var width: Int
     public var height: Int
     public var seed: UInt64?
@@ -55,7 +60,7 @@ public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
     }
 
     public init(
-        steps: Int,
+        steps: Int?,
         width: Int,
         height: Int,
         seed: UInt64? = nil,
@@ -114,7 +119,10 @@ extension ImageGenerationConfigSnapshot: Codable {
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.steps = try c.decode(Int.self, forKey: .steps)
+        // An older persisted row still carries an explicit `steps` integer —
+        // decode it as present so pre-optional rows round-trip. A new row
+        // omits the key entirely when `steps` is `nil`.
+        self.steps = try c.decodeIfPresent(Int.self, forKey: .steps)
         self.width = try c.decode(Int.self, forKey: .width)
         self.height = try c.decode(Int.self, forKey: .height)
         self.seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
@@ -125,7 +133,7 @@ extension ImageGenerationConfigSnapshot: Codable {
 
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(steps, forKey: .steps)
+        try c.encodeIfPresent(steps, forKey: .steps)
         try c.encode(width, forKey: .width)
         try c.encode(height, forKey: .height)
         try c.encodeIfPresent(seed, forKey: .seed)

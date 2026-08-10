@@ -63,6 +63,7 @@ docs/MIGRATION-background-task-scheduler-removed.md	0	0
 docs/MIGRATION-chatexporter-removed.md	0	0
 docs/MIGRATION-cloudbackenderror-missingRequiredOverride.md	0	0
 docs/MIGRATION-deprecation-shims-deleted.md	0	0
+docs/MIGRATION-image-generation-steps-optional.md	0	0
 docs/MIGRATION-inert-surface-sweep-2026-07-22.md	0	0
 docs/MIGRATION-llama-vision-probe.md	0	1
 docs/MIGRATION-manifest-context-window-optional.md	0	2

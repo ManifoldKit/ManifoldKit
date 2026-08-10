@@ -503,3 +503,12 @@ API breakage: constructor DocumentLibrarySheet.init(ragService:hasEmbeddingBacke
 API breakage: constructor DownloadableModelRow.init(model:showFitGuidance:rationale:) has been removed
 API breakage: enum ChatExporter has been removed
 API breakage: enum ChatExporterError has been removed
+API breakage: var ImageGenerationConfig.steps has declared type change from Swift.Int to Swift.Int?
+API breakage: accessor ImageGenerationConfig.steps.Get() has return type change from Swift.Int to Swift.Int?
+API breakage: accessor ImageGenerationConfig.steps.Set() has parameter 0 type change from Swift.Int to Swift.Int?
+API breakage: constructor ImageGenerationConfig.init(steps:width:height:seed:guidanceScale:aspectRatio:outputDirectory:previewStride:) has parameter 0 type change from Swift.Int to Swift.Int?
+API breakage: constructor ImageGenerationConfig.init(steps:resolution:seed:guidanceScale:outputDirectory:previewStride:) has parameter 0 type change from Swift.Int to Swift.Int?
+API breakage: var ImageGenerationConfigSnapshot.steps has declared type change from Swift.Int to Swift.Int?
+API breakage: accessor ImageGenerationConfigSnapshot.steps.Get() has return type change from Swift.Int to Swift.Int?
+API breakage: accessor ImageGenerationConfigSnapshot.steps.Set() has parameter 0 type change from Swift.Int to Swift.Int?
+API breakage: constructor ImageGenerationConfigSnapshot.init(steps:width:height:seed:guidanceScale:aspectRatio:outputDirectory:) has parameter 0 type change from Swift.Int to Swift.Int?
