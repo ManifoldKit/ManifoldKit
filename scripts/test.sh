@@ -44,6 +44,1062 @@ PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # test-diagnostics/ convention.
 OUTPUT_FILE="${MANIFOLD_TEST_OUTPUT_FILE:-$PACKAGE_DIR/test-diagnostics/test_output.txt}"
 
+# ── Machine-wide gate lock ──────────────────────────────────────────────────
+# 2026-08-09 incident: six concurrent worker gates wedged an xcodebuild for
+# 2h via SwiftPM cache-lock contention — every worker was blocked on the same
+# on-disk `.build`/package-cache lock, and none of them could tell the others
+# were even there. This section serializes full gate runs on one machine so
+# only one build-heavy `swift test` invocation is in flight at a time.
+#
+# The lock is a single regular FILE published via a hard link, not a
+# directory built with `mkdir` + separate content writes. That two-step
+# shape (an earlier version of this file used it) has an unavoidable gap
+# between "the directory exists" and "the directory is populated" — and
+# under real N-way contention (measured: 8 waiters against one dead-holder
+# lock) a reclaimer can capture another process's still-populating
+# directory in that gap, producing either silent double-acquisition or an
+# orphaned lock attributed to a PID that has already abandoned that
+# specific attempt (both reproduced empirically; see #2453 PR history for
+# the two prior designs that didn't hold up under measurement). This design
+# has no such gap: the lock's full content (holder PID + acquisition time,
+# two lines) is written to a PRIVATE, uniquely-named candidate file first,
+# and only published to the shared path afterward via `ln` (a hard link) —
+# so the shared path never has an observable "exists but empty" state.
+# `link(2)` gives the same "exactly one caller wins" guarantee `mkdir`
+# does, verified empirically (30-way concurrent `ln` onto one path: exactly
+# one winner) — unlike two alternatives that looked equally safe on paper
+# and were not: `mv` onto an existing directory silently MERGES rather than
+# failing, and macOS's `ln -s` silently no-ops on an existing destination
+# instead of returning an error. Both surprises were caught by running the
+# concurrent case, not by reading a man page.
+#
+# Reclaiming a dead holder's lock took three attempts to get right — see
+# `acquire_gate_lock`'s reclaim branch below for the full account. The
+# short version: a bare `rm` (any waiter that reads the same dead PID acts
+# on it independently) and a "capture the file, verify its content, restore
+# it if the diagnosis turns out to be stale" reclaim (the capture itself
+# opens a fresh window a third process can win) both produced real,
+# ground-truth-confirmed 2-3-way simultaneous "holders" under measurement —
+# not reasoning, actual concurrent runs with a real-time marker, since
+# 1-second-resolution timestamp comparison produced its own false
+# positives/negatives along the way. The design that survived measurement
+# serializes the whole "diagnose dead, then delete" decision behind its own
+# `mkdir`-based mutex, so at most one process is ever mid-reclaim for a
+# given generation of the lock.
+#
+# MANIFOLD_GATE_NO_LOCK=1 is a boot-time opt-out: read once, at invocation
+# time, by whoever launches the script — never toggled mid-run — for the
+# rare deliberate parallel run (e.g. intentionally racing two profiles
+# against different modules on purpose). Everyone else gets serialized.
+GATE_LOCK_FILE="${MANIFOLD_GATE_LOCK_FILE:-/tmp/manifoldkit-gate.lock}"
+# Poll interval is overridable so the self-test below doesn't have to eat the
+# production default in wall-clock time; production callers never set this.
+GATE_LOCK_POLL_SECS="${MANIFOLD_GATE_LOCK_POLL_SECS:-5}"
+GATE_LOCK_PROGRESS_INTERVAL_SECS=60
+GATE_LOCK_WAIT_CEILING_SECS="${MANIFOLD_GATE_LOCK_CEILING_SECS:-10800}"  # 3h
+# How old an ownerless `${GATE_LOCK_FILE}.reclaiming` mutex directory (mkdir'd
+# but its pid file never written) must be before it is swept as an orphan
+# rather than left alone as merely young. 60s is comfortably above the
+# microsecond-scale window between a reclaimer's `mkdir` and its `printf`
+# (the only source of a legitimate pid-less mutex) — overridable so the
+# self-test below can exercise the sweep without a real 60s wait.
+GATE_RECLAIM_MUTEX_ORPHAN_AGE_SECS="${MANIFOLD_GATE_RECLAIM_MUTEX_ORPHAN_AGE_SECS:-60}"
+GATE_LOCK_HELD_BY_SELF=0
+# Set for exactly the window this process holds ${GATE_LOCK_FILE}.reclaiming
+# (between its own `mkdir` and `rm -rf`) — release_gate_lock's EXIT trap
+# checks this to sweep the mutex on SIGINT/SIGTERM (any signal that still
+# runs the EXIT trap). A SIGKILL mid-window skips the trap entirely; the
+# age-based orphan sweep in acquire_gate_lock's reclaim branch is what
+# recovers from that case instead.
+GATE_RECLAIM_MUTEX_HELD_BY_SELF=0
+
+# Blocks until this process holds $GATE_LOCK_FILE, or fails closed after the
+# ceiling. A no-op when MANIFOLD_GATE_NO_LOCK=1, or when an ancestor
+# invocation of this very script already holds the lock — the three-
+# invocation profile shape below re-execs "$0" up to three times, and each
+# child would otherwise deadlock waiting on a lock its own parent holds and
+# cannot release until the child exits. The ancestor communicates "I already
+# hold this" to its children via the exported MANIFOLD_GATE_LOCK_OWNER_PID
+# sentinel, which children inherit automatically.
+#
+# The sentinel is exported, so it is NOT scoped to the three re-exec
+# children alone — any descendant of a gate run (an interactive shell, an
+# agent session spawned underneath one) inherits it too, and it survives in
+# that descendant's environment after the ancestor gate has released the
+# lock and exited. Trusting the sentinel's mere presence would let such a
+# descendant run every future `scripts/test.sh` invocation completely
+# unlocked, silently, forever — exactly the fail-open the lock exists to
+# prevent. So a live sentinel is corroborated, not trusted outright: only
+# skip acquisition when the recorded holder PID is (a) still alive AND
+# (b) still the name written in the lock file itself (i.e. the lock this
+# process would otherwise wait for is, right now, actually held by the
+# ancestor that exported the sentinel — not a stale leftover from a run
+# that has already finished). A widowed sentinel is dropped and this
+# process acquires for real. See scenario C in run_gate_lock_selftest.
+
+# Best-effort sweep of `.candidate.<random>` scratch files left behind by a
+# process killed between building its (private, not-yet-published) claim
+# and either publishing it (successful `ln`) or discarding it (a lost
+# race) — e.g. `kill -9` mid-attempt. Each candidate's first line is the
+# PID that created it; only removed when that PID is confirmed dead (a
+# live candidate belongs to a process still mid-attempt, never orphaned
+# while it runs). Safe to call with nothing to sweep: the glob simply fails
+# to match and the loop body never runs.
+sweep_orphaned_candidates() {
+    local candidate candidate_owner_pid
+    for candidate in "${GATE_LOCK_FILE}".candidate.*; do
+        [[ -f "$candidate" ]] || continue
+        candidate_owner_pid="$(head -n 1 "$candidate" 2>/dev/null)" || candidate_owner_pid=""
+        if [[ "$candidate_owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$candidate_owner_pid" 2>/dev/null; then
+            rm -f "$candidate" 2>/dev/null || true
+        fi
+    done
+}
+
+acquire_gate_lock() {
+    if [[ "${MANIFOLD_GATE_NO_LOCK:-0}" == "1" ]]; then
+        echo "[gate-lock] MANIFOLD_GATE_NO_LOCK=1 — skipping machine-wide gate serialization (deliberate parallel run)."
+        return 0
+    fi
+    if [[ -n "${MANIFOLD_GATE_LOCK_OWNER_PID:-}" ]]; then
+        local recorded_pid=""
+        if [[ -f "$GATE_LOCK_FILE" ]]; then
+            recorded_pid="$(head -n 1 "$GATE_LOCK_FILE" 2>/dev/null)" || recorded_pid=""
+        fi
+        if [[ "$recorded_pid" == "$MANIFOLD_GATE_LOCK_OWNER_PID" ]] && kill -0 "$MANIFOLD_GATE_LOCK_OWNER_PID" 2>/dev/null; then
+            return 0
+        fi
+        echo "[gate-lock] inherited MANIFOLD_GATE_LOCK_OWNER_PID=$MANIFOLD_GATE_LOCK_OWNER_PID is stale (holder dead, or lock no longer held by it) — acquiring for real instead of skipping." >&2
+        unset MANIFOLD_GATE_LOCK_OWNER_PID
+    fi
+
+    sweep_orphaned_candidates
+
+    local waited=0
+    local announced=0
+    while true; do
+        # Build the FULL claim privately, before it is ever visible to
+        # anyone else. `mktemp` gives a name no other process can guess or
+        # collide with; the two lines (PID, acquisition time) are written
+        # to it while it is still nobody's business but ours.
+        local candidate=""
+        candidate="$(mktemp "${GATE_LOCK_FILE}.candidate.XXXXXX" 2>/dev/null)" || candidate=""
+        if [[ -z "$candidate" ]]; then
+            echo "[gate-lock] error: mktemp failed building a lock candidate at ${GATE_LOCK_FILE}.candidate.XXXXXX — check that $(dirname "$GATE_LOCK_FILE") is writable. Not a contention case; failing closed." >&2
+            exit 74
+        fi
+        { printf '%s\n' "$$"; date +%s; } > "$candidate"
+
+        # Publish by hard-linking the fully-formed candidate onto the
+        # shared path. Exactly one concurrent `ln` can win here (verified
+        # empirically); every loser gets ENOENT/EEXIST and simply discards
+        # its own unpublished candidate below, re-reading fresh state on
+        # its next loop iteration.
+        if ln "$candidate" "$GATE_LOCK_FILE" 2>/dev/null; then
+            rm -f "$candidate"  # two names, one inode — the link IS our claim now
+            GATE_LOCK_HELD_BY_SELF=1
+            export MANIFOLD_GATE_LOCK_OWNER_PID=$$
+            if [[ $waited -gt 0 ]]; then
+                echo "[gate-lock] acquired after waiting ${waited}s."
+            fi
+            return 0
+        fi
+        rm -f "$candidate"  # lost the race; never published, safe to discard
+
+        local holder_pid="" holder_start="" holder_age="?"
+        if [[ -f "$GATE_LOCK_FILE" ]]; then
+            holder_pid="$(sed -n '1p' "$GATE_LOCK_FILE" 2>/dev/null)" || holder_pid=""
+            holder_start="$(sed -n '2p' "$GATE_LOCK_FILE" 2>/dev/null)" || holder_start=""
+        fi
+        if [[ -n "$holder_start" ]]; then
+            holder_age="$(( $(date +%s) - holder_start ))s"
+        fi
+
+        # Stale-lock reclaim: our FRESH, same-iteration read says the
+        # holder PID is dead. Two earlier designs did NOT survive real
+        # measurement here: a bare `rm` (any waiter that reads the same
+        # dead PID acts on it independently, racing whichever `ln` is
+        # mid-flight) and a "capture via `mv`, verify content, restore if
+        # mismatched" step (closed that race, but capturing ANYTHING —
+        # even briefly, even with a correct verify-and-restore — opens a
+        # fresh window: while the capture is in a reclaimer's private
+        # hands, ANOTHER process's independent `ln` can win the now-vacant
+        # shared path, and if that captured content later turns out to
+        # need restoring, the slot may already be legitimately occupied,
+        # silently losing the captured holder's claim while it still
+        # believes it holds the lock. Ground-truth confirmed via a
+        # real-time concurrent-holder marker, not inferred from
+        # timestamps: this produced real 2-3-way simultaneous "holders"
+        # under ten concurrent 8-waiter runs.
+        #
+        # The actual fix: serialize the whole "diagnose dead, then delete"
+        # decision behind its own exclusive mutex, using the same `mkdir`
+        # atomicity this lock has relied on from the start. At most one
+        # process at a time may even ATTEMPT a reclaim for this
+        # generation; every other process that also independently
+        # diagnosed the same dead PID just loses the mkdir race and falls
+        # straight through to the normal wait/retry path below — it does
+        # NOT duplicate the reclaim attempt, so there is no second actor
+        # left to race the first one's decision. The mutex holder then
+        # re-reads the lock file's content FRESH, now that it is the sole
+        # party allowed to act on that read: no other reclaimer can have
+        # changed the diagnosis out from under it, so this read cannot be
+        # stale in the way that broke the capture-and-restore design — the
+        # only remaining actor is a legitimate NEW `ln` winner, which the
+        # retry loop already handles correctly (our own subsequent `ln`
+        # simply loses to it, and we retry from scratch as a normal
+        # waiter).
+        if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+            local reclaim_mutex="${GATE_LOCK_FILE}.reclaiming"
+            if mkdir "$reclaim_mutex" 2>/dev/null; then
+                GATE_RECLAIM_MUTEX_HELD_BY_SELF=1
+                # This write is best-effort diagnostics only: if it fails,
+                # the mutex (the `mkdir` above) still correctly serializes
+                # reclaim attempts — the only loss is that a later process
+                # can't identify and sweep THIS mutex if we die before
+                # `rm -rf`'ing it below, leaving an orphan instead of an
+                # auto-cleaned one.
+                # fail-open-ok: best-effort diagnostics write, see above
+                printf '%s\n' "$$" > "$reclaim_mutex/pid" 2>/dev/null || true
+                local mutex_holder_pid=""
+                if [[ -f "$GATE_LOCK_FILE" ]]; then
+                    mutex_holder_pid="$(sed -n '1p' "$GATE_LOCK_FILE" 2>/dev/null)" || mutex_holder_pid=""
+                fi
+                if [[ -n "$mutex_holder_pid" ]] && ! kill -0 "$mutex_holder_pid" 2>/dev/null; then
+                    rm -f "$GATE_LOCK_FILE"
+                    echo "[gate-lock] STALE LOCK RECLAIMED: holder PID $mutex_holder_pid (age ${holder_age}) is dead — removing $GATE_LOCK_FILE and retrying." >&2
+                fi
+                rm -rf "$reclaim_mutex"
+                GATE_RECLAIM_MUTEX_HELD_BY_SELF=0
+                # We made real progress this iteration (reclaimed, or
+                # confirmed the lock file had already changed out from
+                # under us) — retry immediately, no pacing needed.
+                continue
+            fi
+
+            # Someone else already holds the reclaim mutex for this
+            # generation — unless THEY are dead too (crashed mid-reclaim),
+            # in which case the mutex itself is an orphan that would
+            # otherwise block every future reclaim forever. Only clear it
+            # when its recorded owner is confirmed dead.
+            local mutex_owner_pid=""
+            mutex_owner_pid="$(cat "$reclaim_mutex/pid" 2>/dev/null)" || mutex_owner_pid=""
+            if [[ -n "$mutex_owner_pid" ]]; then
+                if ! kill -0 "$mutex_owner_pid" 2>/dev/null; then
+                    rm -rf "$reclaim_mutex" 2>/dev/null || true
+                fi
+            else
+                # No readable pid file. Two explanations, indistinguishable
+                # from content alone: a YOUNG mutex (the owner `mkdir`'d but
+                # hasn't `printf`'d its pid yet — a real but microsecond-
+                # scale window) or an ORPHAN (the owner was SIGKILLed inside
+                # that exact window, so no EXIT trap ever ran to remove it —
+                # release_gate_lock's trap-based cleanup above only fires on
+                # signals that still run EXIT traps). Age is what tells them
+                # apart: a mutex is swept only once it is old enough that
+                # "still forming" stops being a credible explanation, so a
+                # merely-young mutex is never touched.
+                local mutex_mtime=""
+                mutex_mtime="$(stat -f %m "$reclaim_mutex" 2>/dev/null)" || mutex_mtime=""
+                if [[ -n "$mutex_mtime" ]]; then
+                    local mutex_age_secs=$(( $(date +%s) - mutex_mtime ))
+                    if [[ $mutex_age_secs -ge $GATE_RECLAIM_MUTEX_ORPHAN_AGE_SECS ]]; then
+                        rm -rf "$reclaim_mutex" 2>/dev/null || true
+                        echo "[gate-lock] swept orphaned reclaim mutex $reclaim_mutex (age ${mutex_age_secs}s, no pid file — likely SIGKILLed mid-reclaim)." >&2
+                    fi
+                fi
+            fi
+
+            # We did NOT make progress this iteration — another process's
+            # reclaim mutex is (as far as we can tell) still legitimately
+            # in use. Without pacing here, this branch is reached again on
+            # the very next loop iteration (the same dead holder_pid is
+            # still on disk), so a bare `continue` would spin at ~100% CPU
+            # indefinitely and GATE_LOCK_WAIT_CEILING_SECS would never
+            # apply — `waited` is only ever incremented on the path below,
+            # which this early `continue` always skipped. Duplicating the
+            # sleep/waited/ceiling triplet here (rather than falling
+            # through to share the code below) is what actually bounds
+            # this path: it degrades to a normal paced wait and fails
+            # closed at the ceiling instead of spinning forever.
+            sleep "$GATE_LOCK_POLL_SECS"
+            waited=$((waited + GATE_LOCK_POLL_SECS))
+            if [[ $waited -ge $GATE_LOCK_WAIT_CEILING_SECS ]]; then
+                echo "[gate-lock] error: waited ${waited}s for gate lock held by PID ${holder_pid:-unknown} (ceiling ${GATE_LOCK_WAIT_CEILING_SECS}s) — failing CLOSED rather than proceeding unlocked. Set MANIFOLD_GATE_NO_LOCK=1 to bypass deliberately." >&2
+                exit 75
+            fi
+            continue
+        fi
+
+        if [[ $announced -eq 0 || $((waited % GATE_LOCK_PROGRESS_INTERVAL_SECS)) -eq 0 ]]; then
+            echo "[gate-lock] waiting for gate lock held by PID ${holder_pid:-unknown} (age ${holder_age}) — waited ${waited}s so far"
+            announced=1
+        fi
+
+        if [[ $waited -ge $GATE_LOCK_WAIT_CEILING_SECS ]]; then
+            echo "[gate-lock] error: waited ${waited}s for gate lock held by PID ${holder_pid:-unknown} (ceiling ${GATE_LOCK_WAIT_CEILING_SECS}s) — failing CLOSED rather than proceeding unlocked. Set MANIFOLD_GATE_NO_LOCK=1 to bypass deliberately." >&2
+            exit 75
+        fi
+
+        sleep "$GATE_LOCK_POLL_SECS"
+        waited=$((waited + GATE_LOCK_POLL_SECS))
+    done
+}
+
+# Only the process that actually acquired the lock releases it — a child
+# that skipped acquisition (because an ancestor already held it) must not
+# tear down the lock out from under that ancestor.
+release_gate_lock() {
+    if [[ $GATE_LOCK_HELD_BY_SELF -eq 1 ]]; then
+        echo "[gate-lock] released (pid $$)."
+        rm -f "$GATE_LOCK_FILE"
+    fi
+    # Covers SIGINT/SIGTERM arriving while this process is mid-reclaim
+    # (between its own `mkdir "$GATE_LOCK_FILE.reclaiming"` and `rm -rf` of
+    # the same path) — both still run the EXIT trap, so this sweeps the
+    # mutex rather than leaving it for the age-based orphan sweep to find
+    # later. A SIGKILL in that same window skips this trap entirely; that
+    # case is what the orphan-age sweep in acquire_gate_lock exists for.
+    if [[ $GATE_RECLAIM_MUTEX_HELD_BY_SELF -eq 1 ]]; then
+        rm -rf "${GATE_LOCK_FILE}.reclaiming" 2>/dev/null || true
+    fi
+}
+trap release_gate_lock EXIT
+
+# ── Lock self-test (hidden verbs, no swift test involved) ───────────────────
+# The cheapest honest proof the lock does what it claims: exercise the real
+# acquire/release code path above against an isolated lock directory (never
+# the production $GATE_LOCK_FILE) via six subprocess scenarios. Wired into
+# ManifoldCoreTests as GateLockSelfTestScriptTests, following the repo's
+# existing pattern for scripts/*.sh behavior tests (FuzzCIGateScriptTests
+# et al.).
+#
+# --lock-selftest-hold <seconds> [markers-dir]: acquire the lock, hold it
+# for <seconds>, then exit (the EXIT trap releases it) — the reusable
+# "holder" building block for four of the six scenarios below (scenarios E
+# and F run the real orchestration end-to-end instead, against the two
+# different acquire_gate_lock call sites). The optional third
+# argument names a directory where this process drops a uniquely-named
+# marker file (its own PID) for exactly the window it believes it holds
+# the lock — scenario D's concurrency check polls that directory's entry
+# count in real time, which is granularity-independent (unlike comparing
+# ACQUIRED/releasing timestamps, which only have 1s resolution on macOS —
+# two genuinely sequential, non-overlapping holds can land in the same
+# integer second under heavy contention and look identical to a real
+# double-acquisition from timestamps alone).
+if [[ "${1:-}" == "--lock-selftest-hold" ]]; then
+    hold_seconds="${2:?'--lock-selftest-hold requires a seconds argument'}"
+    markers_dir="${3:-}"
+    echo "[gate-lock-hold] pid=$$ requesting lock at $(date +%s)"
+    acquire_gate_lock
+    echo "[gate-lock-hold] pid=$$ ACQUIRED at $(date +%s)"
+    [[ -n "$markers_dir" ]] && touch "$markers_dir/active.$$"
+    sleep "$hold_seconds"
+    [[ -n "$markers_dir" ]] && rm -f "$markers_dir/active.$$"
+    echo "[gate-lock-hold] pid=$$ releasing at $(date +%s)"
+    exit 0
+fi
+
+# Scenarios E and F run the real `scripts/test.sh` orchestration with a stub
+# `swift` prepended to PATH, so three full invocations complete in
+# milliseconds instead of starting a real build. That substitution is the
+# load-bearing precondition of both scenarios, and it is exactly the shape of
+# thing that fails OPEN: if `swift` ever resolved to something other than the
+# stub (an absolute-path invocation, a shell that rebuilds PATH, a sandbox
+# that strips it), the nested run would silently drive the REAL toolchain
+# inside an already-running `swift test` and nothing in the scenario would
+# say so. Principle 6 forbids that everywhere else in this repo; a self-test
+# for a fail-open defect must not contain one.
+#
+# So the stub proves itself before it is relied on: resolution is checked in
+# the same non-interactive `bash -c` shape the nested script uses, and the
+# stub must actually execute and emit its own marker. A miss returns 1 and
+# the caller SKIPS the nested invocation entirely rather than letting a real
+# toolchain start.
+assert_stub_swift_effective() {
+    local stub_dir="$1"
+    local label="$2"
+    local resolved probe
+
+    resolved="$(PATH="$stub_dir:$PATH" bash -c 'command -v swift' 2>/dev/null)" || resolved=""
+    if [[ "$resolved" != "$stub_dir/swift" ]]; then
+        echo "[lock-selftest] scenario $label: FAIL (stub \`swift\` NOT in effect — 'command -v swift' resolved to '${resolved:-<nothing>}', expected '$stub_dir/swift'; refusing to run the nested invocation against a real toolchain)"
+        return 1
+    fi
+
+    probe="$(PATH="$stub_dir:$PATH" bash -c 'swift --stub-effectiveness-probe' 2>&1)" || probe=""
+    case "$probe" in
+        *"[stub-swift]"*) ;;
+        *)
+            echo "[lock-selftest] scenario $label: FAIL (stub \`swift\` resolved but did not execute as the stub — probe output was '${probe:-<empty>}', expected a '[stub-swift]' marker; refusing to run the nested invocation against a real toolchain)"
+            return 1
+            ;;
+    esac
+
+    echo "[lock-selftest] scenario $label: stub \`swift\` verified in effect at $stub_dir/swift (resolution + execution both checked)"
+    return 0
+}
+
+run_gate_lock_selftest() {
+    local selftest_root
+    selftest_root="${TMPDIR:-/tmp}/manifoldkit-gate-selftest-$$-$(date +%s)"
+    local scenario_a_lock="$selftest_root/scenario-a.lock"
+    local scenario_b_lock="$selftest_root/scenario-b.lock"
+    mkdir -p "$selftest_root"
+    local failures=0
+    # Bounds every subprocess spawned below to a fast, loud failure instead
+    # of the production 10800s (3h) default. Without this, a genuinely
+    # broken reclaim/acquire path (exactly the thing scenario D exists to
+    # sabotage-test) can leave a self-test subprocess spinning for the full
+    # production ceiling — turning "the cheapest honest proof the lock
+    # works" into a run that can itself hang the gate for three hours. 20s
+    # comfortably covers scenario D's worst-case ~8-10s of expected
+    # sequential contention (8 waiters x ~1s hold each) with headroom for a
+    # loaded machine, while still failing fast and loud if something is
+    # actually wedged.
+    local selftest_ceiling_secs=20
+
+    # ── Enclosing-run log guard (scenario G's arming step) ─────────────────
+    # This self-test runs INSIDE a `swift test`, which in CI runs inside
+    # `scripts/ci-test-with-watchdog.sh`. That wrapper exports
+    # MANIFOLD_TEST_OUTPUT_FILE and then polls that file for SwiftPM progress
+    # lines to decide whether the run is alive. Every descendant inherits the
+    # variable — including the nested `scripts/test.sh` invocations scenarios
+    # E and F spawn, whose own `swift test ... | tee "$OUTPUT_FILE"` would
+    # otherwise TRUNCATE the live watchdog log out from under the outer run.
+    #
+    # That is not hypothetical: it is the measured cause of this PR's two CI
+    # failures. The outer `tee` keeps its file offset across the truncation,
+    # so its next write lands past a 100KB+ hole of NUL bytes; BSD grep then
+    # classifies the log as binary ("Binary file ... matches" — the literal
+    # line CI printed) and the watchdog's `current_count > LAST_LINE_COUNT`
+    # re-arm condition can never be satisfied again. The run keeps making
+    # real progress and the watchdog SIGABRTs it exactly STALL_SECONDS later
+    # regardless — a fixed ~230-243s stall, insensitive to how much work any
+    # scenario is configured to do.
+    #
+    # So: every nested invocation below gets its own MANIFOLD_TEST_OUTPUT_FILE
+    # inside $selftest_root, and scenario G asserts the enclosing run's log
+    # was left alone. When the variable is NOT inherited (a developer running
+    # `--lock-selftest` by hand), a seeded stand-in is synthesised and
+    # exported so the guard is armed identically in both environments —
+    # otherwise the one check that would have caught this defect would be
+    # vacuous everywhere except the CI run it was written for.
+    local enclosing_log="${MANIFOLD_TEST_OUTPUT_FILE:-}"
+    local enclosing_log_synthesised=0
+    if [[ -z "$enclosing_log" ]]; then
+        enclosing_log="$selftest_root/enclosing-run-stand-in.log"
+        enclosing_log_synthesised=1
+        local g_seed_i=1
+        : > "$enclosing_log"
+        while [[ $g_seed_i -le 200 ]]; do
+            echo "[$g_seed_i/200] Testing ManifoldCoreTests.EnclosingRunStandIn/test_$g_seed_i" >> "$enclosing_log"
+            g_seed_i=$((g_seed_i + 1))
+        done
+        export MANIFOLD_TEST_OUTPUT_FILE="$enclosing_log"
+    fi
+    local enclosing_progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)'
+    local enclosing_size_before=0 enclosing_count_before=0
+    if [[ -f "$enclosing_log" ]]; then
+        enclosing_size_before="$(wc -c < "$enclosing_log" | tr -d ' ')"
+        enclosing_count_before="$(grep -acE "$enclosing_progress_pattern" "$enclosing_log" 2>/dev/null)" || enclosing_count_before=0
+    fi
+
+    echo "[lock-selftest] scenario A: second acquirer waits for the holder, then acquires after release"
+    local holder_log="$selftest_root/holder.log"
+    local second_log="$selftest_root/second.log"
+    MANIFOLD_GATE_LOCK_FILE="$scenario_a_lock" MANIFOLD_GATE_LOCK_CEILING_SECS="$selftest_ceiling_secs" \
+        "$0" --lock-selftest-hold 3 > "$holder_log" 2>&1 &
+    local holder_pid=$!
+    # Poll for the holder to have actually acquired (a non-empty lock file),
+    # rather than a flat `sleep 1` — on a busy machine (contended tonight by
+    # construction) a fixed sleep can fire before the holder's `ln` even
+    # lands, making the second attempt win the race instead of waiting,
+    # which fails this scenario for reasons unrelated to the lock and costs
+    # a full gate re-run to notice.
+    local a_wait_i=0
+    while [[ ! -s "$scenario_a_lock" && $a_wait_i -lt 100 ]]; do
+        sleep 0.1
+        a_wait_i=$((a_wait_i + 1))
+    done
+    local t0 t1 elapsed
+    t0=$(date +%s)
+    MANIFOLD_GATE_LOCK_FILE="$scenario_a_lock" MANIFOLD_GATE_LOCK_POLL_SECS=1 MANIFOLD_GATE_LOCK_CEILING_SECS="$selftest_ceiling_secs" \
+        "$0" --lock-selftest-hold 0 > "$second_log" 2>&1
+    t1=$(date +%s)
+    elapsed=$((t1 - t0))
+    wait "$holder_pid" 2>/dev/null || true
+    # Always surface the child's real output (not just on failure) — the
+    # aggregate --lock-selftest stdout this function produces is itself
+    # consumed as evidence (GateLockSelfTestScriptTests asserts against it
+    # directly), so the actual production log lines belong in it
+    # unconditionally, not paraphrased into a summary line only reachable
+    # via a FAIL branch.
+    cat "$second_log"
+    if grep -q "waiting for gate lock held by PID ${holder_pid}" "$second_log" && [[ $elapsed -ge 1 ]]; then
+        echo "[lock-selftest] scenario A: PASS (waited ${elapsed}s, saw 'waiting for gate lock held by PID ${holder_pid}')"
+    else
+        echo "[lock-selftest] scenario A: FAIL (elapsed=${elapsed}s)"
+        failures=$((failures + 1))
+    fi
+
+    echo "[lock-selftest] scenario B: stale lock (dead holder PID) is reclaimed loudly"
+    sleep 0 &
+    local dead_pid=$!
+    wait "$dead_pid" 2>/dev/null || true
+    { printf '%s\n' "$dead_pid"; date +%s; } > "$scenario_b_lock"
+    local reclaim_log="$selftest_root/reclaim.log"
+    if MANIFOLD_GATE_LOCK_FILE="$scenario_b_lock" MANIFOLD_GATE_LOCK_CEILING_SECS="$selftest_ceiling_secs" \
+        "$0" --lock-selftest-hold 0 > "$reclaim_log" 2>&1; then
+        cat "$reclaim_log"
+        if grep -q "STALE LOCK RECLAIMED: holder PID ${dead_pid}" "$reclaim_log"; then
+            echo "[lock-selftest] scenario B: PASS (dead PID ${dead_pid} reclaimed loudly)"
+        else
+            echo "[lock-selftest] scenario B: FAIL (acquired but no reclaim message logged)"
+            failures=$((failures + 1))
+        fi
+    else
+        cat "$reclaim_log"
+        echo "[lock-selftest] scenario B: FAIL (subprocess exited non-zero)"
+        failures=$((failures + 1))
+    fi
+
+    echo "[lock-selftest] scenario C: a widowed MANIFOLD_GATE_LOCK_OWNER_PID (dead holder, or a lock this PID no longer holds) is not trusted — the process acquires for real instead of silently skipping"
+    local scenario_c_lock="$selftest_root/scenario-c.lock"
+    sleep 0 &
+    local widowed_pid=$!
+    wait "$widowed_pid" 2>/dev/null || true
+    local widow_log="$selftest_root/widow.log"
+    # Hold for long enough that the poll below can observe the lock file
+    # mid-hold, before the child's EXIT trap releases it.
+    MANIFOLD_GATE_LOCK_FILE="$scenario_c_lock" MANIFOLD_GATE_LOCK_OWNER_PID="$widowed_pid" \
+        MANIFOLD_GATE_LOCK_CEILING_SECS="$selftest_ceiling_secs" \
+        "$0" --lock-selftest-hold 2 > "$widow_log" 2>&1 &
+    local widow_child_pid=$!
+    local observed_real_acquire=0
+    local poll_i=0
+    while [[ $poll_i -lt 40 ]]; do
+        # `-s` (exists AND non-empty) — with the hard-link publish design
+        # the lock file is only ever observable fully formed, but this
+        # still guards the instant before the very first `ln` in this
+        # scenario lands at all.
+        if [[ -s "$scenario_c_lock" ]]; then
+            local seen_pid
+            seen_pid="$(sed -n '1p' "$scenario_c_lock" 2>/dev/null)" || seen_pid=""
+            if [[ "$seen_pid" == "$widow_child_pid" ]]; then
+                observed_real_acquire=1
+            fi
+            break
+        fi
+        sleep 0.1
+        poll_i=$((poll_i + 1))
+    done
+    wait "$widow_child_pid" 2>/dev/null || true
+    cat "$widow_log"
+    if [[ $observed_real_acquire -eq 1 ]] && grep -q "inherited MANIFOLD_GATE_LOCK_OWNER_PID=${widowed_pid} is stale" "$widow_log"; then
+        echo "[lock-selftest] scenario C: PASS (widowed sentinel PID ${widowed_pid} rejected; PID ${widow_child_pid} acquired for real)"
+    else
+        echo "[lock-selftest] scenario C: FAIL (observed_real_acquire=${observed_real_acquire})"
+        failures=$((failures + 1))
+    fi
+
+    # Scenario D is the regression test for the concurrent-reclaim race: N
+    # waiters hitting a single dead-holder lock at once. Two prior designs
+    # did not hold up under this exact measurement: a bare `rm -rf` reclaim
+    # (every waiter reads the same dead PID and independently decides to
+    # reclaim, racing each other and whichever waiter's own acquire is
+    # mid-flight — 2/5 trials at 8 waiters produced two simultaneous
+    # "holders", the rest hit `set -e` aborts on "Directory not empty");
+    # and an atomic-rename-based reclaim with a "verify, then restore if
+    # ambiguous" fallback (closed the double-acquisition, but the restore
+    # path could hand a live PID's abandoned attempt back out as an
+    # unreclaimable "ghost" lock — reproduced under real parallel load as
+    # 7/8 waiters hitting the ceiling after only one successful handoff).
+    # The hard-link design above has no partially-formed state for a
+    # reclaimer to ever restore, which is what makes this scenario finally
+    # pass under genuine heavy contention, not just low-contention runs.
+    echo "[lock-selftest] scenario D: N concurrent waiters against one dead-holder lock must serialize with zero overlap and zero failures"
+    # Round count and waiter count are configurable, defaulting to the
+    # CHEAP shape (1 round). A real CI incident forced this: a 3-round
+    # default (added to improve detection odds against a load-dependent
+    # race — see the docstring on the Swift side) pushed this self-test's
+    # own wall time from ~17s to ~36-40s on this machine, and CI's
+    # `ci-test-with-watchdog.sh` kills the whole `swift test` process after
+    # 240s of no progress — a single XCTest method that runs for minutes
+    # emits nothing to that watchdog until it returns, and on a
+    # resource-constrained CI runner (fewer cores, and this scenario alone
+    # spawns 8 waiters x N rounds of subprocesses that compete with every
+    # other parallel test worker for the same box) that ~2x local slowdown
+    # was enough to blow through 240s and abort the whole run — a false
+    # test-infra "failure" with a misleading generic error, distinct from
+    # any assertion actually failing. `MANIFOLD_GATE_SELFTEST_D_ROUNDS`
+    # (default 1) lets someone investigating reclaim contention by hand
+    # opt into the heavier repeated-round shape without paying for it on
+    # every CI run: `MANIFOLD_GATE_SELFTEST_D_ROUNDS=3 scripts/test.sh
+    # --lock-selftest`. The concurrent-reclaim race itself IS load-
+    # dependent (measured: 1/6 reclaim rounds showed overlap under 6-way
+    # concurrency, 0/4 sequentially) regardless of round count — see the
+    # Swift-side docstring for why this scenario does not claim guaranteed
+    # sequential detection either way.
+    local scenario_d_rounds="${MANIFOLD_GATE_SELFTEST_D_ROUNDS:-1}"
+    local scenario_d_any_overlap=0
+    local scenario_d_any_corruption=0
+    local scenario_d_total_waiter_failures=0
+    local scenario_d_total_complete=0
+    local scenario_d_worst_max_concurrent=0
+    local scenario_d_failed_round_logs=""
+    local scenario_d_round_summaries=""
+    # 8 is the count that originally reproduced the reclaim-race bug, and
+    # is still the default a human reaches for via the env override below
+    # when deliberately reproducing that bug. The DEFAULT here is smaller
+    # (4): cutting rounds alone (see MANIFOLD_GATE_SELFTEST_D_ROUNDS above)
+    # fixed the wall-clock blowup that broke CI, but a shared,
+    # resource-constrained CI runner is also the exact environment where 8
+    # concurrent subprocesses can saturate the box and make "no test
+    # progress" a global symptom (every other parallel test worker stalling
+    # too), not just a local one — cutting the default waiter count too is
+    # a second, independent lever on the same underlying risk. 4 still
+    # exercises genuine concurrent contention (multiple overlapping
+    # claims against one dead-holder lock); it does not reduce to the
+    # single-waiter case scenario A already covers.
+    local waiter_count="${MANIFOLD_GATE_SELFTEST_D_WAITERS:-4}"
+    local scenario_d_round=1
+    while [[ $scenario_d_round -le $scenario_d_rounds ]]; do
+        local scenario_d_lock="$selftest_root/scenario-d-r${scenario_d_round}.lock"
+        sleep 0 &
+        local dead_pid_d=$!
+        wait "$dead_pid_d" 2>/dev/null || true
+        { printf '%s\n' "$dead_pid_d"; date +%s; } > "$scenario_d_lock"
+
+        # Ground-truth concurrency check: each waiter drops a uniquely-named
+        # marker file for exactly the window it believes it holds the lock
+        # (see --lock-selftest-hold's third argument), and a background
+        # observer polls that directory's entry count at high frequency for
+        # the whole round, recording the maximum ever seen. This is
+        # deliberately NOT based on comparing ACQUIRED/releasing timestamps:
+        # macOS `date` has no sub-second format, and under enough parallel
+        # load (measured: ten concurrent `--lock-selftest` runs at once) two
+        # genuinely sequential, non-overlapping 1s holds can land in the same
+        # integer second and look identical to a real double-acquisition
+        # from timestamps alone — a false-positive class distinct from the
+        # true bug this scenario exists to catch. The marker count has no
+        # such ambiguity: it can only ever exceed 1 while two processes are
+        # ACTUALLY concurrently between their own acquire and release.
+        local scenario_d_markers_dir="$selftest_root/scenario-d-markers-r${scenario_d_round}"
+        local scenario_d_stop_file="$selftest_root/scenario-d-observer-stop-r${scenario_d_round}"
+        local scenario_d_max_concurrent_file="$selftest_root/scenario-d-max-concurrent-r${scenario_d_round}"
+        mkdir -p "$scenario_d_markers_dir"
+        echo 0 > "$scenario_d_max_concurrent_file"
+        (
+            max_seen=0
+            while [[ ! -f "$scenario_d_stop_file" ]]; do
+                count=$(find "$scenario_d_markers_dir" -maxdepth 1 -name 'active.*' 2>/dev/null | wc -l | tr -d ' ')
+                [[ -z "$count" ]] && count=0
+                [[ "$count" -gt "$max_seen" ]] && max_seen="$count"
+                sleep 0.02
+            done
+            # One last check after the stop signal, in case the final
+            # waiter's marker window briefly overlapped observing the stop
+            # file itself.
+            count=$(find "$scenario_d_markers_dir" -maxdepth 1 -name 'active.*' 2>/dev/null | wc -l | tr -d ' ')
+            [[ -z "$count" ]] && count=0
+            [[ "$count" -gt "$max_seen" ]] && max_seen="$count"
+            echo "$max_seen" > "$scenario_d_max_concurrent_file"
+        ) &
+        local scenario_d_observer_pid=$!
+
+        # 8 waiters matches the reproduction that surfaced the bug. Each
+        # holds for 1s so there's a real, observable window for the
+        # marker-based observer above to sample during.
+        local waiter_pids="" waiter_log_list=""
+        local wi=0
+        while [[ $wi -lt $waiter_count ]]; do
+            local wlog="$selftest_root/waiter-r${scenario_d_round}-$wi.log"
+            # POLL_SECS must stay an integer: acquire_gate_lock's `waited`
+            # accumulator uses `$(( ))` arithmetic, which errors on a
+            # fractional value (discovered the hard way — a 0.2 override
+            # here broke the production polling loop itself, not just this
+            # scenario).
+            MANIFOLD_GATE_LOCK_FILE="$scenario_d_lock" MANIFOLD_GATE_LOCK_POLL_SECS=1 \
+                MANIFOLD_GATE_LOCK_CEILING_SECS="$selftest_ceiling_secs" \
+                "$0" --lock-selftest-hold 1 "$scenario_d_markers_dir" > "$wlog" 2>&1 &
+            waiter_pids="$waiter_pids $!"
+            waiter_log_list="$waiter_log_list $wlog"
+            wi=$((wi + 1))
+        done
+
+        local waiter_failures=0 wp
+        for wp in $waiter_pids; do
+            if ! wait "$wp"; then
+                waiter_failures=$((waiter_failures + 1))
+            fi
+        done
+
+        touch "$scenario_d_stop_file"
+        wait "$scenario_d_observer_pid" 2>/dev/null || true
+        local scenario_d_max_concurrent
+        scenario_d_max_concurrent="$(cat "$scenario_d_max_concurrent_file" 2>/dev/null)" || scenario_d_max_concurrent=""
+        [[ -z "$scenario_d_max_concurrent" ]] && scenario_d_max_concurrent=0
+        local overlap_found=0
+        [[ "$scenario_d_max_concurrent" -gt 1 ]] && overlap_found=1
+        [[ "$scenario_d_max_concurrent" -gt "$scenario_d_worst_max_concurrent" ]] && scenario_d_worst_max_concurrent="$scenario_d_max_concurrent"
+
+        # Sanity count only (not the overlap signal above): did every waiter
+        # log both an ACQUIRED and a releasing line at all, regardless of
+        # timing precision — a waiter missing either already shows up in
+        # waiter_failures, so this mostly catches a waiter whose subprocess
+        # exited 0 without ever logging a complete cycle.
+        local wlog a_ts r_ts n=0
+        for wlog in $waiter_log_list; do
+            a_ts="$(grep -c 'ACQUIRED at' "$wlog")" || a_ts=0
+            r_ts="$(grep -c 'releasing at' "$wlog")" || r_ts=0
+            if [[ "$a_ts" -gt 0 && "$r_ts" -gt 0 ]]; then
+                n=$((n + 1))
+            fi
+        done
+
+        # A bare "No such file or directory" / "Directory not empty" from a
+        # write racing a concurrent reclaim is now an EXPECTED, handled
+        # outcome (each such line is immediately followed by a "[gate-lock]
+        # warning: ...retrying." recovery and the process goes on to
+        # acquire normally — see waiter_failures/n below for what actually
+        # signals a real problem). What's never expected: a bash
+        # syntax/runtime error the script itself doesn't recognize and
+        # recover from (a regression in the arithmetic or argument
+        # handling, not the lock's own contention path).
+        local corruption_found=0
+        for wlog in $waiter_log_list; do
+            if grep -qE 'arithmetic syntax error|Unknown option|unbound variable' "$wlog"; then
+                corruption_found=1
+            fi
+        done
+
+        scenario_d_total_waiter_failures=$((scenario_d_total_waiter_failures + waiter_failures))
+        scenario_d_total_complete=$((scenario_d_total_complete + n))
+        scenario_d_round_summaries="${scenario_d_round_summaries}round ${scenario_d_round}: max_concurrent=${scenario_d_max_concurrent} waiter_failures=${waiter_failures} complete=${n}/${waiter_count} corruption=${corruption_found}; "
+        if [[ $overlap_found -eq 1 || $waiter_failures -gt 0 || $corruption_found -eq 1 || $n -ne $waiter_count ]]; then
+            [[ $overlap_found -eq 1 ]] && scenario_d_any_overlap=1
+            [[ $corruption_found -eq 1 ]] && scenario_d_any_corruption=1
+            for wlog in $waiter_log_list; do
+                scenario_d_failed_round_logs="${scenario_d_failed_round_logs} $wlog"
+            done
+        fi
+
+        scenario_d_round=$((scenario_d_round + 1))
+    done
+
+    local scenario_d_total_expected=$((waiter_count * scenario_d_rounds))
+    if [[ $scenario_d_total_waiter_failures -eq 0 && $scenario_d_any_overlap -eq 0 \
+          && $scenario_d_any_corruption -eq 0 && $scenario_d_total_complete -eq $scenario_d_total_expected ]]; then
+        echo "[lock-selftest] scenario D: PASS (${scenario_d_rounds} rounds x ${waiter_count} waiters, 0 failures across all rounds, worst max-concurrent observed: ${scenario_d_worst_max_concurrent}, 0 corruption errors) — ${scenario_d_round_summaries}"
+    else
+        echo "[lock-selftest] scenario D: FAIL (total_waiter_failures=${scenario_d_total_waiter_failures} any_overlap=${scenario_d_any_overlap} any_corruption=${scenario_d_any_corruption} complete_cycles=${scenario_d_total_complete}/${scenario_d_total_expected}) — ${scenario_d_round_summaries}"
+        for wlog in $scenario_d_failed_round_logs; do
+            echo "---- $wlog ----"
+            cat "$wlog"
+        done
+        failures=$((failures + 1))
+    fi
+
+    # Scenarios A-D all exercise acquire_gate_lock/release_gate_lock
+    # directly and prove the PRIMITIVE is correct. None of them prove the
+    # primitive is actually CALLED from the real --profile local shape —
+    # deleting both call sites (the parent's acquire before the
+    # three-invocation re-exec, and the fallthrough default-path acquire)
+    # while leaving acquire_gate_lock itself untouched left every one of
+    # them green, because they never touch that code path at all. Scenario
+    # E closes that gap: it runs the REAL --profile local orchestration
+    # (re-exec, exit-code propagation, the works) against a temp copy of
+    # this very script, with a stub `swift` on PATH so three full
+    # invocations complete in seconds with no actual build. A stub `swift`
+    # test also makes this the concurrency-neutering detector: if
+    # release_gate_lock's `rm -rf` were ever neutered, the lock directory
+    # would still exist when this scenario checks at the end — the specific
+    # assertion the reviewer named as the one that catches it.
+    echo "[lock-selftest] scenario E: the lock is actually WIRED into the --profile local three-invocation shape (not just a working, unused primitive)"
+    local scenario_e_root="$selftest_root/scenario-e"
+    local scenario_e_copy="$scenario_e_root/scripts/test.sh"
+    local scenario_e_stub_dir="$scenario_e_root/stub-bin"
+    local scenario_e_lock="$scenario_e_root/lock"
+    mkdir -p "$scenario_e_root/scripts" "$scenario_e_stub_dir"
+    cp "$0" "$scenario_e_copy"
+    chmod +x "$scenario_e_copy"
+
+    cat > "$scenario_e_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+# Stand-in for the real `swift` toolchain — scenario E is about proving the
+# gate lock is wired into the --profile local re-exec shape, not about
+# actually building or testing anything, so this exits 0 instantly whatever
+# it's called with. Always emits one line matching test.sh's own
+# ManifoldMCPTests pattern: invocation 1's real --filter list includes
+# ManifoldMCPTests, and test.sh's own honest-summary check treats a
+# requested MCP filter that matched zero test cases as a TRIPWIRE (exit 3)
+# — without this line the stub would trip that check on every run, for
+# reasons having nothing to do with the lock this scenario exists to test.
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldMCPTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_e_stub_dir/swift"
+
+    local scenario_e_log="$selftest_root/scenario-e.log"
+    local scenario_e_stub_ok=1
+    assert_stub_swift_effective "$scenario_e_stub_dir" "E" || scenario_e_stub_ok=0
+    if [[ $scenario_e_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_e_root"
+    else
+    # MANIFOLD_TEST_OUTPUT_FILE is overridden per nested invocation, NOT left
+    # to inheritance: in CI it points at the live watchdog log, and this
+    # child's own `tee "$OUTPUT_FILE"` would truncate it mid-run. See the
+    # enclosing-run log guard at the top of this function and scenario G.
+    PATH="$scenario_e_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_e_lock" \
+        MANIFOLD_TEST_OUTPUT_FILE="$scenario_e_root/nested-test-output.log" \
+        "$scenario_e_copy" --profile local > "$scenario_e_log" 2>&1 &
+    local scenario_e_pid=$!
+
+    # Sample the lock file's content while the (stub-backed, so fast) run
+    # is in flight. Every non-empty sample must be the TOP-LEVEL parent's
+    # own PID (scenario_e_pid) — never anything else — proving the lock is
+    # acquired once, before the first re-exec, and held for the whole
+    # three-invocation shape rather than being re-acquired (or silently
+    # absent) per invocation.
+    local scenario_e_samples="" scenario_e_sample_count=0
+    local scenario_e_poll_i=0
+    while kill -0 "$scenario_e_pid" 2>/dev/null && [[ $scenario_e_poll_i -lt 200 ]]; do
+        if [[ -s "$scenario_e_lock" ]]; then
+            local scenario_e_sample
+            scenario_e_sample="$(sed -n '1p' "$scenario_e_lock" 2>/dev/null)" || scenario_e_sample=""
+            if [[ -n "$scenario_e_sample" ]]; then
+                scenario_e_samples="$scenario_e_samples $scenario_e_sample"
+                scenario_e_sample_count=$((scenario_e_sample_count + 1))
+            fi
+        fi
+        sleep 0.05
+        scenario_e_poll_i=$((scenario_e_poll_i + 1))
+    done
+    if kill -0 "$scenario_e_pid" 2>/dev/null; then
+        # Still running after a 10s poll ceiling with a stub `swift` that
+        # exits instantly — something is genuinely wrong (e.g. the stub was
+        # never picked up and a real build started). Kill rather than block
+        # on `wait` indefinitely; the Swift-side run() timeout is the final
+        # backstop, but this keeps the shell-level self-test itself bounded.
+        kill -TERM "$scenario_e_pid" 2>/dev/null || true
+        sleep 1
+        kill -KILL "$scenario_e_pid" 2>/dev/null || true
+    fi
+    wait "$scenario_e_pid" 2>/dev/null
+    local scenario_e_exit=$?
+    cat "$scenario_e_log"
+
+    local scenario_e_invocation_count
+    scenario_e_invocation_count="$(grep -c '^Running swift test in:' "$scenario_e_log")" || scenario_e_invocation_count=0
+    local scenario_e_release_count
+    scenario_e_release_count="$(grep -c '^\[gate-lock\] released' "$scenario_e_log")" || scenario_e_release_count=0
+    # End-to-end proof the stub is what actually ran inside the nested
+    # invocations — `Running swift test in:` is printed by the script whatever
+    # `swift` turns out to be, so it alone cannot distinguish "stub ran three
+    # times" from "the real toolchain ran three times". One stub line per
+    # invocation.
+    local scenario_e_stub_lines
+    scenario_e_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_e_log")" || scenario_e_stub_lines=0
+
+    local scenario_e_samples_ok=1
+    if [[ $scenario_e_sample_count -eq 0 ]]; then
+        scenario_e_samples_ok=0
+    fi
+    local scenario_e_s
+    for scenario_e_s in $scenario_e_samples; do
+        [[ "$scenario_e_s" == "$scenario_e_pid" ]] || scenario_e_samples_ok=0
+    done
+
+    local scenario_e_lock_gone=1
+    [[ -e "$scenario_e_lock" ]] && scenario_e_lock_gone=0
+
+    if [[ $scenario_e_exit -eq 0 && $scenario_e_invocation_count -eq 3 && $scenario_e_release_count -eq 1 \
+          && $scenario_e_samples_ok -eq 1 && $scenario_e_lock_gone -eq 1 && $scenario_e_stub_lines -eq 3 ]]; then
+        echo "[lock-selftest] scenario E: PASS (parent pid ${scenario_e_pid} held the lock across ${scenario_e_sample_count} sample(s), 3 invocations observed, all 3 against the stub \`swift\`, released once, lock file gone)"
+    else
+        echo "[lock-selftest] scenario E: FAIL (exit=${scenario_e_exit} invocations=${scenario_e_invocation_count}/3 stub_invocations=${scenario_e_stub_lines}/3 releases=${scenario_e_release_count}/1 samples_ok=${scenario_e_samples_ok} (n=${scenario_e_sample_count}, samples='${scenario_e_samples}', expected pid=${scenario_e_pid}) lock_gone=${scenario_e_lock_gone})"
+        failures=$((failures + 1))
+    fi
+
+    rm -rf "$scenario_e_root"
+    fi  # end scenario E (skipped wholesale when the stub `swift` is not in effect)
+
+    # Scenario E proves ONE of the two acquire_gate_lock call sites is wired
+    # in — the parent's pre-re-exec acquire, reached only via --profile
+    # local/ci. It cannot see the OTHER call site (the fallthrough acquire
+    # at the bottom of the script, reached by a bare invocation, --profile
+    # spike, or a narrow --filter override): every child E spawns skips
+    # acquisition via the inherited sentinel, so that code path is never
+    # exercised. Deleting ONLY the fallthrough acquire — leaving the
+    # --profile local/ci call site untouched — makes scenario E (and A-D,
+    # which call acquire_gate_lock directly) all stay green while `swift
+    # test` reached through a bare `scripts/test.sh` or `--profile spike`
+    # runs completely unlocked with nothing noticing. This PR's own
+    # AGENTS.md change widens when `--profile spike` is permissible, so
+    # that path gets MORE traffic going forward, not less — this scenario
+    # closes the gap.
+    #
+    # --profile spike takes a different branch through the profile-
+    # resolution `if`/`elif` above but falls through to this exact same
+    # line — there is only one fallthrough acquire_gate_lock call site in
+    # the whole script — so proving it here structurally covers spike too;
+    # a genuinely separate spike-specific bug would have to be a second,
+    # independent call site, which does not exist.
+    echo "[lock-selftest] scenario F: the lock is wired into the FALLTHROUGH acquire (bare invocation / --profile spike), not just the --profile local/ci pre-re-exec acquire"
+    local scenario_f_root="$selftest_root/scenario-f"
+    local scenario_f_copy="$scenario_f_root/scripts/test.sh"
+    local scenario_f_stub_dir="$scenario_f_root/stub-bin"
+    local scenario_f_lock="$scenario_f_root/lock"
+    mkdir -p "$scenario_f_root/scripts" "$scenario_f_stub_dir"
+    cp "$0" "$scenario_f_copy"
+    chmod +x "$scenario_f_copy"
+
+    # Same stub as scenario E: no real build, exits fast, emits the one
+    # line test.sh's own MCP-filter tripwire would otherwise flag (moot for
+    # a bare invocation — no --filter means MCP_FILTER_REQUESTED stays
+    # 0 — but harmless to include, and keeps the two stubs identical).
+    cat > "$scenario_f_stub_dir/swift" <<'STUB'
+#!/usr/bin/env bash
+echo "[stub-swift] $*"
+echo "Test Case '-[ManifoldMCPTests.StubTest testStub]' passed (0.001 seconds)."
+exit 0
+STUB
+    chmod +x "$scenario_f_stub_dir/swift"
+
+    local scenario_f_log="$selftest_root/scenario-f.log"
+    local scenario_f_stub_ok=1
+    assert_stub_swift_effective "$scenario_f_stub_dir" "F" || scenario_f_stub_ok=0
+    if [[ $scenario_f_stub_ok -eq 0 ]]; then
+        failures=$((failures + 1))
+        rm -rf "$scenario_f_root"
+    else
+    # Bare invocation — no --profile, no --filter. This is exactly the
+    # "plain scripts/test.sh" shape: PROFILE stays empty, so the entire
+    # --profile resolution block is skipped and execution falls straight
+    # through to the single acquire_gate_lock call at the bottom of the
+    # script — the call site this scenario exists to prove is live.
+    # MANIFOLD_TEST_OUTPUT_FILE overridden for the same reason as scenario E.
+    PATH="$scenario_f_stub_dir:$PATH" MANIFOLD_GATE_LOCK_FILE="$scenario_f_lock" \
+        MANIFOLD_TEST_OUTPUT_FILE="$scenario_f_root/nested-test-output.log" \
+        "$scenario_f_copy" > "$scenario_f_log" 2>&1 &
+    local scenario_f_pid=$!
+
+    local scenario_f_samples="" scenario_f_sample_count=0
+    local scenario_f_poll_i=0
+    while kill -0 "$scenario_f_pid" 2>/dev/null && [[ $scenario_f_poll_i -lt 200 ]]; do
+        if [[ -s "$scenario_f_lock" ]]; then
+            local scenario_f_sample
+            scenario_f_sample="$(sed -n '1p' "$scenario_f_lock" 2>/dev/null)" || scenario_f_sample=""
+            if [[ -n "$scenario_f_sample" ]]; then
+                scenario_f_samples="$scenario_f_samples $scenario_f_sample"
+                scenario_f_sample_count=$((scenario_f_sample_count + 1))
+            fi
+        fi
+        sleep 0.05
+        scenario_f_poll_i=$((scenario_f_poll_i + 1))
+    done
+    if kill -0 "$scenario_f_pid" 2>/dev/null; then
+        kill -TERM "$scenario_f_pid" 2>/dev/null || true
+        sleep 1
+        kill -KILL "$scenario_f_pid" 2>/dev/null || true
+    fi
+    wait "$scenario_f_pid" 2>/dev/null
+    local scenario_f_exit=$?
+    cat "$scenario_f_log"
+
+    local scenario_f_samples_ok=1
+    if [[ $scenario_f_sample_count -eq 0 ]]; then
+        scenario_f_samples_ok=0
+    fi
+    local scenario_f_s
+    for scenario_f_s in $scenario_f_samples; do
+        [[ "$scenario_f_s" == "$scenario_f_pid" ]] || scenario_f_samples_ok=0
+    done
+
+    local scenario_f_lock_gone=1
+    [[ -e "$scenario_f_lock" ]] && scenario_f_lock_gone=0
+
+    local scenario_f_stub_lines
+    scenario_f_stub_lines="$(grep -c '^\[stub-swift\]' "$scenario_f_log")" || scenario_f_stub_lines=0
+
+    if [[ $scenario_f_exit -eq 0 && $scenario_f_samples_ok -eq 1 && $scenario_f_lock_gone -eq 1 \
+          && $scenario_f_stub_lines -eq 1 ]]; then
+        echo "[lock-selftest] scenario F: PASS (bare invocation pid ${scenario_f_pid} acquired the lock via the fallthrough call site, ${scenario_f_sample_count} sample(s), ran against the stub \`swift\`, lock file gone)"
+    else
+        echo "[lock-selftest] scenario F: FAIL (exit=${scenario_f_exit} samples_ok=${scenario_f_samples_ok} (n=${scenario_f_sample_count}, samples='${scenario_f_samples}', expected pid=${scenario_f_pid}) stub_invocations=${scenario_f_stub_lines}/1 lock_gone=${scenario_f_lock_gone})"
+        failures=$((failures + 1))
+    fi
+
+    rm -rf "$scenario_f_root"
+    fi  # end scenario F (skipped wholesale when the stub `swift` is not in effect)
+
+    # ── Scenario G ────────────────────────────────────────────────────────
+    # The self-test must leave the ENCLOSING run's artifacts alone. Scenarios
+    # E and F are the only ones that reach `scripts/test.sh`'s main path (and
+    # therefore its `tee "$OUTPUT_FILE"`), and MANIFOLD_TEST_OUTPUT_FILE is
+    # inherited by default — so without the per-invocation override each of
+    # them truncates whatever log the outer run is writing to. In CI that log
+    # is `ci-test-with-watchdog.sh`'s liveness signal. That watchdog re-arms
+    # only when the log's progress-line count EXCEEDS its previous high-water
+    # mark, so a truncation destroying those counted lines makes the count
+    # restart near zero and climb from there — a BOUNDED stall of roughly
+    # `high_water / line_rate` seconds, long enough to blow the 240s threshold
+    # and SIGABRT a perfectly healthy run. (Measured on the second CI failure:
+    # high-water 3809 lines, only 2656 accumulated before the abort.) It is the
+    # TRUNCATION that does this, not the NUL hole the outer `tee`'s retained
+    # offset then leaves behind — `grep -c` counts the same either way
+    # (measured: `-c` and `-a -c` both return 1999 on the clobbered file). The
+    # NUL bytes only garble the human-readable stall dump, which is where CI's
+    # "Binary file ... matches" line came from: a symptom worth matching on,
+    # not the mechanism.
+    #
+    # The three sub-checks are COMPLEMENTARY, not redundant — each environment
+    # carries a different two of them:
+    #   - live CI (an outer writer holding an offset): the sparse hole makes
+    #     `wc -c` GROW across a clobber, so the size check is inert there; the
+    #     progress-line and NUL checks carry it.
+    #   - stand-in mode (no concurrent writer): nothing re-extends the file, so
+    #     no NUL hole forms and the NUL check is inert; the size and
+    #     progress-line checks carry it.
+    # Known residual gap, stated rather than papered over: an APPEND-style
+    # regression (a nested run switching to `tee -a`) slips past all three —
+    # size grows, progress lines only increase, no NULs — while still
+    # corrupting the outer run's own summary parsing. Nothing here detects it.
+    echo "[lock-selftest] scenario G: the self-test never writes to the ENCLOSING run's MANIFOLD_TEST_OUTPUT_FILE (CI watchdog liveness log)"
+    local enclosing_size_after=0 enclosing_count_after=0 enclosing_nul_bytes=0
+    if [[ -f "$enclosing_log" ]]; then
+        enclosing_size_after="$(wc -c < "$enclosing_log" | tr -d ' ')"
+        enclosing_count_after="$(grep -acE "$enclosing_progress_pattern" "$enclosing_log" 2>/dev/null)" || enclosing_count_after=0
+        enclosing_nul_bytes="$(LC_ALL=C tr -dc '\000' < "$enclosing_log" | wc -c | tr -d ' ')"
+    fi
+    if [[ "$enclosing_size_after" -ge "$enclosing_size_before" \
+          && "$enclosing_count_after" -ge "$enclosing_count_before" \
+          && "$enclosing_nul_bytes" -eq 0 ]]; then
+        echo "[lock-selftest] scenario G: PASS (enclosing log $(if [[ $enclosing_log_synthesised -eq 1 ]]; then echo 'stand-in'; else echo 'inherited'; fi) '$enclosing_log' intact: size ${enclosing_size_before}->${enclosing_size_after}, progress lines ${enclosing_count_before}->${enclosing_count_after}, 0 NUL bytes)"
+    else
+        echo "[lock-selftest] scenario G: FAIL (enclosing log '$enclosing_log' was clobbered: size ${enclosing_size_before}->${enclosing_size_after}, progress lines ${enclosing_count_before}->${enclosing_count_after}, NUL bytes=${enclosing_nul_bytes} — a nested scripts/test.sh inherited MANIFOLD_TEST_OUTPUT_FILE and tee'd over the outer run's log)"
+        failures=$((failures + 1))
+    fi
+
+    rm -rf "$selftest_root"
+
+    if [[ $failures -eq 0 ]]; then
+        echo "[lock-selftest] RESULT: PASS"
+        return 0
+    else
+        echo "[lock-selftest] RESULT: FAIL ($failures scenario(s) failed)"
+        return 1
+    fi
+}
+
+if [[ "${1:-}" == "--lock-selftest" ]]; then
+    run_gate_lock_selftest
+    exit $?
+fi
+
 # ── Arguments ────────────────────────────────────────────────────────────────
 # Profile precedence
 # ------------------
@@ -356,6 +1412,14 @@ if [[ -n "$PROFILE" ]]; then
         # Re-exec self three times with the resolved flag sets. This keeps the
         # parsing surface single-pass and the summary printer authoritative
         # per call (each invocation prints its own summary).
+        #
+        # Acquire the machine-wide gate lock HERE, once, before any of the
+        # three (build-heavy) re-invocations below — not inside each child.
+        # The children inherit MANIFOLD_GATE_LOCK_OWNER_PID via export and
+        # skip their own acquisition, so the lock is held for the whole
+        # three-invocation shape and released exactly once, when this parent
+        # process exits.
+        acquire_gate_lock
         SCRIPT_PATH="$0"
         EXTRA_ARGS=(${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"})
         # Build the per-profile flag sets.
@@ -463,6 +1527,12 @@ if [[ $MINIMAL_MODE -eq 1 ]]; then
 fi
 
 # ── Run ──────────────────────────────────────────────────────────────────────
+# Covers every path that reaches here directly (no --profile, --profile
+# spike, or a narrow --filter override) AND each child re-invocation spawned
+# by the three-invocation shape above — those children see
+# MANIFOLD_GATE_LOCK_OWNER_PID already exported by their parent and return
+# immediately without re-acquiring (see acquire_gate_lock's doc comment).
+acquire_gate_lock
 echo "Running swift test in: $PACKAGE_DIR"
 echo "Output captured to: $OUTPUT_FILE"
 echo ""

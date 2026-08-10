@@ -888,6 +888,19 @@ Both profiles respect explicit caller flags: `scripts/test.sh --profile local --
 
 **Spike gate** (bounded changes only): `scripts/test.sh --profile spike --spike-module <suite>` — runs `swift build --build-tests` + only the affected suite. Valid only when the diff touches one module and you've run the full suite once already on this branch. Full `--profile local` gate is mandatory before the final push and after any rebase.
 
+**What else qualifies for the spike gate.** Beyond "one module's Swift source", a diff qualifies when it touches **only hand-edited data files whose executing suite(s) are fully and explicitly known via `scripts/affected-suites.sh`'s per-file `case` mappings** — not the blanket directory rules, which name a suite but not a bound on what else in the diff might matter. "Fully and explicitly known" means the resolver's actual output, not just who reads the file: run it and check. The worked example: `scripts/demo-coverage-manifest.tsv` / `scripts/demo-coverage-baseline.tsv` is only *read* by `DemoCoverageGateAuditTest` (`ManifoldCoreTests`, via `scripts/demo-coverage.sh --check`), but the resolver does not stop there —
+```console
+$ printf 'scripts/demo-coverage-manifest.tsv\nscripts/demo-coverage-baseline.tsv\n' | scripts/affected-suites.sh
+...
+force-include audit anchors: ManifoldCoreTests ManifoldInferenceTests (#2290)
+ManifoldCoreTests ManifoldInferenceTests
+```
+`ManifoldInferenceTests` rides along because the resolver unconditionally force-includes both audit-anchor suites (#2290) whenever anything else was selected — a `case`-mapped file is enough to trigger it, whether or not `ManifoldInferenceTests` itself reads that file. So the spike run for this shape has to name both: `scripts/test.sh --profile spike --spike-module 'ManifoldCoreTests|ManifoldInferenceTests'` (`--spike-module` threads straight into `swift test --filter`, which accepts a regex alternation) — owner-sanctioned in #2455 and #2459, both data-only manifest edits. Two conditions apply on top of the mapping itself, both required:
+- **the same tree has a green full `--profile local` (or `--profile ci`) gate somewhere in the current branch's history** — the spike run is topping up coverage for a bounded diff on top of a tree already proven, not substituting for first-time validation;
+- **any rebase re-triggers the full gate.** A rebase changes the tree the spike run's "already proven" claim was about; the spike shortcut does not survive it.
+
+This does not widen the "diff touches one module" spike condition above it — it names a second, narrow shape (data files whose full resolver output — including any force-included anchors, not just direct readers — is known ahead of time) that the mapping already makes legible. **When in doubt, run the full gate.** A file whose blast radius isn't nailed down by an explicit `case` in `affected-suites.sh` — only the blanket directory rules, or nothing — does not qualify, however small the diff looks.
+
 **Optional-traits sweep** (whenever modifying a switched enum, a `GenerationEvent` / `GenerationConfig` / `BackendCapabilities`-shaped type, or any trait-gated source file):
 ```bash
 swift build --build-tests --traits Server,Macros
