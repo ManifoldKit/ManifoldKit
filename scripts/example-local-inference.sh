@@ -102,16 +102,45 @@ app_path() {
     echo "$DERIVED_DATA_PATH/Build/Products/Debug/${scheme}.app"
 }
 
+# Exactly the files LLMModelFactory/TransformersTokenizerLoader need to load
+# $MLX_TEXT_MODEL_REPO (manifold-mlx, vendored mlx-swift-lm +
+# swift-transformers): `config.json` is read directly by
+# ManifoldMLX/MLXModelProbe.swift and by LLMModelFactory.swift; `tokenizer.json`
+# is required by swift-transformers' Hub.swift (throws configurationMissing if
+# absent); `tokenizer_config.json` is where this repo's chat template lives —
+# it ships no separate chat_template.jinja/json, so without it prompt
+# formatting has nothing to apply; weights are discovered by
+# MLXLMCommon/Load.swift recursively scanning for any `*.safetensors` file
+# (not a fixed name or an index.json — that file exists in the upstream repo
+# but this Swift loader never reads it), and this repo ships exactly one:
+# `model.safetensors`. Listed as exact filenames, same reasoning as
+# SDXL_TURBO_FILES below — one array, used for both the download and the
+# completeness guard, so neither can drift from the other.
+readonly -a MLX_TEXT_MODEL_FILES=(
+    config.json
+    tokenizer.json
+    tokenizer_config.json
+    model.safetensors
+)
+
 download_mlx_text_model() {
     require_command hf "Install with: pip install -U \"huggingface_hub[cli]\" (or: brew install huggingface-cli)."
     local dest="$MODELS_DIR/$MLX_TEXT_MODEL_REPO"
-    if [[ -f "$dest/config.json" ]]; then
-        echo "MLX text model already present at $dest — skipping download."
+    local missing=0
+    local f
+    for f in "${MLX_TEXT_MODEL_FILES[@]}"; do
+        if [[ ! -f "$dest/$f" ]]; then
+            missing=1
+            break
+        fi
+    done
+    if [[ "$missing" -eq 0 ]]; then
+        echo "MLX text model already present at $dest (all ${#MLX_TEXT_MODEL_FILES[@]} files found) — skipping download."
         return
     fi
-    echo "Downloading $MLX_TEXT_MODEL_REPO to $dest (real network — several GB)…"
+    echo "Downloading $MLX_TEXT_MODEL_REPO to $dest (real network — ~1.8 GB, the exact files the MLX text loader needs)…"
     mkdir -p "$dest"
-    hf download "$MLX_TEXT_MODEL_REPO" --local-dir "$dest"
+    hf download "$MLX_TEXT_MODEL_REPO" "${MLX_TEXT_MODEL_FILES[@]}" --local-dir "$dest"
 }
 
 # Exactly the files `StableDiffusionConfiguration.presetSDXLTurbo` opens
@@ -141,14 +170,30 @@ readonly -a SDXL_TURBO_FILES=(
 
 download_sdxl_turbo() {
     require_command hf "Install with: pip install -U \"huggingface_hub[cli]\" (or: brew install huggingface-cli)."
-    # No "already present" short-circuit: a single-file existence check (this
-    # used to test only unet/diffusion_pytorch_model.safetensors) is a proxy
-    # for 14 files, and an interruption between file 1 and file 14 leaves the
-    # script permanently reporting "already present" while the app still
-    # fails to load. `hf download` is idempotent and etag-verified per file —
-    # it already skips a network transfer for anything present and unchanged
-    # — so re-invoking it unconditionally is cheap on a complete snapshot and
-    # correct on a partial one.
+    # Completeness guard, derived from SDXL_TURBO_FILES rather than a
+    # separately-hardcoded filename: this loops the exact array
+    # download_sdxl_turbo's own `hf download` call below expands, so there is
+    # only one list and it cannot drift out of sync with itself. This is what
+    # a single-file existence check (the earlier version of this guard) got
+    # wrong — it tested one file as a proxy for 14, so an interruption
+    # between file 1 and file 14 left the script permanently reporting
+    # "already present" while the app still failed to load. Looping the full
+    # array fixes that without giving up the guard's real value: a complete,
+    # valid snapshot needs zero network round-trips to confirm (no etag
+    # check against every file), which matters offline or against an
+    # unreachable/blocked HF endpoint.
+    local missing=0
+    local f
+    for f in "${SDXL_TURBO_FILES[@]}"; do
+        if [[ ! -f "$IMAGE_MODEL_DIR/$f" ]]; then
+            missing=1
+            break
+        fi
+    done
+    if [[ "$missing" -eq 0 ]]; then
+        echo "SDXL-Turbo already present at $IMAGE_MODEL_DIR (all ${#SDXL_TURBO_FILES[@]} files found) — skipping download."
+        return
+    fi
     echo "Downloading $IMAGE_MODEL_REPO to $IMAGE_MODEL_DIR (real network — ~13.9 GB, the exact files the MLX diffusion loader opens; already-complete files are skipped by hf download itself)…"
     mkdir -p "$IMAGE_MODEL_DIR"
     hf download "$IMAGE_MODEL_REPO" "${SDXL_TURBO_FILES[@]}" --local-dir "$IMAGE_MODEL_DIR"
