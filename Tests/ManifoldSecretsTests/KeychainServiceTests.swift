@@ -11,17 +11,60 @@ import Security
 /// reproduced from a unit test. The happy-path round-trips below are the
 /// regression net; thrown-error coverage depends on on-device integration
 /// testing.
+///
+/// ## Isolation (#2416)
+///
+/// Every test method here runs in its own OS process under `swift test
+/// --parallel` (SwiftPM spawns one `xctest` worker per test case), so
+/// in-process Swift statics like `ManifoldConfiguration.shared` can never be
+/// shared between two *test* processes. What **is** shared across every
+/// process on the machine is the real macOS Keychain itself. Per-account
+/// isolation (`uniqueAccount()` below) is normally enough — but
+/// `ManifoldKitTests.QuickStartTests` / `QuickStartSeedTests` /
+/// `QuickStartBackendsTests` call `ManifoldKit._quickStart(configuration:
+/// .default, ...)` in many test methods, and `.default` is literally
+/// `ManifoldConfiguration()` (`bundleIdentifier == "com.manifoldkit"`) — the
+/// exact same namespace this class's own default `ManifoldConfiguration`
+/// resolves to. `_quickStart` drives `ManifoldBootstrap.build`, which
+/// constructs a `SwiftDataPersistenceProvider`; that initializer
+/// unconditionally (by default `keychainReaperEnabled == true`) calls
+/// `ManifoldBootstrap.reapOrphanedKeychainItems(in:)` — a real boot-time
+/// sweep of the shared `"com.manifoldkit.apikeys"` namespace against
+/// whatever `APIEndpoint` rows exist (typically none, in a fresh in-memory
+/// store). `ManifoldSecretsTests` and `ManifoldKitTests` are batched into the
+/// same `swift test --parallel` invocation (`scripts/test.sh`'s
+/// `PROFILE_CI_XCTEST_FILTERS`), so one of those quickStart tests' own
+/// process can sweep the default namespace clean *while this class's test
+/// method — running concurrently, in its own process — has an item sitting
+/// in that same namespace between its `store()` and `retrieve()` calls.
+///
+/// The fix mirrors `KeychainServiceSweepTests`: scope every test in this
+/// class to a private, per-run `ManifoldConfiguration.shared` namespace that
+/// no other suite's default-configuration bootstrap can ever reach, rather
+/// than relying on account-name uniqueness inside the shared default
+/// namespace.
 final class KeychainServiceTests: XCTestCase {
 
     /// Tracks accounts created during each test for cleanup.
     private var createdAccounts: [String] = []
+    private var originalConfig: ManifoldConfiguration!
+
+    override func setUp() {
+        super.setUp()
+        originalConfig = ManifoldConfiguration.shared
+        var config = ManifoldConfiguration.shared
+        config.bundleIdentifier = "com.manifoldkit.tests.keychainservice.\(UUID().uuidString)"
+        ManifoldConfiguration.shared = config
+    }
 
     override func tearDown() {
-        super.tearDown()
         for account in createdAccounts {
             try? KeychainService.delete(account: account)
         }
         createdAccounts.removeAll()
+        ManifoldConfiguration.shared = originalConfig
+        originalConfig = nil
+        super.tearDown()
     }
 
     private func uniqueAccount() -> String {
