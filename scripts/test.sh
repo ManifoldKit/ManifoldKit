@@ -1882,11 +1882,41 @@ if [[ -n "$PROFILE" ]]; then
             echo "  Traits:  (none — plain build; no default traits since v0.48)"
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        # A documented flag the caller set is not a swift-test flag, so it is
+        # deliberately excluded from SWIFT_ARGS by the arg parser above (see
+        # --min-passed's case block) — the OLD in-process fall-through relied
+        # on MIN_PASSED still being in scope when this same process reached
+        # the bottom Run section's check. Routing through
+        # run_leaf_with_local_watchdog() now spawns a genuinely separate
+        # child process (nested test.sh, via ci-test-with-watchdog.sh or its
+        # disabled-watchdog fallback) that re-parses its own argv from
+        # scratch — MIN_PASSED=0 there unless re-threaded explicitly. Thread
+        # it back in as a real --min-passed flag so the child's own honest-
+        # summary check applies the floor the caller asked for.
+        if [[ $MIN_PASSED -gt 0 ]]; then
+            SWIFT_ARGS+=("--min-passed" "$MIN_PASSED")
+        fi
         # Single leaf invocation — route it through the same stall watchdog
         # the three-invocation shape below uses, then exit with its result.
         # (Not a "fall through": that only works when nothing upstream has
         # already resolved --profile into a leaf swift-test call, and this
         # branch has.)
+        #
+        # Acquire the gate lock HERE, in the parent, before the watchdog-
+        # wrapped call — mirrors the three-invocation branch below and for
+        # the identical reason: lock queueing is unbounded by design (up to
+        # a 3h ceiling), and if it happened inside the watchdog-monitored
+        # child instead, "[gate-lock] waiting for gate lock held by PID N"
+        # doesn't match ci-test-with-watchdog.sh's progress pattern and
+        # doesn't go through its tee, so the watchdog's timer never re-arms
+        # and SIGABRTs a perfectly healthy queued run at the stall threshold
+        # (480s default) instead of letting it wait its turn — the exact
+        # phantom-stall failure mode #2464 just finished root-causing for
+        # MANIFOLD_TEST_OUTPUT_FILE, reintroduced here via a different
+        # mechanism if the lock wait sat on the wrong side of the watchdog.
+        # The child inherits MANIFOLD_GATE_LOCK_OWNER_PID via export and
+        # skips its own acquisition, same as every other call site.
+        acquire_gate_lock
         set +e
         run_leaf_with_local_watchdog "narrow" "$PROFILE_DEFAULT_STALL" \
             ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"}
@@ -2018,11 +2048,16 @@ if [[ $MINIMAL_MODE -eq 1 ]]; then
 fi
 
 # ── Run ──────────────────────────────────────────────────────────────────────
-# Covers every path that reaches here directly (no --profile, --profile
-# spike, or a narrow --filter override) AND each child re-invocation spawned
-# by the three-invocation shape above — those children see
-# MANIFOLD_GATE_LOCK_OWNER_PID already exported by their parent and return
-# immediately without re-acquiring (see acquire_gate_lock's doc comment).
+# Covers every path that reaches here directly (a bare invocation, or
+# --profile spike) AND every child re-invocation spawned by --profile
+# local/ci — both the three-invocation shape's three children and the
+# narrow-override branch's single child (reached via the watchdog wrapper,
+# or its MANIFOLD_DISABLE_LOCAL_WATCHDOG=1 fallback). A narrow `--filter`
+# override itself never reaches here directly any more: it now acquires the
+# lock and `exit`s right after handing off to run_leaf_with_local_watchdog();
+# only its re-exec'd child does. Every child sees MANIFOLD_GATE_LOCK_OWNER_PID
+# already exported by its parent and returns immediately without
+# re-acquiring (see acquire_gate_lock's doc comment).
 # FALLTHROUGH_GATE_LOCK_ACQUIRE: scenario F's sabotage test removes exactly
 # this call site and must make --lock-selftest fail deterministically.
 acquire_gate_lock
