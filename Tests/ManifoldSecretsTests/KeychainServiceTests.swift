@@ -30,12 +30,16 @@ import Security
 /// `ManifoldKit._quickStart(configuration: .default, ...)` (exercised by
 /// `ManifoldKitTests`' `QuickStartTests`/`QuickStartSeedTests`/
 /// `QuickStartBackendsTests`), a direct `ManifoldBootstrap.build(...)` call,
-/// or `InMemoryPersistenceHarness.make()` — the latter alone has 41 call
-/// sites across `Tests/` (verified by grep at the time of writing; re-check
-/// before trusting the number), spread across `ManifoldRuntimeTests`,
-/// `ManifoldPersistenceSwiftDataTests`, `ManifoldUITests`,
-/// `ManifoldTurnLoopCharacterizationTests`, `ManifoldCoreTests`, and
-/// `APIFreezeTests` — none of which scope `bundleIdentifier`. `.default` is
+/// or `InMemoryPersistenceHarness.make()` — the latter alone has 40 real
+/// call sites across `Tests/` (verified by grep at the time of writing,
+/// excluding this file's own prose mention of the phrase and
+/// `KeychainNamespaceIsolationAuditTest`'s — a raw grep for the literal
+/// string will overcount by however many doc comments happen to name it;
+/// re-verify before trusting the number), spread across
+/// `ManifoldRuntimeTests`, `ManifoldPersistenceSwiftDataTests`,
+/// `ManifoldUITests`, `ManifoldTurnLoopCharacterizationTests`,
+/// `ManifoldCoreTests`, and `APIFreezeTests` — none of which scope
+/// `bundleIdentifier`. `.default` is
 /// literally `ManifoldConfiguration()` (`bundleIdentifier ==
 /// "com.manifoldkit"`) — the exact same namespace this class's own default
 /// `ManifoldConfiguration` resolves to. Every one of those targets is
@@ -53,9 +57,13 @@ import Security
 /// namespace. `KeychainNamespaceIsolationAuditTest` (`ManifoldCoreTests`)
 /// enforces this same pattern on every test class that *writes* to the
 /// Keychain; it does not (and structurally cannot, without an enormous,
-/// out-of-scope change) enforce it on the *sweeper* side — the 41
+/// out-of-scope change) enforce it on the *sweeper* side — the 40
 /// `InMemoryPersistenceHarness.make()` call sites above are a known,
-/// unfixed source of the same hazard, tracked separately from #2416.
+/// unfixed source of the same hazard. **Not currently tracked** by any
+/// open issue (checked both open and closed at the time of writing) —
+/// AGENTS.md's issue-hygiene rules forbid opening a follow-up issue for
+/// this kind of "while we're here" cleanup, so this doc comment and the PR
+/// that introduced it are the only record.
 final class KeychainServiceTests: XCTestCase {
 
     /// Tracks accounts created during each test for cleanup.
