@@ -1689,6 +1689,90 @@ PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 # HuggingFace / Fuzz traits retired in v0.48 (PR C2, #1749).
 PROFILE_LOCAL_TRAITS="Macros"
 
+# ── Stall watchdog for the driving (--profile) invocations ─────────────────
+# CI wraps every swift-test invocation in scripts/ci-test-with-watchdog.sh,
+# which SIGABRTs a stalled swift-test/xctest process after $STALL_SECONDS of
+# no forward progress and captures a per-thread backtrace + process snapshot
+# before exiting 124. scripts/test.sh had no equivalent, which is how four
+# locally-green `--profile local` runs failed to predict a CI-red stall in
+# one night: a hang that trips CI's watchdog just looks slow on a dev
+# machine, which absorbs subprocess load differently than a CI runner.
+#
+# This reuses scripts/ci-test-with-watchdog.sh itself — never a second copy.
+# A duplicate watchdog drifts from the original (this repo's known-issues
+# buffer has more than one entry about exactly that shape of mistake), and
+# the reuse is structurally cheap here: each of the three leaf invocations
+# below already has the resolved swift-test arg list this script's own
+# recursive re-exec was going to pass to itself, so routing through the
+# wrapper instead of straight to "$SCRIPT_PATH" costs one indirection, not a
+# reimplementation.
+#
+# Threshold: CI's default is 240s (ci.yml's STALL_SECONDS). A dev machine can
+# legitimately run slower under contention — an unrelated concurrent gate,
+# an indexing Xcode, SwiftPM cache-lock contention (see AGENTS.md's
+# "Machine contention" guidance) — so "--profile local" defaults to 2x CI's
+# threshold: 480s (8 min). That is deliberate headroom for legitimate local
+# slowness, not "make it huge" — a genuine hang is silent forever, so even
+# an 8-minute threshold still catches it, just later than CI would.
+# "--profile ci" (local CI-repro) keeps CI's own 240s default instead: its
+# whole purpose is reproducing a CI failure, so it should trip at the same
+# point CI did, not a looser one. Both defaults are overridable with the
+# same STALL_SECONDS env var ci-test-with-watchdog.sh already reads — no new
+# env var invented for a knob that already exists.
+#
+# Fail-closed, not fail-open: MANIFOLD_DISABLE_LOCAL_WATCHDOG=1 is the only
+# way to skip the wrapper, and every skip prints a loud, repeated warning —
+# a watchdog nobody notices is disabled manufactures false confidence, which
+# is worse than no watchdog at all. If the wrapper script itself is missing
+# or not executable, this refuses to run the invocation at all rather than
+# silently falling back to an unprotected `swift test` — a degraded
+# progress-detection path must be visible, never quietly absorbed.
+CI_TEST_WATCHDOG="$PACKAGE_DIR/scripts/ci-test-with-watchdog.sh"
+LOCAL_STALL_SECONDS_DEFAULT=480
+CI_STALL_SECONDS_DEFAULT=240
+
+# Runs one swift-test invocation (the remaining args, already fully resolved
+# — filters/traits/--skip-update/--parallel) through ci-test-with-watchdog.sh.
+#   $1 = label, used to give this invocation its own output/diagnostics path.
+#        The three-invocation shape below shares one process tree across
+#        three sequential swift-test runs; `tee` truncates its target file on
+#        open, so without distinct paths the second invocation would erase
+#        the first invocation's diagnostics before anyone could read them.
+#   $2 = default STALL_SECONDS for this invocation if the caller didn't set
+#        the env var explicitly.
+run_leaf_with_local_watchdog() {
+    local label="$1"
+    local default_stall="$2"
+    shift 2
+    local rc
+
+    if [[ "${MANIFOLD_DISABLE_LOCAL_WATCHDOG:-0}" == "1" ]]; then
+        echo "⚠️⚠️⚠️  MANIFOLD_DISABLE_LOCAL_WATCHDOG=1 — running '${label}' WITHOUT the stall watchdog. ⚠️⚠️⚠️" >&2
+        echo "⚠️⚠️⚠️  A hang here will NOT be caught the way CI would catch it. ⚠️⚠️⚠️" >&2
+        set +e
+        "$SCRIPT_PATH" "$@"
+        rc=$?
+        set -e
+        return $rc
+    fi
+
+    if [[ ! -x "$CI_TEST_WATCHDOG" ]]; then
+        echo "::error::scripts/test.sh: stall watchdog '$CI_TEST_WATCHDOG' is missing or not executable — refusing to run '${label}' unprotected." >&2
+        echo "::error::Fix the wrapper, or set MANIFOLD_DISABLE_LOCAL_WATCHDOG=1 to proceed deliberately without stall protection." >&2
+        return 127
+    fi
+
+    local stall="${STALL_SECONDS:-$default_stall}"
+    set +e
+    STALL_SECONDS="$stall" \
+        MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test_output_${label}.txt" \
+        WATCHDOG_DIAGNOSTICS_DIR="$PACKAGE_DIR/test-diagnostics" \
+        "$CI_TEST_WATCHDOG" "$@"
+    rc=$?
+    set -e
+    return $rc
+}
+
 if [[ -n "$PROFILE" ]]; then
     case "$PROFILE" in
         ci|local|spike)
@@ -1705,6 +1789,15 @@ if [[ -n "$PROFILE" ]]; then
     HAS_USER_FILTER=0
     if [[ ${#FILTERS_SEEN[@]} -gt 0 ]]; then
         HAS_USER_FILTER=1
+    fi
+    # Needed by run_leaf_with_local_watchdog's MANIFOLD_DISABLE_LOCAL_WATCHDOG
+    # fallback (re-exec self) in every branch below, not just the
+    # three-invocation one — declared once here so it's in scope everywhere.
+    SCRIPT_PATH="$0"
+    if [[ "$PROFILE" == "local" ]]; then
+        PROFILE_DEFAULT_STALL=$LOCAL_STALL_SECONDS_DEFAULT
+    else
+        PROFILE_DEFAULT_STALL=$CI_STALL_SECONDS_DEFAULT
     fi
 
     if [[ "$PROFILE" == "spike" ]]; then
@@ -1768,19 +1861,34 @@ if [[ -n "$PROFILE" ]]; then
             echo "  Traits:  (none — plain build; no default traits since v0.48)"
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        # Fall through to the single swift-test invocation at the bottom.
+        # Single leaf invocation — route it through the same stall watchdog
+        # the three-invocation shape below uses, then exit with its result.
+        # (Not a "fall through": that only works when nothing upstream has
+        # already resolved --profile into a leaf swift-test call, and this
+        # branch has.)
+        set +e
+        run_leaf_with_local_watchdog "narrow" "$PROFILE_DEFAULT_STALL" \
+            ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"}
+        NARROW_RC=$?
+        set -e
+        exit $NARROW_RC
     else
         # No caller filter — run the canonical three-invocation pre-push gate.
-        # Re-exec self three times with the resolved flag sets. This keeps the
-        # parsing surface single-pass and the summary printer authoritative
-        # per call (each invocation prints its own summary).
+        # Re-exec self three times with the resolved flag sets, each routed
+        # through the stall watchdog (run_leaf_with_local_watchdog). This
+        # keeps the parsing surface single-pass and the summary printer
+        # authoritative per call (each invocation prints its own summary).
         #
         # Acquire the machine-wide gate lock HERE, once, before any of the
         # three (build-heavy) re-invocations below — not inside each child.
-        # The children inherit MANIFOLD_GATE_LOCK_OWNER_PID via export and
-        # skip their own acquisition, so the lock is held for the whole
-        # three-invocation shape and released exactly once, when this parent
-        # process exits.
+        # The children inherit MANIFOLD_GATE_LOCK_OWNER_PID via export, and
+        # that export survives the extra ci-test-with-watchdog.sh layer each
+        # child is now routed through (env vars propagate through exec
+        # regardless of how many process layers sit in between), so each
+        # child's own acquire_gate_lock call at the bottom of this script
+        # still sees the sentinel and no-ops. Verified after this rebase —
+        # see the PR body. The lock is held for the whole three-invocation
+        # shape and released exactly once, when this parent process exits.
         acquire_gate_lock
         SCRIPT_PATH="$0"
         EXTRA_ARGS=(${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"})
@@ -1831,7 +1939,7 @@ if [[ -n "$PROFILE" ]]; then
         # with ci.yml, and if a parallel-only race appears here, fix the
         # test's isolation, don't remove the flag.
         set +e
-        "$SCRIPT_PATH" \
+        run_leaf_with_local_watchdog "xctest" "$PROFILE_DEFAULT_STALL" \
             "${XCTEST_FILTER_ARGS[@]}" \
             ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
@@ -1854,7 +1962,7 @@ if [[ -n "$PROFILE" ]]; then
         # capability-claims registry is instance-scoped (arch-plan item 4.2);
         # mirrors ci.yml's "ManifoldBackendsTests (own process, parallel)" step.
         set +e
-        "$SCRIPT_PATH" \
+        run_leaf_with_local_watchdog "backends" "$PROFILE_DEFAULT_STALL" \
             --filter "$PROFILE_BACKENDS_FILTER" \
             ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
@@ -1869,7 +1977,7 @@ if [[ -n "$PROFILE" ]]; then
 
         # Invocation 3: Swift Testing in a separate process (#681).
         set +e
-        "$SCRIPT_PATH" \
+        run_leaf_with_local_watchdog "swifttesting" "$PROFILE_DEFAULT_STALL" \
             --filter "$PROFILE_SWIFT_TESTING_FILTER" \
             ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
