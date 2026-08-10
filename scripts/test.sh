@@ -887,9 +887,27 @@ STUB
     # acquired once, before the first re-exec, and held for the whole
     # three-invocation shape rather than being re-acquired (or silently
     # absent) per invocation.
+    #
+    # Poll ceiling: this run now goes through run_leaf_with_local_watchdog()
+    # for all three invocations, which wraps each one in
+    # ci-test-with-watchdog.sh — and that wrapper's own POLL_INTERVAL is a
+    # hardcoded 15s (it wakes, checks whether the wrapped process has
+    # exited, sleeps again). Even with an instant stub `swift`, the wrapper
+    # itself only NOTICES the child is done on its next 15s tick, so three
+    # sequential wrapped invocations cost up to ~45s of pure poll latency
+    # before any real work is even measured. The OLD 200*0.05s=10s ceiling
+    # predates that wrapping (--profile local used to re-exec "$SCRIPT_PATH"
+    # directly, with no such tax) and was measured to fire on every run once
+    # the wrapping landed — this scenario's own `wait` then returned 143
+    # (SIGTERM) on a bare statement under `set -euo pipefail`, silently
+    # aborting the WHOLE self-test exactly like the missing-wrapper defect
+    # this scenario exists to guard against, just via a new mechanism. 2400
+    # iterations * 0.05s = 120s comfortably covers the ~45s worst case with
+    # margin for real machine variance.
     local scenario_e_samples="" scenario_e_sample_count=0
     local scenario_e_poll_i=0
-    while kill -0 "$scenario_e_pid" 2>/dev/null && [[ $scenario_e_poll_i -lt 200 ]]; do
+    local scenario_e_poll_ceiling=2400
+    while kill -0 "$scenario_e_pid" 2>/dev/null && [[ $scenario_e_poll_i -lt $scenario_e_poll_ceiling ]]; do
         if [[ -s "$scenario_e_lock" ]]; then
             local scenario_e_sample
             scenario_e_sample="$(sed -n '1p' "$scenario_e_lock" 2>/dev/null)" || scenario_e_sample=""
@@ -902,17 +920,26 @@ STUB
         scenario_e_poll_i=$((scenario_e_poll_i + 1))
     done
     if kill -0 "$scenario_e_pid" 2>/dev/null; then
-        # Still running after a 10s poll ceiling with a stub `swift` that
-        # exits instantly — something is genuinely wrong (e.g. the stub was
-        # never picked up and a real build started). Kill rather than block
-        # on `wait` indefinitely; the Swift-side run() timeout is the final
-        # backstop, but this keeps the shell-level self-test itself bounded.
+        # Still running after the poll ceiling above — with the ceiling now
+        # sized for the watchdog-wrapping tax, this means something is
+        # genuinely wrong (e.g. the stub was never picked up and a real
+        # build started). Kill rather than block on `wait` indefinitely; the
+        # Swift-side run() timeout is the final backstop, but this keeps the
+        # shell-level self-test itself bounded.
         kill -TERM "$scenario_e_pid" 2>/dev/null || true
         sleep 1
         kill -KILL "$scenario_e_pid" 2>/dev/null || true
     fi
+    # Guarded against `set -e`: a killed/timed-out child makes `wait` return
+    # a nonzero (128+signal) status, and a bare `wait` on a nonzero exit
+    # aborts the whole self-test under errexit instead of falling through to
+    # the FAIL accounting below — the exact "silently abort mid-scenario"
+    # shape this scenario exists to catch (see the poll-ceiling comment
+    # above for how this bit in practice, not just in theory).
+    set +e
     wait "$scenario_e_pid" 2>/dev/null
     local scenario_e_exit=$?
+    set -e
     cat "$scenario_e_log"
 
     local scenario_e_invocation_count
