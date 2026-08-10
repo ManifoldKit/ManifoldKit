@@ -4,17 +4,37 @@ import ManifoldPersistenceSwiftData
 import ManifoldInference
 
 /// Tests for APIProvider enum and APIEndpoint model.
+///
+/// `test_keychainService_replacesApiKeyProperty` writes to the Keychain via
+/// `APIEndpoint.setAPIKey(_:)`, which routes to `KeychainService.store`. Per
+/// KeychainNamespaceIsolationAuditTest (#2416), that means this whole class
+/// must scope `ManifoldConfiguration.shared` in `setUp` — a per-account
+/// `endpointIDs` cleanup alone isn't enough isolation, since the write still
+/// lands in the shared default namespace that any other default-configuration
+/// bootstrap batched into the same `swift test --parallel` invocation can
+/// sweep.
 final class APIEndpointTests: XCTestCase {
 
     /// Track keychain accounts for cleanup.
     private var endpointIDs: [String] = []
+    private var originalConfig: ManifoldConfiguration!
+
+    override func setUp() {
+        super.setUp()
+        originalConfig = ManifoldConfiguration.shared
+        var config = ManifoldConfiguration.shared
+        config.bundleIdentifier = "com.manifoldkit.tests.apiendpoint.\(UUID().uuidString)"
+        ManifoldConfiguration.shared = config
+    }
 
     override func tearDown() {
-        super.tearDown()
         for id in endpointIDs {
             try? KeychainService.delete(account: id)
         }
         endpointIDs.removeAll()
+        ManifoldConfiguration.shared = originalConfig
+        originalConfig = nil
+        super.tearDown()
     }
 
     private func makeEndpoint(

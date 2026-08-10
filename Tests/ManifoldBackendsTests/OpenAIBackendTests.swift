@@ -12,15 +12,31 @@ import ManifoldTestSupport
 @testable import ManifoldCloudCore
 
 /// Tests for OpenAIBackend configuration, state, and capabilities.
+///
+/// Writes to the Keychain via `KeychainService.store` (see the keychain-path
+/// load test below). Per KeychainNamespaceIsolationAuditTest (#2416), that
+/// means this class must scope `ManifoldConfiguration.shared` in `setUp`
+/// even though `ManifoldBackendsTests` currently gets its own `swift test
+/// --parallel` invocation separate from the batch that produced #2416 — an
+/// unscoped default-namespace writer is a latent risk under any future
+/// re-shuffle of suite batching, not just the one already observed.
 final class OpenAIBackendTests: XCTestCase {
+
+    private var originalConfig: ManifoldConfiguration!
 
     override func setUp() {
         super.setUp()
         DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+        originalConfig = ManifoldConfiguration.shared
+        var config = ManifoldConfiguration.shared
+        config.bundleIdentifier = "com.manifoldkit.tests.openaibackend.\(UUID().uuidString)"
+        ManifoldConfiguration.shared = config
     }
 
     override func tearDown() {
         DNSRebindingGuard._resolverForTesting = nil
+        ManifoldConfiguration.shared = originalConfig
+        originalConfig = nil
         super.tearDown()
     }
 
