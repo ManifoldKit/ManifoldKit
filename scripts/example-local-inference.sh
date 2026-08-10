@@ -15,8 +15,21 @@
 #     native process lifecycle the iOS Simulator (and any Linux/x86 CI
 #     runner) can't provide. See docs/HARDWARE-TOOLCHAIN.md.
 #   - Network access. `run llama` downloads a ~400 MB GGUF starter model.
-#     `run mlx` downloads a ~1.8 GB MLX text model and a ~7 GB SDXL-Turbo
-#     diffusion snapshot — expect this to take a while on first run.
+#     `run mlx` downloads a ~1.8 GB MLX text model and a ~13.9 GB SDXL-Turbo
+#     diffusion snapshot — expect this to take a while on first run. That
+#     13.9 GB is real, not a mistake: `MLXDiffusionBackend`
+#     (manifold-mlx, Sources/StableDiffusion/Configuration.swift
+#     `presetSDXLTurbo`) hardcodes the plain (fp32) safetensors paths —
+#     `unet/diffusion_pytorch_model.safetensors` (10.3 GB) and friends —
+#     and upconverts to float16 in memory at load time; it never reads the
+#     repo's `*.fp16.safetensors` files on disk. An earlier version of this
+#     script downloaded the whole `stabilityai/sdxl-turbo` repo with no
+#     `--include` filter — three redundant representations (fp32
+#     safetensors, fp16 safetensors, ONNX) plus onnx_data shards — which
+#     pulled 50 GB and never actually completed the one fp32 unet file the
+#     loader opens, so image generation had zero real evidence behind it.
+#     See docs/PRODUCTION-READINESS.md's demo-coverage manifest,
+#     `media-generation` row.
 #   - The `hf` CLI on PATH for `run mlx` (MLX has no in-app downloader in
 #     this example — see Example/Examples/LocalInferenceExample/README.md):
 #       pip install -U "huggingface_hub[cli]"
@@ -101,15 +114,40 @@ download_mlx_text_model() {
     hf download "$MLX_TEXT_MODEL_REPO" --local-dir "$dest"
 }
 
+# Exactly the files `StableDiffusionConfiguration.presetSDXLTurbo` opens
+# (manifold-mlx Sources/StableDiffusion/Configuration.swift) plus
+# `model_index.json`, which the loader itself never reads but this app's
+# own `discoverSDXLTurbo()` (LocalInferenceExampleMLXApp.swift) uses as the
+# on-disk "is the snapshot present" marker. Listed as exact filenames, not
+# a glob, so this can never silently widen to catch a stray large sibling
+# file (e.g. the repo's onnx/fp16 duplicates) if the upstream repo layout
+# changes.
+readonly -a SDXL_TURBO_FILES=(
+    model_index.json
+    unet/config.json
+    unet/diffusion_pytorch_model.safetensors
+    text_encoder/config.json
+    text_encoder/model.safetensors
+    text_encoder_2/config.json
+    text_encoder_2/model.safetensors
+    vae/config.json
+    vae/diffusion_pytorch_model.safetensors
+    scheduler/scheduler_config.json
+    tokenizer/vocab.json
+    tokenizer/merges.txt
+    tokenizer_2/vocab.json
+    tokenizer_2/merges.txt
+)
+
 download_sdxl_turbo() {
     require_command hf "Install with: pip install -U \"huggingface_hub[cli]\" (or: brew install huggingface-cli)."
-    if [[ -f "$IMAGE_MODEL_DIR/model_index.json" ]]; then
+    if [[ -f "$IMAGE_MODEL_DIR/unet/diffusion_pytorch_model.safetensors" ]]; then
         echo "SDXL-Turbo already present at $IMAGE_MODEL_DIR — skipping download."
         return
     fi
-    echo "Downloading $IMAGE_MODEL_REPO to $IMAGE_MODEL_DIR (real network — ~7 GB)…"
+    echo "Downloading $IMAGE_MODEL_REPO to $IMAGE_MODEL_DIR (real network — ~13.9 GB, the exact files the MLX diffusion loader opens)…"
     mkdir -p "$IMAGE_MODEL_DIR"
-    hf download "$IMAGE_MODEL_REPO" --local-dir "$IMAGE_MODEL_DIR"
+    hf download "$IMAGE_MODEL_REPO" "${SDXL_TURBO_FILES[@]}" --local-dir "$IMAGE_MODEL_DIR"
 }
 
 cmd_build() {
